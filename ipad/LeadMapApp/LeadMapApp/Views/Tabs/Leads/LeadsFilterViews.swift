@@ -282,25 +282,9 @@ struct SavedViewsPopover: View {
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 8)
-
-            Divider().overlay(LfBrand.stroke)
-
-            HStack(spacing: 8) {
-                Button { } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.appScaled(size: 10, weight: .bold))
-                        Text("Lagre nåværende visning")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(LfBrand.purpleLight)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(LfBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 10)
+            // «Lagre nåværende visning» fjernet 2026-07-17: var død knapp —
+            // ingen lagringsflate for egendefinerte visninger (listen over
+            // er faste presets).
         }
         .frame(width: 280)
         .background(LfBrand.card)
@@ -369,7 +353,9 @@ struct LeadsMoreFiltersSheet: View {
                         .foregroundStyle(LfBrand.purpleLight)
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button { } label: {
+                    // 2026-07-17: wiret — nullstiller all lokal filter-state
+                    // til defaults (var død knapp).
+                    Button { resetFilters() } label: {
                         Text("Nullstill")
                             .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(LfBrand.textSecondary)
@@ -418,6 +404,18 @@ struct LeadsMoreFiltersSheet: View {
                 )
             }
         }
+    }
+
+    /// Nullstill alle filtre til default (2026-07-17: wiret «Nullstill»).
+    private func resetFilters() {
+        revenueRange = 0...50
+        employeesRange = 0...500
+        lastActivity = .anytime
+        assignedTo = .anyone
+        sortBy = .lastActivity
+        onlyMine = false
+        onlyHotScore = false
+        onlyMissingFollowUp = false
     }
 
     private var quickToggles: some View {

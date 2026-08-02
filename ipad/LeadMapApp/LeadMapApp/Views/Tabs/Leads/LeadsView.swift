@@ -203,6 +203,56 @@ struct LeadNoteItem: Identifiable, Hashable {
     let pinned: Bool
 }
 
+/// Lokale lead-notater (UserDefaults per enhet, nøklet på backendId ?? company).
+/// Det finnes ingen backend-flate for lead-notater enda — lagres lokalt slik at
+/// «Notat lagret» faktisk er sant og notatene dukker opp i Notater-fanen.
+enum LeadLocalNotes {
+    struct Stored: Codable {
+        let author: String
+        let body: String
+        let dateISO: String
+        let pinned: Bool
+    }
+    private static let key = "leadLokaleNotater"
+
+    private static func all() -> [String: [Stored]] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let dict = try? JSONDecoder().decode([String: [Stored]].self, from: data)
+        else { return [:] }
+        return dict
+    }
+
+    static func notes(for token: String) -> [LeadNoteItem] {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "d. MMM HH:mm"
+        return (all()[token] ?? []).reversed().map { s in
+            LeadNoteItem(
+                author: s.author,
+                initials: s.author.split(separator: " ").prefix(2)
+                    .map { String($0.prefix(1)) }.joined().uppercased(),
+                authorColor: Color(red: 0.75, green: 0.45, blue: 1.0),
+                body: s.body,
+                timestamp: ISO8601DateFormatter().date(from: s.dateISO)
+                    .map { df.string(from: $0) } ?? "",
+                pinned: s.pinned
+            )
+        }
+    }
+
+    static func add(body: String, pinned: Bool, author: String, to token: String) {
+        var dict = all()
+        dict[token, default: []].append(Stored(
+            author: author, body: body,
+            dateISO: ISO8601DateFormatter().string(from: Date()),
+            pinned: pinned
+        ))
+        if let data = try? JSONEncoder().encode(dict) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
 struct LeadFileItem: Identifiable, Hashable {
     let id = UUID()
     let name: String
@@ -892,6 +942,10 @@ struct LeadsView: View {
                             } else {
                                 selectedRowIDs.insert(lead.id)
                             }
+                        },
+                        onLogActivity: {
+                            selectedLeadID = lead.id
+                            logActivityOpen = true
                         }
                     )
                 }
@@ -1163,6 +1217,14 @@ struct LeadTableRow: View {
     let isChecked: Bool
     let onTap: () -> Void
     let onCheck: () -> Void
+    /// «Loggfør aktivitet» i radmenyen — parent velger raden og åpner
+    /// LogActivitySheet (2026-07-17: wiret, var død knapp).
+    let onLogActivity: () -> Void
+
+    @Environment(AppState.self) private var appState
+    /// Bump for å re-evaluere favoritt-label etter toggle (UserDefaults
+    /// er ikke observerbar).
+    @State private var favoriteTick = 0
 
     var body: some View {
         // iPhone (compact width): kolonnene får ikke plass side-ved-side —
@@ -1338,60 +1400,73 @@ struct LeadTableRow: View {
                                 Label("Send e-post", systemImage: "envelope.fill")
                             }
                         }
-                        Button {} label: {
-                            Label("Planlegg møte", systemImage: "calendar.badge.plus")
-                        }
+                        // «Planlegg møte» fjernet 2026-07-17: var død knapp —
+                        // ingen møte-bookingsflate tilgjengelig fra radmenyen.
                     }
                     Section("Lead-handlinger") {
-                        Button {} label: {
+                        Button { onLogActivity() } label: {
                             Label("Loggfør aktivitet", systemImage: "plus.circle.fill")
                         }
-                        Menu {
-                            ForEach(LeadRow.LeadStatus.allCases, id: \.self) { st in
-                                Button {} label: {
-                                    Label(st.label, systemImage: st.icon)
+                        // «Endre status» kun for backend-rader — mock-rader
+                        // (backendId == nil) har ingen ekte flate å oppdatere.
+                        if let backendId = lead.backendId {
+                            Menu {
+                                ForEach(LeadTableRow.statusChoices, id: \.status) { choice in
+                                    Button {
+                                        changeStatus(backendId: backendId, choice: choice)
+                                    } label: {
+                                        Label(choice.status.label, systemImage: choice.status.icon)
+                                    }
                                 }
+                                // .newLead utelatt 2026-07-17: har ingen
+                                // meningsfull backend-status å mappe til.
+                            } label: {
+                                Label("Endre status", systemImage: "tag.fill")
                             }
-                        } label: {
-                            Label("Endre status", systemImage: "tag.fill")
                         }
-                        Menu {
-                            // Mock-navn KUN i demo — ellers ekte team fra
-                            // TeamLiveStore (tom liste → bare «Meg selv»).
-                            let sellerNames = DemoModeManager.isActiveNonisolated
-                                ? ["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"]
-                                : TeamLiveStore.shared.members.map(\.name)
-                            ForEach(sellerNames, id: \.self) { n in
-                                Button {} label: { Label(n, systemImage: "person.crop.circle") }
+                        if DemoModeManager.isActiveNonisolated {
+                            // Demo-gated mock — navn uten backend-effekt.
+                            Menu {
+                                ForEach(["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"], id: \.self) { n in
+                                    Button {} label: { Label(n, systemImage: "person.crop.circle") }
+                                }
+                            } label: {
+                                Label("Tilordne selger", systemImage: "person.2.fill")
                             }
-                            Divider()
-                            Button {} label: { Label("Meg selv", systemImage: "person.crop.circle.fill") }
-                        } label: {
-                            Label("Tilordne selger", systemImage: "person.2.fill")
+                        } else if !TeamLiveStore.shared.memberDTOs.isEmpty || TeamLiveStore.shared.currentUserId != nil {
+                            // 2026-07-17: wiret — sender ekte tildeling via
+                            // /lead-assignments (samme API som Kart-fanens
+                            // AssignToTeamMemberSheet).
+                            Menu {
+                                ForEach(TeamLiveStore.shared.memberDTOs) { dto in
+                                    Button { assign(to: dto.userId) } label: {
+                                        Label(dto.name, systemImage: "person.crop.circle")
+                                    }
+                                }
+                                if let meId = TeamLiveStore.shared.currentUserId {
+                                    Divider()
+                                    Button { assign(to: meId) } label: {
+                                        Label("Meg selv", systemImage: "person.crop.circle.fill")
+                                    }
+                                }
+                            } label: {
+                                Label("Tilordne selger", systemImage: "person.2.fill")
+                            }
                         }
-                        Button {} label: {
-                            Label("Sett som favoritt", systemImage: "star.fill")
+                        // 2026-07-17: wiret — favoritt persisteres i
+                        // UserDefaults («leadFavoritter»).
+                        Button { toggleFavorite() } label: {
+                            let _ = favoriteTick // re-evaluer label etter toggle
+                            Label(isFavorite ? "Fjern favoritt" : "Sett som favoritt",
+                                  systemImage: isFavorite ? "star.slash.fill" : "star.fill")
                         }
                     }
-                    Section("Avansert") {
-                        Menu {
-                            Button {} label: { Label("Som CSV", systemImage: "tablecells") }
-                            Button {} label: { Label("Som PDF", systemImage: "doc.richtext") }
-                            Button {} label: { Label("Som .vcf", systemImage: "person.text.rectangle") }
-                        } label: {
-                            Label("Eksporter", systemImage: "square.and.arrow.up")
-                        }
-                        Button {} label: {
-                            Label("Kopier lenke", systemImage: "link")
-                        }
-                    }
-                    Divider()
-                    Button(role: .destructive) {} label: {
-                        Label("Arkiver", systemImage: "archivebox.fill")
-                    }
-                    Button(role: .destructive) {} label: {
-                        Label("Slett lead", systemImage: "trash.fill")
-                    }
+                    // «Eksporter (CSV/PDF/.vcf)» + «Kopier lenke» fjernet
+                    // 2026-07-17: var døde knapper — ingen eksport/lenke-flate
+                    // per rad (Leads-fanen har egen eksport-sheet i headeren).
+                    // «Arkiver» + «Slett lead» fjernet 2026-07-17: var døde
+                    // knapper — destruktive handlinger uten bekreftelses-flyt
+                    // eller API-støtte her.
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.appScaled(size: 12, weight: .semibold))
@@ -1415,6 +1490,82 @@ struct LeadTableRow: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: Radmeny-handlinger (2026-07-17: wiret — var døde knapper)
+
+    /// Row-status → backend-kall. `.hot`/`.warm` er temperatur-felt,
+    /// resten mapper til LeadModel.LeadStatus-rawValues (speiler
+    /// LeadRow.init(from:)-mappingen). `.newLead` utelatt — ingen
+    /// meningsfull backend-status.
+    struct StatusChoice {
+        let status: LeadRow.LeadStatus
+        let temperature: String?   // updateTemperature når satt
+        let backendStatus: String? // ellers updateStatus
+    }
+    static let statusChoices: [StatusChoice] = [
+        .init(status: .hot, temperature: "hot", backendStatus: nil),
+        .init(status: .warm, temperature: "warm", backendStatus: nil),
+        .init(status: .interested, temperature: nil, backendStatus: "interested"),
+        .init(status: .contacted, temperature: nil, backendStatus: "visited"),
+        .init(status: .notContacted, temperature: nil, backendStatus: "unvisited"),
+    ]
+
+    private func changeStatus(backendId: String, choice: StatusChoice) {
+        guard let api = appState.api else { return }
+        Task {
+            do {
+                if let temp = choice.temperature {
+                    try await api.updateTemperature(leadId: backendId, temperature: temp)
+                } else if let st = choice.backendStatus {
+                    try await api.updateStatus(leadId: backendId, status: st)
+                }
+                await appState.refreshLeads()
+            } catch {
+                print("[LeadTableRow] status-endring feilet: \(error)")
+            }
+        }
+    }
+
+    private func assign(to userId: String) {
+        guard let api = appState.api else { return }
+        let payload = LeadAssignmentPayload(
+            leadId: lead.backendId,
+            leadName: lead.company,
+            leadLat: nil,
+            leadLng: nil,
+            assigneeUserId: userId,
+            assigneeRole: "seller",
+            priority: "normal",
+            message: ""
+        )
+        Task {
+            do {
+                try await api.createLeadAssignment(payload)
+                await appState.refreshLeads()
+            } catch {
+                print("[LeadTableRow] tildeling feilet: \(error)")
+            }
+        }
+    }
+
+    /// Favoritter lagres som Set av (backendId ?? company) i UserDefaults
+    /// under «leadFavoritter».
+    private static let favoritesKey = "leadFavoritter"
+    private var favoriteToken: String { lead.backendId ?? lead.company }
+    private var isFavorite: Bool {
+        let favs = UserDefaults.standard.stringArray(forKey: Self.favoritesKey) ?? []
+        return favs.contains(favoriteToken)
+    }
+    private func toggleFavorite() {
+        var favs = Set(UserDefaults.standard.stringArray(forKey: Self.favoritesKey) ?? [])
+        if favs.contains(favoriteToken) {
+            favs.remove(favoriteToken)
+        } else {
+            favs.insert(favoriteToken)
+        }
+        UserDefaults.standard.set(Array(favs).sorted(), forKey: Self.favoritesKey)
+        favoriteTick += 1
     }
 
     private func call(_ number: String) {
@@ -1555,13 +1706,16 @@ struct LeadDetailSidebar: View {
     @State private var showLeadAssignSeller: Bool = false
     @State private var showLeadNoteEditor: Bool = false
     @State private var showLeadUploadFile: Bool = false
-    @State private var showLeadArchiveConfirm: Bool = false
     // Tilbudssending (funn #7) — krever backend-lead + APIClient.
     @State private var showSendProposal: Bool = false
     // Tilbudshistorikk (2026-07-04) — hentes per lead i detaljer-fanen.
     @State private var proposals: [ProposalDTO] = []
     @Environment(AppState.self) private var appState
     @State private var actionToast: String?
+    // Lokale notater for denne leaden (Notater-fanen i ekte modus).
+    @State private var localNotes: [LeadNoteItem] = []
+    // Re-evaluer favoritt-label/stjerne etter toggle.
+    @State private var favoriteTick = 0
 
     var body: some View {
         ScrollView {
@@ -1628,14 +1782,47 @@ struct LeadDetailSidebar: View {
                 companyColor: lead.companyColor,
                 currentSellerName: lead.ownerName
             ) { newSeller in
-                actionToast = "Tildelt \(newSeller.name)"
+                // 2026-07-17: var toast-fasade — nå ekte tildeling via
+                // /lead-assignments (samme payload som radmenyen). Demo-valg
+                // (userId == nil) forblir toast.
+                if let userId = newSeller.userId, let api = appState.api,
+                   !DemoModeManager.isActiveNonisolated {
+                    let payload = LeadAssignmentPayload(
+                        leadId: lead.backendId,
+                        leadName: lead.company,
+                        leadLat: nil,
+                        leadLng: nil,
+                        assigneeUserId: userId,
+                        assigneeRole: "seller",
+                        priority: "normal",
+                        message: ""
+                    )
+                    Task {
+                        do {
+                            try await api.createLeadAssignment(payload)
+                            actionToast = "Tildelt \(newSeller.name)"
+                            await appState.refreshLeads()
+                        } catch {
+                            actionToast = "Kunne ikke tildele"
+                        }
+                    }
+                } else {
+                    actionToast = "Tildelt \(newSeller.name)"
+                }
             }
         }
         .sheet(isPresented: $showLeadNoteEditor) {
             LeadNoteSheet(
                 companyName: lead.company,
                 companyColor: lead.companyColor
-            ) { _, _, pinned in
+            ) { text, _, pinned in
+                // 2026-07-17: var toast-fasade — nå faktisk lagret (lokalt;
+                // ingen backend-flate for lead-notater enda) og synlig i
+                // Notater-fanen.
+                LeadLocalNotes.add(body: text, pinned: pinned,
+                                   author: appState.displayName,
+                                   to: lead.backendId ?? lead.company)
+                localNotes = LeadLocalNotes.notes(for: lead.backendId ?? lead.company)
                 actionToast = "Notat lagret\(pinned ? " (festet)" : "")"
             }
         }
@@ -1654,18 +1841,8 @@ struct LeadDetailSidebar: View {
                 }
             )
         }
-        .confirmationDialog(
-            "Arkivere \(lead.company)?",
-            isPresented: $showLeadArchiveConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Arkiver", role: .destructive) {
-                actionToast = "\(lead.company) arkivert"
-            }
-            Button("Avbryt", role: .cancel) { }
-        } message: {
-            Text("Lead-en flyttes til arkiv. Du kan hente den tilbake fra Filter → Vis arkiverte.")
-        }
+        // Arkiv-dialogen fjernet 2026-07-17: «Arkiver» var toast-fasade uten
+        // API — dialogen lot som leaden ble flyttet til arkiv.
         .overlay(alignment: .top) {
             if let t = actionToast {
                 Label(t, systemImage: "checkmark.circle.fill")
@@ -1694,13 +1871,18 @@ struct LeadDetailSidebar: View {
                 Text(lead.company)
                     .font(.appScaled(size: 17, weight: .bold))
                     .foregroundStyle(.white)
-                Image(systemName: "star")
-                    .font(.appScaled(size: 13))
-                    .foregroundStyle(LdBrand.textTertiary)
+                // 2026-07-17: stjernen var statisk pynt — nå ekte favoritt-
+                // toggle (samme UserDefaults-lager som radmenyen).
+                Button { toggleFavorite() } label: {
+                    let _ = favoriteTick
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.appScaled(size: 13))
+                        .foregroundStyle(isFavorite ? LdBrand.yellow : LdBrand.textTertiary)
+                }
+                .buttonStyle(.plain)
                 Spacer()
-                Image(systemName: "ellipsis")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(LdBrand.textSecondary)
+                // Ellipsis-ikonet fjernet 2026-07-17: var dekorativt (så
+                // klikkbart ut) — handlingsmenyen bor i action-baren nederst.
             }
             HStack(spacing: 5) {
                 Image(systemName: lead.status.icon)
@@ -1733,9 +1915,9 @@ struct LeadDetailSidebar: View {
                     Text("Lead score")
                         .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
-                    // Mock-trenden («↑12») vises kun når det finnes en score
-                    // å trende fra — «score 0, ↑12» var selvmotsigende.
-                    if lead.leadScore > 0 {
+                    // 2026-07-17: «↑12»-trenden var mock også i ekte modus —
+                    // score-historikk finnes ikke, så den vises kun i demo.
+                    if lead.leadScore > 0 && DemoModeManager.isActiveNonisolated {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.up")
                                 .font(.appScaled(size: 10, weight: .bold))
@@ -1743,7 +1925,7 @@ struct LeadDetailSidebar: View {
                                 .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(LdBrand.green)
-                    } else {
+                    } else if lead.leadScore == 0 {
                         Text("Ingen score enda")
                             .font(.appScaled(size: 11))
                             .foregroundStyle(LdBrand.textSecondary)
@@ -1898,6 +2080,51 @@ struct LeadDetailSidebar: View {
         await loadProposals()
     }
 
+    // MARK: Status/favoritt-helpers (2026-07-17 — speiler radmenyens wiring)
+
+    private func changeStatus(backendId: String, choice: LeadTableRow.StatusChoice) {
+        guard let api = appState.api else { return }
+        Task {
+            do {
+                if let temp = choice.temperature {
+                    try await api.updateTemperature(leadId: backendId, temperature: temp)
+                } else if let st = choice.backendStatus {
+                    try await api.updateStatus(leadId: backendId, status: st)
+                }
+                actionToast = "Status endret til \(choice.status.label)"
+                await appState.refreshLeads()
+            } catch {
+                actionToast = "Kunne ikke endre status"
+            }
+        }
+    }
+
+    private func markAsWon(backendId: String) {
+        guard let api = appState.api else { return }
+        Task {
+            do {
+                try await api.updateStatus(leadId: backendId, status: "won")
+                actionToast = "\(lead.company) markert som vunnet 🏆"
+                await appState.refreshLeads()
+            } catch {
+                actionToast = "Kunne ikke markere som vunnet"
+            }
+        }
+    }
+
+    /// Delt favoritt-lager med radmenyen («leadFavoritter», backendId ?? company).
+    private var favoriteToken: String { lead.backendId ?? lead.company }
+    private var isFavorite: Bool {
+        (UserDefaults.standard.stringArray(forKey: "leadFavoritter") ?? [])
+            .contains(favoriteToken)
+    }
+    private func toggleFavorite() {
+        var favs = Set(UserDefaults.standard.stringArray(forKey: "leadFavoritter") ?? [])
+        if favs.contains(favoriteToken) { favs.remove(favoriteToken) } else { favs.insert(favoriteToken) }
+        UserDefaults.standard.set(Array(favs).sorted(), forKey: "leadFavoritter")
+        favoriteTick += 1
+    }
+
     private var kontaktSection: some View {
         VStack(alignment: .leading, spacing: 9) {
             sectionTitle("Kontaktperson")
@@ -1973,16 +2200,8 @@ struct LeadDetailSidebar: View {
                 metaRow("Bransje", lead.category == "—" ? "Ikke kategorisert" : lead.category)
                 metaRow("Eier", lead.ownerName)
             }
-            Button {} label: {
-                HStack(spacing: 4) {
-                    Text("Se mer informasjon")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                    Image(systemName: "arrow.right")
-                        .font(.appScaled(size: 9, weight: .semibold))
-                }
-                .foregroundStyle(LdBrand.purpleLight)
-            }
-            .buttonStyle(.plain)
+            // «Se mer informasjon» fjernet 2026-07-17: var død knapp — det
+            // finnes ingen utvidet selskaps-flate bak (all info vises alt her).
         }
     }
 
@@ -2055,13 +2274,9 @@ struct LeadDetailSidebar: View {
 
     private var nextFollowUpSection: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                sectionTitle("Neste oppfølging")
-                Spacer()
-                Image(systemName: "square.and.arrow.up")
-                    .font(.appScaled(size: 11))
-                    .foregroundStyle(LdBrand.textSecondary)
-            }
+            // Delings-ikonet fjernet 2026-07-17: var dekorativt (så klikkbart
+            // ut, ingen handling).
+            sectionTitle("Neste oppfølging")
             HStack(spacing: 7) {
                 Image(systemName: "calendar")
                     .font(.appScaled(size: 10))
@@ -2110,8 +2325,9 @@ struct LeadDetailSidebar: View {
                     .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
-                // «Høy» sannsynlighet gir bare mening med en faktisk verdi.
-                if lead.valueNok > 0 {
+                // 2026-07-17: «Høy» sannsynlighet var mock også i ekte modus —
+                // ingen sannsynlighets-modell bak; vises kun i demo.
+                if lead.valueNok > 0 && DemoModeManager.isActiveNonisolated {
                     Text("Høy")
                         .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LdBrand.green)
@@ -2151,12 +2367,8 @@ struct LeadDetailSidebar: View {
                     .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button { } label: {
-                    Text("Filtrer")
-                        .font(.appScaled(size: 10, weight: .semibold))
-                        .foregroundStyle(LdBrand.purpleLight)
-                }
-                .buttonStyle(.plain)
+                // «Filtrer» fjernet 2026-07-17: var død knapp — ingen
+                // filter-flate for aktivitetslisten.
             }
             if LeadsData.activities.isEmpty {
                 detailEmptyState(icon: "clock.arrow.circlepath", text: "Ingen aktiviteter registrert enda")
@@ -2217,13 +2429,20 @@ struct LeadDetailSidebar: View {
 
     // MARK: Notater-tab
 
+    /// Demo: mock-notater. Ekte: lokalt lagrede notater for denne leaden.
+    private var displayNotes: [LeadNoteItem] {
+        DemoModeManager.isActiveNonisolated ? LeadsData.notes : localNotes
+    }
+
     private var notesTab: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button { } label: {
+            // 2026-07-17: compose-raden var død + initialene hardkodet «LK» —
+            // nå åpner den notat-editoren og viser innlogget brukers initialer.
+            Button { showLeadNoteEditor = true } label: {
                 HStack(spacing: 7) {
                     ZStack {
                         Circle().fill(LdBrand.purple.opacity(0.25))
-                        Text("LK")
+                        Text(LeadRow.initials(for: appState.displayName))
                             .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LdBrand.purpleLight)
                     }
@@ -2241,13 +2460,16 @@ struct LeadDetailSidebar: View {
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            if LeadsData.notes.isEmpty {
+            if displayNotes.isEmpty {
                 detailEmptyState(icon: "note.text", text: "Ingen notater enda")
             } else {
-                ForEach(LeadsData.notes) { n in
+                ForEach(displayNotes) { n in
                     noteRow(n)
                 }
             }
+        }
+        .task(id: lead.id) {
+            localNotes = LeadLocalNotes.notes(for: lead.backendId ?? lead.company)
         }
     }
 
@@ -2320,8 +2542,9 @@ struct LeadDetailSidebar: View {
         }
     }
 
+    // 2026-07-17: Button-wrapperen fjernet — raden var død knapp (filene er
+    // demo-mock; nedlasting har ingen flate). Ren datavisning nå.
     private func fileRow(_ f: LeadFileItem) -> some View {
-        Button { } label: {
             HStack(spacing: 9) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 7)
@@ -2349,14 +2572,9 @@ struct LeadDetailSidebar: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "arrow.down.circle")
-                    .font(.appScaled(size: 13, weight: .semibold))
-                    .foregroundStyle(LdBrand.purpleLight)
             }
             .padding(8)
             .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: Action-bar bunn
@@ -2401,21 +2619,25 @@ struct LeadDetailSidebar: View {
                             Label("Send tilbud", systemImage: "doc.text.fill")
                         }
                     }
-                    Button {} label: {
-                        Label("Planlegg møte", systemImage: "calendar.badge.plus")
-                    }
-                    Button {} label: {
-                        Label("Start video-møte", systemImage: "video.fill")
-                    }
+                    // «Planlegg møte» + «Start video-møte» fjernet 2026-07-17:
+                    // var døde knapper — ingen bookingsflate herfra (møter
+                    // bookes fra Møter-fanen).
                 }
                 Section("Lead-handlinger") {
+                    // Hurtig-statusene var døde 2026-07-17 — nå samme wiring
+                    // som radmenyen (temperatur/status + refresh), kun for
+                    // backend-leads. Detaljert editor var alt wiret.
                     Menu {
-                        ForEach(LeadRow.LeadStatus.allCases, id: \.self) { st in
-                            Button { } label: {
-                                Label(st.label, systemImage: st.icon)
+                        if let backendId = lead.backendId {
+                            ForEach(LeadTableRow.statusChoices, id: \.status) { choice in
+                                Button {
+                                    changeStatus(backendId: backendId, choice: choice)
+                                } label: {
+                                    Label(choice.status.label, systemImage: choice.status.icon)
+                                }
                             }
+                            Divider()
                         }
-                        Divider()
                         Button { showLeadStatusChange = true } label: {
                             Label("Åpne detaljert status-editor…", systemImage: "square.and.pencil")
                         }
@@ -2425,11 +2647,18 @@ struct LeadDetailSidebar: View {
                     Button { showLeadAssignSeller = true } label: {
                         Label("Tilordne selger", systemImage: "person.2.fill")
                     }
-                    Button { } label: {
-                        Label("Sett som favoritt", systemImage: "star.fill")
+                    // 2026-07-17: wiret — delt favoritt-lager med radmenyen.
+                    Button { toggleFavorite() } label: {
+                        let _ = favoriteTick
+                        Label(isFavorite ? "Fjern favoritt" : "Sett som favoritt",
+                              systemImage: isFavorite ? "star.slash.fill" : "star.fill")
                     }
-                    Button { } label: {
-                        Label("Marker som vunnet", systemImage: "trophy.fill")
+                    // 2026-07-17: wiret — «won» er gyldig backend-status
+                    // (samme katalog som status-editoren).
+                    if let backendId = lead.backendId {
+                        Button { markAsWon(backendId: backendId) } label: {
+                            Label("Marker som vunnet", systemImage: "trophy.fill")
+                        }
                     }
                 }
                 Section("Innhold") {
@@ -2440,31 +2669,11 @@ struct LeadDetailSidebar: View {
                         Label("Last opp fil", systemImage: "doc.fill.badge.plus")
                     }
                 }
-                Section("Avansert") {
-                    Button { } label: {
-                        Label("Slå sammen med annen lead", systemImage: "arrow.triangle.merge")
-                    }
-                    Menu {
-                        Button { } label: { Label("Som CSV", systemImage: "tablecells") }
-                        Button { } label: { Label("Som PDF", systemImage: "doc.richtext") }
-                        Button { } label: { Label("Som .vcf (kontakt)", systemImage: "person.text.rectangle") }
-                    } label: {
-                        Label("Eksporter", systemImage: "square.and.arrow.up")
-                    }
-                    Button { } label: {
-                        Label("Del med team", systemImage: "person.crop.circle.badge.plus")
-                    }
-                    Button { } label: {
-                        Label("Kopier lenke", systemImage: "link")
-                    }
-                }
-                Divider()
-                Button(role: .destructive) { showLeadArchiveConfirm = true } label: {
-                    Label("Arkiver lead", systemImage: "archivebox.fill")
-                }
-                Button(role: .destructive) { } label: {
-                    Label("Slett lead", systemImage: "trash.fill")
-                }
+                // «Avansert»-seksjonen (slå sammen/eksporter/del/kopier lenke)
+                // fjernet 2026-07-17: alle var døde knapper uten flater.
+                // «Arkiver lead» fjernet 2026-07-17: bekreftelsesdialogen var
+                // toast-fasade uten API. «Slett lead» fjernet: destruktiv uten
+                // backend-støtte.
             } label: {
                 HStack(spacing: 4) {
                     Text("Flere handlinger")

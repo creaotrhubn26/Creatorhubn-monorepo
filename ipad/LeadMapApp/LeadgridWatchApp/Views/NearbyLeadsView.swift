@@ -24,10 +24,9 @@ struct NearbyLeadsView: View {
     // MERK: INGEN egen NavigationStack her. Denne visningen er en side i en
     // `TabView(.verticalPage)` (se RootTabs), som på watchOS allerede pakker
     // hver side i sin egen navigasjons-kontroller. En ekstra NavigationStack
-    // ga to konkurrerende PUICStackedNavigationBar-er → «Layout requested for
-    // visible navigation bar ... top item belongs to a different navigation
-    // bar»-krasj (NSInternalInconsistencyException) så snart lista fikk innhold.
-    // NavigationLink pusher på den implisitte stacken.
+    // ga to konkurrerende PUICStackedNavigationBar-er → «top item belongs to a
+    // different navigation bar»-krasj så snart lista fikk innhold. NavigationLink
+    // pusher på den implisitte stacken.
     var body: some View {
         List {
             if sortedLeads.isEmpty {

@@ -69,7 +69,8 @@ struct AddLeadSheet: View {
     @State private var contactRole: String = ""
 
     @State private var status: MapLeadMock.PinStatus = .new
-    @State private var assignTo: String = "Lars Kristensen"
+    // Selv-tildeling er default — «Lars Kristensen» var hardkodet mock-navn.
+    @State private var assignTo: String = "Meg"
 
     @State private var pinCoord = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
 
@@ -351,12 +352,8 @@ struct AddLeadSheet: View {
                             .font(.appScaled(size: 11))
                             .foregroundStyle(AlBrand.textTertiary)
                         Spacer()
-                        Button {} label: {
-                            Text("Endre")
-                                .font(.appScaled(size: 12, weight: .semibold))
-                                .foregroundStyle(AlBrand.purpleLight)
-                        }
-                        .buttonStyle(.plain)
+                        // «Endre»-knapp fjernet 2026-07-17: var død — medlems-
+                        // velger for tildeling har ingen flate i denne sheeten.
                     }
                     .padding(10)
                     .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))

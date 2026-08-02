@@ -261,20 +261,8 @@ struct PondusTabView: View {
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(LBrand.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
-                }.buttonStyle(.plain)
-                Button {} label: {
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(LBrand.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
-                }.buttonStyle(.plain)
+                // Søk- og filter-ikonknappene fjernet 2026-07-17: var døde
+                // knapper — mal-listen har ingen søk/filter-flate.
             }
             .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 12)
 
@@ -399,12 +387,12 @@ struct PondusTabView: View {
                 }
                 editorModeToggle
                 Menu {
-                    Button { copyMal() } label: { Label("Dupliser", systemImage: "doc.on.doc") }
-                    Button {} label: { Label("Del lenke", systemImage: "link") }
-                    Button {} label: { Label("Eksporter PDF", systemImage: "square.and.arrow.up") }
-                    Divider()
+                    // «Dupliser» fjernet 2026-07-17: var død knapp — copyMal()
+                    // viste kun toast, ingen kopi ble opprettet.
+                    // «Del lenke» + «Eksporter PDF» + «Arkiver mal» fjernet
+                    // 2026-07-17: var døde knapper (tomme closures) — ingen
+                    // dele-/eksport-/arkiv-flate for Pondus-maler.
                     Button { resetAllEdits() } label: { Label("Tilbakestill alt", systemImage: "arrow.uturn.backward") }
-                    Button(role: .destructive) {} label: { Label("Arkiver mal", systemImage: "archivebox") }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.appScaled(size: 14, weight: .bold))
@@ -979,16 +967,9 @@ struct PondusTabView: View {
             }
             .padding(.horizontal, 14)
 
-            Button {} label: {
-                HStack(spacing: 5) {
-                    Text("Se full rapport").font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right").font(.appScaled(size: 10, weight: .bold))
-                }
-                .foregroundStyle(LBrand.purpleLight)
-                .padding(.vertical, 13)
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.plain)
+            // «Se full rapport» fjernet 2026-07-17: var død knapp — ingen
+            // rapport-flate å navigere til herfra.
+            Color.clear.frame(height: 13)
         }
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1))
@@ -1109,10 +1090,8 @@ struct PondusTabView: View {
 
     // MARK: Actions
 
-    private func copyMal() {
-        toast = "«\(selected.name) (kopi)» opprettet"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { toast = nil }
-    }
+    // copyMal() fjernet 2026-07-17 sammen med «Dupliser»-knappen — var kun
+    // toast uten reell kopiering.
 }
 
 // MARK: - PondusExportSheet
@@ -1848,18 +1827,8 @@ struct PondusTeamUsageModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Eksporter CSV", systemImage: "tablecells") }
-                        Button {} label: { Label("Eksporter PDF", systemImage: "doc.fill") }
-                        Divider()
-                        Button {} label: { Label("Del rapport", systemImage: "square.and.arrow.up") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.appScaled(size: 16, weight: .semibold))
-                            .foregroundStyle(LBrand.purpleLight)
-                    }
-                }
+                // Eksport-menyen (CSV/PDF/Del rapport) fjernet 2026-07-17:
+                // var døde knapper — ingen eksport-flate for bruksrapporten.
             }
             .sheet(item: $selectedTemplate) { _ in EmptyView() }  // placeholder for per-mal drill-down
         }

@@ -112,11 +112,9 @@ struct TemplateLibraryModal: View {
                                 } label: { Label(s.rawValue, systemImage: s.icon) }
                             }
                         }
-                        Divider()
-                        Button {} label: { Label("Eksporter alle (CSV)", systemImage: "square.and.arrow.up") }
-                        Button {} label: { Label("Importer fra fil", systemImage: "square.and.arrow.down") }
-                        Divider()
-                        Button {} label: { Label("Tilpass kolonner", systemImage: "slider.horizontal.3") }
+                        // «Eksporter alle (CSV)» + «Importer fra fil» +
+                        // «Tilpass kolonner» fjernet 2026-07-17: var døde
+                        // knapper (tomme closures) uten mål-flater.
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.appScaled(size: 16, weight: .semibold))
@@ -328,17 +326,14 @@ struct TemplateLibraryModal: View {
                     Menu {
                         Button { selected = t; LeadbookLiveStore.shared.logUsage(t); flashToast("\(t.name) er valgt") } label: { Label("Bruk mal", systemImage: "play.fill") }
                         Button { menuTemplate = t } label: { Label("Forhåndsvis", systemImage: "eye") }
-                        Button { flashToast("Åpner editor…") } label: { Label("Rediger", systemImage: "pencil") }
-                        Button { flashToast("Duplisert som «\(t.name) (kopi)»") } label: { Label("Dupliser", systemImage: "doc.on.doc") }
+                        // «Rediger» + «Dupliser» fjernet 2026-07-17: var døde
+                        // knapper — kun toast, ingen editor/kopi bak.
                         Button {
                             UIPasteboard.general.string = "leadgrid://leadbook/\(t.id.uuidString.prefix(8))"
                             flashToast("Lenke kopiert")
                         } label: { Label("Kopier lenke", systemImage: "link") }
-                        Divider()
-                        Button {} label: { Label("Eksporter PDF", systemImage: "square.and.arrow.up") }
-                        Button(role: .destructive) { flashToast("«\(t.name)» arkivert") } label: {
-                            Label("Arkiver", systemImage: "archivebox")
-                        }
+                        // «Eksporter PDF» (tom closure) + «Arkiver» (kun toast)
+                        // fjernet 2026-07-17: var døde knapper.
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.appScaled(size: 14, weight: .bold))
@@ -836,17 +831,13 @@ struct TemplateLibraryCard: View {
                         LeadbookLiveStore.shared.logUsage(t)
                         flashToast("\(t.name) er valgt — bruk mal i sidebar")
                     } label: { Label("Bruk mal", systemImage: "play.fill") }
-                    Button { flashToast("Åpner editor…") } label: { Label("Rediger", systemImage: "pencil") }
-                    Button { flashToast("Duplisert som «\(t.name) (kopi)»") } label: { Label("Dupliser", systemImage: "doc.on.doc") }
+                    // «Rediger» + «Dupliser» + «Eksporter PDF» + «Arkiver»
+                    // fjernet 2026-07-17: var døde knapper — kun toast uten
+                    // editor/kopi/eksport/arkiv bak.
                     Button {
                         UIPasteboard.general.string = "leadgrid://leadbook/\(t.id.uuidString.prefix(8))"
                         flashToast("Lenke kopiert til utklippstavlen")
                     } label: { Label("Kopier lenke", systemImage: "link") }
-                    Button { flashToast("Eksporterer som PDF…") } label: { Label("Eksporter PDF", systemImage: "square.and.arrow.up") }
-                    Divider()
-                    Button(role: .destructive) {
-                        flashToast("«\(t.name)» arkivert")
-                    } label: { Label("Arkiver", systemImage: "archivebox") }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.appScaled(size: 13, weight: .bold))
@@ -1161,10 +1152,9 @@ struct SelectedLeadbookCard: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button { copyContent(c) } label: { Label("Kopier", systemImage: "doc.on.doc") }
-            Button {} label: { Label("Rediger", systemImage: "pencil") }
-            Button {} label: { Label("Marker som brukt", systemImage: "checkmark.circle") }
-            Divider()
-            Button(role: .destructive) {} label: { Label("Fjern", systemImage: "trash") }
+            // «Rediger» + «Marker som brukt» + «Fjern» fjernet 2026-07-17:
+            // var døde knapper (tomme closures) uten redigerings-/status-/
+            // slette-flate.
         }
     }
 
@@ -1276,10 +1266,8 @@ struct ObjectionsCard: View {
                 flash("Respons kopiert")
             } label: { Label("Kopier respons", systemImage: "doc.on.doc") }
             Button { selected = o } label: { Label("Vis detaljer", systemImage: "arrow.up.right.square") }
-            Button { flash("Markert som brukt") } label: { Label("Marker som brukt", systemImage: "checkmark.circle") }
-            Divider()
-            Button {} label: { Label("Rediger", systemImage: "pencil") }
-            Button(role: .destructive) {} label: { Label("Fjern", systemImage: "trash") }
+            // «Marker som brukt» (kun toast) + «Rediger»/«Fjern» (tomme
+            // closures) fjernet 2026-07-17: var døde knapper.
         }
     }
 
@@ -1725,10 +1713,9 @@ struct VersionsModal: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
                         Button { showCompare = true } label: { Label("Sammenlign versjoner", systemImage: "rectangle.split.2x1") }
-                        Button {} label: { Label("Eksporter versjonshistorikk", systemImage: "square.and.arrow.up") }
-                        Divider()
-                        Button {} label: { Label("Tilbakestill til godkjent", systemImage: "arrow.uturn.backward") }
-                        Button(role: .destructive) {} label: { Label("Arkiver gamle utkast", systemImage: "archivebox") }
+                        // «Eksporter versjonshistorikk» + «Tilbakestill til
+                        // godkjent» + «Arkiver gamle utkast» fjernet
+                        // 2026-07-17: var døde knapper (tomme closures).
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.appScaled(size: 16, weight: .semibold))
@@ -1833,16 +1820,8 @@ struct VersionsModal: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(LBrand.purple, in: RoundedRectangle(cornerRadius: 9))
                 }.buttonStyle(.plain)
-                Button {} label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle")
-                        Text("Godkjenn alle venter")
-                    }
-                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(LBrand.green)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(LBrand.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.green.opacity(0.4), lineWidth: 1))
-                }.buttonStyle(.plain)
+                // «Godkjenn alle venter» fjernet 2026-07-17: var død knapp —
+                // ingen godkjennings-API/flate bak (tom closure).
             }
         }
         .padding(14)
@@ -2137,44 +2116,11 @@ struct NewTemplateSheet: View {
             textArea(label: "Mål med malen", binding: $goal,
                      placeholder: "Hva er målet med denne malen?",
                      minHeight: 76)
-            VStack(alignment: .leading, spacing: 7) {
-                Text("Tilknyttede ressurser")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(LBrand.textSecondary)
-                fileUploadCard
-            }
+            // «Tilknyttede ressurser»-seksjonen (fileUploadCard) fjernet
+            // 2026-07-17: var død knapp — «klikk for å velge» hadde ingen
+            // fil-velger eller lagringsflate bak (tom closure).
             shareToggle
         }
-    }
-
-    private var fileUploadCard: some View {
-        Button {} label: {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle().fill(LBrand.purple.opacity(0.20))
-                    Image(systemName: "arrow.up")
-                        .font(.appScaled(size: 14, weight: .bold))
-                        .foregroundStyle(LBrand.purpleLight)
-                }
-                .frame(width: 36, height: 36)
-                Text("Dra og slipp filer her, eller klikk for å velge")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("PDF, DOCX, PNG, JPG (maks 10MB)")
-                    .font(.appScaled(size: 10))
-                    .foregroundStyle(LBrand.textTertiary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .background(LBrand.purple.opacity(0.06),
-                        in: RoundedRectangle(cornerRadius: 11))
-            .overlay(
-                RoundedRectangle(cornerRadius: 11)
-                    .stroke(LBrand.purple.opacity(0.40),
-                            style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     private var shareToggle: some View {
@@ -2594,17 +2540,8 @@ struct ContentDetailSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            Button {} label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "square.and.arrow.up").font(.appScaled(size: 12, weight: .bold))
-                    Text("Del").font(.appScaled(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18).padding(.vertical, 11)
-                .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
-                .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
+            // «Del»-knappen fjernet 2026-07-17: var død knapp — tom closure
+            // uten dele-flate.
         }
     }
 }
@@ -2778,15 +2715,9 @@ struct AllTemplatesSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(LBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Eksporter alle", systemImage: "square.and.arrow.up") }
-                        Button {} label: { Label("Importer maler", systemImage: "square.and.arrow.down") }
-                        Button {} label: { Label("Sortér etter ytelse", systemImage: "chart.bar.fill") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").foregroundStyle(LBrand.purpleLight)
-                    }
-                }
+                // Ellipsis-menyen («Eksporter alle» / «Importer maler» /
+                // «Sortér etter ytelse») fjernet 2026-07-17: var døde knapper
+                // (tomme closures).
             }
             .toolbarBackground(LBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -2965,17 +2896,9 @@ struct ObjectionDetailSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(LBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Rediger respons", systemImage: "pencil") }
-                        Button {} label: { Label("Send til AI-coach", systemImage: "sparkles") }
-                        Button {} label: { Label("Del med teamet", systemImage: "person.2.fill") }
-                        Divider()
-                        Button(role: .destructive) {} label: { Label("Fjern", systemImage: "trash") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").foregroundStyle(LBrand.purpleLight)
-                    }
-                }
+                // Ellipsis-menyen («Rediger respons» / «Send til AI-coach» /
+                // «Del med teamet» / «Fjern») fjernet 2026-07-17: var døde
+                // knapper (tomme closures).
             }
             .toolbarBackground(LBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -3229,6 +3152,7 @@ struct AllObjectionsSheet: View {
     let onPick: (Objection) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
+    @State private var showNewObjection = false
 
     private var filtered: [Objection] {
         if search.isEmpty { return LeadbookData.objections }
@@ -3259,11 +3183,10 @@ struct AllObjectionsSheet: View {
                     Button("Lukk") { dismiss() }.foregroundStyle(LBrand.purpleLight)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Ny innvending", systemImage: "plus.circle") }
-                        Button {} label: { Label("Importer fra Excel", systemImage: "square.and.arrow.down") }
-                        Button {} label: { Label("AI-foreslå", systemImage: "sparkles") }
-                    } label: {
+                    // 2026-07-17: «Ny innvending» wiret til eksisterende
+                    // NewObjectionSheet (var død knapp). «Importer fra Excel»
+                    // + «AI-foreslå» fjernet — tomme closures uten flate.
+                    Button { showNewObjection = true } label: {
                         Image(systemName: "plus").foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -3271,6 +3194,7 @@ struct AllObjectionsSheet: View {
             .toolbarBackground(LBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showNewObjection) { NewObjectionSheet() }
         }
     }
 
@@ -4086,18 +4010,9 @@ struct VersionDetailSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Sammenlign med gjeldende", systemImage: "rectangle.split.2x1") }
-                        Button {} label: { Label("Dupliser som ny versjon", systemImage: "plus.square.on.square") }
-                        Divider()
-                        Button(role: .destructive) {} label: { Label("Slett versjon", systemImage: "trash") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.appScaled(size: 16, weight: .semibold))
-                            .foregroundStyle(LBrand.purpleLight)
-                    }
-                }
+                // Ellipsis-menyen («Sammenlign med gjeldende» / «Dupliser som
+                // ny versjon» / «Slett versjon») fjernet 2026-07-17: var døde
+                // knapper (tomme closures).
             }
             .overlay(alignment: .top) {
                 if let t = toast {
@@ -4425,8 +4340,8 @@ struct LeadbookKPIDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
                         Button { showShare = true } label: { Label("Del rapport", systemImage: "square.and.arrow.up") }
-                        Button {} label: { Label("Eksporter CSV", systemImage: "tablecells") }
-                        Button {} label: { Label("Skriv ut PDF", systemImage: "printer") }
+                        // «Eksporter CSV» + «Skriv ut PDF» fjernet 2026-07-17:
+                        // var døde knapper (tomme closures).
                         Divider()
                         Button { showCreateAlert = true } label: { Label("Lag varsel", systemImage: "bell.badge") }
                         Button { showSetGoal = true } label: { Label("Sett mål", systemImage: "target") }
@@ -4567,13 +4482,8 @@ struct LeadbookKPIDetailSheet: View {
                 Text(breakdownTitle).font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
-                Button {} label: {
-                    HStack(spacing: 4) {
-                        Text("Se alle").font(.appScaled(size: 11, weight: .semibold))
-                        Image(systemName: "arrow.up.right").font(.appScaled(size: 9, weight: .bold))
-                    }
-                    .foregroundStyle(kpi.tint)
-                }.buttonStyle(.plain)
+                // «Se alle» fjernet 2026-07-17: var død knapp — ingen full
+                // breakdown-liste å navigere til.
             }
             VStack(spacing: 8) {
                 ForEach(breakdownRows.indices, id: \.self) { i in
@@ -4679,19 +4589,8 @@ struct LeadbookKPIDetailSheet: View {
             Text(insightBody)
                 .font(.appScaled(size: 13))
                 .foregroundStyle(.white)
-            if let action = insightAction {
-                Button {} label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: action.icon).font(.appScaled(size: 11, weight: .bold))
-                        Text(action.label).font(.appScaled(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(kpi.tint)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(kpi.tint.opacity(0.18), in: Capsule())
-                    .overlay(Capsule().stroke(kpi.tint.opacity(0.4), lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
+            // AI-insikt-handlingsknappen fjernet 2026-07-17: var død knapp —
+            // tom closure, CTA-ene hadde ingen mål-flater.
         }
         .padding(14)
         .background(kpi.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -4971,24 +4870,9 @@ struct LeadbookShareSheet: View {
                                 .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                         }
-                        HStack(spacing: 10) {
-                            Button {} label: {
-                                Label("Kopier lenke", systemImage: "link")
-                                    .font(.appScaled(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 12).padding(.vertical, 10)
-                                    .frame(maxWidth: .infinity)
-                                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                            }.buttonStyle(.plain)
-                            Button {} label: {
-                                Label("Eksporter PDF", systemImage: "square.and.arrow.down")
-                                    .font(.appScaled(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 12).padding(.vertical, 10)
-                                    .frame(maxWidth: .infinity)
-                                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                            }.buttonStyle(.plain)
-                        }
+                        // «Kopier lenke» + «Eksporter PDF» fjernet 2026-07-17:
+                        // var døde knapper (tomme closures) — ingen lenke-/
+                        // PDF-flate for rapport-deling.
                     }
                     .padding(20)
                 }

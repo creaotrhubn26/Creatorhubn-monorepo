@@ -61,6 +61,18 @@ struct OversiktView: View {
     @State private var forecast: LeadgridForecast?
     @State private var loading = false
     @State private var lastUpdated: Date?
+    /// Dørsalg-oversikt (2026-07-18): aggregat fra leadgrid_dorsalg_status.
+    @State private var dorsalgStats: KartverketService.DorsalgStats?
+
+    /// Org har dørsalg-modus eksplisitt på (feature-matrisen, fail-closed).
+    private var dorsalgAktivert: Bool {
+        EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
+    }
+    /// REN dørsalg-org (leads låst i profilen): Oversikt byttes helt ut —
+    /// bedrifts-KPI-ene og lead-kartet er meningsløse for dem.
+    private var erRenDorsalgOrg: Bool {
+        EntitlementStore.shared.erRenDorsalgOrg
+    }
     // Header-state + kalender-quick-actions eies nå av LeadgridTabHeader
     // (Views/Tabs/Shared/LeadgridTabHeader.swift) — delt av alle faner.
 
@@ -72,6 +84,22 @@ struct OversiktView: View {
     /// AppState. Sjekkes per gjengivelse — Observable trigger redraw.
     private var effectiveLeads: [LeadModel] {
         demo.isActive ? demo.mockLeads : appState.leads
+    }
+
+    /// Undertekst speiler aktivt prosjekt så konteksten synes også i
+    /// tittelraden (brede skjermer) — pillen i headeren er switcheren.
+    private var headerSubtitle: String {
+        if erRenDorsalgOrg {
+            return "Full kontroll over dørene: vunnet, avslått og innsatsen i dag."
+        }
+        if let id = appState.activeProjectId {
+            let name = appState.projects.first(where: { $0.id == id })?.name
+                ?? appState.activeProjectSummary?.project.name
+            if let name {
+                return "Prosjekt: \(name) — leads, aktiviteter og resultater."
+            }
+        }
+        return "Få full kontroll over dine leads, aktiviteter og resultater."
     }
 
     var body: some View {
@@ -103,12 +131,26 @@ struct OversiktView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     LeadgridTabHeader(
-                        subtitle: "Få full kontroll over dine leads, aktiviteter og resultater.",
+                        subtitle: headerSubtitle,
                         leads: effectiveLeads,
                         momentum: momentum,
-                        lastUpdated: lastUpdated)
+                        lastUpdated: lastUpdated) {
+                            // Tydelig prosjekt-kontekst (2026-08-02): pill
+                            // viser + bytter hvilket prosjekt tallene på
+                            // fanen gjelder.
+                            ProjectContextPill()
+                        }
+                    if erRenDorsalgOrg {
+                        // Ren dørsalg-org: HELE oversikten er dørsalg-tall.
+                        AnyView(DorsalgOversiktSection(stats: dorsalgStats))
+                    } else {
                     KPICardRow(leads: effectiveLeads, momentum: momentum, forecast: forecast,
                                compact: isCompact || isPortrait)
+                    // Hybrid-org (dørsalg + bedrifter): dørsalg-tallene som
+                    // egen seksjon oppå bedrifts-dashbordet.
+                    if dorsalgAktivert {
+                        AnyView(DorsalgOversiktSection(stats: dorsalgStats))
+                    }
                     if isCompact {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
@@ -126,6 +168,7 @@ struct OversiktView: View {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
                     }
+                    }   // slutt ikke-dørsalg-gren
                     Spacer(minLength: 12)
                 }
                 .padding(.horizontal, isCompact ? 16 : 28)
@@ -186,6 +229,15 @@ struct OversiktView: View {
     private func refresh() async {
         loading = true
         defer { loading = false }
+        // Dørsalg-stats (kun når org-en har modusen): demo = statiske tall,
+        // ekte = aggregat fra backend (mig 0397).
+        if dorsalgAktivert || DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isActiveNonisolated {
+                if dorsalgAktivert { dorsalgStats = Self.demoDorsalgStats }
+            } else if let api = appState.api {
+                dorsalgStats = await KartverketService.shared.fetchDorsalgStats(using: api)
+            }
+        }
         // Pakke 10: bind til prod-APIClient sine ekte endepunkter
         // (/api/leadgrid/momentum/today + /api/leadgrid/forecasting/pipeline).
         // Hvis api ikke er tilgjengelig (kun før login fullført), eller backend
@@ -208,6 +260,151 @@ struct OversiktView: View {
             self.forecast = fc
             self.lastUpdated = Date()
         }
+    }
+
+    /// Demo-tall for dørsalg-seksjonen (aldri backend i demo).
+    private static let demoDorsalgStats = KartverketService.DorsalgStats(
+        vunnet: 47, avslatt: 118, iDag: 23, vunnetIDag: 6, denneUka: 96,
+        meg: .init(vunnet: 6, avslatt: 14, iDag: 9, denneUka: 31),
+        perProdukt: [
+            .init(produktId: "demo-p1", navn: "SOS Barnebyer", vunnet: 27, avslatt: 61),
+            .init(produktId: "demo-p2", navn: "Kirkens Bymisjon", vunnet: 20, avslatt: 57),
+        ],
+        perSelger: [
+            .init(navn: "Espen Berg", vunnet: 16, avslatt: 31, verdi: 7050),
+            .init(navn: "Helena Dahl", vunnet: 13, avslatt: 28, verdi: 5610),
+            .init(navn: "Lars Erik Moen", vunnet: 10, avslatt: 33, verdi: 4320),
+            .init(navn: "Marit Johansen", vunnet: 8, avslatt: 26, verdi: 3480),
+        ],
+        sisteVunnet: [
+            .init(adressetekst: "Industriveien 8D", postnummer: "1461", poststed: "LØRENSKOG", settAt: ""),
+            .init(adressetekst: "Solheimveien 44", postnummer: "1473", poststed: "LØRENSKOG", settAt: ""),
+            .init(adressetekst: "Skårersletta 18", postnummer: "1473", poststed: "LØRENSKOG", settAt: ""),
+        ], dagsmal: 3, budsjett: nil)
+}
+
+// MARK: - Dørsalg-oversikt (2026-07-18)
+
+/// Dørsalg-tall i Oversikt: KPI-tiles + siste vunnede dører + per selger.
+/// Ren dørsalg-org får denne som HELE oversikten; hybrid-org får den som
+/// seksjon oppå bedrifts-dashbordet.
+private struct DorsalgOversiktSection: View {
+    let stats: KartverketService.DorsalgStats?
+
+    private var hitRate: Int? {
+        guard let s = stats, s.vunnet + s.avslatt > 0 else { return nil }
+        return Int((Double(s.vunnet) / Double(s.vunnet + s.avslatt) * 100).rounded())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 7) {
+                Image(systemName: "door.left.hand.open")
+                    .foregroundStyle(Brand.purpleLight)
+                Text("Dørsalg").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                Text("Fra utfallene på kartet")
+                    .font(.appScaled(size: 9)).foregroundStyle(Brand.textTertiary)
+            }
+            if let s = stats, s.vunnet + s.avslatt + s.iDag > 0 {
+                HStack(spacing: 10) {
+                    tile("\(s.vunnet)", "Vunnet", Brand.green)
+                    tile("\(s.avslatt)", "Avslått", Brand.red)
+                    tile("\(s.iDag)", "Dører i dag", Brand.purpleLight)
+                    tile("\(s.denneUka)", "Denne uka", Brand.blue)
+                    if let hr = hitRate { tile("\(hr) %", "Hit-rate", Brand.orange) }
+                }
+                // KPI per produkt (SOS Barnebyer, Kirkens Bymisjon, …) —
+                // selgere ser kun produktene de er satt på (backend-filtrert).
+                if let produkter = s.perProdukt, !produkter.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Per produkt")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.textSecondary)
+                        ForEach(produkter) { p in
+                            HStack(spacing: 8) {
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.appScaled(size: 11))
+                                    .foregroundStyle(Brand.purpleLight)
+                                Text(p.navn)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white).lineLimit(1)
+                                Spacer()
+                                Text("\(p.vunnet) vunnet")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .foregroundStyle(Brand.green).monospacedDigit()
+                                Text("\(p.avslatt) avslått")
+                                    .font(.appScaled(size: 11, weight: .semibold))
+                                    .foregroundStyle(Brand.red).monospacedDigit()
+                                if p.vunnet + p.avslatt > 0 {
+                                    Text("\(Int((Double(p.vunnet) / Double(p.vunnet + p.avslatt) * 100).rounded())) %")
+                                        .font(.appScaled(size: 10, weight: .bold))
+                                        .foregroundStyle(Brand.orange).monospacedDigit()
+                                }
+                            }
+                        }
+                    }
+                }
+                if !s.sisteVunnet.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Siste vunnede dører")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.textSecondary)
+                        ForEach(s.sisteVunnet.prefix(5)) { d in
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.appScaled(size: 12)).foregroundStyle(Brand.green)
+                                Text(d.adressetekst)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white).lineLimit(1)
+                                Text("\(d.postnummer) \(d.poststed)")
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(Brand.textSecondary).lineLimit(1)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                if !s.perSelger.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Per selger")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.textSecondary)
+                        ForEach(s.perSelger.prefix(6)) { sel in
+                            HStack(spacing: 8) {
+                                Text(sel.navn)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white).lineLimit(1)
+                                Spacer()
+                                Text("\(sel.vunnet) vunnet")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .foregroundStyle(Brand.green).monospacedDigit()
+                                Text("\(sel.avslatt) avslått")
+                                    .font(.appScaled(size: 11, weight: .semibold))
+                                    .foregroundStyle(Brand.red).monospacedDigit()
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Ingen dører registrert enda. Utfall du setter i dørsalg-modus på kartet (Vunnet kunde / Avslått) lander her.")
+                    .font(.appScaled(size: 11)).foregroundStyle(Brand.textSecondary)
+            }
+        }
+        .padding(14)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Brand.purple.opacity(0.3), lineWidth: 1))
+    }
+
+    private func tile(_ value: String, _ label: String, _ tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.appScaled(size: 17, weight: .black, design: .rounded))
+                .foregroundStyle(.white).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+            Text(label).font(.appScaled(size: 8, weight: .semibold)).foregroundStyle(tint)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 11)
+        .background(Brand.cardHi, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -834,27 +1031,6 @@ private struct LeadsInAreaCard: View {
         }
     }
 
-    /// Kart-fargen følger tidspunktet på dagen — natt blir mørkt, dag
-    /// blir lyst. Speiler hvordan Apple Maps + Google Maps oppfører seg
-    /// i Auto-modus + gir salgskonsulenten en intuitiv "klokke-feeling"
-    /// uten å måtte se på systemklokken.
-    private var timeOfDayColorScheme: ColorScheme {
-        let hour = Calendar.current.component(.hour, from: Date())
-        return (hour < 7 || hour >= 19) ? .dark : .light
-    }
-
-    /// Tint som forsterker tids-følelsen: gylden om morgen, blå om
-    /// kveld/natt. Liten opacity så kartet er fortsatt lesbart.
-    private var timeOfDayTint: Color {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<8:   return Color(red: 0.95, green: 0.70, blue: 0.40)  // gryning
-        case 8..<17:  return Color.clear                                 // dag
-        case 17..<20: return Color(red: 0.95, green: 0.55, blue: 0.30)  // skumring
-        default:       return Color(red: 0.20, green: 0.25, blue: 0.55)  // natt
-        }
-    }
-
     /// Konfigurert lead-info-kort — delt mellom iPad-overlay (flytende på
     /// kartet) og iPhone-sheet (bottom-sheet, unngår FAB-kollisjon).
     private func leadInfoCard(for sel: LeadModel) -> some View {
@@ -894,7 +1070,8 @@ private struct LeadsInAreaCard: View {
                     assignToTeamLead = lead
                 }
             },
-            canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
+            // Rolle-bundet: kun leder-roller kan tildele til andre.
+            canAssignToOthers: ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
         )
     }
 
@@ -1229,16 +1406,12 @@ private struct LeadsInAreaCard: View {
                 }
                 .coordinateSpace(.named("miniMap"))
                 .mapStyle(miniMapStyle.mapKitStyle)
-                .environment(\.colorScheme, timeOfDayColorScheme)
+                // Alltid mørkt kart — identisk med Kart-fanen (ingen dag/natt-
+                // veksling), så Oversikt matcher det mørke brand-uttrykket.
+                .environment(\.colorScheme, .dark)
                 // Strekkes naturlig — fyller resten av cardet
                 .frame(maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(timeOfDayTint.opacity(0.15))
-                        .blendMode(.overlay)
-                        .allowsHitTesting(false)
-                )
                 .onMapCameraChange(frequency: .continuous) { ctx in
                     miniCurrentRegion = ctx.region
                     // Fallback for scroll-zoom (trackpad pinch, scroll-hjul) —
@@ -3241,24 +3414,29 @@ private struct FilterChip: View {
 
 private struct NextActionsCard: View {
     let leads: [LeadModel]
+    @State private var showAll = false
+    @State private var openLead: LeadModel?
 
-    private var topLeads: [LeadModel] {
-        Array(leads
-            .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
-            .prefix(4))
+    private var sortedLeads: [LeadModel] {
+        leads.sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
     }
+    private var topLeads: [LeadModel] { Array(sortedLeads.prefix(4)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Neste handlinger").font(.headline).foregroundStyle(.white)
                 Spacer()
-                Text("Se alle (\(leads.count))")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                Button { showAll = true } label: {
+                    Text("Se alle (\(leads.count))")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
+                .buttonStyle(.plain)
+                .disabled(leads.isEmpty)
             }
             ForEach(topLeads, id: \.id) { lead in
-                NextActionRow(lead: lead)
+                NextActionRow(lead: lead, onOpen: { openLead = $0 })
             }
             if topLeads.isEmpty {
                 Text("Ingen oppfølginger akkurat nå")
@@ -3270,11 +3448,56 @@ private struct NextActionsCard: View {
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showAll) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(sortedLeads, id: \.id) { lead in
+                            NextActionRow(lead: lead, onOpen: { openLead = $0 })
+                                .padding(.horizontal, 4)
+                        }
+                    }
+                    .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Alle oppfølginger (\(leads.count))")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
+        .sheet(item: $openLead) { lead in
+            LeadDetailSheet(lead: lead)
+        }
     }
 }
 
 struct NextActionRow: View {
     let lead: LeadModel
+    /// Åpne lead-detaljen. Hele raden kaller denne; handlings-pillen kaller
+    /// den kun som fallback når vi ikke har telefon/e-post å handle på.
+    var onOpen: (LeadModel) -> Void = { _ in }
+    @Environment(\.openURL) private var openURL
+
+    /// Handlings-pillen utfører den konkrete neste-handlingen:
+    /// Ring → tel:, E-post → mailto:, Møte/Planlegg → åpne lead-detaljen.
+    private func performAction() {
+        switch lead.status {
+        case .interested:
+            if let email = lead.email, !email.isEmpty,
+               let url = URL(string: "mailto:\(email)") { openURL(url); return }
+            onOpen(lead)
+        case .meetingBooked, .return:
+            onOpen(lead)
+        default:
+            if let phone = lead.phone, !phone.isEmpty,
+               let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") { openURL(url); return }
+            onOpen(lead)
+        }
+    }
 
     private var statusBadge: (label: String, color: Color)? {
         let score = lead.leadScore ?? 0
@@ -3363,21 +3586,26 @@ struct NextActionRow: View {
                 Text(actionTime)
                     .font(.appScaled(size: 11, weight: .medium))
                     .foregroundStyle(Brand.textSecondary)
-                Text(actionLabel)
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 7)
-                    .background(
-                        LinearGradient(
-                            colors: [Brand.purple, Brand.purpleLight],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 9)
-                    )
-                    .shadow(color: Brand.purple.opacity(0.4), radius: 6, y: 2)
+                Button { performAction() } label: {
+                    Text(actionLabel)
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(
+                            LinearGradient(
+                                colors: [Brand.purple, Brand.purpleLight],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
+                        .shadow(color: Brand.purple.opacity(0.4), radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 6).padding(.horizontal, 4)
+        .contentShape(Rectangle())
+        .onTapGesture { onOpen(lead) }
     }
 }
 
@@ -3416,6 +3644,16 @@ private struct PipelineOverviewCard: View {
 
     private var maxCount: Int { max(stages.map(\.count).max() ?? 1, 1) }
 
+    @State private var showReport = false
+
+    private var pipelineReport: String {
+        var lines = ["Pipeline-rapport", "Totalt \(leads.count) leads", ""]
+        lines.append(contentsOf: stages.map { s in
+            "\(s.name): \(s.count)" + (s.trend.map { " (\($0))" } ?? "")
+        })
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -3427,17 +3665,43 @@ private struct PipelineOverviewCard: View {
                 ForEach(stages) { stageRow($0) }
             }
             Divider().background(Brand.stroke).padding(.top, 4)
-            HStack {
-                Spacer()
-                Text("Se full pipeline rapport").font(.appScaled(size: 12, weight: .semibold))
-                Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
-                Spacer()
+            Button { showReport = true } label: {
+                HStack {
+                    Spacer()
+                    Text("Se full pipeline rapport").font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
+                    Spacer()
+                }
+                .foregroundStyle(Brand.purpleLight).padding(.top, 2)
             }
-            .foregroundStyle(Brand.purpleLight).padding(.top, 2)
+            .buttonStyle(.plain)
         }
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showReport) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(stages) { stageRow($0) }
+                    }
+                    .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Pipeline-rapport")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { showReport = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        ShareLink(item: pipelineReport) {
+                            Label("Del", systemImage: "square.and.arrow.up")
+                        }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 
     private func stageRow(_ stage: Stage) -> some View {
@@ -3508,18 +3772,49 @@ private struct ActivityTodayCard: View {
                 row(icon: "mappin.and.ellipse", color: Brand.orange, label: "Besøk", value: visits)
             }
             Divider().background(Brand.stroke).padding(.top, 4)
-            HStack {
-                Spacer()
-                Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
-                Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
-                Spacer()
+            Button { showAll = true } label: {
+                HStack {
+                    Spacer()
+                    Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
+                    Spacer()
+                }
+                .foregroundStyle(Brand.purpleLight).padding(.top, 2)
             }
-            .foregroundStyle(Brand.purpleLight).padding(.top, 2)
+            .buttonStyle(.plain)
         }
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showAll) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        row(icon: "phone.fill", color: Brand.blue, label: "Telefoner", value: calls)
+                        row(icon: "envelope.fill", color: Brand.purple, label: "E-poster", value: emails)
+                        row(icon: "calendar", color: Brand.green, label: "Møter", value: meetings)
+                        row(icon: "mappin.and.ellipse", color: Brand.orange, label: "Besøk", value: visits)
+                    }
+                    .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Aktivitet i dag")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        ShareLink(item: "Aktivitet i dag\nTelefoner: \(calls)\nE-poster: \(emails)\nMøter: \(meetings)\nBesøk: \(visits)") {
+                            Label("Del", systemImage: "square.and.arrow.up")
+                        }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
+
+    @State private var showAll = false
 
     private func row(icon: String, color: Color, label: String, value: Int) -> some View {
         HStack(spacing: 12) {
@@ -4268,7 +4563,17 @@ struct TopSellersSheet: View {
         )
     }
 
+    @ViewBuilder
     private func trendBadge(_ trend: Int) -> some View {
+        // Ekte modus har ingen rank-historikk (trend alltid 0) — en grå minus
+        // ville påstått «uendret» uten datagrunnlag. Vis badge kun når det
+        // finnes en reell trend, eller i demo (der 0 = ekte «uendret»).
+        if trend != 0 || DemoModeManager.isActiveNonisolated {
+            trendBadgeContent(trend)
+        }
+    }
+
+    private func trendBadgeContent(_ trend: Int) -> some View {
         let color: Color = trend > 0 ? Brand.green : (trend < 0 ? Brand.red : Brand.textTertiary)
         let icon: String = trend > 0 ? "arrow.up" : (trend < 0 ? "arrow.down" : "minus")
         return HStack(spacing: 2) {
@@ -5046,6 +5351,14 @@ struct ProfilePopover: View {
     /// eier root-switchen (Leadbook).
     var onOpenSuperAdmin: (() -> Void)? = nil
     @Environment(AppState.self) private var appState
+    @State private var pinGuideOpen = false
+    @State private var aboutOpen = false
+    @State private var abonnementOpen = false
+
+    /// Abonnements-oversikten er org-ledelsens domene.
+    private var canSeeAbonnement: Bool {
+        ["admin", "salgssjef"].contains(appState.roleInOrg ?? "") || appState.isSuperAdmin
+    }
 
     /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
     private var appVersion: String {
@@ -5110,6 +5423,15 @@ struct ProfilePopover: View {
                                 }?.name)
                         }
                         .buttonStyle(.plain)
+                        // Abonnement (2026-07-17): plan + funksjoner + fakturaer
+                        // + Stripe-portal — org-ledelsens eget overblikk.
+                        if canSeeAbonnement {
+                            Button { abonnementOpen = true } label: {
+                                row(icon: "creditcard.fill", color: Brand.green,
+                                    label: "Abonnement")
+                            }
+                            .buttonStyle(.plain)
+                        }
                         if let onOpenSuperAdmin {
                             Button(action: onOpenSuperAdmin) {
                                 row(icon: "crown.fill", color: Brand.yellow,
@@ -5127,8 +5449,9 @@ struct ProfilePopover: View {
                             row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
                         }
                         .buttonStyle(.plain)
-                        row(icon: "moon.fill", color: Brand.purpleLight, label: "Mørk modus",
-                            toggle: .constant(true))
+                        // «Mørk modus»-toggle fjernet 2026-07-17: var fake
+                        // (.constant(true)) — appen er låst til mørk via
+                        // preferredColorScheme(.dark); ingen lys modus å bytte til.
                         Button {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
                                 UIApplication.shared.open(url)
@@ -5147,9 +5470,17 @@ struct ProfilePopover: View {
                             row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
                         }
                         .buttonStyle(.plain)
-                        row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
-                        row(icon: "info.circle.fill", color: Brand.textSecondary,
-                            label: "Om Leadgrid", trailing: appVersion)
+                        // Pin-guiden fantes alt som flate (Mer-fanen) — raden
+                        // var bare aldri wiret hit.
+                        Button { pinGuideOpen = true } label: {
+                            row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
+                        }
+                        .buttonStyle(.plain)
+                        Button { aboutOpen = true } label: {
+                            row(icon: "info.circle.fill", color: Brand.textSecondary,
+                                label: "Om Leadgrid", trailing: appVersion)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -5175,6 +5506,16 @@ struct ProfilePopover: View {
             .buttonStyle(.plain)
         }
         .background(Brand.card)
+        .sheet(isPresented: $pinGuideOpen) {
+            // Sheet-rot → egen NavigationStack er trygt (ikke nestet i push).
+            NavigationStack { PinGuideView() }
+        }
+        .sheet(isPresented: $aboutOpen) {
+            AboutLeadgridSheet()
+        }
+        .sheet(isPresented: $abonnementOpen) {
+            AbonnementSheet()
+        }
     }
 
     private var profileHeader: some View {
@@ -5270,6 +5611,129 @@ struct ProfilePopover: View {
     }
 }
 
+// MARK: - AboutLeadgridSheet («Om Leadgrid» fra ProfilePopover)
+//
+// Ekte om-flate (Daniel-feedback 2026-07-17: raden skal navigere, ikke bare
+// vise versjonsnummer). Alt innhold leses fra bundelen eller er statiske
+// fakta — ingen mock.
+
+struct AboutLeadgridSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var version: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+    }
+    private var buildNumber: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "—"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    // Merkevare-hode
+                    VStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(LinearGradient(colors: [Brand.purple, Brand.purpleLight],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                            Image(systemName: "map.fill")
+                                .font(.appScaled(size: 34, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 84, height: 84)
+                        .shadow(color: Brand.purple.opacity(0.45), radius: 14, y: 4)
+                        Text("Leadgrid")
+                            .font(.appScaled(size: 24, weight: .black))
+                            .foregroundStyle(.white)
+                        Text("Feltsalg, leads og ruter — samlet på ett kart.")
+                            .font(.appScaled(size: 13))
+                            .foregroundStyle(Brand.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 10)
+
+                    // Versjonsinfo (fra bundelen)
+                    VStack(spacing: 0) {
+                        infoRow(label: "Versjon", value: version)
+                        Divider().background(Brand.stroke)
+                        infoRow(label: "Bygg", value: buildNumber)
+                    }
+                    .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
+
+                    // Lenker
+                    VStack(spacing: 0) {
+                        linkRow(icon: "globe", label: "leadgrid.no",
+                                url: "https://leadgrid.no")
+                        Divider().background(Brand.stroke)
+                        linkRow(icon: "hand.raised.fill", label: "Personvern",
+                                url: "https://leadgrid.no/personvern")
+                        Divider().background(Brand.stroke)
+                        linkRow(icon: "envelope.fill", label: "Kontakt support",
+                                url: "mailto:support@creatorhubn.com?subject=Leadgrid%20support")
+                    }
+                    .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
+
+                    Text("© 2026 Creatorhub AS")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(Brand.textTertiary)
+                        .padding(.bottom, 10)
+                }
+                .padding(.horizontal, 18)
+            }
+            .background(Brand.bg.ignoresSafeArea())
+            .navigationTitle("Om Leadgrid")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Ferdig") { dismiss() }
+                        .foregroundStyle(Brand.purpleLight)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.appScaled(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+            Spacer()
+            Text(value)
+                .font(.appScaled(size: 13))
+                .foregroundStyle(Brand.textSecondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+    }
+
+    private func linkRow(icon: String, label: String, url: String) -> some View {
+        Button {
+            if let u = URL(string: url) { UIApplication.shared.open(u) }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.purpleLight)
+                    .frame(width: 22)
+                Text(label)
+                    .font(.appScaled(size: 13, weight: .medium))
+                    .foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(Brand.textTertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - AnalysePopover (header-dropdown for Pipeline + Trend)
 //
 // Konsolidert chart-popover etter Daniel-feedback 2026-06-28: flytt
@@ -5321,7 +5785,14 @@ struct AnalysePopover: View {
 
 struct NextActionsPopover: View {
     let leads: [LeadModel]
+    var allLeads: [LeadModel] = []
     let totalCount: Int
+
+    @State private var openLead: LeadModel?
+    @State private var showAll = false
+
+    /// Vis topp-8 som standard; «Se alle» utvider til hele køen.
+    private var displayed: [LeadModel] { showAll ? allLeads : leads }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5335,9 +5806,16 @@ struct NextActionsPopover: View {
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
-                Text("Se alle")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                if allLeads.count > leads.count {
+                    Button {
+                        showAll.toggle()
+                    } label: {
+                        Text(showAll ? "Vis færre" : "Se alle")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(Brand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(16)
 
@@ -5345,7 +5823,7 @@ struct NextActionsPopover: View {
 
             ScrollView {
                 VStack(spacing: 10) {
-                    if leads.isEmpty {
+                    if displayed.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.appScaled(size: 28))
@@ -5360,8 +5838,8 @@ struct NextActionsPopover: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                     } else {
-                        ForEach(leads, id: \.id) { lead in
-                            NextActionRow(lead: lead)
+                        ForEach(displayed, id: \.id) { lead in
+                            NextActionRow(lead: lead, onOpen: { openLead = $0 })
                                 .padding(.horizontal, 4)
                         }
                     }
@@ -5372,6 +5850,9 @@ struct NextActionsPopover: View {
             }
         }
         .background(Brand.card)
+        .sheet(item: $openLead) { lead in
+            LeadDetailSheet(lead: lead)
+        }
     }
 }
 
@@ -5384,6 +5865,7 @@ struct RecentActivitiesPopover: View {
     /// Når data sist ble hentet — driver den EKTE «Oppdatert …»-teksten i
     /// footeren (før: hardkodet «Oppdaterte data for 2 min siden»).
     var lastUpdated: Date? = nil
+    @State private var showAllActivities = false
 
     private var lastUpdatedLabel: String? {
         guard let lastUpdated else { return nil }
@@ -5400,9 +5882,12 @@ struct RecentActivitiesPopover: View {
             HStack {
                 Text("Aktivitet").font(.headline).foregroundStyle(.white)
                 Spacer()
-                Text("Se alle")
-                    .font(.appScaled(size: 12, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                Button { showAllActivities = true } label: {
+                    Text("Se alle")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
+                .buttonStyle(.plain)
             }
             .padding(16)
 
@@ -5445,6 +5930,22 @@ struct RecentActivitiesPopover: View {
             }
         }
         .background(Brand.card)
+        .sheet(isPresented: $showAllActivities) {
+            NavigationStack {
+                ScrollView {
+                    RecentActivitiesCard(leads: leads, embedded: true)
+                        .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Alle aktiviteter")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAllActivities = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -5540,6 +6041,7 @@ private struct TipsRow: View {
 private struct RecentActivitiesCard: View {
     let leads: [LeadModel]
     var embedded: Bool = false  // true = vises inni popover (uten ramme/tittel)
+    @State private var showAll = false
 
     private struct Event: Identifiable {
         let id = UUID()
@@ -5605,9 +6107,12 @@ private struct RecentActivitiesCard: View {
                 HStack {
                     Text("Siste aktiviteter").font(.headline).foregroundStyle(.white)
                     Spacer()
-                    Text("Se alle")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
+                    Button { showAll = true } label: {
+                        Text("Se alle")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(Brand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             if events.isEmpty {
@@ -5654,13 +6159,16 @@ private struct RecentActivitiesCard: View {
             }
             if !embedded {
                 Divider().background(Brand.stroke).padding(.top, 4)
-                HStack {
-                    Spacer()
-                    Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
-                    Spacer()
+                Button { showAll = true } label: {
+                    HStack {
+                        Spacer()
+                        Text("Se alle aktiviteter").font(.appScaled(size: 12, weight: .semibold))
+                        Image(systemName: "arrow.right").font(.appScaled(size: 11, weight: .semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(Brand.purpleLight).padding(.top, 2)
                 }
-                .foregroundStyle(Brand.purpleLight).padding(.top, 2)
+                .buttonStyle(.plain)
             }
         }
         .padding(16)
@@ -5669,6 +6177,22 @@ private struct RecentActivitiesCard: View {
         .overlay(
             embedded ? nil : RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1)
         )
+        .sheet(isPresented: $showAll) {
+            NavigationStack {
+                ScrollView {
+                    RecentActivitiesCard(leads: leads, embedded: true)
+                        .padding(16)
+                }
+                .background(Brand.bg.ignoresSafeArea())
+                .navigationTitle("Alle aktiviteter")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(Brand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -6030,6 +6554,7 @@ struct SalesLeadershipSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .catalog
     @State private var newContestOpen: Bool = false
+    @State private var rankingOpen: Bool = false   // «Se rangering»/«Se alle selgere» → TopSellersSheet
 
     enum Tab: String, CaseIterable {
         case commission = "Provisjon"
@@ -6500,6 +7025,9 @@ struct SalesLeadershipSheet: View {
             .toolbarBackground(Brand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $rankingOpen) {
+                TopSellersSheet(currentUserName: currentUserName)
+            }
             .sheet(isPresented: $newContestOpen) {
                 NewContestSheet(
                     template: contestPrefilledTemplate,
@@ -6893,7 +7421,9 @@ struct SalesLeadershipSheet: View {
                 .padding(8)
                 .background(Brand.card, in: RoundedRectangle(cornerRadius: 8))
             }
-            Button {} label: {
+            Button {
+                spiffs.append(SpiffRule(trigger: "Ny spiff-regel", amountNok: 1_000))
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
                         .font(.appScaled(size: 11))
@@ -7086,7 +7616,10 @@ struct SalesLeadershipSheet: View {
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
+                Button {
+                    tiers.append(CommissionTier(category: "Ny kategori", basePct: 5.0,
+                                                bonusPct: 8.0, color: Brand.purpleLight))
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
                             .font(.appScaled(size: 10, weight: .bold))
@@ -7480,7 +8013,7 @@ struct SalesLeadershipSheet: View {
                     .buttonStyle(.plain)
                     .padding(.leading, 8)
                 } else {
-                    Button {} label: {
+                    Button { rankingOpen = true } label: {
                         Text("Se rangering")
                             .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
@@ -7724,7 +8257,7 @@ struct SalesLeadershipSheet: View {
                     individualGoalRow(s)
                 }
             }
-            Button {} label: {
+            Button { rankingOpen = true } label: {
                 HStack {
                     Spacer()
                     Text("Se alle \(sellers.count) selgere")
@@ -7746,9 +8279,11 @@ struct SalesLeadershipSheet: View {
     }
 
     private func individualGoalRow(_ s: TopSellersSheet.Seller) -> some View {
-        // Mock: individuelt mål = total verdi / 0.5 (skal nå 50% mer)
-        let goal = s.totalValue * 1.5
-        let progress = min(1.0, s.totalValue / goal)
+        // Demo: mock-mål = 150 % av total. EKTE: ingen mål-kilde finnes enda →
+        // vis fremdrift uten fabrikert mål (progress skjules via goal = 0).
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let goal = isDemo ? s.totalValue * 1.5 : 0
+        let progress = goal > 0 ? min(1.0, s.totalValue / goal) : 0
         return HStack(spacing: 12) {
             ZStack {
                 Circle().fill(s.avatarColor.opacity(0.3))
@@ -7764,21 +8299,31 @@ struct SalesLeadershipSheet: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer()
-                    Text(String(format: "%.0f %%", progress * 100))
-                        .font(.appScaled(size: 11, weight: .bold))
-                        .foregroundStyle(progress >= 1.0 ? Brand.green : Brand.yellow)
-                        .monospacedDigit()
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Brand.stroke)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(s.avatarColor)
-                            .frame(width: geo.size.width * CGFloat(progress))
+                    if goal > 0 {
+                        Text(String(format: "%.0f %%", progress * 100))
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(progress >= 1.0 ? Brand.green : Brand.yellow)
+                            .monospacedDigit()
+                    } else {
+                        // Ekte modus uten mål-kilde: vis faktisk verdi, ikke falsk prosent.
+                        Text("\(Int(s.totalValue / 1_000))k kr")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.green)
+                            .monospacedDigit()
                     }
                 }
-                .frame(height: 5)
+                if goal > 0 {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Brand.stroke)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(s.avatarColor)
+                                .frame(width: geo.size.width * CGFloat(progress))
+                        }
+                    }
+                    .frame(height: 5)
+                }
             }
         }
         .padding(10)

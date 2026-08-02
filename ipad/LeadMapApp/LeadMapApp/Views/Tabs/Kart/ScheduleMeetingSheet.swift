@@ -28,6 +28,7 @@ private enum SmBrand {
 
 struct ScheduleMeetingSheet: View {
     let lead: MapLeadMock
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String = ""
@@ -133,7 +134,7 @@ struct ScheduleMeetingSheet: View {
                 // Auto-generér lenke når brukeren bytter til video-type
                 switch newType {
                 case .physical:   location = lead.address
-                case .phone:      location = "+47 911 22 333"  // fra lead-kontakt i prod
+                case .phone:      location = lead.phoneOrDemo ?? ""   // leadens faktiske nummer
                 case .facetime, .googleMeet:
                     location = generatedLink(for: newType)
                 }
@@ -322,7 +323,7 @@ struct ScheduleMeetingSheet: View {
                         TextField("", text: $location,
                                   prompt: Text(meetingType == .physical
                                                 ? "Storgata 12, 0184 Oslo"
-                                                : "+47 911 22 333")
+                                                : "Telefonnummer")
                                     .foregroundColor(SmBrand.textTertiary))
                             .textFieldStyle(.plain)
                             .foregroundStyle(.white)
@@ -472,43 +473,40 @@ struct ScheduleMeetingSheet: View {
     private var inviteesCard: some View {
         sectionCard(title: "Deltakere", icon: "person.2.fill") {
             VStack(spacing: 8) {
-                // Selger (auto, ikke avhukbar)
+                // Organisator = faktisk innlogget bruker (var hardkodet «Lars Kristensen»)
                 inviteeRow(
-                    name: "Lars Kristensen",
-                    role: "Salgssjef · deg",
-                    initials: "LK",
+                    name: appState.displayName,
+                    role: "Møtearrangør · deg",
+                    initials: String(appState.displayName.split(separator: " ").prefix(2)
+                        .compactMap { $0.first }.map(String.init).joined().uppercased()),
                     color: SmBrand.purpleLight,
                     isOrganizer: true,
                     toggled: .constant(true),
                     locked: true
                 )
-                inviteeRow(
-                    name: "Anders Johansen",
-                    role: "Daglig leder · \(lead.name)",
-                    initials: "AJ",
-                    color: SmBrand.purple,
-                    isOrganizer: false,
-                    toggled: $inviteContact,
-                    locked: false
-                )
-                Button {} label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.appScaled(size: 12, weight: .bold))
-                        Text("Inviter teammedlem")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(SmBrand.purpleLight)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background(SmBrand.cardHi.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(SmBrand.purple.opacity(0.30),
-                                    style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                if DemoModeManager.isActiveNonisolated {
+                    inviteeRow(
+                        name: "Anders Johansen",
+                        role: "Daglig leder · \(lead.name)",
+                        initials: "AJ",
+                        color: SmBrand.purple,
+                        isOrganizer: false,
+                        toggled: $inviteContact,
+                        locked: false
+                    )
+                } else if lead.email != nil || lead.phone != nil {
+                    inviteeRow(
+                        name: lead.name,
+                        role: "Kundekontakt",
+                        initials: String(lead.name.prefix(2)).uppercased(),
+                        color: SmBrand.purple,
+                        isOrganizer: false,
+                        toggled: $inviteContact,
+                        locked: false
                     )
                 }
-                .buttonStyle(.plain)
+                // «Inviter teammedlem» fjernet 2026-07-17: var død knapp —
+                // medlems-velger har ingen flate i denne sheeten enda.
             }
         }
     }

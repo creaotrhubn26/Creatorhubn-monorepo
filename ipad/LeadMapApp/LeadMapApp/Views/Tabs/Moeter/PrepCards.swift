@@ -1105,7 +1105,6 @@ struct StakeholderDetailSheet: View {
                     hero
                     statsRow
                     notesCard
-                    actionsCard
                     Color.clear.frame(height: 16)
                 }
                 .padding(20)
@@ -1198,29 +1197,9 @@ struct StakeholderDetailSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(PBrand.stroke, lineWidth: 1))
     }
 
-    private var actionsCard: some View {
-        HStack(spacing: 9) {
-            actionBtn(label: "Ring", icon: "phone.fill", color: PBrand.green)
-            actionBtn(label: "E-post", icon: "envelope.fill", color: PBrand.blue)
-            actionBtn(label: "Notat", icon: "square.and.pencil", color: PBrand.purpleLight)
-        }
-    }
-
-    private func actionBtn(label: String, icon: String, color: Color) -> some View {
-        Button {} label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.appScaled(size: 11, weight: .bold))
-                Text(label)
-                    .font(.appScaled(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
-            .background(color.opacity(0.85), in: RoundedRectangle(cornerRadius: 11))
-        }
-        .buttonStyle(.plain)
-    }
+    // actionsCard (Ring/E-post/Notat) fjernet 2026-07-17: alle tre var døde
+    // knapper — prep-modellen har ingen kontaktinfo å handle på enda.
+    // (den ubrukte actionBtn-helperen fjernet 2026-07-22.)
 }
 
 // MARK: - PrepInsightsModal (sheet-wrapper rundt PrepInsightsCard)
@@ -1247,16 +1226,7 @@ struct PrepInsightsModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Del med team", systemImage: "person.2.fill") }
-                        Button {} label: { Label("Kopier som notat", systemImage: "doc.on.doc") }
-                        Button {} label: { Label("Skriv ut møteforberedelse", systemImage: "printer.fill") }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(PBrand.purpleLight)
-                    }
-                }
+                // Del-meny fjernet 2026-07-17: alle tre valgene var døde.
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -1390,12 +1360,7 @@ struct PrepStakeholdersModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
-                        Image(systemName: "person.badge.plus")
-                            .foregroundStyle(PBrand.purpleLight)
-                    }
-                }
+                // «Legg til person»-knapp fjernet 2026-07-17: var død.
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -1458,18 +1423,7 @@ struct PrepChecklistModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Sortér etter prioritet", systemImage: "flame.fill") }
-                        Button {} label: { Label("Sortér etter tid", systemImage: "clock.fill") }
-                        Button {} label: { Label("Skjul fullførte", systemImage: "eye.slash.fill") }
-                        Divider()
-                        Button {} label: { Label("Tøm sjekkliste", systemImage: "trash") }
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .foregroundStyle(PBrand.purpleLight)
-                    }
-                }
+                // Sortér-meny fjernet 2026-07-17: alle fire valgene var døde.
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -1639,7 +1593,20 @@ struct PrepHistoryModal: View {
     let meetingCompany: String
     @Environment(\.dismiss) private var dismiss
 
+    @State private var histFilter: PrepInteraction.Kind? = nil
+    @State private var tasks: [String] = []
+    @State private var showNewTask = false
+    @State private var newTaskTitle = ""
+    @State private var nbaSnoozed = false
+
     private var totalEvents: Int { PrepData.interactions.count }
+
+    /// Tekst-eksport av interaksjonene (brukes av «Eksporter»-ShareLink).
+    private var historyExport: String {
+        let header = "Aktivitetsoversikt — \(meetingCompany)\n"
+        let rows = PrepData.interactions.map { "• [\($0.kind.rawValue)] \($0.title) — \($0.detail) (\($0.timestamp), \($0.by))" }
+        return ([header] + rows).joined(separator: "\n")
+    }
 
     var body: some View {
         NavigationStack {
@@ -1648,12 +1615,37 @@ struct PrepHistoryModal: View {
                     contextHeader
                     nbaSection
                     sectionDivider("Tidligere interaksjoner")
-                    PrepHistoryCard()
+                    PrepHistoryCard(kindFilter: histFilter)
                     Color.clear.frame(height: 16)
                 }
                 .padding(20)
             }
             .background(PBrand.bg.ignoresSafeArea())
+            .sheet(isPresented: $showNewTask) {
+                NavigationStack {
+                    Form {
+                        Section("Ny oppgave") {
+                            TextField("Hva skal gjøres?", text: $newTaskTitle)
+                        }
+                    }
+                    .navigationTitle("Opprett oppgave")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Avbryt") { showNewTask = false; newTaskTitle = "" }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Lagre") {
+                                let t = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !t.isEmpty { tasks.append(t) }
+                                newTaskTitle = ""
+                                showNewTask = false
+                            }
+                            .disabled(newTaskTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                }
+            }
             .navigationTitle("Aktivitetsoversikt")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1662,11 +1654,14 @@ struct PrepHistoryModal: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
-                        Button {} label: { Label("Filter: e-post", systemImage: "envelope.fill") }
-                        Button {} label: { Label("Filter: møter", systemImage: "video.fill") }
-                        Button {} label: { Label("Filter: anrop", systemImage: "phone.fill") }
+                        Button { histFilter = nil } label: {
+                            Label(histFilter == nil ? "Alle ✓" : "Alle", systemImage: "line.3.horizontal")
+                        }
+                        Button { histFilter = .email } label: { Label("Filter: e-post", systemImage: "envelope.fill") }
+                        Button { histFilter = .meeting } label: { Label("Filter: møter", systemImage: "video.fill") }
+                        Button { histFilter = .call } label: { Label("Filter: anrop", systemImage: "phone.fill") }
                         Divider()
-                        Button {} label: { Label("Eksporter som PDF", systemImage: "doc.fill") }
+                        ShareLink(item: historyExport) { Label("Eksporter", systemImage: "square.and.arrow.up") }
                     } label: {
                         Image(systemName: "line.3.horizontal.decrease.circle")
                             .foregroundStyle(PBrand.purpleLight)
@@ -1758,37 +1753,57 @@ struct PrepHistoryModal: View {
                 }
                 Spacer(minLength: 0)
             }
-            HStack(spacing: 8) {
-                Button {} label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.appScaled(size: 12, weight: .bold))
-                        Text("Opprett oppgave")
-                            .font(.appScaled(size: 12, weight: .bold))
+            if nbaSnoozed {
+                Label("Utsatt — dukker opp igjen senere", systemImage: "clock.badge.checkmark.fill")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(PBrand.textSecondary)
+            } else {
+                HStack(spacing: 8) {
+                    Button { showNewTask = true } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.appScaled(size: 12, weight: .bold))
+                            Text("Opprett oppgave")
+                                .font(.appScaled(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(
+                            LinearGradient(colors: [PBrand.purple, PBrand.purpleLight],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: RoundedRectangle(cornerRadius: 10)
+                        )
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(
-                        LinearGradient(colors: [PBrand.purple, PBrand.purpleLight],
-                                       startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
-                }
-                .buttonStyle(.plain)
-                Button {} label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "clock.fill")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                        Text("Snooze")
-                            .font(.appScaled(size: 12, weight: .semibold))
+                    .buttonStyle(.plain)
+                    Button { withAnimation { nbaSnoozed = true } } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "clock.fill")
+                                .font(.appScaled(size: 11, weight: .semibold))
+                            Text("Snooze")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 11)
+                        .background(PBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(PBrand.stroke, lineWidth: 1))
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 11)
-                    .background(PBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(PBrand.stroke, lineWidth: 1))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+            }
+            if !tasks.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("DINE OPPGAVER")
+                        .font(.appScaled(size: 9, weight: .black))
+                        .foregroundStyle(PBrand.textTertiary).tracking(0.6)
+                    ForEach(tasks, id: \.self) { t in
+                        Label(t, systemImage: "checkmark.circle")
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
             }
         }
         .padding(14)
@@ -1969,7 +1984,15 @@ struct PrepInsightsCard: View {
 // MARK: - 5. PrepHistoryCard (tidligere interaksjoner — timeline)
 
 struct PrepHistoryCard: View {
-    let interactions: [PrepInteraction] = PrepData.interactions
+    /// Valgfritt filter (settes av PrepHistoryModal-toolbaren). nil = alle.
+    var kindFilter: PrepInteraction.Kind? = nil
+    @State private var showAll = false
+
+    private var interactions: [PrepInteraction] {
+        let all = PrepData.interactions
+        guard let k = kindFilter else { return all }
+        return all.filter { $0.kind == k }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1989,7 +2012,7 @@ struct PrepHistoryCard: View {
                         .background(PBrand.cardHi, in: Capsule())
                 }
                 Spacer()
-                Button {} label: {
+                Button { showAll = true } label: {
                     Text("Se alle")
                         .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(PBrand.purpleLight)
@@ -2009,6 +2032,27 @@ struct PrepHistoryCard: View {
         .padding(14)
         .background(PBrand.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(PBrand.stroke, lineWidth: 1))
+        .sheet(isPresented: $showAll) {
+            let all = PrepData.interactions
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(all.indices, id: \.self) { i in
+                            timelineRow(all[i], isLast: i == all.count - 1)
+                        }
+                    }
+                    .padding(16)
+                }
+                .background(PBrand.bg.ignoresSafeArea())
+                .navigationTitle("Alle interaksjoner (\(all.count))")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lukk") { showAll = false }.foregroundStyle(PBrand.purpleLight)
+                    }
+                }
+            }
+        }
     }
 
     private func timelineRow(_ it: PrepInteraction, isLast: Bool) -> some View {

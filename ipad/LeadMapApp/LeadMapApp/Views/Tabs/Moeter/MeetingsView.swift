@@ -106,6 +106,9 @@ struct UpcomingMeetingMini: Identifiable, Hashable {
     let trafficStatus: String
     let agenda: String         // én-linjes formål
     let prepStatus: PrepStatus // hvor klar er forberedelsen?
+    /// Ekte start-tidspunkt (backend-møter). Mock-rader har nil — de vises
+    /// kun i demo-modus der kalenderen bruker seed-tellinger uansett.
+    var date: Date? = nil
 
     enum PrepStatus: String, Hashable {
         case ready = "Klar"
@@ -395,7 +398,8 @@ extension UpcomingMeetingMini {
             driveDistanceKm: 0,
             trafficStatus: "",
             agenda: event.nextAction ?? "Møte med \(event.leadName)",
-            prepStatus: event.nextAction == nil ? .notStarted : .partial
+            prepStatus: event.nextAction == nil ? .notStarted : .partial,
+            date: start
         )
     }
 }
@@ -423,6 +427,66 @@ struct MeetingsView: View {
     // MARK: Datakilde (uke 2-binding) — demo → mocks, ellers ekte kalender
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    // MARK: Dørsalg brief-møter (2026-07-18)
+    // Dørsalg-selgere har ingen lead-møter — leder (admin/salgssjef/
+    // teamleder) inviterer teamet til brief før felt, med gjentakelse.
+    @State private var briefEnvelope: BriefMeetingsEnvelope?
+    @State private var showNewBrief = false
+
+    private var dorsalgAktivert: Bool {
+        EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
+    }
+    /// Ren dørsalg-org (leads låst): Møter-fanen = KUN brief-møter.
+    private var erRenDorsalgOrg: Bool {
+        EntitlementStore.shared.erRenDorsalgOrg
+    }
+    private var kanStyreBrief: Bool {
+        if let env = briefEnvelope { return env.canManage }
+        if appState.isSuperAdmin { return true }
+        return ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+    }
+
+    private func loadBriefs() async {
+        guard dorsalgAktivert else { return }
+        if isDemo {
+            if briefEnvelope == nil { briefEnvelope = Self.demoBriefs }
+            return
+        }
+        guard let api = appState.api else { return }
+        TeamLiveStore.shared.attach(api: api, appState: appState)
+        if let env = await api.fetchBriefMeetings() { briefEnvelope = env }
+    }
+
+    private func slettBrief(_ brief: BriefMeetingDTO) {
+        if isDemo {
+            briefEnvelope = BriefMeetingsEnvelope(
+                canManage: briefEnvelope?.canManage ?? true,
+                meetings: (briefEnvelope?.meetings ?? []).filter { $0.id != brief.id })
+            return
+        }
+        guard let api = appState.api else { return }
+        Task {
+            _ = await api.deleteBriefMeeting(id: brief.id)
+            await loadBriefs()
+        }
+    }
+
+    /// Demo-briefer (aldri backend i demo).
+    private static let demoBriefs = BriefMeetingsEnvelope(canManage: true, meetings: [
+        BriefMeetingDTO(id: "demo-b1", title: "Morgenbrief før felt",
+                        note: "Dagens rode, mål og innvendinger.",
+                        startAt: "2026-01-05T07:15:00Z", durationMin: 15,
+                        recurrence: "weekdays",
+                        participants: ["demo-espen", "demo-helena", "demo-lars", "demo-marit"],
+                        createdBy: "demo-aaron", createdByName: "Aaron Nilsen"),
+        BriefMeetingDTO(id: "demo-b2", title: "Ukesoppsummering",
+                        note: "Hit-rate, beste dører og neste ukes område.",
+                        startAt: "2026-01-09T14:00:00Z", durationMin: 30,
+                        recurrence: "weekly",
+                        participants: ["demo-espen", "demo-helena", "demo-lars"],
+                        createdBy: "demo-aaron", createdByName: "Aaron Nilsen"),
+    ])
 
     private var meetingEvents: [CalendarEvent] {
         appState.calendar.filter { $0.eventType == "meeting" && $0.datetime != nil }
@@ -471,6 +535,31 @@ struct MeetingsView: View {
         .onAppear {
             if selectedID == nil { selectedID = sourceAgenda.first?.id }
         }
+        .task { await loadBriefs() }
+        .sheet(isPresented: $showNewBrief) {
+            NewBriefSheet { title, note, startAt, durationMin, recurrence, participants in
+                if isDemo {
+                    let ny = BriefMeetingDTO(
+                        id: UUID().uuidString, title: title, note: note,
+                        startAt: ISO8601DateFormatter().string(from: startAt),
+                        durationMin: durationMin, recurrence: recurrence,
+                        participants: participants,
+                        createdBy: "demo", createdByName: "Deg (demo)")
+                    briefEnvelope = BriefMeetingsEnvelope(
+                        canManage: true,
+                        meetings: (briefEnvelope?.meetings ?? []) + [ny])
+                    return
+                }
+                guard let api = appState.api else { return }
+                Task {
+                    _ = await api.createBriefMeeting(
+                        title: title, note: note, startAt: startAt,
+                        durationMin: durationMin, recurrence: recurrence,
+                        participants: participants)
+                    await loadBriefs()
+                }
+            }
+        }
         .sheet(item: $upcomingDetail) { u in
             UpcomingMeetingDetailSheet(upcoming: u)
         }
@@ -507,13 +596,22 @@ struct MeetingsView: View {
             VStack(spacing: 0) {
                 header
                     .padding(.horizontal, 20).padding(.top, 14)
-                kpiRow
-                    .padding(.horizontal, 20).padding(.top, 14)
+                if !erRenDorsalgOrg {
+                    kpiRow
+                        .padding(.horizontal, 20).padding(.top, 14)
+                }
 
                 ScrollView {
                     VStack(spacing: 14) {
-                        agendaCard
-                        upcomingCard
+                        // Dørsalg: brief-møtene øverst; ren dørsalg-org ser
+                        // KUN disse (ingen lead-møter/agenda).
+                        if dorsalgAktivert {
+                            AnyView(briefCard)
+                        }
+                        if !erRenDorsalgOrg {
+                            agendaCard
+                            upcomingCard
+                        }
                         // All møteforberedelse er flyttet til høyre sidebar (kontekst-bundet til valgt møte)
                     }
                     .padding(.horizontal, 20).padding(.top, 14)
@@ -525,7 +623,7 @@ struct MeetingsView: View {
             // Detail sidebar høyre — iPhone (compact): 340pt side-stilt
             // kolonne får ikke plass — detaljene vises i stedet som sheet
             // når et møte velges.
-            if !DeviceIdiom.isPhone {
+            if !DeviceIdiom.isPhone && !erRenDorsalgOrg {
                 if sourceAgenda.isEmpty {
                     MeetingDetailEmptyState()
                         .frame(width: 340)
@@ -548,8 +646,105 @@ struct MeetingsView: View {
 
     private var header: some View {
         LeadgridTabHeader(
-            subtitle: "Planlegg, forbered og følg opp møter",
+            subtitle: erRenDorsalgOrg
+                ? "Brief-møter før felt — leder samler teamet."
+                : "Planlegg, forbered og følg opp møter",
             leads: headerLeads)
+    }
+
+    // MARK: Brief-møter (dørsalg)
+
+    private var briefCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "person.3.fill").foregroundStyle(MtBrand.purpleLight)
+                Text("Brief-møter").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                if kanStyreBrief {
+                    Button { showNewBrief = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Nytt brief-møte")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(
+                            LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            let briefs = (briefEnvelope?.meetings ?? [])
+                .sorted { ($0.nesteForekomst() ?? .distantFuture) < ($1.nesteForekomst() ?? .distantFuture) }
+            if briefs.isEmpty {
+                Text(kanStyreBrief
+                     ? "Ingen brief-møter enda. Opprett et — teamet varsles og møtet kan gjentas daglig, på hverdager eller ukentlig."
+                     : "Ingen brief-møter enda. Lederen din inviterer deg til brief før felt.")
+                    .font(.appScaled(size: 11)).foregroundStyle(MtBrand.textSecondary)
+            } else {
+                ForEach(briefs) { brief in
+                    briefRow(brief)
+                }
+            }
+        }
+        .padding(14)
+        .background(MtBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(MtBrand.purple.opacity(0.3), lineWidth: 1))
+    }
+
+    private func briefRow(_ brief: BriefMeetingDTO) -> some View {
+        let neste = brief.nesteForekomst()
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "EEE d. MMM · HH:mm"
+        return HStack(spacing: 11) {
+            ZStack {
+                Circle().fill(MtBrand.purpleLight.opacity(0.2))
+                Image(systemName: "megaphone.fill")
+                    .font(.appScaled(size: 13)).foregroundStyle(MtBrand.purpleLight)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(brief.title)
+                    .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                HStack(spacing: 6) {
+                    if let neste {
+                        Text(f.string(from: neste).capitalized)
+                            .font(.appScaled(size: 10, weight: .semibold))
+                            .foregroundStyle(MtBrand.green)
+                    }
+                    Text(brief.recurrenceLabel)
+                        .font(.appScaled(size: 8, weight: .bold)).foregroundStyle(MtBrand.purpleLight)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(MtBrand.purpleLight.opacity(0.15), in: Capsule())
+                    Text("\(brief.participants.count) invitert")
+                        .font(.appScaled(size: 9)).foregroundStyle(MtBrand.textSecondary)
+                }
+                if !brief.note.isEmpty {
+                    Text(brief.note)
+                        .font(.appScaled(size: 10)).foregroundStyle(MtBrand.textSecondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            Text("\(brief.durationMin) min")
+                .font(.appScaled(size: 10, weight: .semibold)).foregroundStyle(MtBrand.textSecondary)
+            if kanStyreBrief {
+                Button { slettBrief(brief) } label: {
+                    Image(systemName: "trash")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(MtBrand.red.opacity(0.8))
+                        .frame(width: 28, height: 28)
+                        .background(MtBrand.red.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
     }
 
     // MARK: KPI
@@ -1167,12 +1362,8 @@ struct MeetingsView: View {
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
-                Button {} label: {
-                    Text("Rediger")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(MtBrand.purpleLight)
-                }
-                .buttonStyle(.plain)
+                // «Rediger»-knapp fjernet 2026-07-17: var død (tom closure) —
+                // prep-editor har ingen flate enda.
             }
             if MeetingsData.prep.isEmpty {
                 Text("Ingen forberedelser registrert enda")
@@ -1256,14 +1447,27 @@ struct MeetingDetailEmptyState: View {
     }
 }
 
+/// Favoritt-persistering pr møte-id (UserDefaults). Backend-møter har stabil
+/// uuid avledet fra event-id, så favoritten overlever re-mapping og relaunch.
+enum MeetingFavorites {
+    private static let key = "meetings.favorites"
+    static func isFavorite(_ id: UUID) -> Bool {
+        (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(id.uuidString)
+    }
+    static func set(_ id: UUID, favorite: Bool) {
+        var ids = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        if favorite { ids.insert(id.uuidString) } else { ids.remove(id.uuidString) }
+        UserDefaults.standard.set(Array(ids), forKey: key)
+    }
+}
+
 struct MeetingDetailSidebar: View {
     let meeting: Meeting
     @Binding var calMode: CalendarMode
+    @Environment(AppState.self) private var appState
 
     @State private var favorited: Bool = false
     @State private var showStartMeeting = false
-    @State private var showNavigate = false
-    @State private var showOpenInKart = false
     @State private var showLogNote = false
     @State private var showOpenLead = false
     @State private var showReschedule = false
@@ -1307,8 +1511,6 @@ struct MeetingDetailSidebar: View {
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
         .sheet(isPresented: $showStartMeeting)        { StartMeetingSheet(meeting: meeting) }
-        .fullScreenCover(isPresented: $showNavigate)  { NavigationFullScreenView(meeting: meeting, transport: .driving) }
-        .sheet(isPresented: $showOpenInKart)          { KartTabSheet(meeting: meeting, startInNavMode: false) }
         .sheet(isPresented: $showLogNote)             { LogNoteSheet(meeting: meeting) }
         .sheet(isPresented: $showOpenLead)            { LeadDetailStub(meeting: meeting) }
         .sheet(isPresented: $showReschedule)          { RescheduleSheet(meeting: meeting) }
@@ -1352,6 +1554,7 @@ struct MeetingDetailSidebar: View {
                             .foregroundStyle(.white)
                         Button {
                             favorited.toggle()
+                            MeetingFavorites.set(meeting.id, favorite: favorited)
                             flashToast(favorited ? "Markert som favoritt" : "Favoritt fjernet")
                         } label: {
                             Image(systemName: favorited ? "star.fill" : "star")
@@ -1359,6 +1562,7 @@ struct MeetingDetailSidebar: View {
                                 .foregroundStyle(favorited ? MtBrand.yellow : MtBrand.textTertiary)
                         }
                         .buttonStyle(.plain)
+                        .task(id: meeting.id) { favorited = MeetingFavorites.isFavorite(meeting.id) }
                     }
                 }
                 Spacer()
@@ -1454,7 +1658,7 @@ struct MeetingDetailSidebar: View {
                 ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "calendar").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Tirsdag 20. mai 2025")
+                    Text("Tirsdag 20. mai 2026")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("\(meeting.startTime) – \(meeting.endTime)")
@@ -1551,7 +1755,13 @@ struct MeetingDetailSidebar: View {
                     )
                 }
                 .buttonStyle(.plain)
-                Button { showNavigate = true } label: {
+                Button {
+                    // Start ekte turn-by-turn i Kart-motoren (POV/Kjøre, MKDirections,
+                    // stemme, snap-to-road) i stedet for den frosne mock-fullskjermen.
+                    appState.requestNavigation(
+                        lat: meeting.lat, lon: meeting.lon,
+                        name: meeting.company, address: meeting.address, start: true)
+                } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "location.north.line.fill")
                             .font(.appScaled(size: 11, weight: .semibold))
@@ -1708,7 +1918,13 @@ struct MeetingDetailSidebar: View {
         // Hele mini-kartet er hitmålet (Daniel-feedback 2026-07-01) —
         // «Åpne i kart»-CTA er droppet, kartet er selv hele knappen med
         // subtil pil + tint på hover for å signalisere tapbarhet.
-        Button { showOpenInKart = true } label: {
+        // Åpner den EKTE Kart-fanen sentrert på møtet (rute-forhåndsvisning,
+        // start=false → ikke turn-by-turn) i stedet for mock-`KartTabSheet`.
+        Button {
+            appState.requestNavigation(
+                lat: meeting.lat, lon: meeting.lon,
+                name: meeting.company, address: meeting.address, start: false)
+        } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     Text("Rute til møte")
@@ -1818,16 +2034,8 @@ struct MeetingDetailSidebar: View {
                     Text("Del nøkkelpunkter og avtal neste steg.")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(MtBrand.textSecondary)
-                    Button { flashToast("Oppgave opprettet i innboks") } label: {
-                        Text("Opprett oppgave")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                            .foregroundStyle(MtBrand.purpleLight)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(MtBrand.purple.opacity(0.20), in: Capsule())
-                            .overlay(Capsule().stroke(MtBrand.purple.opacity(0.4), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 3)
+                    // «Opprett oppgave»-knapp fjernet 2026-07-17: toasten løy
+                    // («Oppgave opprettet i innboks») — ingen oppgave-innboks finnes.
                 }
             }
         }
@@ -1839,5 +2047,177 @@ struct MeetingDetailSidebar: View {
     private func formatNok(_ n: Int) -> String {
         let f = NumberFormatter(); f.numberStyle = .decimal; f.groupingSeparator = " "
         return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+}
+
+// MARK: - Nytt brief-møte (dørsalg, 2026-07-18)
+
+/// Leder oppretter brief: tittel + notat + første tidspunkt + varighet +
+/// gjentakelse (engang/daglig/hverdager/ukentlig) + inviterte selgere fra
+/// teamet. Selve lagringen eies av MeetingsView via onCreate (demo vs ekte).
+private struct NewBriefSheet: View {
+    let onCreate: (String, String, Date, Int, String, [String]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+
+    @State private var title = ""
+    @State private var note = ""
+    @State private var startAt = Calendar.current.date(
+        bySettingHour: 8, minute: 0, second: 0,
+        of: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) ?? Date()
+    @State private var durationMin = 15
+    @State private var recurrence = "weekdays"
+    @State private var valgte: Set<String> = []
+    @State private var team = TeamLiveStore.shared
+
+    private enum NBrand {
+        static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
+        static let card = Color(red: 0.10, green: 0.09, blue: 0.16)
+        static let stroke = Color.white.opacity(0.06)
+        static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
+        static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
+        static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
+        static let textSecondary = Color.white.opacity(0.62)
+    }
+
+    /// Demo: samme selger-navn som resten av demo-universet.
+    private var medlemmer: [(id: String, navn: String)] {
+        if DemoModeManager.isActiveNonisolated {
+            return [("demo-espen", "Espen Berg"), ("demo-marit", "Marit Johansen"),
+                    ("demo-lars", "Lars Erik Moen"), ("demo-helena", "Helena Dahl")]
+        }
+        return team.memberDTOs.map { ($0.userId, $0.name) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    felt("Tittel") {
+                        TextField("", text: $title,
+                                  prompt: Text("F.eks. Morgenbrief før felt")
+                                    .foregroundColor(NBrand.textSecondary))
+                            .textFieldStyle(.plain).foregroundStyle(.white)
+                            .font(.appScaled(size: 13))
+                            .padding(11)
+                            .background(NBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(NBrand.stroke, lineWidth: 1))
+                    }
+                    felt("Notat (valgfritt)") {
+                        TextField("", text: $note,
+                                  prompt: Text("Dagens rode, mål, innvendinger…")
+                                    .foregroundColor(NBrand.textSecondary))
+                            .textFieldStyle(.plain).foregroundStyle(.white)
+                            .font(.appScaled(size: 13))
+                            .padding(11)
+                            .background(NBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(NBrand.stroke, lineWidth: 1))
+                    }
+                    felt("Første gang") {
+                        DatePicker("", selection: $startAt,
+                                   displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .colorScheme(.dark)
+                            .tint(NBrand.purpleLight)
+                    }
+                    felt("Varighet") {
+                        Picker("", selection: $durationMin) {
+                            ForEach([10, 15, 20, 30, 45, 60], id: \.self) { m in
+                                Text("\(m) min").tag(m)
+                            }
+                        }
+                        .pickerStyle(.segmented).colorScheme(.dark)
+                    }
+                    felt("Gjentas") {
+                        Picker("", selection: $recurrence) {
+                            Text("Engang").tag("none")
+                            Text("Daglig").tag("daily")
+                            Text("Hverdager").tag("weekdays")
+                            Text("Ukentlig").tag("weekly")
+                        }
+                        .pickerStyle(.segmented).colorScheme(.dark)
+                    }
+                    felt("Inviter selgere") {
+                        VStack(spacing: 8) {
+                            if medlemmer.isEmpty {
+                                Text("Fant ingen teammedlemmer å invitere.")
+                                    .font(.appScaled(size: 11)).foregroundStyle(NBrand.textSecondary)
+                            } else {
+                                HStack {
+                                    Button(valgte.count == medlemmer.count ? "Fjern alle" : "Velg alle") {
+                                        if valgte.count == medlemmer.count { valgte = [] }
+                                        else { valgte = Set(medlemmer.map(\.id)) }
+                                    }
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .foregroundStyle(NBrand.purpleLight)
+                                    Spacer()
+                                    Text("\(valgte.count) valgt")
+                                        .font(.appScaled(size: 10)).foregroundStyle(NBrand.textSecondary)
+                                }
+                                ForEach(medlemmer, id: \.id) { m in
+                                    Button {
+                                        if valgte.contains(m.id) { valgte.remove(m.id) }
+                                        else { valgte.insert(m.id) }
+                                    } label: {
+                                        HStack(spacing: 9) {
+                                            Image(systemName: valgte.contains(m.id)
+                                                  ? "checkmark.circle.fill" : "circle")
+                                                .font(.appScaled(size: 15))
+                                                .foregroundStyle(valgte.contains(m.id)
+                                                                 ? NBrand.green : NBrand.textSecondary)
+                                            Text(m.navn)
+                                                .font(.appScaled(size: 13, weight: .semibold))
+                                                .foregroundStyle(.white)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 7).padding(.horizontal, 10)
+                                        .background(NBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    Color.clear.frame(height: 12)
+                }
+                .padding(18)
+            }
+            .background(NBrand.bg.ignoresSafeArea())
+            .navigationTitle("Nytt brief-møte")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }.foregroundStyle(NBrand.textSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Opprett") {
+                        onCreate(title.trimmingCharacters(in: .whitespaces), note,
+                                 startAt, durationMin, recurrence, Array(valgte))
+                        dismiss()
+                    }
+                    .fontWeight(.bold).foregroundStyle(NBrand.purpleLight)
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .toolbarBackground(NBrand.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .presentationDetents([.large])
+        .task {
+            if let api = appState.api, !DemoModeManager.isActiveNonisolated {
+                TeamLiveStore.shared.attach(api: api, appState: appState)
+            }
+        }
+    }
+
+    private func felt(_ label: String, @ViewBuilder innhold: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label.uppercased())
+                .font(.appScaled(size: 9, weight: .bold))
+                .foregroundStyle(NBrand.textSecondary).kerning(0.5)
+            innhold()
+        }
     }
 }

@@ -203,8 +203,19 @@ fileprivate func cockpitEmptyState(icon: String, title: String, subtitle: String
 
 struct ApprovalsQueueSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var filter: ApprovalFilter = .all
     @State private var expanded: Set<String> = []
+    @State private var decisions: [String: String] = [:]   // itemId → "Godkjent"/"Avslått" (demo)
+    @State private var comments: [String: String] = [:]     // itemId → notat
+    @State private var commentItem: ApprovalItem?
+    // Ekte (backend-)saker — hentes når demo er AV (mig 0406).
+    @State private var realItems: [ApprovalItem] = []
+    @State private var loaded = false
+    @State private var working = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    private var sourceItems: [ApprovalItem] { isDemo ? ApprovalMockData.items : realItems }
 
     enum ApprovalFilter: String, CaseIterable, Identifiable {
         case all = "Alle"
@@ -215,7 +226,7 @@ struct ApprovalsQueueSheet: View {
     }
 
     private var filtered: [ApprovalItem] {
-        let all = ApprovalMockData.items
+        let all = sourceItems
         switch filter {
         case .all: return all
         case .deal: return all.filter { $0.kind == .deal }
@@ -224,12 +235,54 @@ struct ApprovalsQueueSheet: View {
         }
     }
 
+    private func kindFrom(_ s: String) -> ApprovalItem.Kind {
+        switch s { case "discount": return .discount; case "special": return .special; default: return .deal }
+    }
+    private func toItem(_ a: LeadgridApproval) -> ApprovalItem {
+        var days = 0
+        if let created = a.createdAt, let d = ISO8601DateFormatter().date(from: created) {
+            days = max(0, Int(Date().timeIntervalSince(d) / 86400))
+        }
+        return ApprovalItem(
+            id: String(a.id), kind: kindFrom(a.kind), title: a.title,
+            sellerName: a.sellerName ?? "Selger", customerName: a.customerName ?? "—",
+            amountText: "\(Int(a.amountNok.rounded())) kr", ageDays: days,
+            rationale: a.rationale ?? "", backendId: a.id
+        )
+    }
+
+    private func load() async {
+        guard !isDemo, let api = appState.api else { loaded = true; return }
+        if let items = try? await api.fetchLeadgridApprovalsPending() {
+            realItems = items.map(toItem)
+        }
+        loaded = true
+    }
+
+    private func decide(_ item: ApprovalItem, approve: Bool) async {
+        if isDemo { decisions[item.id] = approve ? "Godkjent" : "Avslått"; return }
+        guard let id = item.backendId, let api = appState.api else { return }
+        working = true
+        try? await api.decideLeadgridApproval(id: id, approve: approve, comment: comments[item.id])
+        await load()
+        working = false
+    }
+
+    private func saveComment(_ item: ApprovalItem, _ note: String) {
+        comments[item.id] = note
+        if !isDemo, let id = item.backendId, let api = appState.api {
+            Task { try? await api.commentLeadgridApproval(id: id, comment: note) }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if ApprovalMockData.items.isEmpty {
+                    if !loaded && !isDemo {
+                        ProgressView().tint(SlBrand.purpleLight).padding(.vertical, 80)
+                    } else if sourceItems.isEmpty {
                         cockpitEmptyState(
                             icon: "checkmark.seal",
                             title: "Ingen ventende godkjenninger",
@@ -285,6 +338,12 @@ struct ApprovalsQueueSheet: View {
             .toolbarBackground(SlBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(item: $commentItem) { item in
+                ApprovalCommentSheet(item: item, existing: comments[item.id] ?? "") { note in
+                    saveComment(item, note)
+                }
+            }
+            .task { if !loaded { await load() } }
         }
     }
 
@@ -327,14 +386,35 @@ struct ApprovalsQueueSheet: View {
                 Divider().background(SlBrand.stroke)
                 Text(item.rationale).font(.appScaled(size: 12))
                     .foregroundStyle(SlBrand.textSecondary)
-                HStack(spacing: 8) {
-                    Button("Godkjenn") {}
-                        .buttonStyle(FilledSlButtonStyle(tint: SlBrand.green))
-                    Button("Avslå") {}
-                        .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.red))
-                    Button("Kommentar") {}
-                        .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
-                    Spacer()
+                if let note = comments[item.id], !note.isEmpty {
+                    Label(note, systemImage: "text.bubble.fill")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(SlBrand.purpleLight)
+                }
+                if let decision = decisions[item.id] {
+                    HStack(spacing: 8) {
+                        Label(decision == "Godkjent" ? "Godkjent" : "Avslått",
+                              systemImage: decision == "Godkjent" ? "checkmark.seal.fill" : "xmark.seal.fill")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(decision == "Godkjent" ? SlBrand.green : SlBrand.red)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background((decision == "Godkjent" ? SlBrand.green : SlBrand.red).opacity(0.16), in: Capsule())
+                        Button("Angre") { decisions[item.id] = nil }
+                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.textSecondary))
+                        Spacer()
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Button("Godkjenn") { Task { await decide(item, approve: true) } }
+                            .buttonStyle(FilledSlButtonStyle(tint: SlBrand.green))
+                            .disabled(working)
+                        Button("Avslå") { Task { await decide(item, approve: false) } }
+                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.red))
+                            .disabled(working)
+                        Button("Kommentar") { commentItem = item }
+                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
+                        Spacer()
+                    }
                 }
             }
         }
@@ -348,6 +428,50 @@ struct ApprovalsQueueSheet: View {
     }
 }
 
+private struct ApprovalCommentSheet: View {
+    let item: ApprovalItem
+    let existing: String
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                SlBrand.bg.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(item.title).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+                    Text("\(item.sellerName) · \(item.customerName)")
+                        .font(.appScaled(size: 11)).foregroundStyle(SlBrand.textSecondary)
+                    TextEditor(text: $draft)
+                        .frame(minHeight: 140)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(SlBrand.stroke, lineWidth: 1))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(20)
+            }
+            .navigationTitle("Kommentar")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }.tint(SlBrand.textSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lagre") { onSave(draft); dismiss() }.tint(SlBrand.purpleLight)
+                }
+            }
+            .toolbarBackground(SlBrand.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear { if draft.isEmpty { draft = existing } }
+        }
+    }
+}
+
 struct ApprovalItem: Identifiable {
     let id: String
     let kind: Kind
@@ -357,6 +481,8 @@ struct ApprovalItem: Identifiable {
     let amountText: String
     let ageDays: Int
     let rationale: String
+    /// Satt for ekte (backend-)saker — brukes til å avgjøre mot API.
+    var backendId: Int? = nil
 
     enum Kind {
         case deal, discount, special
@@ -488,7 +614,7 @@ struct TeamForecastSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    ShareLink(item: forecastReport) {
                         HStack(spacing: 5) {
                             Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
                             Text("Del rapport").font(.appScaled(size: 12, weight: .bold))
@@ -503,6 +629,14 @@ struct TeamForecastSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+    }
+
+    private var forecastReport: String {
+        var lines = ["Team-forecast", ""]
+        for r in TeamForecastMockData.rows {
+            lines.append("\(r.name): prognose \(r.predictedText) (mål \(r.goalText), \(r.trendText), \(Int(r.attainment * 100))% måloppnåelse)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func forecastTile(_ label: String, value: String, trend: String, tint: Color) -> some View {
@@ -587,17 +721,81 @@ enum TeamForecastMockData {
 
 struct CoachingPlanSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @State private var showNew = false
+    @State private var scheduled: [CoachingRow] = []      // demo: lokalt planlagte
+    @State private var realSessions: [LeadgridCoachingSession] = []
+    @State private var loaded = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    private func shortDate(_ iso: String?) -> String {
+        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return "—" }
+        let f = DateFormatter(); f.locale = Locale(identifier: "nb_NO"); f.dateFormat = "d. MMM"
+        return f.string(from: d)
+    }
+    private func rowColor(_ name: String) -> Color {
+        let palette: [Color] = [SlBrand.purpleLight, SlBrand.green, SlBrand.blue, SlBrand.orange, SlBrand.yellow, SlBrand.red]
+        return palette[abs(name.hashValue) % palette.count]
+    }
+    private func initials(_ name: String) -> String {
+        let i = name.split(separator: " ").prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
+        return i.isEmpty ? "?" : i
+    }
+    private func toRow(_ s: LeadgridCoachingSession) -> CoachingRow {
+        CoachingRow(
+            name: s.memberName, initials: initials(s.memberName), color: rowColor(s.memberName),
+            headline: ((s.focus?.isEmpty == false ? s.focus! : "1-til-1") + " · " + shortDate(s.scheduledAt)),
+            pondusText: "—", goalText: "—", trendUp: true,
+            lastMeetingText: shortDate(s.scheduledAt), isScheduled: true
+        )
+    }
+
+    /// «KOMMENDE 1-TIL-1» — demo: mock; ekte: backend-økter.
+    private var upcomingRows: [CoachingRow] { isDemo ? CoachingMockData.upcoming : realSessions.map(toRow) }
+    /// Kandidater til «Ny 1-til-1» + «ALLE KANDIDATER» — ekte: team-medlemmer.
+    private var candidateRows: [CoachingRow] {
+        if isDemo { return CoachingMockData.all }
+        return TeamData.members.map { m in
+            CoachingRow(name: m.name, initials: m.initials, color: m.color, headline: m.area,
+                        pondusText: "—", goalText: "—", trendUp: true, lastMeetingText: "—", isScheduled: false)
+        }
+    }
+
+    private func load() async {
+        guard !isDemo, let api = appState.api else { loaded = true; return }
+        if let s = try? await api.fetchLeadgridCoachingSessions() { realSessions = s }
+        loaded = true
+    }
+    private func schedule(name: String, date: Date, focus: String) {
+        if isDemo {
+            let base = candidateRows.first { $0.name == name }
+            scheduled.insert(CoachingRow(
+                name: name, initials: base?.initials ?? "–", color: base?.color ?? SlBrand.purpleLight,
+                headline: focus.isEmpty ? "1-til-1 planlagt" : focus,
+                pondusText: "—", goalText: "—", trendUp: true, lastMeetingText: "Nå", isScheduled: true), at: 0)
+        } else if let api = appState.api {
+            let uid = TeamLiveStore.shared.memberDTOs.first { $0.name == name }?.userId
+            Task {
+                try? await api.createLeadgridCoachingSession(
+                    memberName: name, memberUserId: uid, scheduledAt: date, focus: focus.isEmpty ? nil : focus)
+                await load()
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if CoachingMockData.upcoming.isEmpty && CoachingMockData.all.isEmpty {
+                    if !loaded && !isDemo {
+                        ProgressView().tint(SlBrand.purpleLight).padding(.vertical, 80)
+                    } else if upcomingRows.isEmpty && candidateRows.isEmpty && scheduled.isEmpty {
                         cockpitEmptyState(
                             icon: "person.badge.clock",
                             title: "Ingen coaching-planer enda",
-                            subtitle: "1-til-1-planer og coaching-kandidater vises her."
+                            subtitle: "Planlegg en 1-til-1 med «Ny 1-til-1» øverst."
                         )
                     } else {
                     VStack(alignment: .leading, spacing: 14) {
@@ -618,29 +816,47 @@ struct CoachingPlanSheet: View {
                             Spacer()
                         }
 
+                        if !scheduled.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("NETTOPP PLANLAGT")
+                                    .font(.appScaled(size: 10, weight: .black))
+                                    .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
+                                ForEach(scheduled) { c in
+                                    coachingRow(c)
+                                }
+                            }
+                            .padding(14)
+                            .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
+
+                        if !upcomingRows.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("KOMMENDE 1-TIL-1")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(CoachingMockData.upcoming) { c in
+                            ForEach(upcomingRows) { c in
                                 coachingRow(c)
                             }
                         }
                         .padding(14)
                         .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
 
+                        if !candidateRows.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ALLE COACHING-KANDIDATER")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(CoachingMockData.all) { c in
+                            ForEach(candidateRows) { c in
                                 coachingRow(c)
                             }
                         }
                         .padding(14)
                         .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
                     }
                     .padding(20)
                     }
@@ -653,7 +869,7 @@ struct CoachingPlanSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    Button { showNew = true } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
                             Text("Ny 1-til-1").font(.appScaled(size: 12, weight: .bold))
@@ -667,6 +883,12 @@ struct CoachingPlanSheet: View {
             .toolbarBackground(SlBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showNew) {
+                NewCoachingSheet(candidates: candidateRows) { name, date, focus in
+                    schedule(name: name, date: date, focus: focus)
+                }
+            }
+            .task { if !loaded { await load() } }
         }
     }
 
@@ -764,37 +986,255 @@ enum CoachingMockData {
     ]
 }
 
+private struct NewCoachingSheet: View {
+    let candidates: [CoachingRow]
+    let onSchedule: (String, Date, String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @State private var selectedName: String = ""
+    @State private var date: Date = Date()
+    @State private var focus: String = ""
+    // Slice D: Pondus-profiler for org-en (quiz/org, manager-gate) — driver
+    // «Pondus-forberedelse»-kortet under selger-valget.
+    @State private var orgProfiles: [PondusQuizResult] = []
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    /// Profilen til valgt selger. Ekte: userId-oppslag via memberDTOs, fallback
+    /// navne-match. Demo: deterministisk mock-profil (demo-konvensjon).
+    private var selectedProfile: PondusQuizResult? {
+        guard !selectedName.isEmpty else { return nil }
+        if isDemo { return Self.demoProfile(for: selectedName) }
+        if let uid = TeamLiveStore.shared.memberDTOs.first(where: { $0.name == selectedName })?.userId,
+           let byId = orgProfiles.first(where: { $0.userId == uid }) {
+            return byId
+        }
+        return orgProfiles.first { $0.userName == selectedName }
+    }
+
+    private func weakest(_ p: PondusQuizResult) -> (dim: PondusDimension, score: Int) {
+        let pairs: [(PondusDimension, Int)] = [
+            (.autoritet, p.autoritet), (.klarhet, p.klarhet),
+            (.troverdighet, p.troverdighet), (.trygghet, p.trygghet),
+            (.fremdrift, p.fremdrift),
+        ]
+        let w = pairs.min { $0.1 < $1.1 } ?? (.autoritet, 0)
+        return (w.0, w.1)
+    }
+
+    /// Deterministisk demo-profil per navn (unicode-skalar-aritmetikk — stabil
+    /// på tvers av renders OG launches, i motsetning til hashValue).
+    private static func demoProfile(for name: String) -> PondusQuizResult {
+        let scalars = name.unicodeScalars.map { Int($0.value) }
+        func score(_ salt: Int) -> Int {
+            let h = scalars.enumerated().reduce(salt) { acc, e in
+                (acc &* 31 &+ e.element &* (e.offset + 7)) % 100_000
+            }
+            return 35 + (h % 56)   // 35–90
+        }
+        let a = score(1), k = score(2), t = score(3), tr = score(4), f = score(5)
+        return PondusQuizResult(
+            id: -1, userId: "demo", userName: name,
+            autoritet: a, klarhet: k, troverdighet: t, trygghet: tr, fremdrift: f,
+            total: (a + k + t + tr + f) / 5, createdAt: nil)
+    }
+
+    private func quizDateLabel(_ iso: String?) -> String? {
+        guard let iso, iso.count >= 10 else { return nil }
+        return String(iso.prefix(10))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Selger") {
+                    Picker("Velg selger", selection: $selectedName) {
+                        ForEach(candidates) { c in Text(c.name).tag(c.name) }
+                    }
+                }
+                if !selectedName.isEmpty {
+                    pondusPrepSection
+                }
+                Section("Tidspunkt") {
+                    DatePicker("Dato", selection: $date, displayedComponents: [.date])
+                }
+                Section("Fokus") {
+                    TextField("Hva skal 1-til-1-en handle om?", text: $focus)
+                }
+            }
+            .navigationTitle("Ny 1-til-1")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Planlegg") {
+                        onSchedule(selectedName, date, focus)
+                        dismiss()
+                    }
+                    .disabled(selectedName.isEmpty)
+                }
+            }
+            .onAppear { if selectedName.isEmpty { selectedName = candidates.first?.name ?? "" } }
+            .task {
+                guard !isDemo, let api = appState.api else { return }
+                orgProfiles = (try? await api.fetchPondusQuizOrg()) ?? []
+            }
+        }
+    }
+
+    // MARK: Pondus-forberedelse (slice D)
+
+    @ViewBuilder
+    private var pondusPrepSection: some View {
+        Section("Pondus-forberedelse") {
+            if let p = selectedProfile {
+                let w = weakest(p)
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        Circle().fill(w.dim.tint.opacity(0.22))
+                        Image(systemName: "gauge.with.needle")
+                            .font(.appScaled(size: 14, weight: .bold))
+                            .foregroundStyle(w.dim.tint)
+                    }
+                    .frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Svakest: \(w.dim.label) — \(w.score) av 100")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                        HStack(spacing: 4) {
+                            Text("Pondus totalt: \(p.total)")
+                            if let d = quizDateLabel(p.createdAt) {
+                                Text("· Quiz \(d)")
+                            }
+                        }
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(.secondary)
+                        Text("Anbefalt kapittel: «\(w.dim.recommendedChapterTitle)»")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                Button {
+                    focus = "Pondus: \(w.dim.label) — se kapittelet «\(w.dim.recommendedChapterTitle)» før samtalen"
+                } label: {
+                    Label("Bruk som fokus", systemImage: "target")
+                        .font(.appScaled(size: 13, weight: .semibold))
+                }
+            } else {
+                // Ærlig tom-tilstand — aldri fabrikkert profil i ekte modus.
+                Text("Ingen pondus-profil enda — be \(selectedName) ta quizen i Akademiet.")
+                    .font(.appScaled(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // MARK: - 4. MileageApprovalsSheet — kjøregodtgjørelse
 
 struct MileageApprovalsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @State private var paidIds: Set<UUID> = []
+    // Ekte (backend-)krav — hentes når demo er AV (mig 0405).
+    @State private var realPending: [MileageEntry] = []
+    @State private var realRecent: [MileageEntry] = []
+    @State private var loaded = false
+    @State private var working = false
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+    private var pendingList: [MileageEntry] { isDemo ? MileageMockData.pending : realPending }
+    private var recentList: [MileageEntry] { isDemo ? MileageMockData.recent : realRecent }
+
+    private func isPaid(_ m: MileageEntry) -> Bool { m.isPaid || paidIds.contains(m.id) }
+    private var allPendingPaid: Bool {
+        !pendingList.isEmpty && pendingList.allSatisfy { isPaid($0) }
+    }
+    private var pendingTotalNok: Int {
+        pendingList.reduce(0) { $0 + (Int($1.amountText.filter { $0.isNumber }) ?? 0) }
+    }
+    private var pendingTotalKm: Int { pendingList.reduce(0) { $0 + $1.km } }
+
+    private var mileageCSV: String {
+        var lines = ["Selger;Dato;Rute;KM;Beløp;Status"]
+        for m in pendingList + recentList {
+            let status = isPaid(m) ? "Utbetalt" : "Til godkjenning"
+            lines.append("\(m.sellerName);\(m.dateText);\(m.routeText);\(m.km);\(m.amountText);\(status)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    // Map ekte krav → visnings-MileageEntry (bærer backendId for godkjenning).
+    private func toEntry(_ c: LeadgridMileageClaim) -> MileageEntry {
+        let name = c.sellerName ?? "Selger"
+        let inits = name.split(separator: " ").prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
+        let palette: [Color] = [SlBrand.purpleLight, SlBrand.green, SlBrand.blue, SlBrand.orange, SlBrand.yellow, SlBrand.red]
+        let color = palette[abs(c.sellerUserId.hashValue) % palette.count]
+        return MileageEntry(
+            sellerName: name, initials: inits.isEmpty ? "?" : inits, color: color,
+            dateText: c.tripDate, routeText: c.routeText ?? "",
+            km: Int(c.km.rounded()), amountText: "\(Int(c.amountNok.rounded())) kr",
+            isPaid: c.status != "pending", backendId: c.id, claimStatus: c.status
+        )
+    }
+
+    private func load() async {
+        guard !isDemo, let api = appState.api else { loaded = true; return }
+        async let p = try? api.fetchLeadgridMileagePending()
+        async let r = try? api.fetchLeadgridMileageRecent()
+        let (pend, rec) = await (p, r)
+        realPending = (pend ?? []).map(toEntry)
+        realRecent = (rec ?? []).map(toEntry)
+        loaded = true
+    }
+
+    private func approve(_ m: MileageEntry) async {
+        if isDemo { withAnimation { _ = paidIds.insert(m.id) }; return }
+        guard let id = m.backendId, let api = appState.api else { return }
+        working = true
+        try? await api.approveLeadgridMileage(id: id)
+        await load()
+        working = false
+    }
+
+    private func approveAll() async {
+        if isDemo { withAnimation { for m in pendingList { paidIds.insert(m.id) } }; return }
+        guard let api = appState.api else { return }
+        working = true
+        _ = try? await api.approveAllLeadgridMileage()
+        await load()
+        working = false
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
-                    if MileageMockData.pending.isEmpty && MileageMockData.recent.isEmpty {
+                    if !loaded && !isDemo {
+                        ProgressView().tint(SlBrand.purpleLight).padding(.vertical, 80)
+                    } else if pendingList.isEmpty && recentList.isEmpty {
                         cockpitEmptyState(
                             icon: "car",
                             title: "Ingen kjøregodtgjørelser enda",
-                            subtitle: "Utgifter som venter godkjenning dukker opp her."
+                            subtitle: "Krav selgerne sender inn dukker opp her til godkjenning."
                         )
                     } else {
                     VStack(alignment: .leading, spacing: 14) {
                         // KPI
                         HStack(spacing: 12) {
-                            kpiTile("VENTER", "5", SlBrand.orange)
-                            kpiTile("TOTAL km", "1 284", SlBrand.blue)
-                            kpiTile("Å UTBETALE", "6 420 kr", SlBrand.green)
+                            kpiTile("VENTER", "\(pendingList.count)", SlBrand.orange)
+                            kpiTile("TOTAL km", "\(pendingTotalKm)", SlBrand.blue)
+                            kpiTile("Å UTBETALE", "\(pendingTotalNok) kr", SlBrand.green)
                         }
 
-                        // Månedens oversikt
+                        // Ventende krav
+                        if !pendingList.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("VENTER GODKJENNING (5)")
+                            Text("VENTER GODKJENNING (\(pendingList.count))")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(MileageMockData.pending) { m in
+                            ForEach(pendingList) { m in
                                 mileageRow(m)
                             }
                         }
@@ -803,10 +1243,12 @@ struct MileageApprovalsSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
 
                         // Batch-godkjenn
-                        Button {} label: {
+                        Button {
+                            Task { await approveAll() }
+                        } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.seal.fill")
-                                Text("Godkjenn alle 5 (6 420 kr)")
+                                Text(allPendingPaid ? "Alle godkjent ✓" : "Godkjenn alle \(pendingList.count) (\(pendingTotalNok) kr)")
                                     .font(.appScaled(size: 14, weight: .bold))
                             }
                             .foregroundStyle(.white)
@@ -818,24 +1260,31 @@ struct MileageApprovalsSheet: View {
                                 in: RoundedRectangle(cornerRadius: 12)
                             )
                             .shadow(color: SlBrand.green.opacity(0.4), radius: 8, y: 2)
-                        }.buttonStyle(.plain)
+                            .opacity(allPendingPaid || working ? 0.6 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(allPendingPaid || working)
+                        }
 
                         // Historikk
+                        if !recentList.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("SISTE UTBETALT")
+                            Text(isDemo ? "SISTE UTBETALT" : "GODKJENT")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(SlBrand.textTertiary).tracking(0.8)
-                            ForEach(MileageMockData.recent) { m in
+                            ForEach(recentList) { m in
                                 mileageRow(m)
                             }
                         }
                         .padding(14)
                         .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                        }
                     }
                     .padding(20)
                     }
                 }
+                .task { if !loaded { await load() } }
             }
             .navigationTitle("Kjøregodtgjørelse")
             .navigationBarTitleDisplayMode(.inline)
@@ -844,7 +1293,7 @@ struct MileageApprovalsSheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    ShareLink(item: mileageCSV) {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.down.doc").font(.appScaled(size: 11))
                             Text("Eksporter til lønn").font(.appScaled(size: 12, weight: .bold))
@@ -895,8 +1344,8 @@ struct MileageApprovalsSheet: View {
                 Text(m.amountText).font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(SlBrand.green).monospacedDigit()
             }
-            if !m.isPaid {
-                Button {} label: {
+            if !isPaid(m) {
+                Button { Task { await approve(m) } } label: {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.appScaled(size: 20, weight: .bold))
                         .foregroundStyle(SlBrand.green)
@@ -921,6 +1370,9 @@ struct MileageEntry: Identifiable {
     let km: Int
     let amountText: String
     let isPaid: Bool
+    /// Satt for ekte (backend-)krav — brukes til å godkjenne mot API.
+    var backendId: Int? = nil
+    var claimStatus: String? = nil
 }
 
 enum MileageMockData {
@@ -949,9 +1401,13 @@ enum MileageMockData {
 
 struct TeamRoutesTodaySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var filter: RouteFilter = .active
     @State private var navigatingTo: TeamRoute?
     @State private var toast: String?
+    @State private var optimized = false
+    @State private var showRouteDetails = false
+    @State private var showPlanner = false
 
     enum RouteFilter: String, CaseIterable, Identifiable {
         case active = "Aktiv"
@@ -965,33 +1421,6 @@ struct TeamRoutesTodaySheet: View {
         TeamRoutesMockData.routes.filter { $0.state == filter }
     }
 
-    /// Bygger Meeting-struct fra TeamRoute + destination så vi kan mount
-    /// Meetings-fanens NavigationFullScreenView (POI-radar, kjøregodtgjørelse,
-    /// reiseplanlegger — alt gjenbrukt, ikke bygd på nytt).
-    fileprivate func buildMeeting(from route: TeamRoute) -> Meeting? {
-        guard let d = route.destination else { return nil }
-        return Meeting(
-            startTime: route.etaText.hasPrefix("Starter") ? String(route.etaText.dropFirst("Starter ".count)) : route.etaText,
-            endTime: "—",
-            company: d.company,
-            location: d.address,
-            contactName: route.name,
-            contactRole: "Selger på rute",
-            status: route.state == .active ? .onTheWay : .pending,
-            icon: "building.2.fill",
-            iconColor: route.color,
-            address: d.address,
-            meetingRoom: nil,
-            leadScore: 78,
-            leadType: "Team-navigering",
-            valueNok: 0,
-            lat: d.lat,
-            lon: d.lon,
-            driveTimeMin: d.driveTimeMin,
-            driveDistanceKm: d.driveDistanceKm,
-            trafficStatus: "Normal trafikk"
-        )
-    }
 
     var body: some View {
         NavigationStack {
@@ -1025,12 +1454,22 @@ struct TeamRoutesTodaySheet: View {
                                 Text("Sara og Mikkel har overlappende ruter i Sandvika-området (5 km fra hverandre). Del leads mellom dem for å spare 42 km i dag.")
                                     .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(.white)
-                                HStack(spacing: 8) {
-                                    Button("Optimér ruter") {}
+                                if optimized {
+                                    Label("Optimert — 42 km spart", systemImage: "checkmark.seal.fill")
+                                        .font(.appScaled(size: 12, weight: .bold))
+                                        .foregroundStyle(SlBrand.green)
+                                        .padding(.top, 2)
+                                } else {
+                                    HStack(spacing: 8) {
+                                        Button("Optimér ruter") {
+                                            withAnimation { optimized = true }
+                                            flash("Ruter optimert — 42 km spart")
+                                        }
                                         .buttonStyle(FilledSlButtonStyle(tint: SlBrand.purple))
-                                    Button("Se detaljer") {}
-                                        .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
-                                    Spacer()
+                                        Button("Se detaljer") { showRouteDetails = true }
+                                            .buttonStyle(OutlineSlButtonStyle(tint: SlBrand.purpleLight))
+                                        Spacer()
+                                    }
                                 }
                             }
                         }
@@ -1082,7 +1521,7 @@ struct TeamRoutesTodaySheet: View {
                     Button("Lukk") { dismiss() }.tint(SlBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
+                    Button { showPlanner = true } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                                 .font(.appScaled(size: 11, weight: .bold))
@@ -1097,12 +1536,14 @@ struct TeamRoutesTodaySheet: View {
             .toolbarBackground(SlBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .fullScreenCover(item: $navigatingTo) { route in
-                if let meeting = buildMeeting(from: route) {
-                    // Gjenbruker Meetings' NavigationFullScreenView — full POI-
-                    // radar (bensin/lade), reiseplanlegger, kjøregodtgjørelse.
-                    NavigationFullScreenView(meeting: meeting, transport: .driving)
-                }
+            // «Naviger dit» → ekte Kart-nav-motor (POV/Kjøre, MKDirections, POI
+            // langs rute, kjøregodtgjørelse) i stedet for den frosne mock-HUD-en.
+            .onChange(of: navigatingTo?.id) { _, newID in
+                guard newID != nil, let route = navigatingTo, let d = route.destination else { return }
+                appState.requestNavigation(
+                    lat: d.lat, lon: d.lon, name: d.company, address: d.address, start: true)
+                navigatingTo = nil
+                dismiss()
             }
             .overlay(alignment: .top) {
                 if let t = toast {
@@ -1115,6 +1556,55 @@ struct TeamRoutesTodaySheet: View {
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
+            .sheet(isPresented: $showPlanner) {
+                RoutePlannerSheet()
+            }
+            .sheet(isPresented: $showRouteDetails) {
+                NavigationStack {
+                    ZStack {
+                        SlBrand.bg.ignoresSafeArea()
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 14) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "sparkles").font(.appScaled(size: 20, weight: .bold))
+                                        .foregroundStyle(SlBrand.purpleLight)
+                                    Text("Rute-overlapp").font(.appScaled(size: 18, weight: .heavy))
+                                        .foregroundStyle(.white)
+                                }
+                                Text("Sara Lindberg og Mikkel Berg har overlappende ruter i Sandvika-området — kun ~5 km fra hverandre.")
+                                    .font(.appScaled(size: 13)).foregroundStyle(SlBrand.textSecondary)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    detailRow("Avstand mellom ruter", "≈ 5 km")
+                                    detailRow("Potensiell besparelse", "42 km i dag")
+                                    detailRow("Forslag", "Del leads mellom Sara og Mikkel")
+                                }
+                                .padding(14)
+                                .background(SlBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
+                            }
+                            .padding(20)
+                        }
+                    }
+                    .navigationTitle("Ruteoptimalisering")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Lukk") { showRouteDetails = false }.tint(SlBrand.purpleLight)
+                        }
+                    }
+                    .toolbarBackground(SlBrand.bg, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+                    .toolbarColorScheme(.dark, for: .navigationBar)
+                }
+            }
+        }
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.appScaled(size: 12)).foregroundStyle(SlBrand.textSecondary)
+            Spacer()
+            Text(value).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
         }
     }
 
@@ -1265,8 +1755,8 @@ struct TeamRoute: Identifiable {
     let progressText: String
     let etaText: String
     let progress: Double  // 0…1
-    /// Neste destinasjon på ruten — brukes til å bygge Meeting-struct
-    /// for NavigationFullScreenView når salgssjef trykker «Naviger dit».
+    /// Neste destinasjon på ruten — sendes til den ekte Kart-nav-motoren via
+    /// AppState.requestNavigation når salgssjef trykker «Naviger dit».
     /// nil for done/idle/planlagt-uten-lat-lon.
     let destination: TeamRouteDestination?
 }

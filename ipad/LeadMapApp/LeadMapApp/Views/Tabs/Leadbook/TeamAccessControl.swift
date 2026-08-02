@@ -85,6 +85,32 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     case routeAdherenceReports = "Rute-status-rapporter"
     case teamNearbyView = "Team i nærheten"
     case createLeadAtPosition = "Opprett lead på kart-posisjon"
+    // Leadgrid Go — tilleggstjeneste (elektronisk kjørebok + fleet). Gate GRUPPEN.
+    case leadgridGoKjorebok = "Leadgrid Go · Kjørebok"
+    case leadgridGoAuto = "Leadgrid Go · Auto-registrering"
+    case leadgridGoDashboard = "Leadgrid Go · Team-dashbord"
+    // Kvalitet-avdelingen — tilleggstjeneste (salgsverifisering). Gate GRUPPEN.
+    case leadgridKvalitet = "Kvalitet · Salgsverifisering"
+    // Tettsted-tildeling (2026-07-17) — SSB tettbygde strøk under kommunenivå;
+    // teamleder fordeler tettsteder til selgere i «Tildel område».
+    case omradeTildeling = "Områder · Tettsted-tildeling"
+    // AI-strukturering av eksempler (2026-07-17) — Claude-kall er kostnads-
+    // bærende → egen nøkkel, styrbar per plan uavhengig av Eksempler-fanen.
+    case leadbookAIStrukturering = "Leadbook · AI-strukturering"
+    // Utstyrsregister (2026-07-17) — org-eid utstyr utlevert til medlemmer
+    // (nettbrett/telefon/laptop/klær/ID-kort) m/ hendelseslogg.
+    case utstyrsregister = "Utstyr · Organisasjonsutstyr"
+    // Dørsalg-modus (2026-07-18) — husstandsadresser som egen kartflate for
+    // org-er som hovedsakelig driver dørsalg. DEFAULT AV (isExplicitlyEnabled-
+    // mønsteret): B2B-org-er ser aldri modusen; blandes aldri med bedrifts-CRM.
+    case dorsalgModus = "Dørsalg · Husstandsmodus"
+    // Adressesøk på kartet i dørsalg-modus. DEFAULT AV (Daniel 2026-07-18:
+    // selgerne ser adressen ved å tappe pinnen) — superadmin aktiverer for
+    // org-er som trenger å hoppe rett til en adresse.
+    case dorsalgAdresseSok = "Dørsalg · Adressesøk"
+    // Anbud (Doffin) — tilleggstjeneste (2026-08-02): søk + overvåkning av
+    // offentlige anskaffelser, oppdragsgiver-orgnr klart for CRM-kobling.
+    case leadgridAnbud = "Anbud · Doffin"
 
     var id: String { rawValue }
 
@@ -133,14 +159,33 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .routeAdherenceReports: return "chart.line.uptrend.xyaxis"
         case .teamNearbyView: return "person.3.sequence.fill"
         case .createLeadAtPosition: return "mappin.and.ellipse"
+        // Leadgrid Go
+        case .leadgridGoKjorebok: return "book.closed.fill"
+        case .leadgridGoAuto: return "car.fill"
+        case .leadgridGoDashboard: return "chart.bar.doc.horizontal.fill"
+        // Kvalitet
+        case .leadgridKvalitet: return "checkmark.seal.fill"
+        case .leadgridAnbud: return "doc.text.magnifyingglass"
+        // Områder
+        case .omradeTildeling: return "map.circle.fill"
+        // AI
+        case .leadbookAIStrukturering: return "sparkles"
+        // Utstyr
+        case .utstyrsregister: return "shippingbox.fill"
+        // Dørsalg
+        case .dorsalgModus: return "door.left.hand.open"
+        case .dorsalgAdresseSok: return "magnifyingglass"
         }
     }
 
     var group: Group {
         switch self {
-        case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter: return .kjerne
-        case .analyse, .team, .salgsledelse: return .analyseTeam
-        case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler, .leadbookInnsikt: return .leadbook
+        case .oversikt, .kart, .leads, .oppfolging, .moter, .ruter,
+             .dorsalgModus, .dorsalgAdresseSok: return .kjerne
+        case .analyse, .team, .salgsledelse, .omradeTildeling,
+             .utstyrsregister: return .analyseTeam
+        case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler,
+             .leadbookInnsikt, .leadbookAIStrukturering: return .leadbook
         case .varsler, .tilganger, .integrasjoner, .fakturering: return .admin
         case .teamExportCSV, .teamExportPDF, .teamImportExcel, .teamShareReport,
              .teamMarkAllRead, .teamCustomDashboard: return .rapportExport
@@ -148,6 +193,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
              .teamAIFormulaSuggest: return .analyseAI
         case .routeTracking, .routeAdherenceReports, .teamNearbyView,
              .createLeadAtPosition: return .kjerne
+        case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo
+        case .leadgridKvalitet: return .kvalitet
+        case .leadgridAnbud: return .anbud
         }
     }
 
@@ -158,6 +206,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case admin = "Admin & innstillinger"
         case rapportExport = "Rapport & eksport"
         case analyseAI = "Analyse & AI"
+        case leadgridGo = "Leadgrid Go"
+        case kvalitet = "Kvalitet"
+        case anbud = "Anbud (Doffin)"
         var id: String { rawValue }
         var icon: String {
             switch self {
@@ -167,6 +218,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
             case .admin: return "gearshape.fill"
             case .rapportExport: return "square.and.arrow.up.on.square.fill"
             case .analyseAI: return "sparkles"
+            case .leadgridGo: return "car.circle.fill"
+            case .kvalitet: return "checkmark.seal.fill"
+            case .anbud: return "doc.text.magnifyingglass"
             }
         }
         var tint: Color {
@@ -177,6 +231,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
             case .admin: return LBrand.orange
             case .rapportExport: return LBrand.yellow
             case .analyseAI: return LBrand.pink
+            case .leadgridGo: return LBrand.green
+            case .kvalitet: return Color.teal
+            case .anbud: return Color.indigo
             }
         }
     }

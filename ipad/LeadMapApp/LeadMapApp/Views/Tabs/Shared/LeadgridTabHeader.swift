@@ -97,12 +97,12 @@ struct LeadgridTabHeader<Extra: View>: View {
 
     /// Toppkandidatene til «Neste handlinger»-popoveren (samme regel som
     /// Oversikt hadde): oppfølging satt, møte booket eller score >= 70.
-    private var topActions: [LeadModel] {
-        Array(leads
+    private var allActions: [LeadModel] {
+        leads
             .filter { $0.nextFollowUpAt != nil || $0.status == .meetingBooked || ($0.leadScore ?? 0) >= 70 }
             .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
-            .prefix(8))
     }
+    private var topActions: [LeadModel] { Array(allActions.prefix(8)) }
 
     /// Ekte badge-tall: oppfølginger som forfaller innen 3 dager
     /// (LeadgridHeaderLive — samme semantikk som Oversikts gamle teller).
@@ -111,6 +111,21 @@ struct LeadgridTabHeader<Extra: View>: View {
     }
 
     private var unreadCount: Int { state.leadgridUnreadCount }
+
+    // Dørsalg-org (2026-07-18, sveip-punkt 6): lead-badgen (forfallende
+    // oppfølginger) ville stått på 0 for alltid — badge-tallet teller da
+    // dagens dører i stedet (fra /dorsalg/stats).
+    @State private var dorsalgIDag: Int = 0
+
+    private var erRenDorsalgOrg: Bool {
+        EntitlementStore.shared.erRenDorsalgOrg
+    }
+
+    /// Badge på handlings-knappen: dørsalg = dører i dag, ellers
+    /// forfallende oppfølginger.
+    private var actionBadgeCount: Int {
+        erRenDorsalgOrg ? dorsalgIDag : upcomingFollowups
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -191,6 +206,13 @@ struct LeadgridTabHeader<Extra: View>: View {
             if !isNil { consumeNotificationTap() }
         }
         .onAppear { if state.pendingNotificationTap != nil { consumeNotificationTap() } }
+        // Dørsalg-badgen: dagens dører (kun for dørsalg-profil-orger).
+        .task {
+            guard erRenDorsalgOrg, let api = state.api else { return }
+            if let stats = await KartverketService.shared.fetchDorsalgStats(using: api) {
+                dorsalgIDag = stats.iDag
+            }
+        }
         .sheet(isPresented: $myProfileOpen) {
             MyProfileSheet(name: state.displayName,
                            email: state.userEmail,
@@ -223,8 +245,21 @@ struct LeadgridTabHeader<Extra: View>: View {
         }
     }
 
+    /// Ekte rolle fra org-medlemskapet (var hardkodet «Salgssjef» for alle
+    /// ikke-superadmins frem til 2026-07-17). Samme katalog-mapping som
+    /// LeaderboardView/OrgSettingsView.
     private var roleLabel: String {
-        state.isSuperAdmin ? "Leadgrid-admin" : "Salgssjef"
+        if state.isSuperAdmin { return "Leadgrid-admin" }
+        switch state.roleInOrg ?? "" {
+        case "admin": return "Admin"
+        case "salgssjef": return "Salgssjef"
+        case "teamleder": return "Teamleder"
+        case "salgskonsulent": return "Salgskonsulent"
+        case "promotor": return "Promotør"
+        case "kvalitet": return "Kvalitet"
+        case "": return "Selger"
+        default: return (state.roleInOrg ?? "").capitalized
+        }
     }
 
     /// SuperAdmin-raden vises kun for Leadgrid-ansatte OG når fanen har
@@ -449,7 +484,7 @@ struct LeadgridTabHeader<Extra: View>: View {
     }
 
     private var nextActionsPopoverContent: some View {
-        NextActionsPopover(leads: topActions, totalCount: leads.count)
+        NextActionsPopover(leads: topActions, allLeads: allActions, totalCount: allActions.count)
             .adaptivePopoverFrame(width: 420, height: 560)
             .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
     }
@@ -499,15 +534,18 @@ struct LeadgridTabHeader<Extra: View>: View {
         } label: {
             ZStack(alignment: .topTrailing) {
                 iconTile(systemName: "checklist", size: 16)
-                // Ekte badge: forfallende oppfølginger (<= 3 dager).
-                if upcomingFollowups > 0 {
-                    countBadge(upcomingFollowups)
+                // Ekte badge: forfallende oppfølginger (<= 3 dager) —
+                // dørsalg-org: dagens dører.
+                if actionBadgeCount > 0 {
+                    countBadge(actionBadgeCount)
                 }
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(upcomingFollowups > 0
-            ? "Neste handlinger, \(upcomingFollowups) forfaller snart"
+        .accessibilityLabel(actionBadgeCount > 0
+            ? (erRenDorsalgOrg
+               ? "Neste handlinger, \(actionBadgeCount) dører i dag"
+               : "Neste handlinger, \(actionBadgeCount) forfaller snart")
             : "Neste handlinger")
         .macCatalystHover()
         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
@@ -582,9 +620,9 @@ struct LeadgridTabHeader<Extra: View>: View {
             ZStack(alignment: .topTrailing) {
                 iconTile(systemName: "ellipsis.circle", size: 16)
                 // Samme badge-signal som på iPad: forfallende oppfølginger
-                // + uleste varsler.
-                if upcomingFollowups + unreadCount > 0 {
-                    countBadge(upcomingFollowups + unreadCount)
+                // (dørsalg: dagens dører) + uleste varsler.
+                if actionBadgeCount + unreadCount > 0 {
+                    countBadge(actionBadgeCount + unreadCount)
                 }
             }
         }

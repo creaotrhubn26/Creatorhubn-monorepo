@@ -819,3 +819,98 @@ enum JSONValue: Codable, Hashable, Sendable {
         return out
     }
 }
+
+// MARK: - Dørsalg brief-møter (mig 0398, 2026-07-18)
+// Leder samler teamet før felt: opprett m/ gjentakelse + inviter selgere.
+// Dørsalg-selgere har ingen lead-møter — Møter-fanen deres drives av disse.
+
+struct BriefMeetingDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let note: String
+    let startAt: String          // ISO8601 uten millis
+    let durationMin: Int
+    let recurrence: String       // none | daily | weekdays | weekly
+    let participants: [String]
+    let createdBy: String
+    let createdByName: String?
+
+    var startDate: Date? {
+        ISO8601DateFormatter().date(from: startAt)
+    }
+
+    var recurrenceLabel: String {
+        switch recurrence {
+        case "daily": return "Daglig"
+        case "weekdays": return "Hverdager"
+        case "weekly": return "Ukentlig"
+        default: return "Engang"
+        }
+    }
+
+    /// Neste forekomst fra nå — gjentakelsen ekspanderes i klienten.
+    func nesteForekomst(fra now: Date = Date()) -> Date? {
+        guard let start = startDate else { return nil }
+        if recurrence == "none" || start > now { return start }
+        let cal = Calendar.current
+        let tid = cal.dateComponents([.hour, .minute], from: start)
+        for dagOffset in 0...14 {
+            guard let dag = cal.date(byAdding: .day, value: dagOffset, to: now),
+                  let kandidat = cal.date(bySettingHour: tid.hour ?? 8,
+                                          minute: tid.minute ?? 0,
+                                          second: 0, of: dag),
+                  kandidat > now else { continue }
+            let ukedag = cal.component(.weekday, from: kandidat)
+            switch recurrence {
+            case "daily":
+                return kandidat
+            case "weekdays":
+                if (2...6).contains(ukedag) { return kandidat }
+            case "weekly":
+                if ukedag == cal.component(.weekday, from: start) { return kandidat }
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+}
+
+struct BriefMeetingsEnvelope: Decodable {
+    let canManage: Bool
+    let meetings: [BriefMeetingDTO]
+}
+
+extension APIClient {
+    func fetchBriefMeetings() async -> BriefMeetingsEnvelope? {
+        try? await _get("/api/leadgrid/brief-meetings")
+    }
+
+    private struct BriefCreateBody: Encodable {
+        let title: String
+        let note: String
+        let startAt: String
+        let durationMin: Int
+        let recurrence: String
+        let participants: [String]
+    }
+    private struct BriefAck: Decodable { let ok: Bool? }
+
+    func createBriefMeeting(
+        title: String, note: String, startAt: Date, durationMin: Int,
+        recurrence: String, participants: [String]
+    ) async -> Bool {
+        let iso = ISO8601DateFormatter().string(from: startAt)
+        let body = BriefCreateBody(title: title, note: note, startAt: iso,
+                                   durationMin: durationMin,
+                                   recurrence: recurrence,
+                                   participants: participants)
+        let r: BriefAck? = try? await _post("/api/leadgrid/brief-meetings", body: body)
+        return r?.ok == true
+    }
+
+    func deleteBriefMeeting(id: String) async -> Bool {
+        do { try await _delete("/api/leadgrid/brief-meetings/\(id)"); return true }
+        catch { return false }
+    }
+}

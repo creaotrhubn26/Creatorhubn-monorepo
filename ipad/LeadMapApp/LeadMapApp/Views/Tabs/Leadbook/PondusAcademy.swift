@@ -313,6 +313,12 @@ struct PondusAkademiSheet: View {
     @State private var videoPlayer: AVPlayer?
     @State private var videoLoading = false
     @State private var videoLoadFailed = false
+    // Quiz-kapittelet («Test deg selv») er interaktivt — ikke video.
+    @State private var showQuiz = false
+    @State private var quizLocalResult: PondusQuizLocalResult? = PondusQuizLocalResult.load()
+    // «Anbefalt for deg» (slice B): kvalitets-underkjenninger som signal.
+    @Environment(AppState.self) private var appState
+    @State private var qualityRejections: [SalesVerification] = []
 
     private var filteredChapters: [PondusChapter] {
         var list = chapters
@@ -372,8 +378,9 @@ struct PondusAkademiSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
-                        Button {} label: { Label("Last ned for offline", systemImage: "arrow.down.circle") }
-                        Button {} label: { Label("Del Akademi-lenke", systemImage: "square.and.arrow.up") }
+                        // «Last ned for offline» + «Del Akademi-lenke» fjernet
+                        // 2026-07-17: var døde knapper — ingen offline-/dele-
+                        // flate for Akademi-innhold.
                         Button { showTranscript.toggle() } label: {
                             Label(showTranscript ? "Skjul transkript" : "Vis transkript", systemImage: "text.quote")
                         }
@@ -394,6 +401,39 @@ struct PondusAkademiSheet: View {
             playbackSeconds = 0
             isPlaying = false
         }
+        .task { await loadRejections() }
+    }
+
+    // MARK: «Anbefalt for deg» (slice B)
+
+    /// Kun Pondus-kurset har dimensjons-kapitler (tittel-prefiks «Autoritet»,
+    /// «Klarhet», …) — andre kurs fra Akademi-fanen får ingen seksjon.
+    private var isPondusCourse: Bool {
+        PondusDimension.allCases.contains { dim in
+            chapters.contains { $0.title.hasPrefix(dim.label) }
+        }
+    }
+
+    private var recommendations: [PondusRecommendation] {
+        guard isPondusCourse else { return [] }
+        return PondusRecommendationEngine.recommendations(
+            quiz: quizLocalResult,
+            rejections: qualityRejections,
+            chapters: chapters
+        )
+    }
+
+    /// Underkjenninger som personlig signal. Demo: demo-køen. Ekte: kun EGNE
+    /// underkjenninger — uten kjent bruker-id vises ingenting (aldri org-data
+    /// som personlig signal). 403 fra kvalitetskøen → signal stille borte.
+    private func loadRejections() async {
+        if DemoModeManager.isActiveNonisolated {
+            qualityRejections = KvalitetDemoStore.shared.items.filter { $0.status == "rejected" }
+            return
+        }
+        guard let me = TeamLiveStore.shared.currentUserId else { return }
+        guard let q = await QualityService.shared.queue(using: appState.api) else { return }
+        qualityRejections = q.items.filter { $0.status == "rejected" && $0.sellerUserId == me }
     }
 
     // MARK: Player
@@ -401,7 +441,11 @@ struct PondusAkademiSheet: View {
     private var playerColumn: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if current.hasVideo {
+                if current.section == .test {
+                    // Quiz-kapittelet: interaktiv quiz i stedet for video
+                    // (slice A — PondusQuiz.swift).
+                    quizCanvas
+                } else if current.hasVideo {
                     // Ekte video: AVKit-spiller m/ native kontroller —
                     // den simulerte scrubben/transporten skjules.
                     videoCanvas
@@ -431,6 +475,69 @@ struct PondusAkademiSheet: View {
                   item === videoPlayer?.currentItem else { return }
             watched.insert(current.id)
         }
+    }
+
+    /// Quiz-kapittelet: CTA-kort i spiller-flaten. Viser siste resultat når
+    /// quizen er tatt, og markerer kapittelet som sett ved fullføring.
+    private var quizCanvas: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(LinearGradient(
+                    colors: [LBrand.green.opacity(0.32), .black, LBrand.purple.opacity(0.24)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+            VStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(.black.opacity(0.45))
+                        .frame(width: 74, height: 74)
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.appScaled(size: 32, weight: .semibold))
+                        .foregroundStyle(LBrand.green)
+                }
+                Text("Interaktiv quiz — 12 spørsmål")
+                    .font(.appScaled(size: 19, weight: .heavy))
+                    .foregroundStyle(.white)
+                if let r = quizLocalResult {
+                    Text("Siste resultat: \(r.total) · \(r.tierLabel) · \(formatQuizDate(r.date))")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                Button { showQuiz = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.fill")
+                            .font(.appScaled(size: 13, weight: .bold))
+                        Text(quizLocalResult == nil ? "Start quizen" : "Ta på nytt")
+                            .font(.appScaled(size: 14, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 26).padding(.vertical, 12)
+                    .background(
+                        LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: Capsule()
+                    )
+                    .shadow(color: LBrand.purple.opacity(0.5), radius: 8, y: 2)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .aspectRatio(16/9, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .sheet(isPresented: $showQuiz) {
+            PondusQuizSheet(onCompleted: { r in
+                quizLocalResult = r
+                if let quizChapter = chapters.first(where: { $0.section == .test }) {
+                    watched.insert(quizChapter.id)
+                }
+            })
+        }
+    }
+
+    private func formatQuizDate(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "d. MMM yyyy"
+        return f.string(from: d)
     }
 
     private var videoCanvas: some View {
@@ -733,14 +840,8 @@ struct PondusAkademiSheet: View {
                     .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
-                Button {} label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up").font(.appScaled(size: 10, weight: .bold))
-                        Text("Eksporter")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(LBrand.purpleLight)
-                }.buttonStyle(.plain)
+                // «Eksporter»-knappen fjernet 2026-07-17: var død knapp —
+                // ingen eksport-flate for transkript.
             }
             Text(current.transcriptSnippet)
                 .font(.appScaled(size: 13, design: .serif))
@@ -848,6 +949,21 @@ struct PondusAkademiSheet: View {
 
             ScrollView {
                 VStack(spacing: 8) {
+                    // «Anbefalt for deg» — skjules under aktivt søk/filter så
+                    // listen forblir ren når brukeren leter selv.
+                    if isPondusCourse && search.isEmpty && sectionFilter == nil {
+                        PondusRecommendationSection(
+                            recommendations: recommendations,
+                            quizTaken: quizLocalResult != nil,
+                            onSelect: { current = $0 },
+                            onQuizCompleted: { r in
+                                quizLocalResult = r
+                                if let quizChapter = chapters.first(where: { $0.section == .test }) {
+                                    watched.insert(quizChapter.id)
+                                }
+                            }
+                        )
+                    }
                     ForEach(PondusChapter.Section.allCases) { sec in
                         let chs = filteredChapters.filter { $0.section == sec }
                         if !chs.isEmpty {

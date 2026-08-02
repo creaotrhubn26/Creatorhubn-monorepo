@@ -210,8 +210,14 @@ struct LiveTranscriptionSheet: View {
     var onUse: ((String) -> Void)? = nil
     @StateObject private var engine = LiveTranscriptionEngine()
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var showSavedToast = false
     @State private var savedTitle: String?
+    /// Hvordan lagringen ble beriket («analysert på enheten»/«med AI») —
+    /// nil når AI ikke kjørte og de enkle feltene ble brukt.
+    @State private var savedSource: String?
+    @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
@@ -225,6 +231,17 @@ struct LiveTranscriptionSheet: View {
                         } else {
                             recorderControls
                             transcriptCard
+                            if let saveError {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(LBrand.orange)
+                                    Text(saveError).font(.appScaled(size: 11))
+                                        .foregroundStyle(LBrand.orange)
+                                }
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(LBrand.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                            }
                             metaCard
                         }
                         Color.clear.frame(height: 100)
@@ -234,7 +251,8 @@ struct LiveTranscriptionSheet: View {
                 if showSavedToast, let savedTitle {
                     VStack {
                         Spacer().frame(height: 70)
-                        Label("\(savedTitle) lagret i Eksempler",
+                        Label(savedSource.map { "\(savedTitle) lagret i Eksempler — \($0)" }
+                                ?? "\(savedTitle) lagret i Eksempler",
                               systemImage: "checkmark.circle.fill")
                             .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -269,17 +287,17 @@ struct LiveTranscriptionSheet: View {
                 if !engine.transcript.isEmpty && !engine.isRecording && onUse == nil {
                     ToolbarItem(placement: .confirmationAction) {
                         Button {
-                            savedTitle = autoTitle()
-                            withAnimation { showSavedToast = true }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-                                withAnimation { showSavedToast = false }
-                                dismiss()
-                            }
+                            Task { await saveAsExample() }
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "tray.and.arrow.down.fill")
-                                    .font(.appScaled(size: 11, weight: .bold))
-                                Text("Lagre i Eksempler").font(.appScaled(size: 12, weight: .bold))
+                                if isSaving {
+                                    ProgressView().controlSize(.small).tint(.white)
+                                } else {
+                                    Image(systemName: "tray.and.arrow.down.fill")
+                                        .font(.appScaled(size: 11, weight: .bold))
+                                }
+                                Text(isSaving ? "Analyserer og lagrer …" : "Lagre i Eksempler")
+                                    .font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -303,34 +321,38 @@ struct LiveTranscriptionSheet: View {
     // MARK: Status banner
 
     private var statusBanner: some View {
-        HStack(spacing: 12) {
+        // 2026-08-02: banneret påsto «alt on-device» selv når nb-NO-modellen
+        // mangler og gjenkjenningen faller tilbake til Apples servere.
+        let onDevice = engine.supportsOnDevice
+        let tint = onDevice ? LBrand.green : LBrand.orange
+        return HStack(spacing: 12) {
             ZStack {
-                Circle().fill(LBrand.green.opacity(0.22))
-                Image(systemName: "checkmark.shield.fill")
+                Circle().fill(tint.opacity(0.22))
+                Image(systemName: onDevice ? "checkmark.shield.fill" : "icloud.fill")
                     .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(LBrand.green)
+                    .foregroundStyle(tint)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text("ALT ON-DEVICE")
+                    Text(onDevice ? "ALT ON-DEVICE" : "SKYBASERT FALLBACK")
                         .font(.appScaled(size: 9, weight: .black))
-                        .foregroundStyle(LBrand.green).tracking(0.8)
-                    if engine.supportsOnDevice {
-                        Text("· APPLE SPEECH \(engine.recognizerAvailable ? "KLAR" : "VENTER")")
-                            .font(.appScaled(size: 9, weight: .bold))
-                            .foregroundStyle(LBrand.textSecondary).tracking(0.5)
-                    }
+                        .foregroundStyle(tint).tracking(0.8)
+                    Text("· APPLE SPEECH \(engine.recognizerAvailable ? "KLAR" : "VENTER")")
+                        .font(.appScaled(size: 9, weight: .bold))
+                        .foregroundStyle(LBrand.textSecondary).tracking(0.5)
                 }
-                Text("Lyden forlater aldri iPad-en. Transkripsjonen kjører lokalt via SFSpeechRecognizer m/ nb-NO språkmodell.")
+                Text(onDevice
+                     ? "Lyden forlater aldri iPad-en. Transkripsjonen kjører lokalt via SFSpeechRecognizer m/ nb-NO språkmodell."
+                     : "On-device-modellen for norsk er ikke installert på denne iPad-en — lyden sendes til Apple for gjenkjenning. Last ned norsk i Innstillinger → Generelt → Tastatur → Diktering for lokal kjøring.")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
         }
         .padding(12)
-        .background(LBrand.green.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
-        .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.green.opacity(0.25), lineWidth: 1))
+        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(tint.opacity(0.25), lineWidth: 1))
     }
 
     // MARK: Permission gate
@@ -508,6 +530,74 @@ struct LiveTranscriptionSheet: View {
             Spacer()
             Text(value).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(.white)
         }
+    }
+
+    // MARK: Lagring (2026-08-02 bugfiks: knappen viste suksess-toast uten å
+    // lagre noe som helst — transkriptet gikk tapt. Nå: ekte POST til
+    // Eksempler som utkast, med ærlig feilmelding ved avslag.)
+
+    private func saveAsExample() async {
+        guard !isSaving else { return }
+        guard let api = appState.api else {
+            saveError = "Ikke innlogget mot backend — transkriptet kan ikke lagres herfra."
+            return
+        }
+        isSaving = true
+        saveError = nil
+
+        // AI-berikelse (2026-08-02): samme intelligens-rute som Eksempler-
+        // sheeten — on-device Apple Intelligence når mulig (gratis/privat),
+        // ellers backend-strukturering (leadbookAiStruktur-gated). Feiler
+        // AI-en (låst entitlement, modell utilgjengelig, for kort tekst)
+        // lagres transkriptet med de enkle feltene — lagring blokkeres ALDRI.
+        var title = autoTitle()
+        var summary = String(engine.transcript.prefix(280))
+        var learnings: [String] = []
+        var transcriptLines: [[String: Any]] = [
+            ["speaker": "Selger", "text": engine.transcript, "at_sec": 0],
+        ]
+        let raw = engine.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.count >= 40 {
+            let intel = LeadbookExampleIntelligenceFactory.make(api: api)
+            if let result = try? await intel.structure(rawText: raw) {
+                let s = result.structured
+                if let t = s.title, !t.isEmpty { title = t }
+                if let sm = s.summary, !sm.isEmpty { summary = sm }
+                if let kl = s.keyLearnings, !kl.isEmpty { learnings = kl }
+                // Backend-Claude deler også opp i Selger/Kunde-replikker —
+                // da lagres den strukturerte formen i stedet for én blokk.
+                if let lines = s.transcript, !lines.isEmpty {
+                    transcriptLines = lines.map {
+                        ["speaker": $0.speaker, "text": $0.text, "at_sec": $0.atSec ?? 0]
+                    }
+                }
+                savedSource = result.source == .onDevice ? "analysert på enheten" : "analysert med AI"
+            }
+        }
+
+        let body: [String: Any] = [
+            "status": "draft",
+            "title": title,
+            "summary": summary,
+            "channel": "telephone",
+            "duration_sec": engine.elapsedSeconds,
+            "transcript": transcriptLines,
+            "key_learnings": learnings,
+        ]
+        do {
+            _ = try await api.createLeadbookExample(body)
+            savedTitle = title
+            withAnimation { showSavedToast = true }
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            withAnimation { showSavedToast = false }
+            dismiss()
+        } catch {
+            let msg = String(describing: error)
+            saveError = msg.contains("krever_leder_rolle")
+                ? "Lagring i Eksempler krever leder-rolle. Bruk «Bruk i notat» fra aktivitetsloggen, eller be teamleder lagre."
+                : "Kunne ikke lagre — prøv igjen. (\(error.localizedDescription))"
+        }
+        isSaving = false
     }
 
     // MARK: Helpers

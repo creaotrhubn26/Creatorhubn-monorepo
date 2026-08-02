@@ -7,6 +7,7 @@ import SwiftUI
 import Charts
 
 struct LeadbookInnsiktView: View {
+    @Environment(AppState.self) private var appState
     @State private var period: Period = .d30
     @State private var sellerFilter: PondusCast?
     @State private var favorited: Bool = true
@@ -14,20 +15,35 @@ struct LeadbookInnsiktView: View {
     @State private var toast: String?
     @State private var openExample: LeadbookExample?
 
+    // Ekte innsikt (2026-08-02): backend-aggregering av org-ens publiserte
+    // eksempler. Demo-modus beholder mock-dashboardet urørt.
+    @State private var innsikt: APIClient.LeadbookInnsiktDTO?
+    @State private var innsiktLoading = false
+    @State private var innsiktError: String?
+    @State private var openingCaseId: String?
+
     enum Period: String, CaseIterable, Identifiable {
         case d7 = "7 dager"
         case d30 = "30 dager"
         case d90 = "90 dager"
         case ytd = "Hittil i år"
         var id: String { rawValue }
+
+        var apiValue: String {
+            switch self {
+            case .d7: return "7d"
+            case .d30: return "30d"
+            case .d90: return "90d"
+            case .ytd: return "ytd"
+            }
+        }
     }
 
     var body: some View {
         VStack(spacing: 14) {
             insiktHeader
-            // HELE analyse-dashboardet er mock (cast-basert) — KUN i demo.
-            // Ekte innsikt krever samtale-/pondus-data fra backend.
             if DemoModeManager.isActiveNonisolated {
+                // Demo: mock-dashbordet (cast-basert), uendret.
                 maritHeroCard
                 kpiRow
                 HStack(alignment: .top, spacing: 14) {
@@ -41,24 +57,59 @@ struct LeadbookInnsiktView: View {
                 leaderboardCard
                 timeDistributionCard
                 topBottomCasesRow
+            } else if let inn = innsikt, inn.totals.examples > 0 {
+                // Ekte innsikt fra backend-aggregeringen.
+                realKpiRow(inn)
+                HStack(alignment: .top, spacing: 14) {
+                    realTrendCard(inn).frame(maxWidth: .infinity)
+                    realDimensionCard(inn).frame(maxWidth: .infinity)
+                }
+                realLeaderboardCard(inn)
+                if !inn.byChannel.isEmpty { realChannelCard(inn) }
+                realCasesRow(inn)
+                Text("Basert på \(inn.totals.examples) publiserte eksempler i perioden — registrer flere samtaler for rikere innsikt.")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(LBrand.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if innsiktLoading {
+                VStack(spacing: 10) {
+                    ProgressView().tint(LBrand.purpleLight)
+                    Text("Henter innsikt …")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 70)
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "chart.bar.doc.horizontal")
                         .font(.appScaled(size: 32, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
-                    Text("Ingen innsikt enda")
+                    Text(innsiktError == nil ? "Ingen innsikt enda" : "Kunne ikke hente innsikt")
                         .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("AI-innsikten fylles når teamet har registrert samtaler og Pondus-data.")
+                    Text(innsiktError
+                         ?? "Innsikten fylles når teamet publiserer eksempler i valgt periode — prøv en lengre periode, eller registrer samtaler i Eksempler.")
                         .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
                         .multilineTextAlignment(.center)
+                        .padding(.horizontal, 30)
+                    if innsiktError != nil {
+                        Button { Task { await loadInnsikt() } } label: {
+                            Text("Prøv igjen")
+                                .font(.appScaled(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(LBrand.purple, in: Capsule())
+                        }.buttonStyle(.plain)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 70)
             }
             Color.clear.frame(height: 20)
         }
+        .task(id: period) { await loadInnsikt() }
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
@@ -101,10 +152,9 @@ struct LeadbookInnsiktView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
-            // Rapport-CTAene og perioden hører til mock-dashboardet — skjules
-            // i ikke-demo (Full rapport-sheeten er ren mock).
-            if DemoModeManager.isActiveNonisolated {
             HStack(spacing: 8) {
+                // Perioden gjelder nå BEGGE moduser (2026-08-02): i ekte
+                // modus sendes den som query-param til backend-aggregeringen.
                 Menu {
                     ForEach(Period.allCases) { p in
                         Button(p.rawValue) { period = p }
@@ -122,18 +172,10 @@ struct LeadbookInnsiktView: View {
                     .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 }
-                Button {
-                    flash("Ukerapport sendt til team")
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "paperplane.fill").font(.appScaled(size: 11, weight: .bold))
-                        Text("Send rapport").font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                }.buttonStyle(.plain)
+                // «Send rapport» fjernet 2026-07-17: var død knapp — kun
+                // toast, ingen rapport-utsendelse bak.
+                // «Full rapport» er fortsatt ren mock → kun demo.
+                if DemoModeManager.isActiveNonisolated {
                 Button { showFullReport = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
@@ -148,8 +190,401 @@ struct LeadbookInnsiktView: View {
                     )
                     .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
                 }.buttonStyle(.plain)
+                }
             }
+        }
+    }
+
+    // MARK: Ekte innsikt (2026-08-02)
+
+    @MainActor
+    private func loadInnsikt() async {
+        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        innsiktLoading = true
+        innsiktError = nil
+        do {
+            innsikt = try await api.fetchLeadbookInnsikt(period: period.apiValue)
+        } catch {
+            let msg = String(describing: error)
+            innsiktError = msg.contains("entitlement_locked")
+                ? "Eksempler-modulen er ikke aktivert for organisasjonen."
+                : "Sjekk nettverket og prøv igjen."
+        }
+        innsiktLoading = false
+    }
+
+    private func realKpiRow(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        HStack(spacing: 12) {
+            realKpiTile(label: "SNITT PONDUS",
+                        value: inn.totals.avgPondus.map(String.init) ?? "—",
+                        delta: pondusDelta(inn),
+                        icon: "circle.hexagongrid.fill", tint: LBrand.purpleLight)
+            realKpiTile(label: "VINN-RATE",
+                        value: inn.totals.winRate.map(percent) ?? "—",
+                        delta: winRateDelta(inn),
+                        icon: "checkmark.seal.fill", tint: LBrand.green)
+            realKpiTile(label: "EKSEMPLER I PERIODEN",
+                        value: "\(inn.totals.examples)",
+                        delta: countDelta(inn),
+                        icon: "waveform", tint: LBrand.blue)
+            realKpiTile(label: "TILBAKEMELDINGER",
+                        value: "\(inn.totals.feedback ?? 0)",
+                        delta: nil,
+                        icon: "bubble.left.and.text.bubble.right.fill", tint: LBrand.orange)
+        }
+    }
+
+    /// Delta-tekst (+/-) mot forrige like lange periode; nil når forrige
+    /// periode mangler data (vises som «ingen sammenligning»).
+    private func pondusDelta(_ inn: APIClient.LeadbookInnsiktDTO) -> (String, Bool)? {
+        guard let now = inn.totals.avgPondus, let prev = inn.previous.avgPondus else { return nil }
+        let d = now - prev
+        return ("\(d >= 0 ? "+" : "−")\(abs(d))", d >= 0)
+    }
+
+    private func winRateDelta(_ inn: APIClient.LeadbookInnsiktDTO) -> (String, Bool)? {
+        guard let now = inn.totals.winRate, let prev = inn.previous.winRate else { return nil }
+        let pp = (now - prev) * 100
+        let txt = String(format: "%.1f pp", abs(pp)).replacingOccurrences(of: ".", with: ",")
+        return ("\(pp >= 0 ? "+" : "−")\(txt)", pp >= 0)
+    }
+
+    private func countDelta(_ inn: APIClient.LeadbookInnsiktDTO) -> (String, Bool)? {
+        let prev = inn.previous.examples
+        guard prev > 0 else { return nil }
+        let d = inn.totals.examples - prev
+        return ("\(d >= 0 ? "+" : "−")\(abs(d))", d >= 0)
+    }
+
+    private func realKpiTile(label: String, value: String, delta: (String, Bool)?,
+                             icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(tint)
+                Text(label).font(.appScaled(size: 9, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
+            Text(value).font(.appScaled(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white).monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.7)
+            if let (text, up) = delta {
+                HStack(spacing: 4) {
+                    Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                        .font(.appScaled(size: 9, weight: .bold))
+                    Text(text).font(.appScaled(size: 10, weight: .bold, design: .rounded))
+                    Text("vs forrige periode").font(.appScaled(size: 9))
+                        .foregroundStyle(LBrand.textTertiary)
+                }
+                .foregroundStyle(up ? LBrand.green : LBrand.red)
+            } else {
+                Text("ingen sammenligning enda")
+                    .font(.appScaled(size: 9))
+                    .foregroundStyle(LBrand.textTertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func realTrendCard(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        let points = inn.trend.filter { $0.avgPondus != nil }
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("PONDUS-TREND")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                Text("Snitt per dag · \(period.rawValue.lowercased())")
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+            }
+            if points.count >= 2 {
+                Chart(points) { p in
+                    LineMark(x: .value("Dag", shortDay(p.day)),
+                             y: .value("Pondus", p.avgPondus ?? 0))
+                        .foregroundStyle(LBrand.purpleLight)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    PointMark(x: .value("Dag", shortDay(p.day)),
+                              y: .value("Pondus", p.avgPondus ?? 0))
+                        .foregroundStyle(LBrand.purpleLight)
+                        .symbolSize(20)
+                }
+                .chartYScale(domain: 0...100)
+                .chartXAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel().foregroundStyle(LBrand.textTertiary)
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { _ in
+                        AxisGridLine().foregroundStyle(LBrand.stroke.opacity(0.3))
+                        AxisValueLabel().foregroundStyle(LBrand.textTertiary)
+                    }
+                }
+                .frame(height: 180)
+            } else {
+                Text("Trenden tegnes når minst to dager har eksempler med Pondus-score.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LBrand.textTertiary)
+                    .frame(maxWidth: .infinity, minHeight: 180)
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func shortDay(_ isoDay: String) -> String {
+        // "2026-08-02" → "2/8"
+        let parts = isoDay.split(separator: "-")
+        guard parts.count == 3, let m = Int(parts[1]), let d = Int(parts[2]) else { return isoDay }
+        return "\(d)/\(m)"
+    }
+
+    private func realDimensionCard(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("PONDUS-DIMENSJONER")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                Text("Hvilke dimensjoner eksemplene lærer bort")
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+            }
+            if inn.byDimension.isEmpty {
+                Text("Sett «featured dimension» på eksemplene for å se fordelingen.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LBrand.textTertiary)
+                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(inn.byDimension) { row in
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 7)
+                                    .fill(LBrand.purple.opacity(0.22))
+                                Image(systemName: dimensionIcon(row.dimension))
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                    .foregroundStyle(LBrand.purpleLight)
+                            }
+                            .frame(width: 28, height: 28)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(row.dimension.capitalized)
+                                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                                Text("\(row.count) eksempler").font(.appScaled(size: 9))
+                                    .foregroundStyle(LBrand.textTertiary)
+                            }
+                            Spacer()
+                            if let avg = row.avgPondus {
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text("\(avg)")
+                                        .font(.appScaled(size: 13, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.white).monospacedDigit()
+                                    Text("SNITT").font(.appScaled(size: 7, weight: .black))
+                                        .foregroundStyle(LBrand.textTertiary).tracking(0.5)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 5)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func dimensionIcon(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "autoritet": return "person.fill"
+        case "klarhet": return "scope"
+        case "troverdighet": return "checkmark.seal.fill"
+        case "trygghet": return "shield.fill"
+        case "fremdrift": return "arrow.right.circle.fill"
+        default: return "circle.hexagongrid.fill"
+        }
+    }
+
+    private func realLeaderboardCard(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("SELGERE I EKSEMPLENE")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                Text("Pondus-snitt og utfall · siste \(period.rawValue.lowercased())")
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+            }
+            VStack(spacing: 8) {
+                ForEach(Array(inn.bySeller.enumerated()), id: \.element.id) { idx, seller in
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle().fill(idx == 0 ? LBrand.yellow.opacity(0.25) : LBrand.cardHi)
+                            Text("\(idx + 1)")
+                                .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
+                                .foregroundStyle(idx == 0 ? LBrand.yellow : LBrand.textSecondary)
+                        }
+                        .frame(width: 32, height: 32)
+                        ZStack {
+                            Circle().fill(LBrand.purple.opacity(0.25))
+                            Text(initials(seller.name))
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(LBrand.purpleLight)
+                        }
+                        .frame(width: 36, height: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(seller.name)
+                                .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                            Text(seller.winRate.map {
+                                "\(seller.count) eksempler · \(percent($0)) vinn-rate"
+                            } ?? "\(seller.count) eksempler")
+                                .font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
+                        }
+                        Spacer()
+                        if let avg = seller.avgPondus {
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text("\(avg)")
+                                    .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(.white).monospacedDigit()
+                                Text("PONDUS").font(.appScaled(size: 7, weight: .black))
+                                    .foregroundStyle(LBrand.textTertiary).tracking(0.5)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6).padding(.horizontal, 10)
+                    .background(LBrand.cardHi.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func initials(_ name: String) -> String {
+        let parts = name.split(separator: " ")
+        if parts.count >= 2 {
+            return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
+        }
+        return name.isEmpty ? "?" : String(name.prefix(2)).uppercased()
+    }
+
+    private func realChannelCard(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("KANAL-FORDELING")
+                .font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+            HStack(spacing: 10) {
+                ForEach(inn.byChannel) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(channelLabel(row.channel))
+                            .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+                        Text("\(row.count) eksempler")
+                            .font(.appScaled(size: 9)).foregroundStyle(LBrand.textTertiary)
+                        if row.won + row.lost > 0 {
+                            Text(percent(Double(row.won) / Double(row.won + row.lost)) + " vinn")
+                                .font(.appScaled(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(LBrand.green)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(LBrand.cardHi.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
+    }
+
+    private func channelLabel(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "telephone", "phone": return "Telefon"
+        case "field": return "Feltbesøk"
+        case "email": return "E-post"
+        case "video": return "Video"
+        default: return raw.capitalized
+        }
+    }
+
+    private func realCasesRow(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            if let top = inn.topExample {
+                realCaseCard(label: "PERIODENS BESTE EKSEMPEL", tint: LBrand.green,
+                             icon: "trophy.fill", caseRow: top)
+            }
+            if let bottom = inn.bottomExample {
+                realCaseCard(label: "PERIODENS LÆRINGSCASE", tint: LBrand.red,
+                             icon: "lightbulb.fill", caseRow: bottom)
+            }
+        }
+    }
+
+    private func realCaseCard(label: String, tint: Color, icon: String,
+                              caseRow: APIClient.LeadbookInnsiktDTO.CaseRow) -> some View {
+        Button { Task { await openCase(id: caseRow.id) } } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon).foregroundStyle(tint)
+                    Text(label).font(.appScaled(size: 9, weight: .black))
+                        .foregroundStyle(tint).tracking(0.6)
+                    Spacer()
+                    if openingCaseId == caseRow.id {
+                        ProgressView().tint(tint).scaleEffect(0.7)
+                    }
+                }
+                Text(caseRow.title)
+                    .font(.appScaled(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 8) {
+                    Text("Pondus")
+                        .font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
+                    Text("\(caseRow.pondusScore ?? 0)")
+                        .font(.appScaled(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundStyle(tint)
+                        .monospacedDigit()
+                    Spacer()
+                }
+                if let summary = caseRow.summary, !summary.isEmpty {
+                    Text(summary).font(.appScaled(size: 11))
+                        .foregroundStyle(LBrand.textSecondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.right.circle.fill").font(.appScaled(size: 11))
+                    Text("Åpne eksempelet").font(.appScaled(size: 11, weight: .bold))
+                }
+                .foregroundStyle(tint)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.3), lineWidth: 1))
+        }.buttonStyle(.plain)
+    }
+
+    /// Hent full-eksempelet og åpne detalj-sheeten (innsikt-endepunktet
+    /// returnerer kun sammendrags-felter).
+    @MainActor
+    private func openCase(id: String) async {
+        guard let api = appState.api, openingCaseId == nil else { return }
+        openingCaseId = id
+        defer { openingCaseId = nil }
+        do {
+            let resp = try await api.fetchLeadbookExamples()
+            if let dto = resp.examples.first(where: { $0.id == id }) {
+                openExample = LeadbookExample.fromDTO(dto)
+            } else {
+                flash("Fant ikke eksempelet — det kan være arkivert")
+            }
+        } catch {
+            flash("Kunne ikke åpne eksempelet")
         }
     }
 
@@ -178,29 +613,9 @@ struct LeadbookInnsiktView: View {
                     .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(3)
-                HStack(spacing: 8) {
-                    Button {
-                        flash("Mester-mønster delt med teamet")
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "person.3.fill").font(.appScaled(size: 11, weight: .bold))
-                            Text("Rull ut til team").font(.appScaled(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(LBrand.green, in: Capsule())
-                    }.buttonStyle(.plain)
-                    Button {} label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "play.fill").font(.appScaled(size: 10, weight: .bold))
-                            Text("Hør Maria's samtale").font(.appScaled(size: 12, weight: .semibold))
-                        }
-                        .foregroundStyle(LBrand.purpleLight)
-                        .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(LBrand.purple.opacity(0.18), in: Capsule())
-                        .overlay(Capsule().stroke(LBrand.purple.opacity(0.4), lineWidth: 1))
-                    }.buttonStyle(.plain)
-                }
+                // «Rull ut til team» + «Hør Maria's samtale» fjernet
+                // 2026-07-17: var døde knapper — kun toast/tom closure,
+                // ingen utrullings- eller avspillings-flate.
             }
             Spacer(minLength: 0)
         }
@@ -483,12 +898,8 @@ struct LeadbookInnsiktView: View {
                         .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
-                Button {} label: {
-                    HStack(spacing: 4) {
-                        Text("Se alle").font(.appScaled(size: 11, weight: .semibold))
-                        Image(systemName: "arrow.up.right").font(.appScaled(size: 9, weight: .bold))
-                    }.foregroundStyle(LBrand.purpleLight)
-                }.buttonStyle(.plain)
+                // «Se alle» fjernet 2026-07-17: var død knapp — ingen full
+                // leaderboard-flate å navigere til.
             }
             VStack(spacing: 8) {
                 ForEach(Array(leaderboard.enumerated()), id: \.element.id) { idx, seller in
@@ -737,21 +1148,8 @@ struct FullInsiktReportSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {} label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
-                            Text("Eksporter PDF").font(.appScaled(size: 12, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(
-                            LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                           startPoint: .leading, endPoint: .trailing),
-                            in: Capsule()
-                        )
-                    }.buttonStyle(.plain)
-                }
+                // «Eksporter PDF» fjernet 2026-07-17: var død knapp —
+                // rapporten er placeholder uten PDF-eksport.
             }
         }
     }

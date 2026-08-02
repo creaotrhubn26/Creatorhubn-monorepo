@@ -25,6 +25,7 @@ private enum LaBrand {
 struct LogActivitySheet: View {
     let lead: LeadRow
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var type: ActivityType = .call
     @State private var date: Date = Date()
@@ -35,6 +36,15 @@ struct LogActivitySheet: View {
     @State private var scheduleFollowUp: Bool = true
     @State private var movePipelineStage: Bool = true
     @State private var followUpDate: Date = Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
+
+    // Smart handlinger (Apple Intelligence / TranscriptIntelligence): analyser
+    // notatet on-device (iOS 26+) eller via backend, og vis SmartTranscript-
+    // ActionsSheet med ryddet tekst + oppgaver + oppfølging.
+    @State private var smartAnalysis: TranscriptAnalysis?
+    @State private var smartSource: TranscriptIntelligenceSource = .backend
+    @State private var showSmartSheet = false
+    @State private var smartAnalyzing = false
+    @State private var smartError: String?
 
     enum ActivityType: String, CaseIterable, Hashable {
         case call = "Telefon"
@@ -140,6 +150,19 @@ struct LogActivitySheet: View {
                 .padding(20)
             }
             .background(LaBrand.bg.ignoresSafeArea())
+            .sheet(isPresented: $showSmartSheet) {
+                if let analysis = smartAnalysis {
+                    SmartTranscriptActionsSheet(
+                        analysis: analysis,
+                        leadName: lead.company,
+                        onApplyResolvedText: { note = $0 },
+                        onApplyFollowUp: { date in
+                            followUpDate = date
+                            scheduleFollowUp = true
+                        }
+                    )
+                }
+            }
             .navigationTitle("Loggfør aktivitet")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -368,18 +391,61 @@ struct LogActivitySheet: View {
                 // Live-transkripsjon (2026-07-04): on-device nb-NO tale→
                 // tekst rett inn i notatet — transkriber møtet/besøket i
                 // stedet for å skrive.
-                Button { showTranscription = true } label: {
-                    Label("Transkriber møtet", systemImage: "waveform.badge.mic")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(LaBrand.purpleLight)
+                HStack(spacing: 16) {
+                    Button { showTranscription = true } label: {
+                        Label("Transkriber møtet", systemImage: "waveform.badge.mic")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(LaBrand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Smart handlinger: analyser notatet (on-device iOS 26+,
+                    // ellers backend) → ryddet tekst, oppgaver, oppfølging.
+                    if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button { runSmartActions() } label: {
+                            Label(smartAnalyzing ? "Analyserer…" : "Smart handlinger",
+                                  systemImage: smartAnalyzing ? "hourglass" : "sparkles")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(LaBrand.yellow)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(smartAnalyzing)
+                    }
                 }
-                .buttonStyle(.plain)
+                if let smartError {
+                    Text(smartError)
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(.red)
+                }
             }
         }
         .sheet(isPresented: $showTranscription) {
             LiveTranscriptionSheet(onUse: { transcript in
                 note = note.isEmpty ? transcript : note + "\n\n" + transcript
             })
+        }
+    }
+
+    /// Kjør transkript-analyse på notatet og vis SmartTranscriptActionsSheet.
+    private func runSmartActions() {
+        guard let api = appState.api else {
+            smartError = "Ingen tilkobling for analyse."
+            return
+        }
+        let text = note
+        smartAnalyzing = true
+        smartError = nil
+        let intel = TranscriptIntelligenceFactory.make(api: api, leadId: lead.backendId)
+        Task {
+            do {
+                let result = try await intel.analyze(transcript: text, leadName: lead.company)
+                smartAnalysis = result.analysis
+                smartSource = result.source
+                showSmartSheet = true
+            } catch {
+                smartError = "Kunne ikke analysere notatet akkurat nå."
+            }
+            smartAnalyzing = false
         }
     }
 

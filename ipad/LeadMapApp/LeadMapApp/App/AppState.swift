@@ -56,6 +56,12 @@ final class AppState {
     /// rotasjon ikke mister kontekst. Default = .oversikt (matcher mocken).
     var selectedSidebarItem: SidebarItem = .oversikt
 
+    /// «Min bil»-profil (drivstoff/type) — skreddersyr POI-default, kjøre-
+    /// godtgjørelse-sats og anbefalinger i nav. Persistert i UserDefaults.
+    var vehicleProfile: VehicleProfile = VehicleProfileStore.load() {
+        didSet { VehicleProfileStore.save(vehicleProfile) }
+    }
+
     // ── Pondus deep-link (App Intents / Watch → Leadbook > Pondus) ─────
     /// Set av `AppStateBridge.navigateToPondus(...)` når en Siri Shortcut,
     /// Spotlight-treff eller Watch-aktivering vil åpne Pondus-fanen. Består
@@ -93,6 +99,49 @@ final class AppState {
         self.deepLinkPondusTemplateId = nil
         self.deepLinkPondusTemplateName = nil
         self.deepLinkPondusRequestedAt = nil
+    }
+
+    // ── Nav deep-link (Møter «Naviger» → Kart ekte turn-by-turn-motor) ──
+    /// Set av Møter-fanen når brukeren trykker «Naviger» på et møte. KartView
+    /// plukker opp dette (`.task(id: deepLinkNavRequestedAt)`), bygger en
+    /// `MapLeadMock` av destinasjonen og starter ekte navigasjon (POV/Kjøre,
+    /// MKDirections, stemme). Erstatter den frosne mock-`NavigationFullScreenView`.
+    /// Speiler Pondus-mønsteret så det overlever tab-switch/cold-start.
+    var deepLinkNavLat: Double?
+    var deepLinkNavLon: Double?
+    var deepLinkNavName: String?
+    var deepLinkNavAddress: String?
+    /// `true` = start turn-by-turn med én gang. `false` = bare senter/velg
+    /// lead-en på kartet (rute-forhåndsvisning uten å gå inn i nav-modus).
+    var deepLinkNavStart: Bool = true
+    /// Transport-hint: "driving" fra «Start kjøring» (Leadgrid Go) — uten
+    /// dette arvet nav-en gå-modus selv når du setter deg i firmabilen.
+    var deepLinkNavTransport: String?
+    var deepLinkNavRequestedAt: Date?
+
+    /// Be Kart-fanen navigere til en koordinat. `start=true` går rett inn i
+    /// turn-by-turn; `start=false` senterer og velger lead-en (forhåndsvisning).
+    func requestNavigation(lat: Double, lon: Double, name: String, address: String,
+                           start: Bool = true, transport: String? = nil) {
+        self.deepLinkNavLat = lat
+        self.deepLinkNavLon = lon
+        self.deepLinkNavName = name
+        self.deepLinkNavAddress = address
+        self.deepLinkNavStart = start
+        self.deepLinkNavTransport = transport
+        self.deepLinkNavRequestedAt = Date()
+        self.selectedSidebarItem = .kart
+    }
+
+    /// Klarer nav-deep-linken etter at KartView har konsumert den. `selectedSidebarItem`
+    /// nulles ikke — brukeren skal bli på Kart-fanen.
+    func clearNavigationDeepLink() {
+        self.deepLinkNavLat = nil
+        self.deepLinkNavLon = nil
+        self.deepLinkNavName = nil
+        self.deepLinkNavAddress = nil
+        self.deepLinkNavTransport = nil
+        self.deepLinkNavRequestedAt = nil
     }
 
     // Klienter (lazy-init når token er satt)
@@ -226,6 +275,9 @@ final class AppState {
     @discardableResult
     func handleAPIError(_ error: Error) -> Bool {
         if let apiError = error as? APIError, apiError.requiresReauth {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1" { return true }
+            #endif
             self.sessionExpired = true
             return true
         }
@@ -273,17 +325,15 @@ final class AppState {
     /// True hvis user.role == 'super_admin' eller user.isPlatformAdmin.
     var isSuperAdmin: Bool { userRole == "super_admin" }
 
-    // ── Admin Room multi-produkt (PR #827) ─────────────────────
-    /// Hvilket produkt Admin Room-flatene (business-plan, outreach,
-    /// industry-targets) er i kontekst for. Default `.leadgrid` siden
-    /// iPad-en primært brukes for Leadgrid (TestFlight live).
-    /// Persistert i UserDefaults (`AdminProductDefaultsKey.activeProduct`).
+    // ── Admin-room multi-produkt (#1318, portet i main-mergen) ──
+    /// Hvilket produkt admin-room-flatene (pipeline, industry-targets)
+    /// er i kontekst for. Default `.leadgrid`; persistert i UserDefaults.
     var activeAdminProduct: AdminProductKey = .leadgrid {
         didSet {
             guard oldValue != activeAdminProduct else { return }
             UserDefaults.standard.set(
                 activeAdminProduct.rawValue,
-                forKey: AdminProductDefaultsKey.activeProduct,
+                forKey: AdminProductDefaultsKey.activeProduct
             )
         }
     }
@@ -467,16 +517,27 @@ final class AppState {
     }
 
     func bootstrap() async {
-        // 1. Hent persistert prosjekt + org-valg + admin-produkt-valg
+        #if DEBUG
+        // QA-hook (landing-videoer): QA_TOUR kjører på ren demo-data og
+        // trenger ingen backend — hopp over pairing hvis sesjonen mangler.
+        // Reverteres m/ task #59-følget.
+        if ProcessInfo.processInfo.environment["QA_TOUR"] != nil,
+           AuthClient.loadToken() == nil {
+            self.authToken = "qa-tour-demo"
+            self.userEmail = "demo@leadgrid.no"
+            return
+        }
+        #endif
+        // 1. Hent persistert prosjekt + org-valg
         if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
             self.activeProjectId = stored
-        }
-        if let storedOrg = UserDefaults.standard.string(forKey: "rr.lead_map.active_org"), !storedOrg.isEmpty {
-            self.activeOrganizationId = storedOrg
         }
         if let storedProduct = UserDefaults.standard.string(forKey: AdminProductDefaultsKey.activeProduct),
            let product = AdminProductKey(rawValue: storedProduct) {
             self.activeAdminProduct = product
+        }
+        if let storedOrg = UserDefaults.standard.string(forKey: "rr.lead_map.active_org"), !storedOrg.isEmpty {
+            self.activeOrganizationId = storedOrg
         }
 
         // 2. Last fra cache umiddelbart så UI er responsivt selv før refresh
@@ -581,6 +642,14 @@ final class AppState {
             self.memberLocations = []
             return
         }
+        // Optimistisk: vis sist kjente rolle for org-en umiddelbart, så
+        // rolle-gatede menyvalg (Salgsledelse) ikke «popper inn» etter at
+        // permissions-kallet lander. Serveren bekrefter/korrigerer under, og
+        // selve viewet vakter uansett server-side.
+        let roleCacheKey = "leadgrid.roleInOrg.\(orgId)"
+        if self.roleInOrg == nil, let cached = UserDefaults.standard.string(forKey: roleCacheKey) {
+            self.roleInOrg = cached
+        }
         async let permTask = api.fetchPermissions(organizationId: orgId)
         async let consentTask = api.fetchLocationConsent(orgId)
         async let locsTask = api.fetchMemberLocations(orgId)
@@ -588,6 +657,9 @@ final class AppState {
             let perm = try await permTask
             self.permissions = Set(perm.permissions)
             self.roleInOrg = perm.role
+            if let role = perm.role {
+                UserDefaults.standard.set(role, forKey: roleCacheKey)
+            }
         } catch {
             print("[AppState] permissions failed: \(error)")
         }

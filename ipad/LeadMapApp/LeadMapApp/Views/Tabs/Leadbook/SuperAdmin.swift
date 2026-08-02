@@ -154,6 +154,9 @@ enum PlanDefaults {
             case .analyseAI:
                 // Starter: kun sammenlign-forrige gratis, AI-features som addOn
                 state = (feature == .teamCompareToPrevious) ? .included : .addOn
+            case .leadgridGo: state = .addOn   // tilleggstjeneste
+            case .kvalitet: state = .addOn     // tilleggstjeneste
+            case .anbud: state = .addOn        // tilleggstjeneste (Doffin)
             }
             if feature == .leads { limit = 500 }
         case .pro:
@@ -163,6 +166,9 @@ enum PlanDefaults {
             case .analyseAI:
                 // Pro: alle analyse-features inkludert, AI-formel som trial (14 dager)
                 state = (feature == .teamAIFormulaSuggest) ? .trial : .included
+            case .leadgridGo: state = .addOn   // tilleggstjeneste (også på Pro)
+            case .kvalitet: state = .addOn     // tilleggstjeneste (også på Pro)
+            case .anbud: state = .addOn        // tilleggstjeneste (også på Pro)
             default: state = .included
             }
         case .enterprise: state = .included
@@ -761,7 +767,16 @@ struct OrgDetailSheet: View {
     var onUpdate: (Organization) -> Void
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var tab: Tab = .oversikt
+    @State private var showManualInvoiceInfo = false
+    // Manuell faktura-skjema (mig 0407)
+    @State private var invoiceEmail = ""
+    @State private var invoiceAmount = ""
+    @State private var invoiceDesc = "Leadgrid-abonnement"
+    @State private var invoiceSending = false
+    @State private var invoiceResult: LeadgridManualInvoice?
+    @State private var invoiceError: String?
     @State private var showEntitlementMatrix = false
     @State private var showPlanChange = false
     @State private var showImpersonate = false
@@ -851,6 +866,64 @@ struct OrgDetailSheet: View {
         } catch {
             flash("Kunne ikke hente lagrede tilganger", isError: true)
         }
+    }
+
+    // MARK: Org-profil-presets (2026-07-18)
+
+    /// Dørsalg-profil = husstandsmodusen eksplisitt PÅ + Leads (bedrifts-
+    /// CRM) låst. Resten av matrisen defineres ikke av profilen.
+    private var erDorsalgProfil: Bool {
+        let dorsalg = org.entitlements.first { $0.feature == .dorsalgModus }?.state
+        let leads = org.entitlements.first { $0.feature == .leads }?.state
+        return dorsalg == .included && leads == .locked
+    }
+
+    private func applyOrgProfile(dorsalg: Bool) {
+        var ents = org.entitlements
+        func set(_ feature: LeadgridFeature, _ state: EntitlementState) {
+            if let idx = ents.firstIndex(where: { $0.feature == feature }) {
+                ents[idx].state = state
+            } else {
+                ents.append(Entitlement(feature: feature, state: state,
+                                        monthlyLimit: nil, currentUsage: 0,
+                                        trialEndsAt: nil, addOnPriceMonthly: nil))
+            }
+        }
+        if dorsalg {
+            set(.dorsalgModus, .included)   // husstandsmodusen på kartet
+            set(.leads, .locked)            // bedrifts-CRM-et stenges
+        } else {
+            set(.dorsalgModus, .locked)     // ingen dørsalg-referanse
+            set(.leads, .included)
+        }
+        org.entitlements = ents
+        saveEntitlements(ents)
+        flash(dorsalg ? "Org-profil satt: Dørsalg" : "Org-profil satt: B2B",
+              isError: false)
+    }
+
+    private func orgProfileButton(
+        title: String, icon: String, tint: Color, active: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold))
+                Text(title).font(.appScaled(size: 12, weight: .bold))
+                if active {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.appScaled(size: 11, weight: .bold))
+                }
+            }
+            .foregroundStyle(active ? .white : LBrand.textSecondary)
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(
+                active ? AnyShapeStyle(tint.opacity(0.85)) : AnyShapeStyle(LBrand.cardHi),
+                in: Capsule()
+            )
+            .overlay(Capsule().stroke(active ? tint : LBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     /// Ekte modus: PUT hele matrisen. Demo: kun lokal state.
@@ -1179,6 +1252,34 @@ struct OrgDetailSheet: View {
                     )
                 }.buttonStyle(.plain)
             }
+            // Org-profil-presets (2026-07-18, Daniel: «hvordan kan man gi
+            // denne type organisasjon denne type tilgang? for kun dette?»):
+            // ett klikk setter pakken for org-TYPEN. Dørsalg = husstands-
+            // modusen PÅ + bedrifts-CRM-et (Leads) AV; resten av plattformen
+            // (Kvalitet/Pondus/Team/Salgsledelse/utstyr/Go) er like relevant
+            // for dørsalg og røres ikke. B2B = motsatt (dagens default).
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ORG-PROFIL")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                HStack(spacing: 8) {
+                    orgProfileButton(
+                        title: "B2B (standard)", icon: "building.2.fill",
+                        tint: LBrand.blue,
+                        active: !erDorsalgProfil
+                    ) { applyOrgProfile(dorsalg: false) }
+                    orgProfileButton(
+                        title: "Dørsalg", icon: "door.left.hand.open",
+                        tint: LBrand.purpleLight,
+                        active: erDorsalgProfil
+                    ) { applyOrgProfile(dorsalg: true) }
+                }
+                Text(erDorsalgProfil
+                     ? "Husstandsmodus på kartet er PÅ og bedrifts-CRM-et (Leads) er stengt."
+                     : "Bedrifts-CRM-et er åpent; dørsalg-modusen vises ikke for org-en.")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(LBrand.textTertiary)
+            }
             // Summary per state
             HStack(spacing: 8) {
                 ForEach(EntitlementState.allCases) { s in
@@ -1295,7 +1396,7 @@ struct OrgDetailSheet: View {
 
             if org.serverId == nil {
             HStack(spacing: 10) {
-                Button {} label: {
+                Button { showManualInvoiceInfo = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
                         Text("Send manuell faktura").font(.appScaled(size: 12, weight: .bold))
@@ -1305,7 +1406,9 @@ struct OrgDetailSheet: View {
                     .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 }.buttonStyle(.plain)
-                Button {} label: {
+                Button {
+                    if let url = URL(string: "https://dashboard.stripe.com") { openURL(url) }
+                } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.right.square.fill").font(.appScaled(size: 11, weight: .bold))
                         Text("Åpne i Stripe").font(.appScaled(size: 12, weight: .bold))
@@ -1319,8 +1422,93 @@ struct OrgDetailSheet: View {
                     )
                 }.buttonStyle(.plain)
             }
+            .sheet(isPresented: $showManualInvoiceInfo) { manualInvoiceSheet }
             }
         }
+    }
+
+    // MARK: Manuell faktura-skjema (mig 0407)
+
+    private var canSendInvoice: Bool {
+        invoiceEmail.contains("@") && (Double(invoiceAmount.replacingOccurrences(of: " ", with: "")) ?? 0) > 0
+    }
+
+    private var manualInvoiceSheet: some View {
+        NavigationStack {
+            Form {
+                if let inv = invoiceResult {
+                    Section {
+                        Label("Faktura sendt", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(LBrand.green)
+                        Text("Faktura \(inv.invoiceNumber ?? "—") sendt til \(inv.recipientEmail).")
+                            .font(.footnote).foregroundStyle(LBrand.textSecondary)
+                    }
+                } else {
+                    Section("Mottaker") {
+                        TextField("E-post", text: $invoiceEmail)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                    }
+                    Section("Beløp") {
+                        HStack {
+                            Text("NOK")
+                            TextField("0", text: $invoiceAmount)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    Section("Beskrivelse") {
+                        TextField("Hva faktureres", text: $invoiceDesc)
+                    }
+                    if let invoiceError {
+                        Section { Label(invoiceError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    }
+                }
+            }
+            .navigationTitle("Manuell faktura")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(invoiceResult == nil ? "Avbryt" : "Lukk") { showManualInvoiceInfo = false }
+                        .tint(LBrand.textSecondary)
+                }
+                if invoiceResult == nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            Task { await sendInvoice() }
+                        } label: {
+                            if invoiceSending { ProgressView() } else { Text("Send faktura").fontWeight(.semibold) }
+                        }
+                        .disabled(!canSendInvoice || invoiceSending)
+                        .tint(LBrand.purpleLight)
+                    }
+                }
+            }
+            .onAppear {
+                if invoiceEmail.isEmpty, org.primaryContact.contains("@") { invoiceEmail = org.primaryContact }
+                if invoiceAmount.isEmpty, org.monthlySpend > 0 { invoiceAmount = "\(org.monthlySpend)" }
+            }
+        }
+    }
+
+    private func sendInvoice() async {
+        guard let api = appState.api else { invoiceError = "Ingen tilkobling."; return }
+        invoiceSending = true
+        invoiceError = nil
+        let amount = Double(invoiceAmount.replacingOccurrences(of: " ", with: "")) ?? 0
+        do {
+            let inv = try await api.sendLeadgridManualInvoice(
+                recipientEmail: invoiceEmail.trimmingCharacters(in: .whitespaces),
+                amountNok: amount,
+                description: invoiceDesc.isEmpty ? nil : invoiceDesc,
+                orgLabel: org.name,
+                organizationId: org.serverId
+            )
+            invoiceResult = inv
+        } catch {
+            invoiceError = "Kunne ikke sende faktura. Prøv igjen."
+        }
+        invoiceSending = false
     }
 
     private func stripeRow(_ label: String, value: String, icon: String) -> some View {

@@ -129,6 +129,321 @@ final class KartverketService {
         return dto.kommuner
     }
 
+    // MARK: - Dørsalg-modus: husstandsadresser (2026-07-18)
+    // EGEN modus for dørsalg-org-er (feature-nøkkel `dorsalgModus`) —
+    // blandes ALDRI med bedrifts-leads; adressene skrives aldri til CRM.
+
+    struct AdressePunkt: Decodable, Sendable, Identifiable, Hashable {
+        let adressetekst: String
+        let postnummer: String
+        let poststed: String
+        let lat: Double
+        let lon: Double
+        var id: String { "\(adressetekst)|\(postnummer)" }
+    }
+
+    private struct AdresseResponse: Decodable {
+        let total: Int
+        let adresser: [AdressePunkt]
+    }
+
+    /// Alle husstandsadresser innen radius (backend-proxy mot Kartverkets
+    /// punktsøk, maks 2000 m, 1000 per side — Kartverkets maks). ([], 0) ved feil.
+    func fetchAdresser(
+        lat: Double, lon: Double, radius: Int, side: Int = 0,
+        using api: APIClient
+    ) async -> (adresser: [AdressePunkt], total: Int) {
+        guard let r: AdresseResponse = try? await api._get(
+            "/api/leadgrid/kartverket/adresser/punkt" +
+            "?lat=\(lat)&lon=\(lon)&radius=\(radius)&side=\(side)"
+        ) else { return ([], 0) }
+        return (r.adresser, r.total)
+    }
+
+    // MARK: - Dørsalg: husstands-status (vunnet/avslått, mig 0397)
+    // Utfallet på døra er org-data og persisteres — adressene selv aldri.
+
+    struct DorsalgStatus: Decodable, Sendable {
+        let adresseId: String
+        let status: String        // "vunnet" | "avslatt"
+    }
+
+    private struct DorsalgStatusResponse: Decodable { let statuser: [DorsalgStatus] }
+    private struct DorsalgAck: Decodable { let ok: Bool? }
+
+    /// Alle husstands-statuser for callerens org. [:] ved feil.
+    func fetchDorsalgStatuser(using api: APIClient) async -> [String: String] {
+        guard let r: DorsalgStatusResponse = try? await api._get(
+            "/api/leadgrid/dorsalg/status"
+        ) else { return [:] }
+        return Dictionary(r.statuser.map { ($0.adresseId, $0.status) },
+                          uniquingKeysWith: { a, _ in a })
+    }
+
+    private struct DorsalgStatusBody: Encodable {
+        let adresseId: String
+        let adressetekst: String
+        let postnummer: String
+        let poststed: String
+        let lat: Double
+        let lon: Double
+        let status: String
+        let productId: String?
+    }
+
+    /// Sett vunnet/avslått på en adresse (best effort — UI er optimistisk).
+    /// productId: hvilket produkt som ble solgt (vunnet m/ flere produkter).
+    func setDorsalgStatus(_ status: String, for adr: AdressePunkt,
+                          productId: String? = nil,
+                          using api: APIClient) async {
+        let body = DorsalgStatusBody(
+            adresseId: adr.id, adressetekst: adr.adressetekst,
+            postnummer: adr.postnummer, poststed: adr.poststed,
+            lat: adr.lat, lon: adr.lon, status: status, productId: productId)
+        let _: DorsalgAck? = try? await api._post(
+            "/api/leadgrid/dorsalg/status", body: body)
+    }
+
+    // Dørsalg-produkter (mig 0399): org-en selger for flere oppdragsgivere
+    // (SOS Barnebyer, Kirkens Bymisjon, …). Selgere ser kun produktene
+    // salgssjefen har satt dem på (tom mine-liste = alle).
+    struct DorsalgProduct: Decodable, Sendable, Identifiable, Hashable {
+        struct Bidrag: Decodable, Sendable, Hashable, Identifiable {
+            let belop: Double
+            let label: String
+            var id: String { "\(belop)|\(label)" }
+        }
+        let id: String
+        let navn: String
+        let farge: String
+        let aktiv: Bool
+        let verdiPerVunnet: Double?
+        /// Prekonfigurerte bidragsnivåer (250/350/500 kr/mnd …) — settes av
+        /// salgssjefen per oppdragsgiver. Optional: eldre backend mangler dem.
+        let bidrag: [Bidrag]?
+        let samtykkeTekst: String?
+        /// Oppdragsgivers signeringsside (AvtaleGiro/Vipps) — fylles når
+        /// avtalen foreligger. Betalingen skjer ALDRI i appen.
+        let signeringUrl: String?
+    }
+
+    struct DorsalgProductsEnvelope: Decodable, Sendable {
+        let canManage: Bool
+        let mine: [String]
+        let products: [DorsalgProduct]
+
+        /// Produktene calleren faktisk kan selge (aktive ∩ tildelte).
+        var tilgjengelige: [DorsalgProduct] {
+            let aktive = products.filter(\.aktiv)
+            guard !mine.isEmpty else { return aktive }
+            let mineSet = Set(mine)
+            return aktive.filter { mineSet.contains($0.id) }
+        }
+    }
+
+    func fetchDorsalgProducts(using api: APIClient) async -> DorsalgProductsEnvelope? {
+        try? await api._get("/api/leadgrid/dorsalg/products")
+    }
+
+    private struct ProductCreateBody: Encodable {
+        let navn: String
+        let verdiPerVunnet: Double?
+    }
+    private struct ProductAck: Decodable { let ok: Bool? }
+
+    func createDorsalgProduct(navn: String, verdiPerVunnet: Double?,
+                              using api: APIClient) async -> Bool {
+        let r: ProductAck? = try? await api._post(
+            "/api/leadgrid/dorsalg/products",
+            body: ProductCreateBody(navn: navn, verdiPerVunnet: verdiPerVunnet))
+        return r?.ok == true
+    }
+
+    private struct ProductPatchBody: Encodable {
+        let aktiv: Bool?
+        let verdiPerVunnet: Double?
+    }
+
+    func patchDorsalgProduct(id: String, aktiv: Bool?, verdiPerVunnet: Double?,
+                             using api: APIClient) async {
+        try? await api._patch(
+            "/api/leadgrid/dorsalg/products/\(id)",
+            body: ProductPatchBody(aktiv: aktiv, verdiPerVunnet: verdiPerVunnet))
+    }
+
+    // «Registrer salg» (mig 0400): ekte avtale på døra. Grandma-prinsippet:
+    // aldri betalingsdata i appen — kun kunde + produkt + bidrag + samtykke.
+    private struct DorsalgSaleBody: Encodable {
+        let adresseId: String
+        let adressetekst: String
+        let postnummer: String
+        let poststed: String
+        let lat: Double
+        let lon: Double
+        let productId: String?
+        let bidragBelop: Double?
+        let bidragLabel: String?
+        let kundeNavn: String
+        let kundeTelefon: String
+        let kundeEpost: String?
+        let ringBekreftet: Bool
+        let samtykkeTekst: String
+    }
+    private struct DorsalgSaleAck: Decodable { let ok: Bool?; let id: String? }
+
+    /// Registrer et dørsalg. true ved suksess (pin/Kvalitet/velkomst-e-post
+    /// håndteres av backend).
+    func registerDorsalgSale(
+        for adr: AdressePunkt, productId: String?,
+        bidragBelop: Double?, bidragLabel: String?,
+        kundeNavn: String, kundeTelefon: String, kundeEpost: String?,
+        ringBekreftet: Bool, samtykkeTekst: String,
+        using api: APIClient
+    ) async -> Bool {
+        let body = DorsalgSaleBody(
+            adresseId: adr.id, adressetekst: adr.adressetekst,
+            postnummer: adr.postnummer, poststed: adr.poststed,
+            lat: adr.lat, lon: adr.lon,
+            productId: productId, bidragBelop: bidragBelop, bidragLabel: bidragLabel,
+            kundeNavn: kundeNavn, kundeTelefon: kundeTelefon,
+            kundeEpost: kundeEpost, ringBekreftet: ringBekreftet,
+            samtykkeTekst: samtykkeTekst)
+        let r: DorsalgSaleAck? = try? await api._post("/api/leadgrid/dorsalg/sales", body: body)
+        return r?.ok == true
+    }
+
+    struct DorsalgAccessMember: Decodable, Sendable, Identifiable {
+        let userId: String
+        let navn: String
+        let role: String
+        let productIds: [String]
+        var id: String { userId }
+    }
+    private struct DorsalgAccessEnvelope: Decodable { let members: [DorsalgAccessMember] }
+
+    func fetchDorsalgProductAccess(using api: APIClient) async -> [DorsalgAccessMember] {
+        let r: DorsalgAccessEnvelope? = try? await api._get(
+            "/api/leadgrid/dorsalg/products/access")
+        return r?.members ?? []
+    }
+
+    private struct AccessPutBody: Encodable {
+        let userId: String
+        let productIds: [String]
+    }
+
+    func setDorsalgProductAccess(userId: String, productIds: [String],
+                                 using api: APIClient) async {
+        let _: ProductAck? = try? await api._put(
+            "/api/leadgrid/dorsalg/products/access",
+            body: AccessPutBody(userId: userId, productIds: productIds))
+    }
+
+    // Dørsalg-oversikt (aggregat for org-en) — vises i Oversikt-fanen.
+    struct DorsalgStats: Decodable, Sendable {
+        struct Selger: Decodable, Sendable, Identifiable {
+            let navn: String
+            let vunnet: Int
+            let avslatt: Int
+            /// Provisjonsgrunnlag: vunnet × produktets verdi (eldre backend: nil).
+            let verdi: Double?
+            var id: String { navn }
+        }
+        struct Produkt: Decodable, Sendable, Identifiable {
+            let produktId: String?
+            let navn: String
+            let vunnet: Int
+            let avslatt: Int
+            var id: String { produktId ?? navn }
+        }
+        struct VunnetDor: Decodable, Sendable, Identifiable {
+            let adressetekst: String
+            let postnummer: String
+            let poststed: String
+            let settAt: String
+            var id: String { "\(adressetekst)|\(postnummer)|\(settAt)" }
+        }
+        /// Callerens egne tall (Min profil) — optional: eldre backend
+        /// mangler feltet.
+        struct Meg: Decodable, Sendable {
+            let vunnet: Int
+            let avslatt: Int
+            let iDag: Int
+            let denneUka: Int
+        }
+        let vunnet: Int
+        let avslatt: Int
+        let iDag: Int
+        let vunnetIDag: Int
+        let denneUka: Int
+        let meg: Meg?
+        /// KPI per produkt (ikke-ledere ser kun sine — filtrert i backend).
+        let perProdukt: [Produkt]?
+        let perSelger: [Selger]
+        let sisteVunnet: [VunnetDor]
+        /// Callerens resolverte dagsmål (team-først). Eldre backend: nil.
+        let dagsmal: Int?
+        /// Valgfritt kr-budsjett per selger per dag. Eldre backend: nil.
+        let budsjett: Int?
+    }
+
+    /// Dørsalg-statistikk for callerens org. Nil ved feil.
+    func fetchDorsalgStats(using api: APIClient) async -> DorsalgStats? {
+        try? await api._get("/api/leadgrid/dorsalg/stats")
+    }
+
+    // ─── Dagsmål + budsjett (2026-07-19): leder styrer per team/org ─────
+
+    struct DorsalgMaal: Decodable, Sendable {
+        struct OrgDefault: Decodable, Sendable {
+            let dagsmal: Int
+            let budsjett: Int?
+            let erSatt: Bool
+        }
+        struct TeamMaal: Decodable, Sendable, Identifiable {
+            let teamId: String
+            let navn: String
+            let dagsmal: Int?
+            let budsjett: Int?
+            var id: String { teamId }
+        }
+        let canManage: Bool
+        let mittDagsmal: Int
+        let mittBudsjett: Int?
+        let orgDefault: OrgDefault?
+        let perTeam: [TeamMaal]?
+    }
+
+    /// Hent dagsmål/budsjett — callerens resolverte + (leder) org/team.
+    func fetchDorsalgMaal(using api: APIClient) async -> DorsalgMaal? {
+        try? await api._get("/api/leadgrid/dorsalg/maal")
+    }
+
+    /// Sett org-default (teamId nil/tom) eller et teams mål (leder).
+    /// Returnerer true ved suksess.
+    @discardableResult
+    func setDorsalgMaal(teamId: String?, dagsmalPerSelger: Int,
+                        budsjettPerSelger: Int?, using api: APIClient) async -> Bool {
+        struct Body: Encodable {
+            let teamId: String
+            let dagsmalPerSelger: Int
+            let budsjettPerSelger: Int?
+        }
+        struct Ack: Decodable { let ok: Bool? }
+        let ack: Ack? = try? await api._put(
+            "/api/leadgrid/dorsalg/maal",
+            body: Body(teamId: teamId ?? "", dagsmalPerSelger: dagsmalPerSelger,
+                       budsjettPerSelger: budsjettPerSelger))
+        return ack?.ok == true
+    }
+
+    /// Fjern status (angre) — best effort.
+    func clearDorsalgStatus(adresseId: String, using api: APIClient) async {
+        let encoded = adresseId.addingPercentEncoding(
+            withAllowedCharacters: .urlPathAllowed) ?? adresseId
+        try? await api._delete("/api/leadgrid/dorsalg/status/\(encoded)")
+    }
+
     // MARK: - Apple CLGeocoder fallback
 
     private func fetchFromApple(lat: Double, lon: Double) async -> ReverseResult? {

@@ -16,7 +16,7 @@ settings:
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: "20260713"
+    CURRENT_PROJECT_VERSION: "20260728"
     MARKETING_VERSION: "1.4.0"
 
 targets:
@@ -39,6 +39,7 @@ targets:
       path: LeadMapApp/Generated/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         UILaunchScreen:
@@ -61,7 +62,7 @@ targets:
         # 'Always' kreves for Nær-lead-varsel — CLCircularRegion-monitorering
         # i bakgrunn slik at selger får push når de er innen 500m av en tildelt
         # lead, selv om app-en er lukket.
-        NSLocationAlwaysAndWhenInUseUsageDescription: Leadgrid varsler deg når du er innen 500m av en tildelt lead — også når app-en er lukket. Du kan skru dette av i Org-tab → Personvern.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Leadgrid varsler deg når du er innen 500m av en tildelt lead, og kan føre kjøreboka automatisk (Leadgrid Go) — også når app-en er lukket. Begge er valgfrie og kan skrus av i innstillingene.
         UIBackgroundModes:
           - location
         # Kamera: QR-paring + visittkort-skanner (VisionKit #182).
@@ -70,6 +71,9 @@ targets:
         NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
         # Tale-gjenkjenning: transkriber dikterte notater (#183).
         NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
+        # Bevegelse & Trening: nav-modus kjenner igjen om du går/sykler/kjører
+        # (Core Motion) for å velge riktig rute-type og ETA automatisk.
+        NSMotionUsageDescription: Leadgrid bruker bevegelsessensoren til å kjenne igjen om du går, sykler eller kjører, slik at navigasjonen velger riktig rute og ankomsttid automatisk.
         # Fotobibliotek (Pakke 10): PhotosPicker brukes til visittkort-import
         # i Leadbook → Maler, profilbilde-velger i Min Profil, og bilde-bilag
         # på Eksempler-fanen. Read-only — vi laster ikke opp uten brukerhandling.
@@ -147,6 +151,7 @@ targets:
       path: LeadMapWidget/Generated/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
@@ -199,6 +204,7 @@ targets:
       path: LeadgridWatchApp/Generated/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         WKApplication: true
@@ -270,6 +276,7 @@ targets:
       path: LeadgridVisionApp/Generated/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         UIApplicationSceneManifest:
@@ -316,6 +323,22 @@ targets:
         SUPPORTS_MACCATALYST: YES
         MACOSX_DEPLOYMENT_TARGET: "26.0"
 
+  # Logikk-unit-tester (Tier 0 i AI-verifiseringsstigen): rute-/fallback-
+  # logikken i TranscriptIntelligence testes deterministisk uten modellen
+  # og uten nettverk — kjørbart i CI på Xcode 26.6 / iOS 26.5.
+  LeadMapAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LeadMapAppTests
+    dependencies:
+      - target: LeadMapApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
 # Eksplisitt scheme så UI-test-target-et er koblet til test-action.
 # archive-config beholdt for TestFlight-CI (fastlane bruker samme scheme).
 schemes:
@@ -328,6 +351,7 @@ schemes:
     test:
       config: Debug
       targets:
+        - LeadMapAppTests
         - LeadMapAppUITests
     profile:
       config: Release

@@ -76,11 +76,50 @@ final class EntitlementStore: ObservableObject {
         hasServerEntitlements = true
     }
 
+    #if DEBUG
+    /// QA (pitch-screenshots): env QA_DORSALG_REN=1 simulerer en REN
+    /// dørsalg-org (dorsalgModus på + leads låst) på simulator — alle
+    /// erRenDorsalgOrg-greinene i appen tenner. Reverteres m/ task #59.
+    private static let qaRenDorsalg =
+        ProcessInfo.processInfo.environment["QA_DORSALG_REN"] == "1"
+    #endif
+
     func canUse(_ feature: LeadgridFeature) -> Bool {
+        #if DEBUG
+        if Self.qaRenDorsalg && feature == .leads { return false }
+        #endif
         switch access(feature) {
         case .included, .trial, .addOn: return true
         case .locked: return false
         }
+    }
+
+    /// Default-AV-features (2026-07-17): synlig KUN når backend eksplisitt
+    /// har åpnet nøkkelen i matrisen — manglende nøkkel betyr SKJULT, ikke
+    /// åpen (motsatt av access()-defaulten). Brukes for kostnadsbærende
+    /// AI-flater som ikke skal etterlate noen referanse når de er av.
+    func isExplicitlyEnabled(_ feature: LeadgridFeature) -> Bool {
+        #if DEBUG
+        if Self.qaRenDorsalg && feature == .dorsalgModus { return true }
+        #endif
+        guard let state = entitlements[feature]?.state else { return false }
+        switch state {
+        case .included, .trial, .addOn: return true
+        case .locked: return false
+        }
+    }
+
+    /// REN dørsalg-org: dørsalg eksplisitt på + leads låst i profilen.
+    /// Hele appen bytter opplevelse på denne (Oversikt/Møter/Salgsledelse/
+    /// Min profil/header/Kart). QA_DORSALG_REN=1 (DEBUG) tvinger den på —
+    /// også i demo-modus (pitch-screenshots m/ demo-data).
+    var erRenDorsalgOrg: Bool {
+        #if DEBUG
+        if Self.qaRenDorsalg { return true }
+        #endif
+        return !DemoModeManager.isActiveNonisolated
+            && isExplicitlyEnabled(.dorsalgModus)
+            && !canUse(.leads)
     }
 
     func limit(_ feature: LeadgridFeature) -> (used: Int, limit: Int)? {
@@ -467,6 +506,9 @@ struct UpsellSheet: View {
         case .admin: return "Admin-verktøy for å styre organisasjonen din."
         case .rapportExport: return "Eksport til CSV/PDF, delte rapporter (Slack + e-post) og bulk-handlinger for team-data."
         case .analyseAI: return "AI-drevne innsikts-verktøy: forecast, sammenligning, pipeline-helse og formel-forslag."
+        case .leadgridGo: return "Leadgrid Go — automatisk elektronisk kjørebok, kjøregodtgjørelse og kjøretøy-oversikt for hele teamet."
+        case .kvalitet: return "Kvalitet — verifiser vunnede salg med velkomstsamtale, samtale-maler per produkt og kvalitetsscore per selger."
+        case .anbud: return "Anbud — søk og overvåk offentlige anskaffelser fra Doffin, med oppdragsgiverens org.nr klart for lead-registrering."
         }
     }
 }

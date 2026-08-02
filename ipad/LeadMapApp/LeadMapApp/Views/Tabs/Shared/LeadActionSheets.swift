@@ -338,20 +338,38 @@ struct LeadAssignSellerSheet: View {
     var onAssign: ((LeadSeller) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var search: String = ""
     @State private var selectedID: UUID?
 
     private var sellers: [LeadSeller] {
-        [
-            LeadSeller(name: "Anniken Sørli",   title: "Salgsdirektør",   avatarColor: .purple,      leadsCount: 42, winRateText: "34 %"),
-            LeadSeller(name: "Mikkel Berg",     title: "Senior selger",   avatarColor: .green,       leadsCount: 38, winRateText: "31 %"),
-            LeadSeller(name: "Lars Kristensen", title: "Salgssjef",       avatarColor: .blue,        leadsCount: 28, winRateText: "26 %"),
-            LeadSeller(name: "Sara Lindberg",   title: "Salgskonsulent",  avatarColor: .orange,      leadsCount: 24, winRateText: "24 %"),
-            LeadSeller(name: "Tobias Strand",   title: "Salgskonsulent",  avatarColor: .yellow,      leadsCount: 22, winRateText: "22 %"),
-            LeadSeller(name: "Karoline Nesse",  title: "Salgskonsulent",  avatarColor: .red,         leadsCount: 20, winRateText: "20 %"),
-            LeadSeller(name: "Henrik Aase",     title: "Salgskonsulent",  avatarColor: Color(red: 0.75, green: 0.45, blue: 1.0), leadsCount: 18, winRateText: "18 %"),
-            LeadSeller(name: "Marte Johansen",  title: "Salgskonsulent",  avatarColor: .green,       leadsCount: 15, winRateText: "16 %")
-        ]
+        // Mock-navnene vises KUN i demo-modus — ekte modus lister faktiske
+        // teammedlemmer fra team-members-endepunktet (2026-07-17; listen var
+        // hardkodet for alle og valget var toast-only).
+        if DemoModeManager.isActiveNonisolated {
+            return [
+                LeadSeller(name: "Anniken Sørli",   title: "Salgsdirektør",   avatarColor: .purple,      leadsCount: 42, winRateText: "34 %"),
+                LeadSeller(name: "Mikkel Berg",     title: "Senior selger",   avatarColor: .green,       leadsCount: 38, winRateText: "31 %"),
+                LeadSeller(name: "Lars Kristensen", title: "Salgssjef",       avatarColor: .blue,        leadsCount: 28, winRateText: "26 %"),
+                LeadSeller(name: "Sara Lindberg",   title: "Salgskonsulent",  avatarColor: .orange,      leadsCount: 24, winRateText: "24 %"),
+                LeadSeller(name: "Tobias Strand",   title: "Salgskonsulent",  avatarColor: .yellow,      leadsCount: 22, winRateText: "22 %"),
+                LeadSeller(name: "Karoline Nesse",  title: "Salgskonsulent",  avatarColor: .red,         leadsCount: 20, winRateText: "20 %"),
+                LeadSeller(name: "Henrik Aase",     title: "Salgskonsulent",  avatarColor: Color(red: 0.75, green: 0.45, blue: 1.0), leadsCount: 18, winRateText: "18 %"),
+                LeadSeller(name: "Marte Johansen",  title: "Salgskonsulent",  avatarColor: .green,       leadsCount: 15, winRateText: "16 %")
+            ]
+        }
+        let palette: [Color] = [.purple, .green, .blue, .orange, .yellow, .red,
+                                Color(red: 0.75, green: 0.45, blue: 1.0)]
+        return TeamLiveStore.shared.memberDTOs.enumerated().map { idx, dto in
+            LeadSeller(
+                name: dto.name,
+                title: dto.title ?? "Selger",
+                avatarColor: palette[idx % palette.count],
+                leadsCount: dto.leads,
+                winRateText: dto.leads > 0 ? "\(Int(Double(dto.won) / Double(dto.leads) * 100)) %" : "—",
+                userId: dto.userId
+            )
+        }
     }
 
     private var filtered: [LeadSeller] {
@@ -411,6 +429,13 @@ struct LeadAssignSellerSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .macCatalystSheetSize(minWidth: 720, minHeight: 620)
+        // Ekte modus: sørg for at teamlisten er lastet (attach er idempotent).
+        .task {
+            guard !DemoModeManager.isActiveNonisolated else { return }
+            if let api = appState.api {
+                TeamLiveStore.shared.attach(api: api, appState: appState)
+            }
+        }
     }
 
     private var leadHeader: some View {
@@ -505,6 +530,9 @@ struct LeadSeller: Identifiable, Hashable {
     let avatarColor: Color
     let leadsCount: Int
     let winRateText: String
+    /// Backend-bruker-id (team-members) — nil for demo-mock; kreves for
+    /// ekte tildeling via /lead-assignments.
+    var userId: String? = nil
 
     var initials: String {
         name.split(separator: " ").prefix(2)

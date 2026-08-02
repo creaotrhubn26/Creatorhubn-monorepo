@@ -232,7 +232,15 @@ struct TeamView: View {
     @State private var showTeamAccess = false
     // Rute-status dashboard (salgssjef+, 2026-07-02).
     @State private var showRouteAdherence = false
+    // 2026-07-17: Utstyrsregister (org-eid utstyr utlevert til medlemmer) —
+    // leder-verktøy, synlig kun for admin/salgssjef/teamleder.
+    @State private var showUtstyr = false
     @Environment(AppState.self) private var appState
+
+    /// Ledere ser Utstyrsregister-inngangen; backend håndhever i tillegg.
+    private var isLeder: Bool {
+        ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+    }
 
     var body: some View {
         ZStack {
@@ -279,6 +287,10 @@ struct TeamView: View {
         }
         .sheet(isPresented: $showRouteAdherence) {
             RouteAdherenceDashboardView()
+        }
+        // 2026-07-17: Utstyrsregister (leder-verktøy fra «+ Ny»-menyen).
+        .sheet(isPresented: $showUtstyr) {
+            UtstyrsregisterSheet()
         }
     }
 
@@ -375,6 +387,16 @@ struct TeamView: View {
                 showRouteAdherence = true
             } label: {
                 Label("Rute-status", systemImage: "arrow.triangle.swap")
+            }
+            // 2026-07-17: Utstyrsregister — org-eid utstyr (nettbrett/telefon/
+            // laptop/klær/ID-kort) utlevert til medlemmer. Kun ledere ser
+            // inngangen; selve flaten er i tillegg .gated(.utstyrsregister).
+            if isLeder {
+                Button {
+                    showUtstyr = true
+                } label: {
+                    Label("Utstyr", systemImage: "shippingbox.fill")
+                }
             }
             Divider()
             Button { TeamStubActions.performGated(.teamCustomDashboard, actionName: "Tilpass dashboard") } label: {

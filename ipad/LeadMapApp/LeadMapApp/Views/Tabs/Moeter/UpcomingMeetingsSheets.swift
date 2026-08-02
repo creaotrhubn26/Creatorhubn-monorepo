@@ -30,11 +30,19 @@ private enum UBrand {
 struct UpcomingMeetingDetailSheet: View {
     let upcoming: UpcomingMeetingMini
     @Environment(\.dismiss) private var dismiss
-    @State private var showNavigate = false
-    @State private var showKart = false
+    @Environment(AppState.self) private var appState
     @State private var showLogNote = false
 
     private var meeting: Meeting { upcoming.asMeeting() }
+
+    /// Lukk sheeten og start ekte nav i Kart-motoren (start=true) eller
+    /// sentrer for rute-forhåndsvisning (start=false).
+    private func openNav(start: Bool) {
+        appState.requestNavigation(
+            lat: meeting.lat, lon: meeting.lon,
+            name: meeting.company, address: meeting.address, start: start)
+        dismiss()
+    }
 
     var body: some View {
         NavigationStack {
@@ -60,10 +68,9 @@ struct UpcomingMeetingDetailSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
+                        // Reschedule/Inviter/Avlys fjernet 2026-07-17: var døde
+                        // knapper — møte-mutasjon har ingen backend-flate enda.
                         Button { showLogNote = true } label: { Label("Logg notat", systemImage: "square.and.pencil") }
-                        Button {} label: { Label("Reschedule", systemImage: "calendar.badge.clock") }
-                        Button {} label: { Label("Inviter andre", systemImage: "person.badge.plus") }
-                        Button(role: .destructive) {} label: { Label("Avlys", systemImage: "xmark.circle.fill") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .foregroundStyle(UBrand.purpleLight)
@@ -74,12 +81,6 @@ struct UpcomingMeetingDetailSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-            .fullScreenCover(isPresented: $showNavigate) {
-                NavigationFullScreenView(meeting: meeting, transport: .driving)
-            }
-            .sheet(isPresented: $showKart) {
-                KartTabSheet(meeting: meeting, startInNavMode: false)
-            }
             .sheet(isPresented: $showLogNote) {
                 LogNoteSheet(meeting: meeting)
             }
@@ -209,7 +210,7 @@ struct UpcomingMeetingDetailSheet: View {
         // Hele mini-kartet er hitmålet (Daniel-feedback 2026-07-01). Header-
         // CTA «Åpne i kart» droppet; erstattet med diskret pil + adresse i
         // header, og en «Åpne»-pille nederst i kartet som selv reagerer på tap.
-        Button { showKart = true } label: {
+        Button { openNav(start: false) } label: {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 7) {
                     Image(systemName: "mappin.and.ellipse")
@@ -306,8 +307,8 @@ struct UpcomingMeetingDetailSheet: View {
                         .foregroundStyle(UBrand.textSecondary)
                 }
                 Spacer()
-                iconCircleBtn(icon: "phone.fill", color: UBrand.green)
-                iconCircleBtn(icon: "envelope.fill", color: UBrand.blue)
+                // Ring/e-post-ikoner fjernet 2026-07-17: var døde — møtemodellen
+                // har ingen kontaktinfo-felter å ringe/maile enda.
             }
         }
         .padding(14)
@@ -318,19 +319,6 @@ struct UpcomingMeetingDetailSheet: View {
     private func initials(_ name: String) -> String {
         let parts = name.split(separator: " ")
         return parts.prefix(2).compactMap { $0.first }.map { String($0) }.joined()
-    }
-
-    private func iconCircleBtn(icon: String, color: Color) -> some View {
-        Button {} label: {
-            ZStack {
-                Circle().fill(color.opacity(0.22))
-                Image(systemName: icon)
-                    .font(.appScaled(size: 12, weight: .bold))
-                    .foregroundStyle(color)
-            }
-            .frame(width: 32, height: 32)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: prep status
@@ -353,14 +341,8 @@ struct UpcomingMeetingDetailSheet: View {
                     .foregroundStyle(UBrand.textSecondary)
             }
             Spacer()
-            Button {} label: {
-                Text("Åpne")
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(upcoming.prepStatus.color, in: Capsule())
-            }
-            .buttonStyle(.plain)
+            // «Åpne»-knapp fjernet 2026-07-17: var død — full prep-modal
+            // åpnes fra Møter-fanens hovedliste, ikke herfra.
         }
         .padding(12)
         .background(UBrand.card, in: RoundedRectangle(cornerRadius: 12))
@@ -381,10 +363,10 @@ struct UpcomingMeetingDetailSheet: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 actionBtn(label: "Naviger", icon: "location.north.line.fill", primary: false, fullWidth: true) {
-                    showNavigate = true
+                    openNav(start: true)
                 }
                 actionBtn(label: "Åpne i kart", icon: "map.fill", primary: false, fullWidth: true) {
-                    showKart = true
+                    openNav(start: false)
                 }
             }
             HStack(spacing: 8) {
@@ -433,7 +415,7 @@ struct UpcomingMeetingDetailSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(UBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button { showNavigate = true } label: {
+            Button { openNav(start: true) } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "play.circle.fill")
                         .font(.appScaled(size: 14, weight: .bold))
@@ -553,16 +535,8 @@ struct AllUpcomingMeetingsSheet: View {
                     Button("Lukk") { dismiss() }
                         .foregroundStyle(UBrand.purpleLight)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button {} label: { Label("Eksporter til kalender", systemImage: "calendar.badge.plus") }
-                        Button {} label: { Label("Send som e-post", systemImage: "envelope") }
-                        Button {} label: { Label("Last ned som PDF", systemImage: "doc.fill") }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(UBrand.purpleLight)
-                    }
-                }
+                // Eksport-meny fjernet 2026-07-17: alle tre valgene var døde
+                // (kalender/e-post/PDF har ingen implementasjon enda).
             }
             .toolbarBackground(UBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

@@ -1,0 +1,57 @@
+name: Backend Typecheck Gate
+
+# CI BLIND SPOT #1 (closed). Until now NO pull_request workflow typechecked
+# backend/server — the only backend jobs run AFTER deploy (smoketest), on
+# release, or on cron. So a backend build-break (missing import → runtime
+# ReferenceError, a bad type, a renamed export) merged green and only surfaced
+# in production. This gate runs the same `tsc --noEmit` the backend ships with,
+# on every PR that touches backend code.
+#
+# ROLLOUT: this job FAILS on any backend type error (a real red X on the PR).
+# Whether that red X *blocks merge* is a branch-protection setting — mark
+# "Backend tsc --noEmit" as a required status check once it's gone green on one
+# clean PR. Same careful rollout as the Sentinel gate: prove the baseline before
+# you make it mandatory.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-typecheck-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-typecheck:
+    name: Backend tsc --noEmit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` installs @types/node + vite/client that tsconfig's
+      # `types: ["node", "vite/client"]` needs. A local isolated tsc run without
+      # these reports spurious TS2688 — the exact "incomplete node_modules gives
+      # a false 0-errors" trap. CI is the only place the baseline is trustworthy.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (full backend)
+        # 12 GB heap — the established backend tsc process; the default OOMs.
+        run: NODE_OPTIONS=--max-old-space-size=12288 npm run typecheck

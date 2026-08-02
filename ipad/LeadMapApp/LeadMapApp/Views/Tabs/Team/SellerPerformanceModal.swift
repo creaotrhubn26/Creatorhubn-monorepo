@@ -8,8 +8,29 @@ import Charts
 struct SellerPerformanceModal: View {
     let member: TeamMember
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var period: Period = .month
     @State private var showAssign: Bool = false
+    @State private var showSetGoal: Bool = false
+    @State private var showReport: Bool = false
+    @State private var showCompare: Bool = false
+    @State private var contactNotice: ContactNotice?
+
+    /// Ekte medlemmer bærer e-post i SalesTeamMemberDTO (oppslag på navn);
+    /// demo-medlemmer har ingen kontaktinfo. TeamMember har aldri telefon.
+    @MainActor private var memberEmail: String? {
+        let email = TeamLiveStore.shared.memberDTOs.first { $0.name == member.name }?.email
+        return (email?.isEmpty == false) ? email : nil
+    }
+
+    /// Liten info-sheet når kanalen mangler data (samme ærlige mønster som
+    /// «Send melding»-plassholderen i TeamCards).
+    struct ContactNotice: Identifiable {
+        let id = UUID()
+        let title: String
+        let icon: String
+        let body: String
+    }
 
     enum Period: String, CaseIterable, Hashable {
         case week = "Uke"
@@ -74,6 +95,21 @@ struct SellerPerformanceModal: View {
         deals.reduce(0) { $0 + $1.valueNok }
     }
 
+    // Periode-velgeren skal faktisk endre volum-tallene. Basis-tallene på
+    // TeamMember representerer en måned; øvrige perioder skaleres monotont
+    // (uke < måned < kvartal < år). Momentum er en «nå»-måler og skaleres ikke.
+    private var periodScale: Double {
+        switch period {
+        case .week:    return 0.25
+        case .month:   return 1.0
+        case .quarter: return 3.0
+        case .year:    return 12.0
+        }
+    }
+    private var scaledLeads: Int    { Int((Double(member.leads) * periodScale).rounded()) }
+    private var scaledMeetings: Int { Int((Double(member.meetings) * periodScale).rounded()) }
+    private var scaledValue: Int    { Int((Double(member.valueNok) * periodScale).rounded()) }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -97,10 +133,11 @@ struct SellerPerformanceModal: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Menu {
-                        Button { TeamStubActions.toast("Eksporter rapport") } label: { Label("Eksporter rapport", systemImage: "doc.fill") }
-                        Button { TeamStubActions.toast("Send til selger") } label: { Label("Send til selger", systemImage: "envelope.fill") }
-                        Button { TeamStubActions.performGated(.teamCompareToPrevious, actionName: "Sammenlign m/ team") } label: { Label("Sammenlign m/ team", systemImage: "chart.bar.xaxis") }
-                        Button(role: .destructive) {} label: { Label("Endre territorium", systemImage: "mappin.and.ellipse") }
+                        Button { showReport = true } label: { Label("Eksporter rapport", systemImage: "doc.fill") }
+                        Button { sendToSeller() } label: { Label("Send til selger", systemImage: "envelope.fill") }
+                        Button { showCompare = true } label: { Label("Sammenlign m/ team", systemImage: "chart.bar.xaxis") }
+                        // «Endre territorium» fjernet 2026-07-17: var død knapp — territorium
+                        // endres via Team-fanens Tildel område-flyt.
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .foregroundStyle(TBrand.purpleLight)
@@ -209,9 +246,9 @@ struct SellerPerformanceModal: View {
         // iPhone: 2×2 i stedet for 4 kolonner — «Vunnet verdi»-tallene
         // trenger bredde på compact width.
         LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4, spacing: 12), spacing: 12) {
-            statTile(title: "Leads",        value: "\(member.leads)",                    trend: member.leadsTrend,    color: TBrand.purple,      icon: "person.3.fill")
-            statTile(title: "Møter",        value: "\(member.meetings)",                 trend: member.meetingsTrend, color: TBrand.blue,        icon: "calendar")
-            statTile(title: "Vunnet verdi", value: "NOK \(formatNok(member.valueNok))",  trend: member.valueTrend,    color: TBrand.green,       icon: "trophy.fill")
+            statTile(title: "Leads",        value: "\(scaledLeads)",                    trend: member.leadsTrend,    color: TBrand.purple,      icon: "person.3.fill")
+            statTile(title: "Møter",        value: "\(scaledMeetings)",                 trend: member.meetingsTrend, color: TBrand.blue,        icon: "calendar")
+            statTile(title: "Vunnet verdi", value: "NOK \(formatNok(scaledValue))",      trend: member.valueTrend,    color: TBrand.green,       icon: "trophy.fill")
             statTile(title: "Momentum",     value: "\(member.momentum)%",                trend: nil,                  color: member.momentumColor, icon: "flame.fill")
         }
     }
@@ -387,15 +424,382 @@ struct SellerPerformanceModal: View {
 
     private var actionsRow: some View {
         HStack(spacing: 8) {
-            actionBtn(icon: "envelope.fill",            label: "Send melding", color: TBrand.blue) {}
-            actionBtn(icon: "phone.fill",                label: "Ring",         color: TBrand.green) {}
-            actionBtn(icon: "target",                    label: "Sett mål",     color: TBrand.purpleLight) {}
+            actionBtn(icon: "envelope.fill",            label: "Send melding", color: TBrand.blue) {
+                sendMessage()
+            }
+            actionBtn(icon: "phone.fill",                label: "Ring",         color: TBrand.green) {
+                call()
+            }
+            actionBtn(icon: "target",                    label: "Sett mål",     color: TBrand.purpleLight) {
+                showSetGoal = true
+            }
             actionBtn(icon: "mappin.and.ellipse",        label: "Område",       color: TBrand.orange) {
                 showAssign = true
             }
         }
         .sheet(isPresented: $showAssign) {
             AssignAreaSheet(preselectedMember: member)
+        }
+        .sheet(isPresented: $showSetGoal) {
+            SetKPIGoalSheet(kpi: .wonValue)
+        }
+        .sheet(isPresented: $showReport) {
+            reportSheet
+        }
+        .sheet(isPresented: $showCompare) {
+            compareSheet
+        }
+        .sheet(item: $contactNotice) { notice in
+            contactNoticeSheet(notice)
+        }
+    }
+
+    // MARK: ⋯-meny-handlinger (var stubs)
+
+    /// Formatert prestasjonsrapport — brukes både av «Eksporter rapport»
+    /// (ShareLink) og «Send til selger» (e-post/SMS-innhold).
+    private var reportSummary: String {
+        var lines = [
+            "Prestasjonsrapport — \(member.name)",
+            "Område: \(member.area)",
+            "Periode: \(period.rawValue)",
+            "",
+            "Leads: \(scaledLeads)",
+            "Møter: \(scaledMeetings)",
+            "Vunnet verdi: NOK \(formatNok(scaledValue))",
+            "Momentum: \(member.momentum)%",
+            "Rank: #\(rank()) av \(TeamData.members.count)",
+            "",
+            "Aktive deals (\(deals.count)) — NOK \(formatNok(totalPipelineValue)):",
+        ]
+        if deals.isEmpty {
+            lines.append("• Ingen aktive deals")
+        } else {
+            lines.append(contentsOf: deals.map {
+                "• \($0.company): NOK \(formatNok($0.valueNok)) (\($0.stage), \($0.probability)%)"
+            })
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Send rapporten til selgeren: e-post når adresse finnes, ellers SMS.
+    private func sendToSeller() {
+        let subject = "Din prestasjonsrapport (\(period.rawValue))"
+        let body = reportSummary
+        let enc = { (s: String) in s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "" }
+        if let email = memberEmail,
+           let url = URL(string: "mailto:\(email)?subject=\(enc(subject))&body=\(enc(body))") {
+            openURL(url)
+        } else if let url = URL(string: "sms:&body=\(enc(body))") {
+            openURL(url)
+        }
+    }
+
+    private var reportSheet: some View {
+        NavigationStack {
+            ScrollView {
+                Text(reportSummary)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(20)
+            }
+            .background(TBrand.bg.ignoresSafeArea())
+            .navigationTitle("Rapport — \(member.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { showReport = false }.foregroundStyle(TBrand.purpleLight)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    ShareLink(item: reportSummary) {
+                        Label("Del", systemImage: "square.and.arrow.up")
+                    }
+                    .foregroundStyle(TBrand.purpleLight)
+                }
+            }
+        }
+    }
+
+    // Team-snitt for sammenligning (samme datakilde som resten av fanen).
+    @MainActor private var teamMembers: [TeamMember] { TeamData.members }
+    @MainActor private func teamAverage(_ keyPath: KeyPath<TeamMember, Int>) -> Int {
+        let vals = teamMembers.map { $0[keyPath: keyPath] }
+        guard !vals.isEmpty else { return 0 }
+        return vals.reduce(0, +) / vals.count
+    }
+
+    private var compareSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    Text("\(member.name) mot team-snittet")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    compareRow(label: "Leads",        mine: member.leads,    avg: teamAverage(\.leads))
+                    compareRow(label: "Møter",        mine: member.meetings, avg: teamAverage(\.meetings))
+                    compareRow(label: "Vunnet verdi", mine: member.valueNok, avg: teamAverage(\.valueNok), isMoney: true)
+                    compareRow(label: "Momentum",     mine: member.momentum, avg: teamAverage(\.momentum), suffix: "%")
+                    HStack {
+                        Text("Plassering")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                            .foregroundStyle(TBrand.textSecondary)
+                        Spacer()
+                        Text("#\(rank()) av \(teamMembers.count)")
+                            .font(.appScaled(size: 14, weight: .black, design: .rounded))
+                            .foregroundStyle(rank() <= 2 ? TBrand.green : (rank() <= 3 ? TBrand.yellow : TBrand.orange))
+                    }
+                    .padding(14)
+                    .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
+
+                    // Team mot team — aggregert per distriktsteam, rangert.
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Team mot team")
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(Array(teamStandings.enumerated()), id: \.element.id) { idx, t in
+                            teamStandRow(place: idx + 1, t: t)
+                        }
+                    }
+                    .padding(14)
+                    .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
+
+                    // Hele teamet mot hverandre (leaderboard) — så man kan
+                    // sammenligne alle selgerne, ikke bare mot ett snitt.
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Selger mot selger")
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(Array(rankedTeam.enumerated()), id: \.element.id) { idx, m in
+                            rosterRow(place: idx + 1, m: m)
+                        }
+                    }
+                    .padding(14)
+                    .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(20)
+            }
+            .background(TBrand.bg.ignoresSafeArea())
+            .navigationTitle("Sammenlign m/ team")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lukk") { showCompare = false }.foregroundStyle(TBrand.purpleLight)
+                }
+            }
+        }
+    }
+
+    @MainActor private var rankedTeam: [TeamMember] {
+        teamMembers.sorted { $0.valueNok > $1.valueNok }
+    }
+
+    // MARK: Team-mot-team-aggregering
+
+    /// Teamet et medlem tilhører.
+    /// - Ekte modus: TeamLiveStore har allerede satt `area` = team-navnet
+    ///   (fra LeadgridSalesTeamStore.team(for: userId) — ekte
+    ///   leadgrid_sales_teams), så vi grupperer direkte på det.
+    /// - Demo: ingen ekte team-kobling → grupper på distrikt.
+    private func teamName(for m: TeamMember) -> String {
+        if DemoModeManager.isActiveNonisolated {
+            switch m.area {
+            case "Oslo Vest", "Oslo Sentrum":  return "Team Oslo"
+            case "Lørenskog", "Sarpsborg":     return "Team Øst"
+            case "Asker / Bærum":              return "Team Vest"
+            default:                            return "Øvrige"
+            }
+        }
+        return m.area   // ekte team-navn (eller «Ikke tildelt område»)
+    }
+
+    struct TeamAgg: Identifiable {
+        let id = UUID()
+        let name: String
+        let leads: Int
+        let valueNok: Int
+        let momentum: Int   // snitt
+        let count: Int
+        let containsMe: Bool
+        let color: Color
+    }
+
+    @MainActor private var teamStandings: [TeamAgg] {
+        let groups = Dictionary(grouping: teamMembers) { teamName(for: $0) }
+        return groups.map { (name, members) -> TeamAgg in
+            let leads = members.reduce(0) { $0 + $1.leads }
+            let value = members.reduce(0) { $0 + $1.valueNok }
+            let mom = members.isEmpty ? 0 : members.reduce(0) { $0 + $1.momentum } / members.count
+            return TeamAgg(
+                name: name,
+                leads: leads,
+                valueNok: value,
+                momentum: mom,
+                count: members.count,
+                containsMe: members.contains { $0.id == member.id },
+                color: members.first?.color ?? TBrand.purple
+            )
+        }
+        .sorted { $0.valueNok > $1.valueNok }
+    }
+
+    private func teamStandRow(place: Int, t: TeamAgg) -> some View {
+        HStack(spacing: 10) {
+            Text("#\(place)")
+                .font(.appScaled(size: 12, weight: .black, design: .rounded))
+                .foregroundStyle(place == 1 ? TBrand.green : (place == 2 ? TBrand.yellow : TBrand.textSecondary))
+                .frame(width: 28, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(t.name)
+                    .font(.appScaled(size: 12, weight: t.containsMe ? .bold : .semibold))
+                    .foregroundStyle(t.containsMe ? .white : TBrand.textSecondary)
+                    .lineLimit(1)
+                Text("\(t.count) selgere · \(t.leads) leads · \(t.momentum)% mom.")
+                    .font(.appScaled(size: 9))
+                    .foregroundStyle(TBrand.textTertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Text("NOK \(formatNok(t.valueNok))")
+                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(t.containsMe ? .white : TBrand.textSecondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            t.containsMe ? AnyShapeStyle(t.color.opacity(0.16)) : AnyShapeStyle(Color.clear),
+            in: RoundedRectangle(cornerRadius: 9)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(t.containsMe ? t.color.opacity(0.5) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private func rosterRow(place: Int, m: TeamMember) -> some View {
+        let isMe = m.id == member.id
+        return HStack(spacing: 10) {
+            Text("#\(place)")
+                .font(.appScaled(size: 12, weight: .black, design: .rounded))
+                .foregroundStyle(place <= 2 ? TBrand.green : (place <= 3 ? TBrand.yellow : TBrand.textSecondary))
+                .frame(width: 28, alignment: .leading)
+            ZStack {
+                Circle().fill(m.color.opacity(isMe ? 1 : 0.4))
+                Text(m.initials)
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(m.name)
+                    .font(.appScaled(size: 12, weight: isMe ? .bold : .semibold))
+                    .foregroundStyle(isMe ? .white : TBrand.textSecondary)
+                    .lineLimit(1)
+                Text("\(m.leads) leads · \(m.momentum)% mom.")
+                    .font(.appScaled(size: 9))
+                    .foregroundStyle(TBrand.textTertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Text("NOK \(formatNok(m.valueNok))")
+                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(isMe ? .white : TBrand.textSecondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            isMe ? AnyShapeStyle(member.color.opacity(0.16)) : AnyShapeStyle(Color.clear),
+            in: RoundedRectangle(cornerRadius: 9)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(isMe ? member.color.opacity(0.5) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private func compareRow(label: String, mine: Int, avg: Int, isMoney: Bool = false, suffix: String = "") -> some View {
+        let delta = mine - avg
+        let fmt: (Int) -> String = { isMoney ? "NOK \(self.formatNok($0))" : "\($0)\(suffix)" }
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.appScaled(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("Snitt: \(fmt(avg))")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(TBrand.textSecondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(fmt(mine))
+                    .font(.appScaled(size: 14, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                HStack(spacing: 3) {
+                    Image(systemName: delta >= 0 ? "arrow.up" : "arrow.down")
+                        .font(.appScaled(size: 8, weight: .black))
+                    Text(fmt(abs(delta)))
+                        .font(.appScaled(size: 10, weight: .bold))
+                }
+                .foregroundStyle(delta >= 0 ? TBrand.green : TBrand.red)
+            }
+        }
+        .padding(14)
+        .background(TBrand.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// Send melding: e-post når medlemmet har adresse (ekte team), ellers
+    /// åpne SMS/Meldinger (blank mottaker når vi ikke har telefonnummer).
+    private func sendMessage() {
+        if let email = memberEmail,
+           let url = URL(string: "mailto:\(email)") {
+            openURL(url)
+        } else if let url = URL(string: "sms:") {
+            openURL(url)
+        }
+    }
+
+    /// Ring: TeamMember bærer ikke telefonnummer (verken demo eller
+    /// SalesTeamMemberDTO), så vi er ærlige i stedet for å ha en død knapp.
+    private func call() {
+        contactNotice = ContactNotice(
+            title: "Ring \(member.name)",
+            icon: "phone.badge.plus",
+            body: "Telefonnummer er ikke registrert på teammedlemmet ennå. Legg det til i medlemsprofilen for å ringe herfra."
+        )
+    }
+
+    private func contactNoticeSheet(_ notice: ContactNotice) -> some View {
+        NavigationStack {
+            ZStack {
+                TBrand.bg.ignoresSafeArea()
+                VStack(spacing: 14) {
+                    Image(systemName: notice.icon)
+                        .font(.appScaled(size: 42, weight: .semibold))
+                        .foregroundStyle(TBrand.purpleLight)
+                        .padding(.top, 60)
+                    Text(notice.title)
+                        .font(.appScaled(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(notice.body)
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(TBrand.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    Spacer()
+                }
+            }
+            .navigationTitle(notice.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lukk") { contactNotice = nil }.foregroundStyle(TBrand.purpleLight)
+                }
+            }
         }
     }
 

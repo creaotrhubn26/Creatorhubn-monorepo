@@ -230,6 +230,7 @@ private struct LeaderboardRow: View {
         case "teamleder": return Color(red: 0.98, green: 0.75, blue: 0.14)
         case "salgskonsulent": return Color(red: 0.20, green: 0.85, blue: 0.60)
         case "promotor": return Color(red: 0.37, green: 0.65, blue: 0.98)
+        case "kvalitet": return Color(red: 0.25, green: 0.78, blue: 0.82)
         default: return .gray
         }
     }
@@ -241,6 +242,7 @@ private struct LeaderboardRow: View {
         case "teamleder": return "Teamleder"
         case "salgskonsulent": return "Salgskonsulent"
         case "promotor": return "Promotør"
+        case "kvalitet": return "Kvalitet"
         default: return entry.role
         }
     }

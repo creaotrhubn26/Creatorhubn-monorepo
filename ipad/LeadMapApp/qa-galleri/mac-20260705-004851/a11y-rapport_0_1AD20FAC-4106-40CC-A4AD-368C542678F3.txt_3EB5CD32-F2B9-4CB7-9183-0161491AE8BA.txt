@@ -1,0 +1,143 @@
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Image has no label
+[oversikt] XCUIAccessibilityAuditType(rawValue: 2): Potentially inaccessible text
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8589934592): Parent/Child mismatch
+[oversikt] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[leads] XCUIAccessibilityAuditType(rawValue: 2): Potentially inaccessible text
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[leads] XCUIAccessibilityAuditType(rawValue: 8589934592): Parent/Child mismatch
+[leads] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[moter] XCUIAccessibilityAuditType(rawValue: 2): Potentially inaccessible text
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Label not human-readable
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 8589934592): Parent/Child mismatch
+[moter] XCUIAccessibilityAuditType(rawValue: 8): Element has no description

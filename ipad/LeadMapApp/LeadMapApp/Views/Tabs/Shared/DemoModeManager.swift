@@ -29,11 +29,27 @@ final class DemoModeManager {
     /// være @MainActor (Pakke 10.1). Leser rett fra UserDefaults —
     /// thread-safe. Skriving går fortsatt via @MainActor-instance.
     nonisolated static var isActiveNonisolated: Bool {
-        UserDefaults.standard.bool(forKey: key)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_DEMO"] == "1" { return true }
+        #endif
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    nonisolated static var hideBadgeForCapture: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1"
+        #else
+        return false
+        #endif
     }
 
     private init() {
-        self.isActive = UserDefaults.standard.bool(forKey: Self.key)
+        #if DEBUG
+        let envDemo = ProcessInfo.processInfo.environment["QA_DEMO"] == "1"
+        #else
+        let envDemo = false
+        #endif
+        self.isActive = envDemo || UserDefaults.standard.bool(forKey: Self.key)
         self.mockLeads = Self.generateMockLeads()
     }
 
@@ -179,7 +195,7 @@ struct MockDataBanner: View {
     @Bindable var manager = DemoModeManager.shared
 
     var body: some View {
-        if manager.isActive {
+        if manager.isActive && !DemoModeManager.hideBadgeForCapture {
             HStack(spacing: 8) {
                 Image(systemName: "theatermasks.fill")
                     .font(.appScaled(size: 11, weight: .bold))

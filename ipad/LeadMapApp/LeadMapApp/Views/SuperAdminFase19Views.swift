@@ -176,9 +176,24 @@ struct PromotionFlowSheet: View {
     @State private var errorText: String?
     @State private var reason = ""
 
+    // Må matche backend VALID_TARGET_ROLES (lead-map-promotion-routes.ts) —
+    // engelske nøkler («sales_rep» osv.) ble 400-avvist av valideringen.
     private let availableRoles = [
-        "sales_promotor", "sales_rep", "team_leader", "sales_director",
+        "salgssjef", "teamleder", "salgskonsulent", "kvalitet", "promotor", "member", "viewer",
     ]
+
+    private func roleDisplayName(_ key: String) -> String {
+        switch key {
+        case "salgssjef": return "Salgssjef"
+        case "teamleder": return "Teamleder"
+        case "salgskonsulent": return "Salgskonsulent"
+        case "kvalitet": return "Kvalitet (kontrollør)"
+        case "promotor": return "Promotør"
+        case "member": return "Medlem"
+        case "viewer": return "Leser"
+        default: return key.capitalized
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -199,7 +214,7 @@ struct PromotionFlowSheet: View {
                     Picker("Ny rolle", selection: $targetRole) {
                         Text("Velg…").tag("")
                         ForEach(availableRoles, id: \.self) { r in
-                            Text(r.replacingOccurrences(of: "_", with: " ").capitalized).tag(r)
+                            Text(roleDisplayName(r)).tag(r)
                         }
                     }
                     .onChange(of: targetRole) { _, newVal in

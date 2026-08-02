@@ -1,0 +1,110 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "29F8E539-4DDB-4C79-B218-8F7CE76CB37D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "a11y-rapport_0_FED4BB49-D010-475F-B2F0-07D53DB4C5ED.txt",
+        "timestamp" : 1783206231.147
+      }
+    ],
+    "testIdentifier" : "QASweepTests/testAccessibilityAudit()",
+    "testIdentifierURL" : "test://com.apple.xcode/LeadMapApp/LeadMapAppUITests/QASweepTests/testAccessibilityAudit"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "C9E8A8A1-1D63-4AFD-A0B0-A21E6625A6BC.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "leads-detalj-sheet-UTILGJENGELIG_0_CCE90539-3D7F-41D1-A1F8-0327599D13EC.png",
+        "timestamp" : 1783206247.873
+      }
+    ],
+    "testIdentifier" : "QASweepTests/testLeadsDetaljSheet()",
+    "testIdentifierURL" : "test://com.apple.xcode/LeadMapApp/LeadMapAppUITests/QASweepTests/testLeadsDetaljSheet"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "A82289E8-8203-4DB1-A1F9-D3C9A9FA1EC3.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-7-salgsledelse_0_EA269AF2-A13C-4155-8A52-117E8B1F711C.png",
+        "timestamp" : 1783206368.268
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "2990AB7B-6B46-4A0D-9843-20FA025F36FB.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-6-leadbook_0_DDF4C851-861B-44C5-B816-D32EF01030CB.png",
+        "timestamp" : 1783206352.843
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "88EDE643-8028-4A2E-92F9-7D652865E2B0.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-5-team_0_C0576F6F-55B8-4DDF-9495-BF5BA8ED0335.png",
+        "timestamp" : 1783206337.257
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "7D79B054-C6FB-4590-A069-039F451A28C1.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-4-mer_0_A9D2F4D6-6FDB-4024-8F6E-13629458448F.png",
+        "timestamp" : 1783206321.917
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "4CF588D8-4E5F-4821-979E-2DA246F91420.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-3-moter_0_89592F32-54DE-4B07-B26D-1CD9D6DBED23.png",
+        "timestamp" : 1783206306.765
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "73436CD3-D89E-4476-A8AF-5234AFDEDF08.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-2-leads_0_D2B543DD-565A-4486-8AE8-987CE6A537D0.png",
+        "timestamp" : 1783206291.306
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "128BC164-4FDB-4A87-B309-82CBA2D6AD8B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-1-kart_0_8EC7272C-593C-4558-93B7-37FAA5A84A09.png",
+        "timestamp" : 1783206275.643
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00006050-001C20C426F9401C",
+        "deviceName" : "My Mac",
+        "exportedFileName" : "185857CD-47FE-438B-9E24-9D15AD93DAFD.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "fane-0-oversikt_0_1E225693-8FD8-4AE8-8FE5-2D7393E1B42A.png",
+        "timestamp" : 1783206259.968
+      }
+    ],
+    "testIdentifier" : "QASweepTests/testSweepAlleFaner()",
+    "testIdentifierURL" : "test://com.apple.xcode/LeadMapApp/LeadMapAppUITests/QASweepTests/testSweepAlleFaner"
+  }
+]

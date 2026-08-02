@@ -29,6 +29,9 @@ final class TeamLiveStore {
     /// TeamMember-mappingen dropper. Brukes av SalgsledelseView til å bygge
     /// ekte selgerliste (leaderboard) når demo-modus er AV.
     private(set) var memberDTOs: [SalesTeamMemberDTO] = []
+    /// Innlogget brukers user-id fra team-members-endepunktet — brukes av
+    /// «Meg selv»-tilordning i Leads-fanens radmeny (2026-07-17).
+    private(set) var currentUserId: String? = nil
     private(set) var pipeline: [PipelineStage] = []
     private(set) var conversions: [ConversionRow] = []
     /// Org-ens siste aktiviteter (2026-07-04) — tilbud/besøk/status fra
@@ -69,6 +72,7 @@ final class TeamLiveStore {
         do {
             let resp = try await api.fetchSalesTeamMembers()
             memberDTOs = resp.members
+            currentUserId = resp.currentUserId
             let maxLeads = max(1, resp.members.map(\.leads).max() ?? 1)
             members = resp.members.map { dto in
                 let team = LeadgridSalesTeamStore.shared.team(for: dto.userId)

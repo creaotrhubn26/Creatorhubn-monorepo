@@ -42,9 +42,22 @@ struct LeadMapApp: App {
                 .macCatalystMinFrame()
                 .onAppear {
                     NotificationAppDelegate.appStateRef = appState
+                    // Krasjrapportering (2026-07-18): MetricKit-abonnement —
+                    // iOS leverer krasj/heng-diagnostikk ved neste oppstart.
+                    CrashReporterService.shared.start()
                     // Flush eventuell buffret Pondus-deep-link fra en Intent
                     // som kjørte før scene-init var ferdig.
                     AppStateBridge.shared.flushPendingDeepLinks()
+                    // Apple Watch-bro: aktiver + koble transkript-analyse fra
+                    // klokka til den delte TranscriptIntelligence (on-device
+                    // på telefonen, ellers backend). watchOS < 27 har ikke
+                    // Foundation Models, så klokka relayer hit.
+                    WatchSession.shared.activate()
+                    WatchSession.shared.onTranscriptRequest = { leadId, transcript in
+                        guard let api = appState.api else { return nil }
+                        let intel = TranscriptIntelligenceFactory.make(api: api, leadId: leadId)
+                        return try? await intel.analyze(transcript: transcript, leadName: "")
+                    }
                     // MapKit SwiftUI-`Map` respekterer IKKE preferredColorScheme
                     // — flisene følger vinduets UITraitCollection. Uten dette
                     // fikk kart-fanene lyse fliser når systemet sto i lys modus
@@ -55,11 +68,36 @@ struct LeadMapApp: App {
                 // window, Catalyst sekundær-vinduer) opprettet etter første
                 // onAppear ville ellers mangle override → lyse kart-fliser.
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Self.forceDarkWindows() }
+                    if phase == .active {
+                        Self.forceDarkWindows()
+                        sendPresenceCheckin()
+                        // Flush bufrede krasjrapporter når API-klient finnes.
+                        if let api = appState.api {
+                            CrashReporterService.shared.flush(api: api)
+                        }
+                    }
                 }
         }
     }
     @Environment(\.scenePhase) private var scenePhase
+
+    /// «Sist aktiv i Leadgrid» (2026-07-18): puls ved app-aktivering i ekte
+    /// modus — driver utstyrsregisterets serienr → innehaver → posisjon-
+    /// kobling (appen kan ikke lese serienummer; tildelingen er broen).
+    /// Posisjon sendes KUN når appen allerede har en fix (ingen ny
+    /// tillatelses-prompt). Fire-and-forget — feiler stille.
+    private func sendPresenceCheckin() {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api else { return }
+        let coord = KartLocationManager.shared.currentCoordinate
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? ""
+        let model = UIDevice.current.model + " (" + UIDevice.current.systemVersion + ")"
+        Task.detached(priority: .utility) {
+            try? await api.presenceCheckin(
+                lat: coord?.latitude, lng: coord?.longitude,
+                deviceModel: model, appVersion: version)
+        }
+    }
 
     /// Tvinger `overrideUserInterfaceStyle = .dark` på alle tilkoblede
     /// vinduer så MapKit-flisene alltid er mørke, uansett system-appearance.
@@ -195,6 +233,9 @@ extension Notification.Name {
 struct RootView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.horizontalSizeClass) private var hSize
+    #if DEBUG
+    @State private var qaFeedback = false
+    #endif
 
     var body: some View {
         @Bindable var bindableState = appState
@@ -223,12 +264,24 @@ struct RootView: View {
             )
             .interactiveDismissDisabled()
         }
+        #if DEBUG
+        // QA-hook (skjermbilder): `SIMCTL_CHILD_QA_FEEDBACK=1` presenterer
+        // «Hva synes du om Leadgrid?»-sheeten direkte. Reverteres m/ task #59.
+        .sheet(isPresented: $qaFeedback) {
+            LeadgridFeedbackSheet(api: appState.api ?? APIClient(token: "qa-demo"))
+        }
+        .onAppear {
+            if ProcessInfo.processInfo.environment["QA_FEEDBACK"] == "1" { qaFeedback = true }
+        }
+        #endif
         .task {
             await appState.bootstrap()
             // Start Leadgrid-polling så snart auth er på plass.
             if appState.api != nil {
                 appState.startLeadgridPolling()
             }
+            // Leadgrid Go: gjenoppta automatisk kjørebok hvis brukeren har samtykket.
+            TripDetector.shared.startIfEnabled()
             // Robusthet-pakke 3: drain offline-køen ved app-start hvis online,
             // og sett opp connectivity-restore-handler.
             if let api = appState.api {
@@ -456,10 +509,15 @@ struct MainTabView: View {
                     .tabItem { Label("Kart", systemImage: "map.fill") }
                     .tag(1)
 
-                LeadsView()
-                    .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
-                    .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
-                    .tag(2)
+                // Leads (bedrifts-CRM) finnes ikke i opplevelsen for
+                // dørsalg-profil-orger (2026-07-18) — skjules helt, ikke
+                // lås-skjerm. Tag-ene er stabile så øvrige faner beholdes.
+                if EntitlementStore.shared.canUse(.leads) {
+                    LeadsView()
+                        .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
+                        .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                        .tag(2)
+                }
 
                 MeetingsView()
                     .tabItem { Label("Møter", systemImage: "calendar") }
@@ -489,6 +547,11 @@ struct MainTabView: View {
                         .tag(6)
                 }
             }
+            // Møter «Naviger» → Kart-motoren. iPhone bruker lokal tab-selection
+            // (ikke sidebar), så vi speiler nav-deep-linket til Kart-fanen (tag 1).
+            .onChange(of: state.deepLinkNavRequestedAt) { _, newValue in
+                if newValue != nil { selection = 1 }
+            }
         }
         .id(dynamicTypeSize)
         // AX1-AX5 (2026-07-05): cappen på xxxLarge er fjernet — layoutene
@@ -505,7 +568,7 @@ struct PhoneMerTab: View {
     @Environment(AppState.self) private var state
 
     private enum Destination: Int, Hashable {
-        case team = 5, leadbook = 6, salgsledelse = 7
+        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10
     }
 
     @State private var path: [Destination] = {
@@ -527,20 +590,41 @@ struct PhoneMerTab: View {
                            title: "Team", subtitle: "Områder, pipeline og aktivitet")
                     merRow(.leadbook, icon: "book.pages.fill", color: .purple,
                            title: "Leadbook", subtitle: "Maler, Pondus og innsikt")
-                    merRow(.salgsledelse, icon: "rosette", color: .orange,
-                           title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
+                    if ["admin", "salgssjef"].contains(state.roleInOrg ?? "") {
+                        merRow(.salgsledelse, icon: "rosette", color: .orange,
+                               title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
+                    }
+                    merRow(.leadgridGo, icon: "car.circle.fill", color: .green,
+                           title: "Leadgrid Go", subtitle: "Elektronisk kjørebok og kjøretøy")
+                    merRow(.kvalitet, icon: "checkmark.seal.fill", color: .teal,
+                           title: "Kvalitet", subtitle: "Verifiser salg med velkomstsamtale")
+                    merRow(.anbud, icon: "doc.text.magnifyingglass", color: .indigo,
+                           title: "Anbud", subtitle: "Offentlige anskaffelser fra Doffin")
                 }
             }
             .navigationTitle("Mer")
             .navigationDestination(for: Destination.self) { dest in
-                Group {
-                    switch dest {
-                    case .team: TeamView()
-                    case .leadbook: LeadbookView()
-                    case .salgsledelse: SalgsledelseView()
-                    }
+                // Team/Leadbook/Salgsledelse har egne fulle headere → skjult navbar.
+                // Leadgrid Go bruker system-navigasjon og pushes EMBEDDED (uten sin
+                // egen NavigationStack — nestet stack i push tripper SwiftUI-assertion).
+                switch dest {
+                case .team:
+                    TeamView().toolbar(.hidden, for: .navigationBar)
+                case .leadbook:
+                    LeadbookView().toolbar(.hidden, for: .navigationBar)
+                case .salgsledelse:
+                    SalgsledelseView(embeddedInStack: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .leadgridGo:
+                    LeadgridGoDashboardView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .kvalitet:
+                    KvalitetView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .anbud:
+                    AnbudView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
                 }
-                .toolbar(.hidden, for: .navigationBar)
             }
         }
     }
@@ -762,6 +846,9 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case team
     case leadbook
     case salgsledelse
+    case leadgridGo
+    case kvalitet
+    case anbud
 
     var id: String { rawValue }
 
@@ -774,6 +861,9 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .team:         return "Team"
         case .leadbook:     return "Leadbook"
         case .salgsledelse: return "Salgsledelse"
+        case .leadgridGo:   return "Leadgrid Go"
+        case .kvalitet:     return "Kvalitet"
+        case .anbud:        return "Anbud"
         }
     }
 
@@ -786,6 +876,9 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .team:         return "person.3.fill"
         case .leadbook:     return "book.pages.fill"
         case .salgsledelse: return "rosette"
+        case .leadgridGo:   return "car.circle.fill"
+        case .kvalitet:     return "checkmark.seal.fill"
+        case .anbud:        return "doc.text.magnifyingglass"
         }
     }
 }
@@ -795,7 +888,12 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
 /// bruker fortsatt MainTabView (bottom-tabs).
 struct MainSidebarView: View {
     @Environment(AppState.self) private var state
-    @State private var visibility: NavigationSplitViewVisibility = .all
+    @State private var visibility: NavigationSplitViewVisibility = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1" { return .detailOnly }
+        #endif
+        return .all
+    }()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
@@ -845,7 +943,21 @@ struct MainSidebarView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             Section("Hovedfaner") {
-                ForEach(SidebarItem.allCases) { item in
+                // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
+                // vakter i tillegg selv mot deep-link/persistert valg).
+                // Leads (bedrifts-CRM) skjules HELT for dørsalg-profil-orger
+                // (2026-07-18): en låst kjernefane skal ikke finnes i
+                // opplevelsen, ikke vises med lås-skjerm.
+                let visibleItems = SidebarItem.allCases.filter { item in
+                    if item == .salgsledelse {
+                        return ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
+                    }
+                    if item == .leads {
+                        return EntitlementStore.shared.canUse(.leads)
+                    }
+                    return true
+                }
+                ForEach(visibleItems) { item in
                     sidebarRow(
                         item,
                         badge: item == .leads ? state.leadgridUnreadCount : 0,
@@ -906,6 +1018,9 @@ struct MainSidebarView: View {
         case .team:         TeamView()
         case .leadbook:     LeadbookView()
         case .salgsledelse: SalgsledelseView()
+        case .leadgridGo:   LeadgridGoDashboardView()
+        case .kvalitet:     KvalitetView()
+        case .anbud:        AnbudView()
         }
     }
 

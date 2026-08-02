@@ -27,6 +27,12 @@ final class WatchSession: NSObject, ObservableObject {
     /// her for å holde modulen frittstående.
     var onQuickAction: ((_ leadId: String, _ action: String) -> Void)?
 
+    /// Kjører transkript-analyse (delt `TranscriptIntelligence` — on-device
+    /// på telefonen eller backend) på et notat diktert på Apple Watch.
+    /// Settes av LeadMapApp.swift ved boot. Resultatet sendes tilbake til
+    /// klokka via `sendTranscriptResult`.
+    var onTranscriptRequest: (@MainActor (_ leadId: String?, _ transcript: String) async -> TranscriptIntelligenceResult?)?
+
     private let session: WCSession = .default
 
     override init() {
@@ -119,6 +125,7 @@ extension WatchSession: WCSessionDelegate {
             }
             return
         }
+        if handleTranscriptRequest(userInfo) { return }
         // Route ukjente meldinger til andre håndterere.
         // Snapshotting userInfo som Sendable-dictionary for cross-actor-hop.
         let snapshot = SendableWatchPayload(dict: userInfo)
@@ -132,11 +139,59 @@ extension WatchSession: WCSessionDelegate {
         _ session: WCSession,
         didReceiveMessage message: [String: Any]
     ) {
+        if handleTranscriptRequest(message) { return }
         let snapshot = SendableWatchPayload(dict: message)
         Task { @MainActor in
             PondusWatchSync.shared.handleIncomingMessage(snapshot.dict)
         }
     }
+
+    /// Håndterer «analyser dette dikterte notatet»-forespørsel fra Watch.
+    /// Returnerer true hvis payloaden ble konsumert.
+    nonisolated private func handleTranscriptRequest(_ payload: [String: Any]) -> Bool {
+        guard payload["type"] as? String == WatchTranscriptRelayType.analyzeRequest else {
+            return false
+        }
+        let requestId = payload["requestId"] as? String ?? ""
+        let leadId = payload["lead_id"] as? String   // NSNull → nil
+        let text = payload["text"] as? String ?? ""
+        Task { @MainActor in
+            guard let handler = self.onTranscriptRequest else { return }
+            let result = await handler(leadId, text)
+            self.sendTranscriptResult(requestId: requestId, result: result)
+        }
+        return true
+    }
+
+    /// Sender ferdig analyse tilbake til Watch.
+    @MainActor
+    private func sendTranscriptResult(requestId: String, result: TranscriptIntelligenceResult?) {
+        guard let result else { return }
+        let a = result.analysis
+        let payload: [String: Any] = [
+            "type": WatchTranscriptRelayType.analyzeResult,
+            "requestId": requestId,
+            "resolved_text": a.resolved_text,
+            "action_items": a.action_items,
+            "follow_up_date": a.follow_up_date ?? NSNull(),
+            "sentiment": a.sentiment,
+            "source": result.source.rawValue,
+        ]
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: { [session] _ in
+                session.transferUserInfo(payload)
+            })
+        } else {
+            session.transferUserInfo(payload)
+        }
+    }
+}
+
+/// Message-type-mirror av watch-sidens `WatchTranscriptMessageType`
+/// (separate kildetrær → egne kopier, må holdes i sync).
+enum WatchTranscriptRelayType {
+    static let analyzeRequest = "transcript.analyze.request"
+    static let analyzeResult = "transcript.analyze.result"
 }
 
 /// Sendable wrapper rundt ren-verdi [String: Any]-dictionary. Vi krysser

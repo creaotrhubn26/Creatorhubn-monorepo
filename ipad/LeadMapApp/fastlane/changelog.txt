@@ -1,26 +1,9 @@
-Leadgrid 1.4.0 (build 20260714) — Apple Watch, Mac og Kart-forbedringer
+Salgssjef-verktøy på ekte: Godkjenn kjøregodtgjørelse (én og én eller alle på én gang, med eksport til lønn), godkjenn/avslå deals og rabatter i godkjenningskøen, og planlegg 1-til-1 coaching-samtaler. Alt lagres nå mot serveren i stedet for bare å vises.
 
-NYTT / FIKSET I DENNE BUILDEN:
+Ny rute-planlegger: I «Team-ruter i dag» → «Planlegg ny rute» velger du flere stopp, så foreslår appen den korteste besøksrekkefølgen med total distanse og kjøretid. «Start rute» tar deg rett ut i navigasjon til første stopp.
 
-• Apple Watch: krasjfiks
-  - Leads-fanen på uret krasjet så snart du hadde leads å vise. Fikset —
-    leadsene dine listes nå riktig på Apple Watch, sortert etter avstand.
+Manuell faktura (super-admin): Send faktura til organisasjoner uten Stripe direkte fra org-oversikten — e-post + PDF med fakturanummer.
 
-• Mac (Catalyst): opprydding i Kart-fanen
-  - Knappene «Planlegg møte» og «Naviger» brakk teksten i Mac-appen. Nå
-    står de rent på én linje.
+Knapper som nå virker: Mange steder som så klikkbare ut, men ikke gjorde noe, er koblet — «Neste handlinger» (Ring / E-post / åpne lead), selger-kortet (Send melding, Sett mål, del rapport, sammenlign mot team og hele laget), «Se alle»-lenkene i Oversikt, og møte-forberedelse (opprett oppgave, snooze, filtrer historikk, eksporter).
 
-• Større kart i Kart-fanen
-  - På iPad og Mac er kartet nå vesentlig høyere og mer dominerende, så du
-    ser mer av territoriet ditt om gangen. iPhone er uendret.
-
-• Versjonsvisning
-  - Appen viser nå korrekt versjon (1.4.0) på TestFlight.
-
-FRA FORRIGE BUILDER (fortsatt med):
-- Push-varsler ved lead-tildeling + tap åpner riktig lead
-- Bjelle-badge nullstilles korrekt
-- «Tildel til teammedlem» stabilisert
-- Last ned mine data (GDPR) + tofaktor/passord-lenker
-
-Krever iOS 17.0+. Tilbakemeldinger på Slack eller daniel@creatorhubn.com.
+Finpuss: Sidemenyen viser riktige valg med en gang (ingen «hopp» etter innlasting), og visnings-bryteren i Møter (Agenda / Dag / Uke / Måned) er ryddet opp så teksten ikke lenger klippes.

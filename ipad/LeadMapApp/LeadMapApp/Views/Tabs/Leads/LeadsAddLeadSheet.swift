@@ -240,7 +240,7 @@ struct LeadsAddLeadSheet: View {
             companyName = "Nordic Elektro AS"
             orgNumber = "912 345 678"
             address = "Storgata 12"
-            postalCode = "0184"
+            postalCode = ""
             city = "Oslo"
             website = "nordicelektro.no"
             phone = "+47 22 33 44 55"
@@ -268,7 +268,7 @@ struct LeadsAddLeadSheet: View {
                 }
                 field(label: "Adresse", placeholder: "Storgata 12", text: $address)
                 HStack(spacing: 10) {
-                    field(label: "Postnr",   placeholder: "0184", text: $postalCode).frame(width: 100)
+                    field(label: "Postnr",   placeholder: "Postnr", text: $postalCode).frame(width: 100)
                     field(label: "Sted",     placeholder: "Oslo", text: $city)
                 }
             }
