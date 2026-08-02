@@ -118,8 +118,10 @@ final class MagicPipeline {
     }
 
     private func autoProcess(assetId: UUID, source: String, destination: URL) async {
-        // Feel of a real remote enhancer: ~1.5s round-trip.
-        try? await Task.sleep(for: .milliseconds(1500))
+        // P4 (E5): INGEN kunstig forsinkelse — auto-graderingen skal lande så raskt
+        // CoreImage rendrer (mål < 1 s fra preview-nedlasting til gradert thumbnail),
+        // så klienten ser den ferdige looken live. (Den gamle 1,5 s-sleepen var kun
+        // en «feel of a remote enhancer»-simulering og forsinket on-set-previewen.)
         guard let image = UIImage(contentsOfFile: source) else { return }
 
         // Subject classification — face detect first because it's fast and
