@@ -42,10 +42,14 @@ struct DoffinWatchDTO: Decodable, Identifiable, Hashable {
     let name: String
     let query: DoffinWatchQueryDTO
     let createdAt: String?
+    /// Nye treff siden sist bruker åpnet/kjørte overvåkningen (2026-08-03).
+    /// Akkumuleres av cron-sjekken, nullstilles via mark-seen.
+    let newHitsCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, name, query
         case createdAt = "created_at"
+        case newHitsCount = "new_hits_count"
     }
 }
 
@@ -95,6 +99,11 @@ extension APIClient {
 
     func deleteDoffinWatch(id: String) async throws {
         _ = try await _request("/api/leadgrid/doffin/watches/\(id)", method: "DELETE")
+    }
+
+    /// Nullstill «nye treff»-telleren når brukeren kjører overvåkningen.
+    func markDoffinWatchSeen(id: String) async throws {
+        _ = try await _request("/api/leadgrid/doffin/watches/\(id)/mark-seen", method: "POST")
     }
 
     /// «Opprett lead fra anbud» (fase 2, 2026-08-02): gjenbruker

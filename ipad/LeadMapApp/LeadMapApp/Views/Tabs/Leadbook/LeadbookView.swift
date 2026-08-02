@@ -41,6 +41,9 @@ struct LeadbookTemplate: Identifiable, Hashable {
     let status: Status
     /// pondus_templates.id (lowercase uuid-streng). Nil for mock-rader.
     var backendId: String? = nil
+    /// Org-egen mal (org_id satt i backend) — «Team»-badge i lista skiller
+    /// den fra Leadgrid-globale maler med likt navn (2026-08-03).
+    var isOrgMal: Bool = false
 
     enum Channel: String, CaseIterable, Hashable {
         case field = "Felt"
@@ -820,7 +823,7 @@ struct LeadbookView: View {
                         .font(.appScaled(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
                         .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     HStack(spacing: 6) {
-                        Text(isDemo ? "vs. forrige periode" : "live fra teamet").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
+                        Text(isDemo ? "vs. forrige periode" : LeadbookKPI.liveSubtitle).font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
                         if isDemo {
                             Text(kpi.trend).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
                         }
@@ -868,13 +871,28 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
 
     /// EKTE verdi fra LeadbookLiveStore (usage-stats, mig 0364) — brukes
     /// når demo er AV så KPI-kortene ikke viser mockup-tallene over.
+    /// 2026-08-03 (audit): viste stille 0/— mens storen lastet eller hadde
+    /// feilet — nå ærlige tilstander i stedet for tall som ser ekte ut.
     @MainActor var liveValue: String {
         let store = LeadbookLiveStore.shared
+        if case .loading = store.loadState { return "…" }
+        if case .failed = store.loadState { return "—" }
+        if case .idle = store.loadState { return "…" }
         switch self {
         case .activeTemplates: return store.kpiActiveTemplates
         case .usedToday:       return store.kpiUsedToday
         case .meetingRate:     return store.kpiMeetingRate
         case .teamAdoption:    return store.kpiTeamAdoption
+        }
+    }
+
+    /// Undertekst til KPI-kortet i live-modus — sier ærlig fra når tallene
+    /// ikke kunne hentes i stedet for «live fra teamet» over en strek.
+    @MainActor static var liveSubtitle: String {
+        switch LeadbookLiveStore.shared.loadState {
+        case .idle, .loading: return "henter live-tall …"
+        case .failed: return "kunne ikke hente — dra ned for å prøve igjen"
+        case .loaded: return "live fra teamet"
         }
     }
 

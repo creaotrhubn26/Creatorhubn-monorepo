@@ -423,6 +423,10 @@ final class AppState {
         case "lead_won", "lead_lost", "lead_status_change":
             // Lås på dashboard så de ser overordnet status.
             presentingLeadgridDashboard = true
+        case "doffin_watch_hit":
+            // Nye anbuds-treff (2026-08-03): varselet peker på
+            // leadgrid://anbud — rett til Anbud-fanen, ikke innboksen.
+            selectedSidebarItem = .anbud
         default:
             presentingLeadgridNotifications = true
         }

@@ -523,6 +523,14 @@ struct LeadbookMalerView: View {
                                 .background(t.channel.color.opacity(0.16), in: Capsule())
                                 .tracking(0.5)
                             statusBadge(t.status)
+                            if t.isOrgMal {
+                                Text("TEAM")
+                                    .font(.appScaled(size: 9, weight: .black))
+                                    .foregroundStyle(Color.indigo)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Color.indigo.opacity(0.18), in: Capsule())
+                                    .tracking(0.5)
+                            }
                             if isSelected {
                                 Text("VALGT")
                                     .font(.appScaled(size: 9, weight: .black))
