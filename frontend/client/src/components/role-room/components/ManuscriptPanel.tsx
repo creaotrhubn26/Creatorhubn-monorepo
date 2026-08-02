@@ -479,6 +479,33 @@ import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
 
+// Delt tid-of-day-normalisering (norsk → enum). Brukes av begge parse-veiene
+// (handleParseToScenes + handleAutoBreakdown). Faller tilbake til DAY.
+function normalizeTimeOfDay(raw?: string): SceneBreakdown['timeOfDay'] {
+  const t = (raw || '').toUpperCase().replace(/\.$/, '').trim();
+  const nb: Record<string, NonNullable<SceneBreakdown['timeOfDay']>> = {
+    KVELD: 'EVENING', NATT: 'NIGHT', DAG: 'DAY', MORGEN: 'MORNING',
+    DEMRING: 'DAWN', GRYNING: 'DAWN', SKUMRING: 'DUSK',
+    KONTINUERLIG: 'CONTINUOUS', SENERE: 'LATER', SAME: 'CONTINUOUS',
+  };
+  return nb[t] ?? ((t || 'DAY') as SceneBreakdown['timeOfDay']);
+}
+
+// Robust scene-heading-parse: deler på bindestrek OG tankestrek (- – —), og leser
+// tid-of-day på både norsk og engelsk. Returnerer null hvis linja ikke er en heading.
+function parseSceneHeadingLine(
+  line: string,
+): { intExt: SceneBreakdown['intExt']; location: string; timeOfDay: SceneBreakdown['timeOfDay'] } | null {
+  const m = line
+    .trim()
+    .match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|KVELD|NATT|DAG|MORGEN|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE)\.?)?$/i);
+  if (!m) return null;
+  const raw = m[1].toUpperCase();
+  const intExt: SceneBreakdown['intExt'] =
+    raw.startsWith('INT/') || raw === 'I/E' ? 'INT/EXT' : raw.startsWith('EXT') || raw === 'EST' ? 'EXT' : 'INT';
+  return { intExt, location: (m[2] || '').trim(), timeOfDay: normalizeTimeOfDay(m[3]) };
+}
+
 interface ManuscriptPanelProps {
   projectId?: string;
   /** Cinema-format på prosjektnivå — propageres til Storyboard-editoren. */
@@ -1411,8 +1438,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       let sceneNumber = 1;
       let currentScene: Partial<SceneBreakdown> | null = null;
       let currentCharacters: string[] = [];
-      const validSceneTimesOfDay = ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER', 'MORNING', 'EVENING'] as const;
-      type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -1432,21 +1457,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             currentCharacters = [];
           }
 
-          // Parse new scene heading
-          const parts = line.split('-').map(p => p.trim());
-          const intExt = parts[0].startsWith('INT') ? 'INT' : 'EXT';
-          const location = parts[0].replace(/^(INT\.|EXT\.)\s*/i, '');
-          const timeRaw = parts[1] || 'DAY';
-          const timeOfDay: SceneTimeOfDay =
-            validSceneTimesOfDay.includes(timeRaw.toUpperCase() as SceneTimeOfDay)
-              ? timeRaw.toUpperCase() as SceneTimeOfDay
-              : 'DAY';
-
+          // Parse new scene heading (robust: bindestrek/tankestrek + norsk/engelsk tid)
+          const parsed = parseSceneHeadingLine(line);
           currentScene = {
             sceneHeading: line,
-            intExt,
-            locationName: location,
-            timeOfDay,
+            intExt: parsed?.intExt ?? (line.toUpperCase().startsWith('INT') ? 'INT' : 'EXT'),
+            locationName: parsed?.location ?? line.replace(/^(INT\.|EXT\.)\s*/i, ''),
+            timeOfDay: parsed?.timeOfDay ?? 'DAY',
             estimatedDuration: 3,
           };
           sceneNumber++;
@@ -1907,16 +1924,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // men 0 replikker (kun «Auto Breakdown» fylte dialog) — forvirrende for bruker.
     const newDialogue: DialogueLine[] = [];
     let currentSpeaker: string | null = null;
-    // Normaliser tid-of-day (norsk → enum-verdi). Faller tilbake til DAY.
-    const normalizeTimeOfDay = (raw?: string): SceneBreakdown['timeOfDay'] => {
-      const t = (raw || '').toUpperCase().replace(/\.$/, '').trim();
-      const nb: Record<string, SceneBreakdown['timeOfDay']> = {
-        KVELD: 'EVENING', NATT: 'NIGHT', DAG: 'DAY', MORGEN: 'MORNING',
-        DEMRING: 'DAWN', GRYNING: 'DAWN', SKUMRING: 'DUSK',
-        KONTINUERLIG: 'CONTINUOUS', SENERE: 'LATER', SAME: 'CONTINUOUS',
-      };
-      return nb[t] ?? ((t || 'DAY') as SceneBreakdown['timeOfDay']);
-    };
     let currentSceneData: {
       heading: string;
       intExt: string;
