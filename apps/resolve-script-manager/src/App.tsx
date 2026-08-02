@@ -39,6 +39,7 @@ import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
 import { InfographicStudioView } from "./components/demo-studio/InfographicStudioView";
+import { UnusedClipsStudio } from "./components/UnusedClipsStudio";
 import { ModuleGate } from "./components/ModuleGate";
 import {
   getEntitledModules,
@@ -141,6 +142,9 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
+  // Bryllups-studio (ubrukt materiale): modal med egen backdrop — wiret
+  // etter iPad-linje-mergen 2026-08-02 (komponenten kom inn uwiret).
+  const [showUnusedClipsStudio, setShowUnusedClipsStudio] = useState(false);
   // Auto-updater dialog-state. Set når sjekk finner ny versjon; null mens
   // ingen oppdatering venter eller mens vi laster ned. Selve download +
   // install kalles via onDownload-prop på UpdaterDialog.
@@ -1009,8 +1013,16 @@ export default function App() {
             handler: () => setCreativeEditorPath(
               "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
             ) },
+          { id: "unused_clips_studio", title: "Bryllup: Ubrukt materiale-studio",
+            subtitle: "kategoriser ubrukte klipp, AI-anbefalinger og posisjonert innsetting",
+            handler: () => setShowUnusedClipsStudio(true) },
         ]}
       />
+
+      {/* Bryllups-studio: komponenten rendrer sin egen modal-backdrop. */}
+      {showUnusedClipsStudio && (
+        <UnusedClipsStudio onClose={() => setShowUnusedClipsStudio(false)} />
+      )}
 
       {pendingDialog && (
         <ParamDialog
