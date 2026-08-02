@@ -5047,6 +5047,9 @@ final class LiveCaptureModel {
             // then shows the photographer the actual demosaic, not
             // Canon's camera-baked JPEG with display-pipeline magic.
             scheduleRAWPreviewRenders(previous: oldValue)
+            // P2 (E4): auto-påfør capture-edit-policyen (sync-forrige / preset) på
+            // nye preview-klare bilder. Idempotent — rører aldri manuelle edits.
+            applyCaptureEditPolicyForNewPreviews(previous: oldValue)
         }
     }
     var errorMessage: String?
@@ -5095,6 +5098,35 @@ final class LiveCaptureModel {
 
     func exitCompare() {
         compareAnchorAssetId = nil
+    }
+
+    /// P2 (E4): capture-edit-policy — auto-påføres nye bilder når de lander.
+    /// Persisteres per sesjon; endring lagres umiddelbart.
+    private(set) var capturePolicy: CaptureEditPolicy = .none
+    func setCapturePolicy(_ policy: CaptureEditPolicy) {
+        capturePolicy = policy
+        if let sid = currentSessionId { CaptureEditPolicyStore.save(sid, policy) }
+    }
+
+    /// Auto-påfør capture-edit-policyen på nye PREVIEW-klare bilder (E4). Kalles
+    /// fra `assets.didSet`. Idempotent — skriver aldri over en manuell edit, så
+    /// en reconnect/re-emit ikke tramper på fotografens arbeid. «Forrige bilde»
+    /// er elementet før i den captureTime-sorterte lista (ekte rekkefølge fra P1).
+    private func applyCaptureEditPolicyForNewPreviews(previous: [Asset]) {
+        guard capturePolicy.isActive else { return }
+        let hadPreview: [UUID: Bool] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.previewKey != nil) })
+        for (idx, asset) in assets.enumerated() {
+            // Kun bilder som NETTOPP ble preview-klare (var det ikke før).
+            guard asset.previewKey != nil, hadPreview[asset.id] != true else { continue }
+            let previousAsset = idx > 0 ? assets[idx - 1] : nil
+            let edit = CaptureEditPolicyEngine.editToApply(
+                policy: capturePolicy,
+                existingEdit: RedigeringEditStore.load(asset.id),
+                previousEdit: previousAsset.flatMap { RedigeringEditStore.load($0.id) },
+                presetLookup: { name in RedigeringModel.presets.first { $0.0 == name }?.1 })
+            if let edit { RedigeringEditStore.save(asset.id, edit) }
+        }
     }
 
     /// Kick off a background analysis pass whenever the focused asset
@@ -5546,6 +5578,9 @@ final class LiveCaptureModel {
             self.cameraSession = camera
             self.downloadDirectory = tempDir
             self.currentSessionId = dbSession.id
+            // P2 (E4): last capture-edit-policyen for økten (persistert per sesjon)
+            // — valget overlever restart/reconnect.
+            self.capturePolicy = CaptureEditPolicyStore.load(dbSession.id)
             self.sessionName = dbSession.name
             if #available(iOS 16.1, *) {
                 ShootActivityManager.shared.start(sessionName: dbSession.name)
