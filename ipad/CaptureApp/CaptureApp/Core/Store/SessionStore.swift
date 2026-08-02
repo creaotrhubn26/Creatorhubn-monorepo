@@ -49,6 +49,15 @@ actor SessionStore {
         }
     }
 
+    /// Slett en økt permanent — `asset`/`event` fjernes via ON DELETE CASCADE.
+    /// Brukes av retensjons-oppryddingen når en gammel tethered-økt renses fra
+    /// disk (DB-raden må vekk så Arkiv/Redigering ikke viser en tom økt).
+    func deleteSession(id: UUID) async throws {
+        try await database.dbWriter.write { db in
+            _ = try Session.deleteOne(db, key: id.uuidString.uppercased())
+        }
+    }
+
     func closeSession(id: UUID) async throws {
         try await database.dbWriter.write { db in
             guard var session = try Session.fetchOne(db, key: id.uuidString.uppercased()) else { return }
