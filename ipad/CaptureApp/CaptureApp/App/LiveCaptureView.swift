@@ -541,6 +541,9 @@ struct LiveCaptureView: View {
                     onSelect: { model.filmstripFilter = $0 },
                     onSelectColor: { model.filmstripColorFilter = $0 }
                 )
+                if !model.personGroups.isEmpty {
+                    PersonFilterRow(model: model)
+                }
                 FilmstripRail(
                     assets: model.filteredAssets,
                     focusedAssetId: model.focusedAssetId,
@@ -4242,6 +4245,108 @@ private struct FilmstripFilterBar: View {
     }
 }
 
+/// E8: «Personer»-rad — én chip per klynget person (representant-ansikt + navn +
+/// antall bilder). Trykk filtrerer fotograferingen til den personen; trykk igjen
+/// nullstiller. Blyant-ikonet gir omdøping («Bruden», «Brudgom» …).
+private struct PersonFilterRow: View {
+    @Bindable var model: LiveCaptureModel
+    @State private var renaming: LiveCaptureModel.PersonGroup?
+    @State private var draftName = ""
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Label("Personer", systemImage: "person.2.crop.square.stack")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 2)
+                ForEach(model.personGroups) { person in
+                    let active = model.personFilter == person.id
+                    Button {
+                        model.personFilter = active ? nil : person.id
+                    } label: {
+                        HStack(spacing: 6) {
+                            PersonFaceThumb(model: model, person: person)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(person.label)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .lineLimit(1)
+                                Text("\(person.photoCount) bilder")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button {
+                                draftName = person.label
+                                renaming = person
+                            } label: {
+                                Image(systemName: "pencil").font(.system(size: 10, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(active ? Color.captureAccent.opacity(0.28) : Color.white.opacity(0.06),
+                                    in: Capsule())
+                        .overlay(Capsule().stroke(active ? Color.captureAccent : .clear, lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 8)
+        }
+        .alert("Gi personen et navn", isPresented: Binding(
+            get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Navn", text: $draftName)
+            Button("Avbryt", role: .cancel) { renaming = nil }
+            Button("Lagre") {
+                if let p = renaming { model.renamePerson(p.id, to: draftName) }
+                renaming = nil
+            }
+        }
+    }
+}
+
+/// Beskåret representant-ansikt for en person-chip. Laster preview-en, klipper til
+/// ansikts-rekten (normalisert, origo NEDE-VENSTRE → flippes til bilde-origo oppe-
+/// venstre) og utvider litt for å få med hodet. Faller tilbake til et symbol.
+private struct PersonFaceThumb: View {
+    let model: LiveCaptureModel
+    let person: LiveCaptureModel.PersonGroup
+    private let side: CGFloat = 28
+
+    var body: some View {
+        Group {
+            if let img = croppedFace() {
+                Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable().foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: side, height: side)
+        .clipShape(Circle())
+    }
+
+    private func croppedFace() -> UIImage? {
+        guard let asset = model.assets.first(where: { $0.id == person.representativeAssetId }),
+              let key = asset.displayPreviewKey,
+              let ui = UIImage(contentsOfFile: key), let cg = ui.cgImage else { return nil }
+        let w = CGFloat(cg.width), h = CGFloat(cg.height)
+        let r = person.representativeFaceRect
+        // Utvid 40 % rundt ansiktet for litt hode/skuldre.
+        let pad: CGFloat = 0.4
+        var nx = r.minX - r.width * pad
+        var ny = (1 - r.maxY) - r.height * pad          // flipp y til origo oppe-venstre
+        var nw = r.width * (1 + 2 * pad)
+        var nh = r.height * (1 + 2 * pad)
+        nx = max(0, nx); ny = max(0, ny)
+        nw = min(nw, 1 - nx); nh = min(nh, 1 - ny)
+        let px = CGRect(x: nx * w, y: ny * h, width: nw * w, height: nh * h)
+        guard px.width > 1, px.height > 1, let cropped = cg.cropping(to: px) else { return nil }
+        return UIImage(cgImage: cropped, scale: ui.scale, orientation: ui.imageOrientation)
+    }
+}
+
 private struct FilmstripRail: View {
     let assets: [Asset]
     let focusedAssetId: UUID?
@@ -5496,6 +5601,27 @@ final class LiveCaptureModel {
     /// (vs. de hen selv må ta). Kun policy-påførte edits; manuelle telles ikke.
     private(set) var autoEditedAssetIds: Set<UUID> = []
 
+    // MARK: - E8: levering per-ansikt (on-device person-gruppering)
+
+    /// En person klynget fra ansikts-feature-prints over fotograferingen. Rekkefølge/
+    /// indeks er sammenfallende med `personClusterer`s klynger. `label` er redigerbar
+    /// («Bruden», «Brudgom» …); representant-ansiktet driver miniatyren i filteret.
+    struct PersonGroup: Identifiable, Hashable {
+        let id: UUID
+        var label: String
+        var representativeAssetId: UUID
+        var representativeFaceRect: CGRect   // normalisert, origo nede-venstre
+        var photoCount: Int
+    }
+
+    /// Grupperte personer i økta (én per klynge). Bygges inkrementelt når analysen
+    /// lander; nullstilles i teardown. Driver «Personer»-filterraden + levering.
+    private(set) var personGroups: [PersonGroup] = []
+    /// Aktivt person-filter — kun bilder der personen opptrer vises. nil = alle.
+    var personFilter: UUID?
+    /// Tilstandsfull klynger (sentroider) — MainActor-eid, mates fra bakgrunns-print.
+    private var personClusterer = PersonClusterer()
+
     /// Auto-påfør capture-edit-policyen på nye PREVIEW-klare bilder (E4). Kalles
     /// fra `assets.didSet`. Idempotent — skriver aldri over en manuell edit, så
     /// en reconnect/re-emit ikke tramper på fotografens arbeid. «Forrige bilde»
@@ -5580,8 +5706,19 @@ final class LiveCaptureModel {
             onDeviceAnalysisDispatched.insert(asset.id)
             let id = asset.id
             Task { [weak self] in
-                guard let measured = await analyzer.analyze(imageURL: URL(fileURLWithPath: key)) else { return }
+                let url = URL(fileURLWithPath: key)
+                guard let measured = await analyzer.analyze(imageURL: url) else { return }
                 await self?.persistAnalysis(measured, for: id)
+                // E8: ansikts-gruppering — feature-print for de STØRSTE ansiktene
+                // (hopp over bittesmå bakgrunnsansikter; tak 5 for å holde kostnad
+                // nede), klynges deretter på MainActor.
+                let faces = measured.faces
+                    .filter { $0.sizeFraction >= 0.012 }
+                    .sorted { $0.sizeFraction > $1.sizeFraction }
+                    .prefix(5)
+                guard !faces.isEmpty else { return }
+                let pairs = await FacePrintExtractor.prints(imageURL: url, faceRects: faces.map(\.rect))
+                await self?.assignPersons(pairs, for: id)
             }
         }
     }
@@ -5625,6 +5762,50 @@ final class LiveCaptureModel {
         signals.duplicateGroupId = groupId
         assets[ci].signals = signals
         try? await store?.updateAssetSignals(id: curId, signals: signals)
+    }
+
+    /// E8: klyng bildets ansikts-prints til personer og lagre hvilke som opptrer.
+    /// @MainActor → `personClusterer`/`personGroups` er trygge. Dedupliserer per
+    /// bilde (to ansikter av SAMME person teller én gang i photoCount).
+    private func assignPersons(_ pairs: [FaceRectPrint], for id: UUID) async {
+        guard !pairs.isEmpty, let idx = assets.firstIndex(where: { $0.id == id }) else { return }
+        var indices: [Int] = []
+        for pair in pairs {
+            let pi = personClusterer.assign(pair.print)
+            guard pi >= 0 else { continue }
+            ensurePersonGroup(pi, representativeAssetId: id, faceRect: pair.rect)
+            indices.append(pi)
+        }
+        var personIds: [UUID] = []
+        for pi in Set(indices).sorted() {
+            personGroups[pi].photoCount += 1
+            personIds.append(personGroups[pi].id)
+        }
+        guard !personIds.isEmpty else { return }
+        var signals = assets[idx].signals
+        signals.personIds = personIds
+        assets[idx].signals = signals
+        try? await store?.updateAssetSignals(id: id, signals: signals)
+    }
+
+    /// Sørg for at det finnes en `PersonGroup` for klynge-indeks `idx` (klyngeren
+    /// tildeler sammenhengende indekser). photoCount starter på 0 — telles i
+    /// `assignPersons` etter deduplisering.
+    private func ensurePersonGroup(_ idx: Int, representativeAssetId: UUID, faceRect: CGRect) {
+        while personGroups.count <= idx {
+            let n = personGroups.count
+            personGroups.append(PersonGroup(
+                id: UUID(), label: "Person \(n + 1)",
+                representativeAssetId: representativeAssetId, representativeFaceRect: faceRect,
+                photoCount: 0))
+        }
+    }
+
+    /// Gi en person et meningsfullt navn («Bruden», «Brudgom» …).
+    func renamePerson(_ personId: UUID, to label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let i = personGroups.firstIndex(where: { $0.id == personId }) else { return }
+        personGroups[i].label = trimmed
     }
 
     var canShoot: Bool {
@@ -5962,8 +6143,10 @@ final class LiveCaptureModel {
         case .picks:   base = assets.filter { $0.flaggedForClient && !$0.rejected }
         case .fourPlus: base = assets.filter { $0.rating >= 4 && !$0.rejected }
         }
-        guard let color = filmstripColorFilter else { return base }
-        return base.filter { $0.colorLabel == color }
+        let colored = filmstripColorFilter.map { color in base.filter { $0.colorLabel == color } } ?? base
+        // E8: person-filter — kun bilder der den valgte personen opptrer.
+        guard let person = personFilter else { return colored }
+        return colored.filter { $0.signals.personIds?.contains(person) ?? false }
     }
 
     /// Identity for local SQLite rows. When the user has signed into
@@ -7894,6 +8077,9 @@ final class LiveCaptureModel {
         autoCleanDispatched.removeAll()
         onDeviceAnalysisDispatched.removeAll()
         autoEditedAssetIds.removeAll()
+        personGroups.removeAll()
+        personFilter = nil
+        personClusterer = PersonClusterer()
         autoCheckedShotAssetIds.removeAll()
         tunedRecipes.removeAll()
         autoCheckLog.removeAll()
