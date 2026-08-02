@@ -9,6 +9,8 @@ import {
   Typography,
   Button,
   IconButton,
+  Switch,
+  FormControlLabel,
   TextField,
   Select,
   Menu,
@@ -673,6 +675,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     return (key && memberNameMapRef.current[key]) || key || 'En annen i teamet';
   };
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [manuscriptMenuAnchor, setManuscriptMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
@@ -2399,58 +2402,34 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     />
                   </Tooltip>
                 )}
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleBackToManuscriptList}
-                  title="Tilbake til utkast-oversikten — bytt mellom utkast, gi nytt navn eller opprett nytt"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Utkast' : 'Dine manuskripter'}
-                </Button>
-                <ToggleButton
-                  value="auto-breakdown"
-                  selected={autoBreakdownEnabled}
-                  size={isMobile ? 'small' : 'medium'}
-                  onChange={(_, isEnabled) => {
-                    setAutoBreakdownEnabled(isEnabled);
-                    showInfo(isEnabled ? 'Auto Breakdown aktivert' : 'Auto Breakdown deaktivert');
-                  }}
-                  sx={{
-                    fontSize: responsive.captionFontSize,
-                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
-                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
-                    '&.Mui-selected': {
-                      color: branding.colors.accent,
-                      bgcolor: `${branding.colors.accent}22`,
-                      borderColor: `${branding.colors.accent}88`,
-                    },
-                  }}
-                >
-                  {autoBreakdownEnabled ? 'Auto-gjennomgang På' : 'Auto-gjennomgang Av'}
-                </ToggleButton>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleAutoBreakdown}
-                  disabled={isLoading || !autoBreakdownEnabled}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Auto' : 'Auto-gjennomgang'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <FileDownloadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleExport}
-                  disabled={isLoading}
-                  title="Eksporter hele manuskriptet med produksjondata som JSON"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'JSON' : 'Eksporter JSON'}
-                </Button>
+                {/* «Dine manuskripter» ligger nå i Manuskript-menyen (samlet) */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={autoBreakdownEnabled}
+                      onChange={(_, isEnabled) => {
+                        setAutoBreakdownEnabled(isEnabled);
+                        showInfo(isEnabled ? 'Auto-gjennomgang aktivert' : 'Auto-gjennomgang deaktivert');
+                      }}
+                    />
+                  }
+                  label={<Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>{isMobile ? 'Auto' : 'Auto-gjennomgang'}</Typography>}
+                  sx={{ ml: 0, mr: 0.25, userSelect: 'none' }}
+                />
+                <Tooltip title="Kjør gjennomgang nå — oppdater scener og roller fra manuset">
+                  <span>
+                    <IconButton
+                      size={responsive.buttonSize}
+                      onClick={handleAutoBreakdown}
+                      disabled={isLoading || !autoBreakdownEnabled}
+                      sx={{ color: branding.colors.accent }}
+                    >
+                      <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                {/* JSON-eksport ligger nå i Eksporter-menyen under */}
                 <Button
                   variant="outlined"
                   startIcon={!isMobile ? <DescriptionIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
@@ -2458,10 +2437,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   size={responsive.buttonSize}
                   onClick={(e) => setExportMenuAnchor(e.currentTarget)}
                   disabled={isLoading}
-                  title="Eksporter manuset som Fountain eller Final Draft (FDX) for bruk i manus-verktøy"
+                  title="Eksporter manuset (Fountain / Final Draft) eller full produksjonsdata (JSON)"
                   sx={{ fontSize: responsive.bodyFontSize }}
                 >
-                  {isMobile ? 'Manus' : 'Eksporter manus'}
+                  {isMobile ? 'Eksport' : 'Eksporter'}
                 </Button>
                 <Menu
                   anchorEl={exportMenuAnchor}
@@ -2476,29 +2455,30 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
                     <ListItemText primary="Final Draft (.fdx)" secondary="For Final Draft og de fleste manus-verktøy" />
                   </MenuItem>
+                  <Divider />
+                  <MenuItem onClick={() => { setExportMenuAnchor(null); handleExport(); }}>
+                    <ListItemIcon><FileDownloadIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText primary="Produksjonsdata (.json)" secondary="Alt: scener, shots, storyboard, roller" />
+                  </MenuItem>
                 </Menu>
-                <Button
-                  variant="contained"
-                  startIcon={!isMobile ? <SaveIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleSaveManuscript}
-                  disabled={isLoading}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  Lagre
-                </Button>
-                {onSendToApproval && (
-                  <Button
-                    variant="outlined"
-                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                    size={responsive.buttonSize}
-                    onClick={onSendToApproval}
-                    title="Send manuset videre til klient-/godkjenningsflaten"
-                    sx={{ fontSize: responsive.bodyFontSize }}
-                  >
-                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
-                  </Button>
-                )}
+                {/* Auto-lagring: vis status i stedet for en egen «Lagre»-knapp
+                    (klikk for å tvinge lagring nå). */}
+                <Tooltip title="Lagres automatisk. Klikk for å lagre nå.">
+                  <Chip
+                    size="small"
+                    icon={<SaveIcon sx={{ fontSize: 16 }} />}
+                    onClick={handleSaveManuscript}
+                    color={manuscriptSaveStatus === 'error' ? 'error' : manuscriptSaveStatus === 'unsaved' ? 'warning' : 'default'}
+                    variant={manuscriptSaveStatus === 'saved' ? 'outlined' : 'filled'}
+                    label={
+                      manuscriptSaveStatus === 'saving' ? 'Lagrer…'
+                        : manuscriptSaveStatus === 'error' ? 'Ikke lagret'
+                          : manuscriptSaveStatus === 'unsaved' ? 'Ulagret'
+                            : (lastManuscriptSaved ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}` : 'Lagret')
+                    }
+                    sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
+                  />
+                </Tooltip>
                 {onTargetDurationChange && (() => {
                   const estRuntime = Math.round(selectedManuscript?.pageCount || 0);
                   const target = typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 ? targetDurationMinutes : null;
@@ -2523,41 +2503,56 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     </Tooltip>
                   );
                 })()}
+                <Box sx={{ flexGrow: 1, minWidth: 4 }} />
+                {onSendToApproval && (
+                  <Button
+                    variant="contained"
+                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+                    size={responsive.buttonSize}
+                    onClick={onSendToApproval}
+                    title="Send manuset videre til klient-/godkjenningsflaten"
+                    sx={{ fontSize: responsive.bodyFontSize }}
+                  >
+                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
+                  </Button>
+                )}
               </>
             )}
-            <Button
-              variant="outlined"
-              startIcon={!isMobile ? <FileUploadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowImportDialog(true)}
-              title="Importer manuskript fra tidligere eksport"
-              sx={{ fontSize: responsive.bodyFontSize }}
-            >
-              Importer
-            </Button>
+            {/* Manuskript-meny: samler Dine manuskripter / Nytt / Fra mal / Importer */}
             <Button
               variant="outlined"
               startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+              endIcon={<ArrowDropDownIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
               size={responsive.buttonSize}
-              onClick={() => setShowTemplatePanel(true)}
-              sx={{ 
-                borderColor: `${branding.colors.accent}aa`,
-                color: branding.colors.accent,
-                fontSize: responsive.bodyFontSize,
-                '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` } 
-              }}
-            >
-              Maler
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={!isMobile ? <AddIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowNewManuscriptDialog(true)}
+              onClick={(e) => setManuscriptMenuAnchor(e.currentTarget)}
               sx={{ fontSize: responsive.bodyFontSize }}
             >
-              {isMobile ? 'Nytt' : 'Nytt Manuskript'}
+              {isMobile ? 'Manus' : 'Manuskript'}
             </Button>
+            <Menu
+              anchorEl={manuscriptMenuAnchor}
+              open={Boolean(manuscriptMenuAnchor)}
+              onClose={() => setManuscriptMenuAnchor(null)}
+            >
+              {selectedManuscript && (
+                <MenuItem onClick={() => { setManuscriptMenuAnchor(null); handleBackToManuscriptList(); }}>
+                  <ListItemIcon><MenuBookIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Dine manuskripter" secondary="Bytt utkast eller gi nytt navn" />
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowNewManuscriptDialog(true); }}>
+                <ListItemIcon><AddIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary="Nytt manuskript" />
+              </MenuItem>
+              <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowTemplatePanel(true); }}>
+                <ListItemIcon><MenuBookIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary="Fra mal…" />
+              </MenuItem>
+              <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowImportDialog(true); }}>
+                <ListItemIcon><FileUploadIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary="Importer fil…" secondary="Fra tidligere eksport" />
+              </MenuItem>
+            </Menu>
           </Stack>
         </Stack>
         {isLoading && selectedManuscript && (
