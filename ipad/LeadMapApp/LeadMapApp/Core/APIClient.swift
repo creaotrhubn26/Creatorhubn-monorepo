@@ -592,6 +592,128 @@ actor APIClient {
         return r.structured
     }
 
+    /// Ekte Innsikt-aggregering (2026-08-02): org-ens publiserte eksempler
+    /// + tilbakemeldinger for perioden, med forrige periode som baseline.
+    struct LeadbookInnsiktDTO: Codable {
+        struct Totals: Codable {
+            let examples: Int
+            let won: Int
+            let lost: Int
+            let ongoing: Int
+            let avgPondus: Int?
+            let feedback: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case examples, won, lost, ongoing, feedback
+                case avgPondus = "avg_pondus"
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                examples = (try? c.decode(Int.self, forKey: .examples)) ?? 0
+                won = (try? c.decode(Int.self, forKey: .won)) ?? 0
+                lost = (try? c.decode(Int.self, forKey: .lost)) ?? 0
+                ongoing = (try? c.decode(Int.self, forKey: .ongoing)) ?? 0
+                avgPondus = try? c.decodeIfPresent(Int.self, forKey: .avgPondus)
+                feedback = try? c.decodeIfPresent(Int.self, forKey: .feedback)
+            }
+
+            var winRate: Double? {
+                let decided = won + lost
+                guard decided > 0 else { return nil }
+                return Double(won) / Double(decided)
+            }
+        }
+
+        struct TrendPoint: Codable, Identifiable {
+            let day: String
+            let count: Int
+            let avgPondus: Int?
+            var id: String { day }
+
+            enum CodingKeys: String, CodingKey {
+                case day, count
+                case avgPondus = "avg_pondus"
+            }
+        }
+
+        struct SellerRow: Codable, Identifiable {
+            let name: String
+            let count: Int
+            let avgPondus: Int?
+            let won: Int
+            let lost: Int
+            var id: String { name }
+
+            enum CodingKeys: String, CodingKey {
+                case name, count, won, lost
+                case avgPondus = "avg_pondus"
+            }
+
+            var winRate: Double? {
+                let decided = won + lost
+                guard decided > 0 else { return nil }
+                return Double(won) / Double(decided)
+            }
+        }
+
+        struct DimensionRow: Codable, Identifiable {
+            let dimension: String
+            let count: Int
+            let avgPondus: Int?
+            var id: String { dimension }
+
+            enum CodingKeys: String, CodingKey {
+                case dimension, count
+                case avgPondus = "avg_pondus"
+            }
+        }
+
+        struct ChannelRow: Codable, Identifiable {
+            let channel: String
+            let count: Int
+            let won: Int
+            let lost: Int
+            var id: String { channel }
+        }
+
+        struct CaseRow: Codable {
+            let id: String
+            let title: String
+            let summary: String?
+            let outcome: String?
+            let pondusScore: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case id, title, summary, outcome
+                case pondusScore = "pondus_score"
+            }
+        }
+
+        let period: String
+        let totals: Totals
+        let previous: Totals
+        let trend: [TrendPoint]
+        let bySeller: [SellerRow]
+        let byDimension: [DimensionRow]
+        let byChannel: [ChannelRow]
+        let topExample: CaseRow?
+        let bottomExample: CaseRow?
+
+        enum CodingKeys: String, CodingKey {
+            case period, totals, previous, trend
+            case bySeller = "by_seller"
+            case byDimension = "by_dimension"
+            case byChannel = "by_channel"
+            case topExample = "top_example"
+            case bottomExample = "bottom_example"
+        }
+    }
+
+    func fetchLeadbookInnsikt(period: String) async throws -> LeadbookInnsiktDTO {
+        try await get("/api/leadgrid/leadbook/innsikt?period=\(period)")
+    }
+
     /// Ekte AI bak «AI-foreslå sterkere» i mal-editoren (2026-08-02).
     /// Samme gating som structure: leder + leadbookAiStruktur-entitlement.
     func strengthenLeadbookPhrase(text: String, maxChars: Int?) async throws -> String {

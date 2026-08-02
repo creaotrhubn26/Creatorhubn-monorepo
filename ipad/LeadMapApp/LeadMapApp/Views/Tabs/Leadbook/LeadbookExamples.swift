@@ -1379,6 +1379,12 @@ struct LeadbookExampleDetailSheet: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            // Feedback-utkast (2026-08-02): gjenopprett ved åpning, lagre
+            // fortløpende mens man skriver — nettfeil/lukking taper ikke tekst.
+            .onAppear { restoreFeedbackDraft() }
+            .onChange(of: feedbackText) { _, newValue in
+                persistFeedbackDraft(newValue)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
@@ -2591,6 +2597,37 @@ struct LeadbookExampleDetailSheet: View {
         feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingFeedback
     }
 
+    // MARK: Feedback-utkast (2026-08-02) — teksten forsvant ved nettfeil
+    // eller lukket sheet midt i skrivingen. Utkast lagres per eksempel i
+    // UserDefaults mens man skriver, gjenopprettes ved åpning, og slettes
+    // først når sendingen har LYKTES.
+
+    private var feedbackDraftKey: String? {
+        example.backendId.map { "leadgrid.leadbook.feedback.draft.\($0)" }
+    }
+
+    private func restoreFeedbackDraft() {
+        guard feedbackText.isEmpty, let key = feedbackDraftKey,
+              let saved = UserDefaults.standard.string(forKey: key),
+              !saved.isEmpty else { return }
+        feedbackText = saved
+    }
+
+    private func persistFeedbackDraft(_ text: String) {
+        guard let key = feedbackDraftKey else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else {
+            UserDefaults.standard.set(text, forKey: key)
+        }
+    }
+
+    private func clearFeedbackDraft() {
+        guard let key = feedbackDraftKey else { return }
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     @MainActor
     private func sendFeedback() async {
         guard let api = appState.api, let id = example.backendId else { return }
@@ -2622,13 +2659,16 @@ struct LeadbookExampleDetailSheet: View {
             feedbackText = ""
             feedbackDim = nil
             anchorIndex = nil
+            clearFeedbackDraft()
             // 2026-07-17: backend varsler selgeren (in-app + push) automatisk.
             saveToast = example.salesperson.isEmpty
                 ? "Tilbakemelding sendt"
                 : "Sendt — \(example.salesperson) varsles"
             onChanged?()
         } catch {
-            saveToast = "Kunne ikke sende — prøv igjen"
+            // Utkastet ligger alt i UserDefaults (persistert mens man
+            // skriver) — si det eksplisitt så ingen tror teksten er tapt.
+            saveToast = "Kunne ikke sende — utkastet er lagret, prøv igjen"
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
         isSendingFeedback = false
