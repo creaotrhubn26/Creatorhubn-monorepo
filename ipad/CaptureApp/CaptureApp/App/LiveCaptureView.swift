@@ -4356,6 +4356,19 @@ private struct FilmstripTile: View {
                             .padding(6)
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    // P5 (E7 v1): on-set-flagg (uskarp / svakt ansikt) fra den samlede
+                    // analysen — det fotografen kan ta om igjen mens hen står der.
+                    if let flag = asset.signals.analysis?.onSetFlag {
+                        Label(flag == .blurry ? "Uskarp" : "Svakt",
+                              systemImage: flag == .blurry ? "camera.metering.spot" : "person.fill.questionmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Color.red.opacity(0.85), in: Capsule())
+                            .padding(6)
+                    }
+                }
 
                 // Top-right: error, enhanced, or reject marker
                 if asset.state == .failedTransient || asset.state == .failedPermanent {
@@ -5391,6 +5404,9 @@ final class LiveCaptureModel {
             // P2 (E4): auto-påfør capture-edit-policyen (sync-forrige / preset) på
             // nye preview-klare bilder. Idempotent — rører aldri manuelle edits.
             applyCaptureEditPolicyForNewPreviews(previous: oldValue)
+            // P5 (E7 v1): mål hvert nytt bilde on-device → filmstrip-flagg + delt
+            // analyse for HUD/QC/cull/forslag.
+            scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
         }
     }
     var errorMessage: String?
@@ -5512,6 +5528,30 @@ final class LiveCaptureModel {
     /// måles én gang, tilgjengelig for cull/Kvalitetssjekk/synk lenge etter at
     /// HUD-et er lukket. Oppdaterer også in-memory-asseten så en re-render er
     /// konsistent. Feiler stille (analyse er en berikelse, ikke en blokker).
+    /// P5 (E7 v1): kjør den samlede AssetAnalysis for HVERT nytt preview-klart
+    /// bilde (av MainActor, cache-drevet) og persister — så filmstripen kan flagge
+    /// uskarpt/svakt-ansikt, og HUD/QC/cull/forslag gjenbruker samme måling. Én
+    /// gang per asset (`onDeviceAnalysisDispatched`).
+    private var onDeviceAnalysisDispatched: Set<UUID> = []
+    private func scheduleOnDeviceAnalysisForNewPreviews(previous: [Asset]) {
+        let hadPreview: [UUID: Bool] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.previewKey != nil) })
+        let analyzer = assetAnalyzer
+        for asset in assets {
+            guard asset.previewKey != nil, hadPreview[asset.id] != true,
+                  asset.signals.analysis == nil,
+                  !onDeviceAnalysisDispatched.contains(asset.id),
+                  let key = asset.previewKey, FileManager.default.fileExists(atPath: key)
+            else { continue }
+            onDeviceAnalysisDispatched.insert(asset.id)
+            let id = asset.id
+            Task { [weak self] in
+                guard let measured = await analyzer.analyze(imageURL: URL(fileURLWithPath: key)) else { return }
+                await self?.persistAnalysis(measured, for: id)
+            }
+        }
+    }
+
     func persistAnalysis(_ analysis: AssetAnalysis, for id: UUID) async {
         guard let idx = assets.firstIndex(where: { $0.id == id }) else { return }
         var signals = assets[idx].signals
@@ -7791,6 +7831,7 @@ final class LiveCaptureModel {
         // Per-asset-tilstand som ellers vokser monotont over en heldags-økt
         // (modellen er langlivet på tvers av connect/disconnect-sykluser).
         autoCleanDispatched.removeAll()
+        onDeviceAnalysisDispatched.removeAll()
         autoCheckedShotAssetIds.removeAll()
         tunedRecipes.removeAll()
         autoCheckLog.removeAll()

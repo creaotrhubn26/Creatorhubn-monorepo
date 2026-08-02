@@ -46,10 +46,19 @@ struct LearnedStyleProfile: Codable, Sendable {
 
 enum LearnedStyle {
 
-    /// Beregn scene-features (12-dim) IDENTISK med Python `features()`:
-    /// 8-bin luma-histogram (OpenCV Lab L, 0–255) + L-snitt/255 + L-std/128 +
-    /// (a-snitt−128)/20 + (b-snitt−128)/20. Beregnes på 128×128 nedskalering.
-    static func features(of cgImage: CGImage) -> [Double] {
+    /// Vekt for blits-dimensjonen (index 12) i kNN — lav, så den kun SEPARERER
+    /// blits- fra ambient-scener uten å dominere fargematchingen.
+    static let flashFeatureWeight = 0.4
+
+    /// Beregn scene-features IDENTISK med Python `features()`: 8-bin luma-histogram
+    /// (OpenCV Lab L, 0–255) + L-snitt/255 + L-std/128 + (a-snitt−128)/20 +
+    /// (b-snitt−128)/20 (12-dim). 128×128 nedskalering.
+    ///
+    /// Del D: når `flashFired` er gitt appendes et 13. element (0/1) — lar kNN-en
+    /// skille «varm fordi tungsten» fra «varm fordi gelet blits» (v3-profil med
+    /// 13-dim scener). v2-profiler (12-dim scener) IGNORERER dim 12 (kNN itererer
+    /// over minste dim), så oppførselen er UENDRET til en v3-profil shipper.
+    static func features(of cgImage: CGImage, flashFired: Bool? = nil) -> [Double] {
         let w = 128, h = 128
         var px = [UInt8](repeating: 0, count: w * h * 4)
         let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8,
@@ -68,7 +77,11 @@ enum LearnedStyle {
         for i in 0..<8 { hist[i] /= n }
         let meanL = sumL / n
         let stdL = (max(0, sumL2 / n - meanL * meanL)).squareRoot()
-        return hist + [meanL / 255.0, stdL / 128.0, (sumA / n - 128) / 20.0, (sumB / n - 128) / 20.0]
+        var out = hist + [meanL / 255.0, stdL / 128.0, (sumA / n - 128) / 20.0, (sumB / n - 128) / 20.0]
+        // Del D: append blits-dim (0/1) KUN når kjent → 13-dim. Uten flash: 12-dim
+        // (uendret). Ingen weighting her — vekten legges i kNN-en (flashFeatureWeight).
+        if let flashFired { out.append(flashFired ? 1.0 : 0.0) }
+        return out
     }
 
     /// Snitt-luma (0…1) + andel utblåste høylys-piksler (luma ≥ ~252) fra et
@@ -139,11 +152,13 @@ enum LearnedStyle {
     /// Python-motorens apply. Returnerer vektet snitt av LUT + a/b.
     static func blend(features f: [Double], scenes: [LearnedStyleProfile.Scene], k: Int = 5)
         -> (lut: [[Double]], ab: [Double], labStd: [Double])? {
-        guard !scenes.isEmpty, f.count == 12 else { return nil }
+        guard !scenes.isEmpty, f.count >= 12 else { return nil }
         let scored: [(d: Double, s: LearnedStyleProfile.Scene)] = scenes.map { sc in
             var sum = 0.0
-            for i in 0..<12 {
-                let wgt = (i >= 10) ? 1.6 : 1.0
+            // Iterer over MINSTE dim → v2-scener (12) ignorerer blits-dim (13),
+            // v3-scener (13) sammenligner den med lav vekt. Zero regresjon for v2.
+            for i in 0..<min(f.count, sc.feat.count) {
+                let wgt: Double = i >= 12 ? flashFeatureWeight : (i >= 10 ? 1.6 : 1.0)
                 let diff = (sc.feat[i] - f[i]) * wgt
                 sum += diff * diff
             }
@@ -174,15 +189,15 @@ enum LearnedStyle {
     /// nærmeste-scene-avstand (farge-vektet) til bildets features. Lar motoren
     /// velge tungsten-/dagslys-/motlys-looken selv, per bilde.
     static func autoSelectStyleIndex(features f: [Double], styles: [LearnedStyleProfile.Style]) -> Int? {
-        guard !styles.isEmpty, f.count == 12 else { return nil }
+        guard !styles.isEmpty, f.count >= 12 else { return nil }
         var best = 0
         var bestD = Double.greatestFiniteMagnitude
         for (i, style) in styles.enumerated() {
             var minD = Double.greatestFiniteMagnitude
             for sc in style.scenes {
                 var sum = 0.0
-                for j in 0..<12 {
-                    let wgt = (j >= 10) ? 1.6 : 1.0
+                for j in 0..<min(f.count, sc.feat.count) {
+                    let wgt: Double = j >= 12 ? flashFeatureWeight : (j >= 10 ? 1.6 : 1.0)
                     let d = (sc.feat[j] - f[j]) * wgt
                     sum += d * d
                 }
@@ -195,7 +210,8 @@ enum LearnedStyle {
 
     /// Påfør en gitt (navngitt) stils scener på et CIImage: per-kanal-LUT
     /// (CIColorCurves) + a/b-skift, scene-matchet on-device.
-    static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5) -> CIImage {
+    static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5,
+                      flashFired: Bool? = nil) -> CIImage {
         guard !scenes.isEmpty else { return image }
         // #3: eksplisitt sRGB arbeidsrom. Alle readbacks (autoBright/features/
         // lumaStats) + LAB-cuben antar sRGB 0–1; uten dette kan default-konteksten
@@ -227,7 +243,7 @@ enum LearnedStyle {
         out = baseSat.outputImage?.cropped(to: image.extent) ?? out
 
         guard let cg = smallCG(out, ctx: ctx, side: 128) else { return image }
-        let f = features(of: cg)
+        let f = features(of: cg, flashFired: flashFired)
         guard let blended = blend(features: f, scenes: scenes, k: k) else { return image }
 
         // Per-kanal 1D-LUT via CIColorCurves. cv2-LUT er BGR → map til RGB.

@@ -127,6 +127,44 @@ final class LearnedStyleTests: XCTestCase {
         XCTAssertGreaterThan(meanLuma(out), meanLuma(base) - 0.05, "vakten dro for mye ned")
     }
 
+    // MARK: - Del D: blits-dim (13-dim v3, bakoverkompat 12-dim v2)
+
+    func testFeaturesStay12DimWithoutFlash() {
+        XCTAssertEqual(LearnedStyle.features(of: makeCG(0.5)).count, 12)
+    }
+
+    func testFeaturesAppendFlashDimWhenProvided() {
+        let fired = LearnedStyle.features(of: makeCG(0.5), flashFired: true)
+        XCTAssertEqual(fired.count, 13)
+        XCTAssertEqual(fired[12], 1.0)
+        let ambient = LearnedStyle.features(of: makeCG(0.5), flashFired: false)
+        XCTAssertEqual(ambient.count, 13)
+        XCTAssertEqual(ambient[12], 0.0)
+    }
+
+    /// Bakoverkompat: 12-dim scener (v2-profil) fungerer med BÅDE 12- og 13-dim
+    /// runtime-feature (blits-dim ignoreres via min-dim-iterasjon).
+    func testV2ScenesWorkWith12And13DimFeatures() {
+        let colour: [Double] = [0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0.3, 0.1, 0.1]
+        let scenes = [scene(feat: colour, lut: identityLut())]
+        XCTAssertNotNil(LearnedStyle.blend(features: colour, scenes: scenes))
+        XCTAssertNotNil(LearnedStyle.blend(features: colour + [1.0], scenes: scenes))
+    }
+
+    /// v3: to scener med IDENTISK farge men ulik blits-dim + motsatt a-skift.
+    /// Et blits-bilde (dim 12 = 1) skal lene den blandede ab-en mot blits-scenen.
+    func testFlashDimSeparatesFlashFromAmbientScene() {
+        let colour: [Double] = [0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0.3, 0.1, 0.1]
+        let scenes = [
+            scene(feat: colour + [1.0], lut: identityLut(), ab: [10, 0]),   // blits
+            scene(feat: colour + [0.0], lut: identityLut(), ab: [-10, 0]),  // ambient
+        ]
+        XCTAssertGreaterThan(LearnedStyle.blend(features: colour + [1.0], scenes: scenes)?.ab[0] ?? 0, 0,
+                             "blits-bilde skal matche blits-scenen")
+        XCTAssertLessThan(LearnedStyle.blend(features: colour + [0.0], scenes: scenes)?.ab[0] ?? 0, 0,
+                          "ambient-bilde skal matche ambient-scenen")
+    }
+
     func testEmptyProfileIsNoOp() {
         let base = CIImage(cgImage: makeCG(0.5))
         let out = LearnedStyle.apply(scenes: [], to: base, k: 5)

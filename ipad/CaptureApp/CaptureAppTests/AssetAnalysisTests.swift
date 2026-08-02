@@ -99,6 +99,28 @@ final class AssetAnalysisTests: XCTestCase {
         XCTAssertFalse(a.hasFaces)
     }
 
+    // MARK: - On-set-flagg (P5 — filmstrip)
+
+    func testOnSetFlagBlurryForSoftFace() {
+        let soft = FaceAnalysis(rect: .zero, sizeFraction: 0.2, luma: 0.5, eyesOpen: true,
+                                captureQuality: 0.8, sharpness: 0.0005, skinCast: .neutral)
+        let a = makeAnalysis(faces: [soft])   // globalSharpness 0.002 → face soft
+        XCTAssertEqual(a.onSetFlag, .blurry)
+    }
+
+    func testOnSetFlagLowQualityForWeakFace() {
+        let weak = FaceAnalysis(rect: .zero, sizeFraction: 0.2, luma: 0.5, eyesOpen: true,
+                                captureQuality: 0.2, sharpness: 0.01, skinCast: .neutral)
+        let a = makeAnalysis(faces: [weak])   // skarp nok, men lav quality
+        XCTAssertEqual(a.onSetFlag, .lowFaceQuality)
+    }
+
+    func testOnSetFlagNilForCleanImage() {
+        let good = FaceAnalysis(rect: .zero, sizeFraction: 0.2, luma: 0.5, eyesOpen: true,
+                                captureQuality: 0.9, sharpness: 0.01, skinCast: .neutral)
+        XCTAssertNil(makeAnalysis(faces: [good]).onSetFlag)
+    }
+
     // MARK: - Codable round-trip (persistering på signals)
 
     func testAnalysisRoundTripsThroughCodable() throws {
