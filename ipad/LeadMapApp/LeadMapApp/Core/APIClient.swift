@@ -592,6 +592,17 @@ actor APIClient {
         return r.structured
     }
 
+    /// Ekte AI bak «AI-foreslå sterkere» i mal-editoren (2026-08-02).
+    /// Samme gating som structure: leder + leadbookAiStruktur-entitlement.
+    func strengthenLeadbookPhrase(text: String, maxChars: Int?) async throws -> String {
+        struct Resp: Codable { let suggestion: String }
+        var body: [String: Any] = ["text": text]
+        if let maxChars { body["max_chars"] = maxChars }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/templates/strengthen", body: body)
+        return r.suggestion
+    }
+
     /// AI-kostnadsoversikt (kun ledere). cost_usd kommer som streng fra
     /// pg NUMERIC — lenient decoding.
     struct AIUsageBucketDTO: Codable {

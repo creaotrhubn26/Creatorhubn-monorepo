@@ -7,6 +7,7 @@ import SwiftUI
 
 struct LeadbookMalerView: View {
     @Binding var selected: LeadbookTemplate
+    @Environment(AppState.self) private var appState
 
     @State private var query: String = ""
     @State private var sort: SortField = .topPerforming
@@ -99,12 +100,10 @@ struct LeadbookMalerView: View {
         .fullScreenCover(item: $editingTemplate) { t in
             MalEditorSheet(
                 template: t,
-                draftSteps: editedSteps[t.id] ?? EditableStep.defaults(for: t),
-                draftName: editedNames[t.id] ?? t.name,
+                draftSteps: seededSteps(for: t),
+                draftName: seededName(for: t),
                 onSave: { newSteps, newName in
-                    editedSteps[t.id] = newSteps
-                    editedNames[t.id] = newName
-                    flashToast("«\(newName)» lagret")
+                    persistEdit(template: t, steps: newSteps, name: newName)
                 },
                 onTest: { newSteps, newName in
                     editedSteps[t.id] = newSteps
@@ -116,9 +115,87 @@ struct LeadbookMalerView: View {
         .fullScreenCover(item: $testingTemplate) { t in
             MalTestSheet(
                 template: t,
-                steps: editedSteps[t.id] ?? EditableStep.defaults(for: t),
-                title: editedNames[t.id] ?? t.name
+                steps: seededSteps(for: t),
+                title: seededName(for: t)
             )
+        }
+    }
+
+    // MARK: Seeding + persistering (2026-08-02)
+
+    /// Prioritet: pågående redigering → enhets-lagret tilpasning → malens
+    /// EKTE pondus-steg (før: hardkodede kanal-defaults selv for backend-
+    /// maler) → kanal-defaults som siste utvei.
+    private func seededSteps(for t: LeadbookTemplate) -> [EditableStep] {
+        if let s = editedSteps[t.id] { return s }
+        if let stored = MalTilpasningStore.get(for: t.id.uuidString) {
+            return stored.steps.map {
+                EditableStep(icon: $0.icon, iconColor: LBrand.purpleLight,
+                             label: $0.label, content: $0.content,
+                             charLimit: $0.charLimit, backendKey: $0.backendKey)
+            }
+        }
+        if let dto = LeadbookLiveStore.shared.templateDTO(for: t), !dto.steps.isEmpty {
+            return dto.orderedSteps.map { step in
+                EditableStep(icon: step.icon ?? "circle.fill",
+                             iconColor: LBrand.purpleLight,
+                             label: step.title,
+                             content: step.prompt ?? "",
+                             charLimit: step.maxLength,
+                             backendKey: step.id)
+            }
+        }
+        return EditableStep.defaults(for: t)
+    }
+
+    private func seededName(for t: LeadbookTemplate) -> String {
+        editedNames[t.id]
+            ?? MalTilpasningStore.get(for: t.id.uuidString)?.name
+            ?? t.name
+    }
+
+    /// Lagre redigering: alltid på enheten (overlever restart); SuperAdmin
+    /// PATCHer i tillegg backend-malen (ny versjon for alle, audit-logget).
+    private func persistEdit(template t: LeadbookTemplate,
+                             steps newSteps: [EditableStep], name newName: String) {
+        editedSteps[t.id] = newSteps
+        editedNames[t.id] = newName
+        MalTilpasningStore.set(
+            StoredMalTilpasning(
+                name: newName,
+                steps: newSteps.map {
+                    .init(icon: $0.icon, label: $0.label, content: $0.content,
+                          charLimit: $0.charLimit, backendKey: $0.backendKey)
+                }
+            ),
+            for: t.id.uuidString
+        )
+        guard appState.isSuperAdmin, let backendId = t.backendId,
+              let api = appState.api else {
+            flashToast("«\(newName)» lagret på denne iPaden")
+            return
+        }
+        Task {
+            let steps = newSteps.enumerated().map { idx, s in
+                PondusStepDTO(
+                    id: s.backendKey ?? "step-\(idx + 1)-\(UUID().uuidString.prefix(6).lowercased())",
+                    title: s.label,
+                    icon: s.icon,
+                    prompt: s.content,
+                    maxLength: s.charLimit,
+                    order: idx
+                )
+            }
+            var payload = UpdatePondusTemplatePayload()
+            payload.name = newName
+            payload.steps = steps
+            do {
+                _ = try await api.pondusUpdateTemplate(id: backendId, payload)
+                await LeadbookLiveStore.shared.refresh()
+                flashToast("«\(newName)» lagret for alle — ny versjon")
+            } catch {
+                flashToast("Lagret på iPaden — backend-lagring feilet")
+            }
         }
     }
 
@@ -561,6 +638,10 @@ struct EditableStep: Identifiable, Hashable {
     var label: String
     var content: String
     var charLimit: Int?
+    /// Pondus-stegets stabile `step_key` når steget kommer fra en backend-
+    /// mal — bevares gjennom redigering så SuperAdmin-PATCH ikke bytter
+    /// nøkler (varianter i pondus_content_by_step refererer dem).
+    var backendKey: String? = nil
 
     static func defaults(for t: LeadbookTemplate) -> [EditableStep] {
         switch t.channel {
@@ -612,6 +693,50 @@ struct EditableStep: Identifiable, Hashable {
     }
 }
 
+// MARK: - Enhets-persistert mal-tilpasning (2026-08-02)
+//
+// Pondus-malene er Leadgrid-globale — backend-PATCH er SuperAdmin-only
+// (versjon-bump + audit). Lederens redigeringer var rene @State-dicts og
+// FORDAMPET når fanen ble demontert. Nå: tilpasningene lagres på enheten
+// (UserDefaults) så de overlever restart; SuperAdmin skriver i tillegg
+// til backend (ekte ny versjon for alle).
+
+struct StoredMalTilpasning: Codable {
+    var name: String
+    var steps: [StoredStep]
+
+    struct StoredStep: Codable {
+        var icon: String
+        var label: String
+        var content: String
+        var charLimit: Int?
+        var backendKey: String?
+    }
+}
+
+enum MalTilpasningStore {
+    private static let key = "leadgrid.maler.tilpasninger.v1"
+
+    static func all() -> [String: StoredMalTilpasning] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([String: StoredMalTilpasning].self, from: data)
+        else { return [:] }
+        return decoded
+    }
+
+    static func get(for templateId: String) -> StoredMalTilpasning? {
+        all()[templateId]
+    }
+
+    static func set(_ tilpasning: StoredMalTilpasning, for templateId: String) {
+        var current = all()
+        current[templateId] = tilpasning
+        if let data = try? JSONEncoder().encode(current) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
 // MARK: - MalEditorSheet — full editor m/ step-rediger + AI-foreslå + lagre + test
 
 struct MalEditorSheet: View {
@@ -622,6 +747,7 @@ struct MalEditorSheet: View {
     var onTest: ([EditableStep], String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var expandedStepID: UUID?
     @State private var aiBusyStepID: UUID?
     @State private var toast: String?
@@ -917,29 +1043,50 @@ struct MalEditorSheet: View {
         step.content.wrappedValue = current + (needsSpace ? " " : "") + v
     }
 
+    // 2026-08-02: var hardkodede regex-erstatningspar merket som «AI» —
+    // nå ekte: LeadbookPhrasingIntelligence (on-device Apple Intelligence
+    // når mulig, ellers backend-Claude bak leadbookAiStruktur-entitlement).
+    // Ved feil røres teksten ALDRI — ærlig toast i stedet.
     private func aiSuggest(for step: Binding<EditableStep>) {
+        guard aiBusyStepID == nil else { return }
+        let original = step.content.wrappedValue
+        let limit = step.charLimit.wrappedValue
+        guard original.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10 else {
+            flash("Skriv litt tekst først — AI-en trenger noe å styrke")
+            return
+        }
+        guard let api = appState.api else {
+            flash("AI utilgjengelig — ikke innlogget mot backend")
+            return
+        }
         aiBusyStepID = step.id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            step.content.wrappedValue = strengthen(step.content.wrappedValue)
-            aiBusyStepID = nil
-            toast = "AI foreslo sterkere formulering"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
+        Task { @MainActor in
+            defer { aiBusyStepID = nil }
+            do {
+                let intel = LeadbookExampleIntelligenceFactory.makePhrasing(api: api)
+                let result = try await intel.strengthen(text: original, charLimit: limit)
+                step.content.wrappedValue = result.suggestion
+                flash(result.source == .onDevice
+                      ? "AI foreslo sterkere formulering — på enheten"
+                      : "AI foreslo sterkere formulering")
+            } catch {
+                let msg = String(describing: error)
+                if msg.contains("entitlement_locked") {
+                    flash("AI er ikke aktivert for organisasjonen — lås opp «Leadbook AI» i SuperAdmin-matrisen")
+                } else if msg.contains("krever_leder_rolle") {
+                    flash("AI-forslag krever leder-rolle")
+                } else {
+                    flash("AI-forslaget feilet — teksten er uendret")
+                }
+            }
         }
     }
 
-    private func strengthen(_ raw: String) -> String {
-        var s = raw
-        let pairs: [(String, String)] = [
-            ("for å høre om dere er interessert", "fordi vi kan hjelpe dere"),
-            ("Kunne vi", "Gir det mening om vi"),
-            ("Kanskje", "Vi vet at"),
-            ("vi tror", "vi har dokumentert at"),
-            ("vi kan kanskje", "vi kommer til å")
-        ]
-        for (weak, strong) in pairs {
-            s = s.replacingOccurrences(of: weak, with: strong, options: .caseInsensitive)
+    private func flash(_ text: String) {
+        toast = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            if toast == text { toast = nil }
         }
-        return s
     }
 }
 

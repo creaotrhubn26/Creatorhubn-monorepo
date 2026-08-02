@@ -22,7 +22,16 @@ final class LeadbookLiveStore {
     private(set) var templates: [LeadbookTemplate] = []
     private(set) var objections: [Objection] = []
     private(set) var stats: PondusUsageStatsDTO?
+    /// Rå DTO-er per mal-id (2026-08-02): mal-editoren trenger malens EKTE
+    /// steg (title/prompt/step_key) — før seedet den kanal-defaults.
+    private(set) var dtosById: [UUID: PondusTemplateDTO] = [:]
     var loadState: ProjectsLoadState = .idle
+
+    /// Ekte pondus-DTO for en mappet LeadbookTemplate (id-ene er like —
+    /// mapTemplate bruker dto.id direkte). nil for demo-mocks.
+    func templateDTO(for template: LeadbookTemplate) -> PondusTemplateDTO? {
+        dtosById[template.id]
+    }
 
     private weak var api: APIClient?
     private var didInitialSync = false
@@ -53,6 +62,7 @@ final class LeadbookLiveStore {
             self.templates = dtos.map { dto in
                 Self.mapTemplate(dto, usage: usageByTemplate[dto.id.uuidString.lowercased()])
             }
+            self.dtosById = Dictionary(uniqueKeysWithValues: dtos.map { ($0.id, $0) })
             // Innvendinger: flat liste over alle publiserte malers
             // innvendinger, dedupet på prompt.
             var seen = Set<String>()

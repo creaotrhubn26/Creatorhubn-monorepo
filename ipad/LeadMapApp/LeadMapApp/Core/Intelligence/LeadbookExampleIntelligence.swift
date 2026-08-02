@@ -80,6 +80,61 @@ struct LeadbookExampleIntelligence: Sendable {
     }
 }
 
+// MARK: - Frase-styrking («AI-foreslå sterkere» i mal-editoren)
+
+protocol LeadbookPhrasingSuggesting: Sendable {
+    func strengthen(text: String, charLimit: Int?) async throws -> String
+}
+
+struct LeadbookPhrasingResult {
+    let suggestion: String
+    let source: TranscriptIntelligenceSource
+}
+
+/// Samme rute-prinsipp som eksempel-struktureringen: on-device gratis når
+/// mulig, ellers backend-Claude (leder + leadbookAiStruktur-gated).
+struct LeadbookPhrasingIntelligence: Sendable {
+    let availability: OnDeviceAvailabilityChecking
+    let onDevice: (any LeadbookPhrasingSuggesting)?
+    let backend: @Sendable (_ text: String, _ charLimit: Int?) async throws -> String
+    let maxCharsForOnDevice: Int
+
+    init(
+        availability: OnDeviceAvailabilityChecking,
+        onDevice: (any LeadbookPhrasingSuggesting)?,
+        maxCharsForOnDevice: Int = 2000,
+        backend: @escaping @Sendable (_ text: String, _ charLimit: Int?) async throws -> String
+    ) {
+        self.availability = availability
+        self.onDevice = onDevice
+        self.maxCharsForOnDevice = maxCharsForOnDevice
+        self.backend = backend
+    }
+
+    func strengthen(text: String, charLimit: Int?) async throws -> LeadbookPhrasingResult {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let onDevice,
+           availability.availability == .available,
+           trimmed.count <= maxCharsForOnDevice {
+            do {
+                let s = try await onDevice.strengthen(text: trimmed, charLimit: charLimit)
+                let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleaned.isEmpty {
+                    return LeadbookPhrasingResult(suggestion: cleaned, source: .onDevice)
+                }
+            } catch {
+                #if DEBUG
+                print("[LeadbookPhrasingIntelligence] on-device feilet, faller tilbake til backend: \(error)")
+                #endif
+            }
+        }
+
+        let s = try await backend(trimmed, charLimit)
+        return LeadbookPhrasingResult(suggestion: s, source: .backend)
+    }
+}
+
 // MARK: - Produksjons-fabrikk
 
 @MainActor
@@ -100,6 +155,26 @@ enum LeadbookExampleIntelligenceFactory {
             onDevice: analyzer,
             backend: { rawText in
                 try await api.structureLeadbookExample(rawText: rawText)
+            }
+        )
+    }
+
+    static func makePhrasing(api: APIClient) -> LeadbookPhrasingIntelligence {
+        var checker: OnDeviceAvailabilityChecking = UnsupportedOSAvailabilityChecker()
+        var suggester: (any LeadbookPhrasingSuggesting)? = nil
+
+        if #available(iOS 26, *) {
+            #if canImport(FoundationModels)
+            checker = LiveOnDeviceAvailabilityChecker()
+            suggester = FoundationModelsPhrasingSuggester()
+            #endif
+        }
+
+        return LeadbookPhrasingIntelligence(
+            availability: checker,
+            onDevice: suggester,
+            backend: { text, charLimit in
+                try await api.strengthenLeadbookPhrase(text: text, maxChars: charLimit)
             }
         )
     }
@@ -170,6 +245,30 @@ struct FoundationModelsLeadbookExampleAnalyzer: LeadbookExampleAnalyzing {
             generating: LeadbookExampleDraft.self
         )
         return response.content.toStructured()
+    }
+}
+
+@available(iOS 26, *)
+struct FoundationModelsPhrasingSuggester: LeadbookPhrasingSuggesting {
+    func strengthen(text: String, charLimit: Int?) async throws -> String {
+        let instructions = """
+        Du er en norsk salgscoach. Styrk formuleringen du får: mer konkret, \
+        trygg og handlingsdrivende, uten å bli pushy. Behold {variabler} \
+        nøyaktig som de står, behold meningen, og hold omtrent samme lengde. \
+        Svar KUN med den forbedrede formuleringen — ingen forklaring, ingen \
+        anførselstegn.
+        """
+        let session = LanguageModelSession(instructions: instructions)
+
+        var prompt = "Formulering:\n\(text)"
+        if let charLimit {
+            prompt += "\n\n(Maks \(charLimit) tegn.)"
+        }
+        let response = try await session.respond(to: prompt)
+        // Modellen kan pakke svaret i anførselstegn tross instruks — strip.
+        return response.content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"«»"))
     }
 }
 
