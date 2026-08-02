@@ -976,6 +976,13 @@ interface ScreenplayGuideProps {
   initialStepId?: string;
 }
 
+// Hardkodede ekte skjermbilder per screenshotLabel — fallback når det ikke
+// finnes en Visual Editor-override. Fanget deterministisk fra kjørende app.
+// Legg til flere etter hvert som labels dekkes (bilder i public/role-room-assets/).
+const GUIDE_SCREENSHOTS: Record<string, string> = {
+  'Screenplay editor – full layout overview': '/role-room-assets/guide-screenplay-overview.png',
+};
+
 export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
   open,
   onClose,
@@ -1240,6 +1247,15 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
                   containerSx={{ my: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}
                   imageSx={{ objectFit: 'cover' }}
                 />
+              ) : GUIDE_SCREENSHOTS[section.screenshotLabel] ? (
+                <Box sx={{ width: '100%', my: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <img
+                    src={GUIDE_SCREENSHOTS[section.screenshotLabel]}
+                    alt={section.screenshotLabel}
+                    style={{ width: '100%', display: 'block' }}
+                    loading="lazy"
+                  />
+                </Box>
               ) : (
                 <>
                   <ScreenshotPlaceholder label={section.screenshotLabel} />
