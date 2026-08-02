@@ -29,6 +29,9 @@ struct LiveCaptureView: View {
     /// the asset has pending detections — once confirmed, doubleTap
     /// behaves normally (asset no longer has pending).
     @State private var pendingReviewAsset: Asset?
+    /// Kort grønn «Tilkoblet ✓»-bekreftelse når økta nettopp koblet til, før
+    /// shoot-UI-et avsløres.
+    @State private var showConnectedConfirmation = false
 
     var body: some View {
         ZStack {
@@ -59,6 +62,22 @@ struct LiveCaptureView: View {
                 )
             case .connected:
                 connectedLayout
+            }
+
+            // Grønn «Tilkoblet ✓»-bekreftelse ved faktisk tilkobling (i tillegg til
+            // «kamera funnet»-grønnen på connect-skjermen).
+            if showConnectedConfirmation {
+                ConnectedConfirmationView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+        .onChange(of: model.phase) { old, new in
+            guard new == .connected, old != .connected else { return }
+            withAnimation(.easeOut(duration: 0.25)) { showConnectedConfirmation = true }
+            Task {
+                try? await Task.sleep(for: .milliseconds(1300))
+                withAnimation(.easeInOut(duration: 0.35)) { showConnectedConfirmation = false }
             }
         }
         .preferredColorScheme(.dark)
@@ -1032,17 +1051,16 @@ private struct ConnectingOverlay: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            VStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.large)
-                Text("Connecting to camera")
-                    .font(.title3.weight(.semibold))
-            }
+            // Samme hero-motiv som connect-skjermen — oransje mens den kobler.
+            ConnectHeroGraphic()
+                .frame(height: 170)
+            Text("Kobler til kamera…")
+                .font(.title3.weight(.semibold)).foregroundStyle(.white)
 
             VStack(alignment: .leading, spacing: 14) {
-                ConnectStep(title: "Discovered capabilities", level: stepLevel(.discovered))
-                ConnectStep(title: "Paired securely", level: stepLevel(.paired))
-                ConnectStep(title: "Ready to shoot", level: stepLevel(.ready))
+                ConnectStep(title: "Fant kamera-egenskaper", level: stepLevel(.discovered))
+                ConnectStep(title: "Sikker paring", level: stepLevel(.paired))
+                ConnectStep(title: "Klar til å skyte", level: stepLevel(.ready))
             }
             .padding(18)
             .frame(maxWidth: 380, alignment: .leading)
@@ -1056,13 +1074,18 @@ private struct ConnectingOverlay: View {
             }
 
             Button(role: .destructive, action: onCancel) {
-                Label("Cancel", systemImage: "xmark")
+                Label("Avbryt", systemImage: "xmark")
                     .padding(.horizontal, 16).padding(.vertical, 8)
             }
             .buttonStyle(.bordered)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RadialGradient(colors: [Color.captureAccent.opacity(0.10), .clear],
+                           center: .init(x: 0.5, y: 0.32), startRadius: 8, endRadius: 360)
+                .background(Color.captureDeepBG).ignoresSafeArea()
+        )
     }
 
     private enum Step { case discovered, paired, ready }
@@ -1079,6 +1102,32 @@ private struct ConnectingOverlay: View {
         case (.ready, .reconnecting), (.ready, .error):           return .idle
         default:                                                  return .idle
         }
+    }
+}
+
+/// Kort grønn bekreftelse i det kameraet FAKTISK er tilkoblet — hero-en går grønn
+/// med hake + «Tilkoblet!», så fotografen får et tydelig «det er koblet»-øyeblikk
+/// før shoot-UI-et avsløres.
+private struct ConnectedConfirmationView: View {
+    @State private var appeared = false
+    var body: some View {
+        VStack(spacing: 20) {
+            ConnectHeroGraphic(linked: true)
+                .frame(height: 176)
+                .scaleEffect(appeared ? 1 : 0.94)
+            Text("Tilkoblet!")
+                .font(.title.weight(.bold)).foregroundStyle(.white)
+            Text("Kameraet er klart — begynn å skyte.")
+                .font(.callout).foregroundStyle(Color.captureTextSecondary)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RadialGradient(colors: [Color.captureSuccess.opacity(0.12), .clear],
+                           center: .init(x: 0.5, y: 0.4), startRadius: 8, endRadius: 380)
+                .background(Color.captureDeepBG).ignoresSafeArea()
+        )
+        .onAppear { withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appeared = true } }
     }
 }
 
