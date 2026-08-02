@@ -4,7 +4,10 @@ struct Asset: Identifiable, Hashable, Sendable, Codable {
     let id: UUID
     let sessionId: UUID
     let originalFilename: String
-    let captureTime: Date
+    /// Ekte opptakstid. Settes fra EXIF DateTimeOriginal når previewen lander
+    /// (fallback: nedlastings-/discovery-tid ved registrering) — `var` fordi den
+    /// oppdateres når EXIF er lest. Driver opptaksrekkefølge/burst/arv.
+    var captureTime: Date
 
     var previewKey: String?
     var fullKey: String?

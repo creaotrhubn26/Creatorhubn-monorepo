@@ -143,6 +143,13 @@ actor CameraSession {
                 checksumSha256: checksum,
                 sizeBytes: (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0,
             )
+            // P1: sett EKTE opptakstid fra EXIF når previewen lander (descriptoren
+            // ble opprettet med en nedlastings-Date()-fallback). Retter rekkefølgen
+            // cull/burst/«forrige bilde»-arv bygger på. Kun preview leser EXIF —
+            // den fulle/raw kommer senere og skal ikke re-skrive tiden.
+            if kind == .preview, let shot = ExifInfo.captureDate(fromPath: fileURL.path) {
+                try? await store.updateCaptureTime(id: assetId, captureTime: shot)
+            }
             try? await store.appendEvent(
                 sessionId: sessionId,
                 assetId: assetId,

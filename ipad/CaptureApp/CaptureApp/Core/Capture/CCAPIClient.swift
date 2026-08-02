@@ -292,8 +292,11 @@ actor CCAPIClient {
         path: String,
         timeout: TimeInterval? = nil,
     ) async throws -> T {
-        let url = baseURL.appendingPathComponent(path)
-        return try await getAbsolute(url: url, timeout: timeout)
+        // 🔑 Query-BEVARENDE bygging. `appendingPathComponent` prosent-koder «?»
+        // til «%3F» → long-poll-stien «…/event/polling?continue=on» tapte
+        // `continue=on` (kamera blokkerte ikke). `getAbsolute(path:)` bruker
+        // `URL(string:relativeTo:)` som beholder query-strengen intakt.
+        try await getAbsolute(path: path, timeout: timeout)
     }
 
     private func getAbsolute<T: Decodable>(
