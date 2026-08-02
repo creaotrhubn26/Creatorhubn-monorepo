@@ -231,6 +231,126 @@ export function registerLeadgridLeadbookExamplesRoutes(
     }
   });
 
+  // ── GET /api/leadgrid/leadbook/innsikt ────────────────────────────
+  // Ekte innsikt-aggregering (2026-08-02 — fanen viste kun demo-data,
+  // prod sto på «Ingen innsikt enda»). Aggregerer org-ens PUBLISERTE
+  // eksempler + tilbakemeldinger for valgt periode (7d|30d|90d|ytd),
+  // med forrige like lang periode som sammenligningsgrunnlag.
+  // Lese-endepunkt for alle org-medlemmer (samme entitlement som resten).
+  app.get("/api/leadgrid/leadbook/innsikt", async (req, res) => {
+    const g = await guard(req, res);
+    if (!g) return;
+    const period = str(req.query.period as unknown, "30d");
+    // days er server-utledet heltall → trygt å interpolere i INTERVAL.
+    const days = period === "7d" ? 7 : period === "90d" ? 90 : period === "ytd" ? null : 30;
+    const fromExpr = days == null
+      ? `date_trunc('year', NOW())`
+      : `NOW() - INTERVAL '${days} days'`;
+    // Forrige periode: like langt vindu rett før `from` (ytd: like mange
+    // dager før nyttår som det har gått av året).
+    const prevFromExpr = days == null
+      ? `date_trunc('year', NOW()) - (NOW() - date_trunc('year', NOW()))`
+      : `NOW() - INTERVAL '${days * 2} days'`;
+    const base = `FROM leadbook_examples
+    WHERE organization_id = $1 AND status = 'published'`;
+    const totalsSelect = `SELECT COUNT(*)::int AS examples,
+          COUNT(*) FILTER (WHERE outcome = 'won')::int AS won,
+          COUNT(*) FILTER (WHERE outcome = 'lost')::int AS lost,
+          COUNT(*) FILTER (WHERE outcome = 'ongoing')::int AS ongoing,
+          ROUND(AVG(pondus_score) FILTER (WHERE pondus_score > 0))::int AS avg_pondus`;
+    try {
+      const [totals, previous, trend, sellers, dims, channels, top, bottom, fb] =
+        await Promise.all([
+          pool.query(
+            `${totalsSelect} ${base} AND created_at >= ${fromExpr}`,
+            [g.orgId],
+          ),
+          pool.query(
+            `${totalsSelect} ${base}
+              AND created_at >= ${prevFromExpr} AND created_at < ${fromExpr}`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                    COUNT(*)::int AS count,
+                    ROUND(AVG(pondus_score) FILTER (WHERE pondus_score > 0))::int AS avg_pondus
+               ${base} AND created_at >= ${fromExpr}
+              GROUP BY 1 ORDER BY 1`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT COALESCE(NULLIF(TRIM(seller_name), ''),
+                             NULLIF(TRIM(created_by_name), ''), 'Ukjent') AS name,
+                    COUNT(*)::int AS count,
+                    ROUND(AVG(pondus_score) FILTER (WHERE pondus_score > 0))::int AS avg_pondus,
+                    COUNT(*) FILTER (WHERE outcome = 'won')::int AS won,
+                    COUNT(*) FILTER (WHERE outcome = 'lost')::int AS lost
+               ${base} AND created_at >= ${fromExpr}
+              GROUP BY 1 ORDER BY count DESC, avg_pondus DESC NULLS LAST LIMIT 10`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT featured_dimension AS dimension,
+                    COUNT(*)::int AS count,
+                    ROUND(AVG(pondus_score) FILTER (WHERE pondus_score > 0))::int AS avg_pondus
+               ${base} AND created_at >= ${fromExpr}
+                AND featured_dimension IS NOT NULL AND featured_dimension <> ''
+              GROUP BY 1 ORDER BY count DESC`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT channel, COUNT(*)::int AS count,
+                    COUNT(*) FILTER (WHERE outcome = 'won')::int AS won,
+                    COUNT(*) FILTER (WHERE outcome = 'lost')::int AS lost
+               ${base} AND created_at >= ${fromExpr}
+              GROUP BY 1 ORDER BY count DESC`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT id, title, summary, outcome, pondus_score
+               ${base} AND created_at >= ${fromExpr} AND pondus_score > 0
+              ORDER BY pondus_score DESC LIMIT 1`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT id, title, summary, outcome, pondus_score
+               ${base} AND created_at >= ${fromExpr} AND pondus_score > 0
+              ORDER BY pondus_score ASC LIMIT 1`,
+            [g.orgId],
+          ),
+          pool.query(
+            `SELECT COUNT(*)::int AS count
+               FROM leadbook_example_feedback f
+               JOIN leadbook_examples e ON e.id = f.example_id
+              WHERE e.organization_id = $1 AND f.created_at >= ${fromExpr}`,
+            [g.orgId],
+          ),
+        ]);
+      const topRow = top.rows[0] ?? null;
+      const bottomRow = bottom.rows[0] ?? null;
+      return res.json({
+        period,
+        totals: {
+          ...(totals.rows[0] ?? {}),
+          feedback: fb.rows[0]?.count ?? 0,
+        },
+        previous: previous.rows[0] ?? {},
+        trend: trend.rows,
+        by_seller: sellers.rows,
+        by_dimension: dims.rows,
+        by_channel: channels.rows,
+        top_example: topRow,
+        // Ikke gjenta samme eksempel som både topp og bunn (1 eksempel).
+        bottom_example: bottomRow && topRow && bottomRow.id === topRow.id
+          ? null
+          : bottomRow,
+      });
+    } catch (err) {
+      console.warn("[leadbook-examples] innsikt failed:", (err as Error).message);
+      return res.status(500).json({ error: "innsikt_failed" });
+    }
+  });
+
   // ── POST /api/leadgrid/leadbook/examples/structure ────────────────
   // LLM-strukturering (2026-07-17, Daniel: forbedring #1 — senk terskelen
   // for innhold): leder limer inn rå notater/referat → Claude strukturerer
@@ -332,6 +452,91 @@ ${raw.slice(0, 12_000)}`;
     } catch (err) {
       console.warn("[leadbook-examples] structure failed:", (err as Error).message);
       return res.status(500).json({ error: "structure_failed" });
+    }
+  });
+
+  // ── POST /api/leadgrid/leadbook/templates/strengthen ──────────────
+  // Ekte AI bak «AI-foreslå sterkere» i mal-editoren (2026-08-02 — appen
+  // hadde hardkodede regex-erstatningspar merket som AI). Samme gating
+  // som /examples/structure: leder-rolle + eksplisitt åpnet AI-entitlement
+  // (fail-closed), samme kostnadslogg (feature 'strengthen').
+  app.post("/api/leadgrid/leadbook/templates/strengthen", async (req, res) => {
+    const g = await guard(req, res);
+    if (!g) return;
+    if (g.role == null || !WRITE_ROLES.has(g.role)) {
+      return res.status(403).json({ error: "krever_leder_rolle" });
+    }
+    try {
+      const aiRow = await pool.query<{ state: string }>(
+        `SELECT state FROM leadgrid_org_entitlements
+          WHERE organization_id = $1 AND feature_key = $2 LIMIT 1`,
+        [g.orgId, LEADBOOK_AI_STRUKTUR_FEATURE_KEYS[0]],
+      );
+      const aiState = aiRow.rows[0]?.state ?? null;
+      if (aiState == null || aiState === "locked") {
+        return res.status(403).json({
+          error: "entitlement_locked",
+          features: LEADBOOK_AI_STRUKTUR_FEATURE_KEYS,
+        });
+      }
+    } catch (e) {
+      console.warn("[leadbook-examples] ai-entitlement-sjekk feilet:", (e as Error).message);
+      return res.status(503).json({ error: "entitlement_utilgjengelig" });
+    }
+    const text = str((req.body ?? {}).text).trim();
+    if (text.length < 10) {
+      return res.status(400).json({ error: "for_kort_tekst" });
+    }
+    const maxCharsRaw = Number((req.body ?? {}).max_chars);
+    const maxChars =
+      Number.isFinite(maxCharsRaw) && maxCharsRaw > 0 ? Math.min(maxCharsRaw, 2000) : null;
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({ error: "ai_ikke_konfigurert" });
+    }
+    try {
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const prompt = `Du er en norsk salgscoach. Styrk formuleringen under: mer konkret, trygg og handlingsdrivende, uten å bli pushy. Behold {variabler} nøyaktig som de står, behold meningen, og hold omtrent samme lengde${maxChars ? ` (maks ${maxChars} tegn)` : ""}. Svar KUN med den forbedrede formuleringen — ingen forklaring, ingen anførselstegn.
+
+Formulering:
+${text.slice(0, 2000)}`;
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 500,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      );
+      const out = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("")
+        .trim();
+
+      // Kostnadssporing — best effort, velter aldri svaret.
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null
+          ? (inTok * 3 + outTok * 15) / 1_000_000
+          : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'strengthen',$5,$6,$7,$8,$9)`,
+          [randomUUID(), g.orgId, g.session.userId, g.session.name ?? "",
+           "claude-sonnet-4-6", text.length, inTok, outTok, cost],
+        );
+      } catch (e) {
+        console.warn("[leadbook-examples] ai-usage-logg feilet:", (e as Error).message);
+      }
+
+      const suggestion = out.replace(/^["«]+|["»]+$/g, "").trim();
+      if (!suggestion) return res.status(502).json({ error: "ai_svar_tomt" });
+      return res.json({ suggestion });
+    } catch (err) {
+      console.warn("[leadbook-examples] strengthen failed:", (err as Error).message);
+      return res.status(500).json({ error: "strengthen_failed" });
     }
   });
 
