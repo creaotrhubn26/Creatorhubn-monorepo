@@ -548,6 +548,7 @@ struct LiveCaptureView: View {
                     assetIdsWithReviews: model.clientReviewsEnabled
                         ? model.assetIdsWithReviews
                         : [],
+                    autoEditedIds: model.autoEditedAssetIds,
                     onSelect: { model.focusedAssetId = $0.id },
                     onDoubleTap: { asset in
                         // Slice 7 — route to DetectionReviewSheet when
@@ -4246,6 +4247,8 @@ private struct FilmstripRail: View {
     let focusedAssetId: UUID?
     let compareAnchorId: UUID?
     let assetIdsWithReviews: Set<UUID>
+    /// Bilder capture-edit-policyen auto-redigerte → «Auto»-badge (E4).
+    var autoEditedIds: Set<UUID> = []
     let onSelect: (Asset) -> Void
     let onDoubleTap: (Asset) -> Void
     let onLongPress: (Asset) -> Void
@@ -4264,7 +4267,8 @@ private struct FilmstripRail: View {
                                 previousFired: assets[idx - 1].signals.flashFired,
                                 previousComp: assets[idx - 1].signals.flashCompensation,
                                 currentFired: asset.signals.flashFired,
-                                currentComp: asset.signals.flashCompensation)
+                                currentComp: asset.signals.flashCompensation),
+                            autoEdited: autoEditedIds.contains(asset.id)
                         )
                         // Order matters — register double-tap before
                         // single-tap so the dispatcher waits for a
@@ -4304,6 +4308,8 @@ private struct FilmstripTile: View {
     /// «Lys endret» vs forrige bilde (blits fyrte/kompensasjon endret) — varsler
     /// fotografen når assistenten bumpet blitsen mellom to formals.
     var lightChanged: Bool = false
+    /// Capture-edit-policyen (E4) auto-påførte en edit på dette bildet → «Auto»-badge.
+    var autoEdited: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -4347,14 +4353,24 @@ private struct FilmstripTile: View {
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
-                    if lightChanged {
-                        Label("Lys endret", systemImage: "bolt.badge.a.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.92), in: Capsule())
-                            .padding(6)
+                    VStack(alignment: .leading, spacing: 3) {
+                        if lightChanged {
+                            Label("Lys endret", systemImage: "bolt.badge.a.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.orange.opacity(0.92), in: Capsule())
+                        }
+                        // E4: policyen har alt auto-redigert denne rammen.
+                        if autoEdited {
+                            Label("Auto", systemImage: "wand.and.stars")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.captureAccent.opacity(0.92), in: Capsule())
+                        }
                     }
+                    .padding(6)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     // Cull-signaler fra den samlede analysen — det fotografen kan
@@ -5475,6 +5491,11 @@ final class LiveCaptureModel {
         if let sid = currentSessionId { CaptureEditPolicyStore.save(sid, policy) }
     }
 
+    /// Bilder som capture-edit-policyen auto-redigerte (E4) — driver «Auto»-badgen
+    /// i filmstripen slik at fotografen ser HVILKE rammer assistenten alt har rørt
+    /// (vs. de hen selv må ta). Kun policy-påførte edits; manuelle telles ikke.
+    private(set) var autoEditedAssetIds: Set<UUID> = []
+
     /// Auto-påfør capture-edit-policyen på nye PREVIEW-klare bilder (E4). Kalles
     /// fra `assets.didSet`. Idempotent — skriver aldri over en manuell edit, så
     /// en reconnect/re-emit ikke tramper på fotografens arbeid. «Forrige bilde»
@@ -5499,7 +5520,10 @@ final class LiveCaptureModel {
                 previousEdit: previousAsset.flatMap { RedigeringEditStore.load($0.id) },
                 lightChanged: lightChanged,
                 presetLookup: { name in RedigeringModel.presets.first { $0.0 == name }?.1 })
-            if let edit { RedigeringEditStore.save(asset.id, edit) }
+            if let edit {
+                RedigeringEditStore.save(asset.id, edit)
+                autoEditedAssetIds.insert(asset.id)   // driver «Auto»-badgen
+            }
         }
     }
 
@@ -7869,6 +7893,7 @@ final class LiveCaptureModel {
         // (modellen er langlivet på tvers av connect/disconnect-sykluser).
         autoCleanDispatched.removeAll()
         onDeviceAnalysisDispatched.removeAll()
+        autoEditedAssetIds.removeAll()
         autoCheckedShotAssetIds.removeAll()
         tunedRecipes.removeAll()
         autoCheckLog.removeAll()
