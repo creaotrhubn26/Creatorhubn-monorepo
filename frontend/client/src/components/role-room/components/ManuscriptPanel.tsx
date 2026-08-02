@@ -1997,11 +1997,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   }, [selectedManuscript?.pageCount]);
 
   const characterList = useMemo(() => {
-    // Extract unique characters from dialogue
+    // Karakterer «hentes fra dialog OG scenedata» (jf. UI-teksten). Tidligere
+    // leste denne KUN dialogueLines — så fanen var tom når parsingen hadde lagret
+    // scener (med scene.characters) men ikke dialoglinjer. Slå sammen begge kilder.
     const characters = new Set<string>();
-    dialogueLines.forEach(line => characters.add(line.characterName));
-    return Array.from(characters).sort();
-  }, [dialogueLines]);
+    dialogueLines.forEach(line => { if (line.characterName?.trim()) characters.add(line.characterName.trim()); });
+    scenes.forEach(scene => (scene.characters || []).forEach(c => { if (c && String(c).trim()) characters.add(String(c).trim()); }));
+    return Array.from(characters).filter(Boolean).sort();
+  }, [dialogueLines, scenes]);
 
   const sceneStats = useMemo(() => {
     const intScenes = scenes.filter(s => s.intExt === 'INT').length;
