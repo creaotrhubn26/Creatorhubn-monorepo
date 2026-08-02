@@ -6938,6 +6938,9 @@ final class LiveCaptureModel {
 
     private func flushTeamShotUpdate(projectId: String) async {
         let scenes = activeShotCardScenes
+        // Snapshot BEGGE nå, før den første `await` — ellers kunne et nytt bilde
+        // lande under `store.load` og gjøre id-settet uenig med `scenes`-snapshotet.
+        let idsSnapshot = Set(activeShotCardAssetIds)
         guard let cardId = activeShotCardId, !scenes.isEmpty,
               let backend = backendClient else { return }
         let who = SignInService.shared.session?.displayName
@@ -6953,8 +6956,8 @@ final class LiveCaptureModel {
         }
 
         // Ekte backup-signal: andel av kortets bilder som er lastet opp til
-        // skyen (B2/sync) — driver «Sikret»-statusen.
-        let ids = Set(activeShotCardAssetIds)
+        // skyen (B2/sync) — driver «Sikret»-statusen. Bruk pre-await-snapshotet.
+        let ids = idsSnapshot
         let relevant = assets.filter { ids.contains($0.id) }
         let backedUp = relevant.filter { $0.state.isBackedUp }.count
         let backup = relevant.isEmpty ? 0.0 : Double(backedUp) / Double(relevant.count)
