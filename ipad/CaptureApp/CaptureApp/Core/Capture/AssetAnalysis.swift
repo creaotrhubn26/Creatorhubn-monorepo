@@ -352,8 +352,17 @@ actor AssetAnalyzer {
                                         extent: CGRect, ctx: CIContext, globalSharpness: Double) -> [FaceAnalysis] {
         let handler = VNImageRequestHandler(cgImage: cg, options: [:])
         let landmarks = VNDetectFaceLandmarksRequest()
-        guard (try? handler.perform([landmarks])) != nil else { return [] }
-        let obs = (landmarks.results ?? []).filter { $0.confidence >= 0.4 }
+        try? handler.perform([landmarks])
+        var obs = (landmarks.results ?? []).filter { $0.confidence >= 0.4 }
+        if obs.isEmpty {
+            // Fallback: landmark-deteksjon kan komme tomt tilbake der ren rektangel-
+            // deteksjon lykkes (bl.a. i simulator-runtimen, og enkelte kilder på
+            // enhet). Grupperingen (E8) trenger bare ansikts-rektene; eyesOpen blir
+            // nil uten landmarks, så on-set «lukkede øyne»-flagget bare uteblir.
+            let rects = VNDetectFaceRectanglesRequest()
+            try? VNImageRequestHandler(cgImage: cg, options: [:]).perform([rects])
+            obs = (rects.results ?? []).filter { $0.confidence >= 0.4 }
+        }
         guard !obs.isEmpty else { return [] }
 
         // Capture-quality på SAMME observasjoner (bevart rekkefølge) → par per indeks.
