@@ -8,8 +8,8 @@ import { motion, AnimatePresence } from "framer-motion";
 // success/info dempes raskt så de ikke blokkerer UI, mens error/warning
 // står lenger fordi de krever lesing.
 const DEFAULT_DURATION_MS: Record<AlertColor, number | null> = {
-  success: 5000,
-  info: 5000,
+  success: 4000,
+  info: 4000,
   warning: 8000,
   error: 10000,
 };
@@ -51,7 +51,7 @@ interface ToastProviderProps {
 
 export const ToastProvider: FC<ToastProviderProps> = ({
   children,
-  maxToasts = 5,
+  maxToasts = 3,
   position = 'bottom-right',
 }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);

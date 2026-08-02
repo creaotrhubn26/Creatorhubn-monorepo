@@ -1174,7 +1174,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
               size="small"
               variant="outlined"
               icon={device.hasPencilSupport ? <CreateIcon sx={{ fontSize: 14 }} /> : <TouchAppIcon sx={{ fontSize: 14 }} />}
-              label={device.hasPencilSupport ? 'iPad/Pencil klar' : device.hasTouchScreen ? 'Touch-klar' : 'Desktop'}
+              label={device.hasPencilSupport ? 'iPad/Pencil klar' : device.hasTouchScreen ? 'Touch-klar' : 'Skrivebord'}
               sx={{ fontSize: 11 }}
             />
             {storyboardFrames[activeFrameIdx]?.scriptLineRange && (
@@ -1369,7 +1369,7 @@ const ScriptView: React.FC<{
 
         {/* Scene Heading */}
         <Typography variant="h6" sx={{ fontWeight: 'bold', textTransform: 'uppercase' }}>
-          {scene.intExt}. {scene.locationName} - {scene.timeOfDay}
+          {scene.sceneHeading || `${scene.intExt}. ${scene.locationName}${scene.timeOfDay ? ` - ${scene.timeOfDay}` : ''}`}
         </Typography>
 
         {/* Scene Description */}

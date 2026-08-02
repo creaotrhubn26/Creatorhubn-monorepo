@@ -258,8 +258,12 @@ export const TimelineView: FC<TimelineViewProps> = ({
     [selectedScene?.id, timelineData.rows]
   );
 
-  const pxPerMinute = 22 * zoom;
-  const timelineWidth = Math.max(860, timelineData.totalMinutes * pxPerMinute);
+  const basePxPerMinute = 22 * zoom;
+  const timelineWidth = Math.max(860, timelineData.totalMinutes * basePxPerMinute);
+  // Bruk EFFEKTIV px/min = faktisk kolonnebredde / totalMinutter, slik at scene-
+  // blokkene (px) og akse-tikkene (%) deler samme skala. Ellers klumpet korte
+  // manus seg til venstre fordi timelineWidth har et gulv på 860px.
+  const pxPerMinute = timelineData.totalMinutes > 0 ? timelineWidth / timelineData.totalMinutes : basePxPerMinute;
 
   const majorTickMinutes = timelineData.totalMinutes <= 45
     ? 5
@@ -462,7 +466,7 @@ export const TimelineView: FC<TimelineViewProps> = ({
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '260px minmax(0, 1fr)',
+                    gridTemplateColumns: `260px ${timelineWidth}px`,
                     alignItems: 'end',
                     pb: 1,
                     mb: 1,
@@ -511,7 +515,7 @@ export const TimelineView: FC<TimelineViewProps> = ({
                         sx={{
                           display: 'grid',
                           gap: 1,
-                          gridTemplateColumns: '260px minmax(0, 1fr)',
+                          gridTemplateColumns: `260px ${timelineWidth}px`,
                           alignItems: 'center',
                         }}
                       >

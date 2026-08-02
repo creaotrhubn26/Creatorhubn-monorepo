@@ -506,6 +506,17 @@ function parseSceneHeadingLine(
   return { intExt, location: (m[2] || '').trim(), timeOfDay: normalizeTimeOfDay(m[3]) };
 }
 
+// Norsk visningstekst for scene-status (enum-verdien beholdes uendret i data).
+function sceneStatusLabel(status?: string): string {
+  switch (status) {
+    case 'not-scheduled': return 'Ikke planlagt';
+    case 'scheduled': return 'Planlagt';
+    case 'in-progress': return 'Pågår';
+    case 'completed': return 'Fullført';
+    default: return status || '—';
+  }
+}
+
 interface ManuscriptPanelProps {
   projectId?: string;
   /** Cinema-format på prosjektnivå — propageres til Storyboard-editoren. */
@@ -1469,8 +1480,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           sceneNumber++;
         }
         
-        // Character name detection (ALL CAPS)
-        else if (line === line.toUpperCase() && line.length > 0 && line.length < 30 && !line.match(/^(FADE|CUT)/)) {
+        // Character name detection (ALL CAPS) — ekskluder overganger på norsk OG
+        // engelsk (KLIPP TIL SVART., CUT TO:, TONE UT, OVERGANG …) så de ikke blir karakterer.
+        else if (line === line.toUpperCase() && line.length > 0 && line.length < 30 && !line.match(/^(FADE|CUT|KLIPP|TONE|OVERGANG|SMASH|MATCH|DISSOLVE|INTERCUT)\b/i) && !line.endsWith(':')) {
           const characterName = line.replace(/\(.*\)/, '').trim();
           if (characterName && !currentCharacters.includes(characterName)) {
             currentCharacters.push(characterName);
@@ -1761,7 +1773,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       const newRole: Role = {
         id: `role-${Date.now()}`,
         name: normalizedName,
-        description: `Character from screenplay`,
+        description: `Karakter fra manuskriptet`,
         requirements: {},
         status: 'draft',
       };
@@ -1792,7 +1804,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         name: normalizedName,
         type: 'indoor', // Default
         address: '',
-        notes: 'Location from screenplay',
+        notes: 'Lokasjon fra manuskriptet',
         availability: {},
         assignedScenes: [],
         createdAt: new Date().toISOString(),
@@ -1991,7 +2003,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         const isCue = !!characterMatch
           && !!lines[lineIndex + 1]?.trim()
           && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)
-          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP)/i);
+          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP|TONE|OVERGANG|SMASH|MATCH|DISSOLVE|INTERCUT)\b/i)
+          && !trimmed.endsWith(':');
         const isParenthetical = /^\(.*\)$/.test(trimmed);
 
         if (isCue) {
@@ -2024,7 +2037,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Update scenes + dialog (parses sammen så DIALOG-fanen samsvarer med SCENER/KARAKTERER)
     setScenes(newScenes);
     setDialogueLines(newDialogue);
-    showSuccess(`Parsed ${newScenes.length} scenes · ${newDialogue.length} replikker from screenplay`);
+    showSuccess(`Parset ${newScenes.length} scener · ${newDialogue.length} replikker fra manuskriptet`);
   }, [activeProjectId, autoBreakdownEnabled, selectedManuscript, showSuccess, showWarning]);
 
   const handleDeleteManuscript = async (manuscript: Manuscript) => {
@@ -2406,7 +2419,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     },
                   }}
                 >
-                  {autoBreakdownEnabled ? 'Auto Breakdown På' : 'Auto Breakdown Av'}
+                  {autoBreakdownEnabled ? 'Auto-gjennomgang På' : 'Auto-gjennomgang Av'}
                 </ToggleButton>
                 <Button
                   variant="outlined"
@@ -2416,7 +2429,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   disabled={isLoading || !autoBreakdownEnabled}
                   sx={{ fontSize: responsive.bodyFontSize }}
                 >
-                  {isMobile ? 'Auto' : 'Auto Breakdown'}
+                  {isMobile ? 'Auto' : 'Auto-gjennomgang'}
                 </Button>
                 <Button
                   variant="outlined"
@@ -2576,11 +2589,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 disabled={isLoading || !autoBreakdownEnabled}
                 onClick={handleAutoBreakdown}
               >
-                Kjør Auto Breakdown
+                Kjør Auto-gjennomgang
               </Button>
             }
           >
-            Scene-listen er ute av synk med manuset (ulike scene-overskrifter). Kjør Auto Breakdown for å oppdatere — produksjonsdata (storyboard, props) på scener som fortsatt finnes beholdes.
+            Scene-listen er ute av synk med manuset (ulike scene-overskrifter). Kjør Auto-gjennomgang for å oppdatere — produksjonsdata (storyboard, props) på scener som fortsatt finnes beholdes.
           </Alert>
         )}
 
@@ -3064,8 +3077,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Breakdown" : ""} 
-              value="breakdown" 
+              label={responsive.showTabLabels ? "Gjennomgang" : ""}
+              value="breakdown"
               icon={<AssessmentIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
@@ -3080,8 +3093,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Timeline" : ""} 
-              value="timeline" 
+              label={responsive.showTabLabels ? "Tidslinje" : ""}
+              value="timeline"
               icon={<TimelineIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
@@ -3092,8 +3105,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Production View" : ""} 
-              value="productionview" 
+              label={responsive.showTabLabels ? "Produksjon" : ""}
+              value="productionview"
               icon={<MovieIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
@@ -5270,7 +5283,7 @@ const ActsTab: React.FC<{
       {acts.length === 0 ? (
         <Alert severity="info">
           <Typography sx={{ fontSize: responsive.bodyFontSize }}>
-            Ingen akter ennå. Opprett akter for å strukturere manuskriptet i kapitler eller akter.
+            Ingen akter opprettet ennå. Dette er strukturelle produksjons-akter (med side­tall og varighet) — atskilt fra ACT-overskrifter i selve manuset. Klikk «Legg til Akt» for å dele opp produksjonen i akter eller kapitler.
           </Typography>
         </Alert>
       ) : isMobile ? (
@@ -5529,14 +5542,34 @@ const ScenesTab: React.FC<{
           onSceneSelect={onSelectScene}
           selectedScene={selectedScene}
         />
-      ) : viewMode === 'storyboard' && selectedScene ? (
-        <StoryboardIntegrationView
-          scene={selectedScene}
-          projectCinemaFormat={projectCinemaFormat}
-          onUpdate={(updatedScene) => {
-            onReorderScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
-          }}
-        />
+      ) : viewMode === 'storyboard' && scenes.length > 0 ? (
+        // Scene-velger så ALLE scener er tilgjengelige (før viste den kun scene 1).
+        <Stack spacing={2}>
+          <FormControl size="small" sx={{ maxWidth: 520 }}>
+            <InputLabel>Scene</InputLabel>
+            <Select
+              label="Scene"
+              value={(selectedScene ?? scenes[0]).id}
+              onChange={(event) => {
+                const next = scenes.find((s) => s.id === event.target.value);
+                if (next) onSelectScene(next);
+              }}
+            >
+              {scenes.map((s) => (
+                <MenuItem key={s.id} value={s.id}>
+                  Scene {s.sceneNumber} — {s.sceneHeading}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <StoryboardIntegrationView
+            scene={selectedScene ?? scenes[0]}
+            projectCinemaFormat={projectCinemaFormat}
+            onUpdate={(updatedScene) => {
+              onReorderScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
+            }}
+          />
+        </Stack>
       ) : isMobile ? (
         // Mobile: Card-based layout
         <Stack spacing={1}>
@@ -5587,14 +5620,14 @@ const ScenesTab: React.FC<{
           <Table size={isTablet ? 'small' : 'medium'}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Scene #</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Heading</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Scene</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Overskrift</TableCell>
                 <TableCell sx={{ fontSize: responsive.bodyFontSize }}>INT/EXT</TableCell>
-                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Time</TableCell>}
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Pages</TableCell>
-                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Characters</TableCell>}
+                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Tid</TableCell>}
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Sider</TableCell>
+                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Karakterer</TableCell>}
                 <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Status</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Actions</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Handlinger</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -5619,7 +5652,7 @@ const ScenesTab: React.FC<{
                   {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.characters?.length || 0}</TableCell>}
                   <TableCell>
                     <Chip
-                      label={scene.status}
+                      label={sceneStatusLabel(scene.status)}
                       size={responsive.chipSize}
                       color={scene.status === 'completed' ? 'success' : 'default'}
                       sx={{ fontSize: responsive.captionFontSize }}
@@ -5745,27 +5778,38 @@ const CharactersTab: React.FC<{
   // Build character profiles from dialogue and scenes
   const characterData = useMemo(() => {
     const profiles: CharacterProfile[] = [];
-    
+
+    // Rolle-størrelse klassifiseres RELATIVT (andel av den mest aktive karakteren)
+    // så det tilpasser seg manuslengden — en kortfilm får ikke alle som «minor».
+    const lineCounts = characters.map((name) => dialogueLines.filter((l) => l.characterName === name).length);
+    const maxLines = Math.max(1, ...lineCounts);
+    const classifyRole = (count: number): 'lead' | 'supporting' | 'minor' => {
+      const share = count / maxLines;
+      if (share >= 0.5) return 'lead';
+      if (share >= 0.2) return 'supporting';
+      return 'minor';
+    };
+
     characters.forEach(name => {
       const lines = dialogueLines.filter(l => l.characterName === name);
-      const appearingScenes = scenes.filter(s => 
+      const appearingScenes = scenes.filter(s =>
         s.characters?.includes(name) || lines.some(l => l.sceneId === s.id)
       );
-      
+
       const savedProfile = characterProfiles[name];
-      
+
       profiles.push({
         name,
         alias: savedProfile?.alias,
         description: savedProfile?.description,
         age: savedProfile?.age,
-        role: savedProfile?.role || (lines.length > 10 ? 'lead' : lines.length > 5 ? 'supporting' : 'minor'),
+        role: savedProfile?.role || classifyRole(lines.length),
         sceneCount: appearingScenes.length,
         dialogueCount: lines.length,
         scenesAppearing: appearingScenes.map((s) => String(s.sceneNumber ?? '')),
       });
     });
-    
+
     return profiles.sort((a, b) => b.dialogueCount - a.dialogueCount);
   }, [characters, dialogueLines, scenes, characterProfiles]);
 
