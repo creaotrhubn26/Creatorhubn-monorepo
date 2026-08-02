@@ -38,6 +38,7 @@ import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
+import { InfographicStudioView } from "./components/demo-studio/InfographicStudioView";
 import { ModuleGate } from "./components/ModuleGate";
 import {
   getEntitledModules,
@@ -128,7 +129,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic">("pipeline");
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -802,6 +803,7 @@ export default function App() {
           onOpenShortFilmAgent={() => void openAgent(SHORT_FILM_AGENT_CONFIG)}
           onOpenAdFilmAgent={() => void openAgent(AD_FILM_AGENT_CONFIG)}
           onOpenDemoStudio={() => setView("demo")}
+          onOpenInfographicStudio={() => setView("infographic")}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}
@@ -842,6 +844,27 @@ export default function App() {
           // rad-høyden og de indre panelene scroller/krymper som de skal.
           <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
             <DemoStudioShell onClose={() => setView("pipeline")} />
+          </div>
+        ) : (
+          <ModuleGate
+            module="demo_studio"
+            signedIn={authStatus === "ok"}
+            onClose={() => setView("pipeline")}
+            onSignIn={() => setShowSignIn(true)}
+          />
+        ))}
+
+      {/* Infographic Studio — egen løsning på Home (samme demo_studio-modul).
+          Komponenten har innebygd standalone-modus («Egen løsning»-badge +
+          Tilbake-til-Home). onNav → hjem; onOpenDemoStudio → Demo Studio. */}
+      {view === "infographic" &&
+        (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
+          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+            <InfographicStudioView
+              standalone
+              onNav={() => setView("pipeline")}
+              onOpenDemoStudio={() => setView("demo")}
+            />
           </div>
         ) : (
           <ModuleGate
