@@ -981,6 +981,9 @@ interface ScreenplayGuideProps {
 // Legg til flere etter hvert som labels dekkes (bilder i public/role-room-assets/).
 const GUIDE_SCREENSHOTS: Record<string, string> = {
   'Screenplay editor – full layout overview': '/role-room-assets/guide-screenplay-overview.png',
+  'Live Fountain parsing with colour-coded elements': '/role-room-assets/guide-screenplay-overview.png',
+  'Storyboard panel open alongside editor for a selected scene': '/role-room-assets/guide-storyboard.png',
+  'Character cue in manuscript auto-creating a role in The Role Room': '/role-room-assets/guide-auto-create-role.png',
 };
 
 export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
