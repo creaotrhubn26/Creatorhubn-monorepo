@@ -58,13 +58,60 @@ def detector():
     return _det
 
 
-def develop(raw_path: str, half: bool = True):
-    with rawpy.imread(raw_path) as raw:
+def _develop_worker(raw_path, half):
+    import rawpy as _rp, cv2 as _cv
+    with _rp.imread(raw_path) as raw:
         rgb = raw.postprocess(use_camera_wb=True, output_bps=8, no_auto_bright=False,
                               half_size=half,
-                              highlight_mode=rawpy.HighlightMode.Blend,
-                              output_color=rawpy.ColorSpace.sRGB)
-    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                              highlight_mode=_rp.HighlightMode.Blend,
+                              output_color=_rp.ColorSpace.sRGB)
+    return _cv.cvtColor(rgb, _cv.COLOR_RGB2BGR)
+
+
+_POOL = None
+
+
+def _isolated(fn, *args, timeout=120):
+    """Kjør fn(*args) i en ISOLERT enkelt-arbeider-prosess. En native segfault
+    (libraw ELLER cv2 på en korrupt/uvanlig fil → exit 139) dreper kun arbeideren
+    → BrokenProcessPool i parent → vi gjenoppretter poolen og lar kalleren hoppe."""
+    global _POOL
+    import concurrent.futures as _cf
+    if _POOL is None:
+        _POOL = _cf.ProcessPoolExecutor(max_workers=1)
+    try:
+        return _POOL.submit(fn, *args).result(timeout=timeout)
+    except Exception:
+        try:
+            _POOL.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        _POOL = None
+        raise
+
+
+def develop(raw_path: str, half: bool = True):
+    return _isolated(_develop_worker, raw_path, half)
+
+
+def _process_pair_worker(rp, jp):
+    """HELE den native per-par-jobben (develop + all cv2) i arbeider-prosessen, så
+    en segfault et sted i kjeden isoleres. Returnerer (feat, lut, ab, lab_std)
+    eller None (drop ikke-farge JPG). Flash leses i PARENT (exiftool, trygt)."""
+    import cv2 as _cv
+    import numpy as _np
+    neutral = _develop_worker(rp, True)
+    edited = _cv.imread(jp, _cv.IMREAD_COLOR)
+    if edited is None or not is_color(edited):
+        return None
+    eh = _cv.resize(edited, (neutral.shape[1], neutral.shape[0]))
+    lut = _np.stack([cdf_lut(neutral[:, :, c], eh[:, :, c]) for c in range(3)])
+    n_lab = _cv.cvtColor(neutral, _cv.COLOR_BGR2LAB).astype(_np.float32)
+    e_lab = _cv.cvtColor(eh, _cv.COLOR_BGR2LAB).astype(_np.float32)
+    ab = [float(e_lab[:, :, 1].mean() - n_lab[:, :, 1].mean()),
+          float(e_lab[:, :, 2].mean() - n_lab[:, :, 2].mean())]
+    ls = [_std_ratio(e_lab[:, :, c], n_lab[:, :, c]) for c in range(3)]
+    return features(neutral), lut, ab, ls
 
 
 def is_color(img, thresh: float = 4.0) -> bool:
@@ -106,20 +153,11 @@ def features(img):
 def flash_fired(jpg_path, raw_path):
     """Fyrte blitsen? EXIF Flash-tag (0x9209), bit 0 = «fired». Del D: lar
     stil-modellen SKILLE blits-scener fra ambient (gelet blits ≠ tungsten selv om
-    begge er «varme»). Best-effort, INGEN hard ny avhengighet:
-      1) PIL på den leverte JPG-en (bevart av de fleste eksportører),
-      2) exiftool på JPG → RAW (leser CR3/ARW som PIL ikke kan).
-    None når ukjent → scenen forblir 12-dim (Del D inert for den scenen)."""
-    try:
-        from PIL import Image
-        ex = getattr(Image.open(jpg_path), "_getexif", lambda: None)() or {}
-        v = ex.get(0x9209)
-        if v is not None:
-            return bool(int(v) & 0x1)
-    except Exception:
-        pass
+    begge er «varme»). 🔑 RAW/CR3 beholder original blits-EXIF; leverte JPG-er er
+    ofte strippet av eksportøren (Lightroom/C1) → les RAW FØRST (exiftool; PIL kan
+    ikke CR3), fall til JPG. None når ukjent → scenen forblir 12-dim (Del D inert)."""
     import subprocess
-    for p in (jpg_path, raw_path):
+    for p in (raw_path, jpg_path):
         try:
             r = subprocess.run(["exiftool", "-s3", "-n", "-Flash", p],
                                capture_output=True, text=True, timeout=10)
@@ -136,6 +174,15 @@ def flash_fired(jpg_path, raw_path):
                     return True
         except Exception:
             pass
+    # Siste utvei: PIL på JPG (om eksportøren bevarte EXIF).
+    try:
+        from PIL import Image
+        ex = getattr(Image.open(jpg_path), "_getexif", lambda: None)() or {}
+        v = ex.get(0x9209)
+        if v is not None:
+            return bool(int(v) & 0x1)
+    except Exception:
+        pass
     return None
 
 
@@ -158,28 +205,21 @@ def learn(raw_roots, lev_roots, model_path, max_pairs=250):
     feats, luts, ab_shifts, lab_std, names, flash = [], [], [], [], [], []
     for i, (rp, jp) in enumerate(pairs):
         try:
-            neutral = develop(rp)
-            edited = cv2.imread(jp, cv2.IMREAD_COLOR)
-            if edited is None or not is_color(edited):
-                continue
-            eh = cv2.resize(edited, (neutral.shape[1], neutral.shape[0]))
-            luts.append(np.stack([cdf_lut(neutral[:, :, c], eh[:, :, c]) for c in range(3)]))
-            n_lab = cv2.cvtColor(neutral, cv2.COLOR_BGR2LAB).astype(np.float32)
-            e_lab = cv2.cvtColor(eh, cv2.COLOR_BGR2LAB).astype(np.float32)
-            ab_shifts.append([float(e_lab[:, :, 1].mean() - n_lab[:, :, 1].mean()),
-                              float(e_lab[:, :, 2].mean() - n_lab[:, :, 2].mean())])
-            # Reinhard-spredning: hvor mye fotografen endrer STD (spredning) per
-            # LAB-kanal (L=kontrast, a/b=metning). Middel-skiftet over fanget bare
-            # halve Reinhard-fargeoverføringen; dette er den andre halvparten.
-            lab_std.append([_std_ratio(e_lab[:, :, c], n_lab[:, :, c]) for c in range(3)])
-            feats.append(features(neutral))
-            names.append(os.path.basename(jp))
-            # Del D: blits-flagg fra EXIF (1=fyrte, 0=ikke, nan=ukjent). MÅ append-
-            # es HER, i lås med feats, så indeksene holder linja.
-            ff = flash_fired(jp, rp)
-            flash.append(1.0 if ff is True else (0.0 if ff is False else np.nan))
+            res = _isolated(_process_pair_worker, rp, jp, timeout=120)
         except Exception as e:
             print(f"  hopp: {os.path.basename(rp)} ({str(e)[:40]})", flush=True)
+            res = None
+        if res is not None:
+            feat, lut, ab, ls = res
+            feats.append(feat)
+            luts.append(lut)
+            ab_shifts.append(ab)
+            lab_std.append(ls)
+            names.append(os.path.basename(jp))
+            # Del D: blits-flagg fra EXIF (RAW-først; 1=fyrte, 0=ikke, nan=ukjent).
+            # MÅ appendes i lås med feats så indeksene holder linja.
+            ff = flash_fired(jp, rp)
+            flash.append(1.0 if ff is True else (0.0 if ff is False else np.nan))
         if (i + 1) % 25 == 0:
             print(f"  lært {len(feats)} av {i+1}", flush=True)
     os.makedirs(os.path.dirname(os.path.expanduser(model_path)), exist_ok=True)
