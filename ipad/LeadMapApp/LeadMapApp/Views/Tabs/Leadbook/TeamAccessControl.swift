@@ -108,6 +108,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // selgerne ser adressen ved å tappe pinnen) — superadmin aktiverer for
     // org-er som trenger å hoppe rett til en adresse.
     case dorsalgAdresseSok = "Dørsalg · Adressesøk"
+    // Anbud (Doffin) — tilleggstjeneste (2026-08-02): søk + overvåkning av
+    // offentlige anskaffelser, oppdragsgiver-orgnr klart for CRM-kobling.
+    case leadgridAnbud = "Anbud · Doffin"
 
     var id: String { rawValue }
 
@@ -162,6 +165,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridGoDashboard: return "chart.bar.doc.horizontal.fill"
         // Kvalitet
         case .leadgridKvalitet: return "checkmark.seal.fill"
+        case .leadgridAnbud: return "doc.text.magnifyingglass"
         // Områder
         case .omradeTildeling: return "map.circle.fill"
         // AI
@@ -191,6 +195,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
              .createLeadAtPosition: return .kjerne
         case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo
         case .leadgridKvalitet: return .kvalitet
+        case .leadgridAnbud: return .anbud
         }
     }
 
@@ -203,6 +208,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case analyseAI = "Analyse & AI"
         case leadgridGo = "Leadgrid Go"
         case kvalitet = "Kvalitet"
+        case anbud = "Anbud (Doffin)"
         var id: String { rawValue }
         var icon: String {
             switch self {
@@ -214,6 +220,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
             case .analyseAI: return "sparkles"
             case .leadgridGo: return "car.circle.fill"
             case .kvalitet: return "checkmark.seal.fill"
+            case .anbud: return "doc.text.magnifyingglass"
             }
         }
         var tint: Color {
@@ -226,6 +233,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
             case .analyseAI: return LBrand.pink
             case .leadgridGo: return LBrand.green
             case .kvalitet: return Color.teal
+            case .anbud: return Color.indigo
             }
         }
     }

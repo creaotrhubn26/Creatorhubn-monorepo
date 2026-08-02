@@ -156,6 +156,7 @@ enum PlanDefaults {
                 state = (feature == .teamCompareToPrevious) ? .included : .addOn
             case .leadgridGo: state = .addOn   // tilleggstjeneste
             case .kvalitet: state = .addOn     // tilleggstjeneste
+            case .anbud: state = .addOn        // tilleggstjeneste (Doffin)
             }
             if feature == .leads { limit = 500 }
         case .pro:
@@ -167,6 +168,7 @@ enum PlanDefaults {
                 state = (feature == .teamAIFormulaSuggest) ? .trial : .included
             case .leadgridGo: state = .addOn   // tilleggstjeneste (også på Pro)
             case .kvalitet: state = .addOn     // tilleggstjeneste (også på Pro)
+            case .anbud: state = .addOn        // tilleggstjeneste (også på Pro)
             default: state = .included
             }
         case .enterprise: state = .included

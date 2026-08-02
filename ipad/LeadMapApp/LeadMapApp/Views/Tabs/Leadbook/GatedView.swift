@@ -508,6 +508,7 @@ struct UpsellSheet: View {
         case .analyseAI: return "AI-drevne innsikts-verktøy: forecast, sammenligning, pipeline-helse og formel-forslag."
         case .leadgridGo: return "Leadgrid Go — automatisk elektronisk kjørebok, kjøregodtgjørelse og kjøretøy-oversikt for hele teamet."
         case .kvalitet: return "Kvalitet — verifiser vunnede salg med velkomstsamtale, samtale-maler per produkt og kvalitetsscore per selger."
+        case .anbud: return "Anbud — søk og overvåk offentlige anskaffelser fra Doffin, med oppdragsgiverens org.nr klart for lead-registrering."
         }
     }
 }

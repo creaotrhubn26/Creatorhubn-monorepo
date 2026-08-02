@@ -568,7 +568,7 @@ struct PhoneMerTab: View {
     @Environment(AppState.self) private var state
 
     private enum Destination: Int, Hashable {
-        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9
+        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10
     }
 
     @State private var path: [Destination] = {
@@ -598,6 +598,8 @@ struct PhoneMerTab: View {
                            title: "Leadgrid Go", subtitle: "Elektronisk kjørebok og kjøretøy")
                     merRow(.kvalitet, icon: "checkmark.seal.fill", color: .teal,
                            title: "Kvalitet", subtitle: "Verifiser salg med velkomstsamtale")
+                    merRow(.anbud, icon: "doc.text.magnifyingglass", color: .indigo,
+                           title: "Anbud", subtitle: "Offentlige anskaffelser fra Doffin")
                 }
             }
             .navigationTitle("Mer")
@@ -618,6 +620,9 @@ struct PhoneMerTab: View {
                         .toolbar(.hidden, for: .navigationBar)
                 case .kvalitet:
                     KvalitetView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .anbud:
+                    AnbudView(embedded: true)
                         .toolbar(.hidden, for: .navigationBar)
                 }
             }
@@ -843,6 +848,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case salgsledelse
     case leadgridGo
     case kvalitet
+    case anbud
 
     var id: String { rawValue }
 
@@ -857,6 +863,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .salgsledelse: return "Salgsledelse"
         case .leadgridGo:   return "Leadgrid Go"
         case .kvalitet:     return "Kvalitet"
+        case .anbud:        return "Anbud"
         }
     }
 
@@ -871,6 +878,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .salgsledelse: return "rosette"
         case .leadgridGo:   return "car.circle.fill"
         case .kvalitet:     return "checkmark.seal.fill"
+        case .anbud:        return "doc.text.magnifyingglass"
         }
     }
 }
@@ -1012,6 +1020,7 @@ struct MainSidebarView: View {
         case .salgsledelse: SalgsledelseView()
         case .leadgridGo:   LeadgridGoDashboardView()
         case .kvalitet:     KvalitetView()
+        case .anbud:        AnbudView()
         }
     }
 
