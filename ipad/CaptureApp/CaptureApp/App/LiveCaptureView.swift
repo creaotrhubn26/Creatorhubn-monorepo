@@ -6236,6 +6236,70 @@ final class LiveCaptureModel {
     /// insecure-trust session path.
     static let demoBaseURL = URL(string: "https://camera.demo")!
 
+    /// Persistent per-økt-katalog under `Documents/CaptureApp/sessions/<id>/`.
+    /// Overlever frakobling/omstart (≠ `temporaryDirectory`), samlokalisert med
+    /// disk-DB-en. Katalognavnet = `sessionId.uuidString` (samsvarer med DB-nøkkelen).
+    nonisolated static func persistentSessionDirectory(for sessionId: UUID) throws -> URL {
+        let dir = try FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("CaptureApp/sessions", isDirectory: true)
+            .appendingPathComponent(sessionId.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Retensjon: rydd gamle økt-kataloger + DB-rader så persistent lagring ikke
+    /// vokser ubegrenset. Sletter alt eldre enn `maxAgeDays`, og — hvis totalen
+    /// fortsatt overstiger `capBytes` — de ELDSTE til under taket. Rører ALDRI den
+    /// aktive økten (`keeping`). Kjøres fire-and-forget off-main ved connect.
+    nonisolated static func purgeStaleSessions(
+        keeping activeId: UUID, ownerUserId: String,
+        maxAgeDays: Double = 30, capBytes: Int64 = 25 * 1024 * 1024 * 1024
+    ) async {
+        let fm = FileManager.default
+        guard let root = try? fm.url(for: .documentDirectory, in: .userDomainMask,
+                                     appropriateFor: nil, create: false)
+            .appendingPathComponent("CaptureApp/sessions", isDirectory: true),
+              let entries = try? fm.contentsOfDirectory(
+                at: root, includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]) else { return }
+        struct Entry { let url: URL; let id: UUID; let mtime: Date; let size: Int64 }
+        var dirs: [Entry] = []
+        for url in entries {
+            guard url.hasDirectoryPath, let id = UUID(uuidString: url.lastPathComponent),
+                  id != activeId else { continue }
+            let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? .distantPast
+            dirs.append(Entry(url: url, id: id, mtime: mtime, size: directorySize(url)))
+        }
+        let store = try? SessionStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
+        let now = Date()
+        var survivors: [Entry] = []
+        for e in dirs {                                   // 1) aldersbasert
+            if now.timeIntervalSince(e.mtime) > maxAgeDays * 86_400 {
+                try? fm.removeItem(at: e.url)
+                try? await store?.deleteSession(id: e.id)
+            } else { survivors.append(e) }
+        }
+        var total = survivors.reduce(Int64(0)) { $0 + $1.size }
+        for e in survivors.sorted(by: { $0.mtime < $1.mtime }) where total > capBytes {  // 2) størrelsestak
+            try? fm.removeItem(at: e.url)
+            try? await store?.deleteSession(id: e.id)
+            total -= e.size
+        }
+    }
+
+    nonisolated private static func directorySize(_ url: URL) -> Int64 {
+        guard let en = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let f as URL in en {
+            total += Int64((try? f.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
+                .totalFileAllocatedSize) ?? 0)
+        }
+        return total
+    }
+
     func connect(to baseURL: URL) async {
         guard cameraSession == nil else { return }
         isConnecting = true
@@ -6253,23 +6317,27 @@ final class LiveCaptureModel {
         let urlSession = Self.makeSession(for: baseURL, retain: {})
         #endif
         let client = CCAPIClient(baseURL: baseURL, session: urlSession)
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("capture-live", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-
         do {
-            let adapter = try CCAPIAdapter(
-                baseURL: baseURL,
-                adapterId: "live-\(baseURL.host ?? "")",
-                client: client,
-                downloadDirectory: tempDir,
-                enumerateOnStart: false
-            )
-            let store = try SessionStore(database: AppDatabase.inMemory())
+            // PERSISTENS: tethered økter skrives til den delte disk-DB-en (samme
+            // som Redigering/Arkiv/kortimport leser) + en persistent per-økt-
+            // katalog — IKKE lenger en in-memory-DB + temporaryDirectory som
+            // forsvant ved hver frakobling. Dermed overlever previews/RAW/ratings/
+            // picks/voice-memos/tuned recipes en disconnect/omstart og dukker opp
+            // i Redigering + Arkiv. `store` + `sessionDir` MÅ opprettes FØR adapteren
+            // (den trenger katalogen), så rekkefølgen er snudd vs. den gamle koden.
+            let store = try SessionStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
             let dbSession = try await store.createSession(
                 name: "Live shoot",
                 clientId: nil,
                 ownerUserId: actorUserId
+            )
+            let sessionDir = try Self.persistentSessionDirectory(for: dbSession.id)
+            let adapter = try CCAPIAdapter(
+                baseURL: baseURL,
+                adapterId: "live-\(baseURL.host ?? "")",
+                client: client,
+                downloadDirectory: sessionDir,
+                enumerateOnStart: false
             )
             let camera = CameraSession(
                 sessionId: dbSession.id,
@@ -6281,7 +6349,12 @@ final class LiveCaptureModel {
             self.client = client
             self.store = store
             self.cameraSession = camera
-            self.downloadDirectory = tempDir
+            self.downloadDirectory = sessionDir
+            // Rydd gamle økter (alder + størrelse) så persistent lagring ikke vokser
+            // ubegrenset. Aldri den aktive økten. Fire-and-forget.
+            Task.detached { [ownerUserId = actorUserId] in
+                await Self.purgeStaleSessions(keeping: dbSession.id, ownerUserId: ownerUserId)
+            }
             self.currentSessionId = dbSession.id
             // P2 (E4): last capture-edit-policyen for økten (persistert per sesjon)
             // — valget overlever restart/reconnect.
@@ -6296,14 +6369,14 @@ final class LiveCaptureModel {
             }
             self.rawExportService = RAWExportService(
                 store: store,
-                outputDirectory: tempDir.appendingPathComponent("raw-export"),
+                outputDirectory: sessionDir.appendingPathComponent("raw-export"),
             )
             self.voiceMemoService = VoiceMemoService(
-                outputDirectory: tempDir.appendingPathComponent("voice-memos"),
+                outputDirectory: sessionDir.appendingPathComponent("voice-memos"),
             )
-            self.replyMemosDirectory = tempDir.appendingPathComponent("reply-memos")
+            self.replyMemosDirectory = sessionDir.appendingPathComponent("reply-memos")
             try? FileManager.default.createDirectory(
-                at: tempDir.appendingPathComponent("reply-memos"),
+                at: sessionDir.appendingPathComponent("reply-memos"),
                 withIntermediateDirectories: true,
             )
 
@@ -6344,7 +6417,7 @@ final class LiveCaptureModel {
             // validate the Enhanced UX flow with real cameras too, before
             // the backend-driven enhancer loop is wired up. Won't ship to
             // release builds.
-            let enhancer = MagicPipeline(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
+            let enhancer = MagicPipeline(store: store, outputDirectory: sessionDir.appendingPathComponent("enhanced"))
             enhancer.start(sessionId: dbSession.id)
             self.magicPipeline = enhancer
             #endif
@@ -8157,9 +8230,11 @@ final class LiveCaptureModel {
         tunedRecipes.removeAll()
         autoCheckLog.removeAll()
         voiceMemoTranscripts.removeAll()
-        if let downloadDirectory {
-            try? FileManager.default.removeItem(at: downloadDirectory)
-        }
+        // PERSISTENS: IKKE slett `downloadDirectory` lenger — den ligger nå i
+        // Documents/CaptureApp/sessions/<id>/ og skal OVERLEVE frakobling/omstart
+        // (previews/RAW/voice-memos), tilgjengelig i Redigering + Arkiv. Disk-DB-en
+        // er allerede flushet (WAL); vi slipper bare referansene. Gamle økter ryddes
+        // aldersbasert av `purgeStaleSessions` ved neste connect.
         cameraSession = nil
         client = nil
         store = nil

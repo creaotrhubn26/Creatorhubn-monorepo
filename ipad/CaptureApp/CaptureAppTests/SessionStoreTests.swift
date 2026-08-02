@@ -25,6 +25,27 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(listed, [b.id, a.id])
     }
 
+    /// Persistens-retensjon: `deleteSession` fjerner økta OG kaskaderer bort dens
+    /// assets (ON DELETE CASCADE) — brukt av `purgeStaleSessions`.
+    func testDeleteSessionCascadesAssets() async throws {
+        let store = try makeStore()
+        let session = try await store.createSession(name: "Gammel", clientId: nil, ownerUserId: owner)
+        let asset = try await store.createAsset(sessionId: session.id, descriptor: AssetDescriptor(
+            id: UUID(), originalFilename: "IMG_0009.CR3", captureTime: Date(),
+            mime: "image/x-canon-cr3", sizeBytes: 1_000))
+        let before = try await store.fetchAsset(id: asset.id)
+        XCTAssertNotNil(before)
+
+        try await store.deleteSession(id: session.id)
+
+        let gone = try await store.fetchSession(id: session.id)
+        XCTAssertNil(gone, "økta skal være borte")
+        let assetGone = try await store.fetchAsset(id: asset.id)
+        XCTAssertNil(assetGone, "asset skal kaskadert bort med økta")
+        let listed = try await store.listSessions(ownerUserId: owner)
+        XCTAssertFalse(listed.contains { $0.id == session.id })
+    }
+
     func testCreateAssetAndTransitionState() async throws {
         let store = try makeStore()
         let session = try await store.createSession(name: "S", clientId: nil, ownerUserId: owner)
