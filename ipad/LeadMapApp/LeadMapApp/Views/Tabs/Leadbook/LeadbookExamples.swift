@@ -1302,6 +1302,17 @@ struct LeadbookExampleDetailSheet: View {
     @State private var pencilTool: PKTool = PKInkingTool(.pen, color: UIColor(red: 0.75, green: 0.45, blue: 1.0, alpha: 1.0), width: 4)
     @State private var allowFinger: Bool = true
 
+    // 2026-08-02: søk i transkriptet (lokalt filter — lange samtaler er
+    // ellers umulige å navigere) + AI-analyse for backend-eksempler som
+    // mangler sammendrag/lærdommer (LeadbookExampleIntelligence: on-device
+    // når mulig, ellers backend-Claude bak leadbookAiStruktur-entitlement).
+    @State private var transcriptQuery = ""
+    @State private var isAnalyzing = false
+    @State private var aiSuggestion: APIClient.StructuredExampleDTO?
+    @State private var aiSource: TranscriptIntelligenceSource?
+    @State private var aiError: String?
+    @State private var isSavingAI = false
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -1797,15 +1808,90 @@ struct LeadbookExampleDetailSheet: View {
                     .foregroundStyle(LBrand.purpleLight)
                 }.buttonStyle(.plain)
             }
+            // 2026-08-02: søkefelt — lange samtaler trenger «finn øyeblikket».
+            // Filtrerer replikkene og uthever treffene; original-indeksen
+            // beholdes så feedback-ankere fortsatt peker på riktig replikk.
+            if example.transcript.count >= 5 {
+                transcriptSearchField
+            }
             VStack(alignment: .leading, spacing: 8) {
                 // 2026-07-17: indeksert — replikk-nr brukes som feedback-anker
-                ForEach(Array(example.transcript.enumerated()), id: \.element.id) { idx, line in
+                ForEach(filteredTranscript, id: \.element.id) { idx, line in
                     transcriptRow(line, index: idx)
+                }
+                if filteredTranscript.isEmpty && !trimmedQuery.isEmpty {
+                    Text("Ingen replikker matcher «\(trimmedQuery)»")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(LBrand.textTertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
                 }
             }
         }
         .padding(14)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: Transkript-søk (2026-08-02)
+
+    private var trimmedQuery: String {
+        transcriptQuery.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var filteredTranscript: [(offset: Int, element: TranscriptLine)] {
+        let all = Array(example.transcript.enumerated())
+        guard !trimmedQuery.isEmpty else { return all }
+        return all.filter {
+            $0.element.text.localizedCaseInsensitiveContains(trimmedQuery)
+                || $0.element.speaker.rawValue.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+    }
+
+    private var transcriptSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(LBrand.textTertiary)
+            TextField("Søk i transkriptet …", text: $transcriptQuery)
+                .font(.appScaled(size: 13))
+                .foregroundStyle(.white)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if !transcriptQuery.isEmpty {
+                Text("\(filteredTranscript.count) av \(example.transcript.count)")
+                    .font(.appScaled(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(LBrand.purpleLight)
+                Button { transcriptQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.appScaled(size: 13))
+                        .foregroundStyle(LBrand.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Tøm søket")
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(LBrand.bg.opacity(0.6), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(
+            trimmedQuery.isEmpty ? LBrand.stroke : LBrand.purple.opacity(0.4), lineWidth: 1))
+    }
+
+    /// Uthev søketreff i replikk-teksten (case-/diakritikk-insensitivt).
+    private func highlightedText(_ text: String) -> AttributedString {
+        var attr = AttributedString(text)
+        guard !trimmedQuery.isEmpty else { return attr }
+        var searchStart = text.startIndex
+        while searchStart < text.endIndex,
+              let r = text.range(of: trimmedQuery,
+                                 options: [.caseInsensitive, .diacriticInsensitive],
+                                 range: searchStart..<text.endIndex) {
+            if let ar = Range(r, in: attr) {
+                attr[ar].backgroundColor = LBrand.purple.opacity(0.45)
+                attr[ar].font = .appScaled(size: 13, weight: .bold, design: .serif)
+            }
+            searchStart = r.upperBound
+        }
+        return attr
     }
 
     // 2026-07-17: backend-eksempler har ingen lyd → ingen tidsanker-hopp;
@@ -1894,7 +1980,7 @@ struct LeadbookExampleDetailSheet: View {
 
     private func transcriptBubble(_ line: TranscriptLine) -> some View {
         let isHL = line.isHighlighted && showAnnotations
-        return Text(line.text)
+        return Text(highlightedText(line.text))
                     .font(.appScaled(size: 13, design: .serif))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1941,6 +2027,9 @@ struct LeadbookExampleDetailSheet: View {
             if !isBackend || example.pondusScore > 0 || !example.dimensionScores.isEmpty {
                 pondusBreakdown
             }
+            // 2026-08-02: backend-eksempler uten sammendrag/lærdommer får
+            // AI-analyse (kun ledere — samme gate som PATCH-lagringen).
+            if showsAIAnalyse { aiAnalyseCard }
             if !example.keyLearnings.isEmpty { learningsCard }
             if !example.alternativePhrasings.isEmpty { alternativesCard }
             if isBackend { feedbackSection }
@@ -1949,6 +2038,199 @@ struct LeadbookExampleDetailSheet: View {
             Color.clear.frame(height: 16)
         }
         .padding(16)
+    }
+
+    // MARK: AI-analyse (2026-08-02)
+
+    /// Vis kun der den tilfører noe: org-eget eksempel, leder, transkript
+    /// finnes, og sammendrag eller lærdommer mangler.
+    private var showsAIAnalyse: Bool {
+        isBackend && canEdit && !example.transcript.isEmpty
+            && (example.summary.isEmpty || example.keyLearnings.isEmpty)
+    }
+
+    private var missingLabel: String {
+        if example.summary.isEmpty && example.keyLearnings.isEmpty {
+            return "sammendrag og lærdommer"
+        }
+        return example.summary.isEmpty ? "sammendrag" : "lærdommer"
+    }
+
+    private var aiAnalyseCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles").foregroundStyle(LBrand.purpleLight)
+                Text("AI-ANALYSE")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.purpleLight).tracking(0.8)
+                Spacer()
+                if let aiSource {
+                    Text(aiSource == .onDevice ? "På enheten" : "Sky")
+                        .font(.appScaled(size: 9, weight: .black))
+                        .foregroundStyle(aiSource == .onDevice ? LBrand.green : LBrand.blue)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(
+                            (aiSource == .onDevice ? LBrand.green : LBrand.blue).opacity(0.16),
+                            in: Capsule())
+                }
+            }
+            if let s = aiSuggestion {
+                if example.summary.isEmpty, let sm = s.summary, !sm.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Foreslått sammendrag")
+                            .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+                        Text(sm)
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(LBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if example.keyLearnings.isEmpty, let kl = s.keyLearnings, !kl.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Foreslåtte lærdommer")
+                            .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+                        ForEach(kl, id: \.self) { l in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.appScaled(size: 9))
+                                    .foregroundStyle(LBrand.purpleLight)
+                                    .padding(.top, 3)
+                                Text(l)
+                                    .font(.appScaled(size: 12))
+                                    .foregroundStyle(LBrand.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                HStack(spacing: 8) {
+                    Button { Task { await saveAISuggestion() } } label: {
+                        HStack(spacing: 5) {
+                            if isSavingAI {
+                                ProgressView().tint(.white).scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "tray.and.arrow.down.fill")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                            }
+                            Text("Lagre i eksempelet")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11).padding(.vertical, 6)
+                        .background(
+                            LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSavingAI)
+                    Button {
+                        aiSuggestion = nil
+                        aiSource = nil
+                    } label: {
+                        Text("Forkast")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(LBrand.textSecondary)
+                            .padding(.horizontal, 11).padding(.vertical, 6)
+                            .background(LBrand.cardHi, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                Text("Eksempelet mangler \(missingLabel) — la AI foreslå fra transkriptet. Du ser forslaget her før noe lagres.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LBrand.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { Task { await runAIAnalysis() } } label: {
+                    HStack(spacing: 5) {
+                        if isAnalyzing {
+                            ProgressView().tint(.white).scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "sparkles").font(.appScaled(size: 11, weight: .bold))
+                        }
+                        Text(isAnalyzing ? "Analyserer …" : "Analyser transkript")
+                            .font(.appScaled(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(
+                        LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isAnalyzing)
+            }
+            if let aiError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.appScaled(size: 10))
+                    Text(aiError).font(.appScaled(size: 11))
+                }
+                .foregroundStyle(LBrand.orange)
+            }
+        }
+        .padding(14)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.purple.opacity(0.25), lineWidth: 1))
+    }
+
+    @MainActor
+    private func runAIAnalysis() async {
+        guard let api = appState.api, !isAnalyzing else { return }
+        let raw = example.transcript
+            .map { "\($0.speaker.rawValue): \($0.text)" }
+            .joined(separator: "\n")
+        guard raw.count >= 40 else {
+            aiError = "Transkriptet er for kort til å analyseres."
+            return
+        }
+        isAnalyzing = true
+        aiError = nil
+        do {
+            let intel = LeadbookExampleIntelligenceFactory.make(api: api)
+            let result = try await intel.structure(rawText: raw)
+            aiSuggestion = result.structured
+            aiSource = result.source
+        } catch {
+            let msg = String(describing: error)
+            if msg.contains("entitlement_locked") {
+                aiError = "AI-strukturering er ikke aktivert for organisasjonen — lås opp «Leadbook AI» i SuperAdmin-matrisen."
+            } else if msg.contains("krever_leder_rolle") {
+                aiError = "AI-analyse krever leder-rolle."
+            } else {
+                aiError = "AI-analysen feilet — prøv igjen."
+            }
+        }
+        isAnalyzing = false
+    }
+
+    @MainActor
+    private func saveAISuggestion() async {
+        guard let api = appState.api, let id = example.backendId,
+              let s = aiSuggestion, !isSavingAI else { return }
+        var fields: [String: Any] = [:]
+        if example.summary.isEmpty, let sm = s.summary, !sm.isEmpty {
+            fields["summary"] = sm
+        }
+        if example.keyLearnings.isEmpty, let kl = s.keyLearnings, !kl.isEmpty {
+            fields["key_learnings"] = kl
+        }
+        guard !fields.isEmpty else {
+            aiSuggestion = nil
+            return
+        }
+        isSavingAI = true
+        do {
+            try await api.updateLeadbookExample(id: id, fields)
+            aiSuggestion = nil
+            saveToast = "AI-analysen lagret i eksempelet"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
+            onChanged?()
+        } catch {
+            aiError = "Kunne ikke lagre analysen — prøv igjen."
+        }
+        isSavingAI = false
     }
 
     // MARK: Tilbakemeldinger fra ledelsen (2026-07-17)

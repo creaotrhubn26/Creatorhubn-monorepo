@@ -213,6 +213,9 @@ struct LiveTranscriptionSheet: View {
     @Environment(AppState.self) private var appState
     @State private var showSavedToast = false
     @State private var savedTitle: String?
+    /// Hvordan lagringen ble beriket («analysert på enheten»/«med AI») —
+    /// nil når AI ikke kjørte og de enkle feltene ble brukt.
+    @State private var savedSource: String?
     @State private var isSaving = false
     @State private var saveError: String?
 
@@ -248,7 +251,8 @@ struct LiveTranscriptionSheet: View {
                 if showSavedToast, let savedTitle {
                     VStack {
                         Spacer().frame(height: 70)
-                        Label("\(savedTitle) lagret i Eksempler",
+                        Label(savedSource.map { "\(savedTitle) lagret i Eksempler — \($0)" }
+                                ?? "\(savedTitle) lagret i Eksempler",
                               systemImage: "checkmark.circle.fill")
                             .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -292,7 +296,7 @@ struct LiveTranscriptionSheet: View {
                                     Image(systemName: "tray.and.arrow.down.fill")
                                         .font(.appScaled(size: 11, weight: .bold))
                                 }
-                                Text(isSaving ? "Lagrer …" : "Lagre i Eksempler")
+                                Text(isSaving ? "Analyserer og lagrer …" : "Lagre i Eksempler")
                                     .font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
@@ -540,18 +544,49 @@ struct LiveTranscriptionSheet: View {
         }
         isSaving = true
         saveError = nil
+
+        // AI-berikelse (2026-08-02): samme intelligens-rute som Eksempler-
+        // sheeten — on-device Apple Intelligence når mulig (gratis/privat),
+        // ellers backend-strukturering (leadbookAiStruktur-gated). Feiler
+        // AI-en (låst entitlement, modell utilgjengelig, for kort tekst)
+        // lagres transkriptet med de enkle feltene — lagring blokkeres ALDRI.
+        var title = autoTitle()
+        var summary = String(engine.transcript.prefix(280))
+        var learnings: [String] = []
+        var transcriptLines: [[String: Any]] = [
+            ["speaker": "Selger", "text": engine.transcript, "at_sec": 0],
+        ]
+        let raw = engine.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.count >= 40 {
+            let intel = LeadbookExampleIntelligenceFactory.make(api: api)
+            if let result = try? await intel.structure(rawText: raw) {
+                let s = result.structured
+                if let t = s.title, !t.isEmpty { title = t }
+                if let sm = s.summary, !sm.isEmpty { summary = sm }
+                if let kl = s.keyLearnings, !kl.isEmpty { learnings = kl }
+                // Backend-Claude deler også opp i Selger/Kunde-replikker —
+                // da lagres den strukturerte formen i stedet for én blokk.
+                if let lines = s.transcript, !lines.isEmpty {
+                    transcriptLines = lines.map {
+                        ["speaker": $0.speaker, "text": $0.text, "at_sec": $0.atSec ?? 0]
+                    }
+                }
+                savedSource = result.source == .onDevice ? "analysert på enheten" : "analysert med AI"
+            }
+        }
+
         let body: [String: Any] = [
             "status": "draft",
-            "title": autoTitle(),
-            "summary": String(engine.transcript.prefix(280)),
+            "title": title,
+            "summary": summary,
             "channel": "telephone",
             "duration_sec": engine.elapsedSeconds,
-            "transcript": [["speaker": "Selger", "text": engine.transcript, "at_sec": 0]],
-            "key_learnings": [] as [String],
+            "transcript": transcriptLines,
+            "key_learnings": learnings,
         ]
         do {
             _ = try await api.createLeadbookExample(body)
-            savedTitle = autoTitle()
+            savedTitle = title
             withAnimation { showSavedToast = true }
             try? await Task.sleep(nanoseconds: 1_600_000_000)
             withAnimation { showSavedToast = false }
