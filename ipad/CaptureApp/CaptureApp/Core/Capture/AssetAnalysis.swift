@@ -42,6 +42,11 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
     // preset-valg, motlys/gyllen-time-klassifisering.
     var sceneFeature: [Double]
 
+    /// Perceptuell dHash (``PerceptualHash``) for nesten-duplikat-deteksjon i
+    /// filmstripen — måles i SAMME pass som alt annet. 0 = ikke beregnet.
+    /// Sammenlignes på tvers av bilder (Hamming) i ``LiveCaptureModel``, ikke her.
+    var perceptualHash: UInt64 = 0
+
     static let currentVersion = 1
 
     /// Erstatt eventuelle non-finite Double-er (nan/inf fra divisjon/areaAverage)
@@ -66,7 +71,8 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
                 s.sharpness = fo(face.sharpness)
                 return s
             },
-            sceneFeature: sceneFeature.map { $0.isFinite ? $0 : 0 })
+            sceneFeature: sceneFeature.map { $0.isFinite ? $0 : 0 },
+            perceptualHash: perceptualHash)
     }
 
     /// Praktiske avledninger for HUD/QC (rene, testbare — ingen Vision).
@@ -74,11 +80,28 @@ struct AssetAnalysis: Sendable, Equatable, Hashable, Codable {
     /// Største ansikt (etter areal) — «hovedpersonen» i de fleste portretter.
     var primaryFace: FaceAnalysis? { faces.max { $0.sizeFraction < $1.sizeFraction } }
 
-    /// P5 (E7 v1): on-set-flagg for filmstripen — det fotografen kan reagere på
-    /// mens bildet kan tas om. nil = ok. Ren, testbar.
-    enum OnSetFlag: String, Hashable { case blurry, lowFaceQuality }
+    /// On-set-flagg for filmstripen — det fotografen kan reagere på mens bildet kan
+    /// tas om. nil = ok. Ren, testbar. Lukkede øyne prioriteres (sterkest signal).
+    enum OnSetFlag: String, Hashable {
+        case eyesClosed, blurry, lowFaceQuality
+        var label: String {
+            switch self {
+            case .eyesClosed:     return "Lukkede øyne"
+            case .blurry:         return "Uskarp"
+            case .lowFaceQuality: return "Svakt"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .eyesClosed:     return "eye.slash"
+            case .blurry:         return "camera.metering.spot"
+            case .lowFaceQuality: return "person.fill.questionmark"
+            }
+        }
+    }
     var onSetFlag: OnSetFlag? {
         if let face = primaryFace {
+            if face.eyesOpen == false { return .eyesClosed }
             if face.isSoft(globalSharpness: globalSharpness) { return .blurry }
             if let q = face.captureQuality, q < 0.35 { return .lowFaceQuality }
         } else if globalSharpness < 0.0006 {
@@ -187,6 +210,7 @@ actor AssetAnalyzer {
         let primaryCast = faces.max { $0.sizeFraction < $1.sizeFraction }?.skinCast
 
         let sceneFeature = LearnedStyle.features(of: cg)
+        let phash = PerceptualHash.dHash(cg)   // samme nedskalering, null ekstra dekode
 
         return AssetAnalysis(
             version: AssetAnalysis.currentVersion,
@@ -196,7 +220,8 @@ actor AssetAnalyzer {
             globalSharpness: globalSharp, subjectSharpness: subjectSharp,
             skinCast: primaryCast,
             faces: faces,
-            sceneFeature: sceneFeature).sanitized()   // aldri non-finite → trygg persistering
+            sceneFeature: sceneFeature,
+            perceptualHash: phash).sanitized()   // aldri non-finite → trygg persistering
     }
 
     // MARK: - Histogram / persentiler
