@@ -1902,6 +1902,21 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Parse Fountain content to create scenes
     const lines = content.split('\n');
     const newScenes: SceneBreakdown[] = [];
+    // Dialog-linjer parses samtidig, slik at DIALOG-fanen fylles på lik linje
+    // med SCENER/KARAKTERER. Uten dette ga «Parser til Scener» scener+karakterer
+    // men 0 replikker (kun «Auto Breakdown» fylte dialog) — forvirrende for bruker.
+    const newDialogue: DialogueLine[] = [];
+    let currentSpeaker: string | null = null;
+    // Normaliser tid-of-day (norsk → enum-verdi). Faller tilbake til DAY.
+    const normalizeTimeOfDay = (raw?: string): SceneBreakdown['timeOfDay'] => {
+      const t = (raw || '').toUpperCase().replace(/\.$/, '').trim();
+      const nb: Record<string, SceneBreakdown['timeOfDay']> = {
+        KVELD: 'EVENING', NATT: 'NIGHT', DAG: 'DAY', MORGEN: 'MORNING',
+        DEMRING: 'DAWN', GRYNING: 'DAWN', SKUMRING: 'DUSK',
+        KONTINUERLIG: 'CONTINUOUS', SENERE: 'LATER', SAME: 'CONTINUOUS',
+      };
+      return nb[t] ?? ((t || 'DAY') as SceneBreakdown['timeOfDay']);
+    };
     let currentSceneData: {
       heading: string;
       intExt: string;
@@ -1936,42 +1951,73 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     
     lines.forEach((line, lineIndex) => {
       const trimmed = line.trim();
-      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
+      // Skille-tegn: bindestrek, tanke­strek (–) og lang tankestrek (—) — ekte
+      // manus bruker ofte «–». Tid-of-day dekker både engelsk og NORSK (norsk-først).
+      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|KVELD|NATT|DAG|MORGEN|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE)\.?)?$/i);
       
       if (sceneMatch) {
         // Save previous scene
         saveCurrentScene();
-        
+        currentSpeaker = null;
+
         // Start new scene
         currentSceneData = {
           heading: trimmed,
           intExt: sceneMatch[1].toUpperCase().replace('.', '').replace('/', '/'),
           location: sceneMatch[2]?.trim() || '',
-          timeOfDay: sceneMatch[3]?.toUpperCase() || 'DAY',
+          timeOfDay: normalizeTimeOfDay(sceneMatch[3]),
           description: '',
           characters: [],
           lineCount: 0,
         };
       } else if (currentSceneData) {
         currentSceneData.lineCount++;
-        
+
+        // Blank linje avslutter en dialog-blokk (skiller replikk fra påfølgende action).
+        if (trimmed.length === 0) {
+          currentSpeaker = null;
+          return;
+        }
+
         // Check for character names (all caps followed by dialogue)
         const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]+)(\s*\(.*\))?$/);
-        if (characterMatch && lines[lineIndex + 1]?.trim() && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)) {
-          const charName = characterMatch[1].replace(/\s*\(.*\)$/, '').trim();
+        const isCue = !!characterMatch
+          && !!lines[lineIndex + 1]?.trim()
+          && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)
+          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP)/i);
+        const isParenthetical = /^\(.*\)$/.test(trimmed);
+
+        if (isCue) {
+          const charName = characterMatch![1].replace(/\s*\(.*\)$/, '').trim();
           if (charName.length > 1 && charName.length < 40) {
             currentSceneData.characters.push(charName);
+            currentSpeaker = charName;
           }
+        } else if (isParenthetical) {
+          // Wryly/parentetisk regi — behold gjeldende taler, ikke en replikk.
+        } else if (currentSpeaker) {
+          // Replikk for gjeldende taler.
+          newDialogue.push({
+            id: `dialogue-${newDialogue.length + 1}`,
+            sceneId: `scene-${newScenes.length + 1}`,
+            manuscriptId: selectedManuscript.id,
+            characterName: currentSpeaker,
+            dialogueText: trimmed,
+            dialogueType: 'dialogue' as const,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
     });
-    
+
     // Save final scene
     saveCurrentScene();
-    
-    // Update scenes
+
+    // Update scenes + dialog (parses sammen så DIALOG-fanen samsvarer med SCENER/KARAKTERER)
     setScenes(newScenes);
-    showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);
+    setDialogueLines(newDialogue);
+    showSuccess(`Parsed ${newScenes.length} scenes · ${newDialogue.length} replikker from screenplay`);
   }, [activeProjectId, autoBreakdownEnabled, selectedManuscript, showSuccess, showWarning]);
 
   const handleDeleteManuscript = async (manuscript: Manuscript) => {

@@ -1141,7 +1141,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             aria-orientation={rightPanel === 'storyboard' ? 'vertical' : undefined}
             onMouseDown={rightPanel === 'storyboard' ? startRightPanelResize : undefined}
             sx={{
-              width: rightPanel === 'storyboard' ? 10 : 1,
+              // NB: MUIs sizing-system tolker numerisk width i [0,1] som PROSENT
+              // (width:1 → 100%). Bruk eksplisitt '1px' så deleren blir 1 piksel
+              // og ikke fyller hele raden (som kollapset editoren + skjøv panelet
+              // ut av skjermen for alle ikke-storyboard-paneler).
+              width: rightPanel === 'storyboard' ? 10 : '1px',
               cursor: rightPanel === 'storyboard' ? 'col-resize' : 'default',
               bgcolor: rightPanel === 'storyboard' ? 'transparent' : 'rgba(255,255,255,0.1)',
               position: 'relative',

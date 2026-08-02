@@ -984,6 +984,11 @@ const GUIDE_SCREENSHOTS: Record<string, string> = {
   'Live Fountain parsing with colour-coded elements': '/role-room-assets/guide-screenplay-overview.png',
   'Storyboard panel open alongside editor for a selected scene': '/role-room-assets/guide-storyboard.png',
   'Character cue in manuscript auto-creating a role in The Role Room': '/role-room-assets/guide-auto-create-role.png',
+  'Beat Board with story cards arranged in Act I / II / III columns': '/role-room-assets/guide-beat-board.png',
+  'Analysis panel with issue list and character extract': '/role-room-assets/guide-script-analysis.png',
+  'Story Structure panel showing three-act beat mapping': '/role-room-assets/guide-story-structure.png',
+  'Grammar Check panel with flagged issues': '/role-room-assets/guide-grammar.png',
+  'Table Read panel playing with current line highlighted': '/role-room-assets/guide-table-read.png',
 };
 
 export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
