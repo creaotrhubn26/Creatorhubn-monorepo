@@ -2726,7 +2726,17 @@ private struct AudioRecorderButton: View {
             LongPressGesture(minimumDuration: 0.2)
                 .onEnded { _ in startRecording() }
                 .sequenced(before: DragGesture(minimumDistance: 0))
-                .onEnded { _ in finishRecording() }
+                .onEnded { value in
+                    // Dra fingeren tydelig VEKK fra knappen (36 pt) → forkast opptaket
+                    // (som kommentaren over lover); ellers commit. Slipp PÅ knappen =
+                    // behold.
+                    if case .second(_, let drag?) = value,
+                       hypot(drag.translation.width, drag.translation.height) > 44 {
+                        cancelRecording()
+                    } else {
+                        finishRecording()
+                    }
+                }
         )
         .alert("Mikrofon-tilgang", isPresented: $permissionDenied) {
             Button("OK", role: .cancel) {}
@@ -2808,6 +2818,20 @@ private struct AudioRecorderButton: View {
             return
         }
         onCommit(url, duration)
+    }
+
+    /// Avbryt uten å committe — stopp opptakeren og slett fila. Brukes når fingeren
+    /// dras vekk fra knappen (angre-gest).
+    private func cancelRecording() {
+        guard isRecording, let recorder else { cleanupTimer(); return }
+        let url = recorder.url
+        recorder.stop()
+        self.recorder = nil
+        isRecording = false
+        pulseOn = false
+        startedAt = nil
+        cleanupTimer()
+        try? FileManager.default.removeItem(at: url)   // forkast — aldri onCommit
     }
 
     private func cleanupTimer() {
@@ -6989,8 +7013,12 @@ final class LiveCaptureModel {
     }
 
     private func prioRank(_ priority: String?) -> Int {
+        // Speiler det kanoniske settet (ShotListView/ShotListPanel): «critical» og
+        // «must-have» er TOPP-prioritet, ikke bare «must» — uten disse falt de til
+        // default(3) og sorterte NEDERST i «Neste handlinger». (Bør på sikt bli én
+        // delt helper — dette er 4. kopien av samme parsing.)
         switch (priority ?? "").lowercased() {
-        case "must": return 0
+        case "critical", "must", "must-have": return 0
         case "high": return 1
         case "medium": return 2
         default: return 3
