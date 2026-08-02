@@ -86,6 +86,22 @@ struct OversiktView: View {
         demo.isActive ? demo.mockLeads : appState.leads
     }
 
+    /// Undertekst speiler aktivt prosjekt så konteksten synes også i
+    /// tittelraden (brede skjermer) — pillen i headeren er switcheren.
+    private var headerSubtitle: String {
+        if erRenDorsalgOrg {
+            return "Full kontroll over dørene: vunnet, avslått og innsatsen i dag."
+        }
+        if let id = appState.activeProjectId {
+            let name = appState.projects.first(where: { $0.id == id })?.name
+                ?? appState.activeProjectSummary?.project.name
+            if let name {
+                return "Prosjekt: \(name) — leads, aktiviteter og resultater."
+            }
+        }
+        return "Få full kontroll over dine leads, aktiviteter og resultater."
+    }
+
     var body: some View {
         contentBody
             // Lytter på «Les mer»-request fra map-lead-overlay → bytt
@@ -115,12 +131,15 @@ struct OversiktView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     LeadgridTabHeader(
-                        subtitle: erRenDorsalgOrg
-                            ? "Full kontroll over dørene: vunnet, avslått og innsatsen i dag."
-                            : "Få full kontroll over dine leads, aktiviteter og resultater.",
+                        subtitle: headerSubtitle,
                         leads: effectiveLeads,
                         momentum: momentum,
-                        lastUpdated: lastUpdated)
+                        lastUpdated: lastUpdated) {
+                            // Tydelig prosjekt-kontekst (2026-08-02): pill
+                            // viser + bytter hvilket prosjekt tallene på
+                            // fanen gjelder.
+                            ProjectContextPill()
+                        }
                     if erRenDorsalgOrg {
                         // Ren dørsalg-org: HELE oversikten er dørsalg-tall.
                         AnyView(DorsalgOversiktSection(stats: dorsalgStats))
