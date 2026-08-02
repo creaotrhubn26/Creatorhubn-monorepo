@@ -12,8 +12,14 @@ enum QualityCheckService {
     /// flagge som svak — mykere enn de harde blokkerne.
     static let lowQualityThreshold = 0.35
 
+    /// Ansiktet regnes som «mørkt» (blits traff ikke) under dette (FaceDodge-target).
+    static let darkFaceThreshold = 0.35
+
     /// Alle leveranse-relevante funn for ett bilde (tom = ingen problemer).
-    static func evaluate(_ a: AssetAnalysis) -> [QualityIssue] {
+    /// `flashFired`/`flashReturnDetected` (fra EXIF) driver «blits traff ikke».
+    static func evaluate(_ a: AssetAnalysis,
+                         flashFired: Bool? = nil,
+                         flashReturnDetected: Bool? = nil) -> [QualityIssue] {
         var out: [QualityIssue] = []
         if let face = a.primaryFace {
             // «Lukkede øyne på hovedperson» — den klassiske retake-grunnen.
@@ -21,6 +27,11 @@ enum QualityCheckService {
             // Bommet fokus på ansiktet (ikke vakker bokeh) — dyrt å oppdage sent.
             if face.isSoft(globalSharpness: a.globalSharpness) { out.append(.faceSoft) }
             if let q = face.captureQuality, q < lowQualityThreshold { out.append(.lowFaceQuality) }
+            // Blitsen fyrte men traff ikke: fyrte + ingen retur + mørkt ansikt →
+            // klassisk trigger-glipp/mistimet sync (nest vanligste blitsfeil).
+            if flashFired == true, flashReturnDetected == false, face.luma < darkFaceThreshold {
+                out.append(.flashMissed)
+            }
         }
         // Motiv-klipping (utbrent kjole/motiv) — global klipp fanger ikke dette.
         if let sub = a.subjectHighlightClip, sub > subjectClipThreshold { out.append(.subjectClipped) }
@@ -37,7 +48,7 @@ enum QualitySeverity: Int, Codable, Hashable, Comparable {
 
 /// Ett leveranse-relevant funn.
 enum QualityIssue: String, Codable, Hashable, CaseIterable, Identifiable {
-    case eyesClosed, faceSoft, subjectClipped, lowFaceQuality
+    case eyesClosed, faceSoft, subjectClipped, lowFaceQuality, flashMissed
 
     var id: String { rawValue }
 
@@ -47,6 +58,7 @@ enum QualityIssue: String, Codable, Hashable, CaseIterable, Identifiable {
         case .faceSoft:       return "Ansikt uskarpt"
         case .subjectClipped: return "Motiv utbrent"
         case .lowFaceQuality: return "Svakt ansiktsbilde"
+        case .flashMissed:    return "Blits traff ikke"
         }
     }
 
@@ -56,13 +68,14 @@ enum QualityIssue: String, Codable, Hashable, CaseIterable, Identifiable {
         case .faceSoft:       return "camera.metering.spot"
         case .subjectClipped: return "exclamationmark.triangle.fill"
         case .lowFaceQuality: return "person.fill.questionmark"
+        case .flashMissed:    return "bolt.slash.fill"
         }
     }
 
     var severity: QualitySeverity {
         switch self {
-        case .eyesClosed, .faceSoft, .subjectClipped: return .blocker
-        case .lowFaceQuality:                         return .warning
+        case .eyesClosed, .faceSoft, .subjectClipped, .flashMissed: return .blocker
+        case .lowFaceQuality:                                       return .warning
         }
     }
 }

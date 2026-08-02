@@ -434,7 +434,10 @@ final class RedigeringModel {
                 analysis = measured
             }
             if let analysis {
-                let issues = QualityCheckService.evaluate(analysis)
+                let issues = QualityCheckService.evaluate(
+                    analysis,
+                    flashFired: asset.signals.flashFired,
+                    flashReturnDetected: asset.signals.flashReturnDetected)
                 if !issues.isEmpty { findings.append(QualityFinding(assetId: asset.id, issues: issues)) }
             }
             qualityProgress += 1
