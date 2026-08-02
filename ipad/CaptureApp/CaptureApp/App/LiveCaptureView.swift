@@ -2726,7 +2726,17 @@ private struct AudioRecorderButton: View {
             LongPressGesture(minimumDuration: 0.2)
                 .onEnded { _ in startRecording() }
                 .sequenced(before: DragGesture(minimumDistance: 0))
-                .onEnded { _ in finishRecording() }
+                .onEnded { value in
+                    // Dra fingeren tydelig VEKK fra knappen (36 pt) → forkast opptaket
+                    // (som kommentaren over lover); ellers commit. Slipp PÅ knappen =
+                    // behold.
+                    if case .second(_, let drag?) = value,
+                       hypot(drag.translation.width, drag.translation.height) > 44 {
+                        cancelRecording()
+                    } else {
+                        finishRecording()
+                    }
+                }
         )
         .alert("Mikrofon-tilgang", isPresented: $permissionDenied) {
             Button("OK", role: .cancel) {}
@@ -2808,6 +2818,20 @@ private struct AudioRecorderButton: View {
             return
         }
         onCommit(url, duration)
+    }
+
+    /// Avbryt uten å committe — stopp opptakeren og slett fila. Brukes når fingeren
+    /// dras vekk fra knappen (angre-gest).
+    private func cancelRecording() {
+        guard isRecording, let recorder else { cleanupTimer(); return }
+        let url = recorder.url
+        recorder.stop()
+        self.recorder = nil
+        isRecording = false
+        pulseOn = false
+        startedAt = nil
+        cleanupTimer()
+        try? FileManager.default.removeItem(at: url)   // forkast — aldri onCommit
     }
 
     private func cleanupTimer() {
@@ -2999,15 +3023,26 @@ private struct ImageFile: View {
     let path: String
     /// Bump to force a re-read of the file (same path, new bytes).
     var reload: Int = 0
+    /// Dekod JPEG-en ÉN gang i `.task` — IKKE i body. `ComparisonSlider` muterer
+    /// `divider` per drag-frame → body re-evalueres per frame; med decode-i-body
+    /// ble hele 2400px-JPEG-en dekodet på nytt hver frame (×2 for de to lagene).
+    /// Samme fiks som `BeforeAfterCompare`. Off-main dekode holder draggen jevn.
+    @State private var image: UIImage?
     var body: some View {
         Group {
-            if let img = UIImage(contentsOfFile: path) {
-                Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+            if let image {
+                Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
             } else {
                 Color.captureChipBG
             }
         }
-        .id("\(path)#\(reload)")
+        .task(id: "\(path)#\(reload)") {
+            let p = path
+            let loaded = await Task.detached(priority: .userInitiated) {
+                UIImage(contentsOfFile: p)
+            }.value
+            if !Task.isCancelled { image = loaded }
+        }
     }
 }
 
@@ -5384,6 +5419,24 @@ private struct AssetViewerPage: View {
                             offset = .zero
                             lastCommittedOffset = .zero
                         }
+                        // Rotasjon/split-view endrer `geo.size` → fyll/tilpass-skalaen
+                        // ble ellers hengende på den GAMLE container-størrelsen (regnet
+                        // kun i onAppear). Regn på nytt; følg ny fyll-skala hvis brukeren
+                        // ikke har zoomet manuelt (ellers behold zoomen).
+                        .onChange(of: geo.size) { _, newSize in
+                            let old = fillScale ?? 1
+                            let computed = Self.computeFillScale(
+                                imageSize: image.size,
+                                containerSize: newSize,
+                            )
+                            fillScale = computed
+                            if abs(scale - old) < 0.01 {
+                                scale = computed
+                                lastCommittedScale = computed
+                                offset = .zero
+                                lastCommittedOffset = .zero
+                            }
+                        }
                 } else {
                     Text("Preview unavailable")
                         .foregroundStyle(.secondary)
@@ -5526,31 +5579,43 @@ final class LiveCaptureModel {
                 }
             }
             if newCaptureArrived { shutterFlashToken = UUID() }
-            // Fire Claude Vision analysis the moment a preview lands. Once
-            // per asset; failures are silent so the on-device pipeline result
-            // remains the visible state if the backend is unreachable.
-            scheduleAIAnalyses(after: oldValue)
-            // Phase 2C activation gate. The CCAPI adapter only auto-enqueues
-            // `.preview` for new shots — `.raw` is opt-in. Without this hook
-            // every CR3 pick would land at deliver time with `rawKey == nil`
-            // and the RAWExportService would silently fall back to the
-            // display JPEG, defeating the whole pipeline. Diffing here (vs.
-            // hooking individual UI sites) covers both `togglePick` and the
-            // batch `CullStore.commit` path uniformly.
-            scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
-            // WYSIWYG hook (Block C). When `rawKey` flips nil → set on
-            // any asset, render a preview-quality JPEG via the same
-            // CIRAWFilter pipeline that produces the gallery deliverable
-            // and attach it as `enhancedKey`. Hero comparison-slider
-            // then shows the photographer the actual demosaic, not
-            // Canon's camera-baked JPEG with display-pipeline magic.
-            scheduleRAWPreviewRenders(previous: oldValue)
-            // P2 (E4): auto-påfør capture-edit-policyen (sync-forrige / preset) på
-            // nye preview-klare bilder. Idempotent — rører aldri manuelle edits.
-            applyCaptureEditPolicyForNewPreviews(previous: oldValue)
-            // P5 (E7 v1): mål hvert nytt bilde on-device → filmstrip-flagg + delt
-            // analyse for HUD/QC/cull/forslag.
-            scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
+            // #4-perf: ÉN O(N)-diff avgjør HVA som endret seg, i stedet for at hver
+            // av de fem planleggings-hookene under bygger sitt EGET id→felt-dict og
+            // skanner alle assets. På store økter re-emitter hver stjerne-/farge-/
+            // pick-interaksjon HELE arrayet; rating/farge rører ingen trigger-felt →
+            // da hoppes alle de tunge hookene (5× O(N) → 1× O(N)). Portene speiler
+            // hver hooks NØYAKTIGE trigger (verifisert mot hook-koden), så oppførsel
+            // er uendret — dette dropper kun arbeid som uansett ville funnet ingenting.
+            var previewGained = false, rawGained = false, flagGained = false
+            let prev = Dictionary(uniqueKeysWithValues: oldValue.map {
+                ($0.id, (hasPreview: $0.previewKey != nil, hasRaw: $0.rawKey != nil,
+                         flagged: $0.flaggedForClient))
+            })
+            for a in assets {
+                guard let p = prev[a.id] else { previewGained = true; continue }  // ny id
+                if a.previewKey != nil, !p.hasPreview { previewGained = true }
+                if a.rawKey != nil, !p.hasRaw { rawGained = true }
+                if a.flaggedForClient, !p.flagged { flagGained = true }
+            }
+            if previewGained {
+                // Alle tre drevet av previewKey nil→set (eller ny asset):
+                // Claude Vision (backend, idempotent per asset); P2/E4 capture-edit-
+                // policy (sync-forrige/preset, rører aldri manuelle edits); P5/E7
+                // on-device-analyse (filmstrip-flagg + delt HUD/QC/cull-analyse).
+                scheduleAIAnalyses(after: oldValue)
+                applyCaptureEditPolicyForNewPreviews(previous: oldValue)
+                scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
+            }
+            if flagGained {
+                // Phase 2C: hent RAW for NY-flaggede picks (togglePick + batch
+                // CullStore.commit). Uten dette lander CR3-picks med rawKey==nil.
+                scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
+            }
+            if rawGained {
+                // WYSIWYG (Block C): rawKey nil→set → render demosaic-preview via
+                // CIRAWFilter så heroen viser ekte demosaic, ikke Canons JPEG.
+                scheduleRAWPreviewRenders(previous: oldValue)
+            }
         }
     }
     var errorMessage: String?
@@ -6958,6 +7023,9 @@ final class LiveCaptureModel {
 
     private func flushTeamShotUpdate(projectId: String) async {
         let scenes = activeShotCardScenes
+        // Snapshot BEGGE nå, før den første `await` — ellers kunne et nytt bilde
+        // lande under `store.load` og gjøre id-settet uenig med `scenes`-snapshotet.
+        let idsSnapshot = Set(activeShotCardAssetIds)
         guard let cardId = activeShotCardId, !scenes.isEmpty,
               let backend = backendClient else { return }
         let who = SignInService.shared.session?.displayName
@@ -6973,8 +7041,8 @@ final class LiveCaptureModel {
         }
 
         // Ekte backup-signal: andel av kortets bilder som er lastet opp til
-        // skyen (B2/sync) — driver «Sikret»-statusen.
-        let ids = Set(activeShotCardAssetIds)
+        // skyen (B2/sync) — driver «Sikret»-statusen. Bruk pre-await-snapshotet.
+        let ids = idsSnapshot
         let relevant = assets.filter { ids.contains($0.id) }
         let backedUp = relevant.filter { $0.state.isBackedUp }.count
         let backup = relevant.isEmpty ? 0.0 : Double(backedUp) / Double(relevant.count)
@@ -7033,8 +7101,12 @@ final class LiveCaptureModel {
     }
 
     private func prioRank(_ priority: String?) -> Int {
+        // Speiler det kanoniske settet (ShotListView/ShotListPanel): «critical» og
+        // «must-have» er TOPP-prioritet, ikke bare «must» — uten disse falt de til
+        // default(3) og sorterte NEDERST i «Neste handlinger». (Bør på sikt bli én
+        // delt helper — dette er 4. kopien av samme parsing.)
         switch (priority ?? "").lowercased() {
-        case "must": return 0
+        case "critical", "must", "must-have": return 0
         case "high": return 1
         case "medium": return 2
         default: return 3

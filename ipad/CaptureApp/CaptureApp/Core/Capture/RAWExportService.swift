@@ -34,6 +34,26 @@ final class RAWExportService: Sendable {
         )
     }
 
+    /// Globalt samtidighets-tak for RAW-demosaic (CIRAWFilter, 1–3 s/CR3). Uten
+    /// dette kunne «Bruk på hele sesjonen» (som fyrer én retune per mål-asset) kø
+    /// hundrevis av SAMTIDIGE demosaics → termisk struping + minuttlang kø. Delt
+    /// på tvers av alle instanser/kall (preview + leveranse). 3 = utnytt M-serie-
+    /// kjernene uten å koke iPaden; live-enkeltslideren får alltid en plass straks.
+    private static let gate = RAWRenderGate(3)
+
+    /// Kjør det tunge demosaic-arbeidet bak `gate` (maks N samtidig). Slipper
+    /// plassen både ved suksess og kast, så en feilende render ikke lekker permit.
+    private func runGated(_ body: @escaping @Sendable () async throws -> Void) async throws {
+        await Self.gate.acquire()
+        do {
+            try await Task.detached(priority: .userInitiated, operation: body).value
+        } catch {
+            await Self.gate.release()
+            throw error
+        }
+        await Self.gate.release()
+    }
+
     /// Stable on-disk path for the RAW-rendered JPEG of `assetId`. Same
     /// suffix is used by ``render(assetId:recipe:)``; callers can call
     /// this first to check `FileManager.fileExists` and skip the render
@@ -81,7 +101,7 @@ final class RAWExportService: Sendable {
             .pathExtension
             .lowercased()
 
-        try await Task.detached(priority: .userInitiated) {
+        try await runGated {
             let rawData: Data
             do {
                 rawData = try Data(
@@ -111,7 +131,7 @@ final class RAWExportService: Sendable {
             } catch {
                 throw Error.writeFailed(String(describing: error))
             }
-        }.value
+        }
 
         return destination
     }
@@ -155,7 +175,7 @@ final class RAWExportService: Sendable {
             .pathExtension
             .lowercased()
 
-        try await Task.detached(priority: .userInitiated) {
+        try await runGated {
             let rawData: Data
             do {
                 rawData = try Data(
@@ -183,8 +203,31 @@ final class RAWExportService: Sendable {
             } catch {
                 throw Error.writeFailed(String(describing: error))
             }
-        }.value
+        }
 
         return destination
+    }
+}
+
+/// Enkel async-semafor (FIFO) som begrenser samtidige RAW-demosaics. `acquire`
+/// suspenderer når alle plassene er tatt; `release` vekker neste venter. Aktør →
+/// trådsikker uten låser.
+actor RAWRenderGate {
+    private var available: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(_ permits: Int) { available = max(1, permits) }
+
+    func acquire() async {
+        if available > 0 { available -= 1; return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            available += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }
