@@ -1116,7 +1116,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               </Collapse>
             </Box>
           )}
-          <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {/* I skrivemodus: sentrer editoren i en leselig «side»-bredde i stedet
+              for full skjermbredde (lange linjer er slitsomt å lese/skrive). */}
+          <Box sx={{ flex: 1, minHeight: 0, position: 'relative', width: '100%', ...(isFullscreen && { maxWidth: 960, mx: 'auto' }) }}>
           {isReadOnly && (
             <Alert
               severity="info"
