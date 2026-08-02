@@ -11,6 +11,14 @@ integrert i asset-flyten — ikke løse filer på skrivebordet.
 
 ## 0. Forstå HVA som skal genereres (gjør dette FØRST)
 
+**Grunnregel: lær systemet først.** Skal du vise eller generere innhold *om* en
+funksjon i plattformen (f.eks. en produkt-/forklaringsvideo av Story Arc Studio,
+en demo av en flyt), MÅ du først lære hvordan den faktisk fungerer — les den ekte
+koden (komponent, rute-registrering, og E2E-testene som avslører hele
+funksjonsflaten via test-ids) og fang det **ekte** grensesnittet deterministisk
+(browser-automasjon/skjermbilde, ikke en generativ modell som forvrenger UI-et).
+Aldri gjett eller fabrikker produktets oppførsel eller utseende.
+
 Verdien ligger ikke i å kjøre CLI-en — den ligger i å skjønne hva merkevaren
 faktisk trenger. **Aldri hopp rett til `generate`.** En god generering starter
 med et godt *brief*, ikke en god prompt (prompten er bare briefet oversatt til

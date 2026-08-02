@@ -76,15 +76,17 @@ function buildBasicSeedProject(): CastingProject {
   const now = new Date().toISOString();
   return {
     id: 'e2e-seed-project-basic',
-    name: 'E2E Basic Test Project',
-    description: 'Seeded by test-harness-casting.tsx for e2e-tester.',
+    // Display-felt satt til en troverdig produksjons-identitet (demo/marketing).
+    // Funksjonelle id-er/e-poster beholdt — ingen e2e-spec asserter på navn/labels.
+    name: 'Siste servering',
+    description: 'Nordlys Film · Kortfilm · Regi: Ingrid Solvang',
     status: 'casting',
     ownerId: 'e2e-test-user',
     ownerEmail: 'e2e@test.local',
-    ownerLabel: 'E2E Tester',
+    ownerLabel: 'Nordlys Film',
     createdBy: 'e2e-test-user',
     createdByEmail: 'e2e@test.local',
-    createdByLabel: 'E2E Tester',
+    createdByLabel: 'Nordlys Film',
     createdAt: now,
     updatedAt: now,
     // Minimale, tomme arrays — ingen seed-data nødvendig
@@ -126,6 +128,11 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         loginAs: isContentProducerSession ? 'content_producer' : undefined,
         requestedRole: isContentProducerSession ? 'content_producer' : null,
       });
+      // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
+      // «local-admin» (getLocalDevelopmentSession) → /api/casting-ruter passerer
+      // og data synkes til DB i stedet for å latche offline. Uten dette: 401.
+      window.localStorage.setItem('role_room_auth_token', 'dev-admin-local-session');
+      window.localStorage.setItem('creatorhub_auth_token', 'dev-admin-local-session');
       // Pre-seed profession so the profession selector dialog doesn't open
       await settingsService.setSetting('virtualStudio_castingProfession', 'photographer', {
         userId: 'e2e-test-user',
