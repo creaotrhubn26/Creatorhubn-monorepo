@@ -88,6 +88,12 @@ struct AssetSignals: Hashable, Sendable, Codable {
     var eyesOpen: Bool?
     var faceCount: Int?
     var duplicateGroupId: UUID?
+    /// Blits ved opptak (fra EXIF når previewen lander — samme lesing som
+    /// captureTime, null ekstra I/O). Driver «Lys endret»-badgen, Sync-forrige-
+    /// vernet og Kvalitetssjekk-flagget «blitsen fyrte men traff ikke».
+    var flashFired: Bool?
+    var flashReturnDetected: Bool?
+    var flashCompensation: Double?
     /// Opaque ref to the photographer's Apple Pencil markup layer —
     /// crop hints, retouch arrows, "remove background person"-notes.
     /// Resolves to a directory under ``Documents/markups/<ref>/``

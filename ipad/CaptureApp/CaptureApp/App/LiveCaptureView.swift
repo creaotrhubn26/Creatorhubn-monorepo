@@ -4254,12 +4254,17 @@ private struct FilmstripRail: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(assets) { asset in
+                    ForEach(Array(assets.enumerated()), id: \.element.id) { idx, asset in
                         FilmstripTile(
                             asset: asset,
                             isFocused: asset.id == focusedAssetId,
                             isCompareAnchor: asset.id == compareAnchorId,
-                            hasReviews: assetIdsWithReviews.contains(asset.id)
+                            hasReviews: assetIdsWithReviews.contains(asset.id),
+                            lightChanged: idx > 0 && ExifInfo.lightChanged(
+                                previousFired: assets[idx - 1].signals.flashFired,
+                                previousComp: assets[idx - 1].signals.flashCompensation,
+                                currentFired: asset.signals.flashFired,
+                                currentComp: asset.signals.flashCompensation)
                         )
                         // Order matters — register double-tap before
                         // single-tap so the dispatcher waits for a
@@ -4296,6 +4301,9 @@ private struct FilmstripTile: View {
     let isFocused: Bool
     var isCompareAnchor: Bool = false
     var hasReviews: Bool = false
+    /// «Lys endret» vs forrige bilde (blits fyrte/kompensasjon endret) — varsler
+    /// fotografen når assistenten bumpet blitsen mellom to formals.
+    var lightChanged: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -4335,6 +4343,16 @@ private struct FilmstripTile: View {
                             .foregroundStyle(.white)
                             .frame(width: 18, height: 18)
                             .background(.orange, in: Circle())
+                            .padding(6)
+                    }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if lightChanged {
+                        Label("Lys endret", systemImage: "bolt.badge.a.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.92), in: Capsule())
                             .padding(6)
                     }
                 }
@@ -5443,10 +5461,17 @@ final class LiveCaptureModel {
             // Kun bilder som NETTOPP ble preview-klare (var det ikke før).
             guard asset.previewKey != nil, hadPreview[asset.id] != true else { continue }
             let previousAsset = idx > 0 ? assets[idx - 1] : nil
+            // «Lys endret» vs forrige bilde → «Sync forrige» arver IKKE blindt.
+            let lightChanged = previousAsset.map { prev in
+                ExifInfo.lightChanged(
+                    previousFired: prev.signals.flashFired, previousComp: prev.signals.flashCompensation,
+                    currentFired: asset.signals.flashFired, currentComp: asset.signals.flashCompensation)
+            } ?? false
             let edit = CaptureEditPolicyEngine.editToApply(
                 policy: capturePolicy,
                 existingEdit: RedigeringEditStore.load(asset.id),
                 previousEdit: previousAsset.flatMap { RedigeringEditStore.load($0.id) },
+                lightChanged: lightChanged,
                 presetLookup: { name in RedigeringModel.presets.first { $0.0 == name }?.1 })
             if let edit { RedigeringEditStore.save(asset.id, edit) }
         }

@@ -13,9 +13,16 @@ struct ExifInfo: Equatable, Sendable {
     var exposureTime: Double?  // lukker i sekunder
     var iso: Int?
 
+    /// Blits (produsent-uavhengig — standard EXIF Flash-bitmaske + Aux-kompensasjon;
+    /// dekker Godox/Profoto/Canon Speedlite osv. som skriver EXIF via kameraet).
+    var flashFired: Bool?          // bit 0 — blitsen fyrte
+    var flashReturnDetected: Bool? // bit 1–2 == 0b11 — lys kom tilbake fra motiv
+    var flashCompensation: Double? // EXIF Aux, EV — Connect Pro / AirX-justering
+
     /// Har vi noe å vise?
     var hasData: Bool {
-        camera != nil || fNumber != nil || exposureTime != nil || iso != nil || focalLength != nil
+        camera != nil || fNumber != nil || exposureTime != nil || iso != nil
+            || focalLength != nil || flashFired != nil
     }
 
     /// Lukker som «1/1000» eller «0.5s».
@@ -32,6 +39,9 @@ struct ExifInfo: Equatable, Sendable {
         if let n = fNumber { parts.append("ƒ/\(n == n.rounded() ? String(Int(n)) : String(format: "%.1f", n))") }
         if let s = shutterText { parts.append(s) }
         if let iso { parts.append("ISO \(iso)") }
+        if flashFired == true {
+            parts.append(flashCompensation.map { String(format: "⚡︎%+.1f", $0) } ?? "⚡︎")
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -62,7 +72,28 @@ struct ExifInfo: Equatable, Sendable {
         } else if let iso = exif[kCGImagePropertyExifISOSpeedRatings] as? Int {
             info.iso = iso
         }
+        // Blits — EXIF Flash er en bitmaske: bit 0 = fyrte, bit 1–2 = retur-status,
+        // bit 5 = «ingen blitsfunksjon». Aux bærer blits-kompensasjonen (EV).
+        if let flash = exif[kCGImagePropertyExifFlash] as? Int {
+            let noFunction = (flash & 0b100000) != 0
+            if !noFunction {
+                info.flashFired = (flash & 0b1) != 0
+                let ret = (flash >> 1) & 0b11
+                if ret != 0 { info.flashReturnDetected = (ret == 0b11) }
+            }
+        }
+        info.flashCompensation = aux[kCGImagePropertyExifAuxFlashCompensation] as? Double
         return info.hasData ? info : nil
+    }
+
+    /// «Lys endret» — vesentlig blits-endring mellom to bilder: fyrte-status
+    /// flippet, ELLER blits-kompensasjon endret > 0.3 EV. Ren + testbar. Grunnlag
+    /// for thumbnail-badgen OG for at «Sync forrige» ikke blindt arver en recipe
+    /// tunet for annet lys (assistenten bumpet blitsen mellom to formals).
+    static func lightChanged(previousFired: Bool?, previousComp: Double?,
+                             currentFired: Bool?, currentComp: Double?) -> Bool {
+        if (previousFired ?? false) != (currentFired ?? false) { return true }
+        return abs((previousComp ?? 0) - (currentComp ?? 0)) > 0.3
     }
 
     /// Les EXIF `DateTimeOriginal` (EKTE opptakstid) fra en fil (RAW/JPEG). Nil

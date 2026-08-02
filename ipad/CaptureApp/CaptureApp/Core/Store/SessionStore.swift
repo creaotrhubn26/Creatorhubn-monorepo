@@ -150,6 +150,19 @@ actor SessionStore {
         }
     }
 
+    /// Sett kun blits-feltene på signals (fra EXIF når previewen lander) uten å
+    /// røre resten av signals-bloben.
+    func updateFlash(id: UUID, fired: Bool?, returnDetected: Bool?, compensation: Double?) async throws {
+        try await database.dbWriter.write { db in
+            guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }
+            asset.signals.flashFired = fired
+            asset.signals.flashReturnDetected = returnDetected
+            asset.signals.flashCompensation = compensation
+            asset.updatedAt = Date()
+            try asset.update(db)
+        }
+    }
+
     func updateAssetSignals(id: UUID, signals: AssetSignals) async throws {
         try await database.dbWriter.write { db in
             guard var asset = try Asset.fetchOne(db, key: id.uuidString.uppercased()) else { return }

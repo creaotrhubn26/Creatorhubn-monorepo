@@ -34,6 +34,7 @@ enum CaptureEditPolicyEngine {
         policy: CaptureEditPolicy,
         existingEdit: RedigeringEditStore.EditState?,
         previousEdit: RedigeringEditStore.EditState?,
+        lightChanged: Bool = false,
         presetLookup: (String) -> MagicRecipe?,
     ) -> RedigeringEditStore.EditState? {
         guard existingEdit == nil else { return nil }   // aldri klobbe manuell edit
@@ -42,6 +43,9 @@ enum CaptureEditPolicyEngine {
             return nil
         case .syncPrevious:
             guard let prev = previousEdit else { return nil }
+            // 🔑 IKKE arv blindt når blitsen/lyset endret seg vs forrige bilde —
+            // recipen var tunet for et annet lys (assistenten bumpet blitsen).
+            guard !lightChanged else { return nil }
             // Arv recipe + eksponering; crop er per-bilde og arves IKKE.
             return .init(recipe: prev.recipe, exposureEV: prev.exposureEV, crop: nil)
         case .preset(let name):
