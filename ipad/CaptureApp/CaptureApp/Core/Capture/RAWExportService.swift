@@ -224,7 +224,10 @@ actor RAWRenderGate {
     }
 
     func release() {
-        if waiters.isEmpty { available += 1 }
-        else { waiters.removeFirst().resume() }
+        if waiters.isEmpty {
+            available += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }
