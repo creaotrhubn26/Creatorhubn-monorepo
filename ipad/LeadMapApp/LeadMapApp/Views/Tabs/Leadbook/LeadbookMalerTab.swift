@@ -170,11 +170,17 @@ struct LeadbookMalerView: View {
             ),
             for: t.id.uuidString
         )
-        guard appState.isSuperAdmin, let backendId = t.backendId,
-              let api = appState.api else {
+        // Hvem kan dele med teamet? SuperAdmin (globale maler) eller
+        // org-leder (2026-08-02: org-scopede maler i backend — salgssjef/
+        // teamleder/admin). Andre: kun enhets-lagring.
+        let erOrgLeder = ["admin", "salgssjef", "teamleder"]
+            .contains(appState.roleInOrg ?? "")
+        guard let backendId = t.backendId, let api = appState.api,
+              appState.isSuperAdmin || erOrgLeder else {
             flashToast("«\(newName)» lagret på denne iPaden")
             return
         }
+        let dto = LeadbookLiveStore.shared.templateDTO(for: t)
         Task {
             let steps = newSteps.enumerated().map { idx, s in
                 PondusStepDTO(
@@ -186,15 +192,38 @@ struct LeadbookMalerView: View {
                     order: idx
                 )
             }
-            var payload = UpdatePondusTemplatePayload()
-            payload.name = newName
-            payload.steps = steps
             do {
-                _ = try await api.pondusUpdateTemplate(id: backendId, payload)
-                await LeadbookLiveStore.shared.refresh()
-                flashToast("«\(newName)» lagret for alle — ny versjon")
+                if appState.isSuperAdmin || dto?.orgId != nil {
+                    // SuperAdmin (alle maler) eller org-leder på org-egen
+                    // mal → PATCH (backend håndhever eierskap).
+                    var payload = UpdatePondusTemplatePayload()
+                    payload.name = newName
+                    payload.steps = steps
+                    _ = try await api.pondusUpdateTemplate(id: backendId, payload)
+                    await LeadbookLiveStore.shared.refresh()
+                    flashToast(appState.isSuperAdmin
+                               ? "«\(newName)» lagret for alle — ny versjon"
+                               : "«\(newName)» lagret for teamet — ny versjon")
+                } else {
+                    // Org-leder på GLOBAL mal → opprett org-egen kopi
+                    // (publiseres direkte av backend, synlig for hele org-en).
+                    let payload = CreatePondusTemplatePayload(
+                        name: newName,
+                        description: dto?.description,
+                        category: dto?.category ?? "custom",
+                        kind: dto?.kind ?? "telephone",
+                        score: dto?.score ?? 0,
+                        steps: steps,
+                        objections: dto?.objections ?? [],
+                        analysis: dto?.analysis,
+                        orgId: nil  // backend tvinger org fra sesjonen
+                    )
+                    _ = try await api.pondusCreateTemplate(payload)
+                    await LeadbookLiveStore.shared.refresh()
+                    flashToast("«\(newName)» lagret for teamet — org-kopi")
+                }
             } catch {
-                flashToast("Lagret på iPaden — backend-lagring feilet")
+                flashToast("Lagret på iPaden — team-lagring feilet")
             }
         }
     }

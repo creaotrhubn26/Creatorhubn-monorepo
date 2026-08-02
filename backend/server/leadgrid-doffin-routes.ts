@@ -22,6 +22,10 @@ import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADGRID_ANBUD_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { sendAPNs } from "./lead-map-apns-client.js";
+
+// Cron-trigger for overvåknings-sjekk (samme token-mønster som AI-billing).
+const DOFFIN_CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
 
 const DOFFIN_BASE = "https://api.doffin.no/public/v2";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -47,6 +51,12 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_doffin_watches_org
       ON leadgrid_doffin_watches (organization_id)`);
+  // Fase 2 (2026-08-02): varsler ved nye treff — lat selvheler, ingen
+  // manuell migrasjon (samme mønster som NRPS-roster-syncen).
+  await pool.query(`
+    ALTER TABLE leadgrid_doffin_watches
+      ADD COLUMN IF NOT EXISTS seen_ids JSONB NOT NULL DEFAULT '[]',
+      ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ`);
   schemaReady = true;
 }
 
@@ -207,6 +217,107 @@ export function registerLeadgridDoffinRoutes(deps: {
       res.json({ ok: true, id });
     } catch (e) {
       console.error("[doffin] create watch failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Cron: sjekk alle overvåkninger for nye treff → varsle oppretteren
+   *  (in-app notification_events + APNs push). Trigges av ekstern cron med
+   *  x-cron-trigger-token (samme token som øvrige leadgrid-crons).
+   *  Første kjøring per watch SEEDER seen_ids uten å varsle (ellers ville
+   *  hver ny overvåkning spamme med hele det eksisterende resultatsettet). */
+  app.post("/api/leadgrid/doffin/cron/check-watches", async (req, res) => {
+    const t = req.headers["x-cron-trigger-token"] as string | undefined;
+    if (!t || !DOFFIN_CRON_TOKEN || t !== DOFFIN_CRON_TOKEN) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    try {
+      await ensureSchema(pool);
+      const watches = await pool.query<{
+        id: string; organization_id: string; name: string;
+        query: Record<string, unknown>; created_by: string; seen_ids: string[];
+      }>(
+        `SELECT id, organization_id, name, query, created_by, seen_ids
+           FROM leadgrid_doffin_watches ORDER BY created_at ASC LIMIT 200`);
+      let checked = 0, notified = 0, seeded = 0, failed = 0;
+      for (const w of watches.rows) {
+        try {
+          const q = new URLSearchParams();
+          q.set("numHitsPerPage", "20");
+          q.set("status", "ACTIVE");
+          const text = String((w.query as Record<string, unknown>).q ?? "").trim();
+          if (text) q.set("searchString", text.slice(0, 200));
+          const location = String((w.query as Record<string, unknown>).location ?? "").trim();
+          if (location && /^[A-Z0-9,]{2,60}$/i.test(location)) {
+            for (const l of location.split(",")) q.append("location", l.trim());
+          }
+          const cpv = String((w.query as Record<string, unknown>).cpv ?? "").trim();
+          if (cpv && /^[0-9,]{2,120}$/.test(cpv)) {
+            for (const c of cpv.split(",")) q.append("cpvCode", c.trim());
+          }
+          const r = await doffinSearch(q);
+          if (!r.ok) { failed++; continue; }
+          checked++;
+          const hits = (r.body as { kunngjoringer?: Record<string, unknown>[] }).kunngjoringer ?? [];
+          const seen = new Set(Array.isArray(w.seen_ids) ? w.seen_ids : []);
+          const fresh = hits.filter((h) => h.id && !seen.has(String(h.id)));
+          const isFirstRun = seen.size === 0;
+          // Oppdater seen_ids (nyeste først, cap 300 så raden ikke vokser evig).
+          const nextSeen = [
+            ...fresh.map((h) => String(h.id)),
+            ...[...seen],
+          ].slice(0, 300);
+          await pool.query(
+            `UPDATE leadgrid_doffin_watches
+                SET seen_ids = $2::jsonb, last_checked_at = now(), updated_at = now()
+              WHERE id = $1`,
+            [w.id, JSON.stringify(nextSeen)]);
+          if (isFirstRun) { seeded++; continue; }
+          if (fresh.length === 0) continue;
+          // Varsle oppretteren: in-app + push (best effort).
+          const first = fresh[0];
+          const title = `Nye anbud: ${w.name}`;
+          const body = fresh.length === 1
+            ? String(first.tittel ?? "1 ny kunngjøring")
+            : `${String(first.tittel ?? "Ny kunngjøring")} +${fresh.length - 1} til`;
+          const deepLink = "leadgrid://anbud";
+          await pool.query(
+            `INSERT INTO notification_events
+               (recipient_user_id, organization_id, event_type, title, body,
+                triggered_by_user_id, deep_link, meta, email_sent)
+             VALUES ($1, $2, 'doffin_watch_hit', $3, $4, NULL, $5, $6::jsonb, FALSE)`,
+            [w.created_by, w.organization_id, title, body, deepLink,
+             JSON.stringify({ watch_id: w.id, new_ids: fresh.map((h) => String(h.id)).slice(0, 20) })]);
+          notified++;
+          try {
+            const tokRes = await pool.query<{ token: string }>(
+              `SELECT token FROM notification_device_tokens
+                WHERE user_id = $1 AND platform = 'apns' AND enabled = TRUE`,
+              [w.created_by]);
+            for (const tok of tokRes.rows) {
+              const pr = await sendAPNs(tok.token, title, body, {
+                customData: { event_type: "doffin_watch_hit", deep_link: deepLink },
+              });
+              if (pr.sent) break;
+              if (pr.shouldDisableToken) {
+                await pool.query(
+                  `UPDATE notification_device_tokens SET enabled = FALSE
+                    WHERE token = $1 AND user_id = $2`,
+                  [tok.token, w.created_by]).catch(() => {});
+              }
+            }
+          } catch (pushErr) {
+            console.warn("[doffin] push feilet:", String(pushErr).slice(0, 120));
+          }
+        } catch (watchErr) {
+          failed++;
+          console.warn("[doffin] watch-sjekk feilet:", w.id, String(watchErr).slice(0, 120));
+        }
+      }
+      res.json({ ok: true, watches: watches.rowCount, checked, notified, seeded, failed });
+    } catch (e) {
+      console.error("[doffin] cron check failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });

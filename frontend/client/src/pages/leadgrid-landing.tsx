@@ -60,6 +60,7 @@ import {
   DoorFrontOutlined,
   DirectionsCarFilledOutlined,
   VerifiedOutlined,
+  GavelOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
@@ -134,6 +135,7 @@ const MODULE_ICONS: Record<string, SvgIconComponent> = {
   dorsalg: DoorFrontOutlined,
   kvalitet: VerifiedOutlined,
   go: DirectionsCarFilledOutlined,
+  anbud: GavelOutlined,
 };
 
 // ────────────────────────────────────────────────────────────

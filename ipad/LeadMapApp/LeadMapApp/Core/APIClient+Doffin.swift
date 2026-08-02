@@ -96,4 +96,28 @@ extension APIClient {
     func deleteDoffinWatch(id: String) async throws {
         _ = try await _request("/api/leadgrid/doffin/watches/\(id)", method: "DELETE")
     }
+
+    /// «Opprett lead fra anbud» (fase 2, 2026-08-02): gjenbruker
+    /// from-card-løypa — org.nr i raw_text gir sikker BRREG-kobling og
+    /// full berikelse (adresse/NACE/daglig leder) i jobbkøen.
+    /// lead_source = doffin_anbud så kilden spores i CRM-et.
+    func createLeadFromAnbud(
+        navn: String, orgnr: String, tittel: String, url: String, frist: String?
+    ) async throws -> String {
+        var raw = "Org.nr: \(orgnr)\nAnbud: \(tittel)"
+        if let frist, !frist.isEmpty { raw += "\nFrist: \(frist)" }
+        raw += "\n\(url)"
+        struct Payload: Encodable {
+            let name: String
+            let company: String
+            let raw_text: String
+            let lead_source: String
+        }
+        struct Resp: Decodable { let ok: Bool; let id: String }
+        let r: Resp = try await _post(
+            "/api/admin-room/lead-map/leads/from-card",
+            body: Payload(name: navn, company: navn, raw_text: raw,
+                          lead_source: "doffin_anbud"))
+        return r.id
+    }
 }

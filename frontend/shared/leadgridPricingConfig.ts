@@ -70,6 +70,7 @@ export const DEFAULT_PRICING_CONFIG: LeadgridPricingConfig = {
     { key: 'dorsalg', title: 'Dørsalg & verving', desc: 'Adressekart, salg på døra med kundebekreftelse, dagsmål og team-oppfølging.', priceSoloPro: 490, priceAgency: 990, accent: '#c084fc', active: true },
     { key: 'kvalitet', title: 'Kvalitet', desc: 'Verifiseringskø, samtale-maler og kvalitetsgrad per selger. Stol på tallene.', priceSoloPro: 390, priceAgency: 790, accent: '#5eead4', active: true },
     { key: 'go', title: 'Leadgrid Go', desc: 'Automatisk kjørebok, kjøregodtgjørelse, flåte og bilbooking for hele teamet.', priceSoloPro: 249, priceAgency: 690, accent: '#7ab8ff', active: true },
+    { key: 'anbud', title: 'Anbud', desc: 'Søk og overvåk offentlige anskaffelser fra Doffin — med oppdragsgiverens org.nr klart som lead.', priceSoloPro: 490, priceAgency: 990, accent: '#818cf8', active: true },
   ],
-  bundle: { active: true, priceAgency: 1490, label: 'Alle tre moduler på Agency' },
+  bundle: { active: true, priceAgency: 1490, label: 'Alle tre feltsalg-modulene på Agency' },
 };

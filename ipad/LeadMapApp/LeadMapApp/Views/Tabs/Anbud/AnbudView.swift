@@ -25,6 +25,11 @@ struct AnbudView: View {
     @State private var watches: [DoffinWatchDTO] = []
     @State private var showWatches = false
     @State private var copiedToastId: String?
+    // «Opprett lead» (fase 2, 2026-08-02): kunngjøring → ekte CRM-lead
+    // via from-card-løypa (BRREG-kobling på org.nr + full berikelse).
+    @State private var creatingLeadId: String?
+    @State private var createdLeadIds: Set<String> = []
+    @State private var leadErrorText: String?
 
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
@@ -77,6 +82,9 @@ struct AnbudView: View {
                     searchCard
                     if let errorText {
                         errorBanner(errorText)
+                    }
+                    if let leadErrorText {
+                        errorBanner(leadErrorText)
                     }
                     resultsList
                     Color.clear.frame(height: 80)
@@ -256,6 +264,32 @@ struct AnbudView: View {
                         .background(LBrand.cardHi, in: Capsule())
                 }
                 Spacer()
+                if k.oppdragsgivere.first != nil {
+                    Button {
+                        Task { await createLead(from: k) }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if creatingLeadId == k.id {
+                                ProgressView().tint(.white).scaleEffect(0.6)
+                            } else {
+                                Image(systemName: createdLeadIds.contains(k.id)
+                                      ? "checkmark.circle.fill" : "person.crop.circle.badge.plus")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                            }
+                            Text(createdLeadIds.contains(k.id) ? "Lead opprettet ✓" : "Opprett lead")
+                                .font(.appScaled(size: 10, weight: .bold))
+                        }
+                        .foregroundStyle(createdLeadIds.contains(k.id) ? LBrand.green : .white)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(
+                            createdLeadIds.contains(k.id)
+                                ? AnyShapeStyle(LBrand.green.opacity(0.16))
+                                : AnyShapeStyle(Color.indigo.opacity(0.85)),
+                            in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(creatingLeadId != nil || createdLeadIds.contains(k.id))
+                }
                 Button {
                     if let og = k.oppdragsgivere.first {
                         UIPasteboard.general.string = "\(og.navn) — org.nr \(og.orgnr)\n\(k.tittel)\n\(k.url)"
@@ -265,7 +299,7 @@ struct AnbudView: View {
                         }
                     }
                 } label: {
-                    Label(copiedToastId == k.id ? "Kopiert ✓" : "Kopier oppdragsgiver",
+                    Label(copiedToastId == k.id ? "Kopiert ✓" : "Kopier",
                           systemImage: "doc.on.doc.fill")
                         .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(copiedToastId == k.id ? LBrand.green : .white)
@@ -282,6 +316,25 @@ struct AnbudView: View {
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// Opprett CRM-lead fra kunngjøringen: navn = oppdragsgiver, org.nr i
+    /// raw_text → sikker BRREG-kobling + full berikelse i backend-jobbkøen.
+    @MainActor
+    private func createLead(from k: DoffinKunngjoringDTO) async {
+        guard let api = appState.api, let og = k.oppdragsgivere.first,
+              creatingLeadId == nil else { return }
+        creatingLeadId = k.id
+        leadErrorText = nil
+        do {
+            _ = try await api.createLeadFromAnbud(
+                navn: og.navn, orgnr: og.orgnr,
+                tittel: k.tittel, url: k.url, frist: k.frist)
+            withAnimation { _ = createdLeadIds.insert(k.id) }
+        } catch {
+            leadErrorText = "Kunne ikke opprette lead — prøv igjen. (\(error.localizedDescription))"
+        }
+        creatingLeadId = nil
     }
 
     private func fristChip(_ iso: String) -> some View {

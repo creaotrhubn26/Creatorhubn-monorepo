@@ -103,8 +103,13 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
       desc: "Automatisk kjørebok, kjøregodtgjørelse, flåte og bilbooking for hele teamet.",
       priceSoloPro: 249, priceAgency: 690, accent: "#7ab8ff", active: true,
     },
+    {
+      key: "anbud", title: "Anbud",
+      desc: "Søk og overvåk offentlige anskaffelser fra Doffin — med oppdragsgiverens org.nr klart som lead.",
+      priceSoloPro: 490, priceAgency: 990, accent: "#818cf8", active: true,
+    },
   ],
-  bundle: { active: true, priceAgency: 1490, label: "Alle tre moduler på Agency" },
+  bundle: { active: true, priceAgency: 1490, label: "Alle tre feltsalg-modulene på Agency" },
 };
 
 export function registerLeadgridPricingConfigRoutes(deps: {
