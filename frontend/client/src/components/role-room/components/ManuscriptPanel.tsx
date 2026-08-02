@@ -21,6 +21,7 @@ import {
   DialogActions,
   Tabs,
   Tab,
+  Avatar,
   Card,
   CardContent,
   Chip,
@@ -5775,6 +5776,24 @@ const CharactersTab: React.FC<{
     }
   };
 
+  // Avatar for parsede karakterer (ingen foto): formidler IDENTITET (deterministisk
+  // farge + initialer per navn) og ROLLE-viktighet (ring-farge etter rolle).
+  const characterInitials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '?';
+  const characterColor = (name: string) => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    return `hsl(${h}, 52%, 45%)`;
+  };
+  const roleRingColor = (role: string) =>
+    role === 'lead' ? 'error.main' : role === 'supporting' ? 'primary.main' : 'grey.500';
+  // Ekte portrett-avatar (DiceBear «lorelei» — håndtegnet svart-blekk), deterministisk
+  // per navn med pastell-bakgrunn så hver karakter blir distinkt. Faller tilbake til
+  // initialer hvis bildet ikke lastes.
+  const characterAvatarUrl = (name: string) =>
+    `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(name)}` +
+    `&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c4f5d0&radius=50`;
+
   return (
     <Box>
       <Stack 
@@ -5859,14 +5878,32 @@ const CharactersTab: React.FC<{
               >
                 <CardContent sx={{ p: isMobile ? 1.5 : 2 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box>
-                      <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>{character.name}</Typography>
-                      {character.alias && (
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                          aka {character.alias}
-                        </Typography>
-                      )}
-                    </Box>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <Avatar
+                        src={characterAvatarUrl(character.name)}
+                        alt={character.name}
+                        sx={{
+                          bgcolor: characterColor(character.name),
+                          color: '#fff',
+                          width: isMobile ? 34 : 40,
+                          height: isMobile ? 34 : 40,
+                          fontSize: isMobile ? 13 : 15,
+                          fontWeight: 700,
+                          border: 2,
+                          borderColor: roleRingColor(character.role || 'minor'),
+                        }}
+                      >
+                        {characterInitials(character.name)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>{character.name}</Typography>
+                        {character.alias && (
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
+                            aka {character.alias}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
                     <Chip 
                       label={getRoleLabel(character.role || 'minor')} 
                       color={getRoleColor(character.role || 'minor')}
