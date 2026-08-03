@@ -776,6 +776,67 @@ ${JSON.stringify(items)}`;
     }
   });
 
+  /** Tilbuds-assistent (siste idé fra salgbarhets-lista, 2026-08-04):
+   *  AI-UTKAST til tilbudsdisposisjon + følgebrev + sjekkliste fra
+   *  kunngjøringen. Eksplisitt utkast — skal alltid redigeres av mennesker
+   *  før innsending. Kostnadslogget som anbud_tilbud. */
+  app.post("/api/leadgrid/doffin/tilbudsutkast", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_ikke_konfigurert" }); return; }
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const tittel = String(req.body?.tittel ?? "").slice(0, 300);
+      const beskrivelse = String(req.body?.beskrivelse ?? "").slice(0, 6000);
+      const krav = Array.isArray(req.body?.krav)
+        ? (req.body.krav as unknown[]).map((k) => String(k).slice(0, 200)).slice(0, 10)
+        : [];
+      if (beskrivelse.trim().length < 40) {
+        res.status(400).json({ error: "for_kort_tekst", message: "Kunngjøringen har for lite tekst til et utkast." });
+        return;
+      }
+      const prompt = `Du hjelper en norsk feltsalg-bedrift å STRUKTURERE et tilbud på en offentlig kunngjøring. Dette er et UTKAST som mennesker skal redigere — vær konkret der teksten gir grunnlag, og skriv [FYLL INN: …] der bedriftsspesifikk info trengs. Ikke finn på fakta om bedriften. Returner KUN gyldig JSON:
+{"disposisjon":[{"seksjon":"<seksjonstittel>","innhold":"<2-4 setninger utkast eller [FYLL INN]-instruks>"}],
+ "folgebrev":"<kort følgebrev-utkast på norsk, 4-6 setninger, med [FYLL INN]-markører>",
+ "sjekkliste":["<konkrete ting som må på plass før innsending, utledet av kunngjøringen>"]}
+
+Kunngjøring: ${tittel}
+${krav.length > 0 ? `\nKjente krav:\n${krav.map((k) => `- ${k}`).join("\n")}` : ""}
+
+Beskrivelse:
+${beskrivelse}`;
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2000,
+          messages: [{ role: "user", content: prompt }],
+        }));
+      const text = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text).join("");
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'anbud_tilbud',$5,$6,$7,$8,$9)`,
+          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           beskrivelse.length, inTok, outTok, cost]);
+      } catch { /* logging velter aldri svaret */ }
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) { res.status(502).json({ error: "ai_svar_uparsbart" }); return; }
+      res.json(JSON.parse(match[0]));
+    } catch (e) {
+      console.error("[doffin] tilbudsutkast failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   /** AI-lesehjelp (nivå 2): oppsummering + krav-ekstraksjon fra
    *  kunngjøringsteksten. Kostnadslogget som anbud_oppsummer. */
   app.post("/api/leadgrid/doffin/oppsummer", async (req, res) => {

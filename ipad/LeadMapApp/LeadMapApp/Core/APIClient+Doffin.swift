@@ -179,6 +179,20 @@ struct AnbudOppsummeringDTO: Decodable, Hashable {
     }
 }
 
+/// Tilbuds-assistent (2026-08-04): AI-UTKAST til disposisjon + følgebrev
+/// + sjekkliste. [FYLL INN]-markører der bedriftsinfo trengs — skal
+/// alltid redigeres av mennesker før innsending.
+struct AnbudTilbudsutkastDTO: Decodable, Hashable {
+    struct SeksjonDTO: Decodable, Hashable, Identifiable {
+        let seksjon: String
+        let innhold: String
+        var id: String { seksjon }
+    }
+    let disposisjon: [SeksjonDTO]
+    let folgebrev: String
+    let sjekkliste: [String]
+}
+
 // MARK: - API
 
 extension APIClient {
@@ -286,6 +300,20 @@ extension APIClient {
         struct Payload: Encodable { let tittel: String; let beskrivelse: String }
         return try await _post("/api/leadgrid/doffin/oppsummer",
                                body: Payload(tittel: tittel, beskrivelse: beskrivelse))
+    }
+
+    /// Tilbuds-assistent (2026-08-04): AI-utkast til disposisjon/følgebrev/
+    /// sjekkliste. `krav` = ekstraherte krav fra oppsummeringen hvis kjørt.
+    func lagTilbudsutkast(
+        tittel: String, beskrivelse: String, krav: [String]
+    ) async throws -> AnbudTilbudsutkastDTO {
+        struct Payload: Encodable {
+            let tittel: String
+            let beskrivelse: String
+            let krav: [String]
+        }
+        return try await _post("/api/leadgrid/doffin/tilbudsutkast",
+                               body: Payload(tittel: tittel, beskrivelse: beskrivelse, krav: krav))
     }
 
     /// AI-prioritering (nivå 1): scorer treffene mot org-ens overvåkninger.
