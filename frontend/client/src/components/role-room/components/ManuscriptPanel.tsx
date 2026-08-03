@@ -135,21 +135,6 @@ const DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT: ManuscriptCoverFocalPoint = { x: 50,
 const clampCoverFocalPointValue = (value: number): number => Math.max(0, Math.min(100, value));
 const normalizeProjectKey = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
 
-// Trekker ut normaliserte scene-headinger fra Fountain-tekst. Brukes til å
-// oppdage at DB-scenene er ute av synk med manuset (ulik sekvens av headinger).
-const SCENE_HEADING_DETECT_RE = /^(\.)?((?:INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s])/i;
-const extractFountainSceneHeadings = (content: string | undefined): string[] => {
-  if (!content) return [];
-  const out: string[] = [];
-  for (const raw of content.split('\n')) {
-    const line = raw.trim();
-    if (SCENE_HEADING_DETECT_RE.test(line)) {
-      out.push(line.replace(/^\./, '').trim().toUpperCase().replace(/\s+/g, ' '));
-    }
-  }
-  return out;
-};
-
 const getManuscriptCoverFocalPoint = (manuscript: Manuscript | null | undefined): ManuscriptCoverFocalPoint => {
   const raw = manuscript?.coverFocalPoint;
   if (typeof raw !== 'object' || raw === null) {
@@ -1423,17 +1408,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
-  // Er DB-scenene ute av synk med manuset? (Ulik sekvens av scene-headinger.)
-  // Stateless: sammenligner Fountain-headinger mot scene-listas headinger.
-  const scenesOutOfSync = useMemo(() => {
-    if (!selectedManuscript || scenes.length === 0) return false;
-    const contentHeadings = extractFountainSceneHeadings(selectedManuscript.content);
-    if (contentHeadings.length === 0) return false;
-    const sceneHeadings = scenes.map((s) => (s.sceneHeading || s.heading || '').trim().toUpperCase().replace(/\s+/g, ' '));
-    if (contentHeadings.length !== sceneHeadings.length) return true;
-    return contentHeadings.some((h, i) => h !== sceneHeadings[i]);
-  }, [selectedManuscript, scenes]);
-
   const handleAutoBreakdown = async () => {
     if (!selectedManuscript) return;
     if (!autoBreakdownEnabled) {
@@ -2461,23 +2435,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     <ListItemText primary="Produksjonsdata (.json)" secondary="Alt: scener, shots, storyboard, roller" />
                   </MenuItem>
                 </Menu>
-                {/* Auto-lagring: vis status i stedet for en egen «Lagre»-knapp
-                    (klikk for å tvinge lagring nå). */}
-                <Tooltip title="Lagres automatisk. Klikk for å lagre nå.">
-                  <Chip
-                    size="small"
-                    icon={<SaveIcon sx={{ fontSize: 16 }} />}
-                    onClick={handleSaveManuscript}
-                    color={manuscriptSaveStatus === 'error' ? 'error' : manuscriptSaveStatus === 'unsaved' ? 'warning' : 'default'}
-                    variant={manuscriptSaveStatus === 'saved' ? 'outlined' : 'filled'}
-                    label={
-                      manuscriptSaveStatus === 'saving' ? 'Lagrer…'
-                        : manuscriptSaveStatus === 'error' ? 'Ikke lagret'
-                          : manuscriptSaveStatus === 'unsaved' ? 'Ulagret'
-                            : (lastManuscriptSaved ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}` : 'Lagret')
-                    }
-                    sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
-                  />
+                {/* Kun en stille «Lagre nå»-handling — status vises allerede i editoren
+                    (pille-rad «✓ Lagret …» + verktøylinje), så ingen redundant status her. */}
+                <Tooltip title="Lagre nå (lagres ellers automatisk)">
+                  <span>
+                    <IconButton
+                      size={responsive.buttonSize}
+                      onClick={handleSaveManuscript}
+                      disabled={isLoading}
+                      aria-label="Lagre nå"
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      <SaveIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                    </IconButton>
+                  </span>
                 </Tooltip>
                 {onTargetDurationChange && (() => {
                   const estRuntime = Math.round(selectedManuscript?.pageCount || 0);
@@ -2578,26 +2549,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               ? ` (siden ${new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })})`
               : ''}
             . Endringene dine lagres ikke før låsen frigis — men de beholdes i editoren.
-          </Alert>
-        )}
-
-        {selectedManuscript && scenesOutOfSync && (
-          <Alert
-            severity="info"
-            icon={<WarningAmberIcon fontSize="inherit" />}
-            sx={{ mt: responsive.spacing }}
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                disabled={isLoading || !autoBreakdownEnabled}
-                onClick={handleAutoBreakdown}
-              >
-                Kjør Auto-gjennomgang
-              </Button>
-            }
-          >
-            Scene-listen er ute av synk med manuset (ulike scene-overskrifter). Kjør Auto-gjennomgang for å oppdatere — produksjonsdata (storyboard, props) på scener som fortsatt finnes beholdes.
           </Alert>
         )}
 
@@ -4125,17 +4076,57 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         <DialogTitle>Mål-lengde</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Sett ønsket lengde på ferdig film/episode i minutter. Du får et varsel når manuset (~1 side per minutt) avviker mer enn 15 % fra målet.
+            Sett ønsket lengde på ferdig film/episode. Du får et varsel når manuset
+            (~1 side per minutt) avviker mer enn 15 % fra målet.
           </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            type="number"
-            label="Mål-lengde (minutter)"
-            value={targetDraft}
-            onChange={(e) => setTargetDraft(e.target.value)}
-            inputProps={{ min: 0, step: 1 }}
-          />
+          {(() => {
+            const est = Math.max(0, Math.round((selectedManuscript?.pageCount || ((selectedManuscript?.content?.split('\n').length || 0) / 55)) || 0));
+            const t = Math.round(Number(targetDraft));
+            const hasTarget = Number.isFinite(t) && t > 0;
+            const diffPct = hasTarget && est > 0 ? Math.round(((est - t) / t) * 100) : 0;
+            const saveIfValid = () => { if (hasTarget) { onTargetDurationChange?.(t); setShowTargetDialog(false); } };
+            return (
+              <>
+                <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mb: 1.5 }}>
+                  Manuset er nå ~<strong>{est}</strong> min ({est} {est === 1 ? 'side' : 'sider'}, anslag).
+                </Typography>
+                <Stack direction="row" sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                  {[{ l: 'Kortfilm', m: 15 }, { l: 'TV', m: 30 }, { l: 'TV', m: 45 }, { l: 'Spillefilm', m: 90 }, { l: 'Lang', m: 120 }].map((p, i) => (
+                    <Chip
+                      key={i}
+                      size="small"
+                      label={`${p.l} · ${p.m}m`}
+                      onClick={() => setTargetDraft(String(p.m))}
+                      color={targetDraft === String(p.m) ? 'primary' : 'default'}
+                      variant={targetDraft === String(p.m) ? 'filled' : 'outlined'}
+                    />
+                  ))}
+                </Stack>
+                <TextField
+                  autoFocus
+                  fullWidth
+                  type="number"
+                  label="Mål-lengde (minutter)"
+                  value={targetDraft}
+                  onChange={(e) => setTargetDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveIfValid(); }}
+                  inputProps={{ min: 1, step: 1 }}
+                />
+                {hasTarget && est > 0 && (
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', mt: 1.5, fontWeight: 600, color: Math.abs(diffPct) > 15 ? 'warning.main' : 'success.main' }}
+                  >
+                    {diffPct > 15
+                      ? `~${diffPct}% for langt (${est} vs ${t} min)`
+                      : diffPct < -15
+                        ? `~${Math.abs(diffPct)}% for kort (${est} vs ${t} min)`
+                        : `Innenfor målet (${est} vs ${t} min)`}
+                  </Typography>
+                )}
+              </>
+            );
+          })()}
         </DialogContent>
         <DialogActions>
           {typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 && (
@@ -4149,6 +4140,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           <Button onClick={() => setShowTargetDialog(false)}>Avbryt</Button>
           <Button
             variant="contained"
+            disabled={!(Number.isFinite(Math.round(Number(targetDraft))) && Math.round(Number(targetDraft)) > 0)}
             onClick={() => {
               const parsed = Math.round(Number(targetDraft));
               onTargetDurationChange?.(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
