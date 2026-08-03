@@ -1,78 +1,95 @@
 import XCTest
 @testable import CaptureApp
 
-/// Fase 2 — hud-mot-linjen (hue-nudge + chroma-guard).
+/// Fase 2 — melanin-bevarende hud-cast-korreksjon.
 final class SkinToTargetTests: XCTestCase {
 
-    private func hueDeg(_ a: Double, _ b: Double) -> Double { atan2(b, a) * 180 / .pi }
+    private let targetHue = 49.0
+    private var u: (x: Double, y: Double) {
+        let t = targetHue * Double.pi / 180; return (cos(t), sin(t))
+    }
+    /// Signert avstand ⊥ linja (casten). 0 = på linja.
+    private func perp(_ a: Double, _ b: Double) -> Double { -a * u.y + b * u.x }
+    /// Projeksjon LANGS linja (melanin-aksen).
+    private func along(_ a: Double, _ b: Double) -> Double { a * u.x + b * u.y }
 
-    // MARK: - Korreksjon
-
-    func testOnTargetSkinIsNearIdentity() {
-        // hue = 45° (a=b), chroma 21 (i båndet) → nesten ingen endring.
-        let c = SkinToTarget.correction(a: 15, b: 15)
-        XCTAssertEqual(c.rotationRadians, 0, accuracy: 1e-9)
-        XCTAssertEqual(c.chromaScale, 1, accuracy: 1e-6)
+    /// Punkt med gitt melanin (langs) + cast (perp).
+    private func point(along al: Double, perp pe: Double) -> (a: Double, b: Double) {
+        (al * u.x + pe * (-u.y), al * u.y + pe * u.x)
     }
 
-    func testTooOrangeRotatesTowardTarget() {
-        // hue ≈ 14° (< 45) → positiv rotasjon, og påført skal hue-en ØKE mot 45.
-        let a = 20.0, b = 5.0
-        let c = SkinToTarget.correction(a: a, b: b)
-        XCTAssertGreaterThan(c.rotationRadians, 0)
-        let (na, nb) = SkinToTarget.applied(a: a, b: b, c)
-        XCTAssertGreaterThan(hueDeg(na, nb), hueDeg(a, b), "hue skal flytte mot linja")
-        XCTAssertLessThanOrEqual(hueDeg(na, nb), 45.0, "men ikke forbi målet")
-    }
+    // MARK: - Grunnleggende
 
-    func testTooMagentaRotatesNegative() {
-        // hue ≈ 76° (> 45) → negativ rotasjon.
-        let c = SkinToTarget.correction(a: 5, b: 20)
-        XCTAssertLessThan(c.rotationRadians, 0)
-        let (na, nb) = SkinToTarget.applied(a: 5, b: 20, c)
-        XCTAssertLessThan(hueDeg(na, nb), hueDeg(5, 20))
-    }
-
-    func testRotationIsClampedAndDamped() {
-        // Hue langt unna (a=25,b=0 → 0°, 45° unna) → klemt til 8·0.7 = 5.6°.
-        let c = SkinToTarget.correction(a: 25, b: 0, targetHueDegrees: 45,
-                                        maxRotationDegrees: 8, damping: 0.7)
-        XCTAssertEqual(c.rotationRadians * 180 / .pi, 5.6, accuracy: 0.01)
+    func testOnLineIsIdentity() {
+        // På linja (perp=0) → ingenting å korrigere.
+        let p = point(along: 25, perp: 0)
+        let c = SkinToTarget.correction(measuredA: p.a, measuredB: p.b)
+        XCTAssertEqual(c.da, 0, accuracy: 1e-6)
+        XCTAssertEqual(c.db, 0, accuracy: 1e-6)
     }
 
     func testLowChromaIsIdentity() {
-        // For grå til å ha pålitelig hue → ingen rotasjon (unngå å farge nøytralt).
-        XCTAssertEqual(SkinToTarget.correction(a: 1, b: 1), .identity)
+        XCTAssertEqual(SkinToTarget.correction(measuredA: 1, measuredB: 1), .identity)
     }
 
-    func testHighChromaDesaturates() {
-        // Chroma 42 (> 26) → skala < 1 (dra inn mot naturlig bånd).
-        let c = SkinToTarget.correction(a: 30, b: 30, chromaRange: 12...26)
-        XCTAssertLessThan(c.chromaScale, 1.0)
+    func testCastIsReducedTowardLine() {
+        // Melanin 25, cast +6 ⊥ linja. strength 0.5 → casten skal HALVERES.
+        let p = point(along: 25, perp: 6)
+        let c = SkinToTarget.correction(measuredA: p.a, measuredB: p.b, strength: 0.5)
+        let (na, nb) = SkinToTarget.applied(a: p.a, b: p.b, c)
+        XCTAssertEqual(perp(na, nb), 3.0, accuracy: 0.01, "cast skal halveres (halvveis mot linja)")
+        XCTAssertLessThan(abs(perp(na, nb)), abs(perp(p.a, p.b)))
     }
 
-    func testFaintButValidChromaBoosts() {
-        // Chroma 5 (over minChroma 3, men under båndet) → skala > 1.
-        let c = SkinToTarget.correction(a: 5, b: 0, chromaRange: 12...26, minChroma: 3)
-        XCTAssertGreaterThan(c.chromaScale, 1.0)
+    // MARK: - 🔒 Melanin-aksen bevares (kjerne-sikkerheten)
+
+    func testMelaninAxisIsMathematicallyPreserved() {
+        // For ET HVILKET SOM HELST cast-punkt skal endringen LANGS linja være ~0,
+        // og langs-komponenten av det korrigerte punktet = originalens. Dvs.
+        // systemet kan ALDRI lysne/mørkne/endre en persons faktiske hudtone.
+        for (al, pe) in [(15.0, 8.0), (25.0, -5.0), (35.0, 10.0), (20.0, -12.0)] {
+            let p = point(along: al, perp: pe)
+            let c = SkinToTarget.correction(measuredA: p.a, measuredB: p.b, strength: 0.5)
+            XCTAssertEqual(SkinToTarget.alongLineChange(c, targetHueDegrees: targetHue), 0, accuracy: 1e-9)
+            let (na, nb) = SkinToTarget.applied(a: p.a, b: p.b, c)
+            XCTAssertEqual(along(na, nb), along(p.a, p.b), accuracy: 1e-6, "melanin (langs linja) uendret")
+        }
     }
 
-    // MARK: - Påføring (per-piksel matte)
-
-    func testAppliedRotationIsCorrect() {
-        // +90° rotasjon, skala 1: (1,0) → (0,1).
-        let c = SkinToTarget.Correction(rotationRadians: .pi / 2, chromaScale: 1)
-        let (a, b) = SkinToTarget.applied(a: 1, b: 0, c)
-        XCTAssertEqual(a, 0, accuracy: 1e-9)
-        XCTAssertEqual(b, 1, accuracy: 1e-9)
+    func testDarkSkinChromaNotReduced() {
+        // Mørk/mettet hud (høy chroma 40) med en liten cast → korreksjonen skal IKKE
+        // dra chroma ned (det ville vært å endre melanin). Chroma ≈ uendret.
+        let p = point(along: 40, perp: 4)
+        let c = SkinToTarget.correction(measuredA: p.a, measuredB: p.b, strength: 0.5)
+        let (na, nb) = SkinToTarget.applied(a: p.a, b: p.b, c)
+        let before = (p.a * p.a + p.b * p.b).squareRoot()
+        let after = (na * na + nb * nb).squareRoot()
+        // Chroma kan endres marginalt (perp-komponent), men langs-aksen (dominant) er låst.
+        XCTAssertEqual(along(na, nb), along(p.a, p.b), accuracy: 1e-6)
+        XCTAssertGreaterThan(after, before * 0.9, "chroma skal ikke kollapse")
     }
 
-    func testAppliedScalePreservesHueChangesChroma() {
-        let c = SkinToTarget.Correction(rotationRadians: 0, chromaScale: 0.5)
-        let (a, b) = SkinToTarget.applied(a: 10, b: 10, c)
-        XCTAssertEqual(a, 5, accuracy: 1e-9)
-        XCTAssertEqual(b, 5, accuracy: 1e-9)
-        XCTAssertEqual(hueDeg(a, b), hueDeg(10, 10), accuracy: 1e-9)  // hue uendret
+    // MARK: - Demping / klemming / determinisme
+
+    func testMaxShiftClampsHugeCast() {
+        let p = point(along: 20, perp: 40)   // enorm cast
+        let c = SkinToTarget.correction(measuredA: p.a, measuredB: p.b, strength: 1.0, maxShift: 8)
+        XCTAssertLessThanOrEqual((c.da * c.da + c.db * c.db).squareRoot(), 8.0 + 1e-6)
+    }
+
+    func testDeterministic() {
+        let p = point(along: 22, perp: 7)
+        let c1 = SkinToTarget.correction(measuredA: p.a, measuredB: p.b)
+        let c2 = SkinToTarget.correction(measuredA: p.a, measuredB: p.b)
+        XCTAssertEqual(c1, c2)
+    }
+
+    func testStrengthNeverOvershoots() {
+        // strength ≤ 1 → aldri forbi linja (perp bytter ikke fortegn).
+        let p = point(along: 25, perp: 6)
+        let c = SkinToTarget.correction(measuredA: p.a, measuredB: p.b, strength: 1.0)
+        let (na, nb) = SkinToTarget.applied(a: p.a, b: p.b, c)
+        XCTAssertEqual(perp(na, nb), 0, accuracy: 0.01, "strength 1.0 lander PÅ linja, ikke forbi")
     }
 
     func testIdentityAppliedIsNoOp() {

@@ -1,57 +1,62 @@
 import Foundation
 
-/// Fase 2 (adaptiv redigering): nudge MÅLT hud mot HUD-TONE-LINJEN (memory-color),
-/// på device — porten av Python-treneren sin `skin_line_correct`, men ment påført
-/// MASKET til hud (fjæret matte fra ``GuidedFilter``), ikke globalt, så grønt/blått/
-/// treverk ikke roteres med. All hud (uansett etnisitet) klumper langs ~samme hue-
-/// akse i a*/b*-planet; etnisitet endrer mest METNING (radius), ikke hue. Derfor:
-/// roter hue-en mot linjen (dempet, klemt), og la metningen stort sett være — bare
-/// dra ekstreme verdier mot et naturlig chroma-bånd.
+/// Fase 2 (adaptiv redigering): korriger målt hud-CAST mot hud-tone-linjen, på
+/// device, MELANIN-BEVARENDE. Ment påført MASKET til hud (fjæret matte fra
+/// ``GuidedFilter``), aldri globalt.
 ///
-/// Ren matte (a*/b* i LAB, nøytral = 0) → deterministisk + testbar. CIImage-/maske-
-/// påføringen er wiring-steget.
+/// 🔒 SIKKERHETS-INVARIANT (matematisk, ikke policy-tekst): korreksjonen er en ren
+/// PERPENDIKULÆR forskyvning i a*/b*-planet — den flytter huden mot linja langs
+/// retningen VINKELRETT på linja, og rører ALDRI komponenten LANGS linja (melanin-
+/// aksen) eller L* (som ikke er i a*/b* i det hele tatt). Dermed kan systemet
+/// verken lysne eller mørkne hud, uansett hva treningsdataene sier — dekomponert i
+/// (langs, ⊥) med langs-komponenten låst til 0.
+///
+/// Hud-linja (hue 49°, empirisk kalibrert fra 726 ansikter i faktiske leveranser,
+/// 5 bryllup, sør-asiatisk + nordisk — hue er nær-konstant på tvers av etnisitet,
+/// mens METNING/chroma varierer; derfor rører vi IKKE chroma). Dempet: alltid
+/// HALVVEIS mot linja, aldri hele — samme filosofi som resten av pipelinen.
+/// Deterministisk (ren funksjon).
 enum SkinToTarget {
 
-    /// Rotasjon (radianer) + chroma-skala som skal påføres a*/b* for å flytte hud mot
-    /// linjen. `identity` = ingen endring (brukes når huden er for grå til å ha en
-    /// pålitelig hue).
+    /// Perpendikulær a*/b*-forskyvning som flytter målt hud mot linja. `identity` =
+    /// ingen endring (for grå til å ha pålitelig hue → ikke rør).
     struct Correction: Equatable {
-        var rotationRadians: Double
-        var chromaScale: Double
-        static let identity = Correction(rotationRadians: 0, chromaScale: 1)
+        var da: Double
+        var db: Double
+        static let identity = Correction(da: 0, db: 0)
     }
 
-    /// Beregn korreksjonen fra målt hud-chroma `(a, b)` (LAB, nøytral=0). Dempet
-    /// rotasjon mot `targetHueDegrees` (klemt til ±`maxRotationDegrees`), og chroma
-    /// dratt inn i `chromaRange` (mykt, pow 0.5). Under `minChroma` → identity.
-    ///
-    /// Standard hue ~45° er hud-linja i a*/b*-planet (jf. vectorscope ~123°/+I);
-    /// bør feltjusteres mot ekte hud. Rotasjonen er BEGRENSET + dempet med vilje —
-    /// dette er en korreksjon, ikke en tvangs-nøytralisering.
-    static func correction(a: Double, b: Double,
-                           targetHueDegrees: Double = 45,
-                           maxRotationDegrees: Double = 8, damping: Double = 0.7,
-                           chromaRange: ClosedRange<Double> = 12...26,
-                           minChroma: Double = 3) -> Correction {
+    /// Beregn den melanin-bevarende cast-korreksjonen fra MÅLT hud-snitt `(a, b)`
+    /// (LAB, nøytral = 0). `strength` = hvor langt mot linja (0.5 = halvveis).
+    /// Kappet til `maxShift`. Under `minChroma` → identity.
+    static func correction(measuredA a: Double, measuredB b: Double,
+                           targetHueDegrees: Double = 49, strength: Double = 0.5,
+                           maxShift: Double = 8, minChroma: Double = 3) -> Correction {
         let chroma = (a * a + b * b).squareRoot()
         guard chroma >= minChroma else { return .identity }
-        let hue = atan2(b, a) * 180 / .pi
-        // Korteste vei rundt sirkelen, så f.eks. 179°→−179° blir +2°, ikke −358°.
-        var dHue = targetHueDegrees - hue
-        while dHue > 180 { dHue -= 360 }
-        while dHue < -180 { dHue += 360 }
-        dHue = min(maxRotationDegrees, max(-maxRotationDegrees, dHue)) * damping
-        let targetC = min(chromaRange.upperBound, max(chromaRange.lowerBound, chroma))
-        let scale = pow(min(1.12, max(0.88, targetC / chroma)), 0.5)
-        return Correction(rotationRadians: dHue * .pi / 180, chromaScale: scale)
+        let t = targetHueDegrees * .pi / 180
+        let ux = cos(t), uy = sin(t)                 // enhetsvektor LANGS linja
+        let along = a * ux + b * uy                  // projeksjon på linja (melanin)
+        let perpA = a - along * ux                   // avvik ⊥ linja = CASTen
+        let perpB = b - along * uy
+        var da = -perpA * strength                   // dra mot linja (dempet)
+        var db = -perpB * strength
+        let mag = (da * da + db * db).squareRoot()
+        if mag > maxShift { let s = maxShift / mag; da *= s; db *= s }
+        return Correction(da: da, db: db)
     }
 
-    /// Påfør en korreksjon på ett a*/b*-par: roter + skaler. Dette er per-piksel-
-    /// matten CIImage-filteret vil implementere (innenfor hud-masken).
+    /// Påfør korreksjonen på ett a*/b*-par: ren translasjon → LANGS-komponenten
+    /// (melanin) og L* er uendret per konstruksjon. Dette er per-piksel-matten
+    /// CIImage-filteret vil implementere innenfor hud-masken.
     static func applied(a: Double, b: Double, _ c: Correction) -> (a: Double, b: Double) {
-        let cosT = cos(c.rotationRadians), sinT = sin(c.rotationRadians)
-        let ra = (a * cosT - b * sinT) * c.chromaScale
-        let rb = (a * sinT + b * cosT) * c.chromaScale
-        return (ra, rb)
+        (a + c.da, b + c.db)
+    }
+
+    /// Sikkerhets-sonde (for tester/CI): endringen LANGS hud-linja som korreksjonen
+    /// medfører. Skal være ~0 for enhver input — beviser at melanin-aksen bevares.
+    static func alongLineChange(_ c: Correction, targetHueDegrees: Double = 49) -> Double {
+        let t = targetHueDegrees * .pi / 180
+        return c.da * cos(t) + c.db * sin(t)
     }
 }
