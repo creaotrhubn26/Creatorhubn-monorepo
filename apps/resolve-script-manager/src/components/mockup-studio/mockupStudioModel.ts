@@ -83,6 +83,16 @@ export type MockupBackground = 'light' | 'dark' | 'brand';
 /** Bakgrunns-stil: ren flate, gradient eller atmosfærisk (accent-glød). */
 export type MockupBgStyle = 'clean' | 'gradient' | 'atmospheric';
 
+/** Typografi-stil (kuraterte font-paringer, macOS-system-fonter). */
+export type MockupTypographyId = 'moderne' | 'editorial' | 'teknisk' | 'geometrisk';
+
+export const TYPOGRAPHY_STYLES: Record<MockupTypographyId, { label: string; display: string; body: string }> = {
+  moderne: { label: 'Moderne', display: '"Avenir Next", system-ui, sans-serif', body: '"Avenir Next", system-ui, sans-serif' },
+  editorial: { label: 'Editorial', display: 'Georgia, "Times New Roman", serif', body: '"Avenir Next", system-ui, sans-serif' },
+  teknisk: { label: 'Teknisk', display: 'Menlo, "SF Mono", monospace', body: '"Helvetica Neue", system-ui, sans-serif' },
+  geometrisk: { label: 'Geometrisk', display: 'Futura, "Century Gothic", sans-serif', body: '"Avenir Next", system-ui, sans-serif' },
+};
+
 /** Logo-slot (valgfri) — plasseres på lerretet, farge-nøytral. */
 export interface MockupLogo {
   image: string; // data-URL
@@ -103,8 +113,17 @@ export interface MockupCanvasSpec {
   background: MockupBackground;
   /** Bakgrunns-stil. */
   bgStyle: MockupBgStyle;
+  /** Typografi-stil (font-paring). Default 'moderne'. */
+  typography?: MockupTypographyId;
   /** Valgfri logo. */
   logo?: MockupLogo;
+}
+
+/** Font-familie for en tekst-rolle ut fra lerretets typografi-stil.
+ *  Etikett/overskrift → display-font; brødtekst/tag → body-font. */
+export function fontFamilyFor(role: MockupTextRole, canvas: MockupCanvasSpec): string {
+  const t = TYPOGRAPHY_STYLES[canvas.typography ?? 'moderne'];
+  return role === 'eyebrow' || role === 'title' ? t.display : t.body;
 }
 
 // ── Fargematematikk (delt av rasterisator + kvalitetskontroll) ───────────────
@@ -369,7 +388,7 @@ export interface MockupTemplate {
 }
 
 function baseCanvas(partial: Partial<MockupCanvasSpec> = {}): MockupCanvasSpec {
-  return { w: BASE_W, h: BASE_H, accent: '#22d3ee', accent2: '#a78bfa', background: 'dark', bgStyle: 'gradient', ...partial };
+  return { w: BASE_W, h: BASE_H, accent: '#22d3ee', accent2: '#a78bfa', background: 'dark', bgStyle: 'gradient', typography: 'moderne', ...partial };
 }
 
 function doc(name: string, template: string, canvas: MockupCanvasSpec, devices: MockupDeviceSlot[], texts: MockupTextSlot[]): MockupDoc {
@@ -437,7 +456,7 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
   {
     id: 'stats_dark', name: 'Nøkkeltall — iPhone', category: 'nokkeltall', variant: 'dark', devices: 1,
     description: 'iPhone til høyre, tre store nøkkeltall i accent-farger til venstre.',
-    build: () => { const t = ink('dark'); return doc('Nøkkeltall', 'stats_dark', baseCanvas(), [
+    build: () => { const t = ink('dark'); return doc('Nøkkeltall', 'stats_dark', baseCanvas({ typography: 'geometrisk' }), [
       makeDevice('iphone', { x: 1120, y: 250, w: 300, rotation: 3, shadow: true }),
     ], [
       makeText('eyebrow', { text: 'RESULTATER', x: 120, y: 200, w: 500 }),
@@ -450,7 +469,7 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
   {
     id: 'case_study_light', name: 'Kundecase — MacBook (lys)', category: 'kundecase', variant: 'light', devices: 1,
     description: 'Lys, redaksjonell kundecase med sitat og MacBook.',
-    build: () => { const t = ink('light'); return doc('Kundecase', 'case_study_light', baseCanvas({ background: 'light', bgStyle: 'clean' }), [
+    build: () => { const t = ink('light'); return doc('Kundecase', 'case_study_light', baseCanvas({ background: 'light', bgStyle: 'clean', typography: 'editorial' }), [
       makeDevice('macbook', { x: 700, y: 300, w: 820, shadow: true }),
     ], [
       makeText('eyebrow', { text: 'KUNDECASE', x: 120, y: 300, w: 500 }),
