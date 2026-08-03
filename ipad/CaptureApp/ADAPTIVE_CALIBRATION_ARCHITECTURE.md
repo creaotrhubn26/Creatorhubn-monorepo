@@ -138,10 +138,26 @@ prioren designet ville ha, alt bakt inn. En blank normalisering oppå = en ANDRE
 gray-world overkorrigerer på mettede bryllupsscener (varme lehengaer/dekor → skyver hud +10° gult),
 og selv ren eksponering flytter a*/b* (LAB er luminans-avhengig). **Konklusjon: base er ikke
 problemet — ikke normaliser hver ramme.** CAT02/EXIF-illuminant-korreksjon skal RESERVERES for
-faktisk-feil/blandet WB, GATET av `SkinScope` (cast/bimodal), aldri blankt. Ekte look-gapet er
-chroma/tone-styling (18.7→31) som LUT-en alt leverer. Bonus-bug funnet: referanse-rendreren
-(`arkiv_laert_redigering.py`) hardkoder `skin_line_correct(target=35°)` → drar hud fra ~50° ned
-til ~30°; iOS `SkinToTarget` bruker alt 49° (riktig). Eksperiment-koden lever i `/tmp/v3train`
-(NORM_BASE-gate, ikke shippet).
+faktisk-feil/blandet WB, GATET av `SkinScope` (cast/bimodal), aldri blankt.
+
+### 🔑🔑 iOS-PRODUKTET ER ALT PÅ PARITET (målt headless på ekte pipeline, samme 6 rammer):
+
+| (samme rammer) | hud-hue | konsistens (STD) | chroma |
+|---|---|---|---|
+| Levert (fasit) | 51.2° | 11.3° | 30.9 |
+| **iOS `LearnedStyle.apply` (produkt)** | **54.0°** | **11.1°** | 34.7 |
+| Python-ref (35°-bug) | 40.1° | 14.1° | 38.3 |
+
+Målt ved å kompilere den EKTE iOS-pipelinen headless (`swiftc -O` på `LearnedStyle.swift` +
+`LabColorTransfer`/`SkinToneGuardFilter`/`SkinFinishFilter`/`FaceDodgeFilter`/`FaceContext`/
+`HighlightRecoveryFilter`, CIRAWFilter-develop, auto-bane = `styles.flatMap{$0.scenes}`) på
+portrett-settet → `/private/tmp/harness/skinrun/`. **iOS gjengir alt fotografens hud: hue Δ2.8°,
+chroma Δ3.8, konsistens matchet (11.1 vs 11.3).** Det tidligere «chroma-gapet 18.7→31» var på
+DEVELOP-en, ikke produktet — LUT+LAB+hud-steget løfter chroma til 34.7 selv. Rest: bitte-liten
+varm/mettet overshoot (+2.8°/+3.8) som ligger innenfor fotografens EGEN 11°-varians → å tune den
+= å fitte støy (n=6). **Ingen ekte hud/chroma-gap igjen å jakte i produktet.** Bonus-bug:
+referanse-rendreren (`arkiv_laert_redigering.py`) hardkoder `skin_line_correct(target=35°)` → drar
+hud ned (påvirker kun Python-side-previews/eksport, IKKE iOS-produktet som bruker 49°). Eksperiment-
+koden lever i `/tmp/v3train` (NORM_BASE-gate, ikke shippet).
 
 *Research + design-dialog, 2026-08-03.*
