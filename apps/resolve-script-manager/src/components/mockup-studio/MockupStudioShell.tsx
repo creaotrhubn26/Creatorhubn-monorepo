@@ -68,7 +68,7 @@ import {
   type SimTarget,
 } from './mockupCapture';
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
-import { aiIllustrate } from './mockupAiIllustrate';
+import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -234,6 +234,23 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runAiCompose = async () => {
+    setCaptureNote(null);
+    if (!url.trim()) return;
+    if (!aiAvailable()) { setCaptureNote('AI ikke tilkoblet — logg inn (RR-token) i Innstillinger.'); return; }
+    setCapturing(true);
+    try {
+      const doc = await aiComposeFromUrl(url, (s) => setCaptureNote(`AI: ${s}`));
+      store.setDocument(doc);
+      const n = (doc.annotations ?? []).filter((a) => a.kind === 'callout').length;
+      setCaptureNote(n > 0 ? `✓ Ferdig illustrasjon: hero-tekst + ${n} callouts — rediger fritt.` : '✓ Utkast klart (fant ingen tydelig produktskjerm å illustrere).');
+    } catch (e) {
+      setCaptureNote('AI-illustrasjon feilet: ' + String(e));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   const assignShot = (shot: CapturedShot) => {
     if (selection.kind === 'device') {
       store.setDeviceImage(selection.id, shot.dataUrl);
@@ -392,12 +409,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             {capturing ? 'Henter…' : 'Hent skjermbilder'}
           </button>
           <button
+            onClick={() => void runAiCompose()}
+            disabled={capturing || !url.trim() || !aiAvailable()}
+            style={{ ...primaryBtn, width: '100%', marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
+            title={aiAvailable() ? 'Full flyt: skjermbilder + hero-tekst + merkevare-farger + callouts som forklarer produktet — alt fra URL-en' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+          >
+            ✨ Full AI-illustrasjon fra URL
+          </button>
+          <button
             onClick={() => void runAiDraft()}
             disabled={capturing || !url.trim() || !aiAvailable()}
             style={{ ...listBtn, marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
-            title={aiAvailable() ? 'La AI drafte hele one-pageren fra URL-en (overskrift, tekst, farger, mal + skjermbilder)' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+            title={aiAvailable() ? 'Kun one-pager-utkast (overskrift, tekst, farger, mal + skjermbilder) — uten callouts' : 'Krever innlogget AI (RR-token i Innstillinger)'}
           >
-            ✨ AI-utkast fra URL
+            ✨ AI-utkast (uten callouts)
           </button>
           <button onClick={() => setShowCapture(true)} style={{ ...listBtn, marginTop: 6 }} title="Guidet fangst: velg skjermbilde og forhåndsvis i enheten før innsetting">Fang fra URL (guidet)…</button>
           {engineReady === false && (

@@ -19,6 +19,7 @@ import {
   type MockupAnnotation,
   type MockupCalloutSide,
 } from './mockupStudioModel';
+import { aiDraftOnePager } from './mockupAiDraft';
 
 /** Ett callout-forslag fra AI: posisjon (0..1 i skjermbildet) + funksjonstekst. */
 export interface CalloutSuggestion {
@@ -147,4 +148,26 @@ export async function aiIllustrate(doc: MockupDoc, context?: string, onStep?: (s
   }
   onStep?.('Ferdig');
   return annotationsFromSuggestions(parsed, dev.id);
+}
+
+/**
+ * Full flyt: URL → ferdig, forklart produkt-illustrasjon i ETT steg.
+ * Kjeder AI-utkast (henter skjermbilder, skriver hero-overskrift/ingress + setter
+ * merkevare-accent + velger mal) → AI-illustrer (callouts + funksjonstekst + lupe
+ * på produktskjermen). Illustrasjonen er best-effort: utkastet beholdes uansett.
+ */
+export async function aiComposeFromUrl(url: string, onStep?: (s: string) => void): Promise<MockupDoc> {
+  if (!isAiConnected()) {
+    throw new Error('AI-proxyen er ikke tilkoblet. Logg inn (RR-token) i Innstillinger.');
+  }
+  onStep?.('Lager one-pager fra URL…');
+  const doc = await aiDraftOnePager(url, onStep);
+  try {
+    onStep?.('Illustrerer produktskjermen…');
+    doc.annotations = await aiIllustrate(doc, undefined, onStep);
+  } catch {
+    // Callouts feilet (f.eks. ingen tydelig produktskjerm) — behold hero-utkastet.
+  }
+  onStep?.('Ferdig');
+  return doc;
 }
