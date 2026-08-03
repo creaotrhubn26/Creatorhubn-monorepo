@@ -96,7 +96,6 @@ function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
 }
 
 async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot): Promise<void> {
-  const spec = DEVICE_FRAMES[dev.variant];
   const w = dev.w;
   const h = deviceHeight(dev);
   const cx = dev.x + w / 2;
@@ -108,6 +107,14 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   ctx.rotate((dev.rotation * Math.PI) / 180);
   ctx.translate(-cx, -cy);
 
+  // Apple Watch tegnes syntetisk (ingen PNG-ramme, lisensfri).
+  if (dev.variant === 'watch') {
+    await drawWatch(ctx, doc, dev, w, h);
+    ctx.restore();
+    return;
+  }
+
+  const spec = DEVICE_FRAMES[dev.variant];
   // Kontaktskygge følger rammens alfa (device-formet, ikke en boks).
   const frame = await loadImage(spec.src);
   if (dev.shadow) {
@@ -145,6 +152,64 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   }
   ctx.restore();
 
+  ctx.restore();
+}
+
+/**
+ * Syntetisk Apple Watch: titan-kasse (avrundet firkant) + Digital Crown +
+ * bånd-stubber + skjerm med stort hjørne-radius. Kode-tegnet → ingen ekstern
+ * ramme-PNG og ingen lisens-spørsmål. Kalles fra drawDevice (allerede rotert).
+ */
+async function drawWatch(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot, w: number, h: number): Promise<void> {
+  const x = dev.x, y = dev.y;
+  const bodyR = Math.min(w, h) * 0.30;
+
+  // Bånd-stubber bak kassen (over + under).
+  const bandW = w * 0.6;
+  const bandX = x + (w - bandW) / 2;
+  ctx.save();
+  ctx.fillStyle = '#3b3e46';
+  roundRectPath(ctx, bandX, y - h * 0.05, bandW, h * 0.22, bandW * 0.16); ctx.fill();
+  roundRectPath(ctx, bandX, y + h * 0.83, bandW, h * 0.22, bandW * 0.16); ctx.fill();
+  ctx.restore();
+
+  // Digital Crown (høyre side, bak kassen).
+  ctx.save();
+  ctx.fillStyle = '#50535b';
+  roundRectPath(ctx, x + w - w * 0.015, y + h * 0.36, w * 0.06, h * 0.15, w * 0.025); ctx.fill();
+  ctx.restore();
+
+  // Titan-kasse med kontaktskygge.
+  ctx.save();
+  if (dev.shadow) {
+    ctx.shadowColor = 'rgba(0,0,0,0.34)';
+    ctx.shadowBlur = w * 0.07;
+    ctx.shadowOffsetY = w * 0.03;
+  }
+  const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+  grad.addColorStop(0, '#2c2f35');
+  grad.addColorStop(1, '#141519');
+  ctx.fillStyle = grad;
+  roundRectPath(ctx, x, y, w, h, bodyR); ctx.fill();
+  ctx.restore();
+
+  // Skjerm (stort radius), skjermbilde cover-klippet inn.
+  const inset = w * 0.12;
+  const sx = x + inset, sy = y + inset, sw = w - inset * 2, sh = h - inset * 2;
+  const sr = Math.min(sw, sh) * 0.28;
+  ctx.save();
+  roundRectPath(ctx, sx, sy, sw, sh, sr);
+  ctx.clip();
+  if (dev.image) {
+    try {
+      const shot = await loadImage(dev.image);
+      drawCover(ctx, shot, sx, sy, sw, sh);
+    } catch {
+      drawScreenPlaceholder(ctx, doc, sx, sy, sw, sh);
+    }
+  } else {
+    drawScreenPlaceholder(ctx, doc, sx, sy, sw, sh);
+  }
   ctx.restore();
 }
 
@@ -250,7 +315,7 @@ function newLayerCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx:
 }
 
 const VARIANT_LABEL: Record<string, string> = {
-  macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad (liggende)', iphone: 'iPhone',
+  macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad (liggende)', iphone: 'iPhone', watch: 'Apple Watch',
 };
 
 /**

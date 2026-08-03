@@ -17,8 +17,11 @@
 
 import type { FrameVariant } from '../demo-studio/deviceFrames';
 
-/** Device-varianter = nøyaktig demo-studio-rammene (ingen ny ramme i P1). */
-export type MockupDeviceVariant = FrameVariant; // 'iphone' | 'ipad' | 'ipad_landscape' | 'macbook'
+/**
+ * Device-varianter = demo-studio-rammene (iphone/ipad/ipad_landscape/macbook)
+ * + en syntetisk, kode-tegnet Apple Watch (ingen PNG → ingen lisens-spørsmål).
+ */
+export type MockupDeviceVariant = FrameVariant | 'watch';
 
 /**
  * Ett device-slot på lerretet. Geometri i LERRET-piksler (base-oppløsning,
@@ -111,6 +114,7 @@ export const FRAME_ASPECT: Record<MockupDeviceVariant, number> = {
   ipad: 1086 / 1448,
   ipad_landscape: 1448 / 1086,
   macbook: 1586 / 992,
+  watch: 0.84, // ~45mm-kasse (litt høyere enn bred)
 };
 
 /** Høyde til et device-slot ut fra bredden + rammens aspect. */
@@ -124,6 +128,7 @@ export function makeDevice(variant: MockupDeviceVariant, partial: Partial<Mockup
     ipad: 460,
     ipad_landscape: 620,
     iphone: 240,
+    watch: 170,
   };
   return {
     id: uid('dev'),
@@ -248,6 +253,62 @@ export function loadDoc(): MockupDoc | null {
   } catch {
     return null;
   }
+}
+
+// ── Kits (lagrede oppsett i localStorage) ────────────────────────────────
+
+/** Et lagret «kit» = et navngitt, gjenbrukbart MockupDoc-oppsett. */
+export interface MockupKit {
+  id: string;
+  name: string;
+  savedAt: number;
+  doc: MockupDoc;
+}
+
+const KITS_KEY = 'trrpa.mockup.kits';
+
+export function listKits(): MockupKit[] {
+  try {
+    const raw = localStorage.getItem(KITS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as MockupKit[];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Lagre gjeldende dokument som et navngitt kit (nyeste først, maks 30). */
+export function saveKit(name: string, doc: MockupDoc): { ok: boolean; error?: string } {
+  const kit: MockupKit = {
+    id: uid('kit'),
+    name: name.trim() || 'Kit',
+    savedAt: Date.now(),
+    doc: JSON.parse(JSON.stringify(doc)) as MockupDoc,
+  };
+  const next = [kit, ...listKits()].slice(0, 30);
+  try {
+    localStorage.setItem(KITS_KEY, JSON.stringify(next));
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Kunne ikke lagre kit (for stort? slett noen kits eller skjermbilder).' };
+  }
+}
+
+export function deleteKit(id: string): void {
+  try {
+    localStorage.setItem(KITS_KEY, JSON.stringify(listKits().filter((k) => k.id !== id)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Hent et kit som et FRISKT dokument (ny id) klart til redigering. */
+export function loadKitDoc(id: string): MockupDoc | null {
+  const kit = listKits().find((k) => k.id === id);
+  if (!kit) return null;
+  const clone = JSON.parse(JSON.stringify(kit.doc)) as MockupDoc;
+  return { ...clone, id: uid('doc'), updatedAt: Date.now() };
 }
 
 /** Løs en tekstfarge: 'accent'-sentinel → lerretets accent, ellers literal. */

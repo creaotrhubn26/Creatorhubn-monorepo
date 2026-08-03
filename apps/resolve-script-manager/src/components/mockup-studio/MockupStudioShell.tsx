@@ -22,6 +22,11 @@ import { useMockupStudio } from './mockupStudioStore';
 import {
   MOCKUP_TEMPLATES,
   safeDocName,
+  listKits,
+  saveKit,
+  deleteKit,
+  loadKitDoc,
+  type MockupKit,
   type MockupDeviceVariant,
   type MockupTextRole,
 } from './mockupStudioModel';
@@ -53,6 +58,7 @@ const DEVICE_LABELS: Record<MockupDeviceVariant, string> = {
   ipad: 'iPad',
   ipad_landscape: 'iPad (liggende)',
   iphone: 'iPhone',
+  watch: 'Apple Watch',
 };
 
 const TEXT_ROLE_LABELS: Record<MockupTextRole, string> = {
@@ -78,6 +84,17 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [captureNote, setCaptureNote] = useState<string | null>(null);
   const [engineReady, setEngineReady] = useState<boolean | null>(null);
   const [installing, setInstalling] = useState(false);
+
+  // Kits (P4)
+  const [kits, setKits] = useState<MockupKit[]>(() => listKits());
+  const [kitName, setKitName] = useState('');
+  const doSaveKit = () => {
+    const res = saveKit(kitName || doc.name, doc);
+    if (res.ok) { setKits(listKits()); setKitName(''); setExportMsg('✓ Kit lagret.'); }
+    else setExportMsg(res.error || 'Kunne ikke lagre kit.');
+  };
+  const doLoadKit = (id: string) => { const d = loadKitDoc(id); if (d) store.setDocument(d); };
+  const doDeleteKit = (id: string) => { deleteKit(id); setKits(listKits()); };
 
   useEffect(() => {
     let alive = true;
@@ -298,6 +315,24 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           <SectionLabel>Legg til tekst</SectionLabel>
           {(Object.keys(TEXT_ROLE_LABELS) as MockupTextRole[]).map((r) => (
             <button key={r} onClick={() => store.addText(r)} style={{ ...listBtn, marginBottom: 6 }}>+ {TEXT_ROLE_LABELS[r]}</button>
+          ))}
+
+          <div style={{ height: 18 }} />
+          <SectionLabel>Kits</SectionLabel>
+          <input
+            value={kitName}
+            onChange={(e) => setKitName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') doSaveKit(); }}
+            placeholder={doc.name || 'Kit-navn'}
+            style={{ ...textInput, marginBottom: 6 }}
+          />
+          <button onClick={doSaveKit} style={{ ...listBtn, marginBottom: 8 }}>Lagre gjeldende som kit</button>
+          {kits.length === 0 && <div style={{ fontSize: 11, color: C.inkSoft }}>Ingen lagrede kits enda.</div>}
+          {kits.map((k) => (
+            <div key={k.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+              <button onClick={() => doLoadKit(k.id)} style={{ ...listBtn, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="Last inn (erstatter gjeldende)">{k.name}</button>
+              <button onClick={() => doDeleteKit(k.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett kit">✕</button>
+            </div>
           ))}
         </div>
 

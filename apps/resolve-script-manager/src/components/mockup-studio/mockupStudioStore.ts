@@ -33,6 +33,7 @@ interface MockupStudioState {
 
   // Livssyklus
   newFromTemplate: (templateId: string) => void;
+  setDocument: (doc: MockupDoc) => void;
   setName: (name: string) => void;
 
   // Utvalg
@@ -72,6 +73,11 @@ export const useMockupStudio = create<MockupStudioState>((set) => ({
 
   newFromTemplate: (templateId) => {
     const next = buildTemplate(templateId);
+    saveDoc(next);
+    set({ doc: next, selection: { kind: 'canvas' } });
+  },
+
+  setDocument: (next) => {
     saveDoc(next);
     set({ doc: next, selection: { kind: 'canvas' } });
   },

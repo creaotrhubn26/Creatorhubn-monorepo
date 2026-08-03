@@ -74,7 +74,7 @@ export async function captureSiteShots(url: string): Promise<CapturedShot[]> {
 
 /** Beste skjermbilde for en gitt enhets-variant (mobil→iPhone, ellers desktop). */
 export function bestShotForVariant(shots: CapturedShot[], variant: string): CapturedShot | undefined {
-  const wantMobile = variant === 'iphone';
+  const wantMobile = variant === 'iphone' || variant === 'watch';
   const pool = shots.filter((s) => (wantMobile ? s.viewport === 'mobile' : s.viewport === 'desktop'));
   const fromPool = pool.slice().sort((a, b) => a.scrollPct - b.scrollPct)[0];
   // Fallback: hvis mobil mangler, bruk desktop (og omvendt).
