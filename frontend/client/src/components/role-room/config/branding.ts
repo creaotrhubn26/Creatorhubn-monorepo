@@ -3417,6 +3417,34 @@ export const getBrandingSettings = (): BrandingSettings => cachedBrandingSetting
 // engelsk tvilling: nøkler som IKKE finnes her faller tilbake til norsk (samme
 // fallback-mønster som i18n/translate). Fylles inn inkrementelt — klynge for klynge.
 export const BRANDING_LABELS_EN: Partial<Record<BrandingTextTokenKey, string>> = {
+  // Hoved-nav / faner (app-vid chrome). Nøkler som allerede er engelske i NO-kilden
+  // (casting, auditions, team, shotList, callSheets, storyboard) utelates — de faller
+  // tilbake til den (allerede engelske) norske verdien.
+  roles: 'Roles',
+  candidates: 'Candidates',
+  locations: 'Locations',
+  equipment: 'Equipment',
+  schedule: 'Calendar',
+  projects: 'Projects',
+  dashboard: 'Overview',
+  sharing: 'Sharing',
+  crewCalendar: 'Crew Calendar',
+  roleLocationsLabel: 'Locations',
+  overviewDescription: 'Create a new casting project',
+  newProjectTitle: 'New project',
+  teamDescription: 'Manage crew and team members',
+  locationsDescription: 'Manage locations',
+  equipmentDescription: 'Manage props and equipment',
+  scheduleDescription: 'Manage calendar and schedule',
+  scheduleProductionLabel: 'Production plan',
+  shotListDescriptionPhoto: 'Photo lists and compositions',
+  shotListDescriptionVideo: 'Video lists and scenes',
+  sharingDescription: 'Manage sharing settings',
+  noProjectSelected: 'No project selected',
+  noAccessTeam: 'You do not have access to manage the team',
+  noAccessLocations: 'You do not have access to manage locations',
+  noAccessEquipment: 'You do not have access to manage equipment',
+
   // Story Writer — topptekst / breadcrumb
   storyArcBackLabel: 'Back',
   storyWriterHeader: 'Story Writer - Manuscript',
