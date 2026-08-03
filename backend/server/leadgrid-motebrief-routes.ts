@@ -152,6 +152,49 @@ async function hentVunnedeCase(pool: Pool, orgId: string, bransjeHint: string | 
   } catch { return []; }
 }
 
+// ── Møtelogg (fase 3): løftene våre huskes til neste brief ───────────
+
+let loggSchemaReady = false;
+async function ensureLoggSchema(pool: Pool): Promise<void> {
+  if (loggSchemaReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_mote_logg (
+      id UUID PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      selskap TEXT NOT NULL,
+      orgnr TEXT,
+      notat TEXT NOT NULL DEFAULT '',
+      lofter JSONB NOT NULL DEFAULT '[]',
+      oppgaver JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_mote_logg_selskap
+      ON leadgrid_mote_logg (organization_id, lower(selskap), created_at DESC)`);
+  loggSchemaReady = true;
+}
+
+type ForrigeMote = { dato: string; notat: string; lofter: string[] };
+
+async function hentForrigeMote(pool: Pool, orgId: string, selskap: string): Promise<ForrigeMote | null> {
+  try {
+    await ensureLoggSchema(pool);
+    const r = await pool.query<{ created_at: Date; notat: string; lofter: unknown }>(
+      `SELECT created_at, notat, lofter FROM leadgrid_mote_logg
+        WHERE organization_id = $1 AND lower(selskap) = lower($2)
+        ORDER BY created_at DESC LIMIT 1`,
+      [orgId, selskap]);
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      dato: row.created_at.toISOString().slice(0, 10),
+      notat: String(row.notat).slice(0, 400),
+      lofter: Array.isArray(row.lofter) ? (row.lofter as string[]).slice(0, 5) : [],
+    };
+  } catch { return null; }
+}
+
 // ── Cache (org + selskap + dag) ──────────────────────────────────────
 
 const briefCache = new Map<string, { ts: number; body: unknown }>();
@@ -197,10 +240,11 @@ export function registerLeadgridMotebriefRoutes(deps: {
       // Berikelse i parallell — alt best-effort.
       const brreg = await hentBrreg(orgnr, selskap);
       const funnetOrgnr = brreg?.orgnr && /^\d{9}$/.test(brreg.orgnr) ? brreg.orgnr : orgnr;
-      const [regnskap, anbud, caser] = await Promise.all([
+      const [regnskap, anbud, caser, forrigeMote] = await Promise.all([
         hentRegnskap(funnetOrgnr),
         hentAktiveAnbud(funnetOrgnr),
         orgId ? hentVunnedeCase(pool, orgId, brreg?.naering ?? null) : Promise.resolve([]),
+        orgId ? hentForrigeMote(pool, orgId, selskap) : Promise.resolve(null),
       ]);
 
       const fakta = {
@@ -216,6 +260,8 @@ export function registerLeadgridMotebriefRoutes(deps: {
         lead_status: leadStatus,
         notater,
         egne_vunnede_case: caser,
+        // Fase 3-sløyfen: løftene fra forrige møte inn i neste brief.
+        forrige_mote: forrigeMote,
       };
 
       const prompt = `Du forbereder en norsk B2B-feltselger til et kundemøte. Lag en MØTEBRIEF på norsk basert på faktaene under. Forskningsbaserte regler:
@@ -224,6 +270,7 @@ export function registerLeadgridMotebriefRoutes(deps: {
 - «Innsikt å by på» skal helst bygge på et av org-ens egne vunnede case når det finnes — ellers en edruelig bransjeobservasjon fra faktaene.
 - Ikke finn på tall eller fakta som ikke står i grunnlaget. Er et felt tomt, ignorer det.
 - Aktive anbud fra selskapet er et KJØPSSIGNAL — nevn det i mål/vinkel hvis relevant.
+- Finnes forrige_mote: åpne oppsummeringen med hva som skjedde sist, og innarbeid uinnfridde løfter i møtemålet («vi lovte X — lever det»).
 
 Returner KUN gyldig JSON:
 {"oppsummering":"<2-3 setninger: hvem er de og hva er situasjonen>",
@@ -275,6 +322,7 @@ ${JSON.stringify(fakta)}`;
           resultat: regnskap?.resultat ?? null,
           regnskap_aar: regnskap?.aar ?? null,
           aktive_anbud: anbud,
+          forrige_mote: forrigeMote,
         },
       };
       briefCache.set(cacheKey, { ts: Date.now(), body });
@@ -285,6 +333,106 @@ ${JSON.stringify(fakta)}`;
       res.json(body);
     } catch (e) {
       console.error("[motebrief] failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /**
+   * Fase 3 — etterarbeidet («hukommelsen og farten»): transkripsjon/notater
+   * fra møtet → strukturert notat + løfter + oppgaver + ferdig oppfølgings-
+   * epost-UTKAST (aldri auto-send). Glemselskurven: 80 % er glemt på 24t og
+   * oppfølging <1t gir 7× — utkastet skal være klart før parkeringsplassen.
+   * Loggen persisteres slik at NESTE brief åpner med «hva vi lovte sist».
+   */
+  app.post("/api/leadgrid/moter/etterarbeid", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+      if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const selskap = String(b.selskap ?? "").trim().slice(0, 200);
+      const tekst = String(b.tekst ?? "").trim().slice(0, 20_000);
+      if (selskap.length < 2 || tekst.length < 20) {
+        res.status(400).json({ error: "bad_request", message: "selskap og tekst (møtenotat/transkripsjon) er påkrevd." });
+        return;
+      }
+      const kontakt = String(b.kontakt ?? "").slice(0, 120);
+      const moteMaal = String(b.mote_maal ?? "").slice(0, 400);
+      const orgnr = typeof b.orgnr === "string" && /^\d{9}$/.test(b.orgnr) ? b.orgnr : null;
+
+      const prompt = `Du er etterarbeids-assistenten til en norsk B2B-feltselger. Under er rå notater/transkripsjon fra et kundemøte hos «${selskap}»${kontakt ? ` (kontakt: ${kontakt})` : ""}${moteMaal ? `. Målet med møtet var: ${moteMaal}` : ""}.
+
+Lag etterarbeidet på norsk. Regler:
+- Notatet er STRUKTURERT og kort (situasjon, behov, beslutning/framdrift) — ikke referat av alt.
+- «Løfter» = ting VI lovte kunden (leveranser, svar, dokumenter). Kun det som faktisk ble sagt.
+- Oppgaver = konkrete neste steg med frist-hint når det ble nevnt («innen torsdag»).
+- Oppfølgings-eposten er et UTKAST fra selgeren til kontakten: takk, det vi ble enige om, neste steg m/ dato. Varm, kort, norsk — ingen floskler.
+- Ikke finn på noe som ikke står i grunnlaget.
+
+Returner KUN gyldig JSON:
+{"notat":"<strukturert møtenotat, 3-6 setninger>",
+ "lofter":["<løfte 1>", "..."],
+ "oppgaver":[{"tittel":"<oppgave>","frist":"<frist-hint eller tom streng>"}],
+ "status_forslag":"<én av: interessert, tilbud_sendes, avvent, tapt, vunnet>",
+ "epost":{"emne":"<emnelinje>","brodtekst":"<epost-utkastet>"}}
+
+Rå notater/transkripsjon:
+${tekst}`;
+
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1500,
+          messages: [{ role: "user", content: prompt }],
+        }));
+      const text = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text).join("");
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'mote_etterarbeid',$5,$6,$7,$8,$9)`,
+          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           prompt.length, inTok, outTok, cost]);
+      } catch { /* logging velter aldri svaret */ }
+
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) { res.status(502).json({ error: "ai_svar_uparsbart" }); return; }
+      const resultat = JSON.parse(match[0]) as {
+        notat?: string; lofter?: unknown; oppgaver?: unknown;
+      };
+
+      // Persistér møteloggen (fase 3-sløyfen) — best effort.
+      if (orgId) {
+        try {
+          await ensureLoggSchema(pool);
+          await pool.query(
+            `INSERT INTO leadgrid_mote_logg
+               (id, organization_id, user_id, selskap, orgnr, notat, lofter, oppgaver)
+             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,
+            [randomUUID(), orgId, session.userId, selskap, orgnr,
+             String(resultat.notat ?? "").slice(0, 2000),
+             JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
+             JSON.stringify(Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])]);
+          // Ny logg = neste brief skal IKKE serveres fra dagens cache.
+          for (const key of briefCache.keys()) {
+            if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
+          }
+        } catch (e) {
+          console.warn("[motebrief] logg-lagring feilet:", String(e).slice(0, 120));
+        }
+      }
+      res.json({ resultat: JSON.parse(match[0]) });
+    } catch (e) {
+      console.error("[motebrief] etterarbeid failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
