@@ -1065,3 +1065,73 @@ export function resolveColor(color: string, canvas: MockupCanvasSpec): string {
 export function safeDocName(name: string): string {
   return (name || 'mockup').trim().replace(/[^\p{L}\p{N}\-_ ]+/gu, '').replace(/\s+/g, '-').slice(0, 60) || 'mockup';
 }
+
+// ── Design-galleri (ferdig-stylede presets §3) ─────────────────────────────
+//
+// En preset = mal (device-layout) × typografi × dekor × palett × bakgrunn. Gir
+// ikke-designeren et komplett, gjennomtenkt utgangspunkt i ett klikk — ikke bare
+// en tom struktur. Alle bygger på eksisterende maler; kun stil-laget varierer.
+
+export type DesignTone = 'mork' | 'lys';
+
+/** Gjenbrukbar fargepalett (accent-par) for hurtig ny-farging i galleriet. */
+export interface MockupPalette { id: string; label: string; accent: string; accent2: string; }
+
+export const MOCKUP_PALETTES: MockupPalette[] = [
+  { id: 'midnatt', label: 'Midnatt', accent: '#22d3ee', accent2: '#a78bfa' },
+  { id: 'aurora', label: 'Aurora', accent: '#2dd4bf', accent2: '#8b5cf6' },
+  { id: 'neon', label: 'Neon', accent: '#f472b6', accent2: '#22d3ee' },
+  { id: 'kobber', label: 'Kobber', accent: '#f59e0b', accent2: '#b45309' },
+  { id: 'skog', label: 'Skog', accent: '#34d399', accent2: '#2dd4bf' },
+  { id: 'rubin', label: 'Rubin', accent: '#fb7185', accent2: '#fb923c' },
+  { id: 'indigo', label: 'Indigo', accent: '#6366f1', accent2: '#3b82f6' },
+  { id: 'grafitt', label: 'Grafitt', accent: '#38bdf8', accent2: '#94a3b8' },
+  { id: 'mono', label: 'Mono', accent: '#e5e7eb', accent2: '#9ca3af' },
+];
+
+export interface MockupDesignPreset {
+  id: string;
+  label: string;
+  blurb: string;
+  templateId: string;
+  typography: MockupTypographyId;
+  decor: MockupDecor;
+  background: MockupBackground;
+  bgStyle: MockupBgStyle;
+  accent: string;
+  accent2: string;
+  tone: DesignTone;
+}
+
+export const DESIGN_PRESETS: MockupDesignPreset[] = [
+  // ── Mørke ──────────────────────────────────────────────────────────────
+  { id: 'midnatt', label: 'Midnatt', blurb: 'Kjølig cyan-glød, ren og moderne', templateId: 'hero_mac_phone_dark', typography: 'moderne', decor: 'orbs', background: 'brand', bgStyle: 'gradient', accent: '#22d3ee', accent2: '#a78bfa', tone: 'mork' },
+  { id: 'aurora', label: 'Aurora', blurb: 'Mesh-gradient i teal og fiolett', templateId: 'hero_mac_phone_dark', typography: 'geometrisk', decor: 'mesh', background: 'brand', bgStyle: 'atmospheric', accent: '#2dd4bf', accent2: '#8b5cf6', tone: 'mork' },
+  { id: 'neon-pitch', label: 'Neon', blurb: 'Magenta-cyan salgspitch med punch', templateId: 'sales_pitch_dark', typography: 'geometrisk', decor: 'mesh', background: 'dark', bgStyle: 'atmospheric', accent: '#f472b6', accent2: '#22d3ee', tone: 'mork' },
+  { id: 'kobber-stats', label: 'Kobber', blurb: 'Varm amber, redaksjonelle tall', templateId: 'stats_dark', typography: 'editorial', decor: 'shapes', background: 'dark', bgStyle: 'gradient', accent: '#f59e0b', accent2: '#b45309', tone: 'mork' },
+  { id: 'skog-feature', label: 'Skog', blurb: 'Grønt rutenett, rolig og teknisk', templateId: 'feature_trio_dark', typography: 'moderne', decor: 'grid', background: 'dark', bgStyle: 'clean', accent: '#34d399', accent2: '#2dd4bf', tone: 'mork' },
+  { id: 'grafitt-watch', label: 'Grafitt', blurb: 'Nøktern mono-teknisk på grafitt', templateId: 'watch_focus_dark', typography: 'teknisk', decor: 'grid', background: 'dark', bgStyle: 'clean', accent: '#38bdf8', accent2: '#94a3b8', tone: 'mork' },
+  { id: 'rubin', label: 'Rubin', blurb: 'Rosa-oransje glød, energisk', templateId: 'stats_dark', typography: 'geometrisk', decor: 'orbs', background: 'brand', bgStyle: 'gradient', accent: '#fb7185', accent2: '#fb923c', tone: 'mork' },
+  { id: 'mono', label: 'Mono', blurb: 'Minimalistisk, ren og tekst-drevet', templateId: 'sales_pitch_dark', typography: 'teknisk', decor: 'none', background: 'dark', bgStyle: 'clean', accent: '#e5e7eb', accent2: '#9ca3af', tone: 'mork' },
+  { id: 'indigo-hero', label: 'Indigo', blurb: 'Dyp indigo-mesh, produktfokus', templateId: 'hero_mac_phone_dark', typography: 'moderne', decor: 'mesh', background: 'brand', bgStyle: 'atmospheric', accent: '#6366f1', accent2: '#3b82f6', tone: 'mork' },
+  // ── Lyse ───────────────────────────────────────────────────────────────
+  { id: 'kritt', label: 'Kritt', blurb: 'Lys og luftig med indigo-orber', templateId: 'hero_mac_phone_light', typography: 'moderne', decor: 'orbs', background: 'light', bgStyle: 'gradient', accent: '#6366f1', accent2: '#3b82f6', tone: 'lys' },
+  { id: 'redaksjon', label: 'Redaksjon', blurb: 'Serif-tittel, ren kundecase', templateId: 'case_study_light', typography: 'editorial', decor: 'none', background: 'light', bgStyle: 'clean', accent: '#111827', accent2: '#b45309', tone: 'lys' },
+  { id: 'pastell', label: 'Pastell', blurb: 'Myk rosa-fiolett lansering', templateId: 'feature_launch_light', typography: 'geometrisk', decor: 'mesh', background: 'light', bgStyle: 'gradient', accent: '#ec4899', accent2: '#8b5cf6', tone: 'lys' },
+  { id: 'sitrus', label: 'Sitrus', blurb: 'Friske former i oransje og rosa', templateId: 'feature_launch_light', typography: 'moderne', decor: 'shapes', background: 'light', bgStyle: 'clean', accent: '#f97316', accent2: '#ec4899', tone: 'lys' },
+  { id: 'luft', label: 'Luft', blurb: 'Nøytralt rutenett, blå aksent', templateId: 'hero_mac_phone_light', typography: 'teknisk', decor: 'grid', background: 'light', bgStyle: 'clean', accent: '#2563eb', accent2: '#64748b', tone: 'lys' },
+];
+
+/** Bygg et MockupDoc fra en design-preset: mal + fullt stil-lag. */
+export function buildPreset(id: string): MockupDoc {
+  const p = DESIGN_PRESETS.find((x) => x.id === id) ?? DESIGN_PRESETS[0];
+  const doc = buildTemplate(p.templateId);
+  doc.canvas.typography = p.typography;
+  doc.canvas.decor = p.decor;
+  doc.canvas.background = p.background;
+  doc.canvas.bgStyle = p.bgStyle;
+  doc.canvas.accent = p.accent;
+  doc.canvas.accent2 = p.accent2;
+  doc.name = p.label;
+  return doc;
+}

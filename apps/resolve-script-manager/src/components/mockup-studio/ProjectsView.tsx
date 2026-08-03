@@ -35,7 +35,7 @@ const STATUS_COLOR: Record<MockupProjectStatus, string> = {
   draft: '#9aa0b4', ready: '#4ade80', exported: '#22d3ee', archived: '#6b7280',
 };
 
-export function ProjectsView({ onClose, onOpen, onNew }: { onClose: () => void; onOpen: (doc: MockupDoc) => void; onNew: () => void }) {
+export function ProjectsView({ onClose, onOpen, onNew, onGallery }: { onClose: () => void; onOpen: (doc: MockupDoc) => void; onNew: () => void; onGallery?: () => void }) {
   const [projects, setProjects] = useState<MockupDoc[]>(() => listProjects());
   const [query, setQuery] = useState('');
   const [showArchive, setShowArchive] = useState(false);
@@ -54,6 +54,7 @@ export function ProjectsView({ onClose, onOpen, onNew }: { onClose: () => void; 
         <span style={{ fontWeight: 700, fontSize: 16 }}>Mockup Studio</span>
         <div style={{ flex: 1 }} />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søk i prosjekter…" style={{ ...input, width: 220 }} />
+        {onGallery && <button onClick={onGallery} style={ghost}>✦ Design-galleri</button>}
         <button onClick={onNew} style={primary}>+ Nytt materiell</button>
       </div>
 
