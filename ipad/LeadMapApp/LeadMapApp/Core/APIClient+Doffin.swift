@@ -17,6 +17,22 @@ struct DoffinVerdiDTO: Decodable, Hashable {
     let valuta: String
 }
 
+/// Kunde-match (nivå 1, 2026-08-03): oppdragsgiveren finnes allerede i
+/// org-ens CRM — leaden + eieren flagges rett på kunngjøringen.
+struct DoffinKundeMatchDTO: Decodable, Hashable {
+    let leadId: String
+    let leadNavn: String
+    let leadStatus: String?
+    let eier: String?
+
+    enum CodingKeys: String, CodingKey {
+        case leadId = "lead_id"
+        case leadNavn = "lead_navn"
+        case leadStatus = "lead_status"
+        case eier
+    }
+}
+
 struct DoffinKunngjoringDTO: Decodable, Identifiable, Hashable {
     let id: String
     let tittel: String
@@ -30,6 +46,45 @@ struct DoffinKunngjoringDTO: Decodable, Identifiable, Hashable {
     let nutsKoder: [String]
     let cpvKoder: [String]
     let url: String
+    /// Nivå 1: satt av backend når oppdragsgiver allerede er kunde.
+    var kundeMatch: DoffinKundeMatchDTO?
+    /// AWARDED best-effort — tom når Doffin ikke eksponerer vinnere.
+    var vinnere: [DoffinOppdragsgiverDTO]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, tittel, beskrivelse, oppdragsgivere, verdi, type, status
+        case kunngjort, frist, nutsKoder, cpvKoder, url, vinnere
+        case kundeMatch = "kunde_match"
+    }
+}
+
+/// AI-prioritering (nivå 1): score 0-100 + kort begrunnelse per treff.
+struct DoffinScoreDTO: Decodable, Hashable {
+    let id: String
+    let score: Int
+    let hvorfor: String?
+}
+
+/// Tildelings-innsikt (nivå 1): aggregert AWARDED for valgt bransje/fylke.
+struct DoffinTildelingerDTO: Decodable {
+    struct AktorDTO: Decodable, Identifiable, Hashable {
+        let navn: String
+        let antall: Int
+        let verdi: Double?
+        var id: String { navn }
+    }
+    let total: Int
+    let utvalg: Int
+    let sumVerdi: Double
+    let toppOppdragsgivere: [AktorDTO]
+    let toppVinnere: [AktorDTO]
+
+    enum CodingKeys: String, CodingKey {
+        case total, utvalg
+        case sumVerdi = "sum_verdi"
+        case toppOppdragsgivere = "topp_oppdragsgivere"
+        case toppVinnere = "topp_vinnere"
+    }
 }
 
 struct DoffinSearchResponseDTO: Decodable {
@@ -106,6 +161,37 @@ extension APIClient {
         _ = try await _request("/api/leadgrid/doffin/watches/\(id)/mark-seen", method: "POST")
     }
 
+    /// AI-prioritering (nivå 1): scorer treffene mot org-ens overvåkninger.
+    func scoreDoffin(kunngjoringer: [DoffinKunngjoringDTO]) async throws -> [DoffinScoreDTO] {
+        struct Payload: Encodable { let kunngjoringer: [[String: AnyEncodableValue]] }
+        // Enkel manuell payload (unngår Encodable-kompleksitet for nested DTO).
+        let items = kunngjoringer.prefix(20).map { k -> [String: AnyEncodableValue] in
+            var d: [String: AnyEncodableValue] = [
+                "id": .string(k.id),
+                "tittel": .string(k.tittel),
+                "beskrivelse": .string(String(k.beskrivelse.prefix(350))),
+                "cpvKoder": .stringArray(k.cpvKoder),
+                "nutsKoder": .stringArray(k.nutsKoder),
+            ]
+            if let v = k.verdi { d["verdi"] = .dict(["belop": .double(v.belop)]) }
+            return d
+        }
+        struct Resp: Decodable { let scores: [DoffinScoreDTO] }
+        let r: Resp = try await _post("/api/leadgrid/doffin/score",
+                                      body: Payload(kunngjoringer: Array(items)))
+        return r.scores
+    }
+
+    /// Tildelings-innsikt (nivå 1) for valgt bransje/fylke.
+    func fetchDoffinTildelinger(cpv: String?, location: String?) async throws -> DoffinTildelingerDTO {
+        var comps = URLComponents(string: "/api/leadgrid/doffin/tildelinger")!
+        var items: [URLQueryItem] = []
+        if let cpv, !cpv.isEmpty { items.append(.init(name: "cpv", value: cpv)) }
+        if let location, !location.isEmpty { items.append(.init(name: "location", value: location)) }
+        comps.queryItems = items.isEmpty ? nil : items
+        return try await _get(comps.string ?? comps.path)
+    }
+
     /// «Opprett lead fra anbud» (fase 2, 2026-08-02): gjenbruker
     /// from-card-løypa — org.nr i raw_text gir sikker BRREG-kobling og
     /// full berikelse (adresse/NACE/daglig leder) i jobbkøen.
@@ -128,5 +214,24 @@ extension APIClient {
             body: Payload(name: navn, company: navn, raw_text: raw,
                           lead_source: "doffin_anbud"))
         return r.id
+    }
+}
+
+/// Minimal JSON-verdi for håndbygde payloads (unngår [String: Any] som
+/// ikke er Encodable). Dekker det score-endepunktet trenger.
+enum AnyEncodableValue: Encodable {
+    case string(String)
+    case double(Double)
+    case stringArray([String])
+    case dict([String: AnyEncodableValue])
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let s): try c.encode(s)
+        case .double(let d): try c.encode(d)
+        case .stringArray(let a): try c.encode(a)
+        case .dict(let m): try c.encode(m)
+        }
     }
 }

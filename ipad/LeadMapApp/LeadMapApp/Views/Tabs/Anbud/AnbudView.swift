@@ -34,6 +34,13 @@ struct AnbudView: View {
     // Les gjennom (2026-08-03): tap på kort → fullt lese-ark. Alt innhold
     // ligger allerede i søkesvaret (Doffin v2 har ikke detalj-endepunkt).
     @State private var openKunngjoring: DoffinKunngjoringDTO?
+    // Nivå 1 (2026-08-03): AI-prioritering + tildelings-innsikt.
+    @State private var scores: [String: DoffinScoreDTO] = [:]
+    @State private var isScoring = false
+    @State private var scoreError: String?
+    @State private var showTildelinger = false
+    @State private var tildelinger: DoffinTildelingerDTO?
+    @State private var tildelingerLaster = false
 
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
@@ -113,6 +120,7 @@ struct AnbudView: View {
         .gated(.leadgridAnbud)   // tilleggstjeneste — låst uten entitlement
         .sheet(isPresented: $showWatches) { watchesSheet }
         .sheet(item: $openKunngjoring) { k in leseArk(k) }
+        .sheet(isPresented: $showTildelinger) { tildelingerArk }
     }
 
     private var inner: some View {
@@ -147,6 +155,17 @@ struct AnbudView: View {
                     .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
+            // Tildelings-innsikt (nivå 1): hvem vinner hva i markedet ditt.
+            Button {
+                showTildelinger = true
+                Task { await lastTildelinger() }
+            } label: {
+                Label("Tildelinger", systemImage: "chart.bar.fill")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(LBrand.cardHi, in: Capsule())
+            }.buttonStyle(.plain)
             Button {
                 showWatches = true
             } label: {
@@ -252,7 +271,32 @@ struct AnbudView: View {
                 HStack {
                     Text("\(total) kunngjøringer").font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.textSecondary)
+                    if !scores.isEmpty {
+                        Text("· AI-sortert")
+                            .font(.appScaled(size: 10, weight: .bold))
+                            .foregroundStyle(Color.indigo)
+                    }
                     Spacer()
+                    // AI-prioritering (nivå 1): scorer treffene mot org-ens
+                    // overvåkninger og sorterer beste øverst.
+                    if !results.isEmpty {
+                        Button {
+                            Task { await prioriterMedAI() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                if isScoring {
+                                    ProgressView().tint(Color.indigo).scaleEffect(0.6)
+                                } else {
+                                    Image(systemName: "sparkles").font(.appScaled(size: 10, weight: .bold))
+                                }
+                                Text(isScoring ? "Prioriterer …" : "Prioriter med AI")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(Color.indigo)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isScoring)
+                    }
                     if !searchText.isEmpty || selectedFylke != nil {
                         Button {
                             Task { await saveCurrentAsWatch() }
@@ -262,6 +306,12 @@ struct AnbudView: View {
                                 .foregroundStyle(Color.indigo)
                         }.buttonStyle(.plain)
                     }
+                }
+                if let scoreError {
+                    Text(scoreError)
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(LBrand.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -325,6 +375,25 @@ struct AnbudView: View {
                     Text("CPV \(k.cpvKoder.prefix(2).joined(separator: ", "))")
                         .font(.appScaled(size: 9, design: .monospaced))
                         .foregroundStyle(LBrand.textTertiary)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(LBrand.cardHi, in: Capsule())
+                }
+                // Kunde-match (nivå 1): sterkeste signalet vi har — grønn ⚡.
+                if let km = k.kundeMatch {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill").font(.appScaled(size: 9))
+                        Text(km.eier.map { "Kunde · \($0)" } ?? "Allerede kunde")
+                            .font(.appScaled(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(LBrand.green)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(LBrand.green.opacity(0.14), in: Capsule())
+                }
+                // AI-prioritering: score vises kun etter at brukeren kjørte den.
+                if let s = scores[k.id] {
+                    Text("\(s.score)")
+                        .font(.appScaled(size: 10, weight: .heavy, design: .monospaced))
+                        .foregroundStyle(s.score >= 70 ? LBrand.green : (s.score >= 40 ? LBrand.yellow : LBrand.textTertiary))
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(LBrand.cardHi, in: Capsule())
                 }
@@ -443,6 +512,30 @@ struct AnbudView: View {
                                 }
                             }
                         }
+                        // Kunde-match (nivå 1): relasjonen er gullet.
+                        if let km = k.kundeMatch {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.appScaled(size: 12, weight: .bold))
+                                    .foregroundStyle(LBrand.green)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Allerede kunde i CRM-et")
+                                        .font(.appScaled(size: 12, weight: .bold))
+                                        .foregroundStyle(LBrand.green)
+                                    Text([km.leadNavn,
+                                          km.eier.map { "eies av \($0)" },
+                                          km.leadStatus].compactMap { $0 }
+                                            .joined(separator: " · "))
+                                        .font(.appScaled(size: 11))
+                                        .foregroundStyle(LBrand.textSecondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(LBrand.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(LBrand.green.opacity(0.3), lineWidth: 1))
+                        }
                         // Metadata-rad: frist, kunngjort, verdi, fylke
                         HStack(spacing: 8) {
                             if let frist = k.frist { fristChip(frist) }
@@ -518,6 +611,169 @@ struct AnbudView: View {
         .foregroundStyle(LBrand.textSecondary)
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(LBrand.cardHi, in: Capsule())
+    }
+
+    // MARK: Nivå 1 — AI-prioritering + tildelings-innsikt (2026-08-03)
+
+    /// Scor treffene mot org-ens overvåkninger og sorter beste øverst.
+    /// Demo: statiske scores så flyten er demobar uten AI-kall.
+    @MainActor
+    private func prioriterMedAI() async {
+        guard !isScoring else { return }
+        scoreError = nil
+        if DemoModeManager.isActiveNonisolated {
+            scores = [
+                "demo-1": DoffinScoreDTO(id: "demo-1", score: 92, hvorfor: "Elektro-rammeavtale i kjerneområdet"),
+                "demo-2": DoffinScoreDTO(id: "demo-2", score: 38, hvorfor: "Renhold — utenfor bransjeprofilen"),
+                "demo-3": DoffinScoreDTO(id: "demo-3", score: 55, hvorfor: "Sikkerhet — delvis relevant"),
+            ]
+            sorterEtterScore()
+            return
+        }
+        guard let api = appState.api else { return }
+        isScoring = true
+        do {
+            let result = try await api.scoreDoffin(kunngjoringer: results)
+            scores = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+            sorterEtterScore()
+        } catch {
+            let msg = String(describing: error)
+            scoreError = msg.contains("ingen_overvaakninger")
+                ? "AI-prioritering bruker overvåkningene dine som profil — lagre minst ett søk først."
+                : "AI-prioriteringen feilet — prøv igjen."
+        }
+        isScoring = false
+    }
+
+    private func sorterEtterScore() {
+        results.sort { (scores[$0.id]?.score ?? -1) > (scores[$1.id]?.score ?? -1) }
+    }
+
+    /// Hent aggregert AWARDED-innsikt for gjeldende bransje/fylke-filter.
+    @MainActor
+    private func lastTildelinger() async {
+        if DemoModeManager.isActiveNonisolated {
+            tildelinger = nil   // demo-arket bruker statiske tall under
+            return
+        }
+        guard let api = appState.api, !tildelingerLaster else { return }
+        tildelingerLaster = true
+        tildelinger = try? await api.fetchDoffinTildelinger(
+            cpv: selectedBransje?.cpv, location: selectedFylke?.rawValue)
+        tildelingerLaster = false
+    }
+
+    private var tildelingerArk: some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text([selectedBransje?.navn, selectedFylke?.navn]
+                                .compactMap { $0 }.joined(separator: " · ")
+                                .isEmpty ? "Hele markedet" :
+                             [selectedBransje?.navn, selectedFylke?.navn]
+                                .compactMap { $0 }.joined(separator: " · "))
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(LBrand.textSecondary)
+                        if DemoModeManager.isActiveNonisolated {
+                            tildelingerInnhold(total: 47, sum: 182_000_000,
+                                oppdragsgivere: [("Oslo kommune", 9), ("Akershus fylkeskommune", 6), ("Bærum kommune", 4)],
+                                vinnere: [("Bravida Norge AS", 8), ("GK Gruppen AS", 5)])
+                        } else if tildelingerLaster {
+                            ProgressView().tint(Color.indigo)
+                                .frame(maxWidth: .infinity).padding(.vertical, 40)
+                        } else if let t = tildelinger {
+                            tildelingerInnhold(
+                                total: t.total, sum: t.sumVerdi,
+                                oppdragsgivere: t.toppOppdragsgivere.map { ($0.navn, $0.antall) },
+                                vinnere: t.toppVinnere.map { ($0.navn, $0.antall) })
+                        } else {
+                            Text("Kunne ikke hente tildelinger — prøv igjen.")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(LBrand.orange)
+                        }
+                        Color.clear.frame(height: 20)
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationTitle("Tildelte kontrakter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { showTildelinger = false }
+                        .tint(LBrand.textSecondary)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func tildelingerInnhold(
+        total: Int, sum: Double,
+        oppdragsgivere: [(String, Int)], vinnere: [(String, Int)]
+    ) -> some View {
+        HStack(spacing: 12) {
+            statBoks(tall: "\(total)", label: "TILDELT")
+            statBoks(tall: formatNOK(sum), label: "SAMLET VERDI (utvalg)")
+        }
+        if !oppdragsgivere.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("TOPP OPPDRAGSGIVERE")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                ForEach(oppdragsgivere, id: \.0) { navn, antall in
+                    HStack {
+                        Text(navn).font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Text("\(antall) kontrakter")
+                            .font(.appScaled(size: 11, design: .monospaced))
+                            .foregroundStyle(LBrand.textSecondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("HVEM VINNER")
+                .font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+            if vinnere.isEmpty {
+                // Ærlig: Doffin-søket eksponerer ikke alltid vinner-data.
+                Text("Doffin oppgir ikke vinnere i søkedataene for dette utvalget — åpne enkeltkunngjøringer i Doffin for tildelingsdetaljer.")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(LBrand.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(vinnere, id: \.0) { navn, antall in
+                    HStack {
+                        Text(navn).font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Text("\(antall) seire")
+                            .font(.appScaled(size: 11, design: .monospaced))
+                            .foregroundStyle(LBrand.green)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private func statBoks(tall: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(tall).font(.appScaled(size: 20, weight: .heavy, design: .monospaced))
+                .foregroundStyle(.white)
+            Text(label).font(.appScaled(size: 9, weight: .black))
+                .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
     }
 
     /// Opprett CRM-lead fra kunngjøringen: navn = oppdragsgiver, org.nr i
@@ -714,7 +970,11 @@ struct AnbudView: View {
               type: "COMPETITION", status: "ACTIVE",
               kunngjort: "2026-07-28", frist: "2026-08-25",
               nutsKoder: ["NO084"], cpvKoder: ["45310000"],
-              url: "https://doffin.no"),
+              url: "https://doffin.no",
+              kundeMatch: .init(leadId: "demo-lead-1",
+                                leadNavn: "Lørenskog kommune",
+                                leadStatus: "contacted",
+                                eier: "Kari Nordmann")),
         .init(id: "demo-2",
               tittel: "Renholdstjenester for videregående skoler",
               beskrivelse: "Daglig renhold og periodisk hovedrent for fire skoler i fylket.",
