@@ -28,11 +28,24 @@ const ICON_BY_TYPE: Record<ResumeThreadType, React.ComponentType<SvgIconProps>> 
  * automatisk når man begynner å skrive (styres av forelder).
  */
 export const ResumeBanner: React.FC<ResumeBannerProps> = ({ analysis, onAction, onDismiss }) => {
-  if (analysis.threads.length === 0) return null;
+  // HUD-oppførsel: forsvinner mykt av seg selv etter ~12 s (men pauses mens du
+  // holder musa over, så den aldri forsvinner mens du leser). Skjuler kun visuelt
+  // (persisterer ikke) — kommer tilbake neste gang du åpner manuset.
+  const [visible, setVisible] = React.useState(true);
+  const [hovered, setHovered] = React.useState(false);
+  React.useEffect(() => {
+    if (!visible || hovered) return;
+    const timer = window.setTimeout(() => setVisible(false), 12000);
+    return () => clearTimeout(timer);
+  }, [visible, hovered]);
+
+  if (analysis.threads.length === 0 || !visible) return null;
 
   return (
     <Box
       role="status"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       sx={{
         position: 'fixed',
         bottom: 24,

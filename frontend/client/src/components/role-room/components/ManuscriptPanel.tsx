@@ -771,8 +771,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         const scene = scenes.find((s) => s.id === targetSceneId);
         if (scene) setSelectedScene(scene);
       }
+      // Rute hver tråd dit hensikten hører hjemme:
+      //  - skrive-tråder (fortsett/begynn å skrive) → EDITOR (skriveflaten)
+      //  - planlegging (uplanlagte scener) → PRODUKSJON
+      //  - gjennomgang (gamle utkast) → SCENER
       if (thread.type === 'unscheduled') {
         setActiveTab('production');
+      } else if (thread.type === 'last-edited' || thread.type === 'empty-scaffold') {
+        setActiveTab('editor');
       } else {
         setActiveTab('scenes');
       }
