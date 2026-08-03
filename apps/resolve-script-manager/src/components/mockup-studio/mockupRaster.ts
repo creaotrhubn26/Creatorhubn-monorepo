@@ -175,6 +175,79 @@ function drawDecor(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(W * 0.055, H * 0.42); ctx.lineTo(W * 0.055, H * 0.42 + 110); ctx.stroke();
     ctx.restore();
+  } else if (decor === 'rings') {
+    // Konsentriske radar-ringer fra øvre høyre + myk glød i sentrum.
+    ctx.save();
+    const cx = W * 0.86, cy = H * 0.16;
+    ctx.strokeStyle = `rgba(${rgb1},${light ? 0.13 : 0.2})`;
+    ctx.lineWidth = 2;
+    for (let r = W * 0.07; r < W * 0.95; r += W * 0.085) { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.restore();
+    radial(cx, cy, W * 0.3, rgb1, light ? 0.1 : 0.18);
+  } else if (decor === 'stripes') {
+    // Energiske diagonale striper (45°) over hele lerretet.
+    ctx.save();
+    ctx.strokeStyle = `rgba(${rgb1},${light ? 0.08 : 0.12})`;
+    ctx.lineWidth = 12;
+    const gap = 58;
+    for (let x = -H; x < W; x += gap) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke(); }
+    ctx.restore();
+  } else if (decor === 'waves') {
+    // Flytende konturkurver (sinus), vekslende accent-farger — rolig rytme.
+    ctx.save();
+    ctx.lineWidth = 2.5;
+    const rows = 7;
+    for (let i = 0; i < rows; i++) {
+      const yBase = H * 0.14 + i * (H * 0.115);
+      ctx.strokeStyle = `rgba(${i % 2 ? rgb2 : rgb1},${light ? 0.13 : 0.18})`;
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 12) { const y = yBase + Math.sin((x / W) * Math.PI * 3 + i * 0.6) * (H * 0.03); if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else if (decor === 'spotlight') {
+    // Dramatisk sentrert lyskjegle + vignett som mørkner hjørnene.
+    radial(W * 0.5, H * 0.3, W * 0.55, rgb1, light ? 0.16 : 0.3);
+    ctx.save();
+    const vg = ctx.createRadialGradient(W * 0.5, H * 0.42, W * 0.2, W * 0.5, H * 0.42, W * 0.78);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, light ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.42)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  } else if (decor === 'confetti') {
+    // Spredte roterte firkanter — deterministisk (trig-hash, ingen tilfeldighet).
+    ctx.save();
+    const n = 46;
+    for (let i = 0; i < n; i++) {
+      const hx = Math.sin(i * 12.9898) * 43758.5453; const fx = hx - Math.floor(hx);
+      const hy = Math.sin(i * 78.233) * 43758.5453; const fy = hy - Math.floor(hy);
+      const s = 6 + (i % 4) * 4;
+      ctx.fillStyle = `rgba(${i % 2 ? rgb1 : rgb2},${light ? 0.16 : 0.24})`;
+      ctx.save(); ctx.translate(fx * W, fy * H); ctx.rotate(i * 0.7); ctx.fillRect(-s / 2, -s / 2, s, s); ctx.restore();
+    }
+    ctx.restore();
+  } else if (decor === 'halftone') {
+    // Retro-trykk: prikkegrid med voksende radius venstre→høyre.
+    ctx.save();
+    ctx.fillStyle = `rgba(${rgb1},${light ? 0.16 : 0.22})`;
+    const step = 30;
+    for (let y = step; y < H; y += step) for (let x = step; x < W; x += step) {
+      const t = x / W; const r = t * t * 6.5;
+      if (r > 0.3) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  } else if (decor === 'band') {
+    // Fet diagonal fargeblokk (duotone) bak komposisjonen — grafisk plakat-look.
+    ctx.save();
+    const lg = ctx.createLinearGradient(0, 0, W, H);
+    lg.addColorStop(0, `rgba(${rgb1},${light ? 0.18 : 0.3})`);
+    lg.addColorStop(1, `rgba(${rgb2},${light ? 0.13 : 0.22})`);
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.34); ctx.lineTo(W, H * 0.05); ctx.lineTo(W, H * 0.52); ctx.lineTo(0, H * 0.82); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 }
 
