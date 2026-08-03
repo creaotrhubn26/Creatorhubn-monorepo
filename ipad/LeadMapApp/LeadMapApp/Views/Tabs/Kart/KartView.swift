@@ -1654,15 +1654,22 @@ struct KartView: View {
 
     /// Flytende detaljkort: begrenset bredde/høyde så kartet forblir synlig
     /// rundt; lang innhold (Notater-fanen) scroller internt i kortet.
+    /// ViewThatFits (ikke bar ScrollView): en ScrollView er grådig og ville
+    /// tatt hele 460pt med tom flate under kort innhold — kortet skal klemme
+    /// HELT ned mot kartkanten (Daniel: «plasser det lengre ned»).
     private var detailOverlayKort: some View {
-        ScrollView {
+        ViewThatFits(in: .vertical) {
             AnyView(detailPanel)
+            ScrollView {
+                AnyView(detailPanel)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: 460)
         }
-        .scrollBounceBehavior(.basedOnSize)
         .frame(maxWidth: 720, maxHeight: 460)
         .shadow(color: .black.opacity(0.45), radius: 26, y: 10)
         .padding(.horizontal, 16)
-        .padding(.bottom, 14)
+        .padding(.bottom, 10)
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
