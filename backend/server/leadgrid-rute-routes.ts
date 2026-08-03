@@ -18,6 +18,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { assertAnyEntitled, LEADGRID_RUTEPLAN_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
 
 let schemaReady = false;
@@ -82,6 +83,7 @@ export function registerLeadgridRuteRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_RUTEPLAN_FEATURE_KEYS, res))) return;
       await ensureSchema(pool);
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
@@ -149,6 +151,7 @@ export function registerLeadgridRuteRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_RUTEPLAN_FEATURE_KEYS, res))) return;
       await ensureSchema(pool);
       const r = await pool.query(
         `SELECT id, navn, stopp, status, created_by, created_at
@@ -168,6 +171,7 @@ export function registerLeadgridRuteRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_RUTEPLAN_FEATURE_KEYS, res))) return;
       await ensureSchema(pool);
       const status = String((req.body ?? {}).status ?? "");
       if (!GYLDIGE_STATUSER.has(status)) {

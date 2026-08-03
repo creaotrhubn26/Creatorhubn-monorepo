@@ -2187,8 +2187,12 @@ struct KartView: View {
                         Label("Legg til lead", systemImage: "person.crop.circle.badge.plus")
                     }
                 }
-                Button { routePlannerOpen = true } label: {
-                    Label("Ruteplanlegger", systemImage: "map.fill")
+                // Feature-gated (superadmin-matrisen): default PÅ, kan
+                // låses per org — da forsvinner inngangen helt.
+                if EntitlementStore.shared.canUse(.leadgridRuteplanlegger) {
+                    Button { routePlannerOpen = true } label: {
+                        Label("Ruteplanlegger", systemImage: "map.fill")
+                    }
                 }
             } label: {
                 Image(systemName: "plus")

@@ -70,7 +70,17 @@ struct RoutePlannerSheet: View {
         NavigationStack {
             ZStack {
                 RBrand.bg.ignoresSafeArea()
-                if candidates.isEmpty {
+                // Feature-gated (superadmin-matrisen, nøkkel
+                // leadgridRuteplanlegger): default PÅ, kan låses per org.
+                // Gaten her dekker ALLE innganger (Kart-menyen, panelets
+                // velg-modus, Salgssjef-cockpiten).
+                if !EntitlementStore.shared.canUse(.leadgridRuteplanlegger) {
+                    ContentUnavailableView(
+                        "Ruteplanlegger er ikke aktivert",
+                        systemImage: "lock.fill",
+                        description: Text("Organisasjonen din har ikke tilgang til fler-stopp ruteplanlegging. Kontakt Leadgrid for å aktivere.")
+                    )
+                } else if candidates.isEmpty {
                     ContentUnavailableView(
                         "Ingen leads med posisjon",
                         systemImage: "mappin.slash",
