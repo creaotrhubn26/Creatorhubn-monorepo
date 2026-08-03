@@ -21,6 +21,10 @@ import {
   saveDoc,
   applyLayout as modelApplyLayout,
   applyFormat as modelApplyFormat,
+  saveFormatLayout as modelSaveFormatLayout,
+  clearFormatLayout as modelClearFormatLayout,
+  currentFormatId as modelCurrentFormatId,
+  MOCKUP_FORMATS,
   type LayoutVariantId,
   type MockupFormat,
 } from './mockupStudioModel';
@@ -54,6 +58,8 @@ interface MockupStudioState {
   // Slot-motor
   applyLayout: (id: LayoutVariantId) => void;
   applyFormat: (fmt: MockupFormat) => void;
+  saveFormatLayout: () => void;
+  clearFormatLayout: (fmtId: string) => void;
 
   // Enheter
   addDevice: (variant: MockupDeviceVariant) => void;
@@ -123,6 +129,14 @@ export const useMockupStudio = create<MockupStudioState>((set) => ({
   applyLayout: (id) => commit(set, (d) => modelApplyLayout(d, id)),
 
   applyFormat: (fmt) => commit(set, (d) => modelApplyFormat(d, fmt)),
+
+  saveFormatLayout: () => commit(set, (d) => modelSaveFormatLayout(d)),
+
+  clearFormatLayout: (fmtId) => commit(set, (d) => {
+    const cleared = modelClearFormatLayout(d, fmtId);
+    const fmt = MOCKUP_FORMATS.find((f) => f.id === fmtId);
+    return fmt && modelCurrentFormatId(cleared) === fmtId ? modelApplyFormat(cleared, fmt) : cleared;
+  }),
 
   addDevice: (variant) => {
     const dev = makeDevice(variant, { x: 480, y: 300 });
