@@ -24,6 +24,95 @@ private enum FlBrand {
     static let textTertiary = Color.white.opacity(0.45)
 }
 
+// MARK: - SamletFilterPopover
+
+/// UI-fokus fase 4: Kart-toppen hadde fire filter-dropdowns side om side —
+/// nå én «Filtre · N»-pill som åpner denne. Gjenbruker de tre eksisterende
+/// popover-flatene bak en segment-velger; «Flere filtre»-sheeten nås nederst.
+struct SamletFilterPopover: View {
+    @Binding var selectedArea: AreaFilter
+    @Binding var radiusKm: Double
+    @Binding var selectedIndustries: Set<String>
+    @Binding var selectedStatuses: Set<MapLeadMock.PinStatus>
+    var onFlereFiltre: () -> Void
+
+    private enum Seksjon: String, CaseIterable {
+        case omrade = "Område", bransje = "Bransje", status = "Status"
+    }
+    @State private var seksjon: Seksjon = .omrade
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                ForEach(Seksjon.allCases, id: \.self) { s in
+                    segmentKnapp(s)
+                }
+            }
+            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
+
+            switch seksjon {
+            case .omrade:
+                AreaFilterPopover(selected: $selectedArea, radiusKm: $radiusKm)
+            case .bransje:
+                TypeFilterPopover(selected: $selectedIndustries)
+            case .status:
+                StatusFilterPopover(selected: $selectedStatuses)
+            }
+
+            Divider().overlay(FlBrand.stroke).padding(.horizontal, 16)
+            Button(action: onFlereFiltre) {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                    Text("Flere filtre…")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.appScaled(size: 10, weight: .semibold))
+                        .foregroundStyle(FlBrand.textTertiary)
+                }
+                .foregroundStyle(FlBrand.purpleLight)
+                .padding(.horizontal, 16).padding(.vertical, 11)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 280)
+        .background(FlBrand.card)
+        .preferredColorScheme(.dark)
+    }
+
+    private func aktivIndikator(_ s: Seksjon) -> Bool {
+        switch s {
+        case .omrade: return selectedArea != .all
+        case .bransje: return !selectedIndustries.isEmpty
+        case .status: return !selectedStatuses.isEmpty
+        }
+    }
+
+    private func segmentKnapp(_ s: Seksjon) -> some View {
+        let valgt = seksjon == s
+        return Button { seksjon = s } label: {
+            HStack(spacing: 4) {
+                Text(s.rawValue)
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(valgt ? .white : FlBrand.textSecondary)
+                if aktivIndikator(s) {
+                    Circle().fill(FlBrand.purpleLight).frame(width: 5, height: 5)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(
+                valgt ? FlBrand.purple.opacity(0.30) : FlBrand.cardHi,
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .stroke(valgt ? FlBrand.purple.opacity(0.6) : FlBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - AreaFilterPopover
 
 struct AreaFilterPopover: View {
