@@ -53,6 +53,10 @@ struct AnbudView: View {
     @State private var oppsummeringFeil: String?
     // Nivå 3 (2026-08-03): tapt-årsak-dialog (læringssløyfen).
     @State private var taptDialogItem: AnbudPipelineItemDTO?
+    // Tilbuds-assistent (2026-08-04): AI-utkast i lese-arket.
+    @State private var tilbudsutkast: AnbudTilbudsutkastDTO?
+    @State private var lagerUtkast = false
+    @State private var utkastFeil: String?
 
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
@@ -437,7 +441,14 @@ struct AnbudView: View {
         // Les gjennom (Daniel 2026-08-03): hele kortet åpner lese-arket
         // med full beskrivelse — knappene over fanger sine egne tap.
         .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onTapGesture { openKunngjoring = k }
+        .onTapGesture {
+            // Nullstill AI-tilstand fra forrige kunngjøring (2026-08-04).
+            oppsummering = nil
+            oppsummeringFeil = nil
+            tilbudsutkast = nil
+            utkastFeil = nil
+            openKunngjoring = k
+        }
     }
 
     private func createLeadButton(_ k: DoffinKunngjoringDTO) -> some View {
@@ -654,6 +665,34 @@ struct AnbudView: View {
                         }
                         if let oppsummeringFeil {
                             Text(oppsummeringFeil)
+                                .font(.appScaled(size: 11))
+                                .foregroundStyle(LBrand.orange)
+                        }
+                        // Tilbuds-assistent (2026-08-04): AI-UTKAST til
+                        // disposisjon + følgebrev + sjekkliste.
+                        if let utkast = tilbudsutkast {
+                            tilbudsutkastVisning(utkast)
+                        } else {
+                            Button {
+                                Task { await lagUtkast(k) }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    if lagerUtkast {
+                                        ProgressView().tint(LBrand.green).scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "doc.badge.gearshape")
+                                            .font(.appScaled(size: 11, weight: .bold))
+                                    }
+                                    Text(lagerUtkast ? "Lager utkast …" : "Lag tilbudsutkast")
+                                        .font(.appScaled(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(LBrand.green)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(lagerUtkast)
+                        }
+                        if let utkastFeil {
+                            Text(utkastFeil)
                                 .font(.appScaled(size: 11))
                                 .foregroundStyle(LBrand.orange)
                         }
@@ -975,6 +1014,121 @@ struct AnbudView: View {
         guard let api = appState.api else { return }
         try? await api.updateAnbudPipeline(id: p.id, status: status, taptAarsak: taptAarsak)
         await lastPipeline()
+    }
+
+    // MARK: Tilbuds-assistent (2026-08-04)
+
+    /// AI-utkast — sender med kravene fra oppsummeringen hvis den er kjørt.
+    @MainActor
+    private func lagUtkast(_ k: DoffinKunngjoringDTO) async {
+        guard !lagerUtkast else { return }
+        utkastFeil = nil
+        if DemoModeManager.isActiveNonisolated {
+            tilbudsutkast = AnbudTilbudsutkastDTO(
+                disposisjon: [
+                    .init(seksjon: "Om oss", innhold: "[FYLL INN: kort om bedriften, antall montører, DSB-registrering og relevante sertifiseringer.]"),
+                    .init(seksjon: "Forståelse av oppdraget", innhold: "Kommunen trenger en rammeavtale-partner for løpende elektroarbeid i formålsbygg med rask respons og dokumentert internkontroll. Vi leser omfanget som drift + småprosjekter over 2 år med opsjon 1+1."),
+                    .init(seksjon: "Løsning og bemanning", innhold: "[FYLL INN: teamet som betjener avtalen, responstid dere kan forplikte dere til, og hvordan internkontrollen dokumenteres.]"),
+                    .init(seksjon: "Referanser", innhold: "[FYLL INN: 2 referanseprosjekter fra offentlige bygg med kontaktperson.]"),
+                ],
+                folgebrev: "Vi viser til kunngjøringen om rammeavtale for elektrikertjenester og bekrefter med dette vår interesse. [FYLL INN: én setning om hvorfor akkurat dere.] Vedlagt følger tilbud med dokumentasjon på [FYLL INN: sertifiseringer]. Vi står gjerne til disposisjon for avklaringer.",
+                sjekkliste: ["DSB-registrering vedlagt", "2 referanser fra offentlige bygg", "Responstid-forpliktelse definert", "Signert av daglig leder før frist 25. aug"])
+            return
+        }
+        guard let api = appState.api else { return }
+        lagerUtkast = true
+        do {
+            tilbudsutkast = try await api.lagTilbudsutkast(
+                tittel: k.tittel, beskrivelse: k.beskrivelse,
+                krav: oppsummering?.krav ?? [])
+        } catch {
+            let msg = String(describing: error)
+            utkastFeil = msg.contains("for_kort_tekst")
+                ? "Kunngjøringen har for lite tekst til et utkast — åpne Doffin for dokumentene."
+                : "Utkastet feilet — prøv igjen."
+        }
+        lagerUtkast = false
+    }
+
+    private func tilbudsutkastVisning(_ u: AnbudTilbudsutkastDTO) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.badge.gearshape")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(LBrand.green)
+                Text("TILBUDSUTKAST")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.green).tracking(0.8)
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = utkastSomTekst(u)
+                } label: {
+                    Label("Kopier alt", systemImage: "doc.on.doc")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(LBrand.textSecondary)
+                }.buttonStyle(.plain)
+            }
+            // Ærlighet foran alt: dette er et utkast, ikke et tilbud.
+            Text("Utkast med [FYLL INN]-markører — skal alltid gjennomgås og tilpasses av dere før innsending.")
+                .font(.appScaled(size: 10))
+                .foregroundStyle(LBrand.yellow)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(u.disposisjon) { s in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(s.seksjon.uppercased())
+                        .font(.appScaled(size: 9, weight: .black))
+                        .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                    Text(s.innhold)
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(LBrand.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("FØLGEBREV")
+                    .font(.appScaled(size: 9, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                Text(u.folgebrev)
+                    .font(.appScaled(size: 12))
+                    .foregroundStyle(LBrand.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            if !u.sjekkliste.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("FØR INNSENDING")
+                        .font(.appScaled(size: 9, weight: .black))
+                        .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                    ForEach(u.sjekkliste, id: \.self) { punkt in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "square")
+                                .font(.appScaled(size: 9))
+                                .foregroundStyle(LBrand.green)
+                                .padding(.top, 2)
+                            Text(punkt)
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(LBrand.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(LBrand.green.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11)
+            .stroke(LBrand.green.opacity(0.25), lineWidth: 1))
+    }
+
+    private func utkastSomTekst(_ u: AnbudTilbudsutkastDTO) -> String {
+        var deler: [String] = []
+        for s in u.disposisjon { deler.append("## \(s.seksjon)\n\(s.innhold)") }
+        deler.append("## Følgebrev\n\(u.folgebrev)")
+        if !u.sjekkliste.isEmpty {
+            deler.append("## Før innsending\n" + u.sjekkliste.map { "☐ \($0)" }.joined(separator: "\n"))
+        }
+        return deler.joined(separator: "\n\n")
     }
 
     // MARK: Nivå 3 — kart, tapt-årsak og læringssløyfe (2026-08-03)
