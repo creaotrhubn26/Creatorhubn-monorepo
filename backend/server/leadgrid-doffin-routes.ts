@@ -25,6 +25,7 @@ import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADGRID_ANBUD_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
+import { sendEmail, isEmailConfigured } from "./casting-reminder-sender.js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -162,7 +163,51 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_anbud_pipeline_org
       ON leadgrid_anbud_pipeline (organization_id, status)`);
+  // Nivå 3 (2026-08-03): geokoding (Brreg-adresse → Geonorge) + tapt-årsak
+  // for læringssløyfen. Lat selvheler som resten.
+  await pool.query(`
+    ALTER TABLE leadgrid_anbud_pipeline
+      ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS adresse TEXT,
+      ADD COLUMN IF NOT EXISTS tapt_aarsak TEXT`);
   schemaReady = true;
+}
+
+const TAPT_AARSAKER = new Set(["pris", "kapasitet", "krav", "referanser", "annet"]);
+
+/** Nivå 3: orgnr → forretningsadresse (Brreg, åpen) → koordinater
+ *  (Geonorge adresse-søk, åpen). Best effort — null ved alt annet enn treff. */
+async function geocodeOrgnr(
+  orgnr: string,
+): Promise<{ lat: number; lng: number; adresse: string } | null> {
+  if (!/^\d{9}$/.test(orgnr)) return null;
+  try {
+    const enhetResp = await fetch(
+      `https://data.brreg.no/enhetsregisteret/api/enheter/${orgnr}`,
+      { signal: AbortSignal.timeout(10_000) });
+    if (!enhetResp.ok) return null;
+    const enhet = (await enhetResp.json()) as {
+      forretningsadresse?: { adresse?: string[]; postnummer?: string; poststed?: string };
+    };
+    const fa = enhet.forretningsadresse;
+    const gate = (fa?.adresse ?? [])[0] ?? "";
+    const adresse = [gate, [fa?.postnummer, fa?.poststed].filter(Boolean).join(" ")]
+      .filter((s) => s && s.length > 0).join(", ");
+    if (!adresse) return null;
+    const geoResp = await fetch(
+      `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(adresse)}&treffPerSide=1`,
+      { signal: AbortSignal.timeout(10_000) });
+    if (!geoResp.ok) return null;
+    const geo = (await geoResp.json()) as {
+      adresser?: { representasjonspunkt?: { lat?: number; lon?: number } }[];
+    };
+    const pkt = geo.adresser?.[0]?.representasjonspunkt;
+    if (pkt?.lat == null || pkt?.lon == null) return null;
+    return { lat: pkt.lat, lng: pkt.lon, adresse };
+  } catch {
+    return null;
+  }
 }
 
 const PIPELINE_STATUSES = new Set(["vurderer", "gaar_for", "tilbud_levert", "vant", "tapt"]);
@@ -539,7 +584,7 @@ ${JSON.stringify(items)}`;
       const r = await pool.query(
         `SELECT p.id, p.doffin_id, p.tittel, p.oppdragsgiver, p.orgnr, p.url,
                 p.frist, p.verdi::float8 AS verdi, p.status, p.assigned_user_id,
-                p.notat, p.created_at,
+                p.notat, p.created_at, p.lat, p.lng, p.adresse, p.tapt_aarsak,
                 NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS assigned_navn
            FROM leadgrid_anbud_pipeline p
            LEFT JOIN users u ON u.id::text = p.assigned_user_id
@@ -553,12 +598,23 @@ ${JSON.stringify(items)}`;
       const sumAapneVerdi = r.rows
         .filter((x) => x.status !== "vant" && x.status !== "tapt")
         .reduce((s, x) => s + (Number(x.verdi) || 0), 0);
+      // Nivå 3: tapsårsaker → læringssløyfe (samme mønster som Kvalitets
+      // underkjenningsårsaker → Pondus).
+      const aarsaker = new Map<string, number>();
+      for (const row of r.rows) {
+        if (row.status === "tapt" && row.tapt_aarsak) {
+          aarsaker.set(row.tapt_aarsak, (aarsaker.get(row.tapt_aarsak) ?? 0) + 1);
+        }
+      }
       res.json({
         items: r.rows,
         stats: {
           aapne, vant, tapt,
           vinnrate: vant + tapt > 0 ? vant / (vant + tapt) : null,
           sum_aapne_verdi: sumAapneVerdi,
+          tapsaarsaker: [...aarsaker.entries()]
+            .map(([aarsak, antall]) => ({ aarsak, antall }))
+            .sort((a, b) => b.antall - a.antall),
         },
       });
     } catch (e) {
@@ -599,6 +655,22 @@ ${JSON.stringify(items)}`;
          frist && !Number.isNaN(frist.getTime()) ? frist : null,
          Number.isFinite(Number(b.verdi)) ? Number(b.verdi) : null,
          session.userId]);
+      // Nivå 3: geokod oppdragsgiveren i bakgrunnen (Brreg → Geonorge) —
+      // fire-and-forget, pins dukker opp ved neste pipeline-henting.
+      const insertedId = r.rows[0]?.id as string | undefined;
+      const orgnrForGeo = String(b.orgnr ?? "").replace(/\s+/g, "");
+      if (insertedId && orgnrForGeo) {
+        void (async () => {
+          const geo = await geocodeOrgnr(orgnrForGeo);
+          if (geo) {
+            await pool.query(
+              `UPDATE leadgrid_anbud_pipeline
+                  SET lat = $2, lng = $3, adresse = $4, updated_at = now()
+                WHERE id = $1`,
+              [insertedId, geo.lat, geo.lng, geo.adresse]).catch(() => {});
+          }
+        })();
+      }
       res.json({ ok: true, id: r.rows[0]?.id ?? null, allerede: r.rowCount === 0 });
     } catch (e) {
       console.error("[doffin] pipeline add failed:", e);
@@ -635,6 +707,14 @@ ${JSON.stringify(items)}`;
         push("assigned_user_id", nyTildelt);
       }
       if (typeof b.notat === "string") push("notat", b.notat.slice(0, 2000));
+      // Nivå 3: tapt-årsak — læringssløyfen. Kun whitelistede verdier.
+      if (typeof b.tapt_aarsak === "string") {
+        if (!TAPT_AARSAKER.has(b.tapt_aarsak)) {
+          res.status(400).json({ error: "bad_request", message: "Ugyldig tapt_aarsak." });
+          return;
+        }
+        push("tapt_aarsak", b.tapt_aarsak);
+      }
       if (sets.length === 0) {
         res.status(400).json({ error: "bad_request", message: "Ingen felt å oppdatere." });
         return;
@@ -747,6 +827,148 @@ ${beskrivelse}`;
       res.json(JSON.parse(match[0]));
     } catch (e) {
       console.error("[doffin] oppsummer failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Cron: ukentlig anbuds-digest på e-post til org-ens ledere (nivå 3).
+   *  Per org med overvåkninger: ferske treff (kunngjort siste 7 d) per
+   *  watch + kunde-matcher + pipeline-frister neste 14 d. Trigges av
+   *  ekstern cron (f.eks. mandag 07:00) med x-cron-trigger-token. */
+  app.post("/api/leadgrid/doffin/cron/ukesdigest", async (req, res) => {
+    const t = req.headers["x-cron-trigger-token"] as string | undefined;
+    if (!t || !DOFFIN_CRON_TOKEN || t !== DOFFIN_CRON_TOKEN) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    if (!isEmailConfigured()) {
+      res.json({ ok: false, error: "email_not_configured" });
+      return;
+    }
+    try {
+      await ensureSchema(pool);
+      const watches = await pool.query<{
+        organization_id: string; name: string; query: Record<string, unknown>;
+      }>(
+        `SELECT organization_id, name, query FROM leadgrid_doffin_watches
+          ORDER BY organization_id, created_at ASC LIMIT 500`);
+      const perOrg = new Map<string, { name: string; query: Record<string, unknown> }[]>();
+      for (const w of watches.rows) {
+        (perOrg.get(w.organization_id) ?? perOrg.set(w.organization_id, []).get(w.organization_id)!)
+          .push({ name: w.name, query: w.query });
+      }
+      const enUkeSiden = Date.now() - 7 * 86_400_000;
+      let sendt = 0, hoppet = 0;
+      for (const [orgId, orgWatches] of perOrg) {
+        try {
+          // Mottakere: org-ens ledere med e-post.
+          const ledere = await pool.query<{ email: string }>(
+            `SELECT DISTINCT u.email
+               FROM organization_members om
+               JOIN users u ON u.id = om.user_id
+              WHERE om.organization_id = $1::uuid
+                AND om.role IN ('admin','salgssjef','teamleder')
+                AND u.email IS NOT NULL AND u.email <> ''`, [orgId]);
+          if (ledere.rowCount === 0) { hoppet++; continue; }
+          // Ferske treff per overvåkning (maks 3 watches × 5 treff).
+          type DigestTreff = { tittel: string; oppdragsgiver: string; frist: string | null; url: string; kunde: boolean };
+          const seksjoner: { watch: string; treff: DigestTreff[] }[] = [];
+          for (const w of orgWatches.slice(0, 3)) {
+            const q = new URLSearchParams();
+            q.set("numHitsPerPage", "20");
+            q.set("status", "ACTIVE");
+            const text = String(w.query.q ?? "").trim();
+            if (text) q.set("searchString", text.slice(0, 200));
+            const location = String(w.query.location ?? "").trim();
+            if (location && /^[A-Z0-9,]{2,60}$/i.test(location)) {
+              for (const l of location.split(",")) q.append("location", l.trim());
+            }
+            const cpv = String(w.query.cpv ?? "").trim();
+            if (cpv && /^[0-9,]{2,120}$/.test(cpv)) {
+              for (const c of cpv.split(",")) q.append("cpvCode", c.trim());
+            }
+            const r = await doffinSearch(q);
+            if (!r.ok) continue;
+            const hits = ((r.body as { kunngjoringer?: Record<string, unknown>[] }).kunngjoringer ?? [])
+              .filter((h) => {
+                const pub = h.kunngjort ? Date.parse(String(h.kunngjort)) : NaN;
+                return Number.isFinite(pub) && pub >= enUkeSiden;
+              })
+              .slice(0, 5);
+            if (hits.length === 0) continue;
+            const orgnrs = hits.flatMap((h) =>
+              ((h.oppdragsgivere as { orgnr?: string }[] | undefined) ?? [])
+                .map((o) => String(o.orgnr ?? "")));
+            const matches = await matchKunder(pool, orgId, orgnrs);
+            seksjoner.push({
+              watch: w.name,
+              treff: hits.map((h) => ({
+                tittel: String(h.tittel ?? ""),
+                oppdragsgiver: String(((h.oppdragsgivere as { navn?: string }[] | undefined) ?? [])[0]?.navn ?? ""),
+                frist: (h.frist as string | null) ?? null,
+                url: String(h.url ?? ""),
+                kunde: ((h.oppdragsgivere as { orgnr?: string }[] | undefined) ?? [])
+                  .some((o) => matches.has(String(o.orgnr ?? ""))),
+              })),
+            });
+          }
+          // Pipeline-frister neste 14 dager.
+          const frister = await pool.query<{ tittel: string; frist: string; status: string }>(
+            `SELECT tittel, frist::text, status FROM leadgrid_anbud_pipeline
+              WHERE organization_id = $1 AND status IN ('vurderer','gaar_for','tilbud_levert')
+                AND frist IS NOT NULL AND frist > now() AND frist < now() + INTERVAL '14 days'
+              ORDER BY frist ASC LIMIT 10`, [orgId]);
+          if (seksjoner.length === 0 && frister.rowCount === 0) { hoppet++; continue; }
+          // Enkel, ærlig HTML — tabell-basert (ingen bilder, ingen sporing).
+          const fmt = (iso: string | null) => {
+            if (!iso) return "";
+            const d = new Date(iso);
+            return Number.isNaN(d.getTime()) ? "" :
+              d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
+          };
+          const html = `
+<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:640px;margin:0 auto;color:#1a1a2e">
+  <h2 style="color:#5b21b6">Ukens anbud — Leadgrid</h2>
+  ${seksjoner.map((s) => `
+  <h3 style="margin-bottom:4px">${s.watch}</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    ${s.treff.map((tr) => `
+    <tr style="border-bottom:1px solid #eee">
+      <td style="padding:8px 4px">
+        ${tr.kunde ? '<span style="color:#059669;font-weight:700">⚡ KUNDE</span> ' : ""}
+        <a href="${tr.url}" style="color:#4f46e5;text-decoration:none">${tr.tittel}</a><br>
+        <span style="color:#666">${tr.oppdragsgiver}</span>
+      </td>
+      <td style="padding:8px 4px;white-space:nowrap;color:#b45309">${tr.frist ? "Frist " + fmt(tr.frist) : ""}</td>
+    </tr>`).join("")}
+  </table>`).join("")}
+  ${frister.rowCount ? `
+  <h3 style="margin-bottom:4px">Dine anbudsfrister neste 14 dager</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    ${frister.rows.map((f) => `
+    <tr style="border-bottom:1px solid #eee">
+      <td style="padding:8px 4px">${f.tittel}</td>
+      <td style="padding:8px 4px;white-space:nowrap;color:#b45309">${fmt(f.frist)}</td>
+    </tr>`).join("")}
+  </table>` : ""}
+  <p style="color:#999;font-size:12px;margin-top:24px">Sendt av Leadgrid Anbud — administrer overvåkninger i appen.</p>
+</div>`;
+          for (const mottaker of ledere.rows) {
+            await sendEmail({
+              to: mottaker.email,
+              subject: "Ukens anbud — nye treff og frister",
+              html,
+              fromName: "Leadgrid Anbud",
+            });
+          }
+          sendt++;
+        } catch (orgErr) {
+          console.warn("[doffin] digest for org feilet:", orgId, String(orgErr).slice(0, 120));
+        }
+      }
+      res.json({ ok: true, orger: perOrg.size, sendt, hoppet });
+    } catch (e) {
+      console.error("[doffin] ukesdigest failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
