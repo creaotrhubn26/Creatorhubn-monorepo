@@ -465,6 +465,7 @@ import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
+import { useT, LanguageSwitcher } from '../../../i18n';
 
 // Delt tid-of-day-normalisering (norsk → enum). Brukes av begge parse-veiene
 // (handleParseToScenes + handleAutoBreakdown). Faller tilbake til DAY.
@@ -584,6 +585,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   const hasProjectContext = Boolean(projectId);
   
+  const { t } = useT();
+
   // Dirty tracking to prevent circular saves and unnecessary re-renders
   const isDirtyRef = useRef(false);
   const lastSavedContentRef = useRef<string>('');
@@ -2394,10 +2397,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       }}
                     />
                   }
-                  label={<Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>{isMobile ? 'Auto' : 'Auto-gjennomgang'}</Typography>}
+                  label={<Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>{isMobile ? t('toolbar.autoReviewShort') : t('toolbar.autoReview')}</Typography>}
                   sx={{ ml: 0, mr: 0.25, userSelect: 'none' }}
                 />
-                <Tooltip title="Kjør gjennomgang nå — oppdater scener og roller fra manuset">
+                <Tooltip title={t('toolbar.runReview')}>
                   <span>
                     <IconButton
                       size={responsive.buttonSize}
@@ -2420,7 +2423,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   title="Eksporter manuset (Fountain / Final Draft) eller full produksjonsdata (JSON)"
                   sx={{ fontSize: responsive.bodyFontSize }}
                 >
-                  {isMobile ? 'Eksport' : 'Eksporter'}
+                  {isMobile ? t('toolbar.exportShort') : t('toolbar.export')}
                 </Button>
                 <Menu
                   anchorEl={exportMenuAnchor}
@@ -2443,13 +2446,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 </Menu>
                 {/* Kun en stille «Lagre nå»-handling — status vises allerede i editoren
                     (pille-rad «✓ Lagret …» + verktøylinje), så ingen redundant status her. */}
-                <Tooltip title="Lagre nå (lagres ellers automatisk)">
+                <Tooltip title={t('toolbar.saveNowTooltip')}>
                   <span>
                     <IconButton
                       size={responsive.buttonSize}
                       onClick={handleSaveManuscript}
                       disabled={isLoading}
-                      aria-label="Lagre nå"
+                      aria-label={t('toolbar.saveNow')}
                       sx={{ color: 'text.secondary' }}
                     >
                       <SaveIcon sx={{ fontSize: responsive.iconSize - 2 }} />
@@ -2474,7 +2477,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         color={deviates ? 'warning' : 'default'}
                         variant={target == null ? 'outlined' : 'filled'}
                         onClick={() => { setTargetDraft(target != null ? String(target) : ''); setShowTargetDialog(true); }}
-                        label={target == null ? 'Sett mål-lengde' : `Mål ${target} min`}
+                        label={target == null ? t('toolbar.setTargetLength') : t('toolbar.targetLength', { min: target })}
                         sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
                       />
                     </Tooltip>
@@ -2487,10 +2490,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
                     size={responsive.buttonSize}
                     onClick={onSendToApproval}
-                    title="Send manuset videre til klient-/godkjenningsflaten"
+                    title={t('toolbar.sendApprovalTooltip')}
                     sx={{ fontSize: responsive.bodyFontSize }}
                   >
-                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
+                    {isMobile ? t('toolbar.sendApprovalShort') : t('toolbar.sendApproval')}
                   </Button>
                 )}
               </>
@@ -2504,7 +2507,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               onClick={(e) => setManuscriptMenuAnchor(e.currentTarget)}
               sx={{ fontSize: responsive.bodyFontSize }}
             >
-              {isMobile ? 'Manus' : 'Manuskript'}
+              {isMobile ? t('toolbar.manuscriptShort') : t('toolbar.manuscript')}
             </Button>
             <Menu
               anchorEl={manuscriptMenuAnchor}
@@ -2514,22 +2517,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               {selectedManuscript && (
                 <MenuItem onClick={() => { setManuscriptMenuAnchor(null); handleBackToManuscriptList(); }}>
                   <ListItemIcon><MenuBookIcon fontSize="small" /></ListItemIcon>
-                  <ListItemText primary="Dine manuskripter" secondary="Bytt utkast eller gi nytt navn" />
+                  <ListItemText primary={t('menu.yourManuscripts')} secondary={t('menu.yourManuscriptsDesc')} />
                 </MenuItem>
               )}
               <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowNewManuscriptDialog(true); }}>
                 <ListItemIcon><AddIcon fontSize="small" /></ListItemIcon>
-                <ListItemText primary="Nytt manuskript" />
+                <ListItemText primary={t('menu.newManuscript')} />
               </MenuItem>
               <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowTemplatePanel(true); }}>
                 <ListItemIcon><MenuBookIcon fontSize="small" /></ListItemIcon>
-                <ListItemText primary="Fra mal…" />
+                <ListItemText primary={t('menu.fromTemplate')} />
               </MenuItem>
               <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowImportDialog(true); }}>
                 <ListItemIcon><FileUploadIcon fontSize="small" /></ListItemIcon>
-                <ListItemText primary="Importer fil…" secondary="Fra tidligere eksport" />
+                <ListItemText primary={t('menu.importFile')} secondary={t('menu.importFileDesc')} />
               </MenuItem>
             </Menu>
+            <LanguageSwitcher />
           </Stack>
         </Stack>
         {isLoading && selectedManuscript && (
@@ -2996,19 +3000,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             scrollButtons="auto"
           >
             <Tab 
-              label={responsive.showTabLabels ? "Editor" : ""} 
+              label={responsive.showTabLabels ? t('tabs.editor') : ""}
               value="editor" 
               icon={<EditIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Akter" : ""} 
+              label={responsive.showTabLabels ? t('tabs.acts') : ""}
               value="acts" 
               icon={<MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Scener" : ""} 
+              label={responsive.showTabLabels ? t('tabs.scenes') : ""}
               value="scenes" 
               icon={
                 <Badge color="secondary" badgeContent={sceneStats.total} max={99}>
@@ -3018,7 +3022,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Karakterer" : ""} 
+              label={responsive.showTabLabels ? t('tabs.characters') : ""}
               value="characters" 
               icon={
                 <Badge color="secondary" badgeContent={characterList.length} max={99}>
@@ -3028,7 +3032,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Dialog" : ""} 
+              label={responsive.showTabLabels ? t('tabs.dialogue') : ""}
               value="dialogue" 
               icon={
                 <Badge color="secondary" badgeContent={dialogueLines.length} max={99}>
@@ -3038,13 +3042,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Gjennomgang" : ""}
+              label={responsive.showTabLabels ? t('tabs.breakdown') : ""}
               value="breakdown"
               icon={<AssessmentIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Revisjoner" : ""} 
+              label={responsive.showTabLabels ? t('tabs.revisions') : ""}
               value="revisions" 
               icon={
                 <Badge color="secondary" badgeContent={revisions.length} max={99}>
@@ -3054,19 +3058,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Tidslinje" : ""}
+              label={responsive.showTabLabels ? t('tabs.timeline') : ""}
               value="timeline"
               icon={<TimelineIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Storyboard" : ""} 
+              label={responsive.showTabLabels ? t('tabs.storyboard') : ""}
               value="production" 
               icon={<ViewModuleIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Produksjon" : ""}
+              label={responsive.showTabLabels ? t('tabs.production') : ""}
               value="productionview"
               icon={<MovieIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 

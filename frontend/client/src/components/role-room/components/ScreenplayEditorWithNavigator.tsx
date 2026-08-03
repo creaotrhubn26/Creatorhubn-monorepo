@@ -66,6 +66,7 @@ import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
 import { StoryStructurePanel } from './StoryStructurePanel';
 import { GrammarCheckPanel } from './screenplay/GrammarCheckPanel';
 import { StoryboardIntegrationView } from './StoryboardIntegrationView';
+import { useT } from '../../../i18n';
 import type { SceneBreakdown, UserRoleType, Role, Candidate } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
 import { analyzeScript, type BeatCard } from '../services/scriptAnalysisService';
@@ -303,6 +304,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   storyLogicData = null,
   manuscriptId,
 }) => {
+  const { t } = useT();
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
   const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
   // Per-linje kommentarer: rå ankre fra server (scene-relative), pluss valgt
@@ -954,11 +956,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         {/* Skrivemodus (fullskjerm) — skjuler ALT annet chrome for distraksjonsfri
             skriving. Tydelig, navngitt knapp på desktop; ikon på mobil/tablet. */}
         {(isMobile || isTablet) ? (
-          <Tooltip title={isFullscreen ? 'Avslutt skrivemodus (Esc)' : 'Skrivemodus'}>
+          <Tooltip title={isFullscreen ? t('writingMode.exitTooltip') : t('writingMode.enter')}>
             <IconButton
               onClick={handleFullscreenToggle}
               size={responsive.buttonSize}
-              aria-label={isFullscreen ? 'Avslutt skrivemodus' : 'Skrivemodus'}
+              aria-label={isFullscreen ? t('writingMode.exit') : t('writingMode.enter')}
               sx={{ color: isFullscreen ? 'primary.main' : 'text.secondary' }}
             >
               {isFullscreen ? (
@@ -969,7 +971,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             </IconButton>
           </Tooltip>
         ) : (
-          <Tooltip title={isFullscreen ? 'Avslutt skrivemodus (Esc)' : 'Skjul alt annet og skriv distraksjonsfritt (Esc for å avslutte)'}>
+          <Tooltip title={isFullscreen ? t('writingMode.exitTooltip') : t('writingMode.tooltip')}>
             <Button
               onClick={handleFullscreenToggle}
               size={responsive.buttonSize}
@@ -977,7 +979,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               startIcon={isFullscreen ? <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} /> : <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />}
               sx={{ whiteSpace: 'nowrap', fontSize: responsive.bodyFontSize, color: isFullscreen ? undefined : 'text.secondary' }}
             >
-              {isFullscreen ? 'Avslutt skrivemodus' : 'Skrivemodus'}
+              {isFullscreen ? t('writingMode.exit') : t('writingMode.enter')}
             </Button>
           </Tooltip>
         )}
