@@ -30,6 +30,8 @@ export type MockupDeviceVariant = FrameVariant | 'watch';
  */
 export interface MockupDeviceSlot {
   id: string;
+  /** Binding til en mal-definert slot (slot-motor). Fri hvis udefinert. */
+  slotId?: string;
   variant: MockupDeviceVariant;
   /** Øvre venstre hjørne i lerret-px. */
   x: number;
@@ -55,6 +57,8 @@ export type MockupTextAlign = 'left' | 'center' | 'right';
 /** En redigerbar tekstblokk. Geometri i lerret-px; `w` styrer ombrekking. */
 export interface MockupTextSlot {
   id: string;
+  /** Binding til en mal-definert slot (slot-motor). Fri hvis udefinert. */
+  slotId?: string;
   role: MockupTextRole;
   text: string;
   x: number;
@@ -178,7 +182,33 @@ export interface MockupDoc {
   updatedAt: number;
   /** Prosjektstatus (§ prosjektoversikt). Default 'draft'. */
   status?: MockupProjectStatus;
+  /** Mal-definerte slots (slot-motor): kanonisk geometri + begrensninger. */
+  slots?: SlotDef[];
 }
+
+// ── Slot-motor (§1.1 struktur før frihet) ───────────────────────────────────
+
+export type SlotKind = 'device' | 'text';
+
+/** En mal-definert slot: kanonisk sone + begrensninger. Elementer bindes via slotId. */
+export interface SlotDef {
+  id: string;
+  kind: SlotKind;
+  label: string;
+  /** Kanonisk geometri (lerret-px). w for tekst = ombrekk-bredde. */
+  zone: { x: number; y: number; w: number; rotation?: number };
+  /** For tekst-slots: rollen (styrer typografi + grenser). */
+  role?: MockupTextRole;
+  /** For device-slots: tillatte enhets-varianter (bytt-device er begrenset). */
+  allowedVariants?: MockupDeviceVariant[];
+}
+
+export type LayoutVariantId = 'default' | 'mirror';
+
+export const LAYOUT_VARIANTS: { id: LayoutVariantId; label: string }[] = [
+  { id: 'default', label: 'Standard' },
+  { id: 'mirror', label: 'Speilvendt' },
+];
 
 // ── Fabrikker ──────────────────────────────────────────────────────────────
 
@@ -439,9 +469,106 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
   },
 ];
 
+const DEV_LABEL: Record<MockupDeviceVariant, string> = { macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad', iphone: 'iPhone', watch: 'Apple Watch' };
+const ROLE_LABEL: Record<MockupTextRole, string> = { eyebrow: 'Etikett', title: 'Overskrift', body: 'Brødtekst', tag: 'Liten tekst' };
+
+/** Enhets-varianter i samme orientering (tillatt device-bytte i en slot). */
+export function orientationGroup(v: MockupDeviceVariant): MockupDeviceVariant[] {
+  const landscape: MockupDeviceVariant[] = ['macbook', 'ipad_landscape'];
+  const portrait: MockupDeviceVariant[] = ['iphone', 'ipad', 'watch'];
+  return landscape.includes(v) ? landscape : portrait;
+}
+
+/** Tildel deterministiske slot-id-er (dev_i / txt_i) til elementene. */
+function assignSlotIds(doc: MockupDoc): MockupDoc {
+  doc.devices.forEach((d, i) => { d.slotId = `dev_${i}`; });
+  doc.texts.forEach((t, i) => { t.slotId = `txt_${i}`; });
+  return doc;
+}
+
+/** Utled mal-slots (kanonisk geometri + begrensninger) fra et bygget dokument. */
+function slotsFromDoc(doc: MockupDoc): SlotDef[] {
+  const slots: SlotDef[] = [];
+  doc.devices.forEach((d) => { if (d.slotId) slots.push({ id: d.slotId, kind: 'device', label: DEV_LABEL[d.variant], zone: { x: d.x, y: d.y, w: d.w, rotation: d.rotation }, allowedVariants: orientationGroup(d.variant) }); });
+  doc.texts.forEach((t) => { if (t.slotId) slots.push({ id: t.slotId, kind: 'text', role: t.role, label: ROLE_LABEL[t.role], zone: { x: t.x, y: t.y, w: t.w } }); });
+  return slots;
+}
+
 export function buildTemplate(id: string): MockupDoc {
   const t = MOCKUP_TEMPLATES.find((x) => x.id === id) ?? MOCKUP_TEMPLATES[0];
-  return t.build();
+  const doc = assignSlotIds(t.build());
+  doc.slots = slotsFromDoc(doc);
+  return doc;
+}
+
+/**
+ * Snap komposisjonen til en layout-variant. Posisjonene kommer fra malens
+ * slots (kanonisk geometri) — element-STØRRELSER + innhold beholdes. 'mirror'
+ * speilvender horisontalt (bytter tekst/enhet-side).
+ */
+export function applyLayout(doc: MockupDoc, id: LayoutVariantId): MockupDoc {
+  if (!doc.slots || doc.slots.length === 0) return doc;
+  const W = doc.canvas.w;
+  const zoneOf = (slotId?: string) => doc.slots!.find((s) => s.id === slotId)?.zone;
+  const devices = doc.devices.map((d) => {
+    const z = zoneOf(d.slotId);
+    if (!z) return d;
+    return id === 'mirror'
+      ? { ...d, x: W - z.x - d.w, y: z.y, rotation: z.rotation != null ? -z.rotation : d.rotation }
+      : { ...d, x: z.x, y: z.y, rotation: z.rotation ?? d.rotation };
+  });
+  const texts = doc.texts.map((t) => {
+    const z = zoneOf(t.slotId);
+    if (!z) return t;
+    return id === 'mirror' ? { ...t, x: W - z.x - t.w, y: z.y } : { ...t, x: z.x, y: z.y };
+  });
+  return { ...doc, devices, texts };
+}
+
+export interface MalbytteReport {
+  kept: string[];
+  replaced: string[];
+  dropped: string[];
+  doc: MockupDoc;
+}
+
+/**
+ * Bytt mal med innholds-bevaring (§7): skjermbilder mappes til nye device-slots
+ * (samme variant → samme orientering → hvilken som helst), tekst mappes på rolle,
+ * merkevare beholdes. Returnerer kompatibilitets-rapport.
+ */
+export function switchTemplate(oldDoc: MockupDoc, newTemplateId: string): MalbytteReport {
+  const next = buildTemplate(newTemplateId);
+  const kept: string[] = [], replaced: string[] = [], dropped: string[] = [];
+
+  const oldDevices = oldDoc.devices.filter((d) => d.image);
+  next.devices.forEach((nd) => {
+    let idx = oldDevices.findIndex((od) => od.variant === nd.variant);
+    let good = idx >= 0; // samme variant → rent treff
+    if (idx < 0) { idx = oldDevices.findIndex((od) => orientationGroup(od.variant).includes(nd.variant)); good = idx >= 0; }
+    if (idx < 0 && oldDevices.length) { idx = 0; good = false; } // kryss-orientering → må justeres
+    if (idx >= 0) {
+      const od = oldDevices.splice(idx, 1)[0];
+      nd.image = od.image; nd.fit = od.fit; nd.focusX = od.focusX; nd.focusY = od.focusY;
+      (good ? kept : replaced).push(`${DEV_LABEL[nd.variant]}-skjermbilde`);
+    }
+  });
+  oldDevices.forEach((od) => replaced.push(`${DEV_LABEL[od.variant]}-skjermbilde`));
+
+  const oldTexts = oldDoc.texts.filter((t) => t.text.trim());
+  next.texts.forEach((nt) => {
+    const idx = oldTexts.findIndex((ot) => ot.role === nt.role);
+    if (idx >= 0) { const ot = oldTexts.splice(idx, 1)[0]; nt.text = ot.text; nt.uppercase = ot.uppercase; kept.push(ROLE_LABEL[nt.role]); }
+  });
+  oldTexts.forEach((ot) => dropped.push(`${ROLE_LABEL[ot.role]}: «${ot.text.slice(0, 20)}»`));
+
+  next.canvas.accent = oldDoc.canvas.accent;
+  next.canvas.accent2 = oldDoc.canvas.accent2;
+  next.canvas.background = oldDoc.canvas.background;
+  next.canvas.bgStyle = oldDoc.canvas.bgStyle;
+  next.canvas.logo = oldDoc.canvas.logo ? { ...oldDoc.canvas.logo } : undefined;
+  next.name = oldDoc.name;
+  return { kept, replaced, dropped, doc: next };
 }
 
 // ── Persistering (localStorage, samme mønster som demoStudioModel) ──────────

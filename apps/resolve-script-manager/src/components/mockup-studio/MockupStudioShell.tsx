@@ -22,6 +22,8 @@ import {
   loadKitDoc,
   makeElement,
   ELEMENT_LABELS,
+  LAYOUT_VARIANTS,
+  orientationGroup,
   listBrandKits,
   saveBrandKit,
   deleteBrandKit,
@@ -94,6 +96,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showSwitch, setShowSwitch] = useState(false);
   const [view, setView] = useState<'projects' | 'editor'>('projects');
 
   // URL-capture (P2)
@@ -295,6 +298,16 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Venstre: nettside-capture + legg til */}
         <div style={{ width: 220, borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
+          <SectionLabel>Oppsett</SectionLabel>
+          <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Layout-variant</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {LAYOUT_VARIANTS.map((v) => (
+              <button key={v.id} onClick={() => store.applyLayout(v.id)} style={{ ...listBtn, flex: 1, textAlign: 'center' }} title="Snap komposisjonen til dette oppsettet">{v.label}</button>
+            ))}
+          </div>
+          <button onClick={() => setShowSwitch(true)} style={{ ...listBtn, marginBottom: 8 }} title="Bytt mal — innholdet overføres der det passer">Bytt mal…</button>
+
+          <div style={{ height: 14 }} />
           <SectionLabel>Fra nettside</SectionLabel>
           <input
             value={url}
@@ -436,6 +449,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
       {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
+      {showSwitch && <OnboardingDialog switchDoc={doc} onClose={() => setShowSwitch(false)} />}
     </div>
   );
 }
@@ -537,7 +551,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
       <SectionLabel>{DEVICE_LABELS[device.variant]}</SectionLabel>
       <Field label="Type">
         <select value={device.variant} onChange={(e) => patchDevice(device.id, { variant: e.target.value as MockupDeviceVariant })} style={textInput}>
-          {(Object.keys(DEVICE_LABELS) as MockupDeviceVariant[]).map((v) => <option key={v} value={v}>{DEVICE_LABELS[v]}</option>)}
+          {(advanced ? (Object.keys(DEVICE_LABELS) as MockupDeviceVariant[]) : orientationGroup(device.variant)).map((v) => <option key={v} value={v}>{DEVICE_LABELS[v]}</option>)}
         </select>
       </Field>
       <Field label="Skjermbilde">
