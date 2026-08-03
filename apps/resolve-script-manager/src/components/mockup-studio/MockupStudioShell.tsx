@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
+import { CaptureDialog } from './CaptureDialog';
 import { ProjectsView } from './ProjectsView';
 import { useMockupStudio } from './mockupStudioStore';
 import {
@@ -100,6 +101,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showCapture, setShowCapture] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
   const [view, setView] = useState<'projects' | 'editor'>('projects');
 
@@ -372,6 +374,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           >
             ✨ AI-utkast fra URL
           </button>
+          <button onClick={() => setShowCapture(true)} style={{ ...listBtn, marginTop: 6 }} title="Guidet fangst: velg skjermbilde og forhåndsvis i enheten før innsetting">Fang fra URL (guidet)…</button>
           {engineReady === false && (
             <button onClick={() => void installEngine()} disabled={installing} style={{ ...listBtn, marginTop: 6 }}>
               {installing ? 'Installerer…' : 'Installer capture-motor'}
@@ -503,6 +506,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
       {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
       {showSwitch && <OnboardingDialog switchDoc={doc} onClose={() => setShowSwitch(false)} />}
+      {showCapture && <CaptureDialog onClose={() => setShowCapture(false)} />}
     </div>
   );
 }
