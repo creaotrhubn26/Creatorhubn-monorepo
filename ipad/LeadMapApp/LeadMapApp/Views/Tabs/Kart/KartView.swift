@@ -1825,10 +1825,19 @@ struct KartView: View {
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Til \(selectedLead.name)")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("Til \(selectedLead.name)")
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    if let rute = aktivtRuteStopp {
+                        Text("Stopp \(rute.plan.index + 1)/\(rute.plan.stopp.count)")
+                            .font(.appScaled(size: 9, weight: .bold))
+                            .foregroundStyle(KrBrand.purpleLight)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(KrBrand.purple.opacity(0.18), in: Capsule())
+                    }
+                }
                 HStack(spacing: 6) {
                     Text(navETAText.isEmpty ? "Beregner…" : navETAText)
                         .font(.appScaled(size: 12, weight: .bold))
@@ -1876,6 +1885,33 @@ struct KartView: View {
             .stroke(KrBrand.stroke, lineWidth: 1))
     }
 
+    /// Aktiv fler-stopp-rute (Ruteplanlegger): gjeldende stopp hvis det
+    /// valgte lead-et ER rute-stoppet (id/navn/koordinat-match — deep-link-
+    /// mocks får ny UUID, så id alene holder ikke).
+    private var aktivtRuteStopp: (plan: AppState.RutePlan, stopp: AppState.RuteStopp)? {
+        guard let plan = appState.rutePlan, plan.index < plan.stopp.count else { return nil }
+        let s = plan.stopp[plan.index]
+        let naer = abs(s.lat - selectedLead.lat) + abs(s.lon - selectedLead.lon) < 0.002
+        guard s.id == selectedLead.id || s.name == selectedLead.name || naer else { return nil }
+        return (plan, s)
+    }
+
+    /// Neste stopp i ruta: avansér planen og start navigasjon dit.
+    private func kjorNesteRuteStopp() {
+        guard let neste = appState.avanserRute() else {
+            showToast("Rute fullført — alle stopp besøkt 🎉")
+            lukkDetaljkort()
+            return
+        }
+        let mock = MapLeadMock(id: neste.id, name: neste.name, address: neste.address,
+                               kmAway: 0, status: .followup, lastActivity: nil,
+                               lat: neste.lat, lon: neste.lon)
+        selectedLead = mock
+        hasSelectedLead = true
+        kortAnkomst = false
+        withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: mock) }
+    }
+
     /// Ankomst-tilstand: navigasjonen endte med faktisk ankomst — kortet
     /// leder rett inn i neste steg i stedet for at turen bare «slutter».
     private var ankomstKort: some View {
@@ -1910,6 +1946,36 @@ struct KartView: View {
                 }
                 .buttonStyle(.plain)
             }
+            // Aktiv fler-stopp-rute: kjed «Neste stopp» — hele dagen kjøres
+            // fra ankomstkortet uten å åpne planleggeren igjen.
+            if let rute = aktivtRuteStopp {
+                let nesteIdx = rute.plan.index + 1
+                Button { kjorNesteRuteStopp() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.appScaled(size: 12, weight: .bold))
+                        if nesteIdx < rute.plan.stopp.count {
+                            Text("Neste stopp: \(rute.plan.stopp[nesteIdx].name) (\(nesteIdx + 1)/\(rute.plan.stopp.count))")
+                                .font(.appScaled(size: 12, weight: .bold))
+                                .lineLimit(1)
+                        } else {
+                            Text("Fullfør ruta (\(rute.plan.stopp.count)/\(rute.plan.stopp.count))")
+                                .font(.appScaled(size: 12, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [KrBrand.purple, KrBrand.purpleLight],
+                            startPoint: .leading, endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 9)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
             HStack(spacing: 8) {
                 Button {
                     withAnimation(Self.kartFjaer) { kortAnkomst = false }
@@ -1921,12 +1987,16 @@ struct KartView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                         .background(
-                            LinearGradient(
-                                colors: [KrBrand.purple, KrBrand.purpleLight],
-                                startPoint: .leading, endPoint: .trailing
-                            ),
+                            aktivtRuteStopp == nil
+                                ? AnyShapeStyle(LinearGradient(
+                                    colors: [KrBrand.purple, KrBrand.purpleLight],
+                                    startPoint: .leading, endPoint: .trailing))
+                                : AnyShapeStyle(KrBrand.cardHi),
                             in: RoundedRectangle(cornerRadius: 9)
                         )
+                        .overlay(RoundedRectangle(cornerRadius: 9)
+                            .stroke(aktivtRuteStopp == nil ? Color.clear : KrBrand.stroke,
+                                    lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 Button {
@@ -1948,6 +2018,21 @@ struct KartView: View {
                         .stroke(KrBrand.stroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                if aktivtRuteStopp != nil {
+                    Button {
+                        appState.avsluttRute()
+                        showToast("Rute avsluttet")
+                    } label: {
+                        Text("Avslutt rute")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.textSecondary)
+                            .padding(.horizontal, 10).padding(.vertical, 9)
+                            .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                            .overlay(RoundedRectangle(cornerRadius: 9)
+                                .stroke(KrBrand.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(16)

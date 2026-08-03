@@ -144,6 +144,78 @@ final class AppState {
         self.deepLinkNavRequestedAt = nil
     }
 
+    // ── Aktiv fler-stopp-rute (Ruteplanlegger nivå 1) ──────────────────
+    /// Planlagt besøksrute fra RoutePlannerSheet. Persistert i UserDefaults
+    /// så dagens rute overlever app-restart. KartViews ankomst-tilstand
+    /// leser denne og tilbyr «Neste stopp (2/6)» — hele dagen kjøres uten
+    /// å åpne planleggeren igjen.
+    struct RuteStopp: Codable, Equatable {
+        let id: String
+        let name: String
+        let address: String
+        let lat: Double
+        let lon: Double
+        /// Avtalt tid (møte-anker fra nextFollowUpAt) — brukes til
+        /// konflikt-varsling i planleggeren og info underveis.
+        var ankerTid: Date? = nil
+    }
+    struct RutePlan: Codable, Equatable {
+        var stopp: [RuteStopp]
+        /// Indeks for NESTE stopp som skal besøkes.
+        var index: Int
+        var opprettet: Date
+    }
+
+    private static let rutePlanKey = "leadgrid.aktiv_rute_plan"
+
+    var rutePlan: RutePlan? = AppState.lesRutePlanFraDisk() {
+        didSet {
+            if let plan = rutePlan, let data = try? JSONEncoder().encode(plan) {
+                UserDefaults.standard.set(data, forKey: Self.rutePlanKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.rutePlanKey)
+            }
+        }
+    }
+
+    /// Last persistert rute ved oppstart. Ruter eldre enn 24t er ikke
+    /// «dagens» — rydd i stedet for å gjenoppta.
+    private static func lesRutePlanFraDisk() -> RutePlan? {
+        guard let data = UserDefaults.standard.data(forKey: rutePlanKey),
+              let plan = try? JSONDecoder().decode(RutePlan.self, from: data)
+        else { return nil }
+        if Date().timeIntervalSince(plan.opprettet) > 24 * 3600 {
+            UserDefaults.standard.removeObject(forKey: rutePlanKey)
+            return nil
+        }
+        return plan
+    }
+
+    /// Start planlagt rute: lagre plan + naviger til første stopp.
+    func startRutePlan(_ stopp: [RuteStopp]) {
+        guard let first = stopp.first else { return }
+        rutePlan = RutePlan(stopp: stopp, index: 0, opprettet: Date())
+        requestNavigation(lat: first.lat, lon: first.lon,
+                          name: first.name, address: first.address,
+                          start: true, transport: "driving")
+    }
+
+    /// Gå videre til neste stopp i ruta (fra ankomst-kortet). Returnerer
+    /// stoppet det skal navigeres til, eller nil når ruta er ferdig.
+    @discardableResult
+    func avanserRute() -> RuteStopp? {
+        guard var plan = rutePlan else { return nil }
+        plan.index += 1
+        guard plan.index < plan.stopp.count else {
+            rutePlan = nil
+            return nil
+        }
+        rutePlan = plan
+        return plan.stopp[plan.index]
+    }
+
+    func avsluttRute() { rutePlan = nil }
+
     // Klienter (lazy-init når token er satt)
     private(set) var api: APIClient?
 
