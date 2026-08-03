@@ -68,6 +68,7 @@ import {
   type SimTarget,
 } from './mockupCapture';
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
+import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -233,6 +234,23 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runAiCompose = async () => {
+    setCaptureNote(null);
+    if (!url.trim()) return;
+    if (!aiAvailable()) { setCaptureNote('AI ikke tilkoblet — logg inn (RR-token) i Innstillinger.'); return; }
+    setCapturing(true);
+    try {
+      const doc = await aiComposeFromUrl(url, (s) => setCaptureNote(`AI: ${s}`));
+      store.setDocument(doc);
+      const n = (doc.annotations ?? []).filter((a) => a.kind === 'callout').length;
+      setCaptureNote(n > 0 ? `✓ Ferdig illustrasjon: hero-tekst + ${n} callouts — rediger fritt.` : '✓ Utkast klart (fant ingen tydelig produktskjerm å illustrere).');
+    } catch (e) {
+      setCaptureNote('AI-illustrasjon feilet: ' + String(e));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   const assignShot = (shot: CapturedShot) => {
     if (selection.kind === 'device') {
       store.setDeviceImage(selection.id, shot.dataUrl);
@@ -391,12 +409,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             {capturing ? 'Henter…' : 'Hent skjermbilder'}
           </button>
           <button
+            onClick={() => void runAiCompose()}
+            disabled={capturing || !url.trim() || !aiAvailable()}
+            style={{ ...primaryBtn, width: '100%', marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
+            title={aiAvailable() ? 'Full flyt: skjermbilder + hero-tekst + merkevare-farger + callouts som forklarer produktet — alt fra URL-en' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+          >
+            ✨ Full AI-illustrasjon fra URL
+          </button>
+          <button
             onClick={() => void runAiDraft()}
             disabled={capturing || !url.trim() || !aiAvailable()}
             style={{ ...listBtn, marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
-            title={aiAvailable() ? 'La AI drafte hele one-pageren fra URL-en (overskrift, tekst, farger, mal + skjermbilder)' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+            title={aiAvailable() ? 'Kun one-pager-utkast (overskrift, tekst, farger, mal + skjermbilder) — uten callouts' : 'Krever innlogget AI (RR-token i Innstillinger)'}
           >
-            ✨ AI-utkast fra URL
+            ✨ AI-utkast (uten callouts)
           </button>
           <button onClick={() => setShowCapture(true)} style={{ ...listBtn, marginTop: 6 }} title="Guidet fangst: velg skjermbilde og forhåndsvis i enheten før innsetting">Fang fra URL (guidet)…</button>
           {engineReady === false && (
@@ -644,9 +670,26 @@ function IllustrationInspector() {
   const addAnnotation = useMockupStudio((s) => s.addAnnotation);
   const patchAnnotation = useMockupStudio((s) => s.patchAnnotation);
   const removeAnnotation = useMockupStudio((s) => s.removeAnnotation);
+  const setAnnotations = useMockupStudio((s) => s.setAnnotations);
   const anns = doc.annotations ?? [];
   const [target, setTarget] = useState<string>('');
   const devTarget = target || doc.devices[0]?.id;
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
+  const hasScreen = doc.devices.some((d) => d.image);
+
+  const runAiIllustrate = async () => {
+    setAiBusy(true); setAiMsg('Analyserer produktskjermen…');
+    try {
+      const anns = await aiIllustrate(doc, undefined, (s) => setAiMsg(s));
+      setAnnotations(anns);
+      setAiMsg(`✓ ${anns.filter((a) => a.kind === 'callout').length} callouts plassert.`);
+    } catch (e) {
+      setAiMsg(e instanceof Error ? e.message : 'AI-illustrasjon feilet.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const KIND_LABEL: Record<string, string> = { callout: 'Callout', loupe: 'Lupe', marker: 'Markør' };
   const devName = (id?: string) => {
@@ -661,6 +704,15 @@ function IllustrationInspector() {
       <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 10px' }}>
         Forklar produktet: callouts som peker på UI, en zoom-lupe på detaljen, eller en markør-ramme.
       </p>
+      <button
+        onClick={() => void runAiIllustrate()}
+        disabled={aiBusy || !hasScreen}
+        style={{ ...primaryBtn, width: '100%', marginBottom: 6, opacity: aiBusy || !hasScreen ? 0.55 : 1 }}
+        title={hasScreen ? 'La AI finne UI-regioner og skrive funksjonstekst fra produktskjermen' : 'Legg inn en produktskjerm i en enhet først'}
+      >
+        {aiBusy ? 'Illustrerer…' : '✨ AI-illustrer produktskjermen'}
+      </button>
+      {aiMsg && <p style={{ fontSize: 11.5, color: C.inkSoft, margin: '0 0 10px' }}>{aiMsg}</p>}
       {doc.devices.length > 1 && (
         <Field label="Fest til">
           <select value={devTarget ?? ''} onChange={(e) => setTarget(e.target.value)} style={textInput}>
