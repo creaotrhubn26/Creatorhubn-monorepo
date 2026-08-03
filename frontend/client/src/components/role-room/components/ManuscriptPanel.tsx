@@ -4623,6 +4623,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   onLocationAdd,
   storyLogicData = null,
 }) => {
+  const { t } = useT();
   const { showSuccess } = useToast();
   const branding = useBrandingSettings();
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(true);
@@ -4832,16 +4833,16 @@ Anna går raskt gjennom regnet.
         justifyContent="space-between"
       >
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-          <Chip 
-            label={isMobile ? 'Fountain' : 'Fountain Editor'} 
-            color="primary" 
+          <Chip
+            label={isMobile ? t('editor.fountainShort') : t('editor.fountain')}
+            color="primary"
             size={responsive.chipSize}
             icon={<CodeIcon sx={{ fontSize: responsive.iconSize - 6 }} />}
             sx={{ fontSize: responsive.captionFontSize }}
           />
           {!isMobile && (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-              Profesjonell screenplay-editor med syntax highlighting
+              {t('editor.fountainDesc')}
             </Typography>
           )}
         </Stack>
@@ -4854,7 +4855,7 @@ Anna går raskt gjennom regnet.
               onClick={() => setShowParseDialog(true)}
               sx={{ fontSize: responsive.captionFontSize }}
             >
-              {isMobile ? `Parser (${contentStats.sceneHeadings})` : `Parser til Scener (${contentStats.sceneHeadings})`}
+              {isMobile ? t('editor.parseToScenesShort', { n: contentStats.sceneHeadings }) : t('editor.parseToScenes', { n: contentStats.sceneHeadings })}
             </Button>
           )}
           <ErrorBoundary componentName="manuscript-pdf-export">
@@ -4872,7 +4873,7 @@ Anna går raskt gjennom regnet.
             onClick={() => setShowAdvancedEditor(false)}
             sx={{ fontSize: responsive.captionFontSize }}
           >
-            {isMobile ? 'Enkel' : 'Enkel Editor'}
+            {isMobile ? t('editor.simpleEditorShort') : t('editor.simpleEditor')}
           </Button>
         </Stack>
       </Stack>

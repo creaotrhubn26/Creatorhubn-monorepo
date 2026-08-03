@@ -59,6 +59,7 @@ import {
   KeyboardArrowDown as MoveDownIcon,
 } from '@mui/icons-material';
 import type { SceneBreakdown } from '../models/casting';
+import { useT } from '../../../i18n';
 
 // Scene parsed from Fountain content
 export interface ParsedScene {
@@ -411,12 +412,14 @@ interface SceneRowProps {
 
 const SceneRow: React.FC<SceneRowProps> = React.memo((
   { scene, isCurrent, intExtColor, accentColor, textColor, isPinned, onPin, onClick, index, total, onMove }
-) => (
+) => {
+  const { t } = useT();
+  return (
   <ListItemButton
     id={`scene-nav-${scene.id}`}
     onClick={() => onClick(scene)}
     selected={isCurrent}
-    aria-label={`Scene ${scene.sceneNumber}: ${scene.intExt ? scene.intExt + '. ' : ''}${scene.location}${scene.timeOfDay ? ', ' + scene.timeOfDay : ''}${isCurrent ? ' (gjeldende scene)' : ''}`}
+    aria-label={`Scene ${scene.sceneNumber}: ${scene.intExt ? scene.intExt + '. ' : ''}${scene.location}${scene.timeOfDay ? ', ' + scene.timeOfDay : ''}${isCurrent ? t('nav.sceneRowCurrentSuffix') : ''}`}
     aria-current={isCurrent ? 'step' : undefined}
     sx={{
       py: 0.5,
@@ -463,7 +466,7 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
           />
         )}
         <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem' }}>
-          L{scene.lineNumber}{scene.characters.length > 0 ? ` · ${scene.characters.length} kar.` : ''}
+          L{scene.lineNumber}{scene.characters.length > 0 ? ` · ${t('nav.charsAbbrev', { n: scene.characters.length })}` : ''}
         </Typography>
       </Stack>
     </Box>
@@ -475,7 +478,7 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
           size="small"
           disabled={index <= 0}
           onClick={(e) => { e.stopPropagation(); onMove(index, -1); }}
-          aria-label={`Flytt scene ${scene.sceneNumber} opp`}
+          aria-label={t('nav.moveSceneUp', { n: scene.sceneNumber })}
           sx={{ p: 0, height: 16, opacity: 0.4, '&:hover': { opacity: 1 }, '&.Mui-disabled': { opacity: 0.12 } }}
         >
           <MoveUpIcon sx={{ fontSize: 15 }} />
@@ -484,7 +487,7 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
           size="small"
           disabled={typeof total === 'number' && index >= total - 1}
           onClick={(e) => { e.stopPropagation(); onMove(index, 1); }}
-          aria-label={`Flytt scene ${scene.sceneNumber} ned`}
+          aria-label={t('nav.moveSceneDown', { n: scene.sceneNumber })}
           sx={{ p: 0, height: 16, opacity: 0.4, '&:hover': { opacity: 1 }, '&.Mui-disabled': { opacity: 0.12 } }}
         >
           <MoveDownIcon sx={{ fontSize: 15 }} />
@@ -496,7 +499,7 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
     <IconButton
       size="small"
       onClick={(e) => onPin(scene.id, e)}
-      aria-label={isPinned ? `Fjern festet: scene ${scene.sceneNumber}` : `Fest scene ${scene.sceneNumber}`}
+      aria-label={isPinned ? t('nav.unpinScene', { n: scene.sceneNumber }) : t('nav.pinScene', { n: scene.sceneNumber })}
       aria-pressed={isPinned}
       sx={{
         p: 0.3,
@@ -511,7 +514,8 @@ const SceneRow: React.FC<SceneRowProps> = React.memo((
         : <PushPinOutlinedIcon sx={{ fontSize: 13, color: 'text.secondary' }} />}
     </IconButton>
   </ListItemButton>
-));
+  );
+});
 SceneRow.displayName = 'SceneRow';
 
 export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
@@ -525,6 +529,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   collapsedWidth = 48,
   onReorderScenes,
 }) => {
+  const { t } = useT();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set(['1', '2', '3', 'pinned']));
   const [showFilters, setShowFilters] = useState(false);
@@ -716,7 +721,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
     return (
       <Paper
         component="nav"
-        aria-label="Scene Navigator (sammenslått)"
+        aria-label={t('nav.collapsed')}
         sx={{
           width: collapsedWidth,
           height: '100%',
@@ -733,11 +738,11 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
           },
         }}
       >
-        <Tooltip title="Utvid Scene Navigator" placement="right">
+        <Tooltip title={t('nav.expand')} placement="right">
           <IconButton
             size="small"
             onClick={onToggleCollapse}
-            aria-label="Utvid Scene Navigator"
+            aria-label={t('nav.expand')}
             aria-expanded={false}
             sx={{ color: accentColor }}
           >
@@ -800,7 +805,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
   return (
     <Paper
       component="nav"
-      aria-label="Scene Navigator"
+      aria-label={t('nav.title')}
       sx={{
         width,
         height: '100%',
@@ -830,7 +835,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
         <Stack direction="row" alignItems="center" spacing={1}>
           <SceneIcon sx={{ color: accentColor, fontSize: 20 }} />
           <Typography variant="subtitle2" sx={{ color: textColor, fontWeight: 600 }}>
-            Scene Navigator
+            {t('nav.title')}
           </Typography>
           <Chip
             label={parsedScenes.length}
@@ -845,12 +850,12 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
         </Stack>
         
         <Stack direction="row" spacing={0.25}>
-          <Tooltip title="Filtrer">
+          <Tooltip title={t('nav.filter')}>
             <IconButton size="small" onClick={() => setShowFilters(!showFilters)}>
               <FilterIcon sx={{ fontSize: 16, color: showFilters ? accentColor : textColor }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Forrige scene">
+          <Tooltip title={t('nav.prevScene')}>
             <span>
               <IconButton
                 size="small"
@@ -861,7 +866,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Neste scene">
+          <Tooltip title={t('nav.nextScene')}>
             <span>
               <IconButton
                 size="small"
@@ -872,12 +877,12 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={activeView === 'stats' ? 'Vis scene-liste' : 'Statistikk (pro)'}>
+          <Tooltip title={activeView === 'stats' ? t('nav.viewSceneList') : t('nav.statsPro')}>
             <IconButton size="small" onClick={() => setActiveView(v => v === 'stats' ? 'scenes' : 'stats')}>
               <StatsIcon sx={{ fontSize: 16, color: activeView === 'stats' ? accentColor : textColor }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Skjul sidebar">
+          <Tooltip title={t('nav.hideSidebar')}>
             <IconButton size="small" onClick={onToggleCollapse}>
               <ChevronLeft sx={{ fontSize: 16, color: textColor }} />
             </IconButton>
@@ -890,10 +895,10 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
         <TextField
           fullWidth
           size="small"
-          placeholder="Søk lokasjon, scene, karakter…"
+          placeholder={t('nav.search')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          inputProps={{ 'aria-label': 'Søk i scener etter lokasjon, scene-nummer eller karakter' }}
+          inputProps={{ 'aria-label': t('nav.searchAria') }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -902,7 +907,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
             ),
             endAdornment: searchQuery && (
               <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setSearchQuery('')} aria-label="Fjern søketekst">
+                <IconButton size="small" onClick={() => setSearchQuery('')} aria-label={t('nav.clearSearch')}>
                   <CloseIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </InputAdornment>
@@ -921,20 +926,20 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
       <Collapse in={showFilters} id="scene-filter-panel">
         <Box
           role="group"
-          aria-label="Filter etter INT/EXT"
+          aria-label={t('nav.filterIntExt')}
           sx={{ px: 1, py: 0.75, borderBottom: `1px solid ${alpha(accentColor, 0.1)}` }}
         >
           <Stack direction="row" spacing={0.5}>
             {(['all', 'INT', 'EXT'] as const).map(val => (
               <Chip
                 key={val}
-                label={val === 'all' ? 'Alle' : val}
+                label={val === 'all' ? t('nav.all') : val}
                 size="small"
                 icon={val === 'INT' ? <IntIcon sx={{ fontSize: 12 }} aria-hidden="true" /> : val === 'EXT' ? <ExtIcon sx={{ fontSize: 12 }} aria-hidden="true" /> : undefined}
                 onClick={() => setFilterIntExt(val)}
                 role="radio"
                 aria-checked={filterIntExt === val}
-                aria-label={val === 'all' ? 'Vis alle scener' : val === 'INT' ? 'Vis bare innendørs scener' : 'Vis bare utendørs scener'}
+                aria-label={val === 'all' ? t('nav.showAll') : val === 'INT' ? t('nav.showInt') : t('nav.showExt')}
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilterIntExt(val); } }}
                 sx={{
@@ -955,7 +960,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
       <Box
         role="status"
         aria-live="polite"
-        aria-label={`${filteredScenes.length} scener, omtrent ${filteredScenes.reduce((sum, s) => sum + s.pageEstimate, 0)} sider`}
+        aria-label={t('nav.statsAria', { scenes: filteredScenes.length, pages: filteredScenes.reduce((sum, s) => sum + s.pageEstimate, 0) })}
         sx={{
           px: 1.5,
           py: 0.75,
@@ -965,10 +970,10 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
       >
         <Stack direction="row" spacing={2}>
           <Typography variant="caption" color="text.secondary" aria-hidden="true">
-            {filteredScenes.length} scener
+            {t('nav.scenesCount', { n: filteredScenes.length })}
           </Typography>
           <Typography variant="caption" color="text.secondary" aria-hidden="true">
-            ~{filteredScenes.reduce((sum, s) => sum + s.pageEstimate, 0)} sider
+            {t('nav.pagesCount', { n: filteredScenes.reduce((sum, s) => sum + s.pageEstimate, 0) })}
           </Typography>
           <Typography variant="caption" color="text.secondary" aria-hidden="true">
             {filteredScenes.filter(s => s.intExt === 'INT').length} INT / {filteredScenes.filter(s => s.intExt === 'EXT').length} EXT
@@ -981,11 +986,11 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
 
         {/* ── Pro Stats Panel ─────────────────────────────────────────────── */}
         {activeView === 'stats' && (
-          <Box role="region" aria-label="Manuskript-statistikk" sx={{ p: 1.5 }}>
+          <Box role="region" aria-label={t('nav.statsRegion')} sx={{ p: 1.5 }}>
 
             {/* Locations */}
             <Typography variant="caption" sx={{ color: accentColor, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: 0.8, mb: 0.75 }}>
-              Lokasjoner ({locationStats.length})
+              {t('nav.locationsHeader', { n: locationStats.length })}
             </Typography>
             {locationStats.slice(0, 12).map(stat => (
               <Box key={stat.location} sx={{ mb: 0.75 }}>
@@ -1007,7 +1012,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
 
             {/* Day / Night */}
             <Typography variant="caption" sx={{ color: accentColor, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: 0.8, mb: 0.75 }}>
-              Dag / Natt (sider)
+              {t('nav.dayNightHeader')}
             </Typography>
             <Stack direction="row" spacing={0.75} sx={{ mb: 0.5 }}>
               <Box sx={{ flex: Math.max(pageDayNightStats.day, 0.1), bgcolor: alpha('#fbbf24', 0.15), border: `1px solid ${alpha('#fbbf24', 0.35)}`, borderRadius: 1, p: 0.75, textAlign: 'center', minWidth: 40 }}>
@@ -1024,11 +1029,11 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
 
             {/* Characters */}
             <Typography variant="caption" sx={{ color: accentColor, fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: 0.8, mb: 0.75 }}>
-              Karakterer ({characterStats.length})
+              {t('nav.charactersHeader', { n: characterStats.length })}
             </Typography>
             {characterStats.length === 0 && (
               <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
-                Ingen karakterlinjer funnet ennå
+                {t('nav.noCharacterLines')}
               </Typography>
             )}
             {characterStats.slice(0, 15).map(stat => (
@@ -1040,7 +1045,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                       {stat.name}
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', flexShrink: 0 }}>
-                      {stat.sceneCount} {stat.sceneCount === 1 ? 'scene' : 'scener'}
+                      {stat.sceneCount === 1 ? t('nav.oneScene', { n: stat.sceneCount }) : t('nav.manyScenes', { n: stat.sceneCount })}
                     </Typography>
                   </Box>
                   <Box sx={{ height: 3, bgcolor: alpha('#60a5fa', 0.15), borderRadius: 1 }}>
@@ -1075,7 +1080,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                   {expandedActs.has('pinned') ? <ExpandLess sx={{ fontSize: 16 }} aria-hidden="true" /> : <ExpandMore sx={{ fontSize: 16 }} aria-hidden="true" />}
                 </ListItemButton>
                 <Collapse in={expandedActs.has('pinned')} id="pinned-scenes-list">
-                  <List dense disablePadding role="list" aria-label="Festede scener">
+                  <List dense disablePadding role="list" aria-label={t('nav.pinnedScenes')}>
                     {parsedScenes
                       .filter(s => pinnedSceneIds.has(s.id))
                       .map(scene => {
@@ -1100,7 +1105,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
                 >
                   <ListItemText primary={
                     <Stack direction="row" alignItems="center" spacing={1}>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: accentColor }}>AKT {actNum}</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: accentColor }}>{t('nav.act', { n: actNum })}</Typography>
                       <Chip label={actScenes.length} size="small" aria-hidden="true" sx={{ height: 16, fontSize: '0.65rem', bgcolor: 'transparent', border: `1px solid ${alpha(accentColor, 0.3)}`, color: 'text.secondary' }} />
                     </Stack>
                   } />
@@ -1122,7 +1127,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
             {filteredScenes.length === 0 && (
               <Box sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  {searchQuery ? 'Ingen scener funnet' : 'Ingen scener i manuskriptet'}
+                  {searchQuery ? t('nav.noScenesFound') : t('nav.noScenesInManuscript')}
                 </Typography>
               </Box>
             )}
@@ -1140,7 +1145,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
           }}
         >
           <Typography variant="caption" color="text.secondary" display="block">
-            Gjeldende scene
+            {t('nav.currentScene')}
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 600, color: accentColor, fontSize: '0.8rem' }}>
             {currentScene.sceneNumber}. {currentScene.location}
