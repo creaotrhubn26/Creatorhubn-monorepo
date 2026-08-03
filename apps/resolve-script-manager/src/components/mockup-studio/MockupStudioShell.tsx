@@ -52,6 +52,7 @@ import {
   type MockupBgStyle,
   type MockupTypographyId,
   type MockupDecor,
+  buildMindmapDoc,
 } from './mockupStudioModel';
 import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
@@ -69,6 +70,7 @@ import {
 } from './mockupCapture';
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
+import { aiProductMindmap } from './mockupMindmap';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -251,6 +253,30 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runAiMindmap = async () => {
+    setCaptureNote(null);
+    if (!url.trim()) return;
+    if (!aiAvailable()) { setCaptureNote('AI ikke tilkoblet — logg inn (RR-token) i Innstillinger.'); return; }
+    setCapturing(true);
+    try {
+      const mermaid = await aiProductMindmap(url, (s) => setCaptureNote(`AI: ${s}`));
+      const cur = store.doc.canvas;
+      // Ny mind map-slide som eget prosjekt, arver gjeldende merkevare.
+      const doc = buildMindmapDoc(mermaid, {
+        accent: cur.accent, accent2: cur.accent2, background: cur.background,
+        typography: cur.typography, name: `${doc0Name()} — mind map`,
+      });
+      store.setDocument(doc);
+      setCaptureNote('✓ Produkt-mind map generert (eget prosjekt) — rediger Mermaid-kilden i Illustrasjon-panelet.');
+    } catch (e) {
+      setCaptureNote('Mind map feilet: ' + String(e));
+    } finally {
+      setCapturing(false);
+    }
+  };
+  const doc0Name = () => (store.doc.name && store.doc.name !== 'Produkt-mind map' ? store.doc.name : 'Produkt');
+  };
+
   const assignShot = (shot: CapturedShot) => {
     if (selection.kind === 'device') {
       store.setDeviceImage(selection.id, shot.dataUrl);
@@ -423,6 +449,14 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             title={aiAvailable() ? 'Kun one-pager-utkast (overskrift, tekst, farger, mal + skjermbilder) — uten callouts' : 'Krever innlogget AI (RR-token i Innstillinger)'}
           >
             ✨ AI-utkast (uten callouts)
+          </button>
+          <button
+            onClick={() => void runAiMindmap()}
+            disabled={capturing || !url.trim() || !aiAvailable()}
+            style={{ ...listBtn, marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
+            title={aiAvailable() ? 'Lag en produkt-mind map (Mermaid) fra URL-en som setter hele perspektivet — som eget prosjekt' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+          >
+            🧠 Produkt-mind map fra URL
           </button>
           <button onClick={() => setShowCapture(true)} style={{ ...listBtn, marginTop: 6 }} title="Guidet fangst: velg skjermbilde og forhåndsvis i enheten før innsetting">Fang fra URL (guidet)…</button>
           {engineReady === false && (
@@ -671,6 +705,7 @@ function IllustrationInspector() {
   const patchAnnotation = useMockupStudio((s) => s.patchAnnotation);
   const removeAnnotation = useMockupStudio((s) => s.removeAnnotation);
   const setAnnotations = useMockupStudio((s) => s.setAnnotations);
+  const setMindmap = useMockupStudio((s) => s.setMindmap);
   const anns = doc.annotations ?? [];
   const [target, setTarget] = useState<string>('');
   const devTarget = target || doc.devices[0]?.id;
@@ -701,9 +736,32 @@ function IllustrationInspector() {
   return (
     <div>
       <SectionLabel>Illustrasjon</SectionLabel>
-      <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 10px' }}>
-        Forklar produktet: callouts som peker på UI, en zoom-lupe på detaljen, eller en markør-ramme.
-      </p>
+
+      {doc.mindmap ? (
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 8px' }}>
+            🧠 Produkt-mind map (Mermaid). Rediger kilden — rendres i merkevarefargene.
+          </p>
+          <textarea
+            value={doc.mindmap}
+            onChange={(e) => setMindmap(e.target.value)}
+            spellCheck={false}
+            style={{ ...textInput, width: '100%', minHeight: 150, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11.5, lineHeight: 1.45, resize: 'vertical', whiteSpace: 'pre' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button onClick={() => { navigator.clipboard?.writeText(doc.mindmap ?? ''); }} style={{ ...listBtn, flex: 1 }} title="Kopier Mermaid-kode (lim inn i et hvilket som helst Mermaid-verktøy)">Kopier Mermaid</button>
+            <button onClick={() => setMindmap(undefined)} style={{ ...listBtn, flex: 1 }} title="Fjern mind map (tilbake til vanlig mockup)">Fjern mind map</button>
+          </div>
+          <p style={{ fontSize: 11, color: C.inkSoft, lineHeight: 1.5, marginTop: 10 }}>
+            Callouts/lupe under gjelder vanlige mockups — mind map er sitt eget lerret.
+          </p>
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 10px' }}>
+          Forklar produktet: callouts som peker på UI, en zoom-lupe på detaljen, eller en markør-ramme.
+          <br /><span style={{ opacity: 0.8 }}>Tips: «🧠 Produkt-mind map fra URL» (Fra nettside) lager en mind map-slide.</span>
+        </p>
+      )}
       <button
         onClick={() => void runAiIllustrate()}
         disabled={aiBusy || !hasScreen}

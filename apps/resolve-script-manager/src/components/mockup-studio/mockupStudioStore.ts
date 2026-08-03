@@ -82,6 +82,7 @@ interface MockupStudioState {
   patchAnnotation: (id: string, patch: Partial<MockupAnnotation>) => void;
   removeAnnotation: (id: string) => void;
   setAnnotations: (anns: MockupAnnotation[]) => void;
+  setMindmap: (src: string | undefined) => void;
 }
 
 function initialDoc(): MockupDoc {
@@ -222,4 +223,6 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     commit(set, (d) => ({ ...d, annotations: (d.annotations ?? []).filter((a) => a.id !== id) })),
 
   setAnnotations: (anns) => commit(set, (d) => ({ ...d, annotations: anns })),
+
+  setMindmap: (src) => commit(set, (d) => ({ ...d, mindmap: src && src.trim() ? src : undefined })),
 }));
