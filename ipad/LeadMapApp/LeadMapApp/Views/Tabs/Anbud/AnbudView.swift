@@ -31,6 +31,9 @@ struct AnbudView: View {
     @State private var creatingLeadId: String?
     @State private var createdLeadIds: Set<String> = []
     @State private var leadErrorText: String?
+    // Les gjennom (2026-08-03): tap på kort → fullt lese-ark. Alt innhold
+    // ligger allerede i søkesvaret (Doffin v2 har ikke detalj-endepunkt).
+    @State private var openKunngjoring: DoffinKunngjoringDTO?
 
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
@@ -109,6 +112,7 @@ struct AnbudView: View {
         }
         .gated(.leadgridAnbud)   // tilleggstjeneste — låst uten entitlement
         .sheet(isPresented: $showWatches) { watchesSheet }
+        .sheet(item: $openKunngjoring) { k in leseArk(k) }
     }
 
     private var inner: some View {
@@ -326,57 +330,194 @@ struct AnbudView: View {
                 }
                 Spacer()
                 if k.oppdragsgivere.first != nil {
-                    Button {
-                        Task { await createLead(from: k) }
-                    } label: {
-                        HStack(spacing: 4) {
-                            if creatingLeadId == k.id {
-                                ProgressView().tint(.white).scaleEffect(0.6)
-                            } else {
-                                Image(systemName: createdLeadIds.contains(k.id)
-                                      ? "checkmark.circle.fill" : "person.crop.circle.badge.plus")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                            }
-                            Text(createdLeadIds.contains(k.id) ? "Lead opprettet ✓" : "Opprett lead")
-                                .font(.appScaled(size: 10, weight: .bold))
-                        }
-                        .foregroundStyle(createdLeadIds.contains(k.id) ? LBrand.green : .white)
-                        .padding(.horizontal, 9).padding(.vertical, 5)
-                        .background(
-                            createdLeadIds.contains(k.id)
-                                ? AnyShapeStyle(LBrand.green.opacity(0.16))
-                                : AnyShapeStyle(Color.indigo.opacity(0.85)),
-                            in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(creatingLeadId != nil || createdLeadIds.contains(k.id))
+                    createLeadButton(k)
                 }
-                Button {
-                    if let og = k.oppdragsgivere.first {
-                        UIPasteboard.general.string = "\(og.navn) — org.nr \(og.orgnr)\n\(k.tittel)\n\(k.url)"
-                        withAnimation { copiedToastId = k.id }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                            withAnimation { if copiedToastId == k.id { copiedToastId = nil } }
-                        }
-                    }
-                } label: {
-                    Label(copiedToastId == k.id ? "Kopiert ✓" : "Kopier",
-                          systemImage: "doc.on.doc.fill")
-                        .font(.appScaled(size: 10, weight: .bold))
-                        .foregroundStyle(copiedToastId == k.id ? LBrand.green : .white)
-                }.buttonStyle(.plain)
-                if let url = URL(string: k.url) {
-                    Link(destination: url) {
-                        Label("Åpne i Doffin", systemImage: "arrow.up.right.square.fill")
-                            .font(.appScaled(size: 10, weight: .bold))
-                            .foregroundStyle(Color.indigo)
-                    }
-                }
+                // Gullstandard (audit 2026-08-03): sekundærhandlinger bak ⋯
+                // — «Opprett lead» skal stå helt alene som handling.
+                secondaryMenu(k)
             }
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        // Les gjennom (Daniel 2026-08-03): hele kortet åpner lese-arket
+        // med full beskrivelse — knappene over fanger sine egne tap.
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onTapGesture { openKunngjoring = k }
+    }
+
+    private func createLeadButton(_ k: DoffinKunngjoringDTO) -> some View {
+        Button {
+            Task { await createLead(from: k) }
+        } label: {
+            HStack(spacing: 4) {
+                if creatingLeadId == k.id {
+                    ProgressView().tint(.white).scaleEffect(0.6)
+                } else {
+                    Image(systemName: createdLeadIds.contains(k.id)
+                          ? "checkmark.circle.fill" : "person.crop.circle.badge.plus")
+                        .font(.appScaled(size: 10, weight: .bold))
+                }
+                Text(createdLeadIds.contains(k.id) ? "Lead opprettet ✓" : "Opprett lead")
+                    .font(.appScaled(size: 10, weight: .bold))
+            }
+            .foregroundStyle(createdLeadIds.contains(k.id) ? LBrand.green : .white)
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(
+                createdLeadIds.contains(k.id)
+                    ? AnyShapeStyle(LBrand.green.opacity(0.16))
+                    : AnyShapeStyle(Color.indigo.opacity(0.85)),
+                in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(creatingLeadId != nil || createdLeadIds.contains(k.id))
+    }
+
+    /// Kopier + Åpne i Doffin — dempet til én ⋯-meny (audit-grep 2).
+    /// Ikonet blir grønn hake et øyeblikk etter kopiering.
+    private func secondaryMenu(_ k: DoffinKunngjoringDTO) -> some View {
+        Menu {
+            Button {
+                copyOppdragsgiver(k)
+            } label: {
+                Label("Kopier oppdragsgiver", systemImage: "doc.on.doc")
+            }
+            if let url = URL(string: k.url) {
+                Link(destination: url) {
+                    Label("Åpne i Doffin", systemImage: "arrow.up.right.square")
+                }
+            }
+        } label: {
+            Image(systemName: copiedToastId == k.id ? "checkmark.circle.fill" : "ellipsis.circle")
+                .font(.appScaled(size: 15, weight: .semibold))
+                .foregroundStyle(copiedToastId == k.id ? LBrand.green : LBrand.textSecondary)
+                .padding(6)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private func copyOppdragsgiver(_ k: DoffinKunngjoringDTO) {
+        guard let og = k.oppdragsgivere.first else { return }
+        UIPasteboard.general.string = "\(og.navn) — org.nr \(og.orgnr)\n\(k.tittel)\n\(k.url)"
+        withAnimation { copiedToastId = k.id }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            withAnimation { if copiedToastId == k.id { copiedToastId = nil } }
+        }
+    }
+
+    // MARK: Lese-ark (2026-08-03) — «man skal også kunne lese gjennom»
+
+    /// Full lesevisning av kunngjøringen: hele beskrivelsen + all metadata
+    /// fra søkesvaret. Samme primær-CTA som kortet; dokumentene ligger hos
+    /// Doffin (v2 har ikke detalj-endepunkt) — lenken er ærlig merket.
+    private func leseArk(_ k: DoffinKunngjoringDTO) -> some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(k.tittel)
+                            .font(.appScaled(size: 20, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let og = k.oppdragsgivere.first {
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.indigo.opacity(0.22))
+                                    Image(systemName: "building.columns.fill")
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                        .foregroundStyle(Color.indigo)
+                                }
+                                .frame(width: 34, height: 34)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(og.navn)
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                        .foregroundStyle(.white)
+                                    if !og.orgnr.isEmpty {
+                                        Text("Org.nr \(og.orgnr)")
+                                            .font(.appScaled(size: 11, design: .monospaced))
+                                            .foregroundStyle(LBrand.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                        // Metadata-rad: frist, kunngjort, verdi, fylke
+                        HStack(spacing: 8) {
+                            if let frist = k.frist { fristChip(frist) }
+                            if let kunngjort = k.kunngjort, let d = Self.kortDato(kunngjort) {
+                                metaChip("Kunngjort \(d)", icon: "megaphone.fill")
+                            }
+                            if let fylke = k.nutsKoder.compactMap({ Fylke(rawValue: $0)?.navn }).first {
+                                metaChip(fylke, icon: "map.fill")
+                            }
+                            Spacer()
+                            if let v = k.verdi {
+                                Text(formatNOK(v.belop))
+                                    .font(.appScaled(size: 14, weight: .heavy, design: .monospaced))
+                                    .foregroundStyle(LBrand.green)
+                            }
+                        }
+                        Divider().overlay(LBrand.stroke)
+                        // HELE beskrivelsen — markerbar tekst for videre bruk.
+                        Text(k.beskrivelse.isEmpty ? "Ingen beskrivelse i kunngjøringen — åpne Doffin for dokumentene." : k.beskrivelse)
+                            .font(.appScaled(size: 14))
+                            .foregroundStyle(k.beskrivelse.isEmpty ? LBrand.textTertiary : LBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                        if !k.cpvKoder.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("CPV-KODER")
+                                    .font(.appScaled(size: 10, weight: .black))
+                                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                                Text(k.cpvKoder.joined(separator: " · "))
+                                    .font(.appScaled(size: 11, design: .monospaced))
+                                    .foregroundStyle(LBrand.textSecondary)
+                            }
+                        }
+                        if let url = URL(string: k.url) {
+                            Link(destination: url) {
+                                Label("Åpne kunngjøringen med dokumenter i Doffin",
+                                      systemImage: "arrow.up.right.square")
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(Color.indigo)
+                            }
+                        }
+                        Color.clear.frame(height: 30)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { openKunngjoring = nil }
+                        .tint(LBrand.textSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    HStack(spacing: 8) {
+                        if k.oppdragsgivere.first != nil {
+                            createLeadButton(k)
+                        }
+                        secondaryMenu(k)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func metaChip(_ text: String, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.appScaled(size: 9))
+            Text(text).font(.appScaled(size: 10, weight: .bold))
+        }
+        .foregroundStyle(LBrand.textSecondary)
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(LBrand.cardHi, in: Capsule())
     }
 
     /// Opprett CRM-lead fra kunngjøringen: navn = oppdragsgiver, org.nr i
@@ -398,17 +539,23 @@ struct AnbudView: View {
         creatingLeadId = nil
     }
 
+    /// Frist-chip m/ EKTE dato (audit-grep 1): «Frist 25. aug · 22 d».
+    /// Uparsbar dato → ingen chip (en gul chip uten innhold er ren støy).
+    @ViewBuilder
     private func fristChip(_ iso: String) -> some View {
-        let days = daysUntil(iso)
-        let urgent = (days ?? 99) <= 7
-        return HStack(spacing: 4) {
-            Image(systemName: "clock.fill").font(.appScaled(size: 9))
-            Text(days.map { $0 >= 0 ? "Frist om \($0) d" : "Frist utløpt" } ?? "Frist")
-                .font(.appScaled(size: 10, weight: .bold))
+        if let dato = Self.kortDato(iso) {
+            let days = daysUntil(iso)
+            let urgent = (days ?? 99) <= 7
+            HStack(spacing: 4) {
+                Image(systemName: "clock.fill").font(.appScaled(size: 9))
+                Text(days.map { $0 >= 0 ? "Frist \(dato) · \($0) d" : "Frist \(dato) — utløpt" }
+                     ?? "Frist \(dato)")
+                    .font(.appScaled(size: 10, weight: .bold))
+            }
+            .foregroundStyle(urgent ? LBrand.red : LBrand.yellow)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background((urgent ? LBrand.red : LBrand.yellow).opacity(0.14), in: Capsule())
         }
-        .foregroundStyle(urgent ? LBrand.red : LBrand.yellow)
-        .padding(.horizontal, 8).padding(.vertical, 3)
-        .background((urgent ? LBrand.red : LBrand.yellow).opacity(0.14), in: Capsule())
     }
 
     // MARK: Overvåkninger
@@ -615,9 +762,34 @@ struct AnbudView: View {
         return String(format: "%.0f kr", v)
     }
 
+    /// Robust Doffin-dato-parsing (audit-grep 1, 2026-08-03): default
+    /// ISO8601DateFormatter krever full dato+tid — Doffin leverer både
+    /// med brøkdels-sekunder og rene datoer, så chipen sto tom («Frist»).
+    static func parseDoffinDate(_ iso: String) -> Date? {
+        let full = ISO8601DateFormatter()
+        full.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = full.date(from: iso) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let d = plain.date(from: iso) { return d }
+        let dateOnly = ISO8601DateFormatter()
+        dateOnly.formatOptions = [.withFullDate]
+        return dateOnly.date(from: iso)
+    }
+
     private func daysUntil(_ iso: String) -> Int? {
-        let f = ISO8601DateFormatter()
-        guard let d = f.date(from: iso) else { return nil }
-        return Calendar.current.dateComponents([.day], from: Date(), to: d).day
+        guard let d = Self.parseDoffinDate(iso) else { return nil }
+        return Calendar.current.dateComponents(
+            [.day], from: Calendar.current.startOfDay(for: Date()),
+            to: Calendar.current.startOfDay(for: d)).day
+    }
+
+    /// «25. aug»-format for frist/kunngjort (nb_NO).
+    static func kortDato(_ iso: String) -> String? {
+        guard let d = parseDoffinDate(iso) else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "d. MMM"
+        return f.string(from: d)
     }
 }
