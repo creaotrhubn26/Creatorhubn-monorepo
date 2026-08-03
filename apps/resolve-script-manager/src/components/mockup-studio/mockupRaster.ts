@@ -242,3 +242,41 @@ export async function rasterizeToPngDataUrl(doc: MockupDoc, scale = 1): Promise<
   const canvas = await rasterizeMockup(doc, scale);
   return canvas.toDataURL('image/png');
 }
+
+function newLayerCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D | null } {
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  return { canvas, ctx: canvas.getContext('2d') };
+}
+
+const VARIANT_LABEL: Record<string, string> = {
+  macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad (liggende)', iphone: 'iPhone',
+};
+
+/**
+ * Rasteriser dokumentet til SEPARATE, gjennomsiktige lag i full oppløsning —
+ * ett for bakgrunnen, ett per enhet, ett per tekst — i tegnerekkefølge (nederst
+ * først). Brukes av PSD-eksporten så resultatet er redigerbart lag-for-lag i
+ * Photoshop (flytt/skjul/omorganiser enheter og tekst).
+ */
+export async function rasterizeLayers(doc: MockupDoc): Promise<{ name: string; canvas: HTMLCanvasElement }[]> {
+  const w = doc.canvas.w, h = doc.canvas.h;
+  const out: { name: string; canvas: HTMLCanvasElement }[] = [];
+
+  const bg = newLayerCanvas(w, h);
+  if (bg.ctx) fillBackground(bg.ctx, doc);
+  out.push({ name: 'Bakgrunn', canvas: bg.canvas });
+
+  for (const dev of doc.devices) {
+    const c = newLayerCanvas(w, h);
+    if (c.ctx) await drawDevice(c.ctx, doc, dev);
+    out.push({ name: VARIANT_LABEL[dev.variant] ?? dev.variant, canvas: c.canvas });
+  }
+  for (const t of doc.texts) {
+    const c = newLayerCanvas(w, h);
+    if (c.ctx) drawText(c.ctx, doc, t);
+    const label = (t.text || 'Tekst').replace(/\s+/g, ' ').trim().slice(0, 24) || 'Tekst';
+    out.push({ name: label, canvas: c.canvas });
+  }
+  return out;
+}

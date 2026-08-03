@@ -15,6 +15,8 @@ import { openPath } from '@tauri-apps/plugin-opener';
 import { demoWriteBinary } from '../../api';
 import { MockupCanvas } from './MockupCanvas';
 import { rasterizeToPngDataUrl } from './mockupRaster';
+import { buildPdfBase64 } from './mockupExport';
+import { buildPsdBase64 } from './mockupPsd';
 import { useMockupStudio } from './mockupStudioStore';
 import {
   MOCKUP_TEMPLATES,
@@ -167,17 +169,21 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   const missingShots = doc.devices.filter((d) => !d.image).length;
 
-  const exportPng = async () => {
+  const runExport = async (kind: 'png' | 'pdf' | 'psd') => {
     setExportMsg(null);
     setExporting(true);
     try {
-      const dataUrl = await rasterizeToPngDataUrl(doc, 1);
+      const data =
+        kind === 'png' ? await rasterizeToPngDataUrl(doc, 1)
+        : kind === 'pdf' ? await buildPdfBase64(doc)
+        : await buildPsdBase64(doc);
+      const ext = kind;
       const path = await saveFileDialog({
-        defaultPath: `${safeDocName(doc.name)}.png`,
-        filters: [{ name: 'PNG', extensions: ['png'] }],
+        defaultPath: `${safeDocName(doc.name)}.${ext}`,
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
       });
       if (typeof path !== 'string') { setExporting(false); return; }
-      const saved = await demoWriteBinary(path, dataUrl);
+      const saved = await demoWriteBinary(path, data);
       setExportMsg(`✓ Lagret: ${saved}`);
       void openPath(saved).catch(() => {});
     } catch (err) {
@@ -211,7 +217,10 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
-        <button onClick={exportPng} disabled={exporting} style={primaryBtn}>{exporting ? 'Eksporterer…' : 'Last ned PNG'}</button>
+        <span style={{ fontSize: 11, color: C.inkSoft }}>Eksporter:</span>
+        <button onClick={() => void runExport('png')} disabled={exporting} style={primaryBtn} title="PNG-bilde">PNG</button>
+        <button onClick={() => void runExport('pdf')} disabled={exporting} style={ghostBtn} title="PDF-dokument (én side)">PDF</button>
+        <button onClick={() => void runExport('psd')} disabled={exporting} style={ghostBtn} title="Lagdelt Photoshop-fil (redigerbar per enhet/tekst)">PSD</button>
       </div>
 
       {/* Kropp: verktøy · lerret · inspektør */}
