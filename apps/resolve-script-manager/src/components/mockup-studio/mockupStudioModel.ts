@@ -463,6 +463,60 @@ export function loadDoc(): MockupDoc | null {
   }
 }
 
+// ── Brand kits (gjenbrukbar merkevare §1.3) ────────────────────────────────
+
+export interface MockupBrandKit {
+  id: string;
+  name: string;
+  accent: string;
+  accent2: string;
+  background: MockupBackground;
+  bgStyle: MockupBgStyle;
+  logo?: MockupLogo;
+}
+
+const BRANDKITS_KEY = 'trrpa.mockup.brandkits';
+
+export function listBrandKits(): MockupBrandKit[] {
+  try {
+    const r = localStorage.getItem(BRANDKITS_KEY);
+    if (!r) return [];
+    const a = JSON.parse(r) as MockupBrandKit[];
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveBrandKit(name: string, canvas: MockupCanvasSpec): { ok: boolean; error?: string } {
+  const kit: MockupBrandKit = {
+    id: uid('bk'), name: name.trim() || 'Merkevare',
+    accent: canvas.accent, accent2: canvas.accent2, background: canvas.background, bgStyle: canvas.bgStyle,
+    logo: canvas.logo ? { ...canvas.logo } : undefined,
+  };
+  try {
+    localStorage.setItem(BRANDKITS_KEY, JSON.stringify([kit, ...listBrandKits().filter((k) => k.name !== kit.name)].slice(0, 20)));
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Kunne ikke lagre brand kit.' };
+  }
+}
+
+export function deleteBrandKit(id: string): void {
+  try {
+    localStorage.setItem(BRANDKITS_KEY, JSON.stringify(listBrandKits().filter((k) => k.id !== id)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Canvas-patch som anvender et brand kit (accenter + bakgrunn + logo). */
+export function brandKitPatch(id: string): Partial<MockupCanvasSpec> | null {
+  const k = listBrandKits().find((x) => x.id === id);
+  if (!k) return null;
+  return { accent: k.accent, accent2: k.accent2, background: k.background, bgStyle: k.bgStyle, logo: k.logo ? { ...k.logo } : undefined };
+}
+
 // ── Kits (lagrede oppsett i localStorage) ────────────────────────────────
 
 /** Et lagret «kit» = et navngitt, gjenbrukbart MockupDoc-oppsett. */

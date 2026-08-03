@@ -21,6 +21,10 @@ import {
   loadKitDoc,
   makeElement,
   ELEMENT_LABELS,
+  listBrandKits,
+  saveBrandKit,
+  deleteBrandKit,
+  brandKitPatch,
   listVersions,
   saveVersion,
   deleteVersion,
@@ -29,6 +33,7 @@ import {
   contrastRatio,
   isDark,
   type MockupKit,
+  type MockupBrandKit,
   type MockupVersion,
   type MockupElementKind,
   type MockupDeviceVariant,
@@ -122,6 +127,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   // Trygt område-guide (§ bunnbar / hybrid slot-nod)
   const [safeArea, setSafeArea] = useState(false);
+  // Struktur før frihet (§1.1): geometri-kontroller er skjult som standard.
+  const [advanced, setAdvanced] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -387,9 +394,9 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         {/* Høyre: inspektør */}
         <div style={{ width: 300, borderLeft: `1px solid ${C.border}`, padding: 16, overflowY: 'auto', flexShrink: 0, background: C.panel }}>
           {selectedDevice ? (
-            <DeviceInspector device={selectedDevice} onUpload={() => triggerUpload(selectedDevice.id)} />
+            <DeviceInspector device={selectedDevice} onUpload={() => triggerUpload(selectedDevice.id)} advanced={advanced} />
           ) : selectedText ? (
-            <TextInspector text={selectedText} />
+            <TextInspector text={selectedText} advanced={advanced} />
           ) : (
             <BrandingInspector onUploadLogo={triggerLogoUpload} />
           )}
@@ -401,6 +408,9 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <span>{doc.canvas.w}×{doc.canvas.h}</span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <input type="checkbox" checked={safeArea} onChange={(e) => setSafeArea(e.target.checked)} /> Vis trygt område
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Lås opp fri plassering (flytt/roter/skaler). Av = malen beskytter komposisjonen.">
+          <input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} /> Fri plassering
         </label>
         <div style={{ flex: 1 }} />
         <span>{doc.devices.length} enhet{doc.devices.length === 1 ? '' : 'er'} · {doc.texts.length} tekst{doc.texts.length === 1 ? '' : 'er'}</span>
@@ -440,9 +450,28 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
   const textColor = isDark(base) ? '#ffffff' : '#101317';
   const ratio = contrastRatio(base, textColor);
   const goodContrast = ratio >= 4.5;
+  const [brandKits, setBrandKits] = useState<MockupBrandKit[]>(() => listBrandKits());
+  const [bkName, setBkName] = useState('');
+  const doSaveBrandKit = () => { if (saveBrandKit(bkName || 'Merkevare', canvas).ok) { setBrandKits(listBrandKits()); setBkName(''); } };
   return (
     <div>
       <SectionLabel>Merkevare</SectionLabel>
+      <Field label="Brand kit">
+        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+          <input value={bkName} onChange={(e) => setBkName(e.target.value)} placeholder="Navn på brand kit" style={{ ...textInput, flex: 1 }} />
+          <button onClick={doSaveBrandKit} style={listBtn} title="Lagre gjeldende merkevare">Lagre</button>
+        </div>
+        {brandKits.map((k) => (
+          <div key={k.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+            <button onClick={() => { const p = brandKitPatch(k.id); if (p) patchCanvas(p); }} style={{ ...listBtn, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }} title="Bruk denne merkevaren">
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: k.accent, flexShrink: 0 }} />
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: k.accent2, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.name}</span>
+            </button>
+            <button onClick={() => { deleteBrandKit(k.id); setBrandKits(listBrandKits()); }} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett">✕</button>
+          </div>
+        ))}
+      </Field>
       <Field label="Logo">
         {canvas.logo?.image ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -484,7 +513,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
   );
 }
 
-function DeviceInspector({ device, onUpload }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void }) {
+function DeviceInspector({ device, onUpload, advanced }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void; advanced: boolean }) {
   const patchDevice = useMockupStudio((s) => s.patchDevice);
   const setDeviceImage = useMockupStudio((s) => s.setDeviceImage);
   const removeDevice = useMockupStudio((s) => s.removeDevice);
@@ -521,18 +550,22 @@ function DeviceInspector({ device, onUpload }: { device: import('./mockupStudioM
           </Field>
         </>
       )}
-      <Field label={`Bredde: ${Math.round(device.w)} px`}>
-        <input type="range" min={120} max={1400} value={device.w} onChange={(e) => patchDevice(device.id, { w: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
-      <Field label={`Rotasjon: ${device.rotation}°`}>
-        <input type="range" min={-30} max={30} value={device.rotation} onChange={(e) => patchDevice(device.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
-      <Field label={`X: ${Math.round(device.x)}`}>
-        <input type="range" min={-400} max={1600} value={device.x} onChange={(e) => patchDevice(device.id, { x: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
-      <Field label={`Y: ${Math.round(device.y)}`}>
-        <input type="range" min={-400} max={1000} value={device.y} onChange={(e) => patchDevice(device.id, { y: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
+      {advanced && (
+        <>
+          <Field label={`Bredde: ${Math.round(device.w)} px`}>
+            <input type="range" min={120} max={1400} value={device.w} onChange={(e) => patchDevice(device.id, { w: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`Rotasjon: ${device.rotation}°`}>
+            <input type="range" min={-30} max={30} value={device.rotation} onChange={(e) => patchDevice(device.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`X: ${Math.round(device.x)}`}>
+            <input type="range" min={-400} max={1600} value={device.x} onChange={(e) => patchDevice(device.id, { x: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`Y: ${Math.round(device.y)}`}>
+            <input type="range" min={-400} max={1000} value={device.y} onChange={(e) => patchDevice(device.id, { y: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        </>
+      )}
       <label style={checkRow}>
         <input type="checkbox" checked={device.shadow} onChange={(e) => patchDevice(device.id, { shadow: e.target.checked })} />
         Skygge
@@ -542,7 +575,14 @@ function DeviceInspector({ device, onUpload }: { device: import('./mockupStudioM
   );
 }
 
-function TextInspector({ text }: { text: import('./mockupStudioModel').MockupTextSlot }) {
+function trimToWords(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd();
+}
+
+function TextInspector({ text, advanced }: { text: import('./mockupStudioModel').MockupTextSlot; advanced: boolean }) {
   const patchText = useMockupStudio((s) => s.patchText);
   const removeText = useMockupStudio((s) => s.removeText);
   const colorMode = text.color === 'accent' ? 'accent' : text.color === 'accent2' ? 'accent2' : 'custom';
@@ -554,6 +594,12 @@ function TextInspector({ text }: { text: import('./mockupStudioModel').MockupTex
         <div style={{ fontSize: 11, color: text.text.length > RECOMMENDED_MAX[text.role] ? '#e0b060' : C.inkSoft, marginTop: 4 }}>
           {text.text.length}/{RECOMMENDED_MAX[text.role]} tegn{text.text.length > RECOMMENDED_MAX[text.role] ? ' · lengre enn anbefalt' : ''}
         </div>
+        {text.text.length > RECOMMENDED_MAX[text.role] && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button onClick={() => patchText(text.id, { text: trimToWords(text.text, RECOMMENDED_MAX[text.role]) })} style={{ ...listBtn, flex: 1, padding: '6px 8px' }} title="Kort ned til anbefalt lengde">Forkort</button>
+            <button onClick={() => patchText(text.id, { size: Math.max(12, Math.round(text.size * 0.85)) })} style={{ ...listBtn, flex: 1, padding: '6px 8px' }} title="Mindre typografi så alt får plass">Kompakt</button>
+          </div>
+        )}
       </Field>
       <Field label={`Størrelse: ${Math.round(text.size)} px`}>
         <input type="range" min={12} max={140} value={text.size} onChange={(e) => patchText(text.id, { size: Number(e.target.value) })} style={{ width: '100%' }} />
@@ -582,15 +628,19 @@ function TextInspector({ text }: { text: import('./mockupStudioModel').MockupTex
         <input type="checkbox" checked={text.uppercase} onChange={(e) => patchText(text.id, { uppercase: e.target.checked })} />
         Store bokstaver
       </label>
-      <Field label={`Bredde: ${Math.round(text.w)} px`}>
-        <input type="range" min={120} max={1600} value={text.w} onChange={(e) => patchText(text.id, { w: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
-      <Field label={`X: ${Math.round(text.x)}`}>
-        <input type="range" min={-200} max={1600} value={text.x} onChange={(e) => patchText(text.id, { x: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
-      <Field label={`Y: ${Math.round(text.y)}`}>
-        <input type="range" min={-100} max={1000} value={text.y} onChange={(e) => patchText(text.id, { y: Number(e.target.value) })} style={{ width: '100%' }} />
-      </Field>
+      {advanced && (
+        <>
+          <Field label={`Bredde: ${Math.round(text.w)} px`}>
+            <input type="range" min={120} max={1600} value={text.w} onChange={(e) => patchText(text.id, { w: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`X: ${Math.round(text.x)}`}>
+            <input type="range" min={-200} max={1600} value={text.x} onChange={(e) => patchText(text.id, { x: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`Y: ${Math.round(text.y)}`}>
+            <input type="range" min={-100} max={1000} value={text.y} onChange={(e) => patchText(text.id, { y: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        </>
+      )}
       <button onClick={() => removeText(text.id)} style={{ ...dangerBtn, marginTop: 12 }}>Slett tekst</button>
     </div>
   );

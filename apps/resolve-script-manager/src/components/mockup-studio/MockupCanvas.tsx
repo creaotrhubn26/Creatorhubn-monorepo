@@ -8,7 +8,7 @@
  * eksporten kjører full oppløsning.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { rasterizeMockup, measureTextHeight } from './mockupRaster';
 import { deviceHeight } from './mockupStudioModel';
 import { useMockupStudio, type Selection } from './mockupStudioStore';
@@ -20,7 +20,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const doc = useMockupStudio((s) => s.doc);
   const selection = useMockupStudio((s) => s.selection);
   const select = useMockupStudio((s) => s.select);
+  const patchText = useMockupStudio((s) => s.patchText);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Re-rasteriser når dokumentet endres. Token hindrer race når raske endringer
   // (skriving) starter flere async-tegninger — bare den siste får male.
@@ -89,26 +91,32 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           />
         );
       })}
-      {/* Klikkflater for tekst */}
+      {/* Klikkflater for tekst — dobbeltklikk = rediger inline */}
       {doc.texts.map((t) => {
         const active = selectedId === t.id;
         const th = measureTextHeight(t);
+        const box = { position: 'absolute' as const, left: pct(t.x, W), top: pct(t.y, H), width: pct(t.w, W), height: pct(th, H) };
+        if (editingId === t.id) {
+          return (
+            <textarea
+              key={t.id}
+              autoFocus
+              value={t.text}
+              onChange={(e) => patchText(t.id, { text: e.target.value })}
+              onBlur={() => setEditingId(null)}
+              onKeyDown={(e) => { if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur(); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{ ...box, background: 'rgba(0,0,0,0.6)', color: '#fff', border: '2px solid #22d3ee', borderRadius: 6, padding: 4, font: '600 14px system-ui', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+            />
+          );
+        }
         return (
           <button
             key={t.id}
             onMouseDown={(e) => { e.stopPropagation(); select({ kind: 'text', id: t.id }); }}
-            title="Tekst"
-            style={{
-              position: 'absolute',
-              left: pct(t.x, W), top: pct(t.y, H),
-              width: pct(t.w, W), height: pct(th, H),
-              background: active ? 'rgba(34,211,238,0.08)' : 'transparent',
-              border: active ? '2px solid #22d3ee' : '2px dashed transparent',
-              borderRadius: 6,
-              padding: 0,
-              cursor: 'pointer',
-              outline: 'none',
-            }}
+            onDoubleClick={(e) => { e.stopPropagation(); select({ kind: 'text', id: t.id }); setEditingId(t.id); }}
+            title="Klikk = velg · dobbeltklikk = rediger tekst"
+            style={{ ...box, background: active ? 'rgba(34,211,238,0.08)' : 'transparent', border: active ? '2px solid #22d3ee' : '2px dashed transparent', borderRadius: 6, padding: 0, cursor: 'text', outline: 'none' }}
           />
         );
       })}
