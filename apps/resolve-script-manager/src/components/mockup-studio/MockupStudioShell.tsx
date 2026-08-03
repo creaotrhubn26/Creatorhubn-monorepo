@@ -502,6 +502,25 @@ function DeviceInspector({ device, onUpload }: { device: import('./mockupStudioM
           {device.image && <button onClick={() => setDeviceImage(device.id, undefined)} style={listBtn} title="Fjern bilde">✕</button>}
         </div>
       </Field>
+      {device.image && (
+        <Field label="Utsnitt">
+          <Segmented<'cover' | 'contain'>
+            options={[['cover', 'Smart'], ['contain', 'Vis alt']]}
+            value={device.fit ?? 'cover'}
+            onChange={(v) => patchDevice(device.id, { fit: v })}
+          />
+        </Field>
+      )}
+      {device.image && (device.fit ?? 'cover') === 'cover' && (
+        <>
+          <Field label={`Fokus X: ${Math.round((device.focusX ?? 0.5) * 100)}%`}>
+            <input type="range" min={0} max={1} step={0.01} value={device.focusX ?? 0.5} onChange={(e) => patchDevice(device.id, { focusX: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`Fokus Y: ${Math.round((device.focusY ?? 0.5) * 100)}%`}>
+            <input type="range" min={0} max={1} step={0.01} value={device.focusY ?? 0.5} onChange={(e) => patchDevice(device.id, { focusY: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        </>
+      )}
       <Field label={`Bredde: ${Math.round(device.w)} px`}>
         <input type="range" min={120} max={1400} value={device.w} onChange={(e) => patchDevice(device.id, { w: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>

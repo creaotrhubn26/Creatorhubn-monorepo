@@ -62,22 +62,40 @@ function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath();
 }
 
-/** Tegn `img` cover-fit (fyll + midtstill-crop) inn i mål-rektangelet. */
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, dx: number, dy: number, dw: number, dh: number): void {
+/**
+ * Tegn `img` inn i mål-rektangelet. fit='cover' fyller + beskjærer mot
+ * fokuspunktet (fx,fy 0..1); fit='contain' viser HELE bildet innfelt (letterbox
+ * på svart). Cover-fokus = §«Rediger utsnitt» / «Juster utsnitt».
+ */
+function drawFitted(
+  ctx: CanvasRenderingContext2D, img: HTMLImageElement,
+  dx: number, dy: number, dw: number, dh: number,
+  fit: 'cover' | 'contain' = 'cover', fx = 0.5, fy = 0.5,
+): void {
   const iw = img.naturalWidth || img.width;
   const ih = img.naturalHeight || img.height;
   if (!iw || !ih) return;
   const targetAspect = dw / dh;
   const imgAspect = iw / ih;
+
+  if (fit === 'contain') {
+    ctx.fillStyle = '#0c0e16';
+    ctx.fillRect(dx, dy, dw, dh);
+    let rw = dw, rh = dh;
+    if (imgAspect > targetAspect) rh = dw / imgAspect;
+    else rw = dh * imgAspect;
+    ctx.drawImage(img, dx + (dw - rw) / 2, dy + (dh - rh) / 2, rw, rh);
+    return;
+  }
+
+  const cfx = Math.max(0, Math.min(1, fx)), cfy = Math.max(0, Math.min(1, fy));
   let sx = 0, sy = 0, sw = iw, sh = ih;
   if (imgAspect > targetAspect) {
-    // Bildet er bredere → beskjær sidene.
     sw = Math.round(ih * targetAspect);
-    sx = Math.round((iw - sw) / 2);
+    sx = Math.round((iw - sw) * cfx);
   } else {
-    // Bildet er høyere → beskjær topp/bunn.
     sh = Math.round(iw / targetAspect);
-    sy = Math.round((ih - sh) / 2);
+    sy = Math.round((ih - sh) * cfy);
   }
   ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
 }
@@ -179,7 +197,7 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   if (dev.image) {
     try {
       const shot = await loadImage(dev.image);
-      drawCover(ctx, shot, sx, sy, sw, sh);
+      drawFitted(ctx, shot, sx, sy, sw, sh, dev.fit, dev.focusX, dev.focusY);
     } catch {
       drawScreenPlaceholder(ctx, doc, sx, sy, sw, sh);
     }
@@ -239,7 +257,7 @@ async function drawWatch(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Moc
   if (dev.image) {
     try {
       const shot = await loadImage(dev.image);
-      drawCover(ctx, shot, sx, sy, sw, sh);
+      drawFitted(ctx, shot, sx, sy, sw, sh, dev.fit, dev.focusX, dev.focusY);
     } catch {
       drawScreenPlaceholder(ctx, doc, sx, sy, sw, sh);
     }

@@ -38,8 +38,13 @@ export interface MockupDeviceSlot {
   w: number;
   /** Rotasjon i grader (rundt senter). */
   rotation: number;
-  /** Skjermbilde vist i skjerm-hullet (data-URL). Cover-fit skjer ved tegning. */
+  /** Skjermbilde vist i skjerm-hullet (data-URL). Fit skjer ved tegning. */
   image?: string;
+  /** Utsnitt: 'cover' (smart tilpassing, beskjærer) eller 'contain' (vis hele). */
+  fit?: 'cover' | 'contain';
+  /** Fokuspunkt for cover-beskjæring (0..1). Default midt (0.5, 0.5). */
+  focusX?: number;
+  focusY?: number;
   /** Myk kontaktskygge under enheten. */
   shadow: boolean;
 }
