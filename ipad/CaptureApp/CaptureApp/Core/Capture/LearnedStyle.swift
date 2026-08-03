@@ -211,7 +211,7 @@ enum LearnedStyle {
     /// Påfør en gitt (navngitt) stils scener på et CIImage: per-kanal-LUT
     /// (CIColorCurves) + a/b-skift, scene-matchet on-device.
     static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5,
-                      flashFired: Bool? = nil) -> CIImage {
+                      flashFired: Bool? = nil, subjectMaskOverride: CIImage? = nil) -> CIImage {
         guard !scenes.isEmpty else { return image }
         // #3: eksplisitt sRGB arbeidsrom. Alle readbacks (autoBright/features/
         // lumaStats) + LAB-cuben antar sRGB 0–1; uten dette kan default-konteksten
@@ -280,14 +280,48 @@ enum LearnedStyle {
             }
         }
 
+        // GLOBAL AVMAGENTAISERING (hard-scene-vakt): en kraftig løftet mørk/grønn-
+        // ambient scene får den lærte grade-en til å skyve skygge/mellomtone til
+        // magenta (målt: kilde-develop grønn-nøytral a*≤0 → resultat a*>0/b*<0).
+        // Gatet på magenta-signatur (lav b* + positiv a*) → NO-OP på varme/grønne
+        // velbelyste scener; kun ekte magenta-cast fjernes.
+        out = ToneCastNeutralizeFilter.apply(to: out)
+
+        // #5: ÉN delt ansiktsdeteksjon — brukt av løvverk-masken OG de tre hud-
+        // filtrene OG hud-linje-vaktposten (de kjørte før separate CIDetector-pass).
+        let faces = FaceContext.detect(in: out)
+
+        // LØVVERK-DEMPING (subjekt-beskyttet): demp skrikende grønt bakgrunnsløvverk
+        // så paret popper (den «luftige» looken). MOTIV-maske, best tilgjengelige:
+        // en SERVER-matte (BiRefNet/U²-Net via /subject-matte) når editoren har hentet
+        // den — ellers ON-DEVICE Vision-person-matte, med ansikts-ellipse som fallback.
+        let subject: CIImage?
+        if let ov = subjectMaskOverride {
+            // Server-matten kommer i preview-oppløsning → skalér til arbeids-extent.
+            let sx = image.extent.width / max(1, ov.extent.width)
+            let sy = image.extent.height / max(1, ov.extent.height)
+            subject = ov.transformed(by: CGAffineTransform(scaleX: sx, y: sy))
+                .transformed(by: CGAffineTransform(translationX: image.extent.minX, y: image.extent.minY))
+                .cropped(to: image.extent)
+        } else {
+            subject = SubjectMask.personMatte(for: out, extent: image.extent)
+        }
+        out = FoliageDesaturateFilter.apply(to: out, faces: faces, ctx: ctx, subjectMask: subject)
+
         // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
         // hud-tone (a*≈11) + lett utjevning + ansikts-dodge.
-        // #5: ÉN delt ansiktsdeteksjon for de tre hud-filtrene — de kjørte før tre
-        // separate CIDetector-pass på samme bilde.
-        let faces = FaceContext.detect(in: out)
         out = SkinToneGuardFilter.apply(strength: 0.7, to: out, faces: faces)
         out = SkinFinishFilter.apply(to: out, faces: faces)
         out = FaceDodgeFilter.apply(to: out, faces: faces)
+
+        // HUD-LINJE-VAKTPOST (guarded): når en hard scene har drevet huden av
+        // linja (magenta/grønn), roter hud-skyen tilbake på 49°-linja + restaurer
+        // chroma, melanin-sikkert (L* urørt, kun hud-kromatisiteter). GATET: hopp
+        // over ansikt som alt ligger på linja → velbelyste portretter = no-op.
+        // Spatialt begrenset av en LANDMARK-hud-maske (Vision 76-punkt, FaceXFormer-
+        // metoden on-device) så lepper/øyne holdes utenfor korreksjonen.
+        let skinMask = FaceSkinMask.skinMask(for: out, extent: image.extent)
+        out = SkinLineCorrectFilter.apply(to: out, faces: faces, ctx: ctx, skinMask: skinMask)
         return out.cropped(to: image.extent)
     }
 }
