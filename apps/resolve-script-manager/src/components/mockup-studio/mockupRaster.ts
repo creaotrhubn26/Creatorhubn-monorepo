@@ -17,6 +17,7 @@ import {
   type MockupDeviceSlot,
   type MockupTextSlot,
   type MockupCanvasSpec,
+  type MockupAnnotation,
   deviceHeight,
   resolveColor,
   fontFamilyFor,
@@ -448,12 +449,133 @@ export function measureTextHeight(t: MockupTextSlot): number {
   return hardLines * t.size * t.lineHeight;
 }
 
+// ── Illustrasjons-lag (callout / lupe / markør) ─────────────────────────────
+
+/** Skjerm-hullets rektangel for en enhet i lerret-px (der callouts festes). */
+export function deviceScreenRect(dev: MockupDeviceSlot): { x: number; y: number; w: number; h: number } {
+  const w = dev.w, h = deviceHeight(dev);
+  if (dev.variant === 'watch') {
+    const inset = w * 0.12;
+    return { x: dev.x + inset, y: dev.y + inset, w: w - inset * 2, h: h - inset * 2 };
+  }
+  const spec = DEVICE_FRAMES[dev.variant];
+  return { x: dev.x + spec.screen.x * w, y: dev.y + spec.screen.y * h, w: spec.screen.w * w, h: spec.screen.h * h };
+}
+
+/** Referanse-rektangel for en annotasjon (enhetens skjerm, ellers hele lerretet). */
+function annRect(doc: MockupDoc, a: MockupAnnotation): { x: number; y: number; w: number; h: number } {
+  const dev = a.deviceId ? doc.devices.find((d) => d.id === a.deviceId) : undefined;
+  return dev ? deviceScreenRect(dev) : { x: 0, y: 0, w: doc.canvas.w, h: doc.canvas.h };
+}
+
+function drawMarker(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation): void {
+  const s = annRect(doc, a);
+  const x = s.x + a.fx * s.w, y = s.y + a.fy * s.h, w = (a.fw ?? 0.2) * s.w, h = (a.fh ?? 0.12) * s.h;
+  const rgb = hexToRgb(doc.canvas.accent);
+  const r = Math.min(w, h) * 0.16;
+  ctx.save();
+  ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},0.12)`;
+  roundRectPath(ctx, x, y, w, h, r); ctx.fill();
+  ctx.strokeStyle = doc.canvas.accent; ctx.lineWidth = Math.max(3, s.w * 0.006);
+  roundRectPath(ctx, x, y, w, h, r); ctx.stroke();
+  ctx.restore();
+}
+
+function drawCallout(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation): void {
+  const s = annRect(doc, a);
+  const ax = s.x + a.fx * s.w, ay = s.y + a.fy * s.h;
+  const label = a.label ?? '';
+  const num = String(a.n ?? 1);
+  const W = doc.canvas.w;
+  const pinR = Math.max(14, W * 0.011);
+  const side = a.side ?? 'right';
+  const onDevice = !!a.deviceId;
+  ctx.save();
+  ctx.font = `600 ${Math.round(pinR * 1.4)}px -apple-system, system-ui, sans-serif`;
+  const tw = ctx.measureText(label).width;
+  const chipH = pinR * 2.2;
+  const dotR = pinR * 0.62;
+  const chipW = pinR * 1.1 + dotR * 2 + pinR * 0.5 + tw + pinR * 0.9;
+  const gap = pinR * 2.4;
+  let lx: number, ly: number;
+  if (onDevice) {
+    if (side === 'left') { lx = s.x - gap - chipW; ly = ay - chipH / 2; }
+    else if (side === 'right') { lx = s.x + s.w + gap; ly = ay - chipH / 2; }
+    else if (side === 'top') { lx = ax - chipW / 2; ly = s.y - gap - chipH; }
+    else { lx = ax - chipW / 2; ly = s.y + s.h + gap; }
+  } else {
+    const dx = side === 'left' ? -1 : side === 'right' ? 1 : 0;
+    const dy = side === 'top' ? -1 : side === 'bottom' ? 1 : 0;
+    lx = ax + dx * gap - (dx < 0 ? chipW : dx > 0 ? 0 : chipW / 2);
+    ly = ay + dy * gap - (dy < 0 ? chipH : dy > 0 ? 0 : chipH / 2);
+  }
+  lx = Math.max(8, Math.min(lx, doc.canvas.w - chipW - 8));
+  ly = Math.max(8, Math.min(ly, doc.canvas.h - chipH - 8));
+  const cxp = side === 'left' ? lx + chipW : side === 'right' ? lx : lx + chipW / 2;
+  const cyp = side === 'top' ? ly + chipH : side === 'bottom' ? ly : ly + chipH / 2;
+  // leder-linje anker → chip
+  ctx.strokeStyle = doc.canvas.accent; ctx.lineWidth = Math.max(2, pinR * 0.16);
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(cxp, cyp); ctx.stroke();
+  // anker-pin
+  ctx.fillStyle = doc.canvas.accent; ctx.beginPath(); ctx.arc(ax, ay, pinR, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, pinR * 0.16); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `700 ${Math.round(pinR * 1.15)}px -apple-system, system-ui, sans-serif`;
+  ctx.fillText(num, ax, ay + 1);
+  // chip
+  ctx.fillStyle = '#ffffff'; ctx.strokeStyle = 'rgba(20,30,40,0.14)'; ctx.lineWidth = 1.5;
+  roundRectPath(ctx, lx, ly, chipW, chipH, chipH / 2); ctx.fill(); ctx.stroke();
+  const dotX = lx + pinR * 1.1 + dotR;
+  ctx.fillStyle = doc.canvas.accent; ctx.beginPath(); ctx.arc(dotX, ly + chipH / 2, dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = `700 ${Math.round(dotR * 1.3)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(num, dotX, ly + chipH / 2 + 0.5);
+  ctx.fillStyle = '#1e293b'; ctx.textAlign = 'left';
+  ctx.font = `600 ${Math.round(pinR * 1.4)}px -apple-system, system-ui, sans-serif`;
+  ctx.fillText(label, dotX + dotR + pinR * 0.5, ly + chipH / 2 + 1);
+  ctx.restore();
+}
+
+function drawLoupe(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation, scale: number, sampleSource: CanvasImageSource): void {
+  const s = annRect(doc, a);
+  const fx = s.x + a.fx * s.w, fy = s.y + a.fy * s.h;
+  const W = doc.canvas.w, H = doc.canvas.h;
+  const R = a.radius ?? 150;
+  const lx = (a.lensX ?? 0.86) * W, ly = (a.lensY ?? 0.82) * H;
+  const zoom = a.zoom ?? 2.4;
+  const rgb = hexToRgb(doc.canvas.accent);
+  ctx.save();
+  // connector + fokus-ring
+  ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},0.5)`; ctx.lineWidth = Math.max(2, R * 0.02);
+  ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(lx, ly); ctx.stroke();
+  ctx.strokeStyle = doc.canvas.accent; ctx.lineWidth = Math.max(2, R * 0.03);
+  ctx.beginPath(); ctx.arc(fx, fy, R * 0.28, 0, Math.PI * 2); ctx.stroke();
+  // forstørret utsnitt (src i kilde-bitmap-piksler = base × scale)
+  ctx.save();
+  ctx.beginPath(); ctx.arc(lx, ly, R, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+  const srcR = R / zoom;
+  ctx.drawImage(sampleSource, (fx - srcR) * scale, (fy - srcR) * scale, srcR * 2 * scale, srcR * 2 * scale, lx - R, ly - R, R * 2, R * 2);
+  ctx.restore();
+  // ringer
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(4, R * 0.05); ctx.beginPath(); ctx.arc(lx, ly, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = doc.canvas.accent; ctx.lineWidth = Math.max(2, R * 0.028); ctx.beginPath(); ctx.arc(lx, ly, R + R * 0.028, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+/** Tegn hele illustrasjons-laget (markør → callout → lupe). Lupe samples `sampleSource`. */
+function drawAnnotations(ctx: CanvasRenderingContext2D, doc: MockupDoc, scale: number, sampleSource: CanvasImageSource): void {
+  const anns = doc.annotations;
+  if (!anns || anns.length === 0) return;
+  for (const a of anns) if (a.kind === 'marker') drawMarker(ctx, doc, a);
+  for (const a of anns) if (a.kind === 'callout') drawCallout(ctx, doc, a);
+  for (const a of anns) if (a.kind === 'loupe') drawLoupe(ctx, doc, a, scale, sampleSource);
+}
+
 /**
  * Rasteriser et MockupDoc til et canvas. `scale` multipliserer base-oppløsningen
  * (1 = full eksport-oppløsning; < 1 for rask preview). Async fordi ramme-PNG-er
  * og skjermbilder lastes on-demand.
  */
-export async function rasterizeMockup(doc: MockupDoc, scale = 1): Promise<HTMLCanvasElement> {
+export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean }): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(doc.canvas.w * scale);
   canvas.height = Math.round(doc.canvas.h * scale);
@@ -471,6 +593,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1): Promise<HTMLCa
     drawText(ctx, doc, t);
   }
   await drawLogo(ctx, doc.canvas);
+  if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas);
   return canvas;
 }
 
@@ -520,6 +643,17 @@ export async function rasterizeLayers(doc: MockupDoc): Promise<{ name: string; c
     const c = newLayerCanvas(w, h);
     if (c.ctx) await drawLogo(c.ctx, doc.canvas);
     out.push({ name: 'Logo', canvas: c.canvas });
+  }
+
+  // Illustrasjons-lag som ETT eget lag øverst. Lupen forstørrer pikslene under,
+  // så vi sampler et flatt komposit (uten annotasjoner) i full oppløsning.
+  if (doc.annotations && doc.annotations.length > 0) {
+    const c = newLayerCanvas(w, h);
+    if (c.ctx) {
+      const flat = await rasterizeMockup(doc, 1, { skipAnnotations: true });
+      drawAnnotations(c.ctx, doc, 1, flat);
+    }
+    out.push({ name: 'Illustrasjon', canvas: c.canvas });
   }
   return out;
 }

@@ -14,8 +14,11 @@ import {
   type MockupTextRole,
   type MockupCanvasSpec,
   type MockupDeviceVariant,
+  type MockupAnnotation,
+  type MockupAnnotationKind,
   makeDevice,
   makeText,
+  makeAnnotation,
   buildTemplate,
   loadDoc,
   saveDoc,
@@ -73,6 +76,11 @@ interface MockupStudioState {
   addTexts: (texts: MockupTextSlot[]) => void;
   patchText: (id: string, patch: Partial<MockupTextSlot>) => void;
   removeText: (id: string) => void;
+
+  // Illustrasjons-lag (callout/lupe/markør)
+  addAnnotation: (kind: MockupAnnotationKind, deviceId?: string) => void;
+  patchAnnotation: (id: string, patch: Partial<MockupAnnotation>) => void;
+  removeAnnotation: (id: string) => void;
 }
 
 function initialDoc(): MockupDoc {
@@ -193,4 +201,22 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     commit(set, (d) => ({ ...d, texts: d.texts.filter((t) => t.id !== id) }));
     set((s) => (s.selection.kind === 'text' && s.selection.id === id ? { selection: { kind: 'canvas' } } : {}));
   },
+
+  addAnnotation: (kind, deviceId) => {
+    const dev = deviceId ?? get().doc.devices[0]?.id;
+    commit(set, (d) => {
+      const nextN = (d.annotations?.filter((x) => x.kind === 'callout').length ?? 0) + 1;
+      const a = makeAnnotation(kind, dev, nextN);
+      return { ...d, annotations: [...(d.annotations ?? []), a] };
+    });
+  },
+
+  patchAnnotation: (id, patch) =>
+    commit(set, (d) => ({
+      ...d,
+      annotations: (d.annotations ?? []).map((a) => (a.id === id ? { ...a, ...patch } : a)),
+    })),
+
+  removeAnnotation: (id) =>
+    commit(set, (d) => ({ ...d, annotations: (d.annotations ?? []).filter((a) => a.id !== id) })),
 }));
