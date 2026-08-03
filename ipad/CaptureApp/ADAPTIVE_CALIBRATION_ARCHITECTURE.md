@@ -118,4 +118,30 @@ normalisert WB fra første godkjente bilde, hold hele serien (40 retter / 3 t sy
 **Wiring til looken** venter (koordinert m/ retrain på normalisert base). Primitivene er
 rene + enhetstestede byggeklosser; ingenting endrer looken før wiring-passet.
 
+---
+
+## ⚠️ EMPIRISK FUNN (2026-08-03): blank base-normalisering hjelper IKKE — kamera-WB er alt prioren
+
+Green-lit + kjørt: retrent norwedfilm-v3 på WB+eksponerings-normalisert base (`normalize_base`
+= shades-of-gray + median-luma→key), målt A/B mot fotografens leverte bilder (fasit 51.2° hud-hue).
+**Resultat: normaliseringen gjorde det verre på alle akser** (hud-hue 26.6° vs gammel 30.7° vs
+fasit 51°; konsistens 18.6° STD vs 17.8°; chroma FALT 26.8 vs 31). Isolert på develop-en (uten LUT):
+
+| develop-hud | hue | chroma |
+|---|---|---|
+| rawpy-develop (kamera as-shot WB alt påført) | **49.8°** | 18.7 |
+| + gray-world WB | 60.3° | 18.8 |
+| + eksponering-til-key | 59.6° | 21.3 |
+
+🔑🔑 **Develop-en lander hud på 49.8° — rett på linja, konsistent.** Kamera-WB-en ER illuminant-
+prioren designet ville ha, alt bakt inn. En blank normalisering oppå = en ANDRE korreksjon:
+gray-world overkorrigerer på mettede bryllupsscener (varme lehengaer/dekor → skyver hud +10° gult),
+og selv ren eksponering flytter a*/b* (LAB er luminans-avhengig). **Konklusjon: base er ikke
+problemet — ikke normaliser hver ramme.** CAT02/EXIF-illuminant-korreksjon skal RESERVERES for
+faktisk-feil/blandet WB, GATET av `SkinScope` (cast/bimodal), aldri blankt. Ekte look-gapet er
+chroma/tone-styling (18.7→31) som LUT-en alt leverer. Bonus-bug funnet: referanse-rendreren
+(`arkiv_laert_redigering.py`) hardkoder `skin_line_correct(target=35°)` → drar hud fra ~50° ned
+til ~30°; iOS `SkinToTarget` bruker alt 49° (riktig). Eksperiment-koden lever i `/tmp/v3train`
+(NORM_BASE-gate, ikke shippet).
+
 *Research + design-dialog, 2026-08-03.*
