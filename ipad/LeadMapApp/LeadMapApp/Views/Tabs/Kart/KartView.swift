@@ -1898,8 +1898,9 @@ struct KartView: View {
 
     /// Neste stopp i ruta: avansér planen og start navigasjon dit.
     private func kjorNesteRuteStopp() {
+        let antall = appState.rutePlan?.stopp.count ?? 0
         guard let neste = appState.avanserRute() else {
-            showToast("Rute fullført — alle stopp besøkt 🎉")
+            showToast("Rute fullført — \(antall) stopp besøkt 🎉")
             lukkDetaljkort()
             return
         }
@@ -4189,6 +4190,23 @@ struct KartView: View {
 
             if panelVelgModus {
                 // Multi-select → ruteplanleggeren med forhåndsvalgte leads.
+                // «Alle i utsnitt» = områdesveip-lettversjonen: hele det
+                // synlige kartutsnittet inn i ruta i ett trykk.
+                HStack(spacing: 8) {
+                Button {
+                    withAnimation(Self.kartFjaer) {
+                        panelValgte.formUnion(synlige.map(\.id))
+                    }
+                } label: {
+                    Text("Alle i utsnitt")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(KrBrand.purpleLight)
+                        .padding(.horizontal, 10).padding(.vertical, 9)
+                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9)
+                            .stroke(KrBrand.purple.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
                 Button {
                     routePlannerOpen = true
                 } label: {
@@ -4210,6 +4228,7 @@ struct KartView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(panelValgte.isEmpty)
+                }
             } else {
                 Button { appState.selectedSidebarItem = .leads } label: {
                     HStack(spacing: 5) {

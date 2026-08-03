@@ -52,6 +52,8 @@ struct RoutePlannerSheet: View {
     @State private var bomAntall = 0
     /// Kalender-eksport-status (toast-tekst).
     @State private var kalenderMelding: String? = nil
+    /// Leder-tildeling (nivå 3): status-tekst etter tildeling.
+    @State private var tildeltMelding: String? = nil
 
     // Kandidater: leads med ekte koordinater (dropp 0,0-plassholdere).
     private var candidates: [LeadModel] {
@@ -109,6 +111,24 @@ struct RoutePlannerSheet: View {
                 if let plan = appState.rutePlan, plan.index < plan.stopp.count {
                     aktivRuteBanner(plan)
                 }
+                // «Dagens rute»-autoforslag (nivå 3): møter + forfalte
+                // oppfølginger + nærmeste hot leads → ferdig plan i ett trykk.
+                Button { foreslaaDagensRute() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                        Text("Foreslå dagens rute")
+                            .font(.appScaled(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(11)
+                    .background(
+                        LinearGradient(colors: [RBrand.purple, RBrand.purpleLight],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 2)
                 Text("Velg stoppene du vil besøke. Møter med avtalt tid blir faste ankere; resten optimeres rundt dem.")
                     .font(.appScaled(size: 12))
                     .foregroundStyle(RBrand.textSecondary)
@@ -297,6 +317,31 @@ struct RoutePlannerSheet: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 4)
+
+                // Leder-tildeling (nivå 3): send ruta til en selger —
+                // backend varsler med push og selgeren får den rett i Kart.
+                Menu {
+                    ForEach(TeamLiveStore.shared.memberDTOs, id: \.userId) { m in
+                        Button(m.name) { Task { await tildelRute(til: m) } }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                        Text("Tildel ruta til selger")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(RBrand.purpleLight)
+                    .frame(maxWidth: .infinity).padding(11)
+                    .background(RBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(RBrand.purple.opacity(0.4), lineWidth: 1))
+                }
+                if let tildeltMelding {
+                    Text(tildeltMelding)
+                        .font(.appScaled(size: 10, weight: .semibold))
+                        .foregroundStyle(RBrand.green)
+                }
 
                 // Kalender-eksport: hvert stopp som avtale m/ ankomsttid.
                 Button { Task { await leggIKalender(tider) } } label: {
@@ -730,6 +775,64 @@ struct RoutePlannerSheet: View {
             if (try? store.save(ev, span: .thisEvent)) != nil { lagret += 1 }
         }
         kalenderMelding = "\(lagret) besøk lagt i kalenderen"
+    }
+
+    /// «Dagens rute»-autoforslag: dagens møter + forfalte oppfølginger er
+    /// selvskrevne; fylles opp med hot/høy-score-leads nærmest start (maks
+    /// 8 stopp) → rett til optimalisert plan.
+    private func foreslaaDagensRute() {
+        var valg = Set<String>()
+        for lead in candidates {
+            if ankerTid(lead) != nil { valg.insert(lead.id) }
+            else if let t = lead.nextFollowUpAt, t < Date() { valg.insert(lead.id) }
+        }
+        let start = startCoord
+        let ekstra = candidates
+            .filter { !valg.contains($0.id) }
+            .filter {
+                $0.leadTemperature?.lowercased().contains("hot") == true
+                    || ($0.leadScore ?? 0) >= 80
+            }
+            .sorted {
+                guard let s = start else { return ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
+                return haversine(s, coord($0)) < haversine(s, coord($1))
+            }
+        for lead in ekstra {
+            if valg.count >= 8 { break }
+            valg.insert(lead.id)
+        }
+        guard valg.count >= 2 else {
+            tildeltMelding = nil
+            kalenderMelding = nil
+            selected = valg
+            return
+        }
+        selected = valg
+        optimize()
+    }
+
+    /// Tildel ruta til et teammedlem — backend lagrer + pusher varsel.
+    private func tildelRute(til medlem: SalesTeamMemberDTO) async {
+        guard !ordered.isEmpty else { return }
+        guard let api = appState.api else {
+            tildeltMelding = "Tildeling krever innlogget modus (demo)."
+            return
+        }
+        let iso = ISO8601DateFormatter()
+        let stopp = ordered.map { lead in
+            RuteStoppDTO(id: lead.id, name: lead.name,
+                         address: lead.address ?? "",
+                         lat: lead.latitude, lon: lead.longitude,
+                         ankerTid: ankerTid(lead).map { iso.string(from: $0) })
+        }
+        do {
+            try await api.opprettRute(
+                stopp: stopp, assignedUserId: medlem.userId,
+                navn: "Rute til \(medlem.name)")
+            tildeltMelding = "Ruta er tildelt \(medlem.name) — de får varsel nå."
+        } catch {
+            tildeltMelding = "Tildeling feilet — prøv igjen."
+        }
     }
 
     /// Kjør denne etappen i Apple Maps (for de som foretrekker det).
