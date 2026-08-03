@@ -10,18 +10,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
-import { openPath } from '@tauri-apps/plugin-opener';
-import { demoWriteBinary } from '../../api';
 import { MockupCanvas } from './MockupCanvas';
-import { rasterizeToPngDataUrl } from './mockupRaster';
-import { buildPdfBase64 } from './mockupExport';
-import { buildPsdBase64 } from './mockupPsd';
-import { buildEditablePsdViaBridge, isBridgeConnected } from './mockupPhotoshop';
+import { ExportDialog } from './ExportDialog';
 import { useMockupStudio } from './mockupStudioStore';
 import {
   MOCKUP_TEMPLATES,
-  safeDocName,
   listKits,
   saveKit,
   deleteKit,
@@ -84,7 +77,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   // URL-capture (P2)
   const [url, setUrl] = useState('');
@@ -231,55 +224,6 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   const missingShots = doc.devices.filter((d) => !d.image).length;
 
-  // Ekte redigerbar PSD via Photoshop-broen (smart-objekter + tekst-lag).
-  const exportEditablePsd = async () => {
-    setExportMsg(null);
-    setExporting(true);
-    try {
-      if (!(await isBridgeConnected())) {
-        setExportMsg('Koble til Photoshop-broen først (Photoshop-fanen → last UXP-pluginen).');
-        setExporting(false);
-        return;
-      }
-      const path = await saveFileDialog({
-        defaultPath: `${safeDocName(doc.name)}.psd`,
-        filters: [{ name: 'PSD', extensions: ['psd'] }],
-      });
-      if (typeof path !== 'string') { setExporting(false); return; }
-      const res = await buildEditablePsdViaBridge(doc, path);
-      setExportMsg(`✓ Redigerbar PSD bygget i Photoshop (${res.layers} lag): ${res.output_path}`);
-      void openPath(res.output_path).catch(() => {});
-    } catch (err) {
-      setExportMsg('Photoshop-eksport feilet: ' + String(err));
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const runExport = async (kind: 'png' | 'pdf' | 'psd') => {
-    setExportMsg(null);
-    setExporting(true);
-    try {
-      const data =
-        kind === 'png' ? await rasterizeToPngDataUrl(doc, 1)
-        : kind === 'pdf' ? await buildPdfBase64(doc)
-        : await buildPsdBase64(doc);
-      const ext = kind;
-      const path = await saveFileDialog({
-        defaultPath: `${safeDocName(doc.name)}.${ext}`,
-        filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
-      });
-      if (typeof path !== 'string') { setExporting(false); return; }
-      const saved = await demoWriteBinary(path, data);
-      setExportMsg(`✓ Lagret: ${saved}`);
-      void openPath(saved).catch(() => {});
-    } catch (err) {
-      setExportMsg('Kunne ikke eksportere: ' + String(err));
-    } finally {
-      setExporting(false);
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: C.bg, color: C.ink, fontFamily: C.font, minHeight: 0 }}>
       {/* Topplinje */}
@@ -304,11 +248,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
-        <span style={{ fontSize: 11, color: C.inkSoft }}>Eksporter:</span>
-        <button onClick={() => void runExport('png')} disabled={exporting} style={primaryBtn} title="PNG-bilde">PNG</button>
-        <button onClick={() => void runExport('pdf')} disabled={exporting} style={ghostBtn} title="PDF-dokument (én side)">PDF</button>
-        <button onClick={() => void runExport('psd')} disabled={exporting} style={ghostBtn} title="Lagdelt Photoshop-fil (rasterlag per enhet/tekst) — fungerer uten Photoshop åpent">PSD</button>
-        <button onClick={() => void exportEditablePsd()} disabled={exporting} style={ghostBtn} title="Ekte redigerbar PSD via Photoshop-broen: enheter som smart-objekter + redigerbare tekst-lag (riktig font/farge). Krever tilkoblet UXP-plugin.">PSD ✎</button>
+        <button onClick={() => setShowExport(true)} style={primaryBtn} title="Kvalitetssjekk → format → eksport (PNG/PDF/PSD)">Eksporter</button>
       </div>
 
       {/* Kropp: verktøy · lerret · inspektør */}
@@ -416,6 +356,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
       <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
       <input ref={logoInputRef} type="file" accept="image/*" onChange={onLogoPicked} style={{ display: 'none' }} />
+
+      {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
     </div>
   );
 }

@@ -479,6 +479,38 @@ export function loadKitDoc(id: string): MockupDoc | null {
   return { ...clone, id: uid('doc'), updatedAt: Date.now() };
 }
 
+// ── Eksport-historikk ────────────────────────────────────────────────────
+
+export interface MockupExportRecord {
+  id: string;
+  name: string;
+  format: string; // 'PNG 2×' | 'PDF' | 'PSD' | 'PSD ✎'
+  at: number;
+  path: string;
+}
+
+const EXPORTS_KEY = 'trrpa.mockup.exports';
+
+export function listExports(): MockupExportRecord[] {
+  try {
+    const r = localStorage.getItem(EXPORTS_KEY);
+    if (!r) return [];
+    const a = JSON.parse(r) as MockupExportRecord[];
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addExport(name: string, format: string, path: string): void {
+  const rec: MockupExportRecord = { id: uid('exp'), name, format, path, at: Date.now() };
+  try {
+    localStorage.setItem(EXPORTS_KEY, JSON.stringify([rec, ...listExports()].slice(0, 40)));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Løs en tekstfarge: 'accent'/'accent2'-sentinel → lerretets accenter, ellers literal. */
 export function resolveColor(color: string, canvas: MockupCanvasSpec): string {
   if (color === 'accent') return canvas.accent;
