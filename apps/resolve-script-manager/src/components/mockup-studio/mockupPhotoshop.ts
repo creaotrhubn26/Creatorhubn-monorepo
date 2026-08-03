@@ -16,7 +16,7 @@
 import { getStatus, photoshop } from '../../services/photoshopBridgeService';
 import { getAppDataDir, demoWriteBinary } from '../../api';
 import { rasterizeLayers } from './mockupRaster';
-import { resolveColor, type MockupDoc } from './mockupStudioModel';
+import { resolveColor, resolveBaseBg, type MockupDoc } from './mockupStudioModel';
 
 function hexToRgb(hex: string): { red: number; green: number; blue: number } {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
@@ -101,7 +101,7 @@ export async function buildEditablePsdViaBridge(doc: MockupDoc, outputPath: stri
       name: doc.name,
       width: doc.canvas.w,
       height: doc.canvas.h,
-      background_color: hexToRgb(doc.canvas.bg),
+      background_color: hexToRgb(resolveBaseBg(doc.canvas)),
       fields: [...imageFields, ...textFields],
     },
   });

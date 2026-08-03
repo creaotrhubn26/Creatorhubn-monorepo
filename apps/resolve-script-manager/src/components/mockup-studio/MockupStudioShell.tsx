@@ -26,9 +26,14 @@ import {
   saveKit,
   deleteKit,
   loadKitDoc,
+  resolveBaseBg,
+  contrastRatio,
+  isDark,
   type MockupKit,
   type MockupDeviceVariant,
   type MockupTextRole,
+  type MockupBackground,
+  type MockupBgStyle,
 } from './mockupStudioModel';
 import {
   captureSiteShots,
@@ -76,6 +81,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const selection = useMockupStudio((s) => s.selection);
   const store = useMockupStudio();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -122,6 +128,18 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     reader.onload = () => {
       if (typeof reader.result === 'string') store.setDeviceImage(pendingDeviceId, reader.result);
       setPendingDeviceId(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerLogoUpload = () => logoInputRef.current?.click();
+  const onLogoPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') store.patchCanvas({ logo: { image: reader.result, x: 120, y: 120, w: 280 } });
     };
     reader.readAsDataURL(file);
   };
@@ -391,48 +409,81 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           ) : selectedText ? (
             <TextInspector text={selectedText} />
           ) : (
-            <CanvasInspector />
+            <BrandingInspector onUploadLogo={triggerLogoUpload} />
           )}
         </div>
       </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
+      <input ref={logoInputRef} type="file" accept="image/*" onChange={onLogoPicked} style={{ display: 'none' }} />
     </div>
   );
 }
 
 // ── Inspektører ──────────────────────────────────────────────────────────
 
-function CanvasInspector() {
+function Segmented<T extends string>({ options, value, onChange }: { options: [T, string][]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{ ...listBtn, flex: 1, textAlign: 'center', padding: '7px 4px', background: value === v ? C.accent : C.panelSoft, color: value === v ? C.accentInk : C.ink }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
   const canvas = useMockupStudio((s) => s.doc.canvas);
   const patchCanvas = useMockupStudio((s) => s.patchCanvas);
-  const useGradient = !!canvas.bg2;
+  const base = resolveBaseBg(canvas);
+  const textColor = isDark(base) ? '#ffffff' : '#101317';
+  const ratio = contrastRatio(base, textColor);
+  const goodContrast = ratio >= 4.5;
   return (
     <div>
-      <SectionLabel>Lerret</SectionLabel>
-      <Field label="Accent-farge">
+      <SectionLabel>Merkevare</SectionLabel>
+      <Field label="Logo">
+        {canvas.logo?.image ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <img src={canvas.logo.image} alt="logo" style={{ height: 34, maxWidth: 96, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 4 }} />
+            <button onClick={onUploadLogo} style={{ ...listBtn, flex: 1 }}>Bytt</button>
+            <button onClick={() => patchCanvas({ logo: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Fjern logo">✕</button>
+          </div>
+        ) : (
+          <button onClick={onUploadLogo} style={listBtn}>Last opp logo</button>
+        )}
+      </Field>
+      <Field label="Accent 1 · primær (CTA, tall, markører)">
         <ColorRow value={canvas.accent} onChange={(v) => patchCanvas({ accent: v })} />
       </Field>
-      <Field label="Bakgrunn">
-        <ColorRow value={canvas.bg} onChange={(v) => patchCanvas({ bg: v })} />
+      <Field label="Accent 2 · sekundær (badges, gradient)">
+        <ColorRow value={canvas.accent2} onChange={(v) => patchCanvas({ accent2: v })} />
       </Field>
-      <label style={checkRow}>
-        <input type="checkbox" checked={useGradient} onChange={(e) => patchCanvas({ bg2: e.target.checked ? (canvas.bg2 || '#171a2b') : undefined })} />
-        Gradient
-      </label>
-      {useGradient && (
-        <>
-          <Field label="Bakgrunn 2">
-            <ColorRow value={canvas.bg2 || '#171a2b'} onChange={(v) => patchCanvas({ bg2: v })} />
-          </Field>
-          <Field label={`Vinkel: ${canvas.bgAngle}°`}>
-            <input type="range" min={0} max={360} value={canvas.bgAngle} onChange={(e) => patchCanvas({ bgAngle: Number(e.target.value) })} style={{ width: '100%' }} />
-          </Field>
-        </>
-      )}
-      <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, marginTop: 16 }}>
-        Velg en enhet eller tekst i lerretet for å redigere den. Accent-fargen
-        styrer alle accent-merkede tekster i ett klikk.
+      <Field label="Bakgrunn">
+        <Segmented<MockupBackground>
+          options={[['light', 'Lys'], ['dark', 'Mørk'], ['brand', 'Merkevare']]}
+          value={canvas.background}
+          onChange={(v) => patchCanvas({ background: v })}
+        />
+      </Field>
+      <Field label="Stil">
+        <Segmented<MockupBgStyle>
+          options={[['clean', 'Ren'], ['gradient', 'Gradient'], ['atmospheric', 'Atmosf.']]}
+          value={canvas.bgStyle}
+          onChange={(v) => patchCanvas({ bgStyle: v })}
+        />
+      </Field>
+      <div style={{ fontSize: 12, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
+        {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)
+      </div>
+      <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, marginTop: 14 }}>
+        To accent-tokens styrer hele malen. Velg en enhet eller tekst på lerretet for å redigere den.
       </p>
     </div>
   );
@@ -480,7 +531,7 @@ function DeviceInspector({ device, onUpload }: { device: import('./mockupStudioM
 function TextInspector({ text }: { text: import('./mockupStudioModel').MockupTextSlot }) {
   const patchText = useMockupStudio((s) => s.patchText);
   const removeText = useMockupStudio((s) => s.removeText);
-  const isAccent = text.color === 'accent';
+  const colorMode = text.color === 'accent' ? 'accent' : text.color === 'accent2' ? 'accent2' : 'custom';
   return (
     <div>
       <SectionLabel>{TEXT_ROLE_LABELS[text.role]}</SectionLabel>
@@ -503,11 +554,12 @@ function TextInspector({ text }: { text: import('./mockupStudioModel').MockupTex
         </div>
       </Field>
       <Field label="Farge">
-        <label style={{ ...checkRow, marginBottom: 8 }}>
-          <input type="checkbox" checked={isAccent} onChange={(e) => patchText(text.id, { color: e.target.checked ? 'accent' : '#ffffff' })} />
-          Bruk accent-farge
-        </label>
-        {!isAccent && <ColorRow value={text.color} onChange={(v) => patchText(text.id, { color: v })} />}
+        <Segmented<'accent' | 'accent2' | 'custom'>
+          options={[['accent', 'Accent 1'], ['accent2', 'Accent 2'], ['custom', 'Egen']]}
+          value={colorMode}
+          onChange={(v) => patchText(text.id, { color: v === 'accent' ? 'accent' : v === 'accent2' ? 'accent2' : (colorMode === 'custom' ? text.color : '#ffffff') })}
+        />
+        {colorMode === 'custom' && <div style={{ marginTop: 8 }}><ColorRow value={text.color} onChange={(v) => patchText(text.id, { color: v })} /></div>}
       </Field>
       <label style={checkRow}>
         <input type="checkbox" checked={text.uppercase} onChange={(e) => patchText(text.id, { uppercase: e.target.checked })} />

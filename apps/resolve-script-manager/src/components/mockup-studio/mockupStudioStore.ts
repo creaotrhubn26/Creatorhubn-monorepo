@@ -55,7 +55,7 @@ interface MockupStudioState {
 }
 
 function initialDoc(): MockupDoc {
-  return loadDoc() ?? buildTemplate('hero_mac_phone');
+  return loadDoc() ?? buildTemplate('hero_mac_phone_dark');
 }
 
 /** Sentral commit: skriv nytt doc til state + persister. */

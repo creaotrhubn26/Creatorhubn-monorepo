@@ -69,18 +69,86 @@ export interface MockupTextSlot {
   uppercase: boolean;
 }
 
+/** Bakgrunns-modus (§1.3/§6): lys, mørk eller merkevare-tonet. */
+export type MockupBackground = 'light' | 'dark' | 'brand';
+/** Bakgrunns-stil: ren flate, gradient eller atmosfærisk (accent-glød). */
+export type MockupBgStyle = 'clean' | 'gradient' | 'atmospheric';
+
+/** Logo-slot (valgfri) — plasseres på lerretet, farge-nøytral. */
+export interface MockupLogo {
+  image: string; // data-URL
+  x: number;
+  y: number;
+  w: number;
+}
+
 export interface MockupCanvasSpec {
   /** Base-oppløsning i px (all geometri er relativ til denne). */
   w: number;
   h: number;
-  /** Bakgrunnsfarge (hex). */
-  bg: string;
-  /** Valgfri andre-farge → lineær gradient fra bg til bg2. */
-  bg2?: string;
-  /** Gradient-vinkel i grader (0 = topp→bunn). */
-  bgAngle: number;
-  /** Accent-farge (én-klikks re-farging av accent-tekst). */
+  /** Accent 1 — primær merkevarefarge (CTA, tall, markører). */
   accent: string;
+  /** Accent 2 — sekundær merkevarefarge (badges, gradient). */
+  accent2: string;
+  /** Bakgrunns-modus. */
+  background: MockupBackground;
+  /** Bakgrunns-stil. */
+  bgStyle: MockupBgStyle;
+  /** Valgfri logo. */
+  logo?: MockupLogo;
+}
+
+// ── Fargematematikk (delt av rasterisator + kvalitetskontroll) ───────────────
+
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return { r: 0, g: 0, b: 0 };
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
+export function rgbToHex(r: number, g: number, b: number): string {
+  const to = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+/** Bland to hex-farger (t=0 → a, t=1 → b). */
+export function mixHex(a: string, b: string, t: number): string {
+  const ca = hexToRgb(a), cb = hexToRgb(b);
+  return rgbToHex(ca.r + (cb.r - ca.r) * t, ca.g + (cb.g - ca.g) * t, ca.b + (cb.b - ca.b) * t);
+}
+
+function channelLum(c: number): number {
+  const s = c / 255;
+  return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+}
+
+/** Relativ luminans (WCAG). */
+export function relativeLuminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  return 0.2126 * channelLum(r) + 0.7152 * channelLum(g) + 0.0722 * channelLum(b);
+}
+
+/** WCAG-kontrastforhold mellom to farger (1..21). */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a), lb = relativeLuminance(b);
+  const hi = Math.max(la, lb), lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Er en farge mørk? (for kontrast-valg av tekst) */
+export function isDark(hex: string): boolean {
+  return relativeLuminance(hex) < 0.35;
+}
+
+/** Løs den effektive bakgrunns-basisfargen fra modus + accenter. */
+export function resolveBaseBg(canvas: MockupCanvasSpec): string {
+  switch (canvas.background) {
+    case 'light': return '#f4f5f7';
+    case 'brand': return mixHex(canvas.accent, '#0a0b10', 0.82); // dyp merkevare-tone
+    case 'dark':
+    default: return '#0f1117';
+  }
 }
 
 export interface MockupDoc {
@@ -170,55 +238,153 @@ export function makeText(role: MockupTextRole, partial: Partial<MockupTextSlot> 
 
 // ── Maler ────────────────────────────────────────────────────────────────
 
+export type MockupTemplateCategory =
+  | 'produktoversikt'
+  | 'funksjonslansering'
+  | 'salgspitch'
+  | 'nokkeltall'
+  | 'kundecase';
+
+export const CATEGORY_LABELS: Record<MockupTemplateCategory, string> = {
+  produktoversikt: 'Produktoversikt',
+  funksjonslansering: 'Funksjonslansering',
+  salgspitch: 'Salgspitch',
+  nokkeltall: 'Nøkkeltall',
+  kundecase: 'Kundecase',
+};
+
+/** Formål → anbefalte kategorier (onboarding §3-skjerm 2). */
+export const PURPOSE_CATEGORIES: { id: string; label: string; categories: MockupTemplateCategory[] }[] = [
+  { id: 'product', label: 'Presentere et produkt', categories: ['produktoversikt', 'funksjonslansering'] },
+  { id: 'feature', label: 'Selge en funksjon', categories: ['funksjonslansering', 'salgspitch'] },
+  { id: 'offer', label: 'Oppsummere et tilbud', categories: ['salgspitch', 'nokkeltall'] },
+  { id: 'case', label: 'Vise en kundecase', categories: ['kundecase', 'produktoversikt'] },
+  { id: 'launch', label: 'Annonsere en lansering', categories: ['funksjonslansering', 'produktoversikt'] },
+];
+
 export interface MockupTemplate {
   id: string;
   name: string;
+  category: MockupTemplateCategory;
+  variant: 'light' | 'dark';
+  /** Antall device-slots (merking + maks-devices-grense). */
+  devices: number;
   description: string;
   build: () => MockupDoc;
 }
 
 function baseCanvas(partial: Partial<MockupCanvasSpec> = {}): MockupCanvasSpec {
-  return { w: BASE_W, h: BASE_H, bg: '#0f1117', bg2: '#171a2b', bgAngle: 120, accent: '#22d3ee', ...partial };
+  return { w: BASE_W, h: BASE_H, accent: '#22d3ee', accent2: '#a78bfa', background: 'dark', bgStyle: 'gradient', ...partial };
 }
 
 function doc(name: string, template: string, canvas: MockupCanvasSpec, devices: MockupDeviceSlot[], texts: MockupTextSlot[]): MockupDoc {
   return { id: uid('doc'), name, version: 1, template, canvas, devices, texts, updatedAt: Date.now() };
 }
 
+/** Tekstfarger tilpasset lys/mørk variant (kontrast-trygge). */
+function ink(variant: 'light' | 'dark') {
+  return variant === 'light'
+    ? { title: '#101317', body: '#414651', tag: '#6b7280' }
+    : { title: '#ffffff', body: '#c7cbd8', tag: '#9aa0b4' };
+}
+
 export const MOCKUP_TEMPLATES: MockupTemplate[] = [
   {
-    id: 'hero_mac_phone',
-    name: 'Hero — Mac + iPhone',
-    description: 'Klassisk produkt-one-pager: overskrift til venstre, MacBook med iPhone-overlapp til høyre.',
-    build: () =>
-      doc('Ny mockup', 'hero_mac_phone', baseCanvas(), [
-        makeDevice('macbook', { x: 700, y: 250, w: 820, rotation: 0, shadow: true }),
-        makeDevice('iphone', { x: 1210, y: 560, w: 250, rotation: 4, shadow: true }),
-      ], [
-        makeText('eyebrow', { text: 'PRODUKT', x: 120, y: 300, w: 520 }),
-        makeText('title', { text: 'Overskrift som selger', x: 120, y: 345, w: 560 }),
-        makeText('body', { text: 'Kort verdiløfte i én til to setninger. Bytt ut teksten og skjermbildene i panelet til høyre.', x: 120, y: 560, w: 520 }),
-        makeText('tag', { text: 'creatorhubn.com', x: 120, y: 720, w: 520 }),
-      ]),
+    id: 'hero_mac_phone_dark', name: 'Hero — Mac + iPhone', category: 'produktoversikt', variant: 'dark', devices: 2,
+    description: 'Overskrift til venstre, MacBook med iPhone-overlapp til høyre. Mørk.',
+    build: () => { const t = ink('dark'); return doc('Produktoversikt', 'hero_mac_phone_dark', baseCanvas(), [
+      makeDevice('macbook', { x: 700, y: 250, w: 820, shadow: true }),
+      makeDevice('iphone', { x: 1210, y: 560, w: 250, rotation: 4, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'PRODUKT', x: 120, y: 300, w: 520 }),
+      makeText('title', { text: 'Overskrift som selger', x: 120, y: 345, w: 560, color: t.title }),
+      makeText('body', { text: 'Kort verdiløfte i én til to setninger. Bytt ut teksten og skjermbildene.', x: 120, y: 560, w: 520, color: t.body }),
+      makeText('tag', { text: 'creatorhubn.com', x: 120, y: 720, w: 520, color: t.tag }),
+    ]); },
   },
   {
-    id: 'devices_trio',
-    name: 'Trio — iPad + iPhone',
-    description: 'To enheter side ved side under en sentrert overskrift — for app-fokusert markedsføring.',
-    build: () =>
-      doc('Ny mockup', 'devices_trio', baseCanvas({ accent: '#a78bfa' }), [
-        makeDevice('ipad', { x: 470, y: 360, w: 470, rotation: -5, shadow: true }),
-        makeDevice('iphone', { x: 900, y: 430, w: 250, rotation: 5, shadow: true }),
-      ], [
-        makeText('eyebrow', { text: 'APP', x: 0, y: 120, w: BASE_W, align: 'center' }),
-        makeText('title', { text: 'Én app. Alt du trenger.', x: 0, y: 160, w: BASE_W, align: 'center', size: 68 }),
-      ]),
+    id: 'hero_mac_phone_light', name: 'Hero — Mac + iPhone (lys)', category: 'produktoversikt', variant: 'light', devices: 2,
+    description: 'Samme hero-komposisjon på lys bakgrunn.',
+    build: () => { const t = ink('light'); return doc('Produktoversikt', 'hero_mac_phone_light', baseCanvas({ background: 'light', bgStyle: 'clean' }), [
+      makeDevice('macbook', { x: 700, y: 250, w: 820, shadow: true }),
+      makeDevice('iphone', { x: 1210, y: 560, w: 250, rotation: 4, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'PRODUKT', x: 120, y: 300, w: 520 }),
+      makeText('title', { text: 'Overskrift som selger', x: 120, y: 345, w: 560, color: t.title }),
+      makeText('body', { text: 'Kort verdiløfte i én til to setninger.', x: 120, y: 560, w: 520, color: t.body }),
+      makeText('tag', { text: 'creatorhubn.com', x: 120, y: 720, w: 520, color: t.tag }),
+    ]); },
   },
   {
-    id: 'blank',
-    name: 'Tomt lerret',
-    description: 'Start uten elementer — legg til enheter og tekst selv.',
-    build: () => doc('Ny mockup', 'blank', baseCanvas(), [], []),
+    id: 'feature_trio_dark', name: 'Funksjoner — iPad + iPhone', category: 'funksjonslansering', variant: 'dark', devices: 2,
+    description: 'Sentrert overskrift over to enheter, med tre funksjons-punkter.',
+    build: () => { const t = ink('dark'); return doc('Funksjonslansering', 'feature_trio_dark', baseCanvas({ accent: '#a78bfa', accent2: '#22d3ee' }), [
+      makeDevice('ipad', { x: 470, y: 380, w: 470, rotation: -5, shadow: true }),
+      makeDevice('iphone', { x: 900, y: 450, w: 250, rotation: 5, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'NYTT', x: 0, y: 120, w: BASE_W, align: 'center' }),
+      makeText('title', { text: 'Én app. Alt du trenger.', x: 0, y: 160, w: BASE_W, align: 'center', size: 68, color: t.title }),
+      makeText('body', { text: 'Rask · Sikker · On-brand', x: 0, y: 270, w: BASE_W, align: 'center', color: t.body }),
+    ]); },
+  },
+  {
+    id: 'sales_pitch_dark', name: 'Salgspitch — MacBook + CTA', category: 'salgspitch', variant: 'dark', devices: 1,
+    description: 'Stor MacBook, kraftig overskrift og tydelig CTA-linje.',
+    build: () => { const t = ink('dark'); return doc('Salgspitch', 'sales_pitch_dark', baseCanvas({ background: 'brand', bgStyle: 'atmospheric' }), [
+      makeDevice('macbook', { x: 620, y: 300, w: 900, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'FOR SALGSTEAM', x: 120, y: 320, w: 460 }),
+      makeText('title', { text: 'Lukk flere avtaler', x: 120, y: 365, w: 480, size: 72, color: t.title }),
+      makeText('body', { text: 'Ett verktøy fra første møte til signert kontrakt.', x: 120, y: 560, w: 440, color: t.body }),
+      makeText('tag', { text: 'Book en demo →', x: 120, y: 690, w: 440, color: 'accent', size: 28, weight: 700 }),
+    ]); },
+  },
+  {
+    id: 'stats_dark', name: 'Nøkkeltall — iPhone', category: 'nokkeltall', variant: 'dark', devices: 1,
+    description: 'iPhone til høyre, tre store nøkkeltall i accent-farger til venstre.',
+    build: () => { const t = ink('dark'); return doc('Nøkkeltall', 'stats_dark', baseCanvas(), [
+      makeDevice('iphone', { x: 1120, y: 250, w: 300, rotation: 3, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'RESULTATER', x: 120, y: 200, w: 500 }),
+      makeText('title', { text: '42 %', x: 120, y: 260, w: 500, size: 120, color: 'accent' }),
+      makeText('body', { text: 'raskere onboarding', x: 120, y: 400, w: 500, color: t.body }),
+      makeText('title', { text: '3×', x: 120, y: 480, w: 500, size: 120, color: 'accent2' }),
+      makeText('body', { text: 'mer effektivt salg', x: 120, y: 620, w: 500, color: t.body }),
+    ]); },
+  },
+  {
+    id: 'case_study_light', name: 'Kundecase — MacBook (lys)', category: 'kundecase', variant: 'light', devices: 1,
+    description: 'Lys, redaksjonell kundecase med sitat og MacBook.',
+    build: () => { const t = ink('light'); return doc('Kundecase', 'case_study_light', baseCanvas({ background: 'light', bgStyle: 'clean' }), [
+      makeDevice('macbook', { x: 700, y: 300, w: 820, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'KUNDECASE', x: 120, y: 300, w: 500 }),
+      makeText('title', { text: '«Vi sparte 12 timer i uka»', x: 120, y: 350, w: 520, size: 56, color: t.title }),
+      makeText('body', { text: '— Kari Nordmann, driftsleder', x: 120, y: 560, w: 500, color: t.body }),
+    ]); },
+  },
+  {
+    id: 'watch_focus_dark', name: 'Watch + iPhone', category: 'produktoversikt', variant: 'dark', devices: 2,
+    description: 'Apple Watch og iPhone side ved side — for helse/aktivitet-apper.',
+    build: () => { const t = ink('dark'); return doc('Produktoversikt', 'watch_focus_dark', baseCanvas({ accent: '#22c55e', accent2: '#22d3ee' }), [
+      makeDevice('iphone', { x: 760, y: 330, w: 280, rotation: -4, shadow: true }),
+      makeDevice('watch', { x: 1060, y: 430, w: 220, rotation: 6, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'PÅ HÅNDLEDDET', x: 120, y: 320, w: 460 }),
+      makeText('title', { text: 'Alltid med deg', x: 120, y: 365, w: 480, color: t.title }),
+      makeText('body', { text: 'iPhone og Apple Watch, sømløst synkronisert.', x: 120, y: 540, w: 440, color: t.body }),
+    ]); },
+  },
+  {
+    id: 'feature_launch_light', name: 'Lansering — iPad (lys)', category: 'funksjonslansering', variant: 'light', devices: 1,
+    description: 'Lys lanserings-layout: sentrert iPad med kort budskap.',
+    build: () => { const t = ink('light'); return doc('Funksjonslansering', 'feature_launch_light', baseCanvas({ background: 'light', bgStyle: 'gradient' }), [
+      makeDevice('ipad', { x: 560, y: 380, w: 480, shadow: true }),
+    ], [
+      makeText('eyebrow', { text: 'LANSERING', x: 0, y: 150, w: BASE_W, align: 'center' }),
+      makeText('title', { text: 'Nå tilgjengelig', x: 0, y: 195, w: BASE_W, align: 'center', size: 72, color: t.title }),
+      makeText('body', { text: 'Den nye versjonen er her.', x: 0, y: 310, w: BASE_W, align: 'center', color: t.body }),
+    ]); },
   },
 ];
 
@@ -246,6 +412,8 @@ export function loadDoc(): MockupDoc | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as MockupDoc;
     if (!parsed || parsed.version !== 1 || !parsed.canvas) return null;
+    // Migrering: avvis gammel canvas-form (uten accent2/background) → frisk mal.
+    if (!parsed.canvas.accent2 || !parsed.canvas.background) return null;
     // Defensiv: sørg for at arrayene finnes.
     parsed.devices = Array.isArray(parsed.devices) ? parsed.devices : [];
     parsed.texts = Array.isArray(parsed.texts) ? parsed.texts : [];
@@ -311,9 +479,11 @@ export function loadKitDoc(id: string): MockupDoc | null {
   return { ...clone, id: uid('doc'), updatedAt: Date.now() };
 }
 
-/** Løs en tekstfarge: 'accent'-sentinel → lerretets accent, ellers literal. */
+/** Løs en tekstfarge: 'accent'/'accent2'-sentinel → lerretets accenter, ellers literal. */
 export function resolveColor(color: string, canvas: MockupCanvasSpec): string {
-  return color === 'accent' ? canvas.accent : color;
+  if (color === 'accent') return canvas.accent;
+  if (color === 'accent2') return canvas.accent2;
+  return color;
 }
 
 /** Filnavn-trygt slug av dokumentnavn. */

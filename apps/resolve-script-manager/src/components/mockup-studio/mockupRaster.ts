@@ -16,8 +16,12 @@ import {
   type MockupDoc,
   type MockupDeviceSlot,
   type MockupTextSlot,
+  type MockupCanvasSpec,
   deviceHeight,
   resolveColor,
+  resolveBaseBg,
+  mixHex,
+  hexToRgb,
 } from './mockupStudioModel';
 
 // ── Bilde-lasting (cache per src) ───────────────────────────────────────────
@@ -79,20 +83,52 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, dx: num
 }
 
 function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
-  const { w, h, bg, bg2, bgAngle } = doc.canvas;
-  if (bg2) {
-    const rad = ((bgAngle - 90) * Math.PI) / 180;
-    const cx = w / 2, cy = h / 2;
-    const len = Math.max(w, h);
-    const dx = (Math.cos(rad) * len) / 2, dy = (Math.sin(rad) * len) / 2;
-    const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
-    grad.addColorStop(0, bg);
-    grad.addColorStop(1, bg2);
-    ctx.fillStyle = grad;
-  } else {
-    ctx.fillStyle = bg;
+  const c = doc.canvas;
+  const w = c.w, h = c.h;
+  const base = resolveBaseBg(c);
+  const light = c.background === 'light';
+
+  if (c.bgStyle === 'clean') {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, w, h);
+    return;
   }
+  if (c.bgStyle === 'gradient') {
+    const second = mixHex(base, c.accent, light ? 0.1 : 0.16);
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, base);
+    grad.addColorStop(1, second);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+  // atmospheric: basisflate + to radielle accent-glød (accent1 + accent2).
+  ctx.fillStyle = base;
   ctx.fillRect(0, 0, w, h);
+  const glow = (cx: number, cy: number, r: number, hex: string, alpha: number) => {
+    const { r: rr, g: gg, b: bb } = hexToRgb(hex);
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(${rr},${gg},${bb},${alpha})`);
+    g.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  };
+  glow(w * 0.75, h * 0.14, w * 0.5, c.accent, light ? 0.18 : 0.28);
+  glow(w * 0.18, h * 0.9, w * 0.45, c.accent2, light ? 0.13 : 0.22);
+}
+
+/** Tegn logo-slot (bevarer bilde-forhold ut fra bredden). */
+async function drawLogo(ctx: CanvasRenderingContext2D, canvas: MockupCanvasSpec): Promise<void> {
+  const L = canvas.logo;
+  if (!L?.image) return;
+  try {
+    const img = await loadImage(L.image);
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if (!iw || !ih) return;
+    ctx.drawImage(img, L.x, L.y, L.w, L.w * (ih / iw));
+  } catch {
+    /* logo-lasting feilet — hopp over */
+  }
 }
 
 async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot): Promise<void> {
@@ -299,6 +335,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1): Promise<HTMLCa
   for (const t of doc.texts) {
     drawText(ctx, doc, t);
   }
+  await drawLogo(ctx, doc.canvas);
   return canvas;
 }
 
@@ -342,6 +379,12 @@ export async function rasterizeLayers(doc: MockupDoc): Promise<{ name: string; c
     if (c.ctx) drawText(c.ctx, doc, t);
     const label = (t.text || 'Tekst').replace(/\s+/g, ' ').trim().slice(0, 24) || 'Tekst';
     out.push({ name: label, canvas: c.canvas });
+  }
+
+  if (doc.canvas.logo?.image) {
+    const c = newLayerCanvas(w, h);
+    if (c.ctx) await drawLogo(c.ctx, doc.canvas);
+    out.push({ name: 'Logo', canvas: c.canvas });
   }
   return out;
 }
