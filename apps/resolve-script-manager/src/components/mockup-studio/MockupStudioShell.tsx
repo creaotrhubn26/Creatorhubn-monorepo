@@ -507,7 +507,11 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           ) : selectedText ? (
             <TextInspector text={selectedText} advanced={advanced} />
           ) : (
-            <BrandingInspector onUploadLogo={triggerLogoUpload} />
+            <>
+              <BrandingInspector onUploadLogo={triggerLogoUpload} />
+              <div style={{ height: 18 }} />
+              <IllustrationInspector />
+            </>
           )}
         </div>
       </div>
@@ -631,6 +635,98 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
       <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, marginTop: 14 }}>
         To accent-tokens styrer hele malen. Velg en enhet eller tekst på lerretet for å redigere den.
       </p>
+    </div>
+  );
+}
+
+function IllustrationInspector() {
+  const doc = useMockupStudio((s) => s.doc);
+  const addAnnotation = useMockupStudio((s) => s.addAnnotation);
+  const patchAnnotation = useMockupStudio((s) => s.patchAnnotation);
+  const removeAnnotation = useMockupStudio((s) => s.removeAnnotation);
+  const anns = doc.annotations ?? [];
+  const [target, setTarget] = useState<string>('');
+  const devTarget = target || doc.devices[0]?.id;
+
+  const KIND_LABEL: Record<string, string> = { callout: 'Callout', loupe: 'Lupe', marker: 'Markør' };
+  const devName = (id?: string) => {
+    if (!id) return 'Lerret';
+    const i = doc.devices.findIndex((d) => d.id === id);
+    return i >= 0 ? `${DEVICE_LABELS[doc.devices[i].variant]}${doc.devices.length > 1 ? ` ${i + 1}` : ''}` : 'Lerret';
+  };
+
+  return (
+    <div>
+      <SectionLabel>Illustrasjon</SectionLabel>
+      <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 10px' }}>
+        Forklar produktet: callouts som peker på UI, en zoom-lupe på detaljen, eller en markør-ramme.
+      </p>
+      {doc.devices.length > 1 && (
+        <Field label="Fest til">
+          <select value={devTarget ?? ''} onChange={(e) => setTarget(e.target.value)} style={textInput}>
+            {doc.devices.map((d, i) => <option key={d.id} value={d.id}>{DEVICE_LABELS[d.variant]}{doc.devices.length > 1 ? ` ${i + 1}` : ''}</option>)}
+            <option value="">Lerret</option>
+          </select>
+        </Field>
+      )}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button onClick={() => addAnnotation('callout', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Callout</button>
+        <button onClick={() => addAnnotation('loupe', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Lupe</button>
+        <button onClick={() => addAnnotation('marker', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Markør</button>
+      </div>
+
+      {anns.length === 0 && <p style={{ fontSize: 12, color: C.inkSoft }}>Ingen annotasjoner ennå.</p>}
+
+      {anns.map((a) => (
+        <div key={a.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, marginBottom: 8, background: C.panelSoft }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>{a.kind === 'callout' ? `${a.n}. ` : ''}{KIND_LABEL[a.kind]}</span>
+            <span style={{ fontSize: 11, color: C.inkSoft }}>· {devName(a.deviceId)}</span>
+            <button onClick={() => removeAnnotation(a.id)} style={{ ...listBtn, marginLeft: 'auto', width: 28, textAlign: 'center', padding: '4px 0' }} title="Slett">✕</button>
+          </div>
+
+          {a.kind === 'callout' && (
+            <>
+              <input value={a.label ?? ''} onChange={(e) => patchAnnotation(a.id, { label: e.target.value })} placeholder="Funksjonstekst" style={{ ...textInput, marginBottom: 6 }} />
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <input type="number" min={1} value={a.n ?? 1} onChange={(e) => patchAnnotation(a.id, { n: Math.max(1, Number(e.target.value)) })} style={{ ...textInput, width: 56 }} title="Nummer" />
+                <select value={a.side ?? 'right'} onChange={(e) => patchAnnotation(a.id, { side: e.target.value as never })} style={{ ...textInput, flex: 1 }}>
+                  <option value="left">Etikett venstre</option>
+                  <option value="right">Etikett høyre</option>
+                  <option value="top">Etikett topp</option>
+                  <option value="bottom">Etikett bunn</option>
+                </select>
+              </div>
+            </>
+          )}
+
+          {a.kind === 'loupe' && (
+            <Field label={`Zoom: ${(a.zoom ?? 2.4).toFixed(1)}×`}>
+              <input type="range" min={1.5} max={4} step={0.1} value={a.zoom ?? 2.4} onChange={(e) => patchAnnotation(a.id, { zoom: Number(e.target.value) })} style={{ width: '100%' }} />
+            </Field>
+          )}
+
+          {a.kind === 'marker' && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+              <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>Bredde
+                <input type="range" min={0.05} max={0.8} step={0.01} value={a.fw ?? 0.2} onChange={(e) => patchAnnotation(a.id, { fw: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+              <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>Høyde
+                <input type="range" min={0.05} max={0.8} step={0.01} value={a.fh ?? 0.12} onChange={(e) => patchAnnotation(a.id, { fh: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>X: {Math.round(a.fx * 100)}%
+              <input type="range" min={0} max={1} step={0.01} value={a.fx} onChange={(e) => patchAnnotation(a.id, { fx: Number(e.target.value) })} style={{ width: '100%' }} />
+            </label>
+            <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>Y: {Math.round(a.fy * 100)}%
+              <input type="range" min={0} max={1} step={0.01} value={a.fy} onChange={(e) => patchAnnotation(a.id, { fy: Number(e.target.value) })} style={{ width: '100%' }} />
+            </label>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

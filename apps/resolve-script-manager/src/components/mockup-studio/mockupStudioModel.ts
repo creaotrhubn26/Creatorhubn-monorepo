@@ -211,6 +211,8 @@ export interface MockupDoc {
   canvas: MockupCanvasSpec;
   devices: MockupDeviceSlot[];
   texts: MockupTextSlot[];
+  /** Illustrasjons-lag (callout/lupe/markør). Valgfri — tomt/udefinert = ingen. */
+  annotations?: MockupAnnotation[];
   updatedAt: number;
   /** Prosjektstatus (§ prosjektoversikt). Default 'draft'. */
   status?: MockupProjectStatus;
@@ -280,6 +282,46 @@ export const FRAME_ASPECT: Record<MockupDeviceVariant, number> = {
 /** Høyde til et device-slot ut fra bredden + rammens aspect. */
 export function deviceHeight(slot: Pick<MockupDeviceSlot, 'variant' | 'w'>): number {
   return slot.w / FRAME_ASPECT[slot.variant];
+}
+
+// ── Illustrasjons-lag (callout / lupe / markør) ─────────────────────────────
+//
+// Gjør en mockup om fra «bilde av appen» til «forklaring av hva appen gjør».
+// En annotasjon festes til en enhets SKJERM (fx/fy 0..1 i skjerm-hullet) så den
+// følger produktskjermen; uten deviceId er den lerret-relativ. Tegnes øverst av
+// kompositoren og følger med i alle eksporter.
+
+export type MockupAnnotationKind = 'callout' | 'loupe' | 'marker';
+export type MockupCalloutSide = 'left' | 'right' | 'top' | 'bottom';
+
+export interface MockupAnnotation {
+  id: string;
+  kind: MockupAnnotationKind;
+  /** Enhet hvis skjerm ankeret er relativt til (skjerm-fraksjon). Tom → lerret. */
+  deviceId?: string;
+  /** Ankerpunkt (0..1) i enhetens skjerm, ellers i lerretet. */
+  fx: number;
+  fy: number;
+  // callout
+  n?: number;
+  label?: string;
+  side?: MockupCalloutSide;
+  // lupe: forstørrelse + hvor sirkelen tegnes (lerret-fraksjon) + radius (lerret-px)
+  zoom?: number;
+  lensX?: number;
+  lensY?: number;
+  radius?: number;
+  // markør (uthev-rektangel): bredde/høyde i skjerm-fraksjon
+  fw?: number;
+  fh?: number;
+}
+
+/** Lag en ny annotasjon med fornuftige standardverdier. */
+export function makeAnnotation(kind: MockupAnnotationKind, deviceId: string | undefined, n = 1): MockupAnnotation {
+  const base: MockupAnnotation = { id: uid('ann'), kind, deviceId, fx: 0.5, fy: 0.4 };
+  if (kind === 'callout') return { ...base, n, label: 'Ny funksjon', side: 'right' };
+  if (kind === 'loupe') return { ...base, fx: 0.5, fy: 0.5, zoom: 2.4, lensX: 0.86, lensY: 0.82, radius: 150 };
+  return { ...base, fx: 0.4, fy: 0.35, fw: 0.22, fh: 0.14 }; // marker
 }
 
 export function makeDevice(variant: MockupDeviceVariant, partial: Partial<MockupDeviceSlot> = {}): MockupDeviceSlot {
