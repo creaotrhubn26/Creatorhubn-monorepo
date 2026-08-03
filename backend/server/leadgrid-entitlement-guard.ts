@@ -160,3 +160,8 @@ export const LEADGRID_ANBUD_FEATURE_KEYS = ["leadgridAnbud"];
  *  Nøkkelen matcher LeadgridFeature.leadgridRuteplanlegger. */
 export const LEADGRID_RUTEPLAN_FEATURE_KEYS = ["leadgridRuteplanlegger"];
 
+/** AI-møtebrief (2026-08-04): auto-generert brief per kundemøte (Brreg +
+ *  regnskap + Doffin-signal + egne vunnede case + Claude-komposisjon).
+ *  Kostnadsbærende AI — matcher LeadgridFeature.moteBrief. */
+export const MOTE_BRIEF_FEATURE_KEYS = ["moteBrief"];
+

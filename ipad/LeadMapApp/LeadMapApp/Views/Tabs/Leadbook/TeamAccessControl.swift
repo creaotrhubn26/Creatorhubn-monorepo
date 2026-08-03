@@ -115,6 +115,10 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // stopp-kjeding, leder-tildeling og «Foreslå dagens rute». Superadmin
     // kan låse per org (default PÅ — canUse-mønsteret).
     case leadgridRuteplanlegger = "Ruteplanlegger · Fler-stopp"
+    // AI-møtebrief (2026-08-04): auto-brief per kundemøte (Brreg + regnskap
+    // + Doffin-signal + egne vunnede case). Kostnadsbærende AI — DEFAULT AV
+    // (isExplicitlyEnabled-mønsteret, som leadbookAIStrukturering).
+    case moteBrief = "Møter · AI-møtebrief"
 
     var id: String { rawValue }
 
@@ -171,6 +175,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridKvalitet: return "checkmark.seal.fill"
         case .leadgridAnbud: return "doc.text.magnifyingglass"
         case .leadgridRuteplanlegger: return "point.topleft.down.curvedto.point.bottomright.up.fill"
+        case .moteBrief: return "brain.head.profile"
         // Områder
         case .omradeTildeling: return "map.circle.fill"
         // AI
@@ -195,7 +200,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .teamExportCSV, .teamExportPDF, .teamImportExcel, .teamShareReport,
              .teamMarkAllRead, .teamCustomDashboard: return .rapportExport
         case .teamCompareToPrevious, .teamForecast30d, .teamPipelineHealth,
-             .teamAIFormulaSuggest: return .analyseAI
+             .teamAIFormulaSuggest, .moteBrief: return .analyseAI
         case .routeTracking, .routeAdherenceReports, .teamNearbyView,
              .createLeadAtPosition, .leadgridRuteplanlegger: return .kjerne
         case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo

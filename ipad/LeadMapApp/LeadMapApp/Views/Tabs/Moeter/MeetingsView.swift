@@ -1528,6 +1528,7 @@ struct MeetingDetailSidebar: View {
     @State private var showAssignSeller = false
     @State private var showAddCampaign = false
     @State private var showAIInsights = false
+    @State private var showMoteBrief = false
     @State private var showHistory = false
     @State private var showPrepCore = false
     @State private var showStakeholders = false
@@ -1574,6 +1575,13 @@ struct MeetingDetailSidebar: View {
         .sheet(isPresented: $showAssignSeller)        { AssignSellerSheet(meeting: meeting) }
         .sheet(isPresented: $showAddCampaign)         { AddToCampaignSheet(meeting: meeting) }
         .sheet(isPresented: $showAIInsights)          { PrepInsightsModal(meetingCompany: meeting.company, meetingContact: meeting.contactName) }
+        .sheet(isPresented: $showMoteBrief) {
+            MoteBriefSheet(selskap: meeting.company,
+                           kontakt: meeting.contactName,
+                           kontaktRolle: meeting.contactRole,
+                           motetid: "\(meeting.startTime)–\(meeting.endTime)",
+                           leadStatus: meeting.status.label)
+        }
         .sheet(isPresented: $showHistory)             { PrepHistoryModal(meetingCompany: meeting.company) }
         .sheet(isPresented: $showPrepCore)            { PrepCoreModal(meetingCompany: meeting.company) }
         .sheet(isPresented: $showStakeholders)        { PrepStakeholdersModal(meetingCompany: meeting.company) }
@@ -1656,6 +1664,9 @@ struct MeetingDetailSidebar: View {
             // UI-fokus fase 4: prep-verktøyene flyttet hit fra 2×4-gridet —
             // sheets/state er uendret, kun inngangen er samlet.
             Section("Forberedelse") {
+                Button { showAIInsights = true } label: {
+                    Label("AI-innsikt", systemImage: "sparkles")
+                }
                 Button { showLogNote = true } label: {
                     Label("Logg notat", systemImage: "square.and.pencil")
                 }
@@ -1854,12 +1865,12 @@ struct MeetingDetailSidebar: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button { showAIInsights = true } label: {
+            Button { showMoteBrief = true } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "sparkles")
+                    Image(systemName: "brain.head.profile")
                         .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(MtBrand.purpleLight)
-                    Text("AI-innsikt")
+                    Text("Møtebrief")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
