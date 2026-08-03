@@ -465,7 +465,18 @@ import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
-import { useT, LanguageSwitcher } from '../../../i18n';
+import { useT, LanguageSwitcher, type TranslationKey } from '../../../i18n';
+
+// Lokalisert, uppercased status-etikett for manus-pillen. Ukjent status → rå uppercase.
+const MANUSCRIPT_STATUS_KEYS: Record<string, TranslationKey> = {
+  draft: 'status.draft', review: 'status.review', approved: 'status.approved',
+  shooting: 'status.shooting', completed: 'status.completed',
+};
+function manuscriptStatusLabel(status: string | undefined, t: (k: TranslationKey) => string): string {
+  const s = (status ?? 'draft').toLowerCase();
+  const key = MANUSCRIPT_STATUS_KEYS[s];
+  return key ? t(key).toUpperCase() : (status ?? 'draft').toUpperCase();
+}
 
 // Delt tid-of-day-normalisering (norsk → enum). Brukes av begge parse-veiene
 // (handleParseToScenes + handleAutoBreakdown). Faller tilbake til DAY.
@@ -3448,17 +3459,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   runtimeMinutes: Math.max(0, Math.round(selectedManuscript.pageCount || 0)),
                                   sceneCount: scenes.length,
                                   characterCount: sceneCharactersMemo.length,
-                                  statusLabel: (selectedManuscript.status ?? 'draft').toUpperCase(),
+                                  statusLabel: manuscriptStatusLabel(selectedManuscript.status, t),
                                   saveLabel:
                                     manuscriptSaveStatus === 'saved'
                                       ? (lastManuscriptSaved
-                                          ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                                          : 'Lagret')
+                                          ? t('editor.saved', { time: lastManuscriptSaved.toLocaleTimeString('nb-NO') })
+                                          : t('editor.savedNoTime'))
                                       : manuscriptSaveStatus === 'saving'
-                                        ? 'Lagrer...'
+                                        ? t('editor.saving')
                                         : manuscriptSaveStatus === 'error'
-                                          ? 'Lagringsfeil'
-                                          : 'Ulagret',
+                                          ? t('editor.saveError')
+                                          : t('editor.unsaved'),
                                   saveState: manuscriptSaveStatus,
                                 }}
                                 characters={sceneCharactersMemo}
@@ -4520,11 +4531,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: branding.colors.primary },
                 }}
               >
-                <MenuItem value="draft">Utkast</MenuItem>
-                <MenuItem value="review">Gjennomgang</MenuItem>
-                <MenuItem value="approved">Godkjent</MenuItem>
-                <MenuItem value="shooting">Produksjon</MenuItem>
-                <MenuItem value="completed">Fullført</MenuItem>
+                <MenuItem value="draft">{t('status.draft')}</MenuItem>
+                <MenuItem value="review">{t('status.review')}</MenuItem>
+                <MenuItem value="approved">{t('status.approved')}</MenuItem>
+                <MenuItem value="shooting">{t('status.shooting')}</MenuItem>
+                <MenuItem value="completed">{t('status.completed')}</MenuItem>
               </Select>
             </FormControl>
           </Stack>
@@ -4896,17 +4907,17 @@ Anna går raskt gjennom regnet.
               runtimeMinutes: Math.max(0, Math.round(manuscript.pageCount || contentStats.estimatedMinutes)),
               sceneCount: scenes.length,
               characterCount: allCharacters.length,
-              statusLabel: (manuscript.status ?? 'draft').toUpperCase(),
+              statusLabel: manuscriptStatusLabel(manuscript.status, t),
               saveLabel:
                 manuscriptSaveStatus === 'saved'
                   ? (lastManuscriptSaved
-                      ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                      : 'Lagret')
+                      ? t('editor.saved', { time: lastManuscriptSaved.toLocaleTimeString('nb-NO') })
+                      : t('editor.savedNoTime'))
                   : manuscriptSaveStatus === 'saving'
-                    ? 'Lagrer...'
+                    ? t('editor.saving')
                     : manuscriptSaveStatus === 'error'
-                      ? 'Lagringsfeil'
-                      : 'Ulagret',
+                      ? t('editor.saveError')
+                      : t('editor.unsaved'),
               saveState: manuscriptSaveStatus,
             }}
             characters={allCharacters}

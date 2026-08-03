@@ -53,6 +53,22 @@ export const no = {
   'editor.parseToScenesShort': 'Parser ({n})',
   'editor.simpleEditor': 'Enkel Editor',
   'editor.simpleEditorShort': 'Enkel',
+  'editor.pillPages': '{n} sider',
+  'editor.pillRuntime': '~{n} min',
+  'editor.pillScenes': '{n} scener',
+  'editor.pillCharacters': '{n} karakterer',
+  'editor.saved': 'Lagret {time}',
+  'editor.savedNoTime': 'Lagret',
+  'editor.saving': 'Lagrer…',
+  'editor.saveError': 'Lagringsfeil',
+  'editor.unsaved': 'Ulagret',
+
+  // Manus-status (pille + nedtrekk)
+  'status.draft': 'Utkast',
+  'status.review': 'Gjennomgang',
+  'status.approved': 'Godkjent',
+  'status.shooting': 'Produksjon',
+  'status.completed': 'Fullført',
 
   // Scene Navigator
   'nav.title': 'Scene Navigator',

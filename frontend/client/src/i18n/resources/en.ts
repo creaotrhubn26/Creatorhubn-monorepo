@@ -54,6 +54,22 @@ export const en: Record<keyof typeof no, string> = {
   'editor.parseToScenesShort': 'Parse ({n})',
   'editor.simpleEditor': 'Simple editor',
   'editor.simpleEditorShort': 'Simple',
+  'editor.pillPages': '{n} pages',
+  'editor.pillRuntime': '~{n} min',
+  'editor.pillScenes': '{n} scenes',
+  'editor.pillCharacters': '{n} characters',
+  'editor.saved': 'Saved {time}',
+  'editor.savedNoTime': 'Saved',
+  'editor.saving': 'Saving…',
+  'editor.saveError': 'Save failed',
+  'editor.unsaved': 'Unsaved',
+
+  // Manuscript status (pill + dropdown)
+  'status.draft': 'Draft',
+  'status.review': 'Review',
+  'status.approved': 'Approved',
+  'status.shooting': 'Production',
+  'status.completed': 'Completed',
 
   // Scene Navigator
   'nav.title': 'Scene Navigator',

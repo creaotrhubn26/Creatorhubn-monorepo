@@ -874,25 +874,25 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`${headerSummary.pages} sider`}
+              label={t('editor.pillPages', { n: headerSummary.pages })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`~${headerSummary.runtimeMinutes} min`}
+              label={t('editor.pillRuntime', { n: headerSummary.runtimeMinutes })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`${headerSummary.sceneCount} scener`}
+              label={t('editor.pillScenes', { n: headerSummary.sceneCount })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`${headerSummary.characterCount} karakterer`}
+              label={t('editor.pillCharacters', { n: headerSummary.characterCount })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             {headerSummary.statusLabel && (
