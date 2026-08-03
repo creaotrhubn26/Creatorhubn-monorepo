@@ -2356,8 +2356,79 @@ const COMMANDS = {
                 blue: Number.isFinite(f.color.blue) ? f.color.blue : 30,
               }
             : { red: 30, green: 30, blue: 30 };
-          await action.batchPlay(
-            [
+          const textStyle = {
+            _obj: "textStyle",
+            fontPostScriptName: fontName,
+            size: { _unit: "pointsUnit", _value: fontSize },
+            color: { _obj: "RGBColor", red: col.red, green: col.green, blue: col.blue },
+          };
+          const clickPoint = {
+            _obj: "paint",
+            horizontal: { _unit: "percentUnit", _value: (x / width) * 100 },
+            vertical: { _unit: "percentUnit", _value: (y / height) * 100 },
+          };
+          // Avsnitts-tekst (boks m/ bredde + justering) når f.width er oppgitt.
+          const boxW = Number.isFinite(f.width) && f.width > 0 ? f.width : null;
+          const align = (f.align === "center" || f.align === "right") ? f.align : "left";
+
+          let madeBox = false;
+          if (boxW) {
+            // Estimer bokshøyde ut fra tekstmengde (topp-forankret; ekstra
+            // høyde er usynlig). Bredde + justering styrer ombrekking.
+            const est = Math.max(1, Math.ceil((placeholder.length * fontSize * 0.5) / boxW));
+            const boxH = Math.round((est + 0.8) * fontSize * 1.25);
+            try {
+              await action.batchPlay([
+                {
+                  _obj: "make",
+                  _target: [{ _ref: "textLayer" }],
+                  using: {
+                    _obj: "textLayer",
+                    name: layerName,
+                    textKey: placeholder,
+                    textClickPoint: clickPoint,
+                    textShape: [
+                      {
+                        _obj: "textShape",
+                        char: { _enum: "char", _value: "box" },
+                        orientation: { _enum: "orientation", _value: "horizontal" },
+                        transform: { _obj: "transform", xx: 1, xy: 0, yx: 0, yy: 1, tx: 0, ty: 0 },
+                        rowCount: 1,
+                        columnCount: 1,
+                        rowMajorOrder: true,
+                        rowGutter: { _unit: "pointsUnit", _value: 0 },
+                        columnGutter: { _unit: "pointsUnit", _value: 0 },
+                        spacing: { _unit: "pointsUnit", _value: 0 },
+                        bounds: {
+                          _obj: "rectangle",
+                          top: { _unit: "pointsUnit", _value: 0 },
+                          left: { _unit: "pointsUnit", _value: 0 },
+                          bottom: { _unit: "pointsUnit", _value: boxH },
+                          right: { _unit: "pointsUnit", _value: boxW },
+                        },
+                      },
+                    ],
+                    textStyleRange: [{ _obj: "textStyleRange", from: 0, to: placeholder.length, textStyle }],
+                    paragraphStyleRange: [
+                      {
+                        _obj: "paragraphStyleRange",
+                        from: 0,
+                        to: placeholder.length,
+                        paragraphStyle: { _obj: "paragraphStyle", align: { _enum: "alignmentType", _value: align } },
+                      },
+                    ],
+                  },
+                },
+              ], {});
+              madeBox = true;
+            } catch (boxErr) {
+              madeBox = false; // faller tilbake til punkt-tekst under
+            }
+          }
+
+          if (!madeBox) {
+            // Punkt-tekst (dagens fungerende vei / fallback hvis boks feiler).
+            await action.batchPlay([
               {
                 _obj: "make",
                 _target: [{ _ref: "textLayer" }],
@@ -2365,30 +2436,13 @@ const COMMANDS = {
                   _obj: "textLayer",
                   name: layerName,
                   textKey: placeholder,
-                  textClickPoint: {
-                    _obj: "paint",
-                    horizontal: { _unit: "percentUnit", _value: (x / width) * 100 },
-                    vertical: { _unit: "percentUnit", _value: (y / height) * 100 },
-                  },
-                  textStyleRange: [
-                    {
-                      _obj: "textStyleRange",
-                      from: 0,
-                      to: placeholder.length,
-                      textStyle: {
-                        _obj: "textStyle",
-                        fontPostScriptName: fontName,
-                        size: { _unit: "pointsUnit", _value: fontSize },
-                        color: { _obj: "RGBColor", red: col.red, green: col.green, blue: col.blue },
-                      },
-                    },
-                  ],
+                  textClickPoint: clickPoint,
+                  textStyleRange: [{ _obj: "textStyleRange", from: 0, to: placeholder.length, textStyle }],
                 },
               },
-            ],
-            {},
-          );
-          createdLayers.push({ key: f.key, type: "text", layer_name: layerName });
+            ], {});
+          }
+          createdLayers.push({ key: f.key, type: "text", layer_name: layerName, mode: madeBox ? "paragraph" : "point" });
         } else if (f.type === "image_placeholder") {
           // Lag en smart-object-layer fra eksisterende fil-path.
           // Hvis ingen file_path er gitt, skip — UI-en vil måtte be brukeren

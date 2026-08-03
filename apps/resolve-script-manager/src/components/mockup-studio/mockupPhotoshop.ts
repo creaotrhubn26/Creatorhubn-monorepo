@@ -80,15 +80,17 @@ export async function buildEditablePsdViaBridge(doc: MockupDoc, outputPath: stri
     const hex = resolveColor(t.color, doc.canvas);
     const rgb = hexToRgb(hex);
     const fontName = t.weight >= 700 ? 'Helvetica-Bold' : 'Helvetica';
-    const anchorX = t.align === 'center' ? t.x + t.w / 2 : t.align === 'right' ? t.x + t.w : t.x;
     const content = t.uppercase ? t.text.toUpperCase() : t.text;
+    // Avsnitts-tekst: boks-topp-venstre = (x, y), bredde + justering styrer
+    // ombrekking/plassering i boksen (matcher lerretets tekst-slot).
     return {
       key: `tekst_${i}`,
       type: 'text' as const,
       hint: content || 'Tekst',
-      x: Math.round(anchorX),
-      // punkt-tekst forankres ved grunnlinjen → skyv ned ~0.82× størrelsen fra topp.
-      y: Math.round(t.y + t.size * 0.82),
+      x: Math.round(t.x),
+      y: Math.round(t.y),
+      width: Math.round(t.w),
+      align: t.align,
       font_size: Math.round(t.size),
       font: fontName,
       color: rgb,
