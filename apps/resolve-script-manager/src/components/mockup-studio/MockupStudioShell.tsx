@@ -24,6 +24,8 @@ import {
   ELEMENT_LABELS,
   LAYOUT_VARIANTS,
   MOCKUP_FORMATS,
+  currentFormatId,
+  hasFormatLayout,
   orientationGroup,
   listBrandKits,
   saveBrandKit,
@@ -260,6 +262,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   };
 
   const missingShots = doc.devices.filter((d) => !d.image).length;
+  const curFmt = currentFormatId(doc);
+  const hasCustomFmt = curFmt ? hasFormatLayout(doc, curFmt) : false;
 
   if (view === 'projects') {
     return (
@@ -310,6 +314,19 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             {!MOCKUP_FORMATS.find((f) => f.w === doc.canvas.w && f.h === doc.canvas.h) && <option value="">Egendefinert</option>}
             {MOCKUP_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
           </select>
+          {curFmt && (
+            <div style={{ marginBottom: 10 }}>
+              {hasCustomFmt ? (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => store.saveFormatLayout()} style={{ ...listBtn, flex: 1 }} title="Overskriv den lagrede plasseringen med gjeldende">Oppdater ✎</button>
+                  <button onClick={() => store.clearFormatLayout(curFmt)} style={listBtn} title="Tilbake til auto-reflow">Auto</button>
+                </div>
+              ) : (
+                <button onClick={() => store.saveFormatLayout()} style={{ ...listBtn, width: '100%' }} title="Lås gjeldende plassering som pikselperfekt layout for dette formatet">Lagre plassering for formatet</button>
+              )}
+              <div style={{ fontSize: 10.5, color: hasCustomFmt ? C.accent : C.inkSoft, marginTop: 4 }}>{hasCustomFmt ? '✎ Egendefinert layout aktiv' : 'Auto-reflow · tune fritt + lagre for pikselperfekt'}</div>
+            </div>
+          )}
           <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Layout-variant</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             {LAYOUT_VARIANTS.map((v) => (

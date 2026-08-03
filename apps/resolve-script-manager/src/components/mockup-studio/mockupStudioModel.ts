@@ -184,6 +184,20 @@ export interface MockupDoc {
   status?: MockupProjectStatus;
   /** Mal-definerte slots (slot-motor): kanonisk geometri + begrensninger. */
   slots?: SlotDef[];
+  /**
+   * Pikselperfekte per-format-layouter: format-id → slot-id → plassering.
+   * Overstyrer auto-reflow når man bytter til det formatet. Tomt = auto.
+   */
+  formatLayouts?: Record<string, Record<string, SlotPlacement>>;
+}
+
+/** Én slot-plassering i et bestemt format (pikselperfekt override). */
+export interface SlotPlacement {
+  x: number;
+  y: number;
+  w?: number;
+  rotation?: number;
+  size?: number; // for tekst
 }
 
 // ── Slot-motor (§1.1 struktur før frihet) ───────────────────────────────────
@@ -595,14 +609,11 @@ function estTextHeight(t: MockupTextSlot, w: number): number {
 }
 
 /**
- * Bytt lerret-format + reflow komposisjonen etter roller (sosiale flater):
+ * Auto-reflow (rolle-basert) — fallback når formatet ikke har en lagret layout:
  * - landskap → tekst-kolonne venstre, enheter høyre;
  * - portrett/kvadrat → tekst øverst, enheter under (sentrert).
- * Enheter legges i en rad med felles høyde, skalert ned ved overflow; tekst
- * skaleres til formatets bredde. Oppdaterer slots så layout-varianter fungerer
- * videre i det nye formatet.
  */
-export function applyFormat(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
+function reflowAuto(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
   const W = fmt.w, H = fmt.h;
   const orient = W > H * 1.15 ? 'landscape' : H > W * 1.15 ? 'portrait' : 'square';
   const m = Math.min(W, H) * 0.07;
@@ -649,9 +660,65 @@ export function applyFormat(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
     return nd;
   });
 
-  const next: MockupDoc = { ...doc, canvas: { ...doc.canvas, w: W, h: H }, devices, texts };
+  return { ...doc, canvas: { ...doc.canvas, w: W, h: H }, devices, texts };
+}
+
+/** Gjeldende format-id fra lerret-dimensjonene (null = egendefinert). */
+export function currentFormatId(doc: MockupDoc): string | null {
+  return MOCKUP_FORMATS.find((f) => f.w === doc.canvas.w && f.h === doc.canvas.h)?.id ?? null;
+}
+
+/** Har formatet en pikselperfekt lagret layout? */
+export function hasFormatLayout(doc: MockupDoc, fmtId: string): boolean {
+  const l = doc.formatLayouts?.[fmtId];
+  return !!l && Object.keys(l).length > 0;
+}
+
+/** Fang gjeldende element-plasseringer som en per-format layout. */
+function captureLayout(doc: MockupDoc): Record<string, SlotPlacement> {
+  const out: Record<string, SlotPlacement> = {};
+  doc.devices.forEach((d) => { if (d.slotId) out[d.slotId] = { x: d.x, y: d.y, w: d.w, rotation: d.rotation }; });
+  doc.texts.forEach((t) => { if (t.slotId) out[t.slotId] = { x: t.x, y: t.y, w: t.w, size: t.size }; });
+  return out;
+}
+
+/**
+ * Bytt lerret-format. Bruker en PIKSELPERFEKT lagret layout for formatet hvis
+ * den finnes; ellers rolle-basert auto-reflow. Oppdaterer slots.
+ */
+export function applyFormat(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
+  let next = reflowAuto(doc, fmt);
+  const saved = doc.formatLayouts?.[fmt.id];
+  if (saved) {
+    next = {
+      ...next,
+      devices: next.devices.map((d) => {
+        const p = d.slotId ? saved[d.slotId] : undefined;
+        return p ? { ...d, x: p.x, y: p.y, w: p.w ?? d.w, rotation: p.rotation ?? d.rotation } : d;
+      }),
+      texts: next.texts.map((t) => {
+        const p = t.slotId ? saved[t.slotId] : undefined;
+        return p ? { ...t, x: p.x, y: p.y, w: p.w ?? t.w, size: p.size ?? t.size } : t;
+      }),
+    };
+  }
   next.slots = slotsFromDoc(next);
   return next;
+}
+
+/** Lagre gjeldende plassering som pikselperfekt layout for gjeldende format. */
+export function saveFormatLayout(doc: MockupDoc): MockupDoc {
+  const fid = currentFormatId(doc);
+  if (!fid) return doc;
+  return { ...doc, formatLayouts: { ...(doc.formatLayouts ?? {}), [fid]: captureLayout(doc) } };
+}
+
+/** Fjern lagret layout for et format (→ auto-reflow neste gang formatet velges). */
+export function clearFormatLayout(doc: MockupDoc, fmtId: string): MockupDoc {
+  if (!doc.formatLayouts?.[fmtId]) return doc;
+  const next = { ...doc.formatLayouts };
+  delete next[fmtId];
+  return { ...doc, formatLayouts: next };
 }
 
 // ── Persistering (localStorage, samme mønster som demoStudioModel) ──────────
