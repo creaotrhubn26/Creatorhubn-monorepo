@@ -58,6 +58,7 @@ import {
   captureSiteShots,
   bestShotForVariant,
   extractAccentFromImage,
+  extractBrandLook,
   isCaptureReady,
   installCaptureEngine,
   hostnameOf,
@@ -250,6 +251,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     else setCaptureNote('Fant ingen tydelig accent-farge i skjermbildet.');
   };
 
+  const applyBrandLook = async () => {
+    const src = shots.find((s) => s.viewport === 'desktop') ?? shots[0];
+    if (!src) return;
+    setCaptureNote('Genererer skreddersydd merkevare-look…');
+    const look = await extractBrandLook(src.dataUrl);
+    if (!look) { setCaptureNote('Fant ingen tydelig merkevare-farge i skjermbildet.'); return; }
+    const VIBE_LABEL: Record<string, string> = { vivid: 'levende', bold: 'markant', muted: 'dempet', playful: 'leken' };
+    store.patchCanvas({
+      accent: look.accent, accent2: look.accent2, background: look.background,
+      bgStyle: look.bgStyle, decor: look.decor, typography: look.typography,
+    });
+    setCaptureNote(`✓ Merkevare-look generert (${VIBE_LABEL[look.vibe] ?? look.vibe}): ${look.accent} + ${look.accent2}.`);
+  };
+
   const installEngine = async () => {
     setInstalling(true);
     setCaptureNote('Installerer capture-motor (kan ta et par minutter)…');
@@ -405,7 +420,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               <button onClick={() => autoFill(shots)} style={{ ...listBtn, marginTop: 8 }}>Auto-fyll enheter</button>
-              <button onClick={() => void applyAccentFromSite()} style={{ ...listBtn, marginTop: 6 }}>Bruk sidefarge som accent</button>
+              <button onClick={() => void applyBrandLook()} style={{ ...primaryBtn, marginTop: 6, width: '100%' }} title="Generér en unik palett + typografi + dekor fra merkevarens egne farger">✨ Generér merkevare-look</button>
+              <button onClick={() => void applyAccentFromSite()} style={{ ...listBtn, marginTop: 6 }}>Bruk kun sidefargen som accent</button>
             </>
           )}
 
