@@ -571,6 +571,89 @@ export function switchTemplate(oldDoc: MockupDoc, newTemplateId: string): Malbyt
   return { kept, replaced, dropped, doc: next };
 }
 
+// ── Sosiale formater (flerflate-utdata) ─────────────────────────────────────
+
+export interface MockupFormat { id: string; label: string; w: number; h: number; }
+
+export const MOCKUP_FORMATS: MockupFormat[] = [
+  { id: 'onepager', label: 'One-pager 16:10', w: 1600, h: 1000 },
+  { id: 'square', label: 'Kvadrat 1:1', w: 1080, h: 1080 },
+  { id: 'story', label: 'Story/Reel 9:16', w: 1080, h: 1920 },
+  { id: 'portrait', label: 'Portrett 4:5', w: 1080, h: 1350 },
+  { id: 'landscape', label: 'Landskap 16:9', w: 1280, h: 720 },
+  { id: 'linkedin', label: 'LinkedIn 1.91:1', w: 1200, h: 628 },
+];
+
+/** Sosiale formater for pakke-eksport (uten one-pager-kilden). */
+export const SOCIAL_FORMATS = MOCKUP_FORMATS.filter((f) => f.id !== 'onepager');
+
+/** Grovt anslag på tekst-høyde (px) uten canvas (for reflow-stabling). */
+function estTextHeight(t: MockupTextSlot, w: number): number {
+  const hard = Math.max(1, t.text.split('\n').length);
+  const wrapped = Math.max(hard, Math.ceil((t.text.length * t.size * 0.5) / Math.max(1, w)));
+  return wrapped * t.size * t.lineHeight;
+}
+
+/**
+ * Bytt lerret-format + reflow komposisjonen etter roller (sosiale flater):
+ * - landskap → tekst-kolonne venstre, enheter høyre;
+ * - portrett/kvadrat → tekst øverst, enheter under (sentrert).
+ * Enheter legges i en rad med felles høyde, skalert ned ved overflow; tekst
+ * skaleres til formatets bredde. Oppdaterer slots så layout-varianter fungerer
+ * videre i det nye formatet.
+ */
+export function applyFormat(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
+  const W = fmt.w, H = fmt.h;
+  const orient = W > H * 1.15 ? 'landscape' : H > W * 1.15 ? 'portrait' : 'square';
+  const m = Math.min(W, H) * 0.07;
+
+  let textZone: { x: number; y: number; w: number; h: number };
+  let deviceZone: { x: number; y: number; w: number; h: number };
+  let align: MockupTextAlign;
+  if (orient === 'landscape') {
+    textZone = { x: m, y: m, w: W * 0.4 - m, h: H - 2 * m };
+    deviceZone = { x: W * 0.42, y: m, w: W * 0.58 - m, h: H - 2 * m };
+    align = 'left';
+  } else {
+    const th = orient === 'portrait' ? H * 0.24 : H * 0.3;
+    textZone = { x: m, y: m, w: W - 2 * m, h: th };
+    deviceZone = { x: m, y: m + th + m * 0.5, w: W - 2 * m, h: H - th - 2.5 * m };
+    align = 'center';
+  }
+
+  // Tekst: stables i rolle-rekkefølge, størrelse skalert til bredden.
+  const fscale = Math.max(0.5, Math.min(1.1, textZone.w / 620));
+  let ty = textZone.y;
+  const texts = doc.texts.map((t) => {
+    const size = Math.max(11, Math.round(t.size * fscale));
+    const nt: MockupTextSlot = { ...t, x: Math.round(textZone.x), w: Math.round(textZone.w), align, size, y: Math.round(ty) };
+    ty += estTextHeight(nt, textZone.w) + size * 0.35;
+    return nt;
+  });
+
+  // Enheter: rad som fyller device-sonen, felles høyde, sentrert.
+  const targetH = deviceZone.h * 0.92;
+  const gap = deviceZone.w * 0.03;
+  const rawW = doc.devices.map((d) => targetH * FRAME_ASPECT[d.variant]);
+  const totalW = rawW.reduce((a, b) => a + b, 0) + gap * Math.max(0, doc.devices.length - 1);
+  const shrink = totalW > deviceZone.w ? deviceZone.w / totalW : 1;
+  const w2 = rawW.map((w) => w * shrink);
+  const rowW = w2.reduce((a, b) => a + b, 0) + gap * shrink * Math.max(0, doc.devices.length - 1);
+  let dx = deviceZone.x + (deviceZone.w - rowW) / 2;
+  const cy = deviceZone.y + deviceZone.h / 2;
+  const devices = doc.devices.map((d, i) => {
+    const dw = w2[i];
+    const dh = dw / FRAME_ASPECT[d.variant];
+    const nd: MockupDeviceSlot = { ...d, w: Math.round(dw), x: Math.round(dx), y: Math.round(cy - dh / 2), rotation: 0 };
+    dx += dw + gap * shrink;
+    return nd;
+  });
+
+  const next: MockupDoc = { ...doc, canvas: { ...doc.canvas, w: W, h: H }, devices, texts };
+  next.slots = slotsFromDoc(next);
+  return next;
+}
+
 // ── Persistering (localStorage, samme mønster som demoStudioModel) ──────────
 
 const PROJECTS_KEY = 'trrpa.mockup.projects';
