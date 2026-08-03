@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
+import { DesignGallery } from './DesignGallery';
 import { CaptureDialog } from './CaptureDialog';
 import { ProjectsView } from './ProjectsView';
 import { useMockupStudio } from './mockupStudioStore';
@@ -25,6 +26,8 @@ import {
   ELEMENT_LABELS,
   LAYOUT_VARIANTS,
   MOCKUP_FORMATS,
+  TYPOGRAPHY_STYLES,
+  DECOR_LABELS,
   currentFormatId,
   hasFormatLayout,
   orientationGroup,
@@ -47,6 +50,8 @@ import {
   type MockupTextRole,
   type MockupBackground,
   type MockupBgStyle,
+  type MockupTypographyId,
+  type MockupDecor,
 } from './mockupStudioModel';
 import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
@@ -101,6 +106,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
   const [view, setView] = useState<'projects' | 'editor'>('projects');
@@ -291,8 +297,10 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           onClose={onClose}
           onOpen={(d) => { store.setDocument(d); setView('editor'); }}
           onNew={() => setShowOnboarding(true)}
+          onGallery={() => setShowGallery(true)}
         />
         {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
+        {showGallery && <DesignGallery onClose={() => setShowGallery(false)} onDone={() => setView('editor')} />}
       </>
     );
   }
@@ -310,6 +318,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           placeholder="Navn på mockup"
         />
         <button onClick={() => setShowOnboarding(true)} style={ghostBtn} title="Velg mal / nytt materiell">Ny mockup</button>
+        <button onClick={() => setShowGallery(true)} style={ghostBtn} title="Bla i ferdig-stylede design">✦ Galleri</button>
         <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre">↶</button>
         <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om">↷</button>
         <div style={{ flex: 1 }} />
@@ -505,6 +514,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
       {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
+      {showGallery && <DesignGallery onClose={() => setShowGallery(false)} onDone={() => setView('editor')} />}
       {showSwitch && <OnboardingDialog switchDoc={doc} onClose={() => setShowSwitch(false)} />}
       {showCapture && <CaptureDialog onClose={() => setShowCapture(false)} />}
     </div>
@@ -588,6 +598,16 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           value={canvas.bgStyle}
           onChange={(v) => patchCanvas({ bgStyle: v })}
         />
+      </Field>
+      <Field label="Typografi">
+        <select value={canvas.typography ?? 'moderne'} onChange={(e) => patchCanvas({ typography: e.target.value as MockupTypographyId })} style={textInput}>
+          {(Object.keys(TYPOGRAPHY_STYLES) as MockupTypographyId[]).map((id) => <option key={id} value={id}>{TYPOGRAPHY_STYLES[id].label}</option>)}
+        </select>
+      </Field>
+      <Field label="Dekor">
+        <select value={canvas.decor ?? 'none'} onChange={(e) => patchCanvas({ decor: e.target.value as MockupDecor })} style={textInput}>
+          {(Object.keys(DECOR_LABELS) as MockupDecor[]).map((id) => <option key={id} value={id}>{DECOR_LABELS[id]}</option>)}
+        </select>
       </Field>
       <div style={{ fontSize: 12, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
         {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)

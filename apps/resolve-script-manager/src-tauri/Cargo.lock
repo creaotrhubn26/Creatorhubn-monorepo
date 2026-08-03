@@ -3330,7 +3330,7 @@ dependencies = [
 
 [[package]]
 name = "resolve-script-manager"
-version = "0.3.84"
+version = "0.3.86"
 dependencies = [
  "base64 0.22.1",
  "chrono",

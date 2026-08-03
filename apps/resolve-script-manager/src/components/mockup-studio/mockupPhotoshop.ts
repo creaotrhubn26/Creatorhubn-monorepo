@@ -76,10 +76,19 @@ export async function buildEditablePsdViaBridge(doc: MockupDoc, outputPath: stri
     file_path: t.path,
   }));
 
+  const psFont = (role: string, bold: boolean): string => {
+    const display = role === 'eyebrow' || role === 'title';
+    switch (doc.canvas.typography ?? 'moderne') {
+      case 'editorial': return display ? (bold ? 'Georgia-Bold' : 'Georgia') : (bold ? 'AvenirNext-Bold' : 'AvenirNext-Regular');
+      case 'teknisk': return display ? (bold ? 'Menlo-Bold' : 'Menlo-Regular') : (bold ? 'HelveticaNeue-Bold' : 'HelveticaNeue');
+      case 'geometrisk': return display ? (bold ? 'Futura-Bold' : 'Futura-Medium') : (bold ? 'AvenirNext-Bold' : 'AvenirNext-Regular');
+      default: return bold ? 'AvenirNext-Bold' : 'AvenirNext-Regular';
+    }
+  };
   const textFields = doc.texts.map((t, i) => {
     const hex = resolveColor(t.color, doc.canvas);
     const rgb = hexToRgb(hex);
-    const fontName = t.weight >= 700 ? 'Helvetica-Bold' : 'Helvetica';
+    const fontName = psFont(t.role, t.weight >= 700);
     const content = t.uppercase ? t.text.toUpperCase() : t.text;
     // Avsnitts-tekst: boks-topp-venstre = (x, y), bredde + justering styrer
     // ombrekking/plassering i boksen (matcher lerretets tekst-slot).
