@@ -12,12 +12,14 @@
  */
 
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
+import { parseMermaidMindmap, type MindNode } from './mockupMindmap';
 import {
   type MockupDoc,
   type MockupDeviceSlot,
   type MockupTextSlot,
   type MockupCanvasSpec,
   type MockupAnnotation,
+  isDark,
   deviceHeight,
   resolveColor,
   fontFamilyFor,
@@ -570,6 +572,111 @@ function drawAnnotations(ctx: CanvasRenderingContext2D, doc: MockupDoc, scale: n
   for (const a of anns) if (a.kind === 'loupe') drawLoupe(ctx, doc, a, scale, sampleSource);
 }
 
+// ── Produkt-mind map (native render av Mermaid-syntaks, merkevare-stylet) ────
+
+function roundedPill(ctx: CanvasRenderingContext2D, cx: number, cy: number, text: string, font: string, padX: number, padY: number): { w: number; h: number } {
+  ctx.font = font;
+  const tw = ctx.measureText(text).width;
+  const sizeM = /(\d+(?:\.\d+)?)px/.exec(font);
+  const fs = sizeM ? parseFloat(sizeM[1]) : 16;
+  const w = tw + padX * 2, h = fs + padY * 2;
+  roundRectPath(ctx, cx - w / 2, cy - h / 2, w, h, h / 2);
+  return { w, h };
+}
+
+/** Native radial-render av en produkt-mind map i merkevarens farger. */
+function drawMindmap(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
+  const tree = parseMermaidMindmap(doc.mindmap || '');
+  if (!tree) return;
+  const c = doc.canvas;
+  const W = c.w, H = c.h;
+  const light = c.background === 'light';
+  const ink = light ? '#1e293b' : '#eef2f8';
+  const leafFill = light ? '#ffffff' : 'rgba(255,255,255,0.08)';
+  const display = fontFamilyFor('title', c);
+  const body = fontFamilyFor('body', c);
+  const cx = W / 2, cy = H * 0.52;
+
+  const level1 = tree.children;
+  const N = Math.max(1, level1.length);
+  const R1 = Math.min(W, H) * 0.30;
+  const R2 = R1 + Math.min(W, H) * 0.185;
+
+  ctx.save();
+
+  // Tittel øverst til venstre (unngår kollisjon med topp-grenen).
+  ctx.fillStyle = c.accent;
+  ctx.font = `700 ${Math.round(W * 0.013)}px ${body}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  try { (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${Math.round(W * 0.0015)}px`; } catch { /* noop */ }
+  ctx.fillText('PRODUKT-PERSPEKTIV', W * 0.055, H * 0.085);
+  try { (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px'; } catch { /* noop */ }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // 1) Forbind + posisjoner (mål posisjoner først, tegn linjer under nodene).
+  const ang0 = -Math.PI / 2;
+  const l1pos = level1.map((_, i) => {
+    const a = ang0 + (i * 2 * Math.PI) / N;
+    return { a, x: cx + Math.cos(a) * R1, y: cy + Math.sin(a) * R1 };
+  });
+
+  // Linjer root → nivå1
+  ctx.strokeStyle = hexToRgba(c.accent, 0.5);
+  ctx.lineWidth = Math.max(2, W * 0.0016);
+  l1pos.forEach((p) => { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p.x, p.y); ctx.stroke(); });
+
+  // Linjer nivå1 → nivå2 + tegn nivå2-løv
+  const l2font = `600 ${Math.round(W * 0.0115)}px ${body}`;
+  level1.forEach((node, i) => {
+    const p = l1pos[i];
+    const kids = node.children;
+    const m = kids.length;
+    if (m > 0) {
+      const spread = Math.min(Math.PI * 0.5, m * 0.28);
+      kids.forEach((k, j) => {
+        const aa = p.a + (j - (m - 1) / 2) * (m > 1 ? spread / (m - 1) : 0);
+        const kx = cx + Math.cos(aa) * R2, ky = cy + Math.sin(aa) * R2;
+        ctx.strokeStyle = hexToRgba(c.accent2, 0.45);
+        ctx.lineWidth = Math.max(1.5, W * 0.0012);
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(kx, ky); ctx.stroke();
+        // løv-pill
+        ctx.fillStyle = leafFill;
+        roundedPill(ctx, kx, ky, k.label, l2font, W * 0.011, H * 0.012); ctx.fill();
+        ctx.strokeStyle = hexToRgba(c.accent2, 0.7); ctx.lineWidth = Math.max(1.5, W * 0.0011);
+        roundedPill(ctx, kx, ky, k.label, l2font, W * 0.011, H * 0.012); ctx.stroke();
+        ctx.fillStyle = ink; ctx.font = l2font; ctx.fillText(k.label, kx, ky + 1);
+      });
+    }
+  });
+
+  // 2) Nivå1-noder (fylt accent2)
+  const l1font = `700 ${Math.round(W * 0.016)}px ${body}`;
+  level1.forEach((node, i) => {
+    const p = l1pos[i];
+    ctx.fillStyle = c.accent2;
+    roundedPill(ctx, p.x, p.y, node.label, l1font, W * 0.014, H * 0.016); ctx.fill();
+    ctx.fillStyle = isDark(c.accent2) ? '#ffffff' : '#0b0d13';
+    ctx.font = l1font; ctx.fillText(node.label, p.x, p.y + 1);
+  });
+
+  // 3) Rot-node (stor, fylt accent)
+  const rootFont = `800 ${Math.round(W * 0.024)}px ${display}`;
+  ctx.fillStyle = c.accent;
+  const rp = roundedPill(ctx, cx, cy, tree.label, rootFont, W * 0.022, H * 0.024); ctx.fill();
+  ctx.fillStyle = isDark(c.accent) ? '#ffffff' : '#0b0d13';
+  ctx.font = rootFont; ctx.fillText(tree.label, cx, cy + 1);
+  void rp;
+  ctx.restore();
+}
+
+function hexToRgba(hex: string, a: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 /**
  * Rasteriser et MockupDoc til et canvas. `scale` multipliserer base-oppløsningen
  * (1 = full eksport-oppløsning; < 1 for rask preview). Async fordi ramme-PNG-er
@@ -585,6 +692,14 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
 
   fillBackground(ctx, doc);
   drawDecor(ctx, doc);
+
+  // Mind map-modus: lerretet ER en produkt-mind map (ingen enheter/tekst).
+  if (doc.mindmap && doc.mindmap.trim()) {
+    drawMindmap(ctx, doc);
+    await drawLogo(ctx, doc.canvas);
+    return canvas;
+  }
+
   // Enheter i dokument-rekkefølge (senere = øverst).
   for (const dev of doc.devices) {
     await drawDevice(ctx, doc, dev);

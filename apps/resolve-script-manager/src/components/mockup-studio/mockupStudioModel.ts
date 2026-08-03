@@ -213,6 +213,9 @@ export interface MockupDoc {
   texts: MockupTextSlot[];
   /** Illustrasjons-lag (callout/lupe/markør). Valgfri — tomt/udefinert = ingen. */
   annotations?: MockupAnnotation[];
+  /** Produkt-mind map (Mermaid `mindmap`-syntaks). Satt → lerretet er en mind
+   *  map-slide (rendres native i merkevarens farger, ikke enheter/tekst). */
+  mindmap?: string;
   updatedAt: number;
   /** Prosjektstatus (§ prosjektoversikt). Default 'draft'. */
   status?: MockupProjectStatus;
@@ -878,6 +881,22 @@ export function loadDoc(): MockupDoc | null {
   if (list.length === 0) return null;
   const cur = (() => { try { return localStorage.getItem(CURRENT_KEY); } catch { return null; } })();
   return list.find((p) => p.id === cur) ?? list.find((p) => p.status !== 'archived') ?? null;
+}
+
+/** Bygg et nytt mind map-dokument (egen slide) med gitt Mermaid-kilde + merkevare. */
+export function buildMindmapDoc(mermaid: string, opts?: { accent?: string; accent2?: string; background?: MockupBackground; typography?: MockupTypographyId; name?: string }): MockupDoc {
+  const base = buildTemplate('hero_mac_phone_dark');
+  const doc: MockupDoc = {
+    ...base, id: uid('doc'), name: opts?.name || 'Produkt-mind map',
+    devices: [], texts: [], slots: [], annotations: [], mindmap: mermaid,
+    status: 'draft', updatedAt: Date.now(),
+  };
+  doc.canvas = { ...doc.canvas };
+  if (opts?.accent) doc.canvas.accent = opts.accent;
+  if (opts?.accent2) doc.canvas.accent2 = opts.accent2;
+  if (opts?.background) doc.canvas.background = opts.background;
+  if (opts?.typography) doc.canvas.typography = opts.typography;
+  return doc;
 }
 
 export function createProject(templateId: string): MockupDoc {
