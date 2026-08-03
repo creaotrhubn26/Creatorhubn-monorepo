@@ -17,7 +17,7 @@ import { buildPsdBase64 } from './mockupPsd';
 import { buildEditablePsdViaBridge, isBridgeConnected } from './mockupPhotoshop';
 import { runPreflight, preflightSummary, SEVERITY_LABEL, type PreflightIssue, type PreflightSeverity } from './mockupPreflight';
 import { useMockupStudio } from './mockupStudioStore';
-import { safeDocName, addExport } from './mockupStudioModel';
+import { safeDocName, addExport, setProjectStatus } from './mockupStudioModel';
 
 const C = {
   overlay: 'rgba(6,8,13,0.72)',
@@ -107,6 +107,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
 
   const finish = (path: string) => {
     addExport(doc.name, formatLabel(), path);
+    setProjectStatus(doc.id, 'exported');
     setResultPath(path);
     setStatus('');
     setStep('done');

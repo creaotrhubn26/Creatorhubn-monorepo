@@ -156,6 +156,15 @@ export function resolveBaseBg(canvas: MockupCanvasSpec): string {
   }
 }
 
+export type MockupProjectStatus = 'draft' | 'ready' | 'exported' | 'archived';
+
+export const STATUS_LABELS: Record<MockupProjectStatus, string> = {
+  draft: 'Kladd',
+  ready: 'Klar',
+  exported: 'Eksportert',
+  archived: 'Arkivert',
+};
+
 export interface MockupDoc {
   id: string;
   name: string;
@@ -167,6 +176,8 @@ export interface MockupDoc {
   devices: MockupDeviceSlot[];
   texts: MockupTextSlot[];
   updatedAt: number;
+  /** Prosjektstatus (§ prosjektoversikt). Default 'draft'. */
+  status?: MockupProjectStatus;
 }
 
 // ── Fabrikker ──────────────────────────────────────────────────────────────
@@ -435,32 +446,90 @@ export function buildTemplate(id: string): MockupDoc {
 
 // ── Persistering (localStorage, samme mønster som demoStudioModel) ──────────
 
-const DOC_KEY = 'trrpa.mockup.doc';
+const PROJECTS_KEY = 'trrpa.mockup.projects';
+const CURRENT_KEY = 'trrpa.mockup.current';
 
-export function saveDoc(d: MockupDoc): void {
+function readProjects(): MockupDoc[] {
   try {
-    d.updatedAt = Date.now();
-    localStorage.setItem(DOC_KEY, JSON.stringify(d));
+    const raw = localStorage.getItem(PROJECTS_KEY);
+    if (!raw) return [];
+    const a = JSON.parse(raw) as MockupDoc[];
+    return Array.isArray(a) ? a : [];
   } catch {
-    /* quota/serialization — ignorer, ikke krasj editoren */
+    return [];
   }
 }
 
-export function loadDoc(): MockupDoc | null {
+function writeProjects(list: MockupDoc[]): void {
   try {
-    const raw = localStorage.getItem(DOC_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as MockupDoc;
-    if (!parsed || parsed.version !== 1 || !parsed.canvas) return null;
-    // Migrering: avvis gammel canvas-form (uten accent2/background) → frisk mal.
-    if (!parsed.canvas.accent2 || !parsed.canvas.background) return null;
-    // Defensiv: sørg for at arrayene finnes.
-    parsed.devices = Array.isArray(parsed.devices) ? parsed.devices : [];
-    parsed.texts = Array.isArray(parsed.texts) ? parsed.texts : [];
-    return parsed;
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
   } catch {
-    return null;
+    /* quota — ignorer, ikke krasj editoren */
   }
+}
+
+function validDoc(d: MockupDoc | undefined | null): MockupDoc | null {
+  if (!d || d.version !== 1 || !d.canvas || !d.canvas.accent2 || !d.canvas.background) return null;
+  d.devices = Array.isArray(d.devices) ? d.devices : [];
+  d.texts = Array.isArray(d.texts) ? d.texts : [];
+  return d;
+}
+
+/** Alle prosjekter (nyeste først), inkl. arkiverte. */
+export function listProjects(): MockupDoc[] {
+  return readProjects()
+    .map(validDoc)
+    .filter((d): d is MockupDoc => d !== null)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** Autolagre: upsert gjeldende dokument inn i prosjekt-registeret + peker. */
+export function saveDoc(d: MockupDoc): void {
+  d.updatedAt = Date.now();
+  const list = readProjects();
+  const i = list.findIndex((p) => p.id === d.id);
+  if (i >= 0) list[i] = d; else list.unshift(d);
+  writeProjects(list);
+  try { localStorage.setItem(CURRENT_KEY, d.id); } catch { /* ignore */ }
+}
+
+/** Last gjeldende prosjekt (peker → nyeste ikke-arkiverte → null). */
+export function loadDoc(): MockupDoc | null {
+  const list = listProjects();
+  if (list.length === 0) return null;
+  const cur = (() => { try { return localStorage.getItem(CURRENT_KEY); } catch { return null; } })();
+  return list.find((p) => p.id === cur) ?? list.find((p) => p.status !== 'archived') ?? null;
+}
+
+export function createProject(templateId: string): MockupDoc {
+  const d = buildTemplate(templateId);
+  d.status = 'draft';
+  saveDoc(d);
+  return d;
+}
+
+export function duplicateProject(id: string): MockupDoc | null {
+  const p = listProjects().find((x) => x.id === id);
+  if (!p) return null;
+  const clone: MockupDoc = { ...(JSON.parse(JSON.stringify(p)) as MockupDoc), id: uid('doc'), name: `${p.name} (kopi)`, status: 'draft', updatedAt: Date.now() };
+  saveDoc(clone);
+  return clone;
+}
+
+export function renameProject(id: string, name: string): void {
+  const list = readProjects();
+  const i = list.findIndex((x) => x.id === id);
+  if (i >= 0) { list[i].name = name; writeProjects(list); }
+}
+
+export function setProjectStatus(id: string, status: MockupProjectStatus): void {
+  const list = readProjects();
+  const i = list.findIndex((x) => x.id === id);
+  if (i >= 0) { list[i].status = status; writeProjects(list); }
+}
+
+export function deleteProject(id: string): void {
+  writeProjects(readProjects().filter((x) => x.id !== id));
 }
 
 // ── Brand kits (gjenbrukbar merkevare §1.3) ────────────────────────────────

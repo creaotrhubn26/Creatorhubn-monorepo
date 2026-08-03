@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
+import { ProjectsView } from './ProjectsView';
 import { useMockupStudio } from './mockupStudioStore';
 import {
   listKits,
@@ -93,6 +94,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [view, setView] = useState<'projects' | 'editor'>('projects');
 
   // URL-capture (P2)
   const [url, setUrl] = useState('');
@@ -255,11 +257,24 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   const missingShots = doc.devices.filter((d) => !d.image).length;
 
+  if (view === 'projects') {
+    return (
+      <>
+        <ProjectsView
+          onClose={onClose}
+          onOpen={(d) => { store.setDocument(d); setView('editor'); }}
+          onNew={() => setShowOnboarding(true)}
+        />
+        {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
+      </>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: C.bg, color: C.ink, fontFamily: C.font, minHeight: 0 }}>
       {/* Topplinje */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <button onClick={onClose} style={ghostBtn}>← Home</button>
+        <button onClick={() => setView('projects')} style={ghostBtn}>← Prosjekter</button>
         <span style={{ fontWeight: 700, fontSize: 15 }}>Mockup Studio</span>
         <input
           value={doc.name}
@@ -420,7 +435,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       <input ref={logoInputRef} type="file" accept="image/*" onChange={onLogoPicked} style={{ display: 'none' }} />
 
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
-      {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} />}
+      {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
     </div>
   );
 }

@@ -28,7 +28,7 @@ const C = {
   font: '-apple-system, system-ui, "Segoe UI", sans-serif',
 };
 
-export function OnboardingDialog({ onClose }: { onClose: () => void }) {
+export function OnboardingDialog({ onClose, onDone }: { onClose: () => void; onDone?: () => void }) {
   const newFromTemplate = useMockupStudio((s) => s.newFromTemplate);
   const [purpose, setPurpose] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -36,7 +36,8 @@ export function OnboardingDialog({ onClose }: { onClose: () => void }) {
   const cats = purpose ? PURPOSE_CATEGORIES.find((p) => p.id === purpose)?.categories ?? [] : [];
   const templates = purpose ? MOCKUP_TEMPLATES.filter((t) => cats.includes(t.category)) : MOCKUP_TEMPLATES;
 
-  const use = () => { if (selected) { newFromTemplate(selected); onClose(); } };
+  const pick = (id: string) => { newFromTemplate(id); onDone?.(); onClose(); };
+  const use = () => { if (selected) pick(selected); };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: C.overlay, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: C.font }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -58,7 +59,7 @@ export function OnboardingDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
           {templates.map((t) => (
-            <TemplateCard key={t.id} template={t} active={selected === t.id} onClick={() => setSelected(t.id)} onDouble={() => { setSelected(t.id); newFromTemplate(t.id); onClose(); }} />
+            <TemplateCard key={t.id} template={t} active={selected === t.id} onClick={() => setSelected(t.id)} onDouble={() => pick(t.id)} />
           ))}
         </div>
 
