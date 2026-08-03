@@ -17,7 +17,7 @@ import { buildPsdBase64 } from './mockupPsd';
 import { buildEditablePsdViaBridge, isBridgeConnected } from './mockupPhotoshop';
 import { runPreflight, preflightSummary, SEVERITY_LABEL, type PreflightIssue, type PreflightSeverity } from './mockupPreflight';
 import { useMockupStudio } from './mockupStudioStore';
-import { safeDocName, addExport, setProjectStatus } from './mockupStudioModel';
+import { safeDocName, addExport, setProjectStatus, applyFormat, SOCIAL_FORMATS } from './mockupStudioModel';
 
 const C = {
   overlay: 'rgba(6,8,13,0.72)',
@@ -48,6 +48,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [issues, setIssues] = useState<PreflightIssue[] | null>(null);
   const [format, setFormat] = useState<ExportFormat>('png');
   const [scale, setScale] = useState<1 | 2 | 4>(2);
+  const [socialPack, setSocialPack] = useState(false);
   const [status, setStatus] = useState('');
   const [resultPath, setResultPath] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -86,6 +87,25 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         setStatus('Bygger redigerbar PSD i Photoshop…');
         const res = await buildEditablePsdViaBridge(doc, path);
         finish(res.output_path);
+        return;
+      }
+      if (format === 'png' && socialPack) {
+        const path = await saveFileDialog({ defaultPath: `${safeDocName(doc.name)}.png`, filters: [{ name: 'PNG', extensions: ['png'] }] });
+        if (typeof path !== 'string') { setStep('settings'); return; }
+        const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const dir = slash >= 0 ? path.slice(0, slash) : '.';
+        const base = safeDocName(doc.name);
+        let lastPath = dir;
+        for (const fmt of SOCIAL_FORMATS) {
+          setStatus(`Tegner ${fmt.label}…`);
+          const url = await rasterizeToPngDataUrl(applyFormat(doc, fmt), scale);
+          lastPath = await demoWriteBinary(`${dir}/${base}-${fmt.id}.png`, url);
+        }
+        addExport(doc.name, `PNG sosial-pakke (${SOCIAL_FORMATS.length} formater)`, dir);
+        setProjectStatus(doc.id, 'exported');
+        setResultPath(lastPath);
+        setStatus('');
+        setStep('done');
         return;
       }
       const ext = format;
@@ -175,6 +195,11 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
                 <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 8 }}>Eksporterer {doc.canvas.w * scale}×{doc.canvas.h * scale} px.</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={socialPack} onChange={(e) => setSocialPack(e.target.checked)} />
+                  Sosial-pakke: alle formater (kvadrat, story, portrett, landskap, LinkedIn)
+                </label>
+                {socialPack && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>Lagrer {SOCIAL_FORMATS.length} filer i valgt mappe, reflowet per format.</div>}
               </div>
             )}
             {format === 'pdf' && <div style={{ fontSize: 13, color: C.inkSoft }}>Énsides PDF (RGB) i full oppløsning, klar for deling og utskrift.</div>}

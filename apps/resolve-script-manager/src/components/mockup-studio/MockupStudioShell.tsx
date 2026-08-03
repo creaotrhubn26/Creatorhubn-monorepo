@@ -23,6 +23,7 @@ import {
   makeElement,
   ELEMENT_LABELS,
   LAYOUT_VARIANTS,
+  MOCKUP_FORMATS,
   orientationGroup,
   listBrandKits,
   saveBrandKit,
@@ -299,6 +300,16 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         {/* Venstre: nettside-capture + legg til */}
         <div style={{ width: 220, borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
           <SectionLabel>Oppsett</SectionLabel>
+          <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Format (flate)</div>
+          <select
+            value={MOCKUP_FORMATS.find((f) => f.w === doc.canvas.w && f.h === doc.canvas.h)?.id ?? ''}
+            onChange={(e) => { const f = MOCKUP_FORMATS.find((x) => x.id === e.target.value); if (f) store.applyFormat(f); }}
+            style={{ ...textInput, marginBottom: 10 }}
+            title="Bytt lerret-format — komposisjonen reflowes for sosiale flater"
+          >
+            {!MOCKUP_FORMATS.find((f) => f.w === doc.canvas.w && f.h === doc.canvas.h) && <option value="">Egendefinert</option>}
+            {MOCKUP_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select>
           <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Layout-variant</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             {LAYOUT_VARIANTS.map((v) => (
