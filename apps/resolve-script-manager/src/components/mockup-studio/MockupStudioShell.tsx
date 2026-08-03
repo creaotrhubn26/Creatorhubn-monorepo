@@ -60,6 +60,7 @@ import {
   type CapturedShot,
   type SimTarget,
 } from './mockupCapture';
+import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -207,6 +208,22 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runAiDraft = async () => {
+    setCaptureNote(null);
+    if (!url.trim()) return;
+    if (!aiAvailable()) { setCaptureNote('AI ikke tilkoblet — logg inn (RR-token) i Innstillinger.'); return; }
+    setCapturing(true);
+    try {
+      const draft = await aiDraftOnePager(url, (s) => setCaptureNote(`AI: ${s}`));
+      store.setDocument(draft);
+      setCaptureNote('✓ AI-utkast klart — rediger fritt.');
+    } catch (e) {
+      setCaptureNote('AI-utkast feilet: ' + String(e));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   const assignShot = (shot: CapturedShot) => {
     if (selection.kind === 'device') {
       store.setDeviceImage(selection.id, shot.dataUrl);
@@ -346,6 +363,14 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           />
           <button onClick={() => void runCapture()} disabled={capturing || !url.trim()} style={{ ...primaryBtn, width: '100%', opacity: capturing || !url.trim() ? 0.6 : 1 }}>
             {capturing ? 'Henter…' : 'Hent skjermbilder'}
+          </button>
+          <button
+            onClick={() => void runAiDraft()}
+            disabled={capturing || !url.trim() || !aiAvailable()}
+            style={{ ...listBtn, marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
+            title={aiAvailable() ? 'La AI drafte hele one-pageren fra URL-en (overskrift, tekst, farger, mal + skjermbilder)' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+          >
+            ✨ AI-utkast fra URL
           </button>
           {engineReady === false && (
             <button onClick={() => void installEngine()} disabled={installing} style={{ ...listBtn, marginTop: 6 }}>
