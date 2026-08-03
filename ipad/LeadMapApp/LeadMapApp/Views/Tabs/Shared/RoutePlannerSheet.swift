@@ -11,6 +11,7 @@
 import SwiftUI
 import CoreLocation
 import MapKit
+import EventKit
 
 // Lokal palett (matcher SlBrand — den globale `Brand` er fil-privat).
 fileprivate enum RBrand {
@@ -46,6 +47,11 @@ struct RoutePlannerSheet: View {
     @State private var legMinutter: [Int] = []
     @State private var legKm: [Double] = []
     @State private var beregnerEtapper = false
+    /// Bom for hele ruta (NVDB, stasjoner ≤400 m fra MKRoute-polylinene).
+    @State private var bomKr: Double? = nil
+    @State private var bomAntall = 0
+    /// Kalender-eksport-status (toast-tekst).
+    @State private var kalenderMelding: String? = nil
 
     // Kandidater: leads med ekte koordinater (dropp 0,0-plassholdere).
     private var candidates: [LeadModel] {
@@ -197,6 +203,18 @@ struct RoutePlannerSheet: View {
                     }
                 }
 
+                // Felt-økonomi for hele ruta: bom (NVDB) + kjøregodtgjørelse
+                // (statens sats fra «Min bil»-profilen).
+                HStack(spacing: 8) {
+                    if let bomKr {
+                        kostChip("road.lanes",
+                                 "\(bomAntall) bompassering\(bomAntall == 1 ? "" : "er") · ca. \(Int(bomKr.rounded())) kr")
+                    }
+                    kostChip("banknote",
+                             "Godtgjørelse ca. \(Int((ekteKm * appState.vehicleProfile.mileageRate).rounded())) kr")
+                    Spacer()
+                }
+
                 ForEach(Array(ordered.enumerated()), id: \.element.id) { idx, lead in
                     let anker = ankerTid(lead)
                     let ankomst = idx < tider.count ? tider[idx] : nil
@@ -228,6 +246,18 @@ struct RoutePlannerSheet: View {
                             }
                         }
                         Spacer()
+                        if erPrioritert(lead) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "flame.fill")
+                                    .font(.appScaled(size: 9, weight: .semibold))
+                                Text("Prioritert")
+                                    .font(.appScaled(size: 9, weight: .bold))
+                            }
+                            .foregroundStyle(Color(red: 0.98, green: 0.55, blue: 0.10))
+                            .padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(Color(red: 0.98, green: 0.55, blue: 0.10).opacity(0.15),
+                                        in: Capsule())
+                        }
                         if let anker {
                             HStack(spacing: 3) {
                                 Image(systemName: "calendar.badge.clock")
@@ -246,6 +276,11 @@ struct RoutePlannerSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 11)
                         .stroke(forSent ? Color(red: 0.95, green: 0.3, blue: 0.3).opacity(0.5)
                                         : RBrand.stroke, lineWidth: 1))
+                    .contextMenu {
+                        Button { aapneIAppleMaps(lead) } label: {
+                            Label("Kjør etappen i Apple Maps", systemImage: "map.fill")
+                        }
+                    }
                 }
 
                 Button { startRoute() } label: {
@@ -263,12 +298,48 @@ struct RoutePlannerSheet: View {
                 .buttonStyle(.plain)
                 .padding(.top, 4)
 
-                Text("«Start rute» åpner navigasjon til første stopp i Kart. Rekkefølgen over er den anbefalte besøksrekkefølgen.")
+                // Kalender-eksport: hvert stopp som avtale m/ ankomsttid.
+                Button { Task { await leggIKalender(tider) } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                        Text("Legg besøkene i kalenderen")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(RBrand.purpleLight)
+                    .frame(maxWidth: .infinity).padding(11)
+                    .background(RBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(RBrand.purple.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                if let kalenderMelding {
+                    Text(kalenderMelding)
+                        .font(.appScaled(size: 10, weight: .semibold))
+                        .foregroundStyle(RBrand.green)
+                }
+
+                Text("«Start rute» åpner navigasjon til første stopp i Kart. Rekkefølgen over er den anbefalte besøksrekkefølgen — hold på et stopp for å kjøre etappen i Apple Maps.")
                     .font(.appScaled(size: 10))
                     .foregroundStyle(RBrand.textTertiary)
             }
             .padding(16)
         }
+    }
+
+    private func kostChip(_ ikon: String, _ tekst: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: ikon)
+                .font(.appScaled(size: 10, weight: .semibold))
+                .foregroundStyle(RBrand.blue)
+            Text(tekst)
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(RBrand.textSecondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 9).padding(.vertical, 6)
+        .background(RBrand.card, in: Capsule())
+        .overlay(Capsule().stroke(RBrand.stroke, lineWidth: 1))
     }
 
     private func summaryTile(_ label: String, _ value: String, _ tint: Color) -> some View {
@@ -337,12 +408,14 @@ struct RoutePlannerSheet: View {
         var klokke = Date()
         let besok = Double(besokMin)
 
+        // Prioritetsvektet nærmeste-nabo: hot/forfalte leads «trekkes»
+        // nærmere (kortere effektiv avstand) så de tas tidligere på dagen.
         func taNaermeste(fra: CLLocationCoordinate2D) -> LeadModel? {
             guard !pool.isEmpty else { return nil }
             var bestIdx = 0
             var bestDist = Double.greatestFiniteMagnitude
             for (i, lead) in pool.enumerated() {
-                let d = haversine(fra, coord(lead))
+                let d = haversine(fra, coord(lead)) * prioritetsVekt(lead)
                 if d < bestDist { bestDist = d; bestIdx = i }
             }
             return pool.remove(at: bestIdx)
@@ -353,7 +426,8 @@ struct RoutePlannerSheet: View {
             let frist = ankerTid(anker) ?? .distantFuture
             // Fyll inn frie stopp så lenge vi fortsatt rekker møtet.
             while let kandidat = pool.min(by: {
-                haversine(cursor, coord($0)) < haversine(cursor, coord($1))
+                haversine(cursor, coord($0)) * prioritetsVekt($0)
+                    < haversine(cursor, coord($1)) * prioritetsVekt($1)
             }) {
                 let kandidatC = coord(kandidat)
                 let etterKandidat = klokke
@@ -373,18 +447,77 @@ struct RoutePlannerSheet: View {
             cursor = ankerC
         }
 
-        // Resten: klassisk nærmeste-nabo.
+        // Resten: prioritetsvektet nærmeste-nabo.
         while let next = taNaermeste(fra: cursor) {
             result.append(next)
             cursor = coord(next)
         }
 
-        ordered = result
+        // 2-opt-finpuss: fjerner de klassiske NN-sløyfene. Ankere er LÅST
+        // (tidspunkt-forpliktelser) — kun frie segmenter mellom dem snus.
+        ordered = toOptForbedre(result)
         planned = true
         legMinutter = []
         legKm = []
+        bomKr = nil
+        bomAntall = 0
         Task { await beregnEtapper() }
     }
+
+    /// 2-opt på haversine innen frie segmenter (mellom ankere/endepunkter).
+    /// Merk: ren distanse — ⚠-varslene i planen fanger evt. tidsbrudd.
+    private func toOptForbedre(_ inn: [LeadModel]) -> [LeadModel] {
+        var rute = inn
+        func erAnker(_ l: LeadModel) -> Bool { ankerTid(l) != nil }
+        var segStart = 0
+        while segStart < rute.count {
+            if erAnker(rute[segStart]) { segStart += 1; continue }
+            var segEnd = segStart
+            while segEnd + 1 < rute.count && !erAnker(rute[segEnd + 1]) { segEnd += 1 }
+            if segEnd - segStart >= 2 {
+                let fraC: CLLocationCoordinate2D? =
+                    segStart > 0 ? coord(rute[segStart - 1]) : startCoord
+                let tilC: CLLocationCoordinate2D? =
+                    segEnd + 1 < rute.count ? coord(rute[segEnd + 1]) : nil
+                var forbedret = true
+                var runder = 0
+                while forbedret && runder < 30 {
+                    forbedret = false
+                    runder += 1
+                    for i in segStart..<segEnd {
+                        for j in (i + 1)...segEnd {
+                            let a: CLLocationCoordinate2D? =
+                                i == segStart ? fraC : coord(rute[i - 1])
+                            let b = coord(rute[i])
+                            let c = coord(rute[j])
+                            let d: CLLocationCoordinate2D? =
+                                j == segEnd ? tilC : coord(rute[j + 1])
+                            let gammel = (a.map { haversine($0, b) } ?? 0)
+                                + (d.map { haversine(c, $0) } ?? 0)
+                            let ny = (a.map { haversine($0, c) } ?? 0)
+                                + (d.map { haversine(b, $0) } ?? 0)
+                            if ny + 1 < gammel {
+                                rute.replaceSubrange(i...j, with: rute[i...j].reversed())
+                                forbedret = true
+                            }
+                        }
+                    }
+                }
+            }
+            segStart = segEnd + 1
+        }
+        return rute
+    }
+
+    /// Prioritetsvekt: lavere = viktigere. Forfalt oppfølging vinner over
+    /// hot-temperatur, som vinner over høy AI-score.
+    private func prioritetsVekt(_ lead: LeadModel) -> Double {
+        if let t = lead.nextFollowUpAt, t < Date() { return 0.6 }
+        if lead.leadTemperature?.lowercased().contains("hot") == true { return 0.7 }
+        if (lead.leadScore ?? 0) >= 80 { return 0.85 }
+        return 1.0
+    }
+    private func erPrioritert(_ lead: LeadModel) -> Bool { prioritetsVekt(lead) < 1.0 }
 
     /// Ekte kjøretid/distanse per etappe (MKDirections, sekvensielt).
     /// Feilende etapper faller tilbake til 35 km/t-estimatet.
@@ -394,6 +527,7 @@ struct RoutePlannerSheet: View {
         defer { beregnerEtapper = false }
         var mins: [Int] = []
         var kms: [Double] = []
+        var polylinje: [CLLocationCoordinate2D] = []
         var prev = startCoord
         for lead in ordered {
             let c = coord(lead)
@@ -401,10 +535,12 @@ struct RoutePlannerSheet: View {
                 if let rute = try? await kjoreRute(fra: p, til: c) {
                     mins.append(max(1, Int(rute.expectedTravelTime / 60)))
                     kms.append(rute.distance / 1000)
+                    polylinje.append(contentsOf: rute.polyline.koordinater)
                 } else {
                     let km = haversine(p, c) / 1000
                     mins.append(max(1, Int(km / 35.0 * 60)))
                     kms.append(km)
+                    polylinje.append(contentsOf: [p, c])
                 }
             } else {
                 mins.append(0)
@@ -414,6 +550,30 @@ struct RoutePlannerSheet: View {
         }
         legMinutter = mins
         legKm = kms
+        await beregnBom(polylinje)
+    }
+
+    /// Bom for hele ruta: NVDB-stasjoner ≤400 m fra kjøre-polylinene,
+    /// summert småbil-takst (samme motor som nav-modusen bruker per tur).
+    @MainActor
+    private func beregnBom(_ rute: [CLLocationCoordinate2D]) async {
+        guard rute.count > 1 else { bomKr = nil; bomAntall = 0; return }
+        let lats = rute.map(\.latitude), lons = rute.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return }
+        let stations = await NvdbService.shared.tolls(
+            bbox: "\(minLon),\(minLat),\(maxLon),\(maxLat)", using: appState.api)
+        guard !stations.isEmpty else { bomKr = nil; bomAntall = 0; return }
+        // Tynn ut polylinja — avstandssjekken er O(stasjoner × punkter).
+        let steg = max(1, rute.count / 600)
+        let tynn = stride(from: 0, to: rute.count, by: steg).map { rute[$0] }
+        let paRuta = stations.filter {
+            NavRoutePOIService.nearestDistanceToRoute(
+                CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon),
+                route: tynn) <= 400
+        }
+        bomAntall = paRuta.count
+        bomKr = paRuta.isEmpty ? nil : paRuta.compactMap { $0.rateSmall }.reduce(0, +)
     }
 
     private func kjoreRute(fra: CLLocationCoordinate2D,
@@ -545,5 +705,48 @@ struct RoutePlannerSheet: View {
         let lat2 = b.latitude * .pi / 180
         let h = sin(dLat / 2) * sin(dLat / 2) + sin(dLon / 2) * sin(dLon / 2) * cos(lat1) * cos(lat2)
         return 2 * r * asin(min(1, sqrt(h)))
+    }
+
+    // MARK: Kalender-eksport (EventKit, write-only-tilgang)
+
+    /// Legg hvert stopp i kalenderen med beregnet ankomsttid + besøkstid.
+    @MainActor
+    private func leggIKalender(_ tider: [Date]) async {
+        let store = EKEventStore()
+        let ok = (try? await store.requestWriteOnlyAccessToEvents()) ?? false
+        guard ok else {
+            kalenderMelding = "Kalender-tilgang avslått — gi tilgang i Innstillinger."
+            return
+        }
+        var lagret = 0
+        for (i, lead) in ordered.enumerated() where i < tider.count {
+            let ev = EKEvent(eventStore: store)
+            ev.title = "Besøk: \(lead.name)"
+            ev.startDate = tider[i]
+            ev.endDate = tider[i].addingTimeInterval(Double(besokMin) * 60)
+            ev.location = lead.address
+            ev.notes = "Leadgrid-rute · stopp \(i + 1) av \(ordered.count)"
+            ev.calendar = store.defaultCalendarForNewEvents
+            if (try? store.save(ev, span: .thisEvent)) != nil { lagret += 1 }
+        }
+        kalenderMelding = "\(lagret) besøk lagt i kalenderen"
+    }
+
+    /// Kjør denne etappen i Apple Maps (for de som foretrekker det).
+    private func aapneIAppleMaps(_ lead: LeadModel) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: coord(lead)))
+        item.name = lead.name
+        item.openInMaps(launchOptions:
+            [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+    }
+}
+
+private extension MKPolyline {
+    /// Koordinatene i polylinja (for bom-sjekk langs hele ruta).
+    var koordinater: [CLLocationCoordinate2D] {
+        var coords = [CLLocationCoordinate2D](
+            repeating: kCLLocationCoordinate2DInvalid, count: pointCount)
+        getCoordinates(&coords, range: NSRange(location: 0, length: pointCount))
+        return coords
     }
 }

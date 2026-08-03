@@ -66,6 +66,9 @@ targets:
         UIBackgroundModes:
           - location
         # Kamera: QR-paring + visittkort-skanner (VisionKit #182).
+        # Kalender (write-only): ruteplanleggeren legger besøkene i kalenderen
+        # med beregnet ankomsttid («Legg besøkene i kalenderen»).
+        NSCalendarsWriteOnlyAccessUsageDescription: Leadgrid legger rute-stoppene dine inn i kalenderen med beregnet ankomsttid, slik at dagen din er synlig der du planlegger.
         NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i nettleseren for paring.
         # Mikrofon: dikter visit-notater (#183).
         NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
