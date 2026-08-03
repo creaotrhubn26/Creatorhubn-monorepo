@@ -30,11 +30,16 @@ export type Selection =
 interface MockupStudioState {
   doc: MockupDoc;
   selection: Selection;
+  /** Angre/gjør-om-stakker (fulle doc-snapshots). */
+  past: MockupDoc[];
+  future: MockupDoc[];
 
   // Livssyklus
   newFromTemplate: (templateId: string) => void;
   setDocument: (doc: MockupDoc) => void;
   setName: (name: string) => void;
+  undo: () => void;
+  redo: () => void;
 
   // Utvalg
   select: (sel: Selection) => void;
@@ -58,31 +63,49 @@ function initialDoc(): MockupDoc {
   return loadDoc() ?? buildTemplate('hero_mac_phone_dark');
 }
 
-/** Sentral commit: skriv nytt doc til state + persister. */
+const HISTORY_CAP = 30;
+
+/** Sentral commit: skriv nytt doc til state + persister + push til angre-stakk. */
 function commit(set: (fn: (s: MockupStudioState) => Partial<MockupStudioState>) => void, mutate: (doc: MockupDoc) => MockupDoc) {
   set((s) => {
     const next = mutate(s.doc);
     saveDoc(next);
-    return { doc: next };
+    return { doc: next, past: [...s.past, s.doc].slice(-HISTORY_CAP), future: [] };
   });
 }
 
 export const useMockupStudio = create<MockupStudioState>((set) => ({
   doc: initialDoc(),
   selection: { kind: 'canvas' },
+  past: [],
+  future: [],
 
   newFromTemplate: (templateId) => {
     const next = buildTemplate(templateId);
     saveDoc(next);
-    set({ doc: next, selection: { kind: 'canvas' } });
+    set((s) => ({ doc: next, selection: { kind: 'canvas' }, past: [...s.past, s.doc].slice(-HISTORY_CAP), future: [] }));
   },
 
   setDocument: (next) => {
     saveDoc(next);
-    set({ doc: next, selection: { kind: 'canvas' } });
+    set((s) => ({ doc: next, selection: { kind: 'canvas' }, past: [...s.past, s.doc].slice(-HISTORY_CAP), future: [] }));
   },
 
   setName: (name) => commit(set, (d) => ({ ...d, name })),
+
+  undo: () => set((s) => {
+    if (!s.past.length) return {};
+    const prev = s.past[s.past.length - 1];
+    saveDoc(prev);
+    return { doc: prev, past: s.past.slice(0, -1), future: [s.doc, ...s.future].slice(0, HISTORY_CAP), selection: { kind: 'canvas' } };
+  }),
+
+  redo: () => set((s) => {
+    if (!s.future.length) return {};
+    const nxt = s.future[0];
+    saveDoc(nxt);
+    return { doc: nxt, future: s.future.slice(1), past: [...s.past, s.doc].slice(-HISTORY_CAP), selection: { kind: 'canvas' } };
+  }),
 
   select: (selection) => set({ selection }),
 

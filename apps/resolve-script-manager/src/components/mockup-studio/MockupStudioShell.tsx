@@ -12,9 +12,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
 import { ExportDialog } from './ExportDialog';
+import { OnboardingDialog } from './OnboardingDialog';
 import { useMockupStudio } from './mockupStudioStore';
 import {
-  MOCKUP_TEMPLATES,
   listKits,
   saveKit,
   deleteKit,
@@ -78,6 +78,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // URL-capture (P2)
   const [url, setUrl] = useState('');
@@ -236,15 +237,9 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           style={{ ...textInput, width: 220 }}
           placeholder="Navn på mockup"
         />
-        <select
-          value=""
-          onChange={(e) => { if (e.target.value) store.newFromTemplate(e.target.value); }}
-          style={{ ...textInput, width: 180 }}
-          title="Start fra mal (erstatter gjeldende)"
-        >
-          <option value="">Ny fra mal…</option>
-          {MOCKUP_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <button onClick={() => setShowOnboarding(true)} style={ghostBtn} title="Velg mal / nytt materiell">Ny mockup</button>
+        <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre">↶</button>
+        <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om">↷</button>
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
@@ -358,6 +353,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       <input ref={logoInputRef} type="file" accept="image/*" onChange={onLogoPicked} style={{ display: 'none' }} />
 
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
+      {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} />}
     </div>
   );
 }
