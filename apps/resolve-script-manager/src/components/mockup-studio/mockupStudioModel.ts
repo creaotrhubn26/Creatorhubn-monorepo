@@ -83,6 +83,13 @@ export type MockupBackground = 'light' | 'dark' | 'brand';
 /** Bakgrunns-stil: ren flate, gradient eller atmosfærisk (accent-glød). */
 export type MockupBgStyle = 'clean' | 'gradient' | 'atmospheric';
 
+/** Dekor-lag: designer-elementer bak innholdet (visuell dybde). */
+export type MockupDecor = 'none' | 'orbs' | 'mesh' | 'grid' | 'shapes';
+
+export const DECOR_LABELS: Record<MockupDecor, string> = {
+  none: 'Ingen', orbs: 'Glød-orber', mesh: 'Gradient-mesh', grid: 'Rutenett', shapes: 'Former',
+};
+
 /** Typografi-stil (kuraterte font-paringer, macOS-system-fonter). */
 export type MockupTypographyId = 'moderne' | 'editorial' | 'teknisk' | 'geometrisk';
 
@@ -115,6 +122,8 @@ export interface MockupCanvasSpec {
   bgStyle: MockupBgStyle;
   /** Typografi-stil (font-paring). Default 'moderne'. */
   typography?: MockupTypographyId;
+  /** Dekor-lag bak innholdet. Default 'none'. */
+  decor?: MockupDecor;
   /** Valgfri logo. */
   logo?: MockupLogo;
 }
@@ -388,7 +397,7 @@ export interface MockupTemplate {
 }
 
 function baseCanvas(partial: Partial<MockupCanvasSpec> = {}): MockupCanvasSpec {
-  return { w: BASE_W, h: BASE_H, accent: '#22d3ee', accent2: '#a78bfa', background: 'dark', bgStyle: 'gradient', typography: 'moderne', ...partial };
+  return { w: BASE_W, h: BASE_H, accent: '#22d3ee', accent2: '#a78bfa', background: 'dark', bgStyle: 'gradient', typography: 'moderne', decor: 'orbs', ...partial };
 }
 
 function doc(name: string, template: string, canvas: MockupCanvasSpec, devices: MockupDeviceSlot[], texts: MockupTextSlot[]): MockupDoc {
@@ -444,7 +453,7 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
   {
     id: 'sales_pitch_dark', name: 'Salgspitch — MacBook + CTA', category: 'salgspitch', variant: 'dark', devices: 1,
     description: 'Stor MacBook, kraftig overskrift og tydelig CTA-linje.',
-    build: () => { const t = ink('dark'); return doc('Salgspitch', 'sales_pitch_dark', baseCanvas({ background: 'brand', bgStyle: 'atmospheric' }), [
+    build: () => { const t = ink('dark'); return doc('Salgspitch', 'sales_pitch_dark', baseCanvas({ background: 'brand', bgStyle: 'atmospheric', decor: 'none' }), [
       makeDevice('macbook', { x: 620, y: 300, w: 900, shadow: true }),
     ], [
       makeText('eyebrow', { text: 'FOR SALGSTEAM', x: 120, y: 320, w: 460 }),

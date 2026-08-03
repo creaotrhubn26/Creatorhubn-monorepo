@@ -136,6 +136,48 @@ function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
   glow(w * 0.18, h * 0.9, w * 0.45, c.accent2, light ? 0.13 : 0.22);
 }
 
+/** Dekor-lag: designer-elementer bak innholdet (glød-orber, mesh, rutenett, former). */
+function drawDecor(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
+  const c = doc.canvas;
+  const decor = c.decor ?? 'none';
+  if (decor === 'none') return;
+  const W = c.w, H = c.h;
+  const light = c.background === 'light';
+  const a1 = hexToRgb(c.accent), a2 = hexToRgb(c.accent2);
+  const rgb1 = `${a1.r},${a1.g},${a1.b}`, rgb2 = `${a2.r},${a2.g},${a2.b}`;
+  const radial = (cx: number, cy: number, rad: number, rgb: string, alpha: number) => {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+    g.addColorStop(0, `rgba(${rgb},${alpha})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  };
+  if (decor === 'orbs') {
+    radial(W * 0.82, H * 0.18, W * 0.38, rgb1, light ? 0.14 : 0.28);
+    radial(W * 0.14, H * 0.86, W * 0.32, rgb2, light ? 0.11 : 0.22);
+  } else if (decor === 'mesh') {
+    radial(W * 0.18, H * 0.2, W * 0.42, rgb1, light ? 0.12 : 0.24);
+    radial(W * 0.86, H * 0.32, W * 0.46, rgb2, light ? 0.11 : 0.22);
+    radial(W * 0.55, H * 0.92, W * 0.4, rgb1, light ? 0.09 : 0.18);
+  } else if (decor === 'grid') {
+    ctx.save();
+    ctx.fillStyle = light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)';
+    const step = 46;
+    for (let y = step; y < H; y += step) for (let x = step; x < W; x += step) { ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  } else if (decor === 'shapes') {
+    ctx.save();
+    ctx.fillStyle = `rgba(${rgb1},${light ? 0.1 : 0.14})`;
+    ctx.beginPath(); ctx.arc(W * 1.0, H * 0.1, W * 0.28, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(${rgb2},${light ? 0.09 : 0.12})`;
+    ctx.beginPath(); ctx.arc(W * 0.0, H * 0.96, W * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `rgba(${rgb1},${light ? 0.22 : 0.3})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(W * 0.055, H * 0.42); ctx.lineTo(W * 0.055, H * 0.42 + 110); ctx.stroke();
+    ctx.restore();
+  }
+}
+
 /** Tegn logo-slot (bevarer bilde-forhold ut fra bredden). */
 async function drawLogo(ctx: CanvasRenderingContext2D, canvas: MockupCanvasSpec): Promise<void> {
   const L = canvas.logo;
@@ -347,6 +389,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1): Promise<HTMLCa
   ctx.scale(scale, scale);
 
   fillBackground(ctx, doc);
+  drawDecor(ctx, doc);
   // Enheter i dokument-rekkefølge (senere = øverst).
   for (const dev of doc.devices) {
     await drawDevice(ctx, doc, dev);
@@ -385,7 +428,7 @@ export async function rasterizeLayers(doc: MockupDoc): Promise<{ name: string; c
   const out: { name: string; canvas: HTMLCanvasElement }[] = [];
 
   const bg = newLayerCanvas(w, h);
-  if (bg.ctx) fillBackground(bg.ctx, doc);
+  if (bg.ctx) { fillBackground(bg.ctx, doc); drawDecor(bg.ctx, doc); }
   out.push({ name: 'Bakgrunn', canvas: bg.canvas });
 
   for (const dev of doc.devices) {
