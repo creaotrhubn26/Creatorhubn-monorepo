@@ -13,7 +13,10 @@ import {
   MOCKUP_TEMPLATES,
   PURPOSE_CATEGORIES,
   CATEGORY_LABELS,
+  switchTemplate,
   type MockupTemplate,
+  type MockupDoc,
+  type MalbytteReport,
 } from './mockupStudioModel';
 
 const C = {
@@ -28,44 +31,66 @@ const C = {
   font: '-apple-system, system-ui, "Segoe UI", sans-serif',
 };
 
-export function OnboardingDialog({ onClose, onDone }: { onClose: () => void; onDone?: () => void }) {
+export function OnboardingDialog({ onClose, onDone, switchDoc }: { onClose: () => void; onDone?: () => void; switchDoc?: MockupDoc }) {
   const newFromTemplate = useMockupStudio((s) => s.newFromTemplate);
+  const setDocument = useMockupStudio((s) => s.setDocument);
   const [purpose, setPurpose] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [report, setReport] = useState<MalbytteReport | null>(null);
 
   const cats = purpose ? PURPOSE_CATEGORIES.find((p) => p.id === purpose)?.categories ?? [] : [];
   const templates = purpose ? MOCKUP_TEMPLATES.filter((t) => cats.includes(t.category)) : MOCKUP_TEMPLATES;
 
-  const pick = (id: string) => { newFromTemplate(id); onDone?.(); onClose(); };
+  const pick = (id: string) => {
+    if (switchDoc) { setReport(switchTemplate(switchDoc, id)); return; }
+    newFromTemplate(id); onDone?.(); onClose();
+  };
   const use = () => { if (selected) pick(selected); };
+  const confirmSwitch = () => { if (report) { setDocument(report.doc); onDone?.(); onClose(); } };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: C.overlay, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: C.font }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ width: 780, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, color: C.ink }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, flex: 1 }}>Hva skal du lage?</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, flex: 1 }}>{switchDoc ? 'Bytt mal' : 'Hva skal du lage?'}</h2>
           <button onClick={onClose} style={ghost}>Lukk</button>
         </div>
-        <p style={{ fontSize: 13.5, color: C.inkSoft, margin: '0 0 16px' }}>Velg formål, så anbefaler vi maler som passer.</p>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-          {PURPOSE_CATEGORIES.map((p) => (
-            <button key={p.id} onClick={() => { setPurpose(p.id === purpose ? null : p.id); setSelected(null); }} style={{ ...chip, background: purpose === p.id ? C.accent : C.soft, color: purpose === p.id ? C.accentInk : C.ink }}>{p.label}</button>
-          ))}
-        </div>
+        {report ? (
+          <div>
+            <p style={{ fontSize: 13.5, color: C.inkSoft, margin: '0 0 16px' }}>Slik overføres innholdet til den nye malen:</p>
+            <ReportGroup title="Beholdes" color="#4ade80" items={report.kept} />
+            <ReportGroup title="Må plasseres på nytt" color="#e0b060" items={report.replaced} />
+            <ReportGroup title="Fjernes fra siden" color="#f0a0a0" items={report.dropped} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 22 }}>
+              <button onClick={() => setReport(null)} style={ghost}>← Velg annen mal</button>
+              <button onClick={confirmSwitch} style={primary}>Bytt mal</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontSize: 13.5, color: C.inkSoft, margin: '0 0 16px' }}>{switchDoc ? 'Velg en ny mal — innholdet ditt overføres der det passer.' : 'Velg formål, så anbefaler vi maler som passer.'}</p>
 
-        <div style={{ fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: C.inkSoft, marginBottom: 12, fontWeight: 700 }}>
-          {purpose ? 'Anbefalt for deg' : 'Alle maler'}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-          {templates.map((t) => (
-            <TemplateCard key={t.id} template={t} active={selected === t.id} onClick={() => setSelected(t.id)} onDouble={() => pick(t.id)} />
-          ))}
-        </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+              {PURPOSE_CATEGORIES.map((p) => (
+                <button key={p.id} onClick={() => { setPurpose(p.id === purpose ? null : p.id); setSelected(null); }} style={{ ...chip, background: purpose === p.id ? C.accent : C.soft, color: purpose === p.id ? C.accentInk : C.ink }}>{p.label}</button>
+              ))}
+            </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
-          <button onClick={use} disabled={!selected} style={{ ...primary, opacity: selected ? 1 : 0.5 }}>Bruk denne malen</button>
-        </div>
+            <div style={{ fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: C.inkSoft, marginBottom: 12, fontWeight: 700 }}>
+              {purpose ? 'Anbefalt for deg' : 'Alle maler'}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+              {templates.map((t) => (
+                <TemplateCard key={t.id} template={t} active={selected === t.id} onClick={() => setSelected(t.id)} onDouble={() => pick(t.id)} />
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 22 }}>
+              <button onClick={use} disabled={!selected} style={{ ...primary, opacity: selected ? 1 : 0.5 }}>{switchDoc ? 'Vis kompatibilitet' : 'Bruk denne malen'}</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -104,6 +129,16 @@ function TemplateCard({ template, active, onClick, onDouble }: { template: Mocku
         </div>
       </div>
     </button>
+  );
+}
+
+function ReportGroup({ title, color, items }: { title: string; color: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 4 }}>{title}</div>
+      {items.map((it, i) => <div key={i} style={{ fontSize: 13, color: C.ink, paddingLeft: 4 }}>· {it}</div>)}
+    </div>
   );
 }
 

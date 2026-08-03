@@ -19,6 +19,8 @@ import {
   buildTemplate,
   loadDoc,
   saveDoc,
+  applyLayout as modelApplyLayout,
+  type LayoutVariantId,
 } from './mockupStudioModel';
 
 /** Hva som er valgt i editoren (styrer inspektør-panelet). */
@@ -46,6 +48,9 @@ interface MockupStudioState {
 
   // Lerret
   patchCanvas: (patch: Partial<MockupCanvasSpec>) => void;
+
+  // Slot-motor
+  applyLayout: (id: LayoutVariantId) => void;
 
   // Enheter
   addDevice: (variant: MockupDeviceVariant) => void;
@@ -111,6 +116,8 @@ export const useMockupStudio = create<MockupStudioState>((set) => ({
   select: (selection) => set({ selection }),
 
   patchCanvas: (patch) => commit(set, (d) => ({ ...d, canvas: { ...d.canvas, ...patch } })),
+
+  applyLayout: (id) => commit(set, (d) => modelApplyLayout(d, id)),
 
   addDevice: (variant) => {
     const dev = makeDevice(variant, { x: 480, y: 300 });
