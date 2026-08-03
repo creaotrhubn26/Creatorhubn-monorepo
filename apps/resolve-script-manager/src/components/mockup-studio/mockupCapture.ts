@@ -8,7 +8,7 @@
  * AI-nøkkel.
  */
 
-import { playwrightCaptureShots, playwrightStatus, setupPlaywright } from '../../api';
+import { playwrightCaptureShots, playwrightStatus, setupPlaywright, listCaptureSources, iosSimScreenshot } from '../../api';
 
 export type CaptureViewport = 'desktop' | 'mobile';
 
@@ -79,6 +79,30 @@ export function bestShotForVariant(shots: CapturedShot[], variant: string): Capt
   const fromPool = pool.slice().sort((a, b) => a.scrollPct - b.scrollPct)[0];
   // Fallback: hvis mobil mangler, bruk desktop (og omvendt).
   return fromPool ?? shots.slice().sort((a, b) => a.scrollPct - b.scrollPct)[0];
+}
+
+// ── iOS-simulator-capture (fang den kjørende appen rett inn i mockupen) ──────
+
+export interface SimTarget {
+  udid: string;
+  label: string;
+}
+
+/** List bootede iOS-simulatorer (gjenbruker list_capture_sources). */
+export async function listSimulators(): Promise<SimTarget[]> {
+  try {
+    const sources = await listCaptureSources();
+    return sources
+      .filter((s) => s.kind === 'ios_simulator' && s.available)
+      .map((s) => ({ udid: s.id, label: s.label }));
+  } catch {
+    return [];
+  }
+}
+
+/** Ett skjermbilde av en bootet simulator — ferdig data-URL (klar for dev.image). */
+export async function captureSimShot(udid: string): Promise<string> {
+  return iosSimScreenshot(udid);
 }
 
 // ── Accent-uttrekk (klient-side canvas-sampling) ─────────────────────────────

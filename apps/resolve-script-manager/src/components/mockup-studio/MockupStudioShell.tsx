@@ -37,7 +37,10 @@ import {
   isCaptureReady,
   installCaptureEngine,
   hostnameOf,
+  listSimulators,
+  captureSimShot,
   type CapturedShot,
+  type SimTarget,
 } from './mockupCapture';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
@@ -84,6 +87,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [captureNote, setCaptureNote] = useState<string | null>(null);
   const [engineReady, setEngineReady] = useState<boolean | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [sims, setSims] = useState<SimTarget[]>([]);
 
   // Kits (P4)
   const [kits, setKits] = useState<MockupKit[]>(() => listKits());
@@ -182,6 +186,28 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       setCaptureNote('Installasjon feilet: ' + String(e));
     } finally {
       setInstalling(false);
+    }
+  };
+
+  const findSims = async () => {
+    setCaptureNote('Ser etter bootede simulatorer…');
+    const list = await listSimulators();
+    setSims(list);
+    setCaptureNote(list.length ? `Fant ${list.length} simulator(er) — klikk for å hente skjermbilde.` : 'Ingen bootet simulator. Start en i Xcode/Simulator og prøv igjen.');
+  };
+
+  const grabSim = async (udid: string) => {
+    setCaptureNote('Henter simulator-skjermbilde…');
+    try {
+      const dataUrl = await captureSimShot(udid);
+      const target = selection.kind === 'device'
+        ? selection.id
+        : (doc.devices.find((d) => d.variant === 'iphone') ?? doc.devices.find((d) => d.variant === 'ipad') ?? doc.devices[0])?.id;
+      if (!target) { setCaptureNote('Legg til en enhet først.'); return; }
+      store.setDeviceImage(target, dataUrl);
+      setCaptureNote('✓ Simulator-skjermbilde lagt på enheten.');
+    } catch (e) {
+      setCaptureNote('Simulator-capture feilet: ' + String(e));
     }
   };
 
@@ -306,6 +332,21 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
               <button onClick={() => void applyAccentFromSite()} style={{ ...listBtn, marginTop: 6 }}>Bruk sidefarge som accent</button>
             </>
           )}
+
+          <div style={{ height: 14 }} />
+          <SectionLabel>Fra simulator</SectionLabel>
+          <button onClick={() => void findSims()} style={{ ...listBtn, marginBottom: 6 }} title="Fang den kjørende appen fra en bootet iOS-simulator">Finn simulatorer</button>
+          {sims.map((s) => (
+            <button
+              key={s.udid}
+              onClick={() => void grabSim(s.udid)}
+              style={{ ...listBtn, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title="Hent skjermbilde → valgt enhet (eller iPhone/iPad)"
+            >
+              ⊞ {s.label}
+            </button>
+          ))}
+
           <div style={{ height: 18 }} />
           <SectionLabel>Legg til enhet</SectionLabel>
           {(Object.keys(DEVICE_LABELS) as MockupDeviceVariant[]).map((v) => (
