@@ -1608,9 +1608,10 @@ struct KartView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .topTrailing) {
                     // Stripa vises når lista er borte (kollapset eller
-                    // fortrengt av kortet).
+                    // fortrengt av kortet). Nav/måling eier kartet alene.
                     if !DeviceIdiom.isPhone
-                        && (leadsPanelCollapsed || showDetailPanel) {
+                        && (leadsPanelCollapsed || showDetailPanel)
+                        && !navModeActive && !measureMode {
                         leadsStripeKnapp
                             .padding(10)
                             .transition(.opacity.combined(
@@ -1619,7 +1620,7 @@ struct KartView: View {
                 }
                 .overlay(alignment: .bottomLeading) {
                     // Tegnforklaring-chip — vik plass når kortet er framme.
-                    if !showDetailPanel {
+                    if !showDetailPanel && !navModeActive && !measureMode {
                         legendChip
                             .padding(10)
                             .transition(.opacity)
@@ -1627,8 +1628,12 @@ struct KartView: View {
                 }
                 .overlay(alignment: .bottom) {
                     // Detaljkortet som flytende overlay over kartet.
-                    // iPhone beholder den kompakte phoneLeadHUD-en.
-                    if !DeviceIdiom.isPhone && showDetailPanel {
+                    // iPhone beholder den kompakte phoneLeadHUD-en; under
+                    // navigasjon/måling må kartet stå FRITT (manøver-banner,
+                    // rute og ETA bor der) — kortet kommer tilbake ved
+                    // ankomst/avbrutt nav siden leaden fortsatt er valgt.
+                    if !DeviceIdiom.isPhone && showDetailPanel
+                        && !navModeActive && !measureMode {
                         detailOverlayKort
                             .transition(.move(edge: .bottom)
                                 .combined(with: .opacity))
