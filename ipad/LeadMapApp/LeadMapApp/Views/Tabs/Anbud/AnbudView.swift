@@ -41,6 +41,15 @@ struct AnbudView: View {
     @State private var showTildelinger = false
     @State private var tildelinger: DoffinTildelingerDTO?
     @State private var tildelingerLaster = false
+    // Nivå 2 (2026-08-03): anbuds-pipeline + AI-lesehjelp.
+    @State private var showPipeline = false
+    @State private var pipelineItems: [AnbudPipelineItemDTO] = []
+    @State private var pipelineStats: AnbudPipelineStatsDTO?
+    @State private var pipelineLaster = false
+    @State private var iPipelineIds: Set<String> = []
+    @State private var oppsummering: AnbudOppsummeringDTO?
+    @State private var oppsummerer = false
+    @State private var oppsummeringFeil: String?
 
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
@@ -121,6 +130,7 @@ struct AnbudView: View {
         .sheet(isPresented: $showWatches) { watchesSheet }
         .sheet(item: $openKunngjoring) { k in leseArk(k) }
         .sheet(isPresented: $showTildelinger) { tildelingerArk }
+        .sheet(isPresented: $showPipeline) { pipelineArk }
     }
 
     private var inner: some View {
@@ -155,6 +165,18 @@ struct AnbudView: View {
                     .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
+            // Pipeline (nivå 2): anbudene gjennom salgsprosessen.
+            Button {
+                showPipeline = true
+                Task { await lastPipeline() }
+            } label: {
+                Label(pipelineStats.map { "Pipeline (\($0.aapne))" } ?? "Pipeline",
+                      systemImage: "chart.line.text.clipboard")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(LBrand.cardHi, in: Capsule())
+            }.buttonStyle(.plain)
             // Tildelings-innsikt (nivå 1): hvem vinner hva i markedet ditt.
             Button {
                 showTildelinger = true
@@ -446,6 +468,15 @@ struct AnbudView: View {
     /// Ikonet blir grønn hake et øyeblikk etter kopiering.
     private func secondaryMenu(_ k: DoffinKunngjoringDTO) -> some View {
         Menu {
+            // Nivå 2: inn i salgsprosessen.
+            Button {
+                Task { await leggIPipeline(k) }
+            } label: {
+                Label(iPipelineIds.contains(k.id) ? "I pipelinen ✓" : "Legg i pipeline",
+                      systemImage: iPipelineIds.contains(k.id)
+                        ? "checkmark.circle" : "chart.line.text.clipboard")
+            }
+            .disabled(iPipelineIds.contains(k.id))
             Button {
                 copyOppdragsgiver(k)
             } label: {
@@ -553,6 +584,76 @@ struct AnbudView: View {
                             }
                         }
                         Divider().overlay(LBrand.stroke)
+                        // AI-lesehjelp (nivå 2): oppsummering + krav-ekstraksjon
+                        // — sparer selgeren for kravspek-lesingen.
+                        if let opp = oppsummering {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles")
+                                        .font(.appScaled(size: 11, weight: .bold))
+                                        .foregroundStyle(Color.indigo)
+                                    Text("AI-OPPSUMMERING")
+                                        .font(.appScaled(size: 10, weight: .black))
+                                        .foregroundStyle(Color.indigo).tracking(0.8)
+                                }
+                                Text(opp.sammendrag)
+                                    .font(.appScaled(size: 13))
+                                    .foregroundStyle(.white)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if !opp.krav.isEmpty {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("KRAV I KUNNGJØRINGEN")
+                                            .font(.appScaled(size: 9, weight: .black))
+                                            .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                                        ForEach(opp.krav, id: \.self) { krav in
+                                            HStack(alignment: .top, spacing: 6) {
+                                                Image(systemName: "checkmark.seal")
+                                                    .font(.appScaled(size: 9))
+                                                    .foregroundStyle(LBrand.yellow)
+                                                    .padding(.top, 2)
+                                                Text(krav)
+                                                    .font(.appScaled(size: 12))
+                                                    .foregroundStyle(LBrand.textSecondary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                        }
+                                    }
+                                }
+                                if let vv = opp.verdtAaVite, !vv.isEmpty {
+                                    Text(vv)
+                                        .font(.appScaled(size: 11))
+                                        .foregroundStyle(LBrand.yellow)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(12)
+                            .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                            .overlay(RoundedRectangle(cornerRadius: 11)
+                                .stroke(Color.indigo.opacity(0.3), lineWidth: 1))
+                        } else {
+                            Button {
+                                Task { await oppsummer(k) }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    if oppsummerer {
+                                        ProgressView().tint(Color.indigo).scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "sparkles")
+                                            .font(.appScaled(size: 11, weight: .bold))
+                                    }
+                                    Text(oppsummerer ? "Oppsummerer …" : "Oppsummer med AI")
+                                        .font(.appScaled(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(Color.indigo)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(oppsummerer)
+                        }
+                        if let oppsummeringFeil {
+                            Text(oppsummeringFeil)
+                                .font(.appScaled(size: 11))
+                                .foregroundStyle(LBrand.orange)
+                        }
                         // HELE beskrivelsen — markerbar tekst for videre bruk.
                         Text(k.beskrivelse.isEmpty ? "Ingen beskrivelse i kunngjøringen — åpne Doffin for dokumentene." : k.beskrivelse)
                             .font(.appScaled(size: 14))
@@ -612,6 +713,260 @@ struct AnbudView: View {
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(LBrand.cardHi, in: Capsule())
     }
+
+    // MARK: Nivå 2 — pipeline + AI-lesehjelp (2026-08-03)
+
+    private static let pipelineStatusNavn: [(String, String)] = [
+        ("vurderer", "Vurderer"), ("gaar_for", "Går for"),
+        ("tilbud_levert", "Tilbud levert"), ("vant", "Vant"), ("tapt", "Tapt"),
+    ]
+
+    private func statusNavn(_ raw: String) -> String {
+        Self.pipelineStatusNavn.first(where: { $0.0 == raw })?.1 ?? raw
+    }
+
+    private func statusFarge(_ raw: String) -> Color {
+        switch raw {
+        case "vant": return LBrand.green
+        case "tapt": return LBrand.red
+        case "tilbud_levert": return Color.indigo
+        case "gaar_for": return LBrand.yellow
+        default: return LBrand.textSecondary
+        }
+    }
+
+    @MainActor
+    private func lastPipeline() async {
+        if DemoModeManager.isActiveNonisolated {
+            pipelineItems = Self.demoPipeline
+            pipelineStats = AnbudPipelineStatsDTO(
+                aapne: 2, vant: 1, tapt: 1, vinnrate: 0.5, sumAapneVerdi: 20_500_000)
+            return
+        }
+        guard let api = appState.api, !pipelineLaster else { return }
+        pipelineLaster = true
+        if let r = try? await api.fetchAnbudPipeline() {
+            pipelineItems = r.items
+            pipelineStats = r.stats
+            iPipelineIds = Set(r.items.map(\.doffinId))
+        }
+        pipelineLaster = false
+    }
+
+    @MainActor
+    private func leggIPipeline(_ k: DoffinKunngjoringDTO) async {
+        if DemoModeManager.isActiveNonisolated {
+            withAnimation { _ = iPipelineIds.insert(k.id) }
+            return
+        }
+        guard let api = appState.api else { return }
+        do {
+            _ = try await api.addToAnbudPipeline(k)
+            withAnimation { _ = iPipelineIds.insert(k.id) }
+            await lastPipeline()
+        } catch {
+            leadErrorText = "Kunne ikke legge i pipelinen — prøv igjen."
+        }
+    }
+
+    @MainActor
+    private func oppsummer(_ k: DoffinKunngjoringDTO) async {
+        guard !oppsummerer else { return }
+        oppsummeringFeil = nil
+        if DemoModeManager.isActiveNonisolated {
+            oppsummering = AnbudOppsummeringDTO(
+                sammendrag: "Kommunen anskaffer løpende elektrikertjenester for formålsbygg over 2 år med opsjon på 1+1 år. Rammeavtale med én leverandør.",
+                krav: ["DSB-registrert elektrovirksomhet", "Minst 2 referanseprosjekter fra offentlige bygg", "Responstid 4 timer ved akutt feil"],
+                verdtAaVite: "Opsjon 1+1 år kan doble kontraktens levetid.")
+            return
+        }
+        guard let api = appState.api else { return }
+        oppsummerer = true
+        do {
+            oppsummering = try await api.oppsummerAnbud(tittel: k.tittel, beskrivelse: k.beskrivelse)
+        } catch {
+            let msg = String(describing: error)
+            oppsummeringFeil = msg.contains("for_kort_tekst")
+                ? "Kunngjøringen har for lite tekst å oppsummere — åpne Doffin for dokumentene."
+                : "AI-oppsummeringen feilet — prøv igjen."
+        }
+        oppsummerer = false
+    }
+
+    private var pipelineArk: some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if let s = pipelineStats {
+                            HStack(spacing: 10) {
+                                statBoks(tall: "\(s.aapne)", label: "ÅPNE")
+                                statBoks(tall: s.vinnrate.map { "\(Int($0 * 100)) %" } ?? "—",
+                                         label: "VINNRATE (\(s.vant)/\(s.vant + s.tapt))")
+                                statBoks(tall: formatNOK(s.sumAapneVerdi), label: "ÅPEN VERDI")
+                            }
+                        }
+                        if pipelineItems.isEmpty && !pipelineLaster {
+                            ContentUnavailableView("Tom pipeline",
+                                systemImage: "chart.line.text.clipboard",
+                                description: Text("Legg kunngjøringer i pipelinen fra ⋯-menyen på et søketreff."))
+                                .padding(.vertical, 20)
+                        }
+                        ForEach(pipelineItems) { p in
+                            pipelineRad(p)
+                        }
+                        Color.clear.frame(height: 20)
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationTitle("Anbuds-pipeline")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { showPipeline = false }
+                        .tint(LBrand.textSecondary)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func pipelineRad(_ p: AnbudPipelineItemDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.tittel)
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Text(p.oppdragsgiver)
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+                Spacer()
+                if let v = p.verdi {
+                    Text(formatNOK(v))
+                        .font(.appScaled(size: 11, weight: .heavy, design: .monospaced))
+                        .foregroundStyle(LBrand.green)
+                }
+            }
+            HStack(spacing: 8) {
+                // Status-bytte: hele salgsprosessen i én meny.
+                Menu {
+                    ForEach(Self.pipelineStatusNavn, id: \.0) { raw, navn in
+                        Button {
+                            Task { await endreStatus(p, til: raw) }
+                        } label: {
+                            if raw == p.status { Label(navn, systemImage: "checkmark") }
+                            else { Text(navn) }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle().fill(statusFarge(p.status)).frame(width: 7, height: 7)
+                        Text(statusNavn(p.status))
+                            .font(.appScaled(size: 11, weight: .bold))
+                        Image(systemName: "chevron.down")
+                            .font(.appScaled(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(statusFarge(p.status))
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(statusFarge(p.status).opacity(0.14), in: Capsule())
+                }
+                // Team-tildeling (nivå 2): den tildelte varsles av backend.
+                Menu {
+                    Button("Ingen") { Task { await tildel(p, til: nil) } }
+                    ForEach(TeamLiveStore.shared.memberDTOs, id: \.userId) { m in
+                        Button(m.name) { Task { await tildel(p, til: m.userId) } }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.crop.circle")
+                            .font(.appScaled(size: 10, weight: .bold))
+                        Text(p.assignedNavn ?? "Tildel")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(p.assignedNavn == nil ? LBrand.textSecondary : Color.indigo)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(LBrand.cardHi, in: Capsule())
+                }
+                if let frist = p.frist { fristChip(frist) }
+                Spacer()
+                Button {
+                    Task { await fjernFraPipeline(p) }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(LBrand.textTertiary)
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @MainActor
+    private func endreStatus(_ p: AnbudPipelineItemDTO, til status: String) async {
+        if DemoModeManager.isActiveNonisolated {
+            if let i = pipelineItems.firstIndex(where: { $0.id == p.id }) {
+                pipelineItems[i] = AnbudPipelineItemDTO(
+                    id: p.id, doffinId: p.doffinId, tittel: p.tittel,
+                    oppdragsgiver: p.oppdragsgiver, orgnr: p.orgnr, url: p.url,
+                    frist: p.frist, verdi: p.verdi, status: status,
+                    assignedUserId: p.assignedUserId, assignedNavn: p.assignedNavn,
+                    notat: p.notat)
+            }
+            return
+        }
+        guard let api = appState.api else { return }
+        try? await api.updateAnbudPipeline(id: p.id, status: status)
+        await lastPipeline()
+    }
+
+    @MainActor
+    private func tildel(_ p: AnbudPipelineItemDTO, til userId: String?) async {
+        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        try? await api.updateAnbudPipeline(id: p.id, assignedUserId: .some(userId))
+        await lastPipeline()
+    }
+
+    @MainActor
+    private func fjernFraPipeline(_ p: AnbudPipelineItemDTO) async {
+        if DemoModeManager.isActiveNonisolated {
+            pipelineItems.removeAll { $0.id == p.id }
+            return
+        }
+        guard let api = appState.api else { return }
+        try? await api.deleteAnbudPipeline(id: p.id)
+        await lastPipeline()
+    }
+
+    private static let demoPipeline: [AnbudPipelineItemDTO] = [
+        .init(id: "dp-1", doffinId: "demo-1",
+              tittel: "Rammeavtale elektrikertjenester — kommunale bygg",
+              oppdragsgiver: "Lørenskog kommune", orgnr: "842566142", url: "https://doffin.no",
+              frist: "2026-08-25", verdi: 8_500_000, status: "gaar_for",
+              assignedUserId: nil, assignedNavn: "Espen Berg", notat: ""),
+        .init(id: "dp-2", doffinId: "demo-3",
+              tittel: "Vakthold og alarmrespons — helsebygg",
+              oppdragsgiver: "Oslo universitetssykehus HF", orgnr: "993467049", url: "https://doffin.no",
+              frist: "2026-09-05", verdi: 12_000_000, status: "vurderer",
+              assignedUserId: nil, assignedNavn: nil, notat: ""),
+        .init(id: "dp-3", doffinId: "demo-x1",
+              tittel: "Elektroarbeid nye omsorgsboliger",
+              oppdragsgiver: "Bærum kommune", orgnr: "", url: "https://doffin.no",
+              frist: nil, verdi: 6_200_000, status: "vant",
+              assignedUserId: nil, assignedNavn: "Kari Nordmann", notat: ""),
+        .init(id: "dp-4", doffinId: "demo-x2",
+              tittel: "Rammeavtale internkontroll el-anlegg",
+              oppdragsgiver: "Lillestrøm kommune", orgnr: "", url: "https://doffin.no",
+              frist: nil, verdi: 3_100_000, status: "tapt",
+              assignedUserId: nil, assignedNavn: nil, notat: ""),
+    ]
 
     // MARK: Nivå 1 — AI-prioritering + tildelings-innsikt (2026-08-03)
 

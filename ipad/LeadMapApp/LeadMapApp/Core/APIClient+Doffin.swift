@@ -114,6 +114,56 @@ struct DoffinWatchQueryDTO: Codable, Hashable {
     var cpv: String?
 }
 
+// MARK: - Pipeline (nivå 2, 2026-08-03)
+
+/// Anbud i salgsprosessen: vurderer → går for → tilbud levert → vant/tapt.
+struct AnbudPipelineItemDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let doffinId: String
+    let tittel: String
+    let oppdragsgiver: String
+    let orgnr: String
+    let url: String
+    let frist: String?
+    let verdi: Double?
+    let status: String
+    let assignedUserId: String?
+    let assignedNavn: String?
+    let notat: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, tittel, oppdragsgiver, orgnr, url, frist, verdi, status, notat
+        case doffinId = "doffin_id"
+        case assignedUserId = "assigned_user_id"
+        case assignedNavn = "assigned_navn"
+    }
+}
+
+struct AnbudPipelineStatsDTO: Decodable, Hashable {
+    let aapne: Int
+    let vant: Int
+    let tapt: Int
+    let vinnrate: Double?
+    let sumAapneVerdi: Double
+
+    enum CodingKeys: String, CodingKey {
+        case aapne, vant, tapt, vinnrate
+        case sumAapneVerdi = "sum_aapne_verdi"
+    }
+}
+
+/// AI-lesehjelp (nivå 2): oppsummering + krav-ekstraksjon.
+struct AnbudOppsummeringDTO: Decodable, Hashable {
+    let sammendrag: String
+    let krav: [String]
+    let verdtAaVite: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sammendrag, krav
+        case verdtAaVite = "verdt_aa_vite"
+    }
+}
+
 // MARK: - API
 
 extension APIClient {
@@ -159,6 +209,66 @@ extension APIClient {
     /// Nullstill «nye treff»-telleren når brukeren kjører overvåkningen.
     func markDoffinWatchSeen(id: String) async throws {
         _ = try await _request("/api/leadgrid/doffin/watches/\(id)/mark-seen", method: "POST")
+    }
+
+    // MARK: Pipeline (nivå 2)
+
+    func fetchAnbudPipeline() async throws -> (items: [AnbudPipelineItemDTO], stats: AnbudPipelineStatsDTO?) {
+        struct Resp: Decodable {
+            let items: [AnbudPipelineItemDTO]
+            let stats: AnbudPipelineStatsDTO?
+        }
+        let r: Resp = try await _get("/api/leadgrid/doffin/pipeline")
+        return (r.items, r.stats)
+    }
+
+    @discardableResult
+    func addToAnbudPipeline(_ k: DoffinKunngjoringDTO) async throws -> Bool {
+        struct Payload: Encodable {
+            let doffin_id: String
+            let tittel: String
+            let oppdragsgiver: String
+            let orgnr: String
+            let url: String
+            let frist: String?
+            let verdi: Double?
+        }
+        struct Resp: Decodable { let ok: Bool; let allerede: Bool? }
+        let og = k.oppdragsgivere.first
+        let r: Resp = try await _post("/api/leadgrid/doffin/pipeline",
+            body: Payload(doffin_id: k.id, tittel: k.tittel,
+                          oppdragsgiver: og?.navn ?? "", orgnr: og?.orgnr ?? "",
+                          url: k.url, frist: k.frist, verdi: k.verdi?.belop))
+        return !(r.allerede ?? false)
+    }
+
+    func updateAnbudPipeline(id: String, status: String? = nil,
+                             assignedUserId: String?? = nil, notat: String? = nil) async throws {
+        var body: [String: AnyEncodableValue] = [:]
+        if let status { body["status"] = .string(status) }
+        if let assigned = assignedUserId {
+            body["assigned_user_id"] = assigned.map { .string($0) } ?? .null
+        }
+        if let notat { body["notat"] = .string(notat) }
+        struct Wrapper: Encodable {
+            let values: [String: AnyEncodableValue]
+            func encode(to encoder: Encoder) throws {
+                try values.encode(to: encoder)
+            }
+        }
+        _ = try await _request("/api/leadgrid/doffin/pipeline/\(id)", method: "PATCH",
+                               body: try JSONEncoder().encode(Wrapper(values: body)))
+    }
+
+    func deleteAnbudPipeline(id: String) async throws {
+        _ = try await _request("/api/leadgrid/doffin/pipeline/\(id)", method: "DELETE")
+    }
+
+    /// AI-lesehjelp (nivå 2): oppsummer kunngjøringen + trekk ut kravene.
+    func oppsummerAnbud(tittel: String, beskrivelse: String) async throws -> AnbudOppsummeringDTO {
+        struct Payload: Encodable { let tittel: String; let beskrivelse: String }
+        return try await _post("/api/leadgrid/doffin/oppsummer",
+                               body: Payload(tittel: tittel, beskrivelse: beskrivelse))
     }
 
     /// AI-prioritering (nivå 1): scorer treffene mot org-ens overvåkninger.
@@ -224,6 +334,7 @@ enum AnyEncodableValue: Encodable {
     case double(Double)
     case stringArray([String])
     case dict([String: AnyEncodableValue])
+    case null
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -232,6 +343,7 @@ enum AnyEncodableValue: Encodable {
         case .double(let d): try c.encode(d)
         case .stringArray(let a): try c.encode(a)
         case .dict(let m): try c.encode(m)
+        case .null: try c.encodeNil()
         }
     }
 }

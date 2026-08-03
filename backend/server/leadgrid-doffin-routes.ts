@@ -134,8 +134,38 @@ async function ensureSchema(pool: Pool): Promise<void> {
       ADD COLUMN IF NOT EXISTS seen_ids JSONB NOT NULL DEFAULT '[]',
       ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS new_hits_count INT NOT NULL DEFAULT 0`);
+  // Nivå 2 (2026-08-03): anbuds-pipeline — anbudet gjennom salgsprosessen
+  // (vurderer → går for → tilbud levert → vant/tapt) med frist-motor og
+  // team-tildeling. Kunngjørings-feltene denormaliseres inn (Doffin har
+  // ikke detalj-oppslag, og pipelinen skal overleve at søket endres).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_anbud_pipeline (
+      id UUID PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      doffin_id TEXT NOT NULL,
+      tittel TEXT NOT NULL,
+      oppdragsgiver TEXT NOT NULL DEFAULT '',
+      orgnr TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT '',
+      frist TIMESTAMPTZ,
+      verdi NUMERIC,
+      status TEXT NOT NULL DEFAULT 'vurderer',
+      assigned_user_id TEXT,
+      notat TEXT NOT NULL DEFAULT '',
+      varslet_7d BOOLEAN NOT NULL DEFAULT FALSE,
+      varslet_1d BOOLEAN NOT NULL DEFAULT FALSE,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (organization_id, doffin_id)
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_anbud_pipeline_org
+      ON leadgrid_anbud_pipeline (organization_id, status)`);
   schemaReady = true;
 }
+
+const PIPELINE_STATUSES = new Set(["vurderer", "gaar_for", "tilbud_levert", "vant", "tapt"]);
 
 /** Normalisert kunngjøring — stabil form mot iPad uavhengig av upstream. */
 function normalizeHit(hit: Record<string, unknown>): Record<string, unknown> {
@@ -495,6 +525,232 @@ ${JSON.stringify(items)}`;
     }
   });
 
+  // ── Anbuds-pipeline (nivå 2, 2026-08-03) ──────────────────────────
+
+  /** Liste + stats for org-ens pipeline. */
+  app.get("/api/leadgrid/doffin/pipeline", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.json({ items: [], stats: null }); return; }
+      const r = await pool.query(
+        `SELECT p.id, p.doffin_id, p.tittel, p.oppdragsgiver, p.orgnr, p.url,
+                p.frist, p.verdi::float8 AS verdi, p.status, p.assigned_user_id,
+                p.notat, p.created_at,
+                NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS assigned_navn
+           FROM leadgrid_anbud_pipeline p
+           LEFT JOIN users u ON u.id::text = p.assigned_user_id
+          WHERE p.organization_id = $1
+          ORDER BY CASE WHEN p.status IN ('vant','tapt') THEN 1 ELSE 0 END,
+                   p.frist ASC NULLS LAST, p.created_at DESC`,
+        [orgId]);
+      const vant = r.rows.filter((x) => x.status === "vant").length;
+      const tapt = r.rows.filter((x) => x.status === "tapt").length;
+      const aapne = r.rows.length - vant - tapt;
+      const sumAapneVerdi = r.rows
+        .filter((x) => x.status !== "vant" && x.status !== "tapt")
+        .reduce((s, x) => s + (Number(x.verdi) || 0), 0);
+      res.json({
+        items: r.rows,
+        stats: {
+          aapne, vant, tapt,
+          vinnrate: vant + tapt > 0 ? vant / (vant + tapt) : null,
+          sum_aapne_verdi: sumAapneVerdi,
+        },
+      });
+    } catch (e) {
+      console.error("[doffin] pipeline list failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Legg kunngjøring i pipelinen (dedupe per org+doffin_id). */
+  app.post("/api/leadgrid/doffin/pipeline", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const doffinId = String(b.doffin_id ?? "").trim();
+      const tittel = String(b.tittel ?? "").trim().slice(0, 300);
+      if (!doffinId || !tittel) {
+        res.status(400).json({ error: "bad_request", message: "doffin_id og tittel er påkrevd." });
+        return;
+      }
+      const frist = typeof b.frist === "string" && b.frist ? new Date(b.frist) : null;
+      const id = randomUUID();
+      const r = await pool.query(
+        `INSERT INTO leadgrid_anbud_pipeline
+           (id, organization_id, doffin_id, tittel, oppdragsgiver, orgnr, url,
+            frist, verdi, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (organization_id, doffin_id) DO NOTHING
+         RETURNING id`,
+        [id, orgId, doffinId, tittel,
+         String(b.oppdragsgiver ?? "").slice(0, 200),
+         String(b.orgnr ?? "").replace(/\s+/g, "").slice(0, 9),
+         String(b.url ?? "").slice(0, 300),
+         frist && !Number.isNaN(frist.getTime()) ? frist : null,
+         Number.isFinite(Number(b.verdi)) ? Number(b.verdi) : null,
+         session.userId]);
+      res.json({ ok: true, id: r.rows[0]?.id ?? null, allerede: r.rowCount === 0 });
+    } catch (e) {
+      console.error("[doffin] pipeline add failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Oppdater status/tildeling/notat. Tildeling varsler den tildelte. */
+  app.patch("/api/leadgrid/doffin/pipeline/:id", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const sets: string[] = [];
+      const vals: unknown[] = [String(req.params.id), orgId];
+      const push = (col: string, v: unknown) => {
+        vals.push(v);
+        sets.push(`${col} = $${vals.length}`);
+      };
+      if (typeof b.status === "string") {
+        if (!PIPELINE_STATUSES.has(b.status)) {
+          res.status(400).json({ error: "bad_request", message: "Ugyldig status." });
+          return;
+        }
+        push("status", b.status);
+      }
+      let nyTildelt: string | null = null;
+      if (b.assigned_user_id !== undefined) {
+        nyTildelt = b.assigned_user_id === null ? null : String(b.assigned_user_id);
+        push("assigned_user_id", nyTildelt);
+      }
+      if (typeof b.notat === "string") push("notat", b.notat.slice(0, 2000));
+      if (sets.length === 0) {
+        res.status(400).json({ error: "bad_request", message: "Ingen felt å oppdatere." });
+        return;
+      }
+      sets.push("updated_at = now()");
+      const r = await pool.query(
+        `UPDATE leadgrid_anbud_pipeline SET ${sets.join(", ")}
+          WHERE id = $1 AND organization_id = $2
+          RETURNING tittel, assigned_user_id`,
+        vals);
+      if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      // Tildelings-varsel (best effort) — ikke ved selv-tildeling.
+      if (nyTildelt && nyTildelt !== session.userId) {
+        const tittel = String(r.rows[0].tittel ?? "anbud");
+        try {
+          await pool.query(
+            `INSERT INTO notification_events
+               (recipient_user_id, organization_id, event_type, title, body,
+                triggered_by_user_id, deep_link, meta, email_sent)
+             VALUES ($1, $2, 'doffin_anbud_tildelt', $3, $4, $5, 'leadgrid://anbud', $6::jsonb, FALSE)`,
+            [nyTildelt, orgId, "Du er tildelt et anbud", tittel,
+             session.userId, JSON.stringify({ pipeline_id: String(req.params.id) })]);
+          const tok = await pool.query<{ token: string }>(
+            `SELECT token FROM notification_device_tokens
+              WHERE user_id = $1 AND platform = 'apns' AND enabled = TRUE`, [nyTildelt]);
+          for (const t of tok.rows) {
+            const pr = await sendAPNs(t.token, "Du er tildelt et anbud", tittel, {
+              customData: { event_type: "doffin_anbud_tildelt", deep_link: "leadgrid://anbud" },
+            });
+            if (pr.sent) break;
+          }
+        } catch (notifErr) {
+          console.warn("[doffin] tildelings-varsel feilet:", String(notifErr).slice(0, 120));
+        }
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("[doffin] pipeline patch failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Fjern fra pipelinen. */
+  app.delete("/api/leadgrid/doffin/pipeline/:id", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      await pool.query(
+        `DELETE FROM leadgrid_anbud_pipeline WHERE id = $1 AND organization_id = $2`,
+        [String(req.params.id), orgId]);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("[doffin] pipeline delete failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** AI-lesehjelp (nivå 2): oppsummering + krav-ekstraksjon fra
+   *  kunngjøringsteksten. Kostnadslogget som anbud_oppsummer. */
+  app.post("/api/leadgrid/doffin/oppsummer", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_ikke_konfigurert" }); return; }
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const tittel = String(req.body?.tittel ?? "").slice(0, 300);
+      const beskrivelse = String(req.body?.beskrivelse ?? "").slice(0, 6000);
+      if (beskrivelse.trim().length < 40) {
+        res.status(400).json({ error: "for_kort_tekst", message: "Kunngjøringen har for lite tekst å oppsummere." });
+        return;
+      }
+      const prompt = `Du hjelper en norsk feltsalg-bedrift å lese en offentlig kunngjøring. Returner KUN gyldig JSON:
+{"sammendrag":"<2-3 setninger på norsk — hva anskaffes, for hvem, omfang>",
+ "krav":["<konkrete leverandørkrav nevnt i teksten: sertifiseringer, omsetning, referanser, bemanning — kun det som faktisk står>"],
+ "verdt_aa_vite":"<1 setning: frist-/opsjon-/delkontrakt-detalj hvis nevnt, ellers tom streng>"}
+
+Ikke finn på krav som ikke står i teksten. Tittel: ${tittel}
+
+Kunngjøring:
+${beskrivelse}`;
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 700,
+          messages: [{ role: "user", content: prompt }],
+        }));
+      const text = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text).join("");
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'anbud_oppsummer',$5,$6,$7,$8,$9)`,
+          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           beskrivelse.length, inTok, outTok, cost]);
+      } catch { /* logging velter aldri svaret */ }
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) { res.status(502).json({ error: "ai_svar_uparsbart" }); return; }
+      res.json(JSON.parse(match[0]));
+    } catch (e) {
+      console.error("[doffin] oppsummer failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   /** Cron: sjekk alle overvåkninger for nye treff → varsle oppretteren
    *  (in-app notification_events + APNs push). Trigges av ekstern cron med
    *  x-cron-trigger-token (samme token som øvrige leadgrid-crons).
@@ -599,7 +855,65 @@ ${JSON.stringify(items)}`;
           console.warn("[doffin] watch-sjekk feilet:", w.id, String(watchErr).slice(0, 120));
         }
       }
-      res.json({ ok: true, watches: watches.rowCount, checked, notified, seeded, failed });
+      // Frist-motor (nivå 2): varsle tildelt (ellers oppretter) når åpne
+      // pipeline-anbud har frist om ≤7 dager og ≤1 dag. Én gang per nivå
+      // (varslet_7d/varslet_1d-flagg).
+      let fristVarsler = 0;
+      try {
+        const due = await pool.query<{
+          id: string; organization_id: string; tittel: string; frist: string;
+          assigned_user_id: string | null; created_by: string;
+          varslet_7d: boolean; varslet_1d: boolean;
+        }>(
+          `SELECT id, organization_id, tittel, frist, assigned_user_id,
+                  created_by, varslet_7d, varslet_1d
+             FROM leadgrid_anbud_pipeline
+            WHERE status IN ('vurderer','gaar_for')
+              AND frist IS NOT NULL
+              AND frist > now()
+              AND frist < now() + INTERVAL '7 days'
+            LIMIT 100`);
+        for (const p of due.rows) {
+          const dagerIgjen = Math.ceil(
+            (new Date(p.frist).getTime() - Date.now()) / 86_400_000);
+          const nivaa1d = dagerIgjen <= 1 && !p.varslet_1d;
+          const nivaa7d = dagerIgjen > 1 && !p.varslet_7d;
+          if (!nivaa1d && !nivaa7d) continue;
+          const mottaker = p.assigned_user_id ?? p.created_by;
+          if (!mottaker) continue;
+          const title = nivaa1d
+            ? `⏰ Anbudsfrist I MORGEN: ${p.tittel.slice(0, 80)}`
+            : `Anbudsfrist om ${dagerIgjen} dager`;
+          await pool.query(
+            `INSERT INTO notification_events
+               (recipient_user_id, organization_id, event_type, title, body,
+                triggered_by_user_id, deep_link, meta, email_sent)
+             VALUES ($1, $2, 'doffin_frist', $3, $4, NULL, 'leadgrid://anbud', $5::jsonb, FALSE)`,
+            [mottaker, p.organization_id, title, p.tittel,
+             JSON.stringify({ pipeline_id: p.id, dager_igjen: dagerIgjen })]);
+          await pool.query(
+            `UPDATE leadgrid_anbud_pipeline
+                SET ${nivaa1d ? "varslet_1d = TRUE, varslet_7d = TRUE" : "varslet_7d = TRUE"},
+                    updated_at = now()
+              WHERE id = $1`, [p.id]);
+          fristVarsler++;
+          try {
+            const tok = await pool.query<{ token: string }>(
+              `SELECT token FROM notification_device_tokens
+                WHERE user_id = $1 AND platform = 'apns' AND enabled = TRUE`, [mottaker]);
+            for (const t of tok.rows) {
+              const pr = await sendAPNs(t.token, title, p.tittel, {
+                customData: { event_type: "doffin_frist", deep_link: "leadgrid://anbud" },
+              });
+              if (pr.sent) break;
+            }
+          } catch { /* push best effort */ }
+        }
+      } catch (fristErr) {
+        console.warn("[doffin] frist-motor feilet:", String(fristErr).slice(0, 120));
+      }
+      res.json({ ok: true, watches: watches.rowCount, checked, notified, seeded, failed,
+                 frist_varsler: fristVarsler });
     } catch (e) {
       console.error("[doffin] cron check failed:", e);
       res.status(500).json({ error: "internal_error" });
