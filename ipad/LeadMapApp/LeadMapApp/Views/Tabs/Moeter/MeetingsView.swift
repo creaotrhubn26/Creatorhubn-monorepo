@@ -433,6 +433,9 @@ struct MeetingsView: View {
     // teamleder) inviterer teamet til brief før felt, med gjentakelse.
     @State private var briefEnvelope: BriefMeetingsEnvelope?
     @State private var showNewBrief = false
+    /// Hybrid-org: brief-kortet kollapset til én linje (agendaen er
+    /// skjermens jobb) — chevron/tap utvider. Ren dørsalg: alltid åpen.
+    @State private var briefUtvidet = false
 
     private var dorsalgAktivert: Bool {
         EntitlementStore.shared.isExplicitlyEnabled(.dorsalgModus)
@@ -655,12 +658,30 @@ struct MeetingsView: View {
     // MARK: Brief-møter (dørsalg)
 
     private var briefCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        // UI-fokus fase 4: i hybrid-org er agendaen skjermens jobb —
+        // brief-kortet kollapses til ÉN linje m/ chevron (neste brief som
+        // hint). Ren dørsalg-org har brief som hovedinnhold → alltid åpen.
+        let briefs = (briefEnvelope?.meetings ?? [])
+            .sorted { ($0.nesteForekomst() ?? .distantFuture) < ($1.nesteForekomst() ?? .distantFuture) }
+        let utvidet = erRenDorsalgOrg || briefUtvidet
+        return VStack(alignment: .leading, spacing: utvidet ? 12 : 0) {
             HStack(spacing: 7) {
                 Image(systemName: "person.3.fill").foregroundStyle(MtBrand.purpleLight)
                 Text("Brief-møter").font(.appScaled(size: 16, weight: .bold)).foregroundStyle(.white)
+                if !utvidet {
+                    if let neste = briefs.first, let tid = neste.nesteForekomst() {
+                        Text("· neste: \(Self.briefKortFormat.string(from: tid))")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(MtBrand.green)
+                            .lineLimit(1)
+                    } else {
+                        Text("· ingen planlagt")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(MtBrand.textTertiary)
+                    }
+                }
                 Spacer()
-                if kanStyreBrief {
+                if utvidet && kanStyreBrief {
                     Button { showNewBrief = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
@@ -677,17 +698,41 @@ struct MeetingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                if !erRenDorsalgOrg {
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            briefUtvidet.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(MtBrand.textSecondary)
+                            .rotationEffect(.degrees(briefUtvidet ? 180 : 0))
+                            .frame(width: 28, height: 28)
+                            .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8)
+                                .stroke(MtBrand.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            let briefs = (briefEnvelope?.meetings ?? [])
-                .sorted { ($0.nesteForekomst() ?? .distantFuture) < ($1.nesteForekomst() ?? .distantFuture) }
-            if briefs.isEmpty {
-                Text(kanStyreBrief
-                     ? "Ingen brief-møter enda. Opprett et — teamet varsles og møtet kan gjentas daglig, på hverdager eller ukentlig."
-                     : "Ingen brief-møter enda. Lederen din inviterer deg til brief før felt.")
-                    .font(.appScaled(size: 11)).foregroundStyle(MtBrand.textSecondary)
-            } else {
-                ForEach(briefs) { brief in
-                    briefRow(brief)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !erRenDorsalgOrg else { return }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    briefUtvidet.toggle()
+                }
+            }
+            if utvidet {
+                if briefs.isEmpty {
+                    Text(kanStyreBrief
+                         ? "Ingen brief-møter enda. Opprett et — teamet varsles og møtet kan gjentas daglig, på hverdager eller ukentlig."
+                         : "Ingen brief-møter enda. Lederen din inviterer deg til brief før felt.")
+                        .font(.appScaled(size: 11)).foregroundStyle(MtBrand.textSecondary)
+                } else {
+                    ForEach(briefs) { brief in
+                        briefRow(brief)
+                    }
                 }
             }
         }
@@ -695,6 +740,13 @@ struct MeetingsView: View {
         .background(MtBrand.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(MtBrand.purple.opacity(0.3), lineWidth: 1))
     }
+
+    static let briefKortFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "EEE HH:mm"
+        return f
+    }()
 
     private func briefRow(_ brief: BriefMeetingDTO) -> some View {
         let neste = brief.nesteForekomst()
@@ -1485,12 +1537,15 @@ struct MeetingDetailSidebar: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                // UI-fokus fase 4 (audit: Møter 2/5): ÉN primær CTA («Start
+                // møte») + én sekundær rad — Logg notat/Aktivitet/Mål &
+                // behov/Stakeholders bor i ⋯-menyen («Forberedelse»).
                 header
                 meta
                 contactRow
                 value
-                actionsRow
-                logNoteButton
+                primaerCTA
+                sekundaerRad
                 routeCard
                 PrepChecklistPreviewButton { showChecklist = true }
                 Color.clear.frame(height: 16)
@@ -1596,6 +1651,22 @@ struct MeetingDetailSidebar: View {
                     showCancelMeeting = true
                 } label: {
                     Label("Avlys møte", systemImage: "xmark.circle.fill")
+                }
+            }
+            // UI-fokus fase 4: prep-verktøyene flyttet hit fra 2×4-gridet —
+            // sheets/state er uendret, kun inngangen er samlet.
+            Section("Forberedelse") {
+                Button { showLogNote = true } label: {
+                    Label("Logg notat", systemImage: "square.and.pencil")
+                }
+                Button { showHistory = true } label: {
+                    Label("Aktivitet", systemImage: "clock.arrow.circlepath")
+                }
+                Button { showPrepCore = true } label: {
+                    Label("Mål & behov", systemImage: "target")
+                }
+                Button { showStakeholders = true } label: {
+                    Label("Stakeholders", systemImage: "person.3.fill")
                 }
             }
             Section("Lead") {
@@ -1735,182 +1806,70 @@ struct MeetingDetailSidebar: View {
         }
     }
 
-    private var actionsRow: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Button { showStartMeeting = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "play.circle.fill")
-                            .font(.appScaled(size: 13, weight: .bold))
-                        Text("Start møte")
-                            .font(.appScaled(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(
-                        LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
-                                       startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
-                }
-                .buttonStyle(.plain)
-                Button {
-                    // Start ekte turn-by-turn i Kart-motoren (POV/Kjøre, MKDirections,
-                    // stemme, snap-to-road) i stedet for den frosne mock-fullskjermen.
-                    appState.requestNavigation(
-                        lat: meeting.lat, lon: meeting.lon,
-                        name: meeting.company, address: meeting.address, start: true)
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "location.north.line.fill")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                        Text("Naviger")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
+    /// ÉN primær CTA — «Start møte» er skjermens jobb (audit-regel 2:
+    /// én-lilla-per-skjerm). AI/notat/prep bor bak ⋯ («Forberedelse»).
+    private var primaerCTA: some View {
+        Button { showStartMeeting = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "play.circle.fill")
+                    .font(.appScaled(size: 14, weight: .bold))
+                Text("Start møte")
+                    .font(.appScaled(size: 13, weight: .bold))
             }
-            HStack(spacing: 8) {
-                Button { openURL("tel://+4790012345") } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "phone.fill")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                        Text("Ring kontakt")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                Button { showOpenLead = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                        Text("Åpne lead")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
+                               startPoint: .leading, endPoint: .trailing),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .shadow(color: MtBrand.purple.opacity(0.35), radius: 7, y: 2)
         }
+        .buttonStyle(.plain)
     }
 
-    private var logNoteButton: some View {
-        VStack(spacing: 8) {
-            // Primær AI-CTA — full bredde m/ gradient
-            Button { showAIInsights = true } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: "sparkles")
-                        .font(.appScaled(size: 13, weight: .bold))
-                    Text("AI-innsikt for møtet")
-                        .font(.appScaled(size: 13, weight: .bold))
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.appScaled(size: 11, weight: .bold))
-                        .opacity(0.7)
+    /// Én sekundær rad: Naviger + AI-innsikt. Ring/e-post ligger allerede
+    /// på kontaktraden; Logg notat/Aktivitet/Mål & behov/Stakeholders/Åpne
+    /// lead er samlet i ⋯-menyen.
+    private var sekundaerRad: some View {
+        HStack(spacing: 8) {
+            Button {
+                // Ekte turn-by-turn i Kart-motoren (POV/Kjøre, MKDirections,
+                // stemme, snap-to-road).
+                appState.requestNavigation(
+                    lat: meeting.lat, lon: meeting.lon,
+                    name: meeting.company, address: meeting.address, start: true)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "location.north.line.fill")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                    Text("Naviger")
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 13).padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [MtBrand.purple, MtBrand.purpleLight],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 11)
-                )
-                .shadow(color: MtBrand.purple.opacity(0.35), radius: 7, y: 2)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            // Sekundær-rad 1: Logg notat + Historikk
-            HStack(spacing: 8) {
-                Button { showLogNote = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                        Text("Logg notat")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
+            Button { showAIInsights = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(MtBrand.purpleLight)
+                    Text("AI-innsikt")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
-                Button { showHistory = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                        Text("Aktivitet")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                        Text("1+6")
-                            .font(.appScaled(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(MtBrand.yellow)
-                            .monospacedDigit()
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(MtBrand.yellow.opacity(0.18), in: Capsule())
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(MtBrand.purple.opacity(0.45), lineWidth: 1))
             }
-            // Sekundær-rad 2: Mål & behov + Beslutningstakere
-            HStack(spacing: 8) {
-                Button { showPrepCore = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "target")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(MtBrand.blue)
-                        Text("Mål & behov")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                Button { showStakeholders = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.3.fill")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(MtBrand.green)
-                        Text("Stakeholders")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Text("4")
-                            .font(.appScaled(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(MtBrand.green)
-                            .monospacedDigit()
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(MtBrand.green.opacity(0.18), in: Capsule())
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(MtBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
+            .buttonStyle(.plain)
         }
     }
 
