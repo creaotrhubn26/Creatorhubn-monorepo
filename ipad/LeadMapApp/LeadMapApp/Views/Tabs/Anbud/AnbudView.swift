@@ -10,6 +10,7 @@
 
 import SwiftUI
 import UIKit
+import MapKit
 
 struct AnbudView: View {
     var embedded: Bool = false
@@ -50,6 +51,8 @@ struct AnbudView: View {
     @State private var oppsummering: AnbudOppsummeringDTO?
     @State private var oppsummerer = false
     @State private var oppsummeringFeil: String?
+    // Nivå 3 (2026-08-03): tapt-årsak-dialog (læringssløyfen).
+    @State private var taptDialogItem: AnbudPipelineItemDTO?
 
     /// NUTS 2024-koder verifisert empirisk mot Doffin (entydige kommunenavn
     /// per kode, 2026-08-02). NO082/NO091 utelatt — ingen entydige treff.
@@ -738,9 +741,10 @@ struct AnbudView: View {
     @MainActor
     private func lastPipeline() async {
         if DemoModeManager.isActiveNonisolated {
-            pipelineItems = Self.demoPipeline
+            if pipelineItems.isEmpty { pipelineItems = Self.demoPipeline }
             pipelineStats = AnbudPipelineStatsDTO(
-                aapne: 2, vant: 1, tapt: 1, vinnrate: 0.5, sumAapneVerdi: 20_500_000)
+                aapne: 2, vant: 1, tapt: 1, vinnrate: 0.5, sumAapneVerdi: 20_500_000,
+                tapsaarsaker: [AnbudTapsAarsakDTO(aarsak: "pris", antall: 1)])
             return
         }
         guard let api = appState.api, !pipelineLaster else { return }
@@ -813,9 +817,15 @@ struct AnbudView: View {
                                 description: Text("Legg kunngjøringer i pipelinen fra ⋯-menyen på et søketreff."))
                                 .padding(.vertical, 20)
                         }
+                        // Nivå 3: anbudene geografisk — geokodet fra Brreg-
+                        // adressen til oppdragsgiveren (best effort).
+                        pipelineKart
                         ForEach(pipelineItems) { p in
                             pipelineRad(p)
                         }
+                        // Nivå 3: læringssløyfen — hvorfor taper vi, og
+                        // hvilken Pondus-trening adresserer det.
+                        tapsAarsakSeksjon
                         Color.clear.frame(height: 20)
                     }
                     .padding(18)
@@ -832,6 +842,23 @@ struct AnbudView: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        // Nivå 3: «tapt» krever årsak — det er læringssløyfens råstoff.
+        .confirmationDialog(
+            "Hvorfor tapte dere anbudet?",
+            isPresented: Binding(get: { taptDialogItem != nil },
+                                 set: { if !$0 { taptDialogItem = nil } }),
+            titleVisibility: .visible
+        ) {
+            ForEach(Self.taptAarsakNavn, id: \.0) { raw, navn in
+                Button(navn) {
+                    if let p = taptDialogItem {
+                        Task { await lagreStatus(p, status: "tapt", taptAarsak: raw) }
+                    }
+                    taptDialogItem = nil
+                }
+            }
+            Button("Avbryt", role: .cancel) { taptDialogItem = nil }
+        }
     }
 
     private func pipelineRad(_ p: AnbudPipelineItemDTO) -> some View {
@@ -894,6 +921,15 @@ struct AnbudView: View {
                     .background(LBrand.cardHi, in: Capsule())
                 }
                 if let frist = p.frist { fristChip(frist) }
+                // Nivå 3: registrert tapsårsak vises på raden.
+                if p.status == "tapt", let aarsak = p.taptAarsak {
+                    Text(Self.taptAarsakNavn.first(where: { $0.0 == aarsak })?.1
+                         ?? aarsak.capitalized)
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(LBrand.red)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(LBrand.red.opacity(0.12), in: Capsule())
+                }
                 Spacer()
                 Button {
                     Task { await fjernFraPipeline(p) }
@@ -911,20 +947,119 @@ struct AnbudView: View {
 
     @MainActor
     private func endreStatus(_ p: AnbudPipelineItemDTO, til status: String) async {
+        // Nivå 3: «tapt» går via årsaks-dialogen — læringssløyfen starter
+        // med å vite HVORFOR.
+        if status == "tapt" {
+            taptDialogItem = p
+            return
+        }
+        await lagreStatus(p, status: status, taptAarsak: nil)
+    }
+
+    @MainActor
+    private func lagreStatus(_ p: AnbudPipelineItemDTO, status: String, taptAarsak: String?) async {
         if DemoModeManager.isActiveNonisolated {
             if let i = pipelineItems.firstIndex(where: { $0.id == p.id }) {
-                pipelineItems[i] = AnbudPipelineItemDTO(
+                var kopi = AnbudPipelineItemDTO(
                     id: p.id, doffinId: p.doffinId, tittel: p.tittel,
                     oppdragsgiver: p.oppdragsgiver, orgnr: p.orgnr, url: p.url,
                     frist: p.frist, verdi: p.verdi, status: status,
                     assignedUserId: p.assignedUserId, assignedNavn: p.assignedNavn,
                     notat: p.notat)
+                kopi.lat = p.lat; kopi.lng = p.lng; kopi.adresse = p.adresse
+                kopi.taptAarsak = taptAarsak ?? p.taptAarsak
+                pipelineItems[i] = kopi
             }
             return
         }
         guard let api = appState.api else { return }
-        try? await api.updateAnbudPipeline(id: p.id, status: status)
+        try? await api.updateAnbudPipeline(id: p.id, status: status, taptAarsak: taptAarsak)
         await lastPipeline()
+    }
+
+    // MARK: Nivå 3 — kart, tapt-årsak og læringssløyfe (2026-08-03)
+
+    private static let taptAarsakNavn: [(String, String)] = [
+        ("pris", "Pris"), ("kapasitet", "Kapasitet"),
+        ("krav", "Krav vi ikke oppfylte"), ("referanser", "Referanser"),
+        ("annet", "Annet"),
+    ]
+
+    /// Ærlig, statisk kobling tapsårsak → trening/tiltak (samme sløyfe
+    /// som Kvalitets underkjenningsårsak → Pondus-modul).
+    private func pondusAnbefaling(for aarsak: String) -> String? {
+        switch aarsak {
+        case "pris": return "Pondus: Trygghet — pris-innvending og verdiargumentasjon"
+        case "krav": return "Kvalitet: dokumentasjon og sertifiseringer bør på plass før neste tilbud"
+        case "referanser": return "Bygg referansebank av vunnede anbud — be om attest ved «Vant»"
+        case "kapasitet": return "Vurder rammeavtale-partnere for kapasitetstopper"
+        default: return nil
+        }
+    }
+
+    @ViewBuilder
+    private var pipelineKart: some View {
+        let medKoordinater = pipelineItems.filter { $0.lat != nil && $0.lng != nil }
+        if !medKoordinater.isEmpty {
+            Map {
+                ForEach(medKoordinater) { p in
+                    Annotation(p.oppdragsgiver.isEmpty ? p.tittel : p.oppdragsgiver,
+                               coordinate: CLLocationCoordinate2D(
+                                   latitude: p.lat ?? 0, longitude: p.lng ?? 0)) {
+                        ZStack {
+                            Circle().fill(statusFarge(p.status))
+                                .frame(width: 26, height: 26)
+                                .shadow(color: statusFarge(p.status).opacity(0.6), radius: 5)
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+            }
+            .frame(height: 220)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private var tapsAarsakSeksjon: some View {
+        if let aarsaker = pipelineStats?.tapsaarsaker, !aarsaker.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HVORFOR TAPER VI")
+                    .font(.appScaled(size: 10, weight: .black))
+                    .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                ForEach(aarsaker) { a in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(Self.taptAarsakNavn.first(where: { $0.0 == a.aarsak })?.1
+                                 ?? a.aarsak.capitalized)
+                                .font(.appScaled(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Text("\(a.antall)")
+                                .font(.appScaled(size: 12, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(LBrand.red)
+                        }
+                        if let anbefaling = pondusAnbefaling(for: a.aarsak) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "graduationcap.fill")
+                                    .font(.appScaled(size: 9))
+                                Text(anbefaling)
+                                    .font(.appScaled(size: 11))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .foregroundStyle(LBrand.purpleLight)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        }
     }
 
     @MainActor
@@ -945,7 +1080,25 @@ struct AnbudView: View {
         await lastPipeline()
     }
 
-    private static let demoPipeline: [AnbudPipelineItemDTO] = [
+    private static let demoPipeline: [AnbudPipelineItemDTO] = {
+        var liste: [AnbudPipelineItemDTO] = demoPipelineBase
+        // Nivå 3: demo-koordinater (ekte adresser) + tapt-årsak.
+        let koordinater: [String: (Double, Double, String)] = [
+            "dp-1": (59.9284, 10.9594, "Rådhuset, Lørenskog"),
+            "dp-2": (59.9139, 10.7522, "Kirkeveien 166, Oslo"),
+            "dp-3": (59.8940, 10.5460, "Rådhuset, Bærum"),
+            "dp-4": (59.9560, 11.0490, "Rådhuset, Lillestrøm"),
+        ]
+        for i in liste.indices {
+            if let k = koordinater[liste[i].id] {
+                liste[i].lat = k.0; liste[i].lng = k.1; liste[i].adresse = k.2
+            }
+            if liste[i].status == "tapt" { liste[i].taptAarsak = "pris" }
+        }
+        return liste
+    }()
+
+    private static let demoPipelineBase: [AnbudPipelineItemDTO] = [
         .init(id: "dp-1", doffinId: "demo-1",
               tittel: "Rammeavtale elektrikertjenester — kommunale bygg",
               oppdragsgiver: "Lørenskog kommune", orgnr: "842566142", url: "https://doffin.no",

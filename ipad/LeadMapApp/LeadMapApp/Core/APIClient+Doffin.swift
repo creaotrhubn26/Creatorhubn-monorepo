@@ -130,13 +130,27 @@ struct AnbudPipelineItemDTO: Decodable, Identifiable, Hashable {
     let assignedUserId: String?
     let assignedNavn: String?
     let notat: String
+    /// Nivå 3: geokodet oppdragsgiver-adresse (Brreg → Geonorge, best effort).
+    var lat: Double?
+    var lng: Double?
+    var adresse: String?
+    /// Nivå 3: læringssløyfe — hvorfor tapte vi (whitelist i backend).
+    var taptAarsak: String?
 
     enum CodingKeys: String, CodingKey {
         case id, tittel, oppdragsgiver, orgnr, url, frist, verdi, status, notat
+        case lat, lng, adresse
         case doffinId = "doffin_id"
         case assignedUserId = "assigned_user_id"
         case assignedNavn = "assigned_navn"
+        case taptAarsak = "tapt_aarsak"
     }
+}
+
+struct AnbudTapsAarsakDTO: Decodable, Identifiable, Hashable {
+    let aarsak: String
+    let antall: Int
+    var id: String { aarsak }
 }
 
 struct AnbudPipelineStatsDTO: Decodable, Hashable {
@@ -145,9 +159,10 @@ struct AnbudPipelineStatsDTO: Decodable, Hashable {
     let tapt: Int
     let vinnrate: Double?
     let sumAapneVerdi: Double
+    var tapsaarsaker: [AnbudTapsAarsakDTO]?
 
     enum CodingKeys: String, CodingKey {
-        case aapne, vant, tapt, vinnrate
+        case aapne, vant, tapt, vinnrate, tapsaarsaker
         case sumAapneVerdi = "sum_aapne_verdi"
     }
 }
@@ -243,13 +258,15 @@ extension APIClient {
     }
 
     func updateAnbudPipeline(id: String, status: String? = nil,
-                             assignedUserId: String?? = nil, notat: String? = nil) async throws {
+                             assignedUserId: String?? = nil, notat: String? = nil,
+                             taptAarsak: String? = nil) async throws {
         var body: [String: AnyEncodableValue] = [:]
         if let status { body["status"] = .string(status) }
         if let assigned = assignedUserId {
             body["assigned_user_id"] = assigned.map { .string($0) } ?? .null
         }
         if let notat { body["notat"] = .string(notat) }
+        if let taptAarsak { body["tapt_aarsak"] = .string(taptAarsak) }
         struct Wrapper: Encodable {
             let values: [String: AnyEncodableValue]
             func encode(to encoder: Encoder) throws {
