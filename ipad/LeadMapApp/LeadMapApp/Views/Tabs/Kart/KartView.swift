@@ -1852,6 +1852,18 @@ struct KartView: View {
                 }
             }
             Spacer(minLength: 8)
+            // «Brief meg»: les AI-møtebriefen høyt mens du kjører —
+            // dødtiden bak rattet blir forberedelsestid (aldri uforberedt).
+            Button { lesOppMotebrief() } label: {
+                Image(systemName: "brain.head.profile")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(KrBrand.purpleLight)
+                    .frame(width: 32, height: 32)
+                    .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9)
+                        .stroke(KrBrand.purple.opacity(0.45), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
             if let mail = selectedLead.emailOrDemo {
                 Button {
                     sendDelayNotice(to: mail, etaMin: navETAMinutes,
@@ -1911,6 +1923,32 @@ struct KartView: View {
         hasSelectedLead = true
         kortAnkomst = false
         withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: mock) }
+    }
+
+    /// Kjøre-modus: hent AI-møtebriefen og les den høyt via nav-stemmen —
+    /// selgeren ankommer forberedt uten å ha sett på en skjerm.
+    private func lesOppMotebrief() {
+        let navn = selectedLead.name
+        showToast("Henter møtebrief…")
+        Task { @MainActor in
+            let dto: MoteBriefDTO?
+            if DemoModeManager.isActiveNonisolated {
+                dto = MoteBriefSheet.demoBrief(selskap: navn)
+            } else {
+                dto = try? await appState.api?.hentMoteBrief(selskap: navn)
+            }
+            guard let b = dto else {
+                showToast("Fikk ikke laget brief nå")
+                return
+            }
+            var tekst = "Møtebrief for \(b.fakta.selskap). \(b.brief.oppsummering) "
+            tekst += "Målet for møtet: \(b.brief.moteMaal) "
+            for (i, q) in b.brief.sporsmal.enumerated() {
+                tekst += "Spørsmål \(i + 1): \(q). "
+            }
+            tekst += "Innsikt å by på: \(b.brief.innsikt)"
+            speak(tekst)
+        }
     }
 
     /// Ankomst-tilstand: navigasjonen endte med faktisk ankomst — kortet
