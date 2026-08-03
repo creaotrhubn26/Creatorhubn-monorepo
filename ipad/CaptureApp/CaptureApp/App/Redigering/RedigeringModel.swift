@@ -39,6 +39,17 @@ final class RedigeringModel {
     var hasLearnedStyle: Bool { LearnedStyleStore.shared.isAvailable }
     var learnedStyleNames: [String] { LearnedStyleStore.shared.styleNames }
 
+    /// SERVER motiv-maske (BiRefNet/U²-Net via `/subject-matte`) — «pro»-kvalitets
+    /// motiv-maske for den subjekt-beskyttede løvverk-dempingen, i stedet for den
+    /// on-device Vision-person-matten. Lagres som PNG-bytes (Sendable → trygt inn i
+    /// den detached render-tasken); rekonstrueres til CIImage der. Gjelder KUN det
+    /// hentede bildet (`serverMatteAssetId`).
+    var useServerSubjectMatte = false
+    var fetchingServerMatte = false
+    private var serverSubjectMaskData: Data?
+    private var serverMatteAssetId: UUID?
+    var hasServerSubjectMatte: Bool { serverSubjectMaskData != nil && serverMatteAssetId == selectedId }
+
     /// Trykk-på-ansikt (lokal justering): detekterte ansikter i NORMALISERTE
     /// CI-koordinater (0–1, origo nede-venstre) + per-ansikt justering + valgt.
     var faceRectsNorm: [CGRect] = []
@@ -554,6 +565,33 @@ final class RedigeringModel {
         presetName = name
     }
 
+    /// Hent SERVER motiv-maske (BiRefNet/U²-Net via `/subject-matte`) for det valgte
+    /// bildet og re-render med den (høyere kant-kvalitet enn on-device Vision). Faller
+    /// stille tilbake til Vision-matten ved feil.
+    func fetchServerSubjectMatte() async {
+        guard let asset = selected, let client = PhotoEnhancerClient.make() else { return }
+        let previewPath = workingBase(for: asset).jpegPath ?? asset.displayPreviewKey
+        guard let previewPath,
+              let data = try? Data(contentsOf: URL(fileURLWithPath: previewPath)) else { return }
+        fetchingServerMatte = true
+        defer { fetchingServerMatte = false }
+        do {
+            let matte = try await client.subjectMatte(imageData: data)
+            serverSubjectMaskData = matte.pngData()
+            serverMatteAssetId = asset.id
+            useServerSubjectMatte = true
+            await render()
+        } catch {
+            // behold on-device Vision-fallback stille
+        }
+    }
+
+    /// Slå av server-matten → tilbake til on-device Vision-matten.
+    func clearServerSubjectMatte() {
+        useServerSubjectMatte = false
+        Task { await render() }
+    }
+
     private func render() async {
         guard let asset = selected else { afterImage = nil; return }
         renderGeneration += 1
@@ -587,6 +625,9 @@ final class RedigeringModel {
         let crop = crops[asset.id]
         let faceAdj = activeFaceAdjustments   // [(normRect, adj)] — lokal ansikts-justering
         let styleFlash = asset.signals.flashFired   // Del D: blits-dim til lært-stil-kNN
+        // SERVER motiv-maske (PNG-bytes → Sendable) — kun for det hentede bildet.
+        let serverMatteData = (useServerSubjectMatte && serverMatteAssetId == asset.id)
+            ? serverSubjectMaskData : nil
         let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             // «Min stil» krever en NØYTRAL rawpy-lignende base (den LUT-en ble lært
             // på). renderPreview gir en Picture-Style-baket/fargestyrt base → LUT
@@ -613,7 +654,14 @@ final class RedigeringModel {
             // valgte stilens scener.
             let scenes = manualScenes ?? (auto ? styles.flatMap { $0.scenes } : nil)
             if let scenes, !scenes.isEmpty {
-                ci = LearnedStyle.apply(scenes: scenes, to: ci, flashFired: styleFlash)   // lært look
+                // Server-matten (om hentet) rekonstrueres her; ellers bruker
+                // LearnedStyle on-device Vision-person-matten. `CIImage(image:)`
+                // respekterer orienteringen så den flukter med develop-basen.
+                let serverMask: CIImage? = serverMatteData
+                    .flatMap { UIImage(data: $0) }
+                    .flatMap { CIImage(image: $0) }
+                ci = LearnedStyle.apply(scenes: scenes, to: ci, flashFired: styleFlash,
+                                        subjectMaskOverride: serverMask)   // lært look
             }
             // Lokal per-ansikt-justering (normalisert rekt → piksler av ci.extent).
             if !faceAdj.isEmpty {

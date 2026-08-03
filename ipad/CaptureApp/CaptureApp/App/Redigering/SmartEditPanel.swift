@@ -236,22 +236,43 @@ struct SmartEditPanel: View {
             ? "Auto"
             : (model.learnedStyleIndex.flatMap { names.indices.contains($0) ? names[$0] : nil } ?? "Av")
         let isOn = model.learnedStyleAuto || model.learnedStyleIndex != nil
-        return HStack {
-            Label("Min stil (lært)", systemImage: "brain.head.profile")
-                .font(.subheadline).foregroundStyle(CHTheme.textPrimary)
-            Spacer()
-            Menu {
-                Button("Av") { model.learnedStyleIndex = nil; model.learnedStyleAuto = false; model.recipeChanged() }
-                Button("Auto (per bilde)") { model.learnedStyleAuto = true; model.learnedStyleIndex = nil; model.recipeChanged() }
-                ForEach(Array(names.enumerated()), id: \.offset) { i, name in
-                    Button(name) { model.learnedStyleIndex = i; model.learnedStyleAuto = false; model.recipeChanged() }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Min stil (lært)", systemImage: "brain.head.profile")
+                    .font(.subheadline).foregroundStyle(CHTheme.textPrimary)
+                Spacer()
+                Menu {
+                    Button("Av") { model.learnedStyleIndex = nil; model.learnedStyleAuto = false; model.recipeChanged() }
+                    Button("Auto (per bilde)") { model.learnedStyleAuto = true; model.learnedStyleIndex = nil; model.recipeChanged() }
+                    ForEach(Array(names.enumerated()), id: \.offset) { i, name in
+                        Button(name) { model.learnedStyleIndex = i; model.learnedStyleAuto = false; model.recipeChanged() }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(current).font(.subheadline.weight(.semibold))
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                    }
+                    .foregroundStyle(isOn ? CHTheme.accent : CHTheme.textMuted)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(current).font(.subheadline.weight(.semibold))
-                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+            }
+            // Pro motiv-maske (server BiRefNet/U²-Net) — driver den subjekt-beskyttede
+            // løvverk-dempingen med en piksel-nøyaktig matte i stedet for on-device
+            // Vision. Kun relevant når en lært stil er aktiv.
+            if isOn {
+                HStack {
+                    Label("Pro motiv-maske (server)", systemImage: "person.crop.rectangle.badge.plus")
+                        .font(.caption).foregroundStyle(CHTheme.textMuted)
+                    Spacer()
+                    if model.fetchingServerMatte {
+                        ProgressView().controlSize(.small)
+                    } else if model.useServerSubjectMatte && model.hasServerSubjectMatte {
+                        Button("På ✓") { model.clearServerSubjectMatte() }
+                            .font(.caption.weight(.semibold)).foregroundStyle(CHTheme.accent)
+                    } else {
+                        Button("Hent") { Task { await model.fetchServerSubjectMatte() } }
+                            .font(.caption.weight(.semibold)).foregroundStyle(CHTheme.accent)
+                    }
                 }
-                .foregroundStyle(isOn ? CHTheme.accent : CHTheme.textMuted)
             }
         }
     }

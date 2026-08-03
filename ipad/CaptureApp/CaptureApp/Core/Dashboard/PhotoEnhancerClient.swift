@@ -152,6 +152,23 @@ struct PhotoEnhancerClient: Sendable {
         return data
     }
 
+    /// SERVER subjekt-matte (`POST /api/photo-enhancer/subject-matte` → runner
+    /// `/subject-matte`). Sender et preview-JPEG, får en piksel-nøyaktig forgrunns-
+    /// matte tilbake (U²-Net default, BiRefNet opt-in via `modelKey`). Server-«pro»-
+    /// motparten til on-device iOS Vision-person-segmentering — for levert-kvalitets
+    /// motiv-maske i redigeringen. Returnerer matten som gråtone-`UIImage` (hvit=motiv).
+    func subjectMatte(imageData: Data, modelKey: String? = nil) async throws -> UIImage {
+        struct Body: Encodable { let imageBase64: String; let modelKey: String? }
+        let body = try JSONEncoder().encode(
+            Body(imageBase64: imageData.base64EncodedString(), modelKey: modelKey))
+        let (data, _) = try await postJSONReturning("subject-matte", body: body)
+        struct Resp: Decodable { let success: Bool?; let matteBase64: String?; let error: String? }
+        let resp = try decode(Resp.self, from: data)
+        guard let b64 = resp.matteBase64, let bytes = Data(base64Encoded: b64),
+              let img = UIImage(data: bytes) else { throw EnhancerError.noImage }
+        return img
+    }
+
     /// Teach the personalisation model what the photographer actually shipped.
     func submitFeedback(suggested: EnhanceSettings, final: EnhanceSettings) async {
         guard let body = try? JSONEncoder().encode(["suggested": suggested, "final": final]) else { return }

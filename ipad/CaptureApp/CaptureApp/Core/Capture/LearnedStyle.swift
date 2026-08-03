@@ -211,7 +211,7 @@ enum LearnedStyle {
     /// Påfør en gitt (navngitt) stils scener på et CIImage: per-kanal-LUT
     /// (CIColorCurves) + a/b-skift, scene-matchet on-device.
     static func apply(scenes: [LearnedStyleProfile.Scene], to image: CIImage, k: Int = 5,
-                      flashFired: Bool? = nil) -> CIImage {
+                      flashFired: Bool? = nil, subjectMaskOverride: CIImage? = nil) -> CIImage {
         guard !scenes.isEmpty else { return image }
         // #3: eksplisitt sRGB arbeidsrom. Alle readbacks (autoBright/features/
         // lumaStats) + LAB-cuben antar sRGB 0–1; uten dette kan default-konteksten
@@ -292,10 +292,20 @@ enum LearnedStyle {
         let faces = FaceContext.detect(in: out)
 
         // LØVVERK-DEMPING (subjekt-beskyttet): demp skrikende grønt bakgrunnsløvverk
-        // så paret popper (den «luftige» looken). MOTIV-masken er en ON-DEVICE Vision-
-        // person-matte (piksel-nøyaktig, per bilde — «systemet», ikke hardkodede
-        // koordinater), med ansikts-ellipse som fallback. Hud/klær urørt.
-        let subject = SubjectMask.personMatte(for: out, extent: image.extent)
+        // så paret popper (den «luftige» looken). MOTIV-maske, best tilgjengelige:
+        // en SERVER-matte (BiRefNet/U²-Net via /subject-matte) når editoren har hentet
+        // den — ellers ON-DEVICE Vision-person-matte, med ansikts-ellipse som fallback.
+        let subject: CIImage?
+        if let ov = subjectMaskOverride {
+            // Server-matten kommer i preview-oppløsning → skalér til arbeids-extent.
+            let sx = image.extent.width / max(1, ov.extent.width)
+            let sy = image.extent.height / max(1, ov.extent.height)
+            subject = ov.transformed(by: CGAffineTransform(scaleX: sx, y: sy))
+                .transformed(by: CGAffineTransform(translationX: image.extent.minX, y: image.extent.minY))
+                .cropped(to: image.extent)
+        } else {
+            subject = SubjectMask.personMatte(for: out, extent: image.extent)
+        }
         out = FoliageDesaturateFilter.apply(to: out, faces: faces, ctx: ctx, subjectMask: subject)
 
         // Hud-finishing (den lærte banen har ellers ingen hud-retusj): forankre
