@@ -5144,6 +5144,68 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     return res.json({ success: true, luts: [...builtIn, ...userLuts], source });
   });
 
+  // Subject-matte proxy — forwards to the runner's /subject-matte (U²-Net default,
+  // BiRefNet opt-in via modelKey). Returns the foreground matte (+ optional cutout /
+  // subject-protected graded look) so the CaptureApp editor can use a SERVER-quality
+  // subject mask (the on-device tier is iOS Vision person-segmentation). Thin
+  // synchronous proxy: small preview-res image in, matte out — no queue/R2 needed.
+  router.post("/subject-matte", async (req, res) => {
+    const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
+      runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+      defaultRunnerUrl:
+        process.env.RENDER === "true"
+          ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+          : null,
+    });
+    if (!runnerEndpoint) {
+      return res
+        .status(503)
+        .json({ success: false, error: "subject_matte_runner_not_configured" });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const imageBase64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: "imageBase64_required" });
+    }
+
+    const url = new URL(runnerEndpoint);
+    url.pathname = url.pathname.replace(/\/(enhance|)$/, "/subject-matte") || "/subject-matte";
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      Number(process.env.PHOTO_ENHANCER_MATTE_TIMEOUT_MS || 60_000),
+    );
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          modelKey: typeof body.modelKey === "string" ? body.modelKey : undefined,
+          returnCutout: body.returnCutout === true,
+          applyBackgroundLook: body.applyBackgroundLook === true,
+          backgroundStrength:
+            typeof body.backgroundStrength === "number" ? body.backgroundStrength : undefined,
+        }),
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        return res
+          .status(response.status === 503 ? 503 : 502)
+          .json({ success: false, error: `runner_${response.status}`, detail: text.slice(0, 300) });
+      }
+      const payload = JSON.parse(text) as Record<string, unknown>;
+      return res.json({ success: true, ...payload });
+    } catch (err) {
+      return res
+        .status(502)
+        .json({ success: false, error: "subject_matte_request_failed" });
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
   // Frequency-sep 16-bit save proxy. Frontend POSTs raw little-endian
   // Uint16 bytes for its (width × height × channels) edited buffer; the
   // runner returns a binary PNG which we pipe straight back. Bypasses
