@@ -516,7 +516,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenMockupStudio}
-          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.45) 100%), linear-gradient(135deg, #0e7490 0%, #6d28d9 100%)", backgroundSize: "cover", backgroundPosition: "center right" }}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/mockup.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Sett sammen en produkt-one-pager med Mac/iPad/iPhone-mockups — last opp skjermbilder, rediger tekst og accent-farger, og eksporter som PNG. Krever Demo Studio-abonnement." : "Logg inn først"}
         >
