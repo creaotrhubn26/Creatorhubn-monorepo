@@ -23,7 +23,7 @@ enum SkinLineCorrectFilter {
     static let toleranceDeg = 10.0     // innenfor → alt på linja → hopp over
 
     static func apply(to image: CIImage, faces: [CGRect], ctx: CIContext,
-                      strength: Double = 0.85) -> CIImage {
+                      strength: Double = 0.85, skinMask landmarkSkin: CIImage? = nil) -> CIImage {
         guard strength > 0.001, !faces.isEmpty else { return image }
         let extent = image.extent
         var out = image
@@ -44,7 +44,17 @@ enum SkinLineCorrectFilter {
             f.cubeData = cube
             f.colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
             guard let corrected = f.outputImage?.cropped(to: extent),
-                  let mask = faceMask(extent: extent, faceRect: face) else { continue }
+                  let oval = faceMask(extent: extent, faceRect: face) else { continue }
+            // LANDMARK-HUD-MASKE (FaceXFormer-metoden, on-device): begrens korreksjonen
+            // til ekte ansikts-hud — lepper (kromatiske!) + øyne holdes utenfor. Snitt
+            // (multipliser) med ansikts-ovalen. Fallback: bare ovalen.
+            var mask = oval
+            if let skin = landmarkSkin {
+                let m = CIFilter.multiplyCompositing()
+                m.inputImage = skin
+                m.backgroundImage = oval
+                mask = m.outputImage?.cropped(to: extent) ?? oval
+            }
             let blend = CIFilter.blendWithMask()
             blend.inputImage = corrected
             blend.backgroundImage = out

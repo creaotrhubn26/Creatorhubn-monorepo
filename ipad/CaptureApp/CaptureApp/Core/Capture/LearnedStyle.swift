@@ -308,7 +308,10 @@ enum LearnedStyle {
         // linja (magenta/grønn), roter hud-skyen tilbake på 49°-linja + restaurer
         // chroma, melanin-sikkert (L* urørt, kun hud-kromatisiteter). GATET: hopp
         // over ansikt som alt ligger på linja → velbelyste portretter = no-op.
-        out = SkinLineCorrectFilter.apply(to: out, faces: faces, ctx: ctx)
+        // Spatialt begrenset av en LANDMARK-hud-maske (Vision 76-punkt, FaceXFormer-
+        // metoden on-device) så lepper/øyne holdes utenfor korreksjonen.
+        let skinMask = FaceSkinMask.skinMask(for: out, extent: image.extent)
+        out = SkinLineCorrectFilter.apply(to: out, faces: faces, ctx: ctx, skinMask: skinMask)
         return out.cropped(to: image.extent)
     }
 }
