@@ -355,8 +355,41 @@ def apply_subject_look(
         return image
 
 
+def apply_background_look(
+    image: np.ndarray,
+    matte: np.ndarray,
+    strength: float = 1.0,
+    green_reduction: float = 0.35,
+) -> np.ndarray:
+    """SUBJEKT-BESKYTTET bakgrunns-look — endelig med en EKTE maske (BiRefNet).
+
+    Demper skrikende grønt bakgrunnsløvverk (den «luftige editorial»-looken) MENS
+    motivet beholder full farge. ``matte`` = forgrunns-matte (H×W, 0..1; 1 = motiv).
+    Server-«pro»-motparten til iOS ``FoliageDesaturateFilter`` (som bruker Vision-
+    person-matte on-device). Grønt hue-gatet i HSV; blandet kun i bakgrunnen (1−matte).
+    """
+    s = _clamp_strength(strength)
+    if s <= 0 or matte is None:
+        return image
+    h, w = image.shape[:2]
+    if matte.shape[:2] != (h, w):
+        matte = cv2.resize(matte.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
+    bg = np.clip(1.0 - matte.astype(np.float32), 0.0, 1.0)  # bakgrunn = ikke-motiv
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+    H, S = hsv[:, :, 0], hsv[:, :, 1]
+    # løvverk-hue (OpenCV H 0..179): gulgrønn→grønn→cyan ~ 27..95
+    green = np.clip(1.0 - np.abs(H - 60.0) / 40.0, 0.0, 1.0) * (S > 25)
+    factor = 1.0 - green_reduction * green * bg * s        # demp kun grønn bakgrunn
+    hsv[:, :, 1] = np.clip(S * factor, 0, 255)
+    desat = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+    dim = 1.0 - 0.05 * green[..., None] * bg[..., None] * s  # svak nedtoning av lyst løv
+    return np.clip(desat * dim, 0, 255).astype(np.uint8)
+
+
 __all__ = [
     "apply_aviation_look",
+    "apply_background_look",
     "apply_food_look",
     "apply_landscape_look",
     "apply_product_look",

@@ -19,7 +19,7 @@ from freq_sep_save import encode_png_16bit, parse_payload as parse_freq_sep_save
 from hsl_retouch import apply_hsl
 from lut_library import get_builtin_lut, list_builtin_luts
 from portrait_retouch import apply_portrait_retouch, apply_portrait_retouch_multi, detect_all_face_regions
-from subject_retouch import apply_subject_look
+from subject_retouch import apply_background_look, apply_subject_look
 
 
 DEFAULT_GFPGAN_KEYS = [
@@ -209,6 +209,52 @@ def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
     raise RuntimeError("weights not found in any storage")
 
 
+# ── BiRefNet subjekt-matte (server-«pro»-tier) ────────────────────────
+# Generalisert modell-nedlasting (ikke gfpgan-spesifikk) + cachet BiRefNet-
+# session. Speiler _download_weight men for en VILKÅRLIG nøkkel (birefnet.onnx).
+BIREFNET_DEFAULT_KEY = "models/rembg/birefnet/birefnet.onnx"
+_birefnet_matte: Any = None
+_birefnet_lock = threading.Lock()
+
+
+def _download_model(key: str) -> Path:
+    """Last ned en vilkårlig modell-nøkkel fra B2/R2 (cachet), gjenbruker samme
+    storages + cache-mate som gfpgan-vektene."""
+    storages = _weight_storages()
+    if not storages:
+        raise RuntimeError("no weight storage configured (B2 or R2)")
+    cache_path = _cache_path_for_key(key)
+    if cache_path.exists() and cache_path.stat().st_size > 1_000_000:
+        return cache_path
+    tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    last_error: Exception | None = None
+    for storage in storages:
+        for bucket in storage["buckets"]:
+            try:
+                storage["client"].download_file(bucket, key, str(tmp_path))
+                tmp_path.replace(cache_path)
+                return cache_path
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+    raise RuntimeError(f"model {key!r} not found in B2/R2: "
+                       f"{last_error.__class__.__name__ if last_error else 'unknown'}")
+
+
+def _get_birefnet(key: str | None = None) -> Any:
+    """Cachet BiRefNet-matter (lastes én gang; ~1 GB ONNX)."""
+    global _birefnet_matte
+    with _birefnet_lock:
+        if _birefnet_matte is None:
+            from birefnet_matte import BiRefNetMatte
+            path = _download_model(key or BIREFNET_DEFAULT_KEY)
+            _birefnet_matte = BiRefNetMatte.from_onnx(str(path))
+        return _birefnet_matte
+
+
 # ── Weight bootstrap ──────────────────────────────────────────────────
 # The backend gates each model on the weight file EXISTING in the models bucket
 # (HeadObject), and the runner only READS weights — so on a fresh environment
@@ -367,6 +413,55 @@ def _resize_for_budget(image: np.ndarray) -> tuple[np.ndarray, float]:
         interpolation=cv2.INTER_AREA,
     )
     return resized, scale
+
+
+class SubjectMattePayload(BaseModel):
+    imageBase64: str
+    modelKey: str | None = None
+    returnCutout: bool = False
+    applyBackgroundLook: bool = False
+    backgroundStrength: float = 1.0
+
+
+@app.post("/subject-matte")
+@app.post("/api/subject/matte")
+def subject_matte(payload: SubjectMattePayload) -> dict[str, Any]:
+    """BiRefNet forgrunns-matte (server-«pro»-tier). Returnerer matten (PNG-grå,
+    base64) + valgfritt RGBA-utklipp og/eller den subjekt-beskyttede bakgrunns-
+    looken (løvverk-demping med EKTE maske). On-device-motpart = iOS Vision-person-
+    segmentering; her får den leverte retusjen BiRefNet-kvalitet."""
+    try:
+        image = _decode_image(payload.imageBase64)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    process_image, _ = _resize_for_budget(image)
+    try:
+        matte = _get_birefnet(payload.modelKey).matte(process_image)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"birefnet unavailable: {exc}") from exc
+
+    matte_u8 = (np.clip(matte, 0.0, 1.0) * 255.0).astype(np.uint8)
+    ok, buf = cv2.imencode(".png", matte_u8)
+    if not ok:
+        raise HTTPException(status_code=500, detail="matte encode failed")
+    resp: dict[str, Any] = {
+        "success": True,
+        "matteBase64": base64.b64encode(buf.tobytes()).decode("ascii"),
+        "width": int(process_image.shape[1]),
+        "height": int(process_image.shape[0]),
+    }
+    if payload.returnCutout:
+        rgba = cv2.cvtColor(process_image, cv2.COLOR_BGR2BGRA)
+        rgba[:, :, 3] = matte_u8
+        ok2, buf2 = cv2.imencode(".png", rgba)
+        if ok2:
+            resp["cutoutBase64"] = base64.b64encode(buf2.tobytes()).decode("ascii")
+    if payload.applyBackgroundLook:
+        graded = apply_background_look(process_image, matte, strength=payload.backgroundStrength)
+        ok3, buf3 = cv2.imencode(".jpg", graded, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        if ok3:
+            resp["gradedBase64"] = base64.b64encode(buf3.tobytes()).decode("ascii")
+    return resp
 
 
 @app.get("/luts")
