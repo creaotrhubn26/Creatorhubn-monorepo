@@ -44,6 +44,7 @@ import {
 import type { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
+import { useT } from '../../../i18n';
 
 const KanbanPanelLazy = lazy(() =>
   import('./KanbanPanel').then(m => ({ default: m.KanbanPanel }))
@@ -103,7 +104,8 @@ function DashboardPanelInner({
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const { showSuccess, showError } = useToast();
-  
+  const { t } = useT();
+
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
 
   useEffect(() => {
@@ -136,10 +138,10 @@ function DashboardPanelInner({
     try {
       await castingService.saveProject({ ...project, name: trimmedTitle });
       if (onUpdate) onUpdate();
-      showSuccess('Tittel lagret');
+      showSuccess(t('dash.titleSaved'));
     } catch (error) {
       console.error('Failed to save title:', error);
-      showError('Kunne ikke lagre tittel. Prøv igjen.');
+      showError(t('dash.errorSaveTitle'));
     } finally {
       setIsSavingTitle(false);
       setIsEditingTitle(false);
@@ -164,10 +166,10 @@ function DashboardPanelInner({
     try {
       await castingService.saveProject({ ...project, description: trimmedDescription || undefined });
       if (onUpdate) onUpdate();
-      showSuccess('Beskrivelse lagret');
+      showSuccess(t('dash.descriptionSaved'));
     } catch (error) {
       console.error('Failed to save description:', error);
-      showError('Kunne ikke lagre beskrivelse. Prøv igjen.');
+      showError(t('dash.errorSaveDescription'));
     } finally {
       setIsSavingDescription(false);
       setIsEditingDescription(false);
@@ -214,15 +216,15 @@ function DashboardPanelInner({
       return acc;
     }, {});
     return [
-      { status: 'confirmed', color: '#10b981', label: 'Bekreftet' },
-      { status: 'selected', color: 'var(--role-violet, #8b5cf6)', label: 'Valgt' },
-      { status: 'shortlist', color: '#ffb800', label: 'Shortlist' },
-      { status: 'requested', color: 'var(--role-cyan, #00d4ff)', label: 'Forespurt' },
-      { status: 'pending', color: '#6b7280', label: 'Venter' },
-      { status: 'rejected', color: '#ef4444', label: 'Avvist' },
+      { status: 'confirmed', color: '#10b981', label: t('cstatus.confirmed') },
+      { status: 'selected', color: 'var(--role-violet, #8b5cf6)', label: t('cstatus.selected') },
+      { status: 'shortlist', color: '#ffb800', label: t('cstatus.shortlist') },
+      { status: 'requested', color: 'var(--role-cyan, #00d4ff)', label: t('cstatus.requested') },
+      { status: 'pending', color: '#6b7280', label: t('cstatus.pending') },
+      { status: 'rejected', color: '#ef4444', label: t('cstatus.rejected') },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }))
      .filter(s => s.count > 0);
-  }, [candidates]);
+  }, [candidates, t]);
 
   // Kanban-skeleton stages: alltid alle 6, også med 0-count for empty-state-cards.
   // Speiler KanbanPanel.tsx-konfigurasjonen så dashboardet matcher hovedvyen.
@@ -232,14 +234,14 @@ function DashboardPanelInner({
       return acc;
     }, {});
     return [
-      { status: 'pending',   label: 'Ingen status', color: '#6b7280', tabIndex: 3 },
-      { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)', tabIndex: 3 },
-      { status: 'shortlist', label: 'Vurderes',     color: '#ffb800', tabIndex: 3 },
-      { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #8b5cf6)', tabIndex: 3 },
-      { status: 'confirmed', label: 'Bekreftet',    color: '#10b981', tabIndex: 3 },
-      { status: 'rejected',  label: 'Avvist',       color: '#ef4444', tabIndex: 3 },
+      { status: 'pending',   label: t('cstatus.none'),      color: '#6b7280', tabIndex: 3 },
+      { status: 'requested', label: t('cstatus.requested'), color: 'var(--role-cyan, #00d4ff)', tabIndex: 3 },
+      { status: 'shortlist', label: t('cstatus.underReview'), color: '#ffb800', tabIndex: 3 },
+      { status: 'selected',  label: t('cstatus.selected'),  color: 'var(--role-violet, #8b5cf6)', tabIndex: 3 },
+      { status: 'confirmed', label: t('cstatus.confirmed'), color: '#10b981', tabIndex: 3 },
+      { status: 'rejected',  label: t('cstatus.rejected'),  color: '#ef4444', tabIndex: 3 },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }));
-  }, [candidates]);
+  }, [candidates, t]);
 
   // Rolle-stage-skeleton: speiler casting-listevisning (Åpen / Casting / Besatt).
   // Klikkbare → navigerer til Roller-tab (index 2).
@@ -252,17 +254,17 @@ function DashboardPanelInner({
       return acc;
     }, {});
     return [
-      { status: 'open',    label: 'Åpen',    color: '#a78bfa', tabIndex: 2 },
-      { status: 'casting', label: 'Casting', color: '#fbbf24', tabIndex: 2 },
-      { status: 'filled',  label: 'Besatt',  color: '#10b981', tabIndex: 2 },
+      { status: 'open',    label: t('cstatus.open'),    color: '#a78bfa', tabIndex: 2 },
+      { status: 'casting', label: t('cstatus.casting'), color: '#fbbf24', tabIndex: 2 },
+      { status: 'filled',  label: t('cstatus.filled'),  color: '#10b981', tabIndex: 2 },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }));
-  }, [roles]);
+  }, [roles, t]);
 
   const statCards = [
-    { title: 'Roller totalt', value: stats.totalRoles, color: '#f48fb1', icon: RolesIcon, tabIndex: 2 },
-    { title: 'Åpne roller', value: stats.openRoles, color: '#10b981', icon: RolesIcon, tabIndex: 2 },
-    { title: 'Kandidater', value: stats.totalCandidates, color: '#10b981', icon: CandidatesIcon, tabIndex: 3 },
-    { title: 'Kommende avtaler', value: stats.upcomingSchedules, color: '#ffb800', icon: AuditionsIcon, tabIndex: 4 },
+    { title: t('dash.rolesTotal'), value: stats.totalRoles, color: '#f48fb1', icon: RolesIcon, tabIndex: 2 },
+    { title: t('dash.openRoles'), value: stats.openRoles, color: '#10b981', icon: RolesIcon, tabIndex: 2 },
+    { title: t('dash.candidates'), value: stats.totalCandidates, color: '#10b981', icon: CandidatesIcon, tabIndex: 3 },
+    { title: t('dash.upcomingSchedules'), value: stats.upcomingSchedules, color: '#ffb800', icon: AuditionsIcon, tabIndex: 4 },
   ];
 
   const _quickLinks = [
@@ -340,7 +342,7 @@ function DashboardPanelInner({
                     '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
                     ...focusVisibleStyles,
                   }}
-                  aria-label="Lagre tittel"
+                  aria-label={t('dash.saveTitle')}
                 >
                   {isSavingTitle ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /> : <SaveIcon />}
                 </IconButton>
@@ -354,7 +356,7 @@ function DashboardPanelInner({
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
                     ...focusVisibleStyles,
                   }}
-                  aria-label="Avbryt"
+                  aria-label={t('dash.cancel')}
                 >
                   <CancelIcon />
                 </IconButton>
@@ -370,7 +372,7 @@ function DashboardPanelInner({
                   {project?.name || 'Prosjektoversikt'}
                 </Typography>
                 {project && (
-                  <Tooltip title="Rediger tittel">
+                  <Tooltip title={t('dash.editTitle')}>
                     <IconButton
                       onClick={handleStartEdit}
                       size="small"
@@ -384,7 +386,7 @@ function DashboardPanelInner({
                         },
                         ...focusVisibleStyles,
                       }}
-                      aria-label="Rediger prosjektnavn"
+                      aria-label={t('dash.editProjectName')}
                     >
                       <EditIcon />
                     </IconButton>
@@ -408,7 +410,7 @@ function DashboardPanelInner({
                   autoFocus
                   multiline
                   maxRows={3}
-                  placeholder="Beskrivelse (valgfri)"
+                  placeholder={t('dash.descriptionPlaceholder')}
                   sx={{
                     flex: 1,
                     '& .MuiOutlinedInput-root': {
@@ -439,7 +441,7 @@ function DashboardPanelInner({
                     '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
                     ...focusVisibleStyles,
                   }}
-                  aria-label="Lagre beskrivelse"
+                  aria-label={t('dash.saveDescription')}
                 >
                   {isSavingDescription ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /> : <SaveIcon />}
                 </IconButton>
@@ -453,7 +455,7 @@ function DashboardPanelInner({
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
                     ...focusVisibleStyles,
                   }}
-                  aria-label="Avbryt"
+                  aria-label={t('dash.cancel')}
                 >
                   <CancelIcon />
                 </IconButton>
@@ -464,7 +466,7 @@ function DashboardPanelInner({
                   {project?.description || 'Oversikt over casting og produksjon'}
                 </Typography>
                 {project && (
-                  <Tooltip title="Rediger beskrivelse">
+                  <Tooltip title={t('dash.editDescription')}>
                     <IconButton
                       onClick={handleStartEditDescription}
                       size="small"
@@ -478,7 +480,7 @@ function DashboardPanelInner({
                         },
                         ...focusVisibleStyles,
                       }}
-                      aria-label="Rediger beskrivelse"
+                      aria-label={t('dash.editDescription')}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
@@ -489,7 +491,7 @@ function DashboardPanelInner({
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        <Tooltip title="Åpne Dashboard-guide">
+        <Tooltip title={t('dash.openGuide')}>
           <IconButton
             onClick={() => setGuideOpen(true)}
             size="small"
@@ -503,12 +505,12 @@ function DashboardPanelInner({
               '&:hover': { color: 'var(--role-violet, #8b5cf6)', borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
               ...focusVisibleStyles,
             }}
-            aria-label="Åpne guide"
+            aria-label={t('dash.openGuideAria')}
           >
             <HelpIcon sx={{ fontSize: 20 }} />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Del prosjekt med teamet">
+        <Tooltip title={t('dash.shareProjectTooltip')}>
           <Button
             variant="outlined"
             startIcon={<ShareIcon />}
@@ -524,7 +526,7 @@ function DashboardPanelInner({
               ...focusVisibleStyles,
             }}
           >
-            {!isMobile && 'Del prosjekt'}
+            {!isMobile && t('dash.shareProject')}
           </Button>
         </Tooltip>
         </Box>
@@ -627,11 +629,11 @@ function DashboardPanelInner({
                 flex: 1,
               }}
             >
-              Rolle-fremdrift
+              {t('dash.roleProgress')}
             </Typography>
             {stats.totalRoles > 0 && (
               <Chip
-                label={`${stats.filledRoles}/${stats.totalRoles} besatt`}
+                label={t('dash.filledOfTotal', { filled: stats.filledRoles, total: stats.totalRoles })}
                 size="small"
                 sx={{
                   bgcolor: 'rgba(16,185,129,0.15)',
@@ -646,7 +648,7 @@ function DashboardPanelInner({
 
           <Box
             role="list"
-            aria-label="Roller per status"
+            aria-label={t('dash.rolesPerStatus')}
             sx={{
               display: 'grid',
               gridTemplateColumns: {
@@ -841,11 +843,11 @@ function DashboardPanelInner({
                 flex: 1,
               }}
             >
-              Casting-fremdrift
+              {t('dash.castingProgress')}
             </Typography>
             {stats.castingProgress > 0 && (
               <Chip
-                label={`${stats.castingProgress}% fullført`}
+                label={t('dash.percentComplete', { pct: stats.castingProgress })}
                 size="small"
                 sx={{
                   bgcolor: 'rgba(139,92,246,0.2)',
@@ -861,7 +863,7 @@ function DashboardPanelInner({
           {/* Kanban-skeleton: 6 stage-kort horisontalt (scroll på mobil) */}
           <Box
             role="list"
-            aria-label="Kandidater per casting-stadium"
+            aria-label={t('dash.candidatesPerStage')}
             sx={{
               display: 'flex',
               gap: { xs: 1, sm: 1.25, md: 1.5 },
