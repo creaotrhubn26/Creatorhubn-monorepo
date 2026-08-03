@@ -615,50 +615,78 @@ function estTextHeight(t: MockupTextSlot, w: number): number {
  */
 function reflowAuto(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
   const W = fmt.w, H = fmt.h;
-  const orient = W > H * 1.15 ? 'landscape' : H > W * 1.15 ? 'portrait' : 'square';
+  // 3 orienteringer: landskap (tekst v./enheter rad h.), høy (tekst topp/enheter
+  // stablet vertikalt for å FYLLE høyden), kvadratisk (tekst topp/enheter rad).
+  const orient = W > H * 1.15 ? 'landscape' : H > W * 1.2 ? 'tall' : 'square';
   const m = Math.min(W, H) * 0.07;
+  const landscape = orient === 'landscape';
 
-  let textZone: { x: number; y: number; w: number; h: number };
-  let deviceZone: { x: number; y: number; w: number; h: number };
-  let align: MockupTextAlign;
-  if (orient === 'landscape') {
-    textZone = { x: m, y: m, w: W * 0.4 - m, h: H - 2 * m };
-    deviceZone = { x: W * 0.42, y: m, w: W * 0.58 - m, h: H - 2 * m };
-    align = 'left';
-  } else {
-    const th = orient === 'portrait' ? H * 0.24 : H * 0.3;
-    textZone = { x: m, y: m, w: W - 2 * m, h: th };
-    deviceZone = { x: m, y: m + th + m * 0.5, w: W - 2 * m, h: H - th - 2.5 * m };
-    align = 'center';
-  }
+  // Tekst-kolonne: venstre i landskap, full bredde ellers.
+  const txX = m;
+  const txW = landscape ? W * 0.4 - m : W - 2 * m;
+  const align: MockupTextAlign = landscape ? 'left' : 'center';
 
-  // Tekst: stables i rolle-rekkefølge, størrelse skalert til bredden.
-  const fscale = Math.max(0.5, Math.min(1.1, textZone.w / 620));
-  let ty = textZone.y;
+  // Legg ut tekst FØRST (topp-forankret) og mål bunnen — så device-sonen blir
+  // ADAPTIV og tekst aldri renner ned i enhetene (fiks for tekst-tunge maler).
+  const fscale = Math.max(0.5, Math.min(1.1, txW / 620));
+  let ty = m;
   const texts = doc.texts.map((t) => {
     const size = Math.max(11, Math.round(t.size * fscale));
-    const nt: MockupTextSlot = { ...t, x: Math.round(textZone.x), w: Math.round(textZone.w), align, size, y: Math.round(ty) };
-    ty += estTextHeight(nt, textZone.w) + size * 0.35;
+    const nt: MockupTextSlot = { ...t, x: Math.round(txX), w: Math.round(txW), align, size, y: Math.round(ty) };
+    ty += estTextHeight(nt, txW) + size * 0.35;
     return nt;
   });
+  const textBottom = ty;
 
-  // Enheter: rad som fyller device-sonen, felles høyde, sentrert.
-  const targetH = deviceZone.h * 0.92;
-  const gap = deviceZone.w * 0.03;
-  const rawW = doc.devices.map((d) => targetH * FRAME_ASPECT[d.variant]);
-  const totalW = rawW.reduce((a, b) => a + b, 0) + gap * Math.max(0, doc.devices.length - 1);
-  const shrink = totalW > deviceZone.w ? deviceZone.w / totalW : 1;
-  const w2 = rawW.map((w) => w * shrink);
-  const rowW = w2.reduce((a, b) => a + b, 0) + gap * shrink * Math.max(0, doc.devices.length - 1);
-  let dx = deviceZone.x + (deviceZone.w - rowW) / 2;
-  const cy = deviceZone.y + deviceZone.h / 2;
-  const devices = doc.devices.map((d, i) => {
-    const dw = w2[i];
-    const dh = dw / FRAME_ASPECT[d.variant];
-    const nd: MockupDeviceSlot = { ...d, w: Math.round(dw), x: Math.round(dx), y: Math.round(cy - dh / 2), rotation: 0 };
-    dx += dw + gap * shrink;
-    return nd;
-  });
+  // Device-sone: høyre kolonne i landskap; ellers under teksten (adaptivt).
+  let deviceZone: { x: number; y: number; w: number; h: number };
+  const stack = orient === 'tall';
+  if (landscape) {
+    deviceZone = { x: W * 0.42, y: m, w: W * 0.58 - m, h: H - 2 * m };
+  } else {
+    const zoneTop = textBottom + m * 0.5;
+    deviceZone = { x: m, y: zoneTop, w: W - 2 * m, h: Math.max(120, H - zoneTop - m) };
+  }
+
+  let devices: MockupDeviceSlot[];
+  if (stack) {
+    // Vertikal kolonne: hver enhet får ~lik høyde-andel (klemt til bredden),
+    // stablet og sentrert → fyller høye formater (story/portrett).
+    const N = doc.devices.length;
+    const gap = deviceZone.h * 0.045;
+    const hPer = (deviceZone.h - gap * Math.max(0, N - 1)) / Math.max(1, N);
+    const sized = doc.devices.map((d) => {
+      const h = Math.min(hPer, deviceZone.w / FRAME_ASPECT[d.variant]);
+      return { h, w: h * FRAME_ASPECT[d.variant] };
+    });
+    const totalH = sized.reduce((a, s) => a + s.h, 0) + gap * Math.max(0, N - 1);
+    let dy = deviceZone.y + (deviceZone.h - totalH) / 2;
+    const cx = deviceZone.x + deviceZone.w / 2;
+    devices = doc.devices.map((d, i) => {
+      const s = sized[i];
+      const nd: MockupDeviceSlot = { ...d, w: Math.round(s.w), x: Math.round(cx - s.w / 2), y: Math.round(dy), rotation: 0 };
+      dy += s.h + gap;
+      return nd;
+    });
+  } else {
+    // Horisontal rad: felles høyde, skalert ned ved overflow, sentrert.
+    const targetH = deviceZone.h * 0.92;
+    const gap = deviceZone.w * 0.03;
+    const rawW = doc.devices.map((d) => targetH * FRAME_ASPECT[d.variant]);
+    const totalW = rawW.reduce((a, b) => a + b, 0) + gap * Math.max(0, doc.devices.length - 1);
+    const shrink = totalW > deviceZone.w ? deviceZone.w / totalW : 1;
+    const w2 = rawW.map((w) => w * shrink);
+    const rowW = w2.reduce((a, b) => a + b, 0) + gap * shrink * Math.max(0, doc.devices.length - 1);
+    let dx = deviceZone.x + (deviceZone.w - rowW) / 2;
+    const cy = deviceZone.y + deviceZone.h / 2;
+    devices = doc.devices.map((d, i) => {
+      const dw = w2[i];
+      const dh = dw / FRAME_ASPECT[d.variant];
+      const nd: MockupDeviceSlot = { ...d, w: Math.round(dw), x: Math.round(dx), y: Math.round(cy - dh / 2), rotation: 0 };
+      dx += dw + gap * shrink;
+      return nd;
+    });
+  }
 
   return { ...doc, canvas: { ...doc.canvas, w: W, h: H }, devices, texts };
 }
