@@ -28,6 +28,7 @@ import {
   type LayoutVariantId,
   type MockupFormat,
 } from './mockupStudioModel';
+import { computeSmartFocus } from './mockupSmartCrop';
 
 /** Hva som er valgt i editoren (styrer inspektør-panelet). */
 export type Selection =
@@ -89,7 +90,7 @@ function commit(set: (fn: (s: MockupStudioState) => Partial<MockupStudioState>) 
   });
 }
 
-export const useMockupStudio = create<MockupStudioState>((set) => ({
+export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   doc: initialDoc(),
   selection: { kind: 'canvas' },
   past: [],
@@ -150,11 +151,20 @@ export const useMockupStudio = create<MockupStudioState>((set) => ({
       devices: d.devices.map((dv) => (dv.id === id ? { ...dv, ...patch } : dv)),
     })),
 
-  setDeviceImage: (id, image) =>
+  setDeviceImage: (id, image) => {
     commit(set, (d) => ({
       ...d,
       devices: d.devices.map((dv) => (dv.id === id ? { ...dv, image } : dv)),
-    })),
+    }));
+    // Innholds-bevisst fokuspunkt (async) — beskjær mot innholdet, ikke senter.
+    if (image) {
+      void computeSmartFocus(image).then((f) => {
+        if (!f) return;
+        const cur = get().doc.devices.find((dv) => dv.id === id);
+        if (cur && cur.image === image) get().patchDevice(id, { fit: 'cover', focusX: f.focusX, focusY: f.focusY });
+      });
+    }
+  },
 
   removeDevice: (id) => {
     commit(set, (d) => ({ ...d, devices: d.devices.filter((dv) => dv.id !== id) }));
