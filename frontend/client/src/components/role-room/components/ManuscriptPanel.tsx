@@ -7033,7 +7033,10 @@ export const ManuscriptPanel = React.memo(ManuscriptPanelComponent, (prevProps, 
   // Check critical props
   if (prevProps.projectId !== nextProps.projectId) return false;
   if (prevProps.onManuscriptChange !== nextProps.onManuscriptChange) return false;
-  
+  // Mål-lengde er en primitiv som styrer toolbar-chip-en; uten denne re-rendret
+  // ikke panelet når målet ble satt, så «Mål X min» oppdaterte seg aldri.
+  if (prevProps.targetDurationMinutes !== nextProps.targetDurationMinutes) return false;
+
   // All checks passed - props are effectively equal, skip re-render
   return true;
 });
