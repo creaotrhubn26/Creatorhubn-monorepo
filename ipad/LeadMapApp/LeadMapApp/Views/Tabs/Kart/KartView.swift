@@ -88,6 +88,9 @@ struct MapLeadMock: Identifiable, Hashable {
     var email: String? = nil
     var estimatedValue: Double? = nil
     var aiScore: Int? = nil
+    /// Neste avtalte handling på leaden (LeadModel.nextAction) — peek-kortet
+    /// leder med denne så kortet svarer «hva gjør jeg nå», ikke bare «hvem».
+    var nextAction: String? = nil
 
     /// Kontakt m/ demo-fallback: ekte lead-data vinner; demo-modus får
     /// visningsverdier så flyten kan demonstreres; ekte modus uten data → nil
@@ -97,6 +100,10 @@ struct MapLeadMock: Identifiable, Hashable {
     }
     var emailOrDemo: String? {
         email ?? (DemoModeManager.isActiveNonisolated ? "post@nordicelektro.no" : nil)
+    }
+    var nextActionOrDemo: String? {
+        nextAction ?? (DemoModeManager.isActiveNonisolated
+            ? "Følg opp prisforslag · frist tirsdag" : nil)
     }
 
     enum PinStatus: String, Hashable, CaseIterable {
@@ -378,7 +385,8 @@ enum KartPreviewData {
             phone: lm.phone,
             email: lm.email,
             estimatedValue: lm.estimatedValue,
-            aiScore: lm.aiOpportunityScore
+            aiScore: lm.aiOpportunityScore,
+            nextAction: lm.nextAction
         )
     }
 
@@ -516,6 +524,17 @@ struct KartView: View {
     /// har valgt en pin/rad (selectedLead init-es med mock-placeholder
     /// som ellers ville lekke). Demo beholder pre-valgt lead.
     @State private var hasSelectedLead: Bool = false
+    /// Detaljkortet: peek (kompakt) ⇄ utvidet (faner) — del av kortets
+    /// tilstandsmaskin (UI-fokus fase 4).
+    @State private var detailKortUtvidet: Bool = false
+    /// Ankomst-tilstand: satt når navigasjonen ender med faktisk ankomst
+    /// (navArrived) — kortet viser «Fremme hos X» + neste steg.
+    @State private var kortAnkomst: Bool = false
+    /// Sidepanelet: sortér på status i stedet for nærmest-først.
+    @State private var panelSortStatus: Bool = false
+    /// Sidepanelet: multi-select-modus → «Legg N i rute».
+    @State private var panelVelgModus: Bool = false
+    @State private var panelValgte: Set<String> = []
     /// iPad: «Leads i området»-kolonnen kollapsbar — i portrett stjeler den
     /// kartbredde. Persistert så valget huskes mellom økter.
     /// UI-fokus fase 4 (Daniel): default KOLLAPSET — hele skjermen er kartet
@@ -729,10 +748,25 @@ struct KartView: View {
         return hasSelectedLead
     }
 
+    /// Detaljkortets tilstandsmaskin — ETT kort som morfer, aldri spredte
+    /// vis/skjul-gates: peek (pin-tap) → utvidet (fane valgt) → reise
+    /// (Naviger: smalt felt m/ ETA) → ankomst («Fremme hos X»).
+    enum LeadKortTilstand: Equatable { case skjult, peek, utvidet, reise, ankomst }
+
+    private var leadKortTilstand: LeadKortTilstand {
+        guard showDetailPanel, !measureMode else { return .skjult }
+        if navModeActive && !navArrived { return .reise }
+        if kortAnkomst || (navModeActive && navArrived) { return .ankomst }
+        if detailKortUtvidet { return .utvidet }
+        return .peek
+    }
+
     /// Lukk detaljkortet (X-knapp / «Leads»-stripa) → kartet får hele flaten.
     private func lukkDetaljkort() {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
             hasSelectedLead = false
+            detailKortUtvidet = false
+            kortAnkomst = false
         }
     }
 
@@ -1270,6 +1304,12 @@ struct KartView: View {
         .sheet(isPresented: $moreFiltersOpen) {
             MoreFiltersSheet()
         }
+        // Var DØD: knappen satte routePlannerOpen, men ingen sheet var
+        // montert i Kart-fanen (fantes kun i SalgssjefCockpit). Nå med
+        // forhåndsvalgte leads fra panelets velg-modus.
+        .sheet(isPresented: $routePlannerOpen) {
+            RoutePlannerSheet(preselected: panelValgte)
+        }
         .sheet(isPresented: $navigateOpen) {
             NavigateSheet(lead: selectedLead)
         }
@@ -1603,78 +1643,317 @@ struct KartView: View {
     /// ingen høyde-hopp: kartet beholder identitet og størrelse gjennom
     /// alle tilstander.
     private var kartInnhold: some View {
-        HStack(alignment: .top, spacing: 14) {
-            AnyView(mapCard)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) {
-                    // Stripa vises når lista er borte (kollapset eller
-                    // fortrengt av kortet). Nav/måling eier kartet alene.
-                    if !DeviceIdiom.isPhone
-                        && (leadsPanelCollapsed || showDetailPanel)
-                        && !navModeActive && !measureMode {
+        AnyView(mapCard)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) {
+                // ÉN plass øverst-høyre: flytende lead-liste ELLER den smale
+                // «Leads (N) ›»-stripa — aldri begge. Nav/måling eier kartet.
+                if !DeviceIdiom.isPhone && !navModeActive && !measureMode {
+                    if !leadsPanelCollapsed && !showDetailPanel {
+                        leadsFlytendePanel
+                            .transition(.move(edge: .trailing)
+                                .combined(with: .opacity))
+                    } else {
                         leadsStripeKnapp
                             .padding(10)
                             .transition(.opacity.combined(
                                 with: .scale(scale: 0.85, anchor: .topTrailing)))
                     }
                 }
-                .overlay(alignment: .bottomLeading) {
-                    // Tegnforklaring-chip — vik plass når kortet er framme.
-                    if !showDetailPanel && !navModeActive && !measureMode {
-                        legendChip
-                            .padding(10)
-                            .transition(.opacity)
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    // Detaljkortet som flytende overlay over kartet.
-                    // iPhone beholder den kompakte phoneLeadHUD-en; under
-                    // navigasjon/måling må kartet stå FRITT (manøver-banner,
-                    // rute og ETA bor der) — kortet kommer tilbake ved
-                    // ankomst/avbrutt nav siden leaden fortsatt er valgt.
-                    if !DeviceIdiom.isPhone && showDetailPanel
-                        && !navModeActive && !measureMode {
-                        detailOverlayKort
-                            .transition(.move(edge: .bottom)
-                                .combined(with: .opacity))
-                    }
-                }
-
-            // Lead-lista ved siden av kartet — kun når intet kort er åpent
-            // (én-ting-om-gangen) og brukeren har hentet den fram.
-            if !DeviceIdiom.isPhone && !leadsPanelCollapsed && !showDetailPanel {
-                VStack(spacing: 12) {
-                    AnyView(leadsInAreaCard)
-                    Spacer(minLength: 0)
-                }
-                .kartColumnWidth(300)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-        .animation(Self.kartFjaer, value: showDetailPanel)
-        .animation(Self.kartFjaer, value: leadsPanelCollapsed)
+            .overlay(alignment: .bottomLeading) {
+                // Tegnforklaring-chip — vik plass når kortet er framme.
+                if leadKortTilstand == .skjult && !navModeActive && !measureMode {
+                    legendChip
+                        .padding(10)
+                        .transition(.opacity)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                // Detaljkortet: ÉN morfende container styrt av tilstands-
+                // maskinen (peek/utvidet/reise/ankomst). iPhone beholder
+                // den kompakte phoneLeadHUD-en.
+                if !DeviceIdiom.isPhone && leadKortTilstand != .skjult {
+                    detailOverlayKort
+                        .transition(.move(edge: .bottom)
+                            .combined(with: .opacity))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+            .animation(Self.kartFjaer, value: leadKortTilstand)
+            .animation(Self.kartFjaer, value: leadsPanelCollapsed)
     }
 
-    /// Flytende detaljkort: begrenset bredde/høyde så kartet forblir synlig
-    /// rundt; lang innhold (Notater-fanen) scroller internt i kortet.
+    /// «Leads i området» som FLYTENDE panel over kartet (ikke skyve kart-
+    /// bredden) — map-first også med lista åpen. Egen intern scroll.
+    private var leadsFlytendePanel: some View {
+        AnyView(leadsInAreaCard)
+            .frame(width: 320)
+            .shadow(color: .black.opacity(0.4), radius: 22, y: 8)
+            .padding(10)
+    }
+
+    /// Flytende detaljkort: ÉN container som morfer mellom tilstandene —
+    /// innholdet byttes INNE i samme ramme så størrelsen animerer med fjæra
+    /// i stedet for å klippe. Lang innhold (Notater-fanen) scroller internt.
     /// ViewThatFits (ikke bar ScrollView): en ScrollView er grådig og ville
     /// tatt hele 460pt med tom flate under kort innhold — kortet skal klemme
     /// HELT ned mot kartkanten (Daniel: «plasser det lengre ned»).
     private var detailOverlayKort: some View {
-        ViewThatFits(in: .vertical) {
-            AnyView(detailPanel)
-            ScrollView {
-                AnyView(detailPanel)
+        Group {
+            switch leadKortTilstand {
+            case .utvidet:
+                ViewThatFits(in: .vertical) {
+                    AnyView(detailPanel)
+                    ScrollView {
+                        AnyView(detailPanel)
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: 460)
+                }
+                .frame(maxWidth: 720, maxHeight: 460)
+            case .peek:
+                detailPeekKort
+                    .frame(maxWidth: 560)
+            case .reise:
+                reiseFelt
+                    .frame(maxWidth: 560)
+            case .ankomst:
+                ankomstKort
+                    .frame(maxWidth: 560)
+            case .skjult:
+                EmptyView()
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(height: 460)
         }
-        .frame(maxWidth: 720, maxHeight: 460)
         .shadow(color: .black.opacity(0.45), radius: 26, y: 10)
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
+        .gesture(kortDragGest)
+    }
+
+    /// Dra-gest på kortet: dra opp = utvid, dra ned = krymp til peek
+    /// (allerede peek → lukk). Kun i peek/utvidet — reise/ankomst har
+    /// egne eksplisitte handlinger.
+    private var kortDragGest: some Gesture {
+        DragGesture(minimumDistance: 25)
+            .onEnded { v in
+                guard leadKortTilstand == .peek || leadKortTilstand == .utvidet
+                else { return }
+                let dy = v.translation.height
+                withAnimation(Self.kartFjaer) {
+                    if dy < -40 {
+                        detailKortUtvidet = true
+                    } else if dy > 40 {
+                        if detailKortUtvidet { detailKortUtvidet = false }
+                        else { lukkDetaljkort() }
+                    }
+                }
+            }
+    }
+
+    /// Kompakt peek-kort (pin-tap): hvem + hva gjør jeg nå + handlinger.
+    /// Fane-chipsene utvider kortet i henhold til hva man velger.
+    private var detailPeekKort: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            kortDragIndikator
+            detailHeaderRad(utvidet: false)
+            if let neste = selectedLead.nextActionOrDemo {
+                HStack(spacing: 7) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(KrBrand.purpleLight)
+                    Text("Neste: \(neste)")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(KrBrand.purple.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .stroke(KrBrand.purple.opacity(0.3), lineWidth: 1))
+            }
+            detailHandlingsRad
+            peekFaneChips
+        }
+        .padding(16)
+        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    private var kortDragIndikator: some View {
+        Capsule().fill(KrBrand.stroke)
+            .frame(width: 36, height: 4)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// Fane-chips i peek: valget UTVIDER kortet til riktig fane.
+    private var peekFaneChips: some View {
+        HStack(spacing: 8) {
+            ForEach(DetailTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedTab = tab
+                    withAnimation(Self.kartFjaer) { detailKortUtvidet = true }
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(KrBrand.cardHi, in: Capsule())
+                        .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Reise-tilstand (Naviger trykket): kortet KRYMPER til et smalt felt
+    /// med destinasjon + live ETA/avstand + Avslutt — manøver, fartsgrense
+    /// og alternativ-banner bor fortsatt øverst på kartet (blikkretningen).
+    private var reiseFelt: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(KrBrand.purple.opacity(0.22))
+                Image(systemName: navTransport == .driving ? "car.fill"
+                      : navTransport == .cycling ? "bicycle" : "figure.walk")
+                    .font(.appScaled(size: 14, weight: .semibold))
+                    .foregroundStyle(KrBrand.purpleLight)
+            }
+            .frame(width: 40, height: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Til \(selectedLead.name)")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(navETAText.isEmpty ? "Beregner…" : navETAText)
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(KrBrand.purpleLight)
+                        .monospacedDigit()
+                    if !navDistanceText.isEmpty {
+                        Text("· \(navDistanceText)")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(KrBrand.textSecondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            if let mail = selectedLead.emailOrDemo {
+                Button {
+                    sendDelayNotice(to: mail, etaMin: navETAMinutes,
+                                    reason: navDelayReason)
+                } label: {
+                    Image(systemName: "clock.badge.exclamationmark.fill")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(KrBrand.yellow)
+                        .frame(width: 32, height: 32)
+                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9)
+                            .stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            Button {
+                withAnimation(Self.kartFjaer) { stopNavigation() }
+            } label: {
+                Text("Avslutt")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(KrBrand.red.opacity(0.75),
+                                in: RoundedRectangle(cornerRadius: 9))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    /// Ankomst-tilstand: navigasjonen endte med faktisk ankomst — kortet
+    /// leder rett inn i neste steg i stedet for at turen bare «slutter».
+    private var ankomstKort: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(KrBrand.green.opacity(0.2))
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.appScaled(size: 16, weight: .semibold))
+                        .foregroundStyle(KrBrand.green)
+                }
+                .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fremme hos \(selectedLead.name)")
+                        .font(.appScaled(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(selectedLead.address)
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Button { lukkDetaljkort() } label: {
+                    Image(systemName: "xmark")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(Self.kartFjaer) { kortAnkomst = false }
+                    openLeadFullSheet = true
+                } label: {
+                    Text("Åpne lead")
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(
+                            LinearGradient(
+                                colors: [KrBrand.purple, KrBrand.purpleLight],
+                                startPoint: .leading, endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
+                }
+                .buttonStyle(.plain)
+                Button {
+                    withAnimation(Self.kartFjaer) { kortAnkomst = false }
+                    scheduleMeetingOpen = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.appScaled(size: 10, weight: .semibold))
+                        Text("Planlegg oppfølging")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 9)
+                    .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9)
+                        .stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(KrBrand.green.opacity(0.35), lineWidth: 1))
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
@@ -3700,28 +3979,70 @@ struct KartView: View {
 
     // MARK: Leads i området-card
 
+    /// Leads i SYNLIG kartutsnitt («i området» skal være ærlig) — følger
+    /// currentRegion (oppdateres kontinuerlig av onMapCameraChange), søk +
+    /// statusfilter, sortert nærmest-først (eller per status).
+    private var leadsIPanelet: [MapLeadMock] {
+        let r = currentRegion
+        let latHalf = r.span.latitudeDelta / 2
+        let lonHalf = r.span.longitudeDelta / 2
+        let inView = filteredLeads.filter {
+            abs($0.lat - r.center.latitude) <= latHalf
+                && abs($0.lon - r.center.longitude) <= lonHalf
+        }
+        return panelSortStatus
+            ? inView.sorted { ($0.status.label, $0.kmAway) < ($1.status.label, $1.kmAway) }
+            : inView.sorted { $0.kmAway < $1.kmAway }
+    }
+
     private var leadsInAreaCard: some View {
-        // Skiller «tom pga demo AV / ingen data» fra «tom pga aktivt filter».
+        // Skiller «tom pga demo AV / ingen data» fra «tom pga filter/utsnitt».
         let hasAnyLeads = !kartLeads.isEmpty
+        let synlige = leadsIPanelet
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 6) {
                 Text("Leads i området")
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 if hasAnyLeads {
-                    Text("(\(kartLeads.count))")
+                    Text("(\(synlige.count))")
                         .font(.appScaled(size: 12))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
                 Spacer()
-                HStack(spacing: 3) {
-                    Text("Nær meg")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.appScaled(size: 9, weight: .semibold))
+                // Sortering: nærmest-først ⇄ per status.
+                Button { panelSortStatus.toggle() } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.appScaled(size: 9, weight: .semibold))
+                        Text(panelSortStatus ? "Status" : "Nærmest")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(KrBrand.cardHi, in: Capsule())
+                    .overlay(Capsule().stroke(KrBrand.stroke, lineWidth: 1))
                 }
-                .foregroundStyle(KrBrand.textSecondary)
-                // Kollaps panelet → kartet får hele bredden (portrett-iPad).
+                .buttonStyle(.plain)
+                // Velg-modus → «Legg N i rute».
+                Button {
+                    withAnimation(Self.kartFjaer) {
+                        panelVelgModus.toggle()
+                        if !panelVelgModus { panelValgte.removeAll() }
+                    }
+                } label: {
+                    Image(systemName: panelVelgModus
+                          ? "checkmark.circle.fill" : "checklist")
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(panelVelgModus ? KrBrand.purpleLight : KrBrand.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(panelVelgModus ? KrBrand.purple.opacity(0.6) : KrBrand.stroke,
+                                    lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                // Kollaps panelet → kartet får hele bredden.
                 Button {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                         leadsPanelCollapsed = true
@@ -3731,51 +4052,93 @@ struct KartView: View {
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(KrBrand.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 8))
+                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8)
                             .stroke(KrBrand.stroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
 
-            // Lazy: lista kan bli lang — radene bygges først når de scrolles inn.
-            LazyVStack(spacing: 8) {
-                if filteredLeads.isEmpty {
-                    VStack(spacing: 6) {
-                        Image(systemName: hasAnyLeads ? "magnifyingglass" : "mappin.slash")
-                            .font(.appScaled(size: 18))
-                            .foregroundStyle(KrBrand.textTertiary)
-                        Text(hasAnyLeads ? "Ingen treff" : "Ingen leads enda")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(KrBrand.textSecondary)
-                        Text(hasAnyLeads
-                             ? "Prøv å justere søk eller filtre"
-                             : "Bruk «+ Legg til lead» eller skru på demo-modus")
-                            .font(.appScaled(size: 10))
-                            .foregroundStyle(KrBrand.textTertiary)
-                            .multilineTextAlignment(.center)
+            // Egen intern scroll (panelet flyter over kartet) + synk: valgt
+            // lead scrolles inn når panelet åpnes/valget endres.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if synlige.isEmpty {
+                            VStack(spacing: 6) {
+                                Image(systemName: hasAnyLeads ? "map" : "mappin.slash")
+                                    .font(.appScaled(size: 18))
+                                    .foregroundStyle(KrBrand.textTertiary)
+                                Text(hasAnyLeads ? "Ingen i dette utsnittet" : "Ingen leads enda")
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(KrBrand.textSecondary)
+                                Text(hasAnyLeads
+                                     ? "Flytt kartet, eller juster søk og filtre"
+                                     : "Bruk «+»-menyen eller skru på demo-modus")
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(KrBrand.textTertiary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                        } else {
+                            ForEach(synlige) { lead in
+                                leadRow(lead)
+                                    .id(lead.id)
+                            }
+                        }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                } else {
-                    ForEach(filteredLeads) { lead in
-                        leadRow(lead)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .onAppear {
+                    if hasSelectedLead {
+                        proxy.scrollTo(selectedLead.id, anchor: .center)
+                    }
+                }
+                .onChange(of: selectedLead.id) { _, nyId in
+                    withAnimation(Self.kartFjaer) {
+                        proxy.scrollTo(nyId, anchor: .center)
                     }
                 }
             }
 
-            Button { appState.selectedSidebarItem = .leads } label: {
-                HStack(spacing: 5) {
-                    Text("Se alle leads i området")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right")
-                        .font(.appScaled(size: 10, weight: .semibold))
+            if panelVelgModus {
+                // Multi-select → ruteplanleggeren med forhåndsvalgte leads.
+                Button {
+                    routePlannerOpen = true
+                } label: {
+                    Text(panelValgte.isEmpty
+                         ? "Velg leads for rute"
+                         : "Legg \(panelValgte.count) i rute")
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(
+                            panelValgte.isEmpty
+                                ? AnyShapeStyle(KrBrand.cardHi)
+                                : AnyShapeStyle(LinearGradient(
+                                    colors: [KrBrand.purple, KrBrand.purpleLight],
+                                    startPoint: .leading, endPoint: .trailing)),
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
                 }
-                .foregroundStyle(KrBrand.purpleLight)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 3)
+                .buttonStyle(.plain)
+                .disabled(panelValgte.isEmpty)
+            } else {
+                Button { appState.selectedSidebarItem = .leads } label: {
+                    HStack(spacing: 5) {
+                        Text("Se alle leads")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                        Image(systemName: "arrow.right")
+                            .font(.appScaled(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(KrBrand.purpleLight)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 3)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(14)
         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -3784,8 +4147,25 @@ struct KartView: View {
 
     private func leadRow(_ lead: MapLeadMock) -> some View {
         let isSelected = selectedLead.id == lead.id
-        return Button { selectAndZoom(lead) } label: {
+        let erValgt = panelValgte.contains(lead.id)
+        return Button {
+            if panelVelgModus {
+                withAnimation(Self.kartFjaer) {
+                    if erValgt { panelValgte.remove(lead.id) }
+                    else { panelValgte.insert(lead.id) }
+                }
+            } else {
+                selectAndZoom(lead)
+            }
+        } label: {
             HStack(alignment: .top, spacing: 9) {
+                if panelVelgModus {
+                    Image(systemName: erValgt ? "checkmark.circle.fill" : "circle")
+                        .font(.appScaled(size: 16))
+                        .foregroundStyle(erValgt ? KrBrand.purpleLight : KrBrand.textTertiary)
+                        .frame(width: 22, height: 34)
+                        .transition(.opacity.combined(with: .move(edge: .leading)))
+                }
                 ZStack {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(lead.status.color.opacity(0.18))
@@ -3815,9 +4195,13 @@ struct KartView: View {
                                 .lineLimit(1)
                         }
                         Spacer()
-                        Text(String(format: "%.1f km", lead.kmAway))
-                            .font(.appScaled(size: 10, weight: .semibold))
-                            .foregroundStyle(KrBrand.textSecondary)
+                        // Avstands-vakt (som på kortet): skjul absurde
+                        // verdier når posisjonen er fallback/feil.
+                        if lead.kmAway < 300 {
+                            Text(String(format: "%.1f km", lead.kmAway))
+                                .font(.appScaled(size: 10, weight: .semibold))
+                                .foregroundStyle(KrBrand.textSecondary)
+                        }
                     }
                 }
             }
@@ -3828,11 +4212,35 @@ struct KartView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? KrBrand.purple.opacity(0.5) : KrBrand.stroke,
-                            lineWidth: isSelected ? 1.5 : 1)
+                    .stroke((isSelected || erValgt) ? KrBrand.purple.opacity(0.5) : KrBrand.stroke,
+                            lineWidth: (isSelected || erValgt) ? 1.5 : 1)
             )
         }
         .buttonStyle(.plain)
+        // Hurtighandlinger uten å åpne kortet (long-press).
+        .contextMenu {
+            if let phone = lead.phoneOrDemo {
+                Button { makeCall(phone) } label: {
+                    Label("Ring", systemImage: "phone.fill")
+                }
+            }
+            if let mail = lead.emailOrDemo {
+                Button { sendEmail(mail, subject: "Oppfølging — \(lead.name)") } label: {
+                    Label("Send e-post", systemImage: "envelope.fill")
+                }
+            }
+            Button {
+                selectAndZoom(lead)
+                scheduleMeetingOpen = true
+            } label: {
+                Label("Planlegg møte", systemImage: "calendar")
+            }
+            Button {
+                withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: lead) }
+            } label: {
+                Label("Naviger", systemImage: "location.north.line.fill")
+            }
+        }
     }
 
     private func statusBadge(_ st: MapLeadMock.PinStatus) -> some View {
@@ -3897,6 +4305,8 @@ struct KartView: View {
     private func selectAndZoom(_ lead: MapLeadMock) {
         selectedLead = lead
         hasSelectedLead = true
+        detailKortUtvidet = false   // ny lead starter alltid i peek
+        kortAnkomst = false
         withAnimation(.easeInOut(duration: 0.55)) {
             camera = .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon),
@@ -4047,6 +4457,9 @@ struct KartView: View {
 
     /// Avslutt navigasjon og gjenopprett oversikts-kamera på lead-en.
     private func stopNavigation() {
+        // Faktisk ankomst → kortet morfer til «Fremme hos X»-tilstanden
+        // (manuelt «Avslutt» hopper rett tilbake til peek).
+        if navArrived { kortAnkomst = true }
         navModeActive = false
         navRoute = nil
         // Rute-låst motor: nullstill geometri + progresjon.
@@ -4833,6 +5246,203 @@ struct KartView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(KrBrand.stroke, lineWidth: 1))
     }
 
+    // MARK: Detaljkortets delte byggeklosser (peek + utvidet)
+
+    /// Avstands-vakt: «8358 km unna» skjer når posisjonen mangler (fallback)
+    /// eller er gal — vis avstanden kun når den er reell og rimelig.
+    private var rimeligAvstandTekst: String? {
+        guard KartLocationManager.shared.currentCoordinate != nil,
+              selectedLead.kmAway < 300 else { return nil }
+        return String(format: "%.1f km unna · Naviger", selectedLead.kmAway)
+    }
+
+    /// Header-rad delt av peek og utvidet kort. Status-badgen er TAPBAR
+    /// (→ endre status); utvidet får chevron for å krympe til peek.
+    private func detailHeaderRad(utvidet: Bool) -> some View {
+        HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(selectedLead.status.color.opacity(0.18))
+                Image(systemName: "building.2.fill")
+                    .font(.appScaled(size: 16, weight: .semibold))
+                    .foregroundStyle(selectedLead.status.color)
+            }
+            .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(selectedLead.name)
+                        .font(.appScaled(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    // Direkte-handling: tap på statusen → endre status
+                    // (lå bak ⋯ før).
+                    Button { showStatusChange = true } label: {
+                        statusBadge(selectedLead.status)
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        favorited.toggle()
+                        showToast(favorited ? "Lagt til i favoritter" : "Fjernet fra favoritter")
+                    } label: {
+                        Image(systemName: favorited ? "star.fill" : "star")
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(favorited ? KrBrand.yellow : KrBrand.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(selectedLead.address)
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .lineLimit(1)
+                if let avstand = rimeligAvstandTekst {
+                    Button { navigateOpen = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "location.north.line.fill")
+                                .font(.appScaled(size: 9, weight: .semibold))
+                            Text(avstand)
+                                .font(.appScaled(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(KrBrand.purpleLight)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Spacer(minLength: 0)
+            if utvidet {
+                // Krymp tilbake til peek-kortet.
+                Button {
+                    withAnimation(Self.kartFjaer) { detailKortUtvidet = false }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(KrBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            // Lukk kortet → kartet får hele flaten (én-ting-om-gangen).
+            Button { lukkDetaljkort() } label: {
+                Image(systemName: "xmark")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Handlingsrad delt av peek og utvidet: Åpne lead / Planlegg møte /
+    /// Naviger + ETT-TRYKKS ring/e-post (selgeren i felt ringer mer enn noe
+    /// annet — lå bak ⋯ og inne i Informasjon-fanen før). To rader: i den
+    /// 310pt smale kolonnen skviset én rad ut «Åpne lead»-CTAen helt.
+    private var detailHandlingsRad: some View {
+        VStack(spacing: 8) {
+            Button { openLeadFullSheet = true } label: {
+                Text("Åpne lead")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(
+                        LinearGradient(
+                            colors: [KrBrand.purple, KrBrand.purpleLight],
+                            startPoint: .leading, endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 9)
+                    )
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 8) {
+            Button { scheduleMeetingOpen = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "calendar")
+                        .font(.appScaled(size: 10, weight: .semibold))
+                    Text("Planlegg møte")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 9)
+                .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            Button { withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: selectedLead) } } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "location.north.line.fill")
+                        .font(.appScaled(size: 10, weight: .semibold))
+                    Text("Naviger")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 9)
+                .background(KrBrand.purple.opacity(0.22), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            if let phone = selectedLead.phoneOrDemo {
+                kontaktKnapp("phone.fill") { makeCall(phone) }
+            }
+            if let mail = selectedLead.emailOrDemo {
+                kontaktKnapp("envelope.fill") {
+                    sendEmail(mail, subject: "Oppfølging — \(selectedLead.name)")
+                }
+            }
+            Menu {
+                Button { navigateTo(selectedLead) } label: {
+                    Label("Naviger i Apple Maps", systemImage: "map.fill")
+                }
+                if let mail = selectedLead.emailOrDemo {
+                    Button {
+                        sendDelayNotice(to: mail,
+                                        etaMin: navModeActive ? navETAMinutes : nil,
+                                        reason: navDelayReason)
+                    } label: {
+                        Label("Meld forsinkelse til møtet", systemImage: "clock.badge.exclamationmark.fill")
+                    }
+                }
+                Divider()
+                Button { showStatusChange = true } label: {
+                    Label("Endre status", systemImage: "tag.fill")
+                }
+                Button { showAssignSeller = true } label: {
+                    Label("Tildel selger", systemImage: "person.crop.circle.fill")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+            }
+            Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func kontaktKnapp(_ ikon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: ikon)
+                .font(.appScaled(size: 12, weight: .semibold))
+                .foregroundStyle(KrBrand.purpleLight)
+                .frame(width: 32, height: 32)
+                .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: Detail-panel — FIX #6/7: tabs uten kollaps + spacing
 
     private var detailPanel: some View {
@@ -4844,148 +5454,9 @@ struct KartView: View {
         return stack {
             // Venstre kolonne (fast bredde): lead-info + actions
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 11) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9)
-                            .fill(selectedLead.status.color.opacity(0.18))
-                        Image(systemName: "building.2.fill")
-                            .font(.appScaled(size: 16, weight: .semibold))
-                            .foregroundStyle(selectedLead.status.color)
-                    }
-                    .frame(width: 44, height: 44)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(selectedLead.name)
-                                .font(.appScaled(size: 15, weight: .bold))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            statusBadge(selectedLead.status)
-                            Button {
-                                favorited.toggle()
-                                showToast(favorited ? "Lagt til i favoritter" : "Fjernet fra favoritter")
-                            } label: {
-                                Image(systemName: favorited ? "star.fill" : "star")
-                                    .font(.appScaled(size: 12))
-                                    .foregroundStyle(favorited ? KrBrand.yellow : KrBrand.textTertiary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Text(selectedLead.address)
-                            .font(.appScaled(size: 11))
-                            .foregroundStyle(KrBrand.textSecondary)
-                            .lineLimit(1)
-                        Button { navigateOpen = true } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "location.north.line.fill")
-                                    .font(.appScaled(size: 9, weight: .semibold))
-                                Text(String(format: "%.1f km unna · Naviger", selectedLead.kmAway))
-                                    .font(.appScaled(size: 10, weight: .semibold))
-                            }
-                            .foregroundStyle(KrBrand.purpleLight)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer(minLength: 0)
-                    // UI-fokus fase 4: lukk kortet → lead-lista kommer tilbake
-                    // (én-ting-om-gangen; kortet hadde ingen lukke-vei før).
-                    Button { lukkDetaljkort() } label: {
-                        Image(systemName: "xmark")
-                            .font(.appScaled(size: 11, weight: .bold))
-                            .foregroundStyle(KrBrand.textSecondary)
-                            .frame(width: 28, height: 28)
-                            .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8)
-                                .stroke(KrBrand.stroke, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
+                detailHeaderRad(utvidet: true)
 
-                HStack(spacing: 8) {
-                    Button { openLeadFullSheet = true } label: {
-                        Text("Åpne lead")
-                            .font(.appScaled(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(
-                                LinearGradient(
-                                    colors: [KrBrand.purple, KrBrand.purpleLight],
-                                    startPoint: .leading, endPoint: .trailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 9)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    Button { scheduleMeetingOpen = true } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "calendar")
-                                .font(.appScaled(size: 10, weight: .semibold))
-                            Text("Planlegg møte")
-                                .font(.appScaled(size: 11, weight: .semibold))
-                                .lineLimit(1)
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 9)
-                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button { withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: selectedLead) } } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "location.north.line.fill")
-                                .font(.appScaled(size: 10, weight: .semibold))
-                            Text("Naviger")
-                                .font(.appScaled(size: 11, weight: .semibold))
-                                .lineLimit(1)
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 9)
-                        .background(KrBrand.purple.opacity(0.22), in: RoundedRectangle(cornerRadius: 9))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.purpleLight.opacity(0.5), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    Menu {
-                        Button { navigateTo(selectedLead) } label: {
-                            Label("Naviger i Apple Maps", systemImage: "map.fill")
-                        }
-                        if let phone = selectedLead.phoneOrDemo {
-                            Button { makeCall(phone) } label: {
-                                Label("Ring kontakt", systemImage: "phone.fill")
-                            }
-                        }
-                        if let mail = selectedLead.emailOrDemo {
-                            Button { sendEmail(mail, subject: "Oppfølging — \(selectedLead.name)") } label: {
-                                Label("Send e-post", systemImage: "envelope.fill")
-                            }
-                            Button {
-                                sendDelayNotice(to: mail,
-                                                etaMin: navModeActive ? navETAMinutes : nil,
-                                                reason: navDelayReason)
-                            } label: {
-                                Label("Meld forsinkelse til møtet", systemImage: "clock.badge.exclamationmark.fill")
-                            }
-                        }
-                        Divider()
-                        Button { showStatusChange = true } label: {
-                            Label("Endre status", systemImage: "tag.fill")
-                        }
-                        Button { showAssignSeller = true } label: {
-                            Label("Tildel selger", systemImage: "person.crop.circle.fill")
-                        }
-                        // «Arkiver lead» fjernet 2026-07-17: bekreftelses-
-                        // dialogen var toast-fasade uten API.
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.appScaled(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
-                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
-                    }
-                }
+                detailHandlingsRad
 
                 // Metadata-grid 2x2 (mer kompakt) — 4-kolonne på Mac
                 LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12),
