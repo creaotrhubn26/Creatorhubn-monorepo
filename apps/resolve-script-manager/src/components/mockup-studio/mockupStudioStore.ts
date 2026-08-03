@@ -55,6 +55,7 @@ interface MockupStudioState {
 
   // Tekst
   addText: (role: MockupTextRole) => void;
+  addTexts: (texts: MockupTextSlot[]) => void;
   patchText: (id: string, patch: Partial<MockupTextSlot>) => void;
   removeText: (id: string) => void;
 }
@@ -138,6 +139,12 @@ export const useMockupStudio = create<MockupStudioState>((set) => ({
     const t = makeText(role, { text: role === 'title' ? 'Ny overskrift' : role === 'body' ? 'Ny tekst' : 'Tekst', x: 120, y: 120 });
     commit(set, (d) => ({ ...d, texts: [...d.texts, t] }));
     set({ selection: { kind: 'text', id: t.id } });
+  },
+
+  addTexts: (texts) => {
+    if (texts.length === 0) return;
+    commit(set, (d) => ({ ...d, texts: [...d.texts, ...texts] }));
+    set({ selection: { kind: 'text', id: texts[0].id } });
   },
 
   patchText: (id, patch) =>

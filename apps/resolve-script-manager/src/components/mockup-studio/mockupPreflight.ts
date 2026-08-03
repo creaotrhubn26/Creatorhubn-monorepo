@@ -36,7 +36,7 @@ export const SEVERITY_LABEL: Record<PreflightSeverity, string> = {
 };
 
 /** Anbefalt maks tegn per tekst-rolle (§ steg 4 / §7 tekst). */
-const RECOMMENDED_MAX: Record<MockupTextRole, number> = {
+export const RECOMMENDED_MAX: Record<MockupTextRole, number> = {
   eyebrow: 24,
   title: 42,
   body: 150,

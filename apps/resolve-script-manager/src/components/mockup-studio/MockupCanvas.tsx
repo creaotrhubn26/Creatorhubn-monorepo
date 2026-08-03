@@ -16,7 +16,7 @@ import { useMockupStudio, type Selection } from './mockupStudioStore';
 /** Preview-oppløsning (bredde i px). Lavere = raskere re-render ved skriving. */
 const PREVIEW_W = 1200;
 
-export function MockupCanvas() {
+export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const doc = useMockupStudio((s) => s.doc);
   const selection = useMockupStudio((s) => s.selection);
   const select = useMockupStudio((s) => s.select);
@@ -112,6 +112,9 @@ export function MockupCanvas() {
           />
         );
       })}
+      {safeArea && (
+        <div style={{ position: 'absolute', inset: '3%', border: '1px dashed rgba(255,255,255,0.4)', borderRadius: 8, pointerEvents: 'none' }} />
+      )}
     </div>
   );
 }

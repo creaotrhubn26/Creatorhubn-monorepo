@@ -236,6 +236,41 @@ export function makeText(role: MockupTextRole, partial: Partial<MockupTextSlot> 
   };
 }
 
+// ── Elementer (forhåndsgodkjente moduler §1.1/§2) ───────────────────────────
+
+export type MockupElementKind = 'stat' | 'cta' | 'feature_row' | 'badge';
+
+export const ELEMENT_LABELS: Record<MockupElementKind, string> = {
+  stat: 'Nøkkeltall',
+  cta: 'CTA-knapp',
+  feature_row: 'Feature-rad',
+  badge: 'Badge',
+};
+
+/**
+ * Bygg en forhåndsgodkjent modul som ett eller flere tekst-slots. Ikke et
+ * generelt objektbibliotek — bare kuraterte, on-brand byggeklosser.
+ */
+export function makeElement(kind: MockupElementKind): MockupTextSlot[] {
+  switch (kind) {
+    case 'stat':
+      return [
+        makeText('title', { text: '42 %', x: 160, y: 640, w: 420, size: 104, color: 'accent', lineHeight: 1 }),
+        makeText('body', { text: 'bedre resultat', x: 160, y: 770, w: 420 }),
+      ];
+    case 'cta':
+      return [makeText('tag', { text: 'Kom i gang →', x: 160, y: 820, w: 380, size: 30, weight: 700, color: 'accent' })];
+    case 'feature_row':
+      return [
+        makeText('tag', { text: '✓ Rask', x: 160, y: 820, w: 300, size: 26, weight: 600, color: 'accent2' }),
+        makeText('tag', { text: '✓ Sikker', x: 480, y: 820, w: 300, size: 26, weight: 600, color: 'accent2' }),
+        makeText('tag', { text: '✓ On-brand', x: 800, y: 820, w: 340, size: 26, weight: 600, color: 'accent2' }),
+      ];
+    case 'badge':
+      return [makeText('eyebrow', { text: 'NYHET', x: 160, y: 170, w: 260, color: 'accent2' })];
+  }
+}
+
 // ── Maler ────────────────────────────────────────────────────────────────
 
 export type MockupTemplateCategory =
@@ -476,6 +511,53 @@ export function loadKitDoc(id: string): MockupDoc | null {
   const kit = listKits().find((k) => k.id === id);
   if (!kit) return null;
   const clone = JSON.parse(JSON.stringify(kit.doc)) as MockupDoc;
+  return { ...clone, id: uid('doc'), updatedAt: Date.now() };
+}
+
+// ── Versjoner (ikke-destruktiv historikk §1.4) ─────────────────────────────
+
+export interface MockupVersion {
+  id: string;
+  name: string;
+  at: number;
+  doc: MockupDoc;
+}
+
+const VERSIONS_KEY = 'trrpa.mockup.versions';
+
+export function listVersions(): MockupVersion[] {
+  try {
+    const r = localStorage.getItem(VERSIONS_KEY);
+    if (!r) return [];
+    const a = JSON.parse(r) as MockupVersion[];
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveVersion(name: string, doc: MockupDoc): { ok: boolean; error?: string } {
+  const v: MockupVersion = { id: uid('ver'), name: name.trim() || `Versjon ${listVersions().length + 1}`, at: Date.now(), doc: JSON.parse(JSON.stringify(doc)) as MockupDoc };
+  try {
+    localStorage.setItem(VERSIONS_KEY, JSON.stringify([v, ...listVersions()].slice(0, 20)));
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Kunne ikke lagre versjon (for stort).' };
+  }
+}
+
+export function deleteVersion(id: string): void {
+  try {
+    localStorage.setItem(VERSIONS_KEY, JSON.stringify(listVersions().filter((v) => v.id !== id)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadVersionDoc(id: string): MockupDoc | null {
+  const v = listVersions().find((x) => x.id === id);
+  if (!v) return null;
+  const clone = JSON.parse(JSON.stringify(v.doc)) as MockupDoc;
   return { ...clone, id: uid('doc'), updatedAt: Date.now() };
 }
 

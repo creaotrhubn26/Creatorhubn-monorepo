@@ -19,15 +19,24 @@ import {
   saveKit,
   deleteKit,
   loadKitDoc,
+  makeElement,
+  ELEMENT_LABELS,
+  listVersions,
+  saveVersion,
+  deleteVersion,
+  loadVersionDoc,
   resolveBaseBg,
   contrastRatio,
   isDark,
   type MockupKit,
+  type MockupVersion,
+  type MockupElementKind,
   type MockupDeviceVariant,
   type MockupTextRole,
   type MockupBackground,
   type MockupBgStyle,
 } from './mockupStudioModel';
+import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
   captureSiteShots,
   bestShotForVariant,
@@ -99,6 +108,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   };
   const doLoadKit = (id: string) => { const d = loadKitDoc(id); if (d) store.setDocument(d); };
   const doDeleteKit = (id: string) => { deleteKit(id); setKits(listKits()); };
+
+  // Versjoner (§1.4)
+  const [versions, setVersions] = useState<MockupVersion[]>(() => listVersions());
+  const [versionName, setVersionName] = useState('');
+  const doSaveVersion = () => {
+    const r = saveVersion(versionName || doc.name, doc);
+    if (r.ok) { setVersions(listVersions()); setVersionName(''); setExportMsg('✓ Versjon lagret.'); }
+    else setExportMsg(r.error || 'Kunne ikke lagre versjon.');
+  };
+  const doLoadVersion = (id: string) => { const d = loadVersionDoc(id); if (d) store.setDocument(d); };
+  const doDeleteVersion = (id: string) => { deleteVersion(id); setVersions(listVersions()); };
+
+  // Trygt område-guide (§ bunnbar / hybrid slot-nod)
+  const [safeArea, setSafeArea] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -312,6 +335,12 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           ))}
 
           <div style={{ height: 18 }} />
+          <SectionLabel>Elementer</SectionLabel>
+          {(Object.keys(ELEMENT_LABELS) as MockupElementKind[]).map((k) => (
+            <button key={k} onClick={() => store.addTexts(makeElement(k))} style={{ ...listBtn, marginBottom: 6 }} title="Sett inn forhåndsgodkjent modul">+ {ELEMENT_LABELS[k]}</button>
+          ))}
+
+          <div style={{ height: 18 }} />
           <SectionLabel>Kits</SectionLabel>
           <input
             value={kitName}
@@ -328,12 +357,30 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
               <button onClick={() => doDeleteKit(k.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett kit">✕</button>
             </div>
           ))}
+
+          <div style={{ height: 18 }} />
+          <SectionLabel>Versjoner</SectionLabel>
+          <input
+            value={versionName}
+            onChange={(e) => setVersionName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') doSaveVersion(); }}
+            placeholder="Versjonsnavn"
+            style={{ ...textInput, marginBottom: 6 }}
+          />
+          <button onClick={doSaveVersion} style={{ ...listBtn, marginBottom: 8 }}>Lagre versjon</button>
+          {versions.length === 0 && <div style={{ fontSize: 11, color: C.inkSoft }}>Ingen versjoner enda.</div>}
+          {versions.map((v) => (
+            <div key={v.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+              <button onClick={() => doLoadVersion(v.id)} style={{ ...listBtn, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="Gjenopprett denne versjonen">{v.name}</button>
+              <button onClick={() => doDeleteVersion(v.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett versjon">✕</button>
+            </div>
+          ))}
         </div>
 
         {/* Midt: lerret */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28, overflow: 'auto', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
           <div style={{ width: '100%', maxWidth: 1000 }}>
-            <MockupCanvas />
+            <MockupCanvas safeArea={safeArea} />
           </div>
         </div>
 
@@ -347,6 +394,16 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             <BrandingInspector onUploadLogo={triggerLogoUpload} />
           )}
         </div>
+      </div>
+
+      {/* Bunnbar (§ editorens bunnbar) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '6px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0, fontSize: 12, color: C.inkSoft }}>
+        <span>{doc.canvas.w}×{doc.canvas.h}</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={safeArea} onChange={(e) => setSafeArea(e.target.checked)} /> Vis trygt område
+        </label>
+        <div style={{ flex: 1 }} />
+        <span>{doc.devices.length} enhet{doc.devices.length === 1 ? '' : 'er'} · {doc.texts.length} tekst{doc.texts.length === 1 ? '' : 'er'}</span>
       </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
@@ -475,6 +532,9 @@ function TextInspector({ text }: { text: import('./mockupStudioModel').MockupTex
       <SectionLabel>{TEXT_ROLE_LABELS[text.role]}</SectionLabel>
       <Field label="Tekst">
         <textarea value={text.text} onChange={(e) => patchText(text.id, { text: e.target.value })} rows={3} style={{ ...textInput, resize: 'vertical' }} />
+        <div style={{ fontSize: 11, color: text.text.length > RECOMMENDED_MAX[text.role] ? '#e0b060' : C.inkSoft, marginTop: 4 }}>
+          {text.text.length}/{RECOMMENDED_MAX[text.role]} tegn{text.text.length > RECOMMENDED_MAX[text.role] ? ' · lengre enn anbefalt' : ''}
+        </div>
       </Field>
       <Field label={`Størrelse: ${Math.round(text.size)} px`}>
         <input type="range" min={12} max={140} value={text.size} onChange={(e) => patchText(text.id, { size: Number(e.target.value) })} style={{ width: '100%' }} />
