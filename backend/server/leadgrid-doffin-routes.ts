@@ -20,12 +20,88 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
+import Anthropic from "@anthropic-ai/sdk";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADGRID_ANBUD_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Cron-trigger for overvåknings-sjekk (samme token-mønster som AI-billing).
 const DOFFIN_CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
+
+// ── Kunde-match (nivå 1, 2026-08-03) ─────────────────────────────────
+// Kjernen i integrasjonsverdien: kunngjøringer der oppdragsgiverens
+// org.nr allerede finnes i org-ens CRM flagges med lead + eier. Skal
+// ALDRI velte søket — fail-open overalt.
+
+type KundeMatch = {
+  lead_id: string;
+  lead_navn: string;
+  lead_status: string | null;
+  eier: string | null;
+};
+
+const ORG_MEMBERS_SUBQUERY =
+  `SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid`;
+
+async function matchKunder(
+  pool: Pool, orgId: string, orgnrs: string[],
+): Promise<Map<string, KundeMatch>> {
+  const unique = [...new Set(orgnrs.filter((o) => /^\d{9}$/.test(o)))];
+  if (unique.length === 0) return new Map();
+  try {
+    const r = await pool.query<{
+      lead_id: string; name: string; lead_status: string | null;
+      org_nr: string; eier: string | null;
+    }>(
+      `SELECT c.id::text AS lead_id, c.name, c.lead_status,
+              c.enrichment_org_nr AS org_nr,
+              NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS eier
+         FROM crm_customers c
+         LEFT JOIN users u
+           ON u.id::text = COALESCE(c.assigned_user_id, c.owner_user_id)
+        WHERE c.enrichment_org_nr = ANY($2)
+          AND c.owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+        ORDER BY c.updated_at DESC`,
+      [orgId, unique],
+    );
+    const map = new Map<string, KundeMatch>();
+    for (const row of r.rows) {
+      // Nyeste lead vinner ved duplikater (ORDER BY + first-write-wins).
+      if (!map.has(row.org_nr)) {
+        map.set(row.org_nr, {
+          lead_id: row.lead_id,
+          lead_navn: row.name,
+          lead_status: row.lead_status,
+          eier: row.eier,
+        });
+      }
+    }
+    return map;
+  } catch (e) {
+    console.warn("[doffin] kunde-match feilet:", String(e).slice(0, 120));
+    return new Map();
+  }
+}
+
+/** Legg kunde_match på normaliserte kunngjøringer (ny kopi — det
+ *  cachede søkesvaret er delt på tvers av org-er og må forbli generisk). */
+function withKundeMatch(
+  body: unknown, matches: Map<string, KundeMatch>,
+): unknown {
+  const b = body as { total?: number; kunngjoringer?: Record<string, unknown>[] };
+  if (!Array.isArray(b?.kunngjoringer) || matches.size === 0) return body;
+  return {
+    ...b,
+    kunngjoringer: b.kunngjoringer.map((k) => {
+      const buyers = (k.oppdragsgivere as { orgnr?: string }[] | undefined) ?? [];
+      const hit = buyers.map((o) => matches.get(String(o.orgnr ?? ""))).find(Boolean);
+      return hit ? { ...k, kunde_match: hit } : k;
+    }),
+  };
+}
 
 const DOFFIN_BASE = "https://api.doffin.no/public/v2";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -84,7 +160,26 @@ function normalizeHit(hit: Record<string, unknown>): Record<string, unknown> {
     nutsKoder: Array.isArray(hit.locationId) ? hit.locationId : [],
     cpvKoder: Array.isArray(hit.cpvCodes) ? hit.cpvCodes : [],
     url: `https://doffin.no/notices/${String(hit.id ?? "")}`,
+    // Vinnere på AWARDED-kunngjøringer — BEST EFFORT: feltnavnet er ikke
+    // dokumentert i v2; vi leser de vanligste kandidatene defensivt og
+    // utelater feltet når ingenting finnes (aldri gjett).
+    vinnere: extractWinners(hit),
   };
+}
+
+function extractWinners(hit: Record<string, unknown>): { navn: string; orgnr: string }[] {
+  const candidates = [hit.winners, hit.awardedSuppliers, hit.winner, hit.suppliers];
+  for (const c of candidates) {
+    const arr = Array.isArray(c) ? c : (c && typeof c === "object" ? [c] : []);
+    const parsed = (arr as Record<string, unknown>[])
+      .map((w) => ({
+        navn: String(w.name ?? w.navn ?? ""),
+        orgnr: String(w.organizationId ?? w.orgnr ?? "").replace(/\s+/g, ""),
+      }))
+      .filter((w) => w.navn.length > 0);
+    if (parsed.length > 0) return parsed;
+  }
+  return [];
 }
 
 /** Hvitlistet param-bygging mot upstream. */
@@ -166,7 +261,20 @@ export function registerLeadgridDoffinRoutes(deps: {
         return;
       }
       const r = await doffinSearch(params);
-      res.status(r.status).json(r.body);
+      // Kunde-match (nivå 1): flagg treff der oppdragsgiveren allerede er
+      // i org-ens CRM. Per-request-berikelse — cachen forblir generisk.
+      let body = r.body;
+      if (r.ok) {
+        const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+        if (orgId) {
+          const hits = (r.body as { kunngjoringer?: { oppdragsgivere?: { orgnr?: string }[] }[] })
+            .kunngjoringer ?? [];
+          const orgnrs = hits.flatMap((k) => (k.oppdragsgivere ?? []).map((o) => String(o.orgnr ?? "")));
+          const matches = await matchKunder(pool, orgId, orgnrs);
+          body = withKundeMatch(r.body, matches);
+        }
+      }
+      res.status(r.status).json(body);
     } catch (e) {
       console.error("[doffin] search failed:", e);
       res.status(500).json({ error: "internal_error" });
@@ -243,6 +351,150 @@ export function registerLeadgridDoffinRoutes(deps: {
     }
   });
 
+  /** AI-prioritering (nivå 1): batch-scorer kunngjøringer mot org-ens
+   *  LAGREDE OVERVÅKNINGER (de uttrykker intensjonen — ærligere enn å
+   *  gjette profil). Krever minst én overvåkning. Kostnadsbærende →
+   *  logges i leadbook_ai_usage (feature 'anbud_score'). */
+  app.post("/api/leadgrid/doffin/score", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      if (!ANTHROPIC_API_KEY) {
+        res.status(503).json({ error: "ai_ikke_konfigurert" });
+        return;
+      }
+      await ensureSchema(pool);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const watches = await pool.query<{ name: string; query: Record<string, unknown> }>(
+        `SELECT name, query FROM leadgrid_doffin_watches
+          WHERE organization_id = $1 ORDER BY created_at ASC LIMIT 25`, [orgId]);
+      if (watches.rowCount === 0) {
+        res.status(400).json({
+          error: "ingen_overvaakninger",
+          message: "AI-prioritering bruker overvåkningene dine som profil — lagre minst ett søk først.",
+        });
+        return;
+      }
+      const raw = Array.isArray(req.body?.kunngjoringer) ? req.body.kunngjoringer : [];
+      const items = (raw as Record<string, unknown>[]).slice(0, 20).map((k) => ({
+        id: String(k.id ?? ""),
+        tittel: String(k.tittel ?? "").slice(0, 150),
+        beskrivelse: String(k.beskrivelse ?? "").slice(0, 350),
+        cpv: Array.isArray(k.cpvKoder) ? (k.cpvKoder as string[]).slice(0, 4) : [],
+        fylker: Array.isArray(k.nutsKoder) ? (k.nutsKoder as string[]).slice(0, 3) : [],
+        verdi: (k.verdi as { belop?: number } | null)?.belop ?? null,
+      })).filter((k) => k.id && k.tittel);
+      if (items.length === 0) {
+        res.status(400).json({ error: "bad_request", message: "kunngjoringer er påkrevd." });
+        return;
+      }
+      const profil = watches.rows
+        .map((w) => `- «${w.name}» (søk: ${JSON.stringify(w.query)})`)
+        .join("\n");
+      const prompt = `Du prioriterer offentlige anbud for en norsk feltsalg-bedrift. Bedriftens lagrede overvåkninger (dette er intensjonen deres):
+${profil}
+
+Scor hver kunngjøring 0-100 for hvor godt den passer intensjonen (bransje/CPV-nærhet, geografi, kontraktstype). Vær edruelig: 80+ kun ved tydelig match. Returner KUN gyldig JSON:
+{"scores":[{"id":"...","score":0-100,"hvorfor":"<maks 12 ord på norsk>"}]}
+
+Kunngjøringer:
+${JSON.stringify(items)}`;
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1500,
+          messages: [{ role: "user", content: prompt }],
+        }));
+      const text = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text).join("");
+      // Kostnadslogg — best effort (samme tabell/priser som leadbook-AI).
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'anbud_score',$5,$6,$7,$8,$9)`,
+          [randomUUID(), orgId, session.userId, "", "claude-sonnet-4-6",
+           JSON.stringify(items).length, inTok, outTok, cost]);
+      } catch { /* logging velter aldri svaret */ }
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) { res.status(502).json({ error: "ai_svar_uparsbart" }); return; }
+      const parsed = JSON.parse(match[0]) as { scores?: unknown[] };
+      res.json({ scores: Array.isArray(parsed.scores) ? parsed.scores : [] });
+    } catch (e) {
+      console.error("[doffin] score failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Tildelings-innsikt (nivå 1): aggregert AWARDED for valgt cpv/fylke —
+   *  antall, samlet verdi, topp oppdragsgivere og (best effort) vinnere.
+   *  Ingen AI — ren aggregering av Doffin-data ingen SMB ser samlet i dag. */
+  app.get("/api/leadgrid/doffin/tildelinger", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const q = new URLSearchParams();
+      q.set("numHitsPerPage", "50");
+      q.set("status", "AWARDED");
+      const cpv = String(req.query.cpv ?? "").trim();
+      if (cpv && /^[0-9,]{2,120}$/.test(cpv)) {
+        for (const c of cpv.split(",")) q.append("cpvCode", c.trim());
+      }
+      const location = String(req.query.location ?? "").trim();
+      if (location && /^[A-Z0-9,]{2,60}$/i.test(location)) {
+        for (const l of location.split(",")) q.append("location", l.trim());
+      }
+      const r = await doffinSearch(q);
+      if (!r.ok) { res.status(r.status).json(r.body); return; }
+      const hits = (r.body as { total?: number; kunngjoringer?: Record<string, unknown>[] });
+      const list = hits.kunngjoringer ?? [];
+      let sumVerdi = 0;
+      const perOppdragsgiver = new Map<string, { navn: string; antall: number; verdi: number }>();
+      const perVinner = new Map<string, { navn: string; antall: number }>();
+      for (const k of list) {
+        const belop = (k.verdi as { belop?: number } | null)?.belop ?? 0;
+        sumVerdi += belop;
+        for (const og of (k.oppdragsgivere as { navn?: string; orgnr?: string }[] | undefined) ?? []) {
+          const key = String(og.orgnr || og.navn || "");
+          if (!key) continue;
+          const cur = perOppdragsgiver.get(key) ?? { navn: String(og.navn ?? ""), antall: 0, verdi: 0 };
+          cur.antall += 1; cur.verdi += belop;
+          perOppdragsgiver.set(key, cur);
+        }
+        for (const v of (k.vinnere as { navn?: string; orgnr?: string }[] | undefined) ?? []) {
+          const key = String(v.orgnr || v.navn || "");
+          if (!key) continue;
+          const cur = perVinner.get(key) ?? { navn: String(v.navn ?? ""), antall: 0 };
+          cur.antall += 1;
+          perVinner.set(key, cur);
+        }
+      }
+      res.json({
+        total: hits.total ?? list.length,
+        utvalg: list.length,
+        sum_verdi: sumVerdi,
+        topp_oppdragsgivere: [...perOppdragsgiver.values()]
+          .sort((a, b) => b.antall - a.antall).slice(0, 5),
+        // Tom liste = Doffin v2 eksponerer ikke vinnere i søket — UI-et
+        // skal si det ærlig, ikke late som innsikten finnes.
+        topp_vinnere: [...perVinner.values()]
+          .sort((a, b) => b.antall - a.antall).slice(0, 5),
+      });
+    } catch (e) {
+      console.error("[doffin] tildelinger failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   /** Cron: sjekk alle overvåkninger for nye treff → varsle oppretteren
    *  (in-app notification_events + APNs push). Trigges av ekstern cron med
    *  x-cron-trigger-token (samme token som øvrige leadgrid-crons).
@@ -298,9 +550,18 @@ export function registerLeadgridDoffinRoutes(deps: {
             [w.id, JSON.stringify(nextSeen), isFirstRun, fresh.length]);
           if (isFirstRun) { seeded++; continue; }
           if (fresh.length === 0) continue;
+          // Kunde-match i varselet (nivå 1): en eksisterende kunde som
+          // lyser ut er det sterkeste signalet vi kan gi.
+          const freshOrgnrs = fresh.flatMap((h) =>
+            ((h.oppdragsgivere as { orgnr?: string }[] | undefined) ?? [])
+              .map((o) => String(o.orgnr ?? "")));
+          const kundeMatches = await matchKunder(pool, w.organization_id, freshOrgnrs);
           // Varsle oppretteren: in-app + push (best effort).
           const first = fresh[0];
-          const title = `Nye anbud: ${w.name}`;
+          const harKunde = kundeMatches.size > 0;
+          const title = harKunde
+            ? `⚡ Eksisterende kunde lyser ut: ${w.name}`
+            : `Nye anbud: ${w.name}`;
           const body = fresh.length === 1
             ? String(first.tittel ?? "1 ny kunngjøring")
             : `${String(first.tittel ?? "Ny kunngjøring")} +${fresh.length - 1} til`;
