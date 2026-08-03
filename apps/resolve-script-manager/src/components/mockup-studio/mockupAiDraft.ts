@@ -10,7 +10,7 @@
  * Krever at AI-proxyen er tilkoblet (RR-token). Alt er redigerbart etterpå.
  */
 
-import { claudeProxyService, isAiConnected } from '../../services/claudeProxyService';
+import { claudeProxyService, isAiConnected, type ClaudeContentBlock } from '../../services/claudeProxyService';
 import { gatherSiteContext } from '../demo-studio/demoStudioAI';
 import { MOCKUP_TEMPLATES, buildTemplate, type MockupDoc, type MockupBackground, type MockupTextRole } from './mockupStudioModel';
 import { captureSiteShots, bestShotForVariant, hostnameOf, type CapturedShot } from './mockupCapture';
@@ -38,6 +38,14 @@ function extractJson<T>(text: string): T | null {
   try { return JSON.parse(cleaned.slice(s, e + 1)) as T; } catch { return null; }
 }
 
+/** Bygg en Claude vision-bildeblokk fra en data-URL (png/jpeg). */
+function imageBlock(dataUrl: string): ClaudeContentBlock | null {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s);
+  if (!m) return null;
+  const media_type: 'image/png' | 'image/jpeg' = m[1] === 'image/png' ? 'image/png' : 'image/jpeg';
+  return { type: 'image', source: { type: 'base64', media_type, data: m[2] } };
+}
+
 /** Er AI-proxyen tilgjengelig? (Styrer om AI-utkast-knappen er aktiv.) */
 export function aiAvailable(): boolean {
   return isAiConnected();
@@ -52,32 +60,51 @@ export async function aiDraftOnePager(url: string, onStep?: (s: string) => void)
     throw new Error('AI-proxyen er ikke tilkoblet. Logg inn (RR-token) i Innstillinger.');
   }
 
-  onStep?.('Leser nettsiden…');
-  const { context } = await gatherSiteContext(url);
-  if (!context || context.length < 80) {
-    throw new Error('Fikk ikke nok innhold fra nettsiden (krever innlogging, blokkert, eller tom).');
+  onStep?.('Fanger + leser nettsiden…');
+  // Skjermbilde (Playwright, rendrer JS) OG tekst (HTTP) parallelt — begge
+  // best-effort. VIKTIG: mange produktsider er SPA-er der ren HTTP-henting gir
+  // et tomt skall, så SKJERMBILDET (vision) er primærkilden for innholdet.
+  const [ctxRes, shots] = await Promise.all([
+    gatherSiteContext(url).catch(() => ({ context: '', pages: [] as string[] })),
+    captureSiteShots(url).catch(() => [] as CapturedShot[]),
+  ]);
+  const context = (ctxRes.context || '').trim();
+  const topShot = shots.find((s) => s.viewport === 'desktop') ?? shots[0];
+  const hasText = context.length >= 60;
+  if (!hasText && !topShot) {
+    throw new Error('Fikk verken tekst eller skjermbilde fra nettsiden (krever innlogging eller blokkert).');
   }
-
-  onStep?.('Fanger skjermbilder…');
-  let shots: CapturedShot[] = [];
-  try { shots = await captureSiteShots(url); } catch { /* fortsett uten skjermbilder */ }
 
   onStep?.('Skriver utkast…');
   const templateList = MOCKUP_TEMPLATES
     .map((t) => `- ${t.id}: ${t.name} — ${t.description} (${t.devices} enhet(er), ${t.variant})`)
     .join('\n');
+  // Opptil 2 desktop-skjermbilder (topp + neste scroll) for rikere innhold på
+  // bilde-tunge helter; ellers hva vi har.
+  const desktop = shots.filter((s) => s.viewport === 'desktop').slice(0, 2);
+  const visionShots = desktop.length ? desktop : (topShot ? [topShot] : []);
+
   const prompt =
-    `Du får tekst fra en produkt/tjeneste-nettside. Lag et kort, selgende NORSK one-pager-utkast for salgsmateriell.\n\n` +
+    `Lag et kort, selgende NORSK one-pager-utkast for salgsmateriell, basert på ` +
+    (visionShots.length ? `SKJERMBILDENE av produkt-nettsiden (les produktnavn, overskrifter, verdiløfte og funksjoner DIREKTE fra bildene)` : 'tekst-innholdet under') +
+    (hasText ? ' og tekst-utdraget under' : '') + '.\n\n' +
     `Velg ÉN mal-id som passer produktet og budskapet best:\n${templateList}\n\n` +
-    `NETTSIDE-INNHOLD:\n${context.slice(0, 6000)}\n\n` +
+    (hasText ? `TEKST-UTDRAG:\n${context.slice(0, 5000)}\n\n` : '') +
     `Svar med KUN ett JSON-objekt (ingen forklaring, ingen code-fence):\n` +
     `{ "templateId": "<mal-id>", "eyebrow": "<1-3 ords etikett>", "title": "<kraftig overskrift, maks 40 tegn>", ` +
     `"body": "<verdiløfte, 1-2 setninger, maks 150 tegn>", "tag": "<CTA eller nettadresse, maks 40 tegn>", ` +
     `"accent": "<#hex primær merkevarefarge>", "accent2": "<#hex sekundærfarge>", "background": "<light|dark|brand>" }`;
 
+  const content: ClaudeContentBlock[] = [];
+  for (const s of visionShots) {
+    const b = imageBlock(s.dataUrl);
+    if (b) content.push(b);
+  }
+  content.push({ type: 'text', text: prompt });
+
   const raw = await claudeProxyService.send({
-    systemPrompt: 'Du er en norsk B2B-produktmarkedsfører som lager knappe, konkrete, selgende one-pagere. Svar ALLTID med kun ett gyldig JSON-objekt.',
-    messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+    systemPrompt: 'Du er en norsk B2B-produktmarkedsfører som lager knappe, konkrete, selgende one-pagere. Du kan lese innholdet på en nettside direkte fra et skjermbilde. Svar ALLTID med kun ett gyldig JSON-objekt.',
+    messages: [{ role: 'user', content }],
     maxTokens: 700,
   });
   const p = extractJson<Draft>(raw);
