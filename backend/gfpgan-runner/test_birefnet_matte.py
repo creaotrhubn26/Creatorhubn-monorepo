@@ -7,7 +7,7 @@ reskalering) + at bakgrunns-looken beskytter motivet og demper grønn bakgrunn.
 import numpy as np
 import pytest
 
-from birefnet_matte import BiRefNetMatte
+from birefnet_matte import BiRefNetMatte, OnnxMatte
 from subject_retouch import apply_background_look
 
 
@@ -54,6 +54,24 @@ def test_probabilities_passed_through_without_double_sigmoid():
     probs = np.full((1, 1, 8, 8), 0.7, np.float32)   # alt i [0,1] → ingen sigmoid
     out = _matte(probs, size=8).matte(np.zeros((8, 8, 3), np.uint8))
     assert np.allclose(out, 0.7, atol=1e-3)
+
+
+def test_u2net_variant_size_divmax_and_minmax():
+    # U²-Net: 320² input, /max-normalisering, min-max postproc, FØRSTE utgang.
+    raw = np.zeros((1, 1, 320, 320), np.float32)
+    raw[..., :160] = 5.0      # vilkårlig skala (ikke logits) → min-max normaliseres
+    raw[..., 160:] = 1.0
+    sess = FakeSession(raw)
+    m = OnnxMatte(sess, "x", variant="u2net")
+    out = m.matte(np.full((50, 40, 3), 200, np.uint8))
+    assert sess.last_feed["x"].shape == (1, 3, 320, 320)   # 320² input
+    assert out.shape == (50, 40)
+    assert out[:, :18].mean() > 0.9 and out[:, 22:].mean() < 0.1   # min-max → 1 / 0
+
+
+def test_birefnet_alias_defaults_to_birefnet_variant():
+    m = BiRefNetMatte(FakeSession(np.zeros((1, 1, 8, 8), np.float32)), "x")
+    assert m._variant == "birefnet" and m._size == 1024
 
 
 def test_to_2d_squeezes_extra_dims():

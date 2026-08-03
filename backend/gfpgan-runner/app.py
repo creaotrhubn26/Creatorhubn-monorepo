@@ -209,11 +209,13 @@ def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
     raise RuntimeError("weights not found in any storage")
 
 
-# ── BiRefNet subjekt-matte (server-«pro»-tier) ────────────────────────
-# Generalisert modell-nedlasting (ikke gfpgan-spesifikk) + cachet BiRefNet-
-# session. Speiler _download_weight men for en VILKÅRLIG nøkkel (birefnet.onnx).
-BIREFNET_DEFAULT_KEY = "models/rembg/birefnet/birefnet.onnx"
-_birefnet_matte: Any = None
+# ── Subjekt-matte (ONNX) ──────────────────────────────────────────────
+# Generalisert modell-nedlasting (ikke gfpgan-spesifikk) + cachet ONNX-matter
+# per nøkkel. DEFAULT = U²-Net (176 MB) — LETT nok til å være drifts-stabil på
+# 2 GB-instansen ved siden av torch/gfpgan. BiRefNet (972 MB, høyere kant-kvalitet)
+# OOM-et standard-instansen (live-verifisert) → opt-in via modelKey på større instans.
+MATTE_DEFAULT_KEY = "models/rembg/u2net/u2net.onnx"
+_matte_models: dict[str, Any] = {}
 _birefnet_lock = threading.Lock()
 
 
@@ -244,15 +246,29 @@ def _download_model(key: str) -> Path:
                        f"{last_error.__class__.__name__ if last_error else 'unknown'}")
 
 
-def _get_birefnet(key: str | None = None) -> Any:
-    """Cachet BiRefNet-matter (lastes én gang; ~1 GB ONNX)."""
-    global _birefnet_matte
+def _matte_variant_for_key(key: str) -> str:
+    """Utled ONNX-matte-varianten av nøkkelen (styrer pre/postprosessering)."""
+    k = key.lower()
+    if "u2net" in k:
+        return "u2net"
+    if "isnet" in k:
+        return "isnet"
+    if "birefnet" in k:
+        return "birefnet"
+    return "u2net"
+
+
+def _get_matter(key: str | None = None) -> Any:
+    """Cachet ONNX-matter per modell-nøkkel. Default = U²-Net (lett, stabil i 2 GB)."""
+    resolved = key or MATTE_DEFAULT_KEY
     with _birefnet_lock:
-        if _birefnet_matte is None:
-            from birefnet_matte import BiRefNetMatte
-            path = _download_model(key or BIREFNET_DEFAULT_KEY)
-            _birefnet_matte = BiRefNetMatte.from_onnx(str(path))
-        return _birefnet_matte
+        matter = _matte_models.get(resolved)
+        if matter is None:
+            from birefnet_matte import OnnxMatte
+            path = _download_model(resolved)
+            matter = OnnxMatte.from_onnx(str(path), variant=_matte_variant_for_key(resolved))
+            _matte_models[resolved] = matter
+        return matter
 
 
 # ── Weight bootstrap ──────────────────────────────────────────────────
@@ -426,19 +442,21 @@ class SubjectMattePayload(BaseModel):
 @app.post("/subject-matte")
 @app.post("/api/subject/matte")
 def subject_matte(payload: SubjectMattePayload) -> dict[str, Any]:
-    """BiRefNet forgrunns-matte (server-«pro»-tier). Returnerer matten (PNG-grå,
-    base64) + valgfritt RGBA-utklipp og/eller den subjekt-beskyttede bakgrunns-
-    looken (løvverk-demping med EKTE maske). On-device-motpart = iOS Vision-person-
-    segmentering; her får den leverte retusjen BiRefNet-kvalitet."""
+    """ONNX forgrunns-matte. Default = U²-Net (176 MB, stabil på 2 GB); BiRefNet
+    (972 MB, høyere kant-kvalitet) er opt-in via ``modelKey`` på en større instans.
+    Returnerer matten (PNG-grå, base64) + valgfritt RGBA-utklipp og/eller den subjekt-
+    beskyttede bakgrunns-looken (løvverk-demping med EKTE maske). On-device-motpart =
+    iOS Vision-person-segmentering (CaptureApp); her får den LEVERTE retusjen en
+    modell-matte."""
     try:
         image = _decode_image(payload.imageBase64)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     process_image, _ = _resize_for_budget(image)
     try:
-        matte = _get_birefnet(payload.modelKey).matte(process_image)
+        matte = _get_matter(payload.modelKey).matte(process_image)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=503, detail=f"birefnet unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail=f"matte model unavailable: {exc}") from exc
 
     matte_u8 = (np.clip(matte, 0.0, 1.0) * 255.0).astype(np.uint8)
     ok, buf = cv2.imencode(".png", matte_u8)
