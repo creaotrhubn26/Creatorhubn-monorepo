@@ -1541,12 +1541,12 @@ struct KartView: View {
                 // legenden står alltid synlig under (Daniels funn: fast
                 // karthøyde dyttet legenden bak faneraden).
                 AnyView(dorsalgLayout)
-            } else if !showDetailPanel {
-                // UI-fokus fase 4 (Daniel): ingen lead valgt ⇒ HELE flaten
-                // er kartet — intet tomt detaljpanel, ingen scroll.
-                AnyView(kartFulltLayout)
             } else {
-                AnyView(kartInnholdScroll)
+                // UI-fokus fase 4 (Daniel): ingen lead valgt ⇒ HELE flaten
+                // er kartet; valgt lead ⇒ kortet glir inn nedenfra mens
+                // kartet krymper. ETT view-tre for begge tilstander så
+                // kartet beholder identiteten og overgangen GLIR.
+                AnyView(kartInnhold)
             }
         }
         .toolbar(kartFullskjerm ? .hidden : .automatic, for: .tabBar)
@@ -1565,38 +1565,10 @@ struct KartView: View {
         .padding(.bottom, 8)
     }
 
-    /// Map-first-layout (Daniel, UI-fokus fase 4): ingen lead valgt ⇒ kartet
-    /// fyller all ledig høyde. Lead-lista kan stå ved siden av (300pt) eller
-    /// ligge bak «Leads (N) ›»-stripa; tegnforklaringen er kart-chip.
-    private var kartFulltLayout: some View {
-        let columns = DeviceIdiom.isPhone
-            ? AnyLayout(VStackLayout(spacing: 12))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
-        return columns {
-            AnyView(mapCard)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) {
-                    if !DeviceIdiom.isPhone && leadsPanelCollapsed {
-                        leadsStripeKnapp.padding(10)
-                    }
-                }
-                .overlay(alignment: .bottomLeading) {
-                    legendChip.padding(10)
-                }
-            if !DeviceIdiom.isPhone && !leadsPanelCollapsed {
-                VStack(spacing: 12) {
-                    AnyView(leadsInAreaCard)
-                    Spacer(minLength: 0)
-                }
-                .kartColumnWidth(300)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85),
-                   value: leadsPanelCollapsed)
-    }
+    /// Én felles fjær for alle Kart-overganger (kort inn/ut, liste inn/ut,
+    /// karthøyde) — samme kurve overalt gir følelsen av ETT koreografert
+    /// skift i stedet for tre ukoordinerte.
+    static let kartFjaer = Animation.spring(response: 0.45, dampingFraction: 0.86)
 
     /// Smal «Leads (N) ›»-stripe: henter lead-lista tilbake (og lukker et
     /// eventuelt åpent detaljkort — én-ting-om-gangen).
@@ -1625,47 +1597,72 @@ struct KartView: View {
         .buttonStyle(.plain)
     }
 
-    /// Vanlig fane-layout (kart + legend + detaljpanel + områdeliste) —
-    /// ekstrahert så fullskjerm-grenen i content holder seg flat.
-    private var kartInnholdScroll: some View {
-            ScrollView {
-                // iPhone: side-kolonnen (300pt) får ikke plass ved siden av
-                // kartet på compact width — stable kolonnene vertikalt i
-                // stedet, med leads-i-området under detail-panelet.
-                let columns = DeviceIdiom.isPhone
-                    ? AnyLayout(VStackLayout(spacing: 14))
-                    : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
-                columns {
-                    VStack(spacing: 12) {
-                        AnyView(mapCard)
-                            // Kartet skal dominere Kart-fanen. På iPad/Mac
-                            // (romslig vindu) gir vi det vesentlig mer høyde;
-                            // iPhone holder en kompakt høyde så resten får plass.
-                            // (Dørsalg bruker dorsalgLayout — aldri denne.)
-                            .frame(minHeight: DeviceIdiom.isPhone ? 360 : 520,
-                                   maxHeight: DeviceIdiom.isPhone ? 460 : 680)
-                            .overlay(alignment: .topTrailing) {
-                                // Detaljkortet er åpent her — lista ligger
-                                // alltid bak stripa (én-ting-om-gangen).
-                                if !DeviceIdiom.isPhone {
-                                    leadsStripeKnapp.padding(10)
-                                }
-                            }
-                            .overlay(alignment: .bottomLeading) {
-                                // Tegnforklaringen som liten kart-chip m/
-                                // popover — erstatter full-bredde legend-raden.
-                                legendChip.padding(10)
-                            }
-                        AnyView(detailPanel)
+    /// Fane-layout (Daniel, UI-fokus fase 4 + «overlay over kartet»):
+    /// kartet fyller ALLTID hele flaten — detaljkortet flyter OVER kartet
+    /// nederst (Apple Maps-stil) og glir inn/ut med fjæra. Ingen scroll,
+    /// ingen høyde-hopp: kartet beholder identitet og størrelse gjennom
+    /// alle tilstander.
+    private var kartInnhold: some View {
+        HStack(alignment: .top, spacing: 14) {
+            AnyView(mapCard)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .topTrailing) {
+                    // Stripa vises når lista er borte (kollapset eller
+                    // fortrengt av kortet).
+                    if !DeviceIdiom.isPhone
+                        && (leadsPanelCollapsed || showDetailPanel) {
+                        leadsStripeKnapp
+                            .padding(10)
+                            .transition(.opacity.combined(
+                                with: .scale(scale: 0.85, anchor: .topTrailing)))
                     }
-                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
-                // Liste ⇄ detaljkort veksler — animer fortrengningen.
-                .animation(.spring(response: 0.4, dampingFraction: 0.85),
-                           value: showDetailPanel)
+                .overlay(alignment: .bottomLeading) {
+                    // Tegnforklaring-chip — vik plass når kortet er framme.
+                    if !showDetailPanel {
+                        legendChip
+                            .padding(10)
+                            .transition(.opacity)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    // Detaljkortet som flytende overlay over kartet.
+                    // iPhone beholder den kompakte phoneLeadHUD-en.
+                    if !DeviceIdiom.isPhone && showDetailPanel {
+                        detailOverlayKort
+                            .transition(.move(edge: .bottom)
+                                .combined(with: .opacity))
+                    }
+                }
+
+            // Lead-lista ved siden av kartet — kun når intet kort er åpent
+            // (én-ting-om-gangen) og brukeren har hentet den fram.
+            if !DeviceIdiom.isPhone && !leadsPanelCollapsed && !showDetailPanel {
+                VStack(spacing: 12) {
+                    AnyView(leadsInAreaCard)
+                    Spacer(minLength: 0)
+                }
+                .kartColumnWidth(300)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
+        .animation(Self.kartFjaer, value: showDetailPanel)
+        .animation(Self.kartFjaer, value: leadsPanelCollapsed)
+    }
+
+    /// Flytende detaljkort: begrenset bredde/høyde så kartet forblir synlig
+    /// rundt; lang innhold (Notater-fanen) scroller internt i kortet.
+    private var detailOverlayKort: some View {
+        ScrollView {
+            AnyView(detailPanel)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: 720, maxHeight: 460)
+        .shadow(color: .black.opacity(0.45), radius: 26, y: 10)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 14)
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
