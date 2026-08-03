@@ -29,6 +29,12 @@ struct RoutePlannerSheet: View {
     @State private var ordered: [LeadModel] = []
     @State private var planned = false
 
+    /// Kart-panelets velg-modus sender forhåndsvalgte lead-id-er
+    /// («Legg N i rute») — pickeren åpner ferdig avhuket.
+    init(preselected: Set<String> = []) {
+        _selected = State(initialValue: preselected)
+    }
+
     // Kandidater: leads med ekte koordinater (dropp 0,0-plassholdere).
     private var candidates: [LeadModel] {
         appState.leads
