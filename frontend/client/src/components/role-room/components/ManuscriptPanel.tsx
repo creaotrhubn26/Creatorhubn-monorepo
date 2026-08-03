@@ -1994,7 +1994,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           heading: trimmed,
           intExt: sceneMatch[1].toUpperCase().replace('.', '').replace('/', '/'),
           location: sceneMatch[2]?.trim() || '',
-          timeOfDay: normalizeTimeOfDay(sceneMatch[3]),
+          timeOfDay: normalizeTimeOfDay(sceneMatch[3]) || '',
           description: '',
           characters: [],
           lineCount: 0,
