@@ -111,6 +111,10 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // Anbud (Doffin) — tilleggstjeneste (2026-08-02): søk + overvåkning av
     // offentlige anskaffelser, oppdragsgiver-orgnr klart for CRM-kobling.
     case leadgridAnbud = "Anbud · Doffin"
+    // Ruteplanlegger (2026-08-04): fler-stopp dagsruter m/ møte-ankere,
+    // stopp-kjeding, leder-tildeling og «Foreslå dagens rute». Superadmin
+    // kan låse per org (default PÅ — canUse-mønsteret).
+    case leadgridRuteplanlegger = "Ruteplanlegger · Fler-stopp"
 
     var id: String { rawValue }
 
@@ -166,6 +170,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         // Kvalitet
         case .leadgridKvalitet: return "checkmark.seal.fill"
         case .leadgridAnbud: return "doc.text.magnifyingglass"
+        case .leadgridRuteplanlegger: return "point.topleft.down.curvedto.point.bottomright.up.fill"
         // Områder
         case .omradeTildeling: return "map.circle.fill"
         // AI
@@ -192,7 +197,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .teamCompareToPrevious, .teamForecast30d, .teamPipelineHealth,
              .teamAIFormulaSuggest: return .analyseAI
         case .routeTracking, .routeAdherenceReports, .teamNearbyView,
-             .createLeadAtPosition: return .kjerne
+             .createLeadAtPosition, .leadgridRuteplanlegger: return .kjerne
         case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo
         case .leadgridKvalitet: return .kvalitet
         case .leadgridAnbud: return .anbud

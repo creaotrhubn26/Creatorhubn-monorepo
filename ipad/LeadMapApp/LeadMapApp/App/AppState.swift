@@ -164,6 +164,9 @@ final class AppState {
         /// Indeks for NESTE stopp som skal besøkes.
         var index: Int
         var opprettet: Date
+        /// Backend-id når ruta kom fra en leder-tildeling (nivå 3) —
+        /// brukes til statusrapportering (akseptert/fullfort).
+        var fjernId: String? = nil
     }
 
     private static let rutePlanKey = "leadgrid.aktiv_rute_plan"
@@ -207,6 +210,7 @@ final class AppState {
         guard var plan = rutePlan else { return nil }
         plan.index += 1
         guard plan.index < plan.stopp.count else {
+            meldRuteStatus(plan, "fullfort")
             rutePlan = nil
             return nil
         }
@@ -214,7 +218,33 @@ final class AppState {
         return plan.stopp[plan.index]
     }
 
-    func avsluttRute() { rutePlan = nil }
+    func avsluttRute() {
+        if let plan = rutePlan { meldRuteStatus(plan, "avvist") }
+        rutePlan = nil
+    }
+
+    /// Rapportér status til backend for leder-tildelte ruter (best effort).
+    private func meldRuteStatus(_ plan: RutePlan, _ status: String) {
+        guard let id = plan.fjernId, let api else { return }
+        Task { try? await api.settRuteStatus(id: id, status: status) }
+    }
+
+    /// Hent nyeste tildelte rute fra backend → rett inn i rute-motoren
+    /// (varsel-tap eller manuell henting). Kvitterer «akseptert».
+    @MainActor
+    func hentTildeltRute() async {
+        guard let api else { return }
+        guard let dto = try? await api.hentMinTildelteRute() else { return }
+        let iso = ISO8601DateFormatter()
+        let stopp = dto.stopp.map { s in
+            RuteStopp(id: s.id, name: s.name, address: s.address,
+                      lat: s.lat, lon: s.lon,
+                      ankerTid: s.ankerTid.flatMap { iso.date(from: $0) })
+        }
+        guard !stopp.isEmpty else { return }
+        rutePlan = RutePlan(stopp: stopp, index: 0, opprettet: Date(), fjernId: dto.id)
+        try? await api.settRuteStatus(id: dto.id, status: "akseptert")
+    }
 
     // Klienter (lazy-init når token er satt)
     private(set) var api: APIClient?
@@ -499,6 +529,11 @@ final class AppState {
             // Nye anbuds-treff (2026-08-03): varselet peker på
             // leadgrid://anbud — rett til Anbud-fanen, ikke innboksen.
             selectedSidebarItem = .anbud
+        case "leadgrid_rute_tildelt":
+            // Rute tildelt av salgssjef (nivå 3): hent ruta rett inn i
+            // Kart-fanens rute-motor.
+            selectedSidebarItem = .kart
+            Task { await hentTildeltRute() }
         default:
             presentingLeadgridNotifications = true
         }

@@ -156,3 +156,7 @@ export const LEADBOOK_AI_STRUKTUR_FEATURE_KEYS = ["leadbookAIStrukturering"];
  *  anskaffelser. Nøkkelen matcher LeadgridFeature.leadgridAnbud. */
 export const LEADGRID_ANBUD_FEATURE_KEYS = ["leadgridAnbud"];
 
+/** Ruteplanlegger (2026-08-04): fler-stopp dagsruter m/ leder-tildeling.
+ *  Nøkkelen matcher LeadgridFeature.leadgridRuteplanlegger. */
+export const LEADGRID_RUTEPLAN_FEATURE_KEYS = ["leadgridRuteplanlegger"];
+
