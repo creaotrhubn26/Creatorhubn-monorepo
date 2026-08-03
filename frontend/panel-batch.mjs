@@ -57,6 +57,8 @@ const PANELS = [
   for (const s of cands) { const l = page.locator(s).first(); if (await l.count() && await l.isVisible().catch(() => false)) { ed = l; break; } }
   if (!ed) { console.log('!! editor ikke funnet'); await page.screenshot({ path: `${DIAG}/panelbatch-no-editor.png` }); await browser.close(); process.exit(1); }
   await ed.click(); await pause(300);
+  // Tøm editoren først (manuset kan ha persistert innhold → ellers appender insertText)
+  await page.keyboard.press('ControlOrMeta+a'); await page.keyboard.press('Delete'); await pause(300);
   await page.keyboard.insertText(SCRIPT);
   await pause(2000);
 
@@ -71,6 +73,9 @@ const PANELS = [
   }
   console.log('ARIA-DIAG', JSON.stringify(diag));
   await page.screenshot({ path: `${DIAG}/panelbatch-toolbar.png` });
+  // Oversikts-skjermbilde til guiden (full editor-layout m/ dagens UI)
+  await page.screenshot({ path: `${ASSETS}/guide-screenplay-overview.png` });
+  console.log('OK   guide-screenplay-overview');
 
   // Lukk onboarding-/status-toasts som ellers dekker nedre del av panelet
   const dismissToasts = async () => {
