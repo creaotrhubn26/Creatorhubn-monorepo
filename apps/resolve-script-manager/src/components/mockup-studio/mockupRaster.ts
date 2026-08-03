@@ -19,6 +19,7 @@ import {
   type MockupCanvasSpec,
   deviceHeight,
   resolveColor,
+  fontFamilyFor,
   resolveBaseBg,
   mixHex,
   hexToRgb,
@@ -308,7 +309,7 @@ function drawText(ctx: CanvasRenderingContext2D, doc: MockupDoc, t: MockupTextSl
   const raw = t.uppercase ? t.text.toUpperCase() : t.text;
   ctx.save();
   ctx.fillStyle = resolveColor(t.color, doc.canvas);
-  ctx.font = `${t.weight} ${t.size}px -apple-system, system-ui, "Segoe UI", sans-serif`;
+  ctx.font = `${t.weight} ${t.size}px ${fontFamilyFor(t.role, doc.canvas)}`;
   ctx.textBaseline = 'top';
   ctx.textAlign = t.align;
   // letterSpacing støttes i moderne WebView; harmløst hvis ukjent.

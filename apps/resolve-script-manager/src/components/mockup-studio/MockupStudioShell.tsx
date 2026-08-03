@@ -25,6 +25,7 @@ import {
   ELEMENT_LABELS,
   LAYOUT_VARIANTS,
   MOCKUP_FORMATS,
+  TYPOGRAPHY_STYLES,
   currentFormatId,
   hasFormatLayout,
   orientationGroup,
@@ -47,6 +48,7 @@ import {
   type MockupTextRole,
   type MockupBackground,
   type MockupBgStyle,
+  type MockupTypographyId,
 } from './mockupStudioModel';
 import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
@@ -588,6 +590,11 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           value={canvas.bgStyle}
           onChange={(v) => patchCanvas({ bgStyle: v })}
         />
+      </Field>
+      <Field label="Typografi">
+        <select value={canvas.typography ?? 'moderne'} onChange={(e) => patchCanvas({ typography: e.target.value as MockupTypographyId })} style={textInput}>
+          {(Object.keys(TYPOGRAPHY_STYLES) as MockupTypographyId[]).map((id) => <option key={id} value={id}>{TYPOGRAPHY_STYLES[id].label}</option>)}
+        </select>
       </Field>
       <div style={{ fontSize: 12, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
         {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)
