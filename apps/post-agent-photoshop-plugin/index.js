@@ -2346,6 +2346,16 @@ const COMMANDS = {
           const y = f.y ?? Math.round(height * (0.15 + (i / Math.max(fields.length, 1)) * 0.6));
           const fontSize = f.font_size ?? Math.round(height / 20);
           const placeholder = f.hint || layerName;
+          // Ær valgfri farge + font fra feltet (bakoverkompatibelt: samme
+          // standard mørkegrå Helvetica som før hvis ikke oppgitt).
+          const fontName = (typeof f.font === "string" && f.font) ? f.font : "Helvetica";
+          const col = (f.color && typeof f.color === "object")
+            ? {
+                red: Number.isFinite(f.color.red) ? f.color.red : 30,
+                green: Number.isFinite(f.color.green) ? f.color.green : 30,
+                blue: Number.isFinite(f.color.blue) ? f.color.blue : 30,
+              }
+            : { red: 30, green: 30, blue: 30 };
           await action.batchPlay(
             [
               {
@@ -2367,9 +2377,9 @@ const COMMANDS = {
                       to: placeholder.length,
                       textStyle: {
                         _obj: "textStyle",
-                        fontPostScriptName: "Helvetica",
+                        fontPostScriptName: fontName,
                         size: { _unit: "pointsUnit", _value: fontSize },
-                        color: { _obj: "RGBColor", red: 30, green: 30, blue: 30 },
+                        color: { _obj: "RGBColor", red: col.red, green: col.green, blue: col.blue },
                       },
                     },
                   ],
@@ -2442,7 +2452,7 @@ const COMMANDS = {
       output_path,
       created_layers: createdLayers,
       notes:
-        "Smart-object-felter må legges til manuelt i Photoshop (File → Place Embedded + gi navn {{key}}). Vi støtter foreløpig bare text-scaffolding.",
+        "Støtter text-felter (med valgfri font + farge) og image_placeholder-felter (embedes som smart-object når file_path er oppgitt).",
     };
   },
 

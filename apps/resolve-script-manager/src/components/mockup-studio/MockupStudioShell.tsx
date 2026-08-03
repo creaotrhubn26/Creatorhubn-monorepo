@@ -17,6 +17,7 @@ import { MockupCanvas } from './MockupCanvas';
 import { rasterizeToPngDataUrl } from './mockupRaster';
 import { buildPdfBase64 } from './mockupExport';
 import { buildPsdBase64 } from './mockupPsd';
+import { buildEditablePsdViaBridge, isBridgeConnected } from './mockupPhotoshop';
 import { useMockupStudio } from './mockupStudioStore';
 import {
   MOCKUP_TEMPLATES,
@@ -169,6 +170,31 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   const missingShots = doc.devices.filter((d) => !d.image).length;
 
+  // Ekte redigerbar PSD via Photoshop-broen (smart-objekter + tekst-lag).
+  const exportEditablePsd = async () => {
+    setExportMsg(null);
+    setExporting(true);
+    try {
+      if (!(await isBridgeConnected())) {
+        setExportMsg('Koble til Photoshop-broen først (Photoshop-fanen → last UXP-pluginen).');
+        setExporting(false);
+        return;
+      }
+      const path = await saveFileDialog({
+        defaultPath: `${safeDocName(doc.name)}.psd`,
+        filters: [{ name: 'PSD', extensions: ['psd'] }],
+      });
+      if (typeof path !== 'string') { setExporting(false); return; }
+      const res = await buildEditablePsdViaBridge(doc, path);
+      setExportMsg(`✓ Redigerbar PSD bygget i Photoshop (${res.layers} lag): ${res.output_path}`);
+      void openPath(res.output_path).catch(() => {});
+    } catch (err) {
+      setExportMsg('Photoshop-eksport feilet: ' + String(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const runExport = async (kind: 'png' | 'pdf' | 'psd') => {
     setExportMsg(null);
     setExporting(true);
@@ -220,7 +246,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <span style={{ fontSize: 11, color: C.inkSoft }}>Eksporter:</span>
         <button onClick={() => void runExport('png')} disabled={exporting} style={primaryBtn} title="PNG-bilde">PNG</button>
         <button onClick={() => void runExport('pdf')} disabled={exporting} style={ghostBtn} title="PDF-dokument (én side)">PDF</button>
-        <button onClick={() => void runExport('psd')} disabled={exporting} style={ghostBtn} title="Lagdelt Photoshop-fil (redigerbar per enhet/tekst)">PSD</button>
+        <button onClick={() => void runExport('psd')} disabled={exporting} style={ghostBtn} title="Lagdelt Photoshop-fil (rasterlag per enhet/tekst) — fungerer uten Photoshop åpent">PSD</button>
+        <button onClick={() => void exportEditablePsd()} disabled={exporting} style={ghostBtn} title="Ekte redigerbar PSD via Photoshop-broen: enheter som smart-objekter + redigerbare tekst-lag (riktig font/farge). Krever tilkoblet UXP-plugin.">PSD ✎</button>
       </div>
 
       {/* Kropp: verktøy · lerret · inspektør */}

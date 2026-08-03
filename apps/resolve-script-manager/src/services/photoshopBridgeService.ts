@@ -1474,6 +1474,10 @@ export const photoshop = {
         x?: number;
         y?: number;
         font_size?: number;
+        /** For text: PostScript-fontnavn (f.eks. "Helvetica-Bold"). */
+        font?: string;
+        /** For text: farge (0–255). Utelates → plugin-standard mørkegrå. */
+        color?: { red: number; green: number; blue: number };
         /** For image_placeholder: absolutt fil-sti til bildet som skal embedes som smart-object. */
         file_path?: string;
       }>;
