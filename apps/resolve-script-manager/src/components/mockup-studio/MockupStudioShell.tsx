@@ -9,7 +9,7 @@
  * Modul-gating (demo_studio) skjer i App.tsx før dette montes.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { demoWriteBinary } from '../../api';
@@ -22,6 +22,15 @@ import {
   type MockupDeviceVariant,
   type MockupTextRole,
 } from './mockupStudioModel';
+import {
+  captureSiteShots,
+  bestShotForVariant,
+  extractAccentFromImage,
+  isCaptureReady,
+  installCaptureEngine,
+  hostnameOf,
+  type CapturedShot,
+} from './mockupCapture';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -59,6 +68,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
+  // URL-capture (P2)
+  const [url, setUrl] = useState('');
+  const [shots, setShots] = useState<CapturedShot[]>([]);
+  const [capturing, setCapturing] = useState(false);
+  const [captureNote, setCaptureNote] = useState<string | null>(null);
+  const [engineReady, setEngineReady] = useState<boolean | null>(null);
+  const [installing, setInstalling] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    isCaptureReady().then((ok) => { if (alive) setEngineReady(ok); });
+    return () => { alive = false; };
+  }, []);
+
   const selectedDevice = selection.kind === 'device' ? doc.devices.find((d) => d.id === selection.id) ?? null : null;
   const selectedText = selection.kind === 'text' ? doc.texts.find((t) => t.id === selection.id) ?? null : null;
 
@@ -78,6 +101,71 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     };
     reader.readAsDataURL(file);
   };
+
+  // Fyll hver enhet med sitt best-egnede skjermbilde (mobil→iPhone, ellers desktop).
+  const autoFill = (list: CapturedShot[]) => {
+    for (const dev of doc.devices) {
+      const shot = bestShotForVariant(list, dev.variant);
+      if (shot) store.setDeviceImage(dev.id, shot.dataUrl);
+    }
+  };
+
+  const runCapture = async () => {
+    setCaptureNote(null);
+    if (!url.trim()) return;
+    if (engineReady === false) { setCaptureNote('Installer capture-motoren først.'); return; }
+    setCapturing(true);
+    try {
+      const list = await captureSiteShots(url);
+      setShots(list);
+      if (list.length === 0) {
+        setCaptureNote('Fant ingen skjermbilder — sjekk URL-en.');
+      } else {
+        autoFill(list);
+        const host = hostnameOf(url);
+        if (host && (doc.name === 'Ny mockup' || !doc.name.trim())) store.setName(host);
+        setCaptureNote(`✓ ${list.length} skjermbilder hentet og fordelt på enhetene.`);
+      }
+    } catch (e) {
+      setCaptureNote('Capture feilet: ' + String(e));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const assignShot = (shot: CapturedShot) => {
+    if (selection.kind === 'device') {
+      store.setDeviceImage(selection.id, shot.dataUrl);
+      setCaptureNote(null);
+    } else {
+      setCaptureNote('Velg en enhet i lerretet først, så klikk et skjermbilde.');
+    }
+  };
+
+  const applyAccentFromSite = async () => {
+    const src = shots.find((s) => s.viewport === 'desktop') ?? shots[0];
+    if (!src) return;
+    setCaptureNote('Analyserer sidefarge…');
+    const hex = await extractAccentFromImage(src.dataUrl);
+    if (hex) { store.patchCanvas({ accent: hex }); setCaptureNote(`✓ Accent satt til sidefargen (${hex}).`); }
+    else setCaptureNote('Fant ingen tydelig accent-farge i skjermbildet.');
+  };
+
+  const installEngine = async () => {
+    setInstalling(true);
+    setCaptureNote('Installerer capture-motor (kan ta et par minutter)…');
+    try {
+      const ok = await installCaptureEngine();
+      setEngineReady(ok);
+      setCaptureNote(ok ? '✓ Capture-motor klar.' : 'Installasjon fullførte ikke — prøv igjen.');
+    } catch (e) {
+      setCaptureNote('Installasjon feilet: ' + String(e));
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const missingShots = doc.devices.filter((d) => !d.image).length;
 
   const exportPng = async () => {
     setExportMsg(null);
@@ -122,13 +210,50 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         </select>
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
+        {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
         <button onClick={exportPng} disabled={exporting} style={primaryBtn}>{exporting ? 'Eksporterer…' : 'Last ned PNG'}</button>
       </div>
 
       {/* Kropp: verktøy · lerret · inspektør */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* Venstre: legg til */}
-        <div style={{ width: 180, borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
+        {/* Venstre: nettside-capture + legg til */}
+        <div style={{ width: 220, borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
+          <SectionLabel>Fra nettside</SectionLabel>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void runCapture(); }}
+            placeholder="leadgrid.no"
+            style={{ ...textInput, marginBottom: 6 }}
+          />
+          <button onClick={() => void runCapture()} disabled={capturing || !url.trim()} style={{ ...primaryBtn, width: '100%', opacity: capturing || !url.trim() ? 0.6 : 1 }}>
+            {capturing ? 'Henter…' : 'Hent skjermbilder'}
+          </button>
+          {engineReady === false && (
+            <button onClick={() => void installEngine()} disabled={installing} style={{ ...listBtn, marginTop: 6 }}>
+              {installing ? 'Installerer…' : 'Installer capture-motor'}
+            </button>
+          )}
+          {captureNote && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 8, lineHeight: 1.4 }}>{captureNote}</div>}
+          {shots.length > 0 && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
+                {shots.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => assignShot(s)}
+                    title={`${s.label} — klikk for å legge på valgt enhet`}
+                    style={{ padding: 0, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', background: C.panelSoft, aspectRatio: '1 / 1' }}
+                  >
+                    <img src={s.dataUrl} alt={s.label} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => autoFill(shots)} style={{ ...listBtn, marginTop: 8 }}>Auto-fyll enheter</button>
+              <button onClick={() => void applyAccentFromSite()} style={{ ...listBtn, marginTop: 6 }}>Bruk sidefarge som accent</button>
+            </>
+          )}
+          <div style={{ height: 18 }} />
           <SectionLabel>Legg til enhet</SectionLabel>
           {(Object.keys(DEVICE_LABELS) as MockupDeviceVariant[]).map((v) => (
             <button key={v} onClick={() => store.addDevice(v)} style={{ ...listBtn, marginBottom: 6 }}>+ {DEVICE_LABELS[v]}</button>
