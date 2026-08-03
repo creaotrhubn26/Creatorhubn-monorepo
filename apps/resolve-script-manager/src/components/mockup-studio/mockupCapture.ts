@@ -9,6 +9,7 @@
  */
 
 import { playwrightCaptureShots, playwrightStatus, setupPlaywright, listCaptureSources, iosSimScreenshot } from '../../api';
+import type { MockupBackground, MockupBgStyle, MockupDecor, MockupTypographyId } from './mockupStudioModel';
 
 export type CaptureViewport = 'desktop' | 'mobile';
 
@@ -191,4 +192,131 @@ export async function extractAccentFromImage(dataUrl: string): Promise<string | 
   const s = Math.min(0.85, Math.max(0.5, sat[best] / cnt[best]));
   const l = Math.min(0.62, Math.max(0.45, lit[best] / cnt[best]));
   return hslToHex(h, s, l);
+}
+
+// ── Merkevare-look-generator (skreddersydd, ikke fast liste) ─────────────────
+
+/** Karaktér utledet fra fargebruken (styrer dekor/typografi/bakgrunnsstil). */
+export type BrandVibe = 'vivid' | 'bold' | 'muted' | 'playful';
+
+/** En generert, komplett merkevare-look (ikke en av de faste presetene). */
+export interface BrandLook {
+  accent: string;
+  accent2: string;
+  background: MockupBackground;
+  bgStyle: MockupBgStyle;
+  decor: MockupDecor;
+  typography: MockupTypographyId;
+  vibe: BrandVibe;
+}
+
+/** Utled typografi fra en font-family-streng (site-CSS), ellers fra karakter. */
+function typographyFor(fontHint: string | undefined, vibe: BrandVibe): MockupTypographyId {
+  const f = (fontHint || '').toLowerCase();
+  if (f) {
+    if (/mono|consolas|menlo|courier/.test(f)) return 'teknisk';
+    if (/serif/.test(f) && !/sans/.test(f)) return 'editorial';
+    if (/futura|poppins|montserrat|century gothic|geometr|gotham|circular/.test(f)) return 'geometrisk';
+    if (/./.test(f)) return 'moderne';
+  }
+  // Ingen font-hint → la karakteren bestemme (gir typografisk variasjon per merkevare).
+  if (vibe === 'bold' || vibe === 'playful') return 'geometrisk';
+  if (vibe === 'muted') return 'editorial';
+  return 'moderne';
+}
+
+/**
+ * Generér en KOMPLETT, skreddersydd merkevare-look fra et ekte skjermbilde:
+ * en generert accent-palett (ikke fra fast liste) + bakgrunns-tone + matchet
+ * dekor + typografi utledet fra fargebruk (og evt. site-font). 100% klient-side.
+ */
+export async function extractBrandLook(dataUrl: string, fontHint?: string): Promise<BrandLook | null> {
+  let img: HTMLImageElement;
+  try { img = await loadImage(dataUrl); } catch { return null; }
+  const S = 96;
+  const canvas = document.createElement('canvas');
+  canvas.width = S; canvas.height = S;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, S, S);
+  let data: Uint8ClampedArray;
+  try { data = ctx.getImageData(0, 0, S, S).data; } catch { return null; }
+
+  const N = 24;
+  const buckets = new Array(N).fill(0);
+  const sat = new Array(N).fill(0);
+  const lit = new Array(N).fill(0);
+  const cnt = new Array(N).fill(0);
+  let lightPix = 0, darkPix = 0, total = 0, chromaSatSum = 0, chromaN = 0;
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 200) continue;
+    total++;
+    const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+    if (l > 0.72) lightPix++;
+    else if (l < 0.24) darkPix++;
+    if (s < 0.35 || l < 0.22 || l > 0.78) continue; // hopp over grått/ytterpunkt
+    const b = Math.min(N - 1, Math.floor(h / (360 / N)));
+    buckets[b] += s * s; sat[b] += s; lit[b] += l; cnt[b] += 1;
+    chromaSatSum += s; chromaN++;
+  }
+  if (!total) return null;
+
+  // Primær accent = mest fremtredende kromatiske bøtte.
+  let best = -1, bestW = 0;
+  for (let b = 0; b < N; b++) if (buckets[b] > bestW) { bestW = buckets[b]; best = b; }
+
+  const bucketHsl = (b: number): [number, number, number] => [
+    b * (360 / N) + (180 / N),
+    Math.min(0.88, Math.max(0.5, sat[b] / Math.max(1, cnt[b]))),
+    Math.min(0.62, Math.max(0.44, lit[b] / Math.max(1, cnt[b]))),
+  ];
+
+  let accent: string, accent2: string;
+  if (best >= 0 && cnt[best] >= 3) {
+    const [h1, s1, l1] = bucketHsl(best);
+    accent = hslToHex(h1, s1, l1);
+    // Sekundær = nest-sterkeste EKTE farge (≥30° unna, så nære merkevare-toner som
+    // rød+oransje beholdes). Bare hvis merket er én-tonet utledes en analog nabo
+    // (+30°) — analog holder seg on-brand, i motsetning til en syntetisk komplementær.
+    let sec = -1, secW = 0;
+    for (let b = 0; b < N; b++) {
+      const dh = Math.min(Math.abs(b - best), N - Math.abs(b - best)) * (360 / N);
+      if (dh >= 30 && cnt[b] >= 2 && buckets[b] > secW) { secW = buckets[b]; sec = b; }
+    }
+    if (sec >= 0) { const [h2, s2, l2] = bucketHsl(sec); accent2 = hslToHex(h2, s2, l2); }
+    else accent2 = hslToHex((h1 + 30) % 360, Math.min(0.82, s1 * 0.95), Math.min(0.6, l1 * 1.02));
+  } else {
+    // Nesten gråtone-merkevare → nøytral, elegant blå-grå palett.
+    accent = '#5b6b82'; accent2 = '#94a3b8';
+  }
+
+  // Bakgrunns-tone: respekter sidens egen lyshet; sterk accent → merkevare-tonet.
+  const lightRatio = lightPix / total, darkRatio = darkPix / total;
+  const avgChromaSat = chromaN ? chromaSatSum / chromaN : 0;
+  let background: MockupBackground;
+  if (lightRatio > 0.5) background = 'light';
+  else if (darkRatio > 0.4) background = 'dark';
+  else background = avgChromaSat > 0.45 ? 'brand' : 'dark';
+
+  // Karakter fra FARGEDEKNING (andel av bildet som er farget) + metning + antall
+  // tydelige toner. Dekning skiller minimal (mest nøytralt/hvitt) fra markant.
+  const chromaCoverage = total ? chromaN / total : 0;
+  const distinctHues = cnt.filter((c, b) => c >= 2 && buckets[b] > bestW * 0.15).length;
+  let vibe: BrandVibe;
+  if (distinctHues >= 3) vibe = 'playful';               // mange sterke toner → leken
+  else if (chromaCoverage < 0.1) vibe = 'muted';         // nesten nøytralt → dempet/minimal
+  else if (chromaCoverage >= 0.35 && avgChromaSat >= 0.62) vibe = 'bold'; // mye mettet farge → markant
+  else vibe = 'vivid';
+
+  const decorByVibe: Record<BrandVibe, MockupDecor> = { playful: 'confetti', bold: 'band', vivid: 'orbs', muted: 'grid' };
+  const bgStyleByVibe: Record<BrandVibe, MockupBgStyle> = { playful: 'gradient', bold: 'atmospheric', vivid: 'gradient', muted: 'clean' };
+
+  return {
+    accent, accent2, background,
+    bgStyle: bgStyleByVibe[vibe],
+    decor: decorByVibe[vibe],
+    typography: typographyFor(fontHint, vibe),
+    vibe,
+  };
 }
