@@ -524,6 +524,10 @@ interface ManuscriptPanelProps {
   onManuscriptChange?: (manuscript: Manuscript) => void;
   storyLogicData?: StoryLogicState | null;
   headerLeftContent?: React.ReactNode;
+  // Primitiv-nøkkel som endres når headerLeftContent-innholdet endres (f.eks. språk).
+  // React.memo-komparatoren ignorerer JSX-noden (ny ref hver render), så uten denne
+  // ville en språkendring i headerLeftContent aldri nå det memoiserte panelet.
+  headerLeftContentKey?: string | number;
   onStoryArcFocusChange?: (focus?: StoryArcNavigationFocus | null) => void;
   onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
   /**
@@ -7058,6 +7062,10 @@ export const ManuscriptPanel = React.memo(ManuscriptPanelComponent, (prevProps, 
   // Mål-lengde er en primitiv som styrer toolbar-chip-en; uten denne re-rendret
   // ikke panelet når målet ble satt, så «Mål X min» oppdaterte seg aldri.
   if (prevProps.targetDurationMinutes !== nextProps.targetDurationMinutes) return false;
+  // headerLeftContent er en JSX-node (ny ref hver render) — vi kan ikke sammenligne den
+  // direkte uten å oppheve memoen. Sammenlign i stedet en primitiv nøkkel som endres når
+  // innholdet faktisk endres (typisk språkbytte NO↔EN på breadcrumb/Tilbake-knappen).
+  if (prevProps.headerLeftContentKey !== nextProps.headerLeftContentKey) return false;
 
   // All checks passed - props are effectively equal, skip re-render
   return true;

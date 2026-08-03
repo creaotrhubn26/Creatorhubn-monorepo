@@ -3412,6 +3412,126 @@ const setCachedBrandingSettings = (settings: BrandingSettings): BrandingSettings
 
 export const getBrandingSettings = (): BrandingSettings => cachedBrandingSettings;
 
+// ── Tospråklige branding-labels (NO/EN) ────────────────────────────────────────
+// DEFAULT_TOKENS.labels er norsk kilde-of-truth. BRANDING_LABELS_EN er en partiell
+// engelsk tvilling: nøkler som IKKE finnes her faller tilbake til norsk (samme
+// fallback-mønster som i18n/translate). Fylles inn inkrementelt — klynge for klynge.
+export const BRANDING_LABELS_EN: Partial<Record<BrandingTextTokenKey, string>> = {
+  // Story Writer — topptekst / breadcrumb
+  storyArcBackLabel: 'Back',
+  storyWriterHeader: 'Story Writer - Manuscript',
+  manuscriptHeader: 'Manuscript & Script',
+  manuscriptHeaderMobile: 'Manuscript',
+  fabLabel: 'Quick navigation',
+
+  // Manuskript — verktøylinje / meny
+  manuscriptAutoBreakdown: 'Auto Breakdown',
+  manuscriptAutoShort: 'Auto',
+  manuscriptExport: 'Export',
+  manuscriptSave: 'Save',
+  manuscriptImport: 'Import',
+  manuscriptTemplates: 'Templates',
+  manuscriptNew: 'New manuscript',
+  manuscriptNewShort: 'New',
+  manuscriptListTitle: 'Your manuscripts',
+  manuscriptOpenHint: 'Click to open',
+  manuscriptNoProjectMessage: 'Select or create a project from the overview to start writing.',
+  manuscriptNoProjectTitle: 'Select a project',
+  manuscriptOpenButton: 'Open',
+  manuscriptUnknownAuthor: 'Unknown author',
+  manuscriptDeleteConfirm: 'Are you sure you want to delete',
+  manuscriptEmptyTitle: 'No manuscripts yet',
+  manuscriptEmptyBody: 'Create your first manuscript or import an existing one',
+  manuscriptEmptyCta: 'Create new manuscript',
+  manuscriptBackShort: '← Back',
+  manuscriptBackLong: '← Back to card view',
+
+  // Manuskript — tooltips / cover
+  importTooltip: 'Import manuscript from a previous export',
+  manuscriptUploadCoverTooltip: 'Upload cover image',
+  manuscriptEditTooltip: 'Edit manuscript',
+  manuscriptDeleteTooltip: 'Delete manuscript',
+  manuscriptCoverLabel: 'Cover image',
+  manuscriptUploadCoverButton: 'Upload cover',
+  manuscriptRemoveCoverButton: 'Remove cover',
+  manuscriptCoverHint: 'Recommended size: 600x900px',
+
+  // Manuskript — nytt/rediger-dialog
+  manuscriptDialogNewTitle: 'New manuscript',
+  manuscriptDialogEditTitle: 'Edit manuscript',
+  manuscriptFieldTitleLabel: 'Title',
+  manuscriptFieldSubtitleLabel: 'Subtitle',
+  manuscriptFieldAuthorLabel: 'Author',
+  manuscriptFieldFormatLabel: 'Format',
+  manuscriptFormatFountain: 'Fountain (recommended)',
+  manuscriptFormatMarkdown: 'Markdown',
+  manuscriptFormatFinalDraft: 'Final Draft',
+  manuscriptDialogCancel: 'Cancel',
+  manuscriptDialogCreate: 'Create',
+  manuscriptDialogStatusLabel: 'Status',
+  manuscriptStatusDraft: 'Draft',
+  manuscriptStatusReview: 'Review',
+  manuscriptStatusApproved: 'Approved',
+  manuscriptStatusProduction: 'Production',
+  manuscriptStatusCompleted: 'Completed',
+  manuscriptDialogSaveChanges: 'Save changes',
+
+  // Manuskript — toasts
+  manuscriptUpdatedSuccess: 'Manuscript updated',
+  manuscriptToastLoaded: 'Manuscripts loaded',
+  manuscriptToastLoadError: 'Error loading manuscripts',
+  manuscriptToastLoadScenesError: 'Error loading scenes',
+  manuscriptToastLoadActsError: 'Error loading acts',
+  manuscriptToastLoadDialogueError: 'Error loading dialogue',
+  manuscriptToastLoadRevisionsError: 'Error loading revisions',
+  manuscriptToastOnline: 'Connected to network',
+
+  // Import-dialog
+  importDialogTitle: 'Import Manuscript from JSON',
+  importDialogInfo: 'Upload a JSON file exported from the Manuscript system.',
+  importSelectFile: 'Click to select a file or drag a file here',
+  importFileFormat: '.json format (JSON)',
+  importValidationErrorTitle: 'Validation error:',
+  importValidatedSuccess: 'JSON file validated and ready for import',
+  importMetadataTitle: 'Metadata',
+  importContentTitle: 'Content',
+  importFieldTitle: 'Title:',
+  importFieldAuthor: 'Author:',
+  importFieldFormat: 'Format:',
+  importFieldExported: 'Exported:',
+  importStatsScenes: 'Scenes',
+  importStatsActs: 'Acts',
+  importStatsCharacters: 'Characters',
+  importStatsDialogue: 'Dialogue lines',
+  importStatsRevisions: 'Revisions',
+  importStatsRuntime: 'Estimated runtime',
+  importIdWarning: 'New IDs will be generated for all elements to avoid conflicts. The original IDs are preserved in the history.',
+  importImporting: 'Importing manuscript...',
+  importCompleteTitle: 'Import complete!',
+  importCompleteBody: 'The manuscript is ready to use. Close the dialog to continue.',
+  importCancel: 'Cancel',
+  importChooseAnother: 'Choose another file',
+  importAction: 'Import',
+  importClose: 'Close',
+  importToastFileLoaded: 'File loaded — check the data before importing',
+  importToastUnknownError: 'Unknown error',
+  importToastReadError: 'Could not read JSON file',
+  importToastImported: 'Manuscript imported with new IDs',
+  importToastImportFailed: 'Import failed',
+};
+
+/**
+ * Returnerer label-kartet for gitt språk. Norsk (default) gir kilde-kartet uendret.
+ * Engelsk overlegger BRANDING_LABELS_EN over norsk — manglende EN-nøkkel faller
+ * tilbake til norsk, så INGEN nøkkel blir tom. Bevarer tenant-overstyringer for
+ * ikke-oversatte nøkler.
+ */
+export const getLabelsForLang = (
+  lang: 'no' | 'en',
+  labels: Record<BrandingTextTokenKey, string>,
+): Record<BrandingTextTokenKey, string> =>
+  lang === 'en' ? { ...labels, ...BRANDING_LABELS_EN } : labels;
+
 export const saveBrandingSettings = (settings: BrandingSettings): BrandingSettings =>
   setCachedBrandingSettings(settings);
 

@@ -13344,6 +13344,7 @@ type RoleRoomProjectWorkspaceState = {
                           toast.showError('Kunne ikke lagre mål-lengde');
                         }
                       }}
+                      headerLeftContentKey={`${branding.tokens.labels.storyArcBackLabel}|${branding.tokens.labels.storyWriterHeader}`}
                       headerLeftContent={
                         <Box
                           sx={{
