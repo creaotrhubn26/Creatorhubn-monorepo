@@ -48,6 +48,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import FolderIcon from "@mui/icons-material/Folder";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AutoAwesomeMosaicIcon from "@mui/icons-material/AutoAwesomeMosaic";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import EditIcon from "@mui/icons-material/Edit";
 import CircleIcon from "@mui/icons-material/Circle";
@@ -104,6 +105,7 @@ interface Props {
   onOpenAdFilmAgent: () => void;
   onOpenDemoStudio: () => void;
   onOpenInfographicStudio: () => void;
+  onOpenMockupStudio: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -187,6 +189,7 @@ export function HomeView({
   onOpenAdFilmAgent,
   onOpenDemoStudio,
   onOpenInfographicStudio,
+  onOpenMockupStudio,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -504,6 +507,27 @@ export function HomeView({
             <div className="home-action-desc">
               Animerte data-infographics fra maler — stat-callouts, diagrammer og
               sosiale formater med eget bibliotek og eksport
+            </div>
+            <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenMockupStudio}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/mockup.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
+          disabled={!signedIn}
+          title={signedIn ? "Sett sammen en produkt-one-pager med Mac/iPad/iPhone-mockups — last opp skjermbilder, rediger tekst og accent-farger, og eksporter som PNG. Krever Demo Studio-abonnement." : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #06b6d4, #7c3aed)" }}>
+            <AutoAwesomeMosaicIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Mockup Studio</div>
+            <div className="home-action-desc">
+              Lag produkt-one-pagere med enhets-mockups — last opp skjermbilder,
+              rediger tekst og accent-farger, eksporter som PNG
             </div>
             <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
           </div>
