@@ -27,6 +27,12 @@ struct MoteBriefAnbudDTO: Decodable, Hashable {
     let frist: String?
 }
 
+struct MoteBriefForrigeMoteDTO: Decodable, Hashable {
+    let dato: String
+    let notat: String
+    let lofter: [String]
+}
+
 struct MoteBriefFaktaDTO: Decodable, Hashable {
     let selskap: String
     var orgnr: String? = nil
@@ -37,6 +43,8 @@ struct MoteBriefFaktaDTO: Decodable, Hashable {
     var resultat: Double? = nil
     var regnskapAar: Int? = nil
     var aktiveAnbud: [MoteBriefAnbudDTO]? = nil
+    /// Fase 3-sløyfen: forrige møtelogg — «hva vi lovte sist».
+    var forrigeMote: MoteBriefForrigeMoteDTO? = nil
 }
 
 struct MoteBriefDTO: Decodable, Hashable {
@@ -44,7 +52,48 @@ struct MoteBriefDTO: Decodable, Hashable {
     let fakta: MoteBriefFaktaDTO
 }
 
+// MARK: - Etterarbeid (fase 3)
+
+struct EtterarbeidOppgaveDTO: Decodable, Hashable {
+    let tittel: String
+    var frist: String? = nil
+}
+
+struct EtterarbeidEpostDTO: Decodable, Hashable {
+    let emne: String
+    let brodtekst: String
+}
+
+struct EtterarbeidDTO: Decodable, Hashable {
+    let notat: String
+    var lofter: [String]? = nil
+    var oppgaver: [EtterarbeidOppgaveDTO]? = nil
+    var statusForslag: String? = nil
+    var epost: EtterarbeidEpostDTO? = nil
+}
+
 extension APIClient {
+
+    /// Etterarbeid: rå notater/transkripsjon → strukturert notat + løfter +
+    /// oppgaver + oppfølgings-epost-UTKAST. Backend logger møtet slik at
+    /// NESTE brief åpner med «hva vi lovte sist».
+    func sendMoteEtterarbeid(selskap: String, tekst: String,
+                             kontakt: String? = nil, moteMaal: String? = nil,
+                             orgnr: String? = nil) async throws -> EtterarbeidDTO {
+        struct Body: Encodable {
+            let selskap: String
+            let tekst: String
+            let kontakt: String?
+            let moteMaal: String?
+            let orgnr: String?
+        }
+        struct Resp: Decodable { let resultat: EtterarbeidDTO }
+        let r: Resp = try await _post(
+            "/api/leadgrid/moter/etterarbeid",
+            body: Body(selskap: selskap, tekst: tekst, kontakt: kontakt,
+                       moteMaal: moteMaal, orgnr: orgnr))
+        return r.resultat
+    }
 
     /// Hent AI-møtebrief for et selskap/møte. Orgnr er valgfritt — backend
     /// finner det via Brreg-navnesøk når det mangler.

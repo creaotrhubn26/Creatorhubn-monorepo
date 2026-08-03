@@ -1529,6 +1529,7 @@ struct MeetingDetailSidebar: View {
     @State private var showAddCampaign = false
     @State private var showAIInsights = false
     @State private var showMoteBrief = false
+    @State private var showEtterMote = false
     @State private var showHistory = false
     @State private var showPrepCore = false
     @State private var showStakeholders = false
@@ -1575,6 +1576,10 @@ struct MeetingDetailSidebar: View {
         .sheet(isPresented: $showAssignSeller)        { AssignSellerSheet(meeting: meeting) }
         .sheet(isPresented: $showAddCampaign)         { AddToCampaignSheet(meeting: meeting) }
         .sheet(isPresented: $showAIInsights)          { PrepInsightsModal(meetingCompany: meeting.company, meetingContact: meeting.contactName) }
+        .sheet(isPresented: $showEtterMote) {
+            EtterMoteSheet(selskap: meeting.company,
+                           kontakt: meeting.contactName)
+        }
         .sheet(isPresented: $showMoteBrief) {
             MoteBriefSheet(selskap: meeting.company,
                            kontakt: meeting.contactName,
@@ -1654,6 +1659,9 @@ struct MeetingDetailSidebar: View {
                 }
                 Button { showStatusPicker = true } label: {
                     Label("Endre status", systemImage: "flag.fill")
+                }
+                Button { showEtterMote = true } label: {
+                    Label("Etter møtet — logg & oppfølging", systemImage: "checkmark.rectangle.stack.fill")
                 }
                 Button(role: .destructive) {
                     showCancelMeeting = true

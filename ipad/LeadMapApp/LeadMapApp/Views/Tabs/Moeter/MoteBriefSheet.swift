@@ -132,6 +132,23 @@ struct MoteBriefSheet: View {
                     }
                 }
 
+                // Fase 3-sløyfen: løftene fra forrige møte — briefen husker.
+                if let forrige = b.fakta.forrigeMote {
+                    seksjon("Sist vi møttes (\(forrige.dato))", ikon: "clock.arrow.circlepath",
+                            tint: BfBrand.yellow) {
+                        briefTekst(forrige.notat)
+                        ForEach(forrige.lofter, id: \.self) { l in
+                            HStack(alignment: .top, spacing: 7) {
+                                Image(systemName: "hand.raised.fill")
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(BfBrand.yellow)
+                                Text("Vi lovte: \(l)")
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                    }
+                }
                 seksjon("Situasjonen", ikon: "building.2.fill", tint: BfBrand.blue) {
                     briefTekst(b.brief.oppsummering)
                 }
@@ -312,7 +329,12 @@ struct MoteBriefSheet: View {
                 omsetning: 48_500_000, resultat: 3_200_000, regnskapAar: 2025,
                 aktiveAnbud: [MoteBriefAnbudDTO(
                     tittel: "Rammeavtale elektrikertjenester 2026–2028",
-                    frist: nil)]))
+                    frist: nil)],
+                forrigeMote: MoteBriefForrigeMoteDTO(
+                    dato: "2026-07-21",
+                    notat: "Første møte: kartla behovet for samlet el-leveranse; positiv daglig leder, teknisk sjef må med videre.",
+                    lofter: ["Sende referanseliste fra lignende prosjekter",
+                             "Komme tilbake med prisindikasjon på rammeavtale"])))
     }
 }
 
