@@ -5,6 +5,9 @@ build/
 apps/*/src-tauri/target/
 tools/*/src-tauri/target/
 .env
+.env.vercel*
+.env.netlify*
+.env.production.local
 .env.whatsapp.demo.local
 .env.oembed.demo.local
 .env.pages-cta.demo.local

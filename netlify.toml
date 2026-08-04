@@ -1,0 +1,249 @@
+# Netlify-konfig — portet fra frontend/vercel.json (Vercel → Netlify-migrasjon).
+#
+# ⚠️ IKKE DNS-cutover ennå. Verifiser HELE ruting-tabellen på en Netlify deploy-preview
+# (koble repoet, la denne grenen bygge, test rutene mot preview-URL-en) FØR domenet
+# pekes om. Reverse-proxy-reglene under er load-bearing for theroleroom.no/-siden.
+#
+# Semantikk-forskjeller fra Vercel som er håndtert her:
+#   • Vercel `rewrites` (URL uendret)      → Netlify [[redirects]] status = 200
+#   • Vercel `redirects` (permanent)       → Netlify [[redirects]] status = 301
+#   • Ekstern proxy (backend/R2/worker)    → status = 200 + force = true
+#   • `(.*)`/`$1`  → `*`/`:splat` ;  første-treff-vinner (som Vercel-rekkefølgen)
+#   • `force = true` der regelen ellers ville skygges av en ekte fil (/, /robots.txt, proxyer)
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "client/dist"
+  # Hopp over preview-bygg når committen ikke rører frontend/ (base). main bygger alltid.
+  # Netlify: exit 0 = hopp over, non-zero = bygg. (Samme churn-filter som vercel.json hadde.)
+  ignore = "if [ \"$BRANCH\" = \"main\" ]; then exit 1; fi; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- ."
+
+[build.environment]
+  NPM_FLAGS = "--legacy-peer-deps"   # matcher Vercel installCommand
+  NODE_VERSION = "20"                # Vite 5 — juster ved behov
+
+# ─────────────────────────── REDIRECTS (301) ───────────────────────────
+# Vercel kjører redirects FØR rewrites → de må stå først (Netlify = første-treff).
+
+[[redirects]]
+  from = "/casting.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/theroleroom"
+  to = "/"
+  status = 301
+  force = true
+# ⚠️ MERK: denne 301-en skygger rewrite-en «/theroleroom → /theroleroom.html» lenger nede
+#    (samme som på Vercel i dag). Verifiser at det er ØNSKET — ser ut som en utilsiktet
+#    skygge i den eksisterende vercel.json.
+
+[[redirects]]
+  from = "/theroleroom/"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/talentportal/"
+  to = "/talentportal"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/utdanningsinstitusjon/"
+  to = "/utdanningsinstitusjon"
+  status = 301
+  force = true
+
+# Skygget av reglene over (duplikat-source, første-treff vant på Vercel også) — beholdt
+# som dokumentasjon, deaktivert:
+#   /casting.html   → /theroleroom   (skygget av /casting.html → /)
+#   /theroleroom/   → /theroleroom   (skygget av /theroleroom/ → /)
+
+# ─────────────────────── PROXY-REWRITES (200, force) ───────────────────────
+# Eksterne mål (Render-backend, R2, Cloudflare Worker) — må proxye selv om en fil matcher.
+
+[[redirects]]
+  from = "/api/showcase/cdn/*"
+  to = "https://showcase-cdn.creatorhubn.workers.dev/api/showcase/cdn/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://creatorhub-backend-rtbl.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/g/*"
+  to = "https://creatorhub-backend-rtbl.onrender.com/g/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/cdn/*"
+  to = "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "https://creatorhub-backend-rtbl.onrender.com/api/theroleroom-sitemap.xml"
+  status = 200
+  force = true
+# Skygget: /sitemap.xml → /creatorhubn-sitemap.xml (duplikat, første-treff vant)
+
+# ─────────────────────── INTERNE REWRITES (200) ───────────────────────
+
+[[redirects]]
+  from = "/robots.txt"
+  to = "/theroleroom-robots.txt"
+  status = 200
+  force = true
+# Skygget: /robots.txt → /creatorhubn-robots.txt (duplikat, første-treff vant)
+
+[[redirects]]
+  from = "/llms.txt"
+  to = "/theroleroom-llms.txt"
+  status = 200
+
+[[redirects]]
+  from = "/link"
+  to = "/post-agent-link.html"
+  status = 200
+
+[[redirects]]
+  from = "/billing/post-agent"
+  to = "/post-agent-billing.html"
+  status = 200
+
+[[redirects]]
+  from = "/marketplace"
+  to = "/marketplace.html"
+  status = 200
+
+[[redirects]]
+  from = "/marketplace/post-agent"
+  to = "/post-agent-detail.html"
+  status = 200
+
+# theroleroom.html-landingssider (statisk innhold, URL uendret)
+[[redirects]]
+  from = "/en"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/en/*"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/talentportal"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/utdanningsinstitusjon"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/alternatives"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/vs-*"                       # var /vs-:competitor (mål er statisk → splat er trygt)
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/for-studenter"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/film-tv-utdanning"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/casting-director-utdanning"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/regissor-verktoy"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/produksjonsledelse-studie"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/innholdsprodusenter"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/innholdsproduksjon-studie"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/dansestudio"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/casting-svindel-tegn"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/barn-samtykke-film"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/casting-rapport-2026"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/brief"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/brief/:slug"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/presse"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/theroleroom"                # ⚠️ skygget av 301 «/theroleroom → /» over (jf. Vercel)
+  to = "/theroleroom.html"
+  status = 200
+
+# Rot + juridiske sider
+[[redirects]]
+  from = "/"
+  to = "/theroleroom-root.html"
+  status = 200
+  force = true                         # ellers serveres index.html på /
+[[redirects]]
+  from = "/data-deletion"
+  to = "/theroleroom-data-deletion.html"
+  status = 200
+[[redirects]]
+  from = "/privacy"
+  to = "/theroleroom-privacy.html"
+  status = 200
+[[redirects]]
+  from = "/terms-and-conditions"
+  to = "/theroleroom-terms.html"
+  status = 200
+[[redirects]]
+  from = "/terms"
+  to = "/theroleroom-terms.html"
+  status = 200
+
+# ─────────────────────── SPA-FALLBACK (MÅ VÆRE SIST) ───────────────────────
+# INGEN force → ekte filer (/assets/*.js, .css, bilder) serveres direkte.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
