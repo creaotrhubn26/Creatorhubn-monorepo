@@ -71,6 +71,8 @@ import {
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
 import { aiProductMindmap } from './mockupMindmap';
+import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
+import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -112,6 +114,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
   const [view, setView] = useState<'projects' | 'editor'>('projects');
 
@@ -275,6 +278,19 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
   const doc0Name = () => (store.doc.name && store.doc.name !== 'Produkt-mind map' ? store.doc.name : 'Produkt');
+
+  const runExportVideo = async (cfg: MotionConfig) => {
+    if (!motionExportAvailable()) { setExportMsg('Video-opptak støttes ikke i denne webviewen.'); return; }
+    if (videoBusy) return;
+    setVideoBusy(true);
+    try {
+      const saved = await exportAndSaveMotion(doc, cfg, 0.75, (l, f) => setExportMsg(`🎬 ${l} ${Math.round(f * 100)}%`));
+      setExportMsg(saved ? '✓ Video lagret (WebM).' : null);
+    } catch (e) {
+      setExportMsg('Video feilet: ' + String(e));
+    } finally {
+      setVideoBusy(false);
+    }
   };
 
   const assignShot = (shot: CapturedShot) => {
@@ -383,6 +399,16 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
+        <select
+          onChange={(e) => { const p = MOTION_PRESETS.find((x) => x.id === e.target.value); if (p) void runExportVideo(p.cfg); e.target.selectedIndex = 0; }}
+          disabled={videoBusy}
+          value=""
+          style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy ? 0.5 : 1 }}
+          title="Animér avsløringen (enheter → tekst → callouts én etter én → lupe) og eksporter som video"
+        >
+          <option value="" disabled>{videoBusy ? '🎬 Lager…' : '🎬 Video'}</option>
+          {MOTION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
         <button onClick={() => setShowExport(true)} style={primaryBtn} title="Kvalitetssjekk → format → eksport (PNG/PDF/PSD)">Eksporter</button>
       </div>
 

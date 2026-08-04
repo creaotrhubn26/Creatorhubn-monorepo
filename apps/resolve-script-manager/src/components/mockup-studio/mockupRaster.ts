@@ -12,7 +12,8 @@
  */
 
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
-import { parseMermaidMindmap, type MindNode } from './mockupMindmap';
+import { parseMermaidMindmap } from './mockupMindmap';
+import { revealFor, type Reveal } from './mockupMotion';
 import {
   type MockupDoc,
   type MockupDeviceSlot,
@@ -564,12 +565,35 @@ function drawLoupe(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnot
 }
 
 /** Tegn hele illustrasjons-laget (markør → callout → lupe). Lupe samples `sampleSource`. */
-function drawAnnotations(ctx: CanvasRenderingContext2D, doc: MockupDoc, scale: number, sampleSource: CanvasImageSource): void {
+/** Ankerpunkt for en annotasjon (i lerret-px) — brukt som animasjons-senter. */
+function annCenter(doc: MockupDoc, a: MockupAnnotation): { x: number; y: number } {
+  const s = annRect(doc, a);
+  return { x: s.x + a.fx * s.w, y: s.y + a.fy * s.h };
+}
+
+/** Kjør `fn` innpakket i en avsløring (transform + alpha rundt et senter). */
+function withReveal(ctx: CanvasRenderingContext2D, rev: Reveal | null, cx: number, cy: number, fn: () => void): void {
+  if (rev && rev.alpha <= 0.001) return;
+  ctx.save();
+  if (rev) {
+    ctx.globalAlpha *= rev.alpha;
+    ctx.translate(cx, cy + rev.ty);
+    ctx.scale(rev.scale, rev.scale);
+    ctx.translate(-cx, -cy);
+  }
+  fn();
+  ctx.restore();
+}
+
+function drawAnnotations(ctx: CanvasRenderingContext2D, doc: MockupDoc, scale: number, sampleSource: CanvasImageSource, t?: number): void {
   const anns = doc.annotations;
   if (!anns || anns.length === 0) return;
-  for (const a of anns) if (a.kind === 'marker') drawMarker(ctx, doc, a);
-  for (const a of anns) if (a.kind === 'callout') drawCallout(ctx, doc, a);
-  for (const a of anns) if (a.kind === 'loupe') drawLoupe(ctx, doc, a, scale, sampleSource);
+  const markers = anns.filter((a) => a.kind === 'marker');
+  const callouts = anns.filter((a) => a.kind === 'callout');
+  const loupes = anns.filter((a) => a.kind === 'loupe');
+  markers.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, t != null ? revealFor('marker', i, markers.length, t) : null, c.x, c.y, () => drawMarker(ctx, doc, a)); });
+  callouts.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, t != null ? revealFor('callout', i, callouts.length, t) : null, c.x, c.y, () => drawCallout(ctx, doc, a)); });
+  loupes.forEach((a, i) => { const lx = (a.lensX ?? 0.86) * doc.canvas.w, ly = (a.lensY ?? 0.82) * doc.canvas.h; withReveal(ctx, t != null ? revealFor('loupe', i, loupes.length, t) : null, lx, ly, () => drawLoupe(ctx, doc, a, scale, sampleSource)); });
 }
 
 // ── Produkt-mind map (native render av Mermaid-syntaks, merkevare-stylet) ────
@@ -682,34 +706,65 @@ function hexToRgba(hex: string, a: number): string {
  * (1 = full eksport-oppløsning; < 1 for rask preview). Async fordi ramme-PNG-er
  * og skjermbilder lastes on-demand.
  */
-export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean }): Promise<HTMLCanvasElement> {
+export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean; anim?: { t: number } }): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(doc.canvas.w * scale);
   canvas.height = Math.round(doc.canvas.h * scale);
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
   ctx.scale(scale, scale);
+  const t = opts?.anim?.t;
 
   fillBackground(ctx, doc);
   drawDecor(ctx, doc);
 
   // Mind map-modus: lerretet ER en produkt-mind map (ingen enheter/tekst).
   if (doc.mindmap && doc.mindmap.trim()) {
-    drawMindmap(ctx, doc);
+    const rev = t != null ? revealFor('mindmap', 0, 1, t) : null;
+    withReveal(ctx, rev, doc.canvas.w / 2, doc.canvas.h * 0.52, () => drawMindmap(ctx, doc));
     await drawLogo(ctx, doc.canvas);
     return canvas;
   }
 
-  // Enheter i dokument-rekkefølge (senere = øverst).
-  for (const dev of doc.devices) {
+  // Enheter i dokument-rekkefølge (senere = øverst), animert avsløring om t satt.
+  for (let i = 0; i < doc.devices.length; i++) {
+    const dev = doc.devices[i];
+    const rev = t != null ? revealFor('device', i, doc.devices.length, t) : null;
+    if (rev && rev.alpha <= 0.001) continue;
+    ctx.save();
+    if (rev) {
+      const cx = dev.x + dev.w / 2, cy = dev.y + deviceHeight(dev) / 2;
+      ctx.globalAlpha *= rev.alpha;
+      ctx.translate(cx, cy + rev.ty); ctx.scale(rev.scale, rev.scale); ctx.translate(-cx, -cy);
+    }
     await drawDevice(ctx, doc, dev);
+    ctx.restore();
   }
-  for (const t of doc.texts) {
-    drawText(ctx, doc, t);
-  }
+  doc.texts.forEach((tx, i) => {
+    const rev = t != null ? revealFor('text', i, doc.texts.length, t) : null;
+    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y, () => drawText(ctx, doc, tx));
+  });
   await drawLogo(ctx, doc.canvas);
-  if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas);
+  if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
   return canvas;
+}
+
+/**
+ * Render en animasjons-sekvens (frames) for videoeksport. Returnerer ett canvas
+ * per frame ved jevn t 0..1 over `seconds`. Siste ~12% er hvile (t=1) så videoen
+ * ikke kutter rett etter siste avsløring.
+ */
+export async function renderMotionFrames(doc: MockupDoc, cfg: { seconds: number; fps: number }, scale = 1, onProgress?: (done: number, total: number) => void): Promise<HTMLCanvasElement[]> {
+  const total = Math.max(2, Math.round(cfg.seconds * cfg.fps));
+  const hold = 0.12; // andel av tiden som holder ferdig bilde
+  const frames: HTMLCanvasElement[] = [];
+  for (let f = 0; f < total; f++) {
+    const prog = f / (total - 1);
+    const t = prog <= 1 - hold ? prog / (1 - hold) : 1;
+    frames.push(await rasterizeMockup(doc, scale, { anim: { t } }));
+    onProgress?.(f + 1, total);
+  }
+  return frames;
 }
 
 /** Rasteriser + returner PNG-data-URL (full oppløsning som standard). */
