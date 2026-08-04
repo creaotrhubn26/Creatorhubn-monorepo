@@ -213,12 +213,15 @@
   to = "/theroleroom.html"
   status = 200
 
-# Rot + juridiske sider
+# Rot: server den BYGDE index.html (SPA-entry) — ikke theroleroom-root.html.
+# theroleroom-root.html (public/) er IKKE Vite-prosessert og peker på dev-kilden
+# `/src/main.tsx` → laster ikke i prod → blank side. På Vercel «defeates» rot-
+# rewriten av filsystem-presedens så Vercel serverer egentlig index.html; her
+# gjør vi det eksplisitt. Appen setter SEO-meta klient-side (host-bevisst).
 [[redirects]]
   from = "/"
-  to = "/theroleroom-root.html"
+  to = "/index.html"
   status = 200
-  force = true                         # ellers serveres index.html på /
 [[redirects]]
   from = "/data-deletion"
   to = "/theroleroom-data-deletion.html"
