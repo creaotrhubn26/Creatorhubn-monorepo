@@ -42,6 +42,8 @@ struct Meeting: Identifiable, Hashable {
     var id = UUID()
     var startTime: String       // "09:00" (var: kan flyttes fra agendaen)
     var endTime: String         // "10:00"
+    /// Demo: dra-og-slipp til annen ukedag (kolonneindeks man-fre).
+    var demoDagKolonne: Int? = nil
     let company: String
     let location: String        // "Oslo, Norge"
     let contactName: String
@@ -418,9 +420,9 @@ struct MeetingsView: View {
     @State private var calMode: CalendarMode = .agenda
     /// «Endre tidspunkt» fra agenda/uke/detalj — sheet-item.
     @State private var reschedulingMeeting: Meeting? = nil
-    /// Demo: flyttede møtetider (id → (start, slutt)) så kalenderen flytter
-    /// blokka umiddelbart uten backend.
-    @State private var demoTidOverstyringer: [UUID: (String, String)] = [:]
+    /// Demo: flyttede møtetider (id → (start, slutt, dagkolonne)) så
+    /// kalenderen flytter blokka umiddelbart uten backend.
+    @State private var demoTidOverstyringer: [UUID: (String, String, Int?)] = [:]
     @State private var showStatsModal = false
     @State private var bookDayOfMonth: Int?
     // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
@@ -514,7 +516,8 @@ struct MeetingsView: View {
         let nyStart = df.string(from: start)
         let nySlutt = df.string(from: start.addingTimeInterval(Double(varighetMin) * 60))
         if isDemo {
-            demoTidOverstyringer[m.id] = (nyStart, nySlutt)
+            let dagKol = demoTidOverstyringer[m.id]?.2
+            demoTidOverstyringer[m.id] = (nyStart, nySlutt, dagKol)
             return
         }
         Task { @MainActor in
@@ -527,6 +530,46 @@ struct MeetingsView: View {
         }
     }
 
+    /// Dra-og-slipp i ukekalenderen: flytt møtet deltaDager/deltaMinutter.
+    /// Tiden snappes til 30 min og klemmes til 07:00–18:30.
+    private func flyttMote(_ m: Meeting, deltaDager: Int, deltaMin: Int) {
+        let deler = m.startTime.split(separator: ":")
+        guard deler.count == 2, let t = Int(deler[0]), let mn = Int(deler[1]) else { return }
+        let sluttDeler = m.endTime.split(separator: ":")
+        let varighet: Int = {
+            guard sluttDeler.count == 2, let st = Int(sluttDeler[0]),
+                  let sm = Int(sluttDeler[1]) else { return 60 }
+            return max(30, (st * 60 + sm) - (t * 60 + mn))
+        }()
+        let nyStartMin = min(max(t * 60 + mn + deltaMin, 7 * 60), 18 * 60 + 30)
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm"
+        if isDemo {
+            let nyStart = String(format: "%02d:%02d", nyStartMin / 60, nyStartMin % 60)
+            let sluttMin = nyStartMin + varighet
+            let nySlutt = String(format: "%02d:%02d", sluttMin / 60, sluttMin % 60)
+            let gammelKol = demoTidOverstyringer[m.id]?.2 ?? 1  // tirsdag
+            let nyKol = min(max(gammelKol + deltaDager, 0), 4)
+            demoTidOverstyringer[m.id] = (nyStart, nySlutt, deltaDager == 0 ? demoTidOverstyringer[m.id]?.2 : nyKol)
+            return
+        }
+        // Ekte: ny dato = i dag + deltaDager, nytt klokkeslett.
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = nyStartMin / 60
+        comps.minute = nyStartMin % 60
+        guard let basis = Calendar.current.date(from: comps),
+              let nyDato = Calendar.current.date(byAdding: .day, value: deltaDager, to: basis)
+        else { return }
+        Task { @MainActor in
+            do {
+                try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: nyDato)
+                await appState.refreshAll()
+            } catch {
+                print("[Møter] dra-flytting feilet: \(error)")
+            }
+        }
+    }
+
     /// Dagens møter (agenda-lista + dag/uke/måned-visningene).
     private var sourceAgenda: [Meeting] {
         if isDemo {
@@ -535,6 +578,7 @@ struct MeetingsView: View {
                 var kopi = m
                 kopi.startTime = ny.0
                 kopi.endTime = ny.1
+                kopi.demoDagKolonne = ny.2
                 return kopi
             }
             .sorted { $0.startTime < $1.startTime }
@@ -1032,7 +1076,10 @@ struct MeetingsView: View {
                 WeekCalendarView(
                     meetings: sourceAgenda,
                     upcoming: sourceUpcoming,
-                    onReschedule: { m in reschedulingMeeting = m }
+                    onReschedule: { m in reschedulingMeeting = m },
+                    onMove: { m, dager, minutter in
+                        flyttMote(m, deltaDager: dager, deltaMin: minutter)
+                    }
                 ) { m in
                     selectMeeting(m)
                 } onTapUpcoming: { u in

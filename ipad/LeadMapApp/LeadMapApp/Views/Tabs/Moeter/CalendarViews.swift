@@ -245,8 +245,15 @@ struct WeekCalendarView: View {
     let upcoming: [UpcomingMeetingMini]     // resten av uka
     /// Long-press på en blokk → «Endre tidspunkt» (eies av MeetingsView).
     var onReschedule: ((Meeting) -> Void)? = nil
+    /// Dra-og-slipp: hold + dra en blokk → (deltaDager, deltaMinutter).
+    /// Vertikalt = ny tid (snap 30 min), horisontalt = ny dag.
+    var onMove: ((Meeting, Int, Int) -> Void)? = nil
     let onTapMeeting: (Meeting) -> Void
     let onTapUpcoming: (UpcomingMeetingMini) -> Void
+
+    /// Aktiv dra-operasjon (id + live offset for visuell flytting).
+    @State private var draId: UUID? = nil
+    @State private var draOffset: CGSize = .zero
 
     private let startHour = 8
     private let endHour = 18
@@ -332,24 +339,40 @@ struct WeekCalendarView: View {
             // I dag's meetings (todayIndex = tirsdag)
             ForEach(meetings) { m in
                 let (top, height) = position(for: m)
+                let drar = draId == m.id
                 Button { onTapMeeting(m) } label: {
                     weekBlock(company: m.company, color: m.iconColor, icon: m.icon, time: m.startTime)
                 }
                 .buttonStyle(.plain)
-                .contextMenu {
-                    if let onReschedule {
-                        Button {
-                            onReschedule(m)
-                        } label: {
-                            Label("Endre tidspunkt", systemImage: "calendar.badge.clock")
-                        }
-                    }
-                    Button { onTapMeeting(m) } label: {
-                        Label("Vis detaljer", systemImage: "sidebar.trailing")
-                    }
-                }
                 .frame(width: colWidth - 4, height: height)
-                .offset(x: 60 + CGFloat(todayIndex) * colWidth + 2, y: top)
+                .offset(x: 60 + CGFloat(m.demoDagKolonne ?? todayIndex) * colWidth + 2
+                            + (drar ? draOffset.width : 0),
+                        y: top + (drar ? draOffset.height : 0))
+                .opacity(drar ? 0.85 : 1)
+                .shadow(color: drar ? .black.opacity(0.5) : .clear, radius: drar ? 10 : 0, y: 4)
+                .zIndex(drar ? 10 : 0)
+                // Hold (0.2s) + dra: vertikalt = ny tid, horisontalt = ny dag.
+                // Sequenced gest så vanlig scroll i kalenderen ikke kaprer.
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.2)
+                        .sequenced(before: DragGesture(minimumDistance: 4))
+                        .onChanged { verdi in
+                            if case .second(true, let drag?) = verdi {
+                                draId = m.id
+                                draOffset = drag.translation
+                            }
+                        }
+                        .onEnded { verdi in
+                            defer { draId = nil; draOffset = .zero }
+                            guard case .second(true, let drag?) = verdi else { return }
+                            let deltaDager = Int((drag.translation.width / colWidth).rounded())
+                            let raaMin = (drag.translation.height / rowHeight) * 60
+                            let deltaMin = Int((raaMin / 30).rounded()) * 30
+                            if deltaDager != 0 || deltaMin != 0 {
+                                onMove?(m, deltaDager, deltaMin)
+                            }
+                        }
+                )
             }
             // Onsdag-fredag upcoming
             ForEach(upcoming) { u in
