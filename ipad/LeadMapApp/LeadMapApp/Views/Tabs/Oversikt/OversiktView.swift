@@ -151,26 +151,14 @@ struct OversiktView: View {
                     if dorsalgAktivert {
                         AnyView(DorsalgOversiktSection(stats: dorsalgStats))
                     }
-                    // Oppgaver fra møtelogging — det møtene ba deg gjøre.
-                    // Skjuler seg selv når lista er tom.
+                    // Oversikt = beslutningsskjermen (Daniel 2026-08-04):
+                    // kartet bodde både her og på Kart-fanen — duplikatet
+                    // fjernet. Rekkefølgen er «hva gjør jeg nå?»-prioritert:
+                    // neste møte/forfalte → oppgaver → kompakt leads-liste
+                    // med hopp til Kart for alt kart-arbeid.
+                    NextActionCard(leads: effectiveLeads)
                     MoteOppgaverCard()
-                    if isCompact {
-                        LeadsInAreaCard(leads: effectiveLeads)
-                            .frame(height: dynamicMapHeight)
-                        // iPhone (QA-runde 2, Daniels design-gjennomgang):
-                        // plassen under kartet sto død — vis det en selger
-                        // faktisk trenger på farten: neste møte + forfalte
-                        // oppfølginger.
-                        if DeviceIdiom.isPhone {
-                            NextActionCard(leads: effectiveLeads)
-                        }
-                    } else if isPortrait {
-                        LeadsInAreaCard(leads: effectiveLeads)
-                            .frame(height: max(720, geo.size.height - 320))
-                    } else {
-                        LeadsInAreaCard(leads: effectiveLeads)
-                            .frame(height: dynamicMapHeight)
-                    }
+                    LeadsOversiktCard(leads: effectiveLeads)
                     }   // slutt ikke-dørsalg-gren
                     Spacer(minLength: 12)
                 }
@@ -3403,6 +3391,127 @@ private struct FilterChip: View {
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(Brand.cardHi, in: Capsule())
         .overlay(Capsule().stroke(Brand.stroke, lineWidth: 1))
+    }
+}
+
+// MARK: - LeadsOversiktCard (kompakt leads-liste — kartet bor på Kart-fanen)
+
+/// Leads i området uten kart: temperatur-chips som filter + topp-liste
+/// sortert på score, med intern navigasjon og hopp til Kart-fanen.
+private struct LeadsOversiktCard: View {
+    let leads: [LeadModel]
+    @Environment(AppState.self) private var appState
+    @State private var activeTier: LeadTemperatureTier = .all
+    @State private var openLead: LeadModel?
+
+    private var filtrerte: [LeadModel] {
+        leads.filter { activeTier.matches($0) }
+            .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("Leads i området").font(.headline).foregroundStyle(.white)
+                Text("\(leads.count) leads")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(Brand.purpleLight)
+                Spacer()
+                Button {
+                    appState.selectedSidebarItem = .kart
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "map.fill")
+                            .font(.appScaled(size: 11, weight: .bold))
+                        Text("Åpne kartet")
+                            .font(.appScaled(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Brand.purple.opacity(0.35),
+                                in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9)
+                        .stroke(Brand.purple.opacity(0.5), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            LeadScoreFilterStrip(leads: leads, activeTier: $activeTier)
+            ForEach(filtrerte.prefix(8), id: \.id) { lead in
+                leadRad(lead)
+            }
+            if filtrerte.count > 8 {
+                Text("+ \(filtrerte.count - 8) til — se alle på kartet")
+                    .font(.appScaled(size: 11))
+                    .foregroundStyle(Brand.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            if filtrerte.isEmpty {
+                Text("Ingen leads i dette filteret")
+                    .font(.caption).foregroundStyle(Brand.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 10)
+            }
+        }
+        .padding(16)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        .sheet(item: $openLead) { lead in
+            LeadDetailSheet(lead: lead)
+        }
+    }
+
+    private func leadRad(_ lead: LeadModel) -> some View {
+        let score = lead.leadScore ?? 0
+        return Button { openLead = lead } label: {
+            HStack(spacing: 10) {
+                Text("\(score)")
+                    .font(.appScaled(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 26)
+                    .background(scoreFarge(lead), in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(lead.name)
+                        .font(.appScaled(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(lead.address ?? "")
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(Brand.textTertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if let verdi = lead.estimatedValue, verdi > 0 {
+                    Text("kr \(Int(verdi / 1000))k")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(Brand.green)
+                }
+                Button {
+                    appState.requestNavigation(
+                        lat: lead.latitude, lon: lead.longitude,
+                        name: lead.name, address: lead.address ?? "",
+                        start: true, transport: "driving")
+                } label: {
+                    Image(systemName: "location.north.line.fill")
+                        .font(.appScaled(size: 12, weight: .bold))
+                        .foregroundStyle(Brand.purpleLight)
+                        .frame(width: 32, height: 32)
+                        .background(Brand.purpleLight.opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .help("Naviger til \(lead.name)")
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func scoreFarge(_ lead: LeadModel) -> Color {
+        let score = lead.leadScore ?? 0
+        if score >= 70 || lead.status == .meetingBooked { return Brand.purple }
+        if score >= 50 { return Brand.yellow.opacity(0.75) }
+        if score >= 30 { return Brand.orange.opacity(0.75) }
+        return Color(red: 0.45, green: 0.50, blue: 0.62)
     }
 }
 
