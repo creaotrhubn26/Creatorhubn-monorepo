@@ -48,6 +48,9 @@ struct EtterMoteSheet: View {
     @State private var analyserer = false
     @State private var feil: String?
     @State private var epostKopiert = false
+    /// Status-forslaget er tatt i bruk (PATCH på leaden gikk gjennom).
+    @State private var statusSatt = false
+    @State private var statusSetter = false
 
     var body: some View {
         NavigationStack {
@@ -271,6 +274,50 @@ struct EtterMoteSheet: View {
                                 }
                             }
                         }
+                        Text("Lagret i oppgavelista — huk av under «Neste handlinger» på Oversikt.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(EmBrand.textTertiary)
+                    }
+                }
+                // Status-forslag → ÉN-KLIKKS ekte statusendring på leaden.
+                if let forslag = r.statusForslag,
+                   let (raw, label) = Self.statusMapping(forslag) {
+                    seksjon("Status-forslag", ikon: "flag.fill", tint: EmBrand.yellow) {
+                        HStack(spacing: 10) {
+                            Text(label)
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Button {
+                                Task { await settStatus(raw) }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if statusSetter {
+                                        ProgressView().controlSize(.mini).tint(.white)
+                                    } else {
+                                        Image(systemName: statusSatt
+                                              ? "checkmark.circle.fill" : "flag.fill")
+                                            .font(.appScaled(size: 11, weight: .bold))
+                                    }
+                                    Text(statusSatt ? "Status satt" : "Sett status")
+                                        .font(.appScaled(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(statusSatt ? EmBrand.green : .white)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(statusSatt
+                                            ? EmBrand.green.opacity(0.15)
+                                            : EmBrand.yellow.opacity(0.3),
+                                            in: RoundedRectangle(cornerRadius: 9))
+                                .overlay(RoundedRectangle(cornerRadius: 9)
+                                    .stroke(statusSatt ? EmBrand.green.opacity(0.4)
+                                            : EmBrand.yellow.opacity(0.5), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(statusSatt || statusSetter)
+                        }
+                        Text("AI-ens forslag ut fra møtet — settes kun når du trykker.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(EmBrand.textTertiary)
                     }
                 }
                 if let epost = r.epost {
@@ -372,10 +419,40 @@ struct EtterMoteSheet: View {
         do {
             resultat = try await api.sendMoteEtterarbeid(
                 selskap: selskap, tekst: samletTekst,
-                kontakt: kontakt, moteMaal: moteMaal)
+                kontakt: kontakt, moteMaal: moteMaal,
+                leadId: moteId?.uuidString.lowercased())
             merkSomLogget()
         } catch {
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert for organisasjonen."
+        }
+    }
+
+    /// AI-ens status_forslag → (backend-rawValue, norsk etikett).
+    static func statusMapping(_ forslag: String) -> (String, String)? {
+        switch forslag {
+        case "interessert":   return ("interested", "Interessert")
+        case "tilbud_sendes": return ("proposal_sent", "Tilbud sendes")
+        case "avvent":        return ("return", "Avvent — kom tilbake")
+        case "tapt":          return ("lost", "Tapt")
+        case "vunnet":        return ("won", "Vunnet")
+        default: return nil
+        }
+    }
+
+    /// Én-klikks statusendring: samme PATCH som statusarket bruker.
+    @MainActor
+    private func settStatus(_ raw: String) async {
+        if DemoModeManager.isActiveNonisolated { statusSatt = true; return }
+        guard let api = appState.api, let moteId else { return }
+        statusSetter = true
+        defer { statusSetter = false }
+        do {
+            try await api.updateStatus(leadId: moteId.uuidString.lowercased(),
+                                       status: raw)
+            statusSatt = true
+            await appState.refreshAll()
+        } catch {
+            feil = "Statusendringen feilet — prøv igjen."
         }
     }
 
