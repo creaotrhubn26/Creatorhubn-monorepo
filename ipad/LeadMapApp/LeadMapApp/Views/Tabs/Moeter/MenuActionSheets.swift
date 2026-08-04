@@ -30,6 +30,10 @@ private enum MABrand {
 
 struct RescheduleSheet: View {
     let meeting: Meeting
+    /// Kalles med nytt starttidspunkt + varighet (min) når selgeren lagrer —
+    /// eieren (MeetingsView) persisterer (backend i ekte modus, in-memory i
+    /// demo) så agendaen/uka flytter blokka umiddelbart.
+    var onSave: ((Date, Int) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var newDate = Date().addingTimeInterval(86_400)  // i morgen
     @State private var startHour = 10
@@ -37,6 +41,25 @@ struct RescheduleSheet: View {
     @State private var duration = 60
     @State private var notify = true
     @State private var reason = ""
+
+    /// Nytt starttidspunkt: valgt dato + valgt klokkeslett.
+    private var nyStart: Date {
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: newDate)
+        comps.hour = startHour
+        comps.minute = startMinute
+        return Calendar.current.date(from: comps) ?? newDate
+    }
+
+    /// Forhåndsutfyll klokkeslettet fra møtets nåværende tid («09:00»).
+    private func lastInnNaavaerende() {
+        let deler = meeting.startTime.split(separator: ":")
+        if deler.count == 2, let t = Int(deler[0]), let m = Int(deler[1]) {
+            startHour = min(max(t, 7), 19)
+            startMinute = [0, 15, 30, 45].min(by: {
+                abs($0 - m) < abs($1 - m)
+            }) ?? 0
+        }
+    }
 
     private let hours = Array(7...19)
     private let minutes = [0, 15, 30, 45]
@@ -69,6 +92,7 @@ struct RescheduleSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
         }
+        .task { lastInnNaavaerende() }
     }
 
     private var currentCard: some View {
@@ -225,7 +249,11 @@ struct RescheduleSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button { dismiss() } label: {
+            Button {
+                // Var toast-fasade (dismiss uten effekt) — nå ekte lagring.
+                onSave?(nyStart, duration)
+                dismiss()
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar.badge.checkmark")
                         .font(.appScaled(size: 13, weight: .bold))

@@ -442,6 +442,34 @@ export function registerLeadMapCompetitorRoutes({
     },
   );
 
+  // ─── PATCH /calendar/:leadId (endre møtetid fra agendaen) ─────────
+  // Kalenderen er avledet av crm_customers.next_follow_up_at — å flytte
+  // møtet ER å flytte follow-up-tidspunktet. Eier-scopet som GET-en.
+  app.patch(
+    "/api/admin-room/lead-map/calendar/:leadId",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const dtRaw = String((req.body as { datetime?: string } | undefined)?.datetime ?? "");
+      const dt = new Date(dtRaw);
+      if (!dtRaw || Number.isNaN(dt.getTime())) {
+        return res.status(400).json({ error: "bad_request", detail: "datetime (ISO) er påkrevd" });
+      }
+      try {
+        const r = await pool.query(
+          `UPDATE crm_customers
+              SET next_follow_up_at = $3::timestamptz
+            WHERE id = $1 AND owner_user_id = $2`,
+          [req.params.leadId, session.userId, dt.toISOString()],
+        );
+        if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ ok: true });
+      } catch (err) {
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
+      }
+    },
+  );
+
   // ─── GET /reminders (stille leads + dagens follow-ups) ──────────
   app.get(
     "/api/admin-room/lead-map/reminders",
