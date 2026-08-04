@@ -340,39 +340,51 @@ struct WeekCalendarView: View {
             ForEach(meetings) { m in
                 let (top, height) = position(for: m)
                 let drar = draId == m.id
-                Button { onTapMeeting(m) } label: {
-                    weekBlock(company: m.company, color: m.iconColor, icon: m.icon, time: m.startTime)
-                }
-                .buttonStyle(.plain)
-                .frame(width: colWidth - 4, height: height)
-                .offset(x: 60 + CGFloat(m.demoDagKolonne ?? todayIndex) * colWidth + 2
-                            + (drar ? draOffset.width : 0),
-                        y: top + (drar ? draOffset.height : 0))
-                .opacity(drar ? 0.85 : 1)
-                .shadow(color: drar ? .black.opacity(0.5) : .clear, radius: drar ? 10 : 0, y: 4)
-                .zIndex(drar ? 10 : 0)
-                // Hold (0.2s) + dra: vertikalt = ny tid, horisontalt = ny dag.
-                // Sequenced gest så vanlig scroll i kalenderen ikke kaprer.
-                .gesture(
-                    LongPressGesture(minimumDuration: 0.2)
-                        .sequenced(before: DragGesture(minimumDistance: 4))
-                        .onChanged { verdi in
-                            if case .second(true, let drag?) = verdi {
-                                draId = m.id
-                                draOffset = drag.translation
+                // IKKE Button: den sluker long-press-gesten før dra-
+                // sekvensen rekker å starte. Ren view + tap-gest i stedet.
+                weekBlock(company: m.company, color: m.iconColor, icon: m.icon, time: m.startTime)
+                    .frame(width: colWidth - 4, height: height)
+                    .contentShape(Rectangle())
+                    .offset(x: 60 + CGFloat(m.demoDagKolonne ?? todayIndex) * colWidth + 2
+                                + (drar ? draOffset.width : 0),
+                            y: top + (drar ? draOffset.height : 0))
+                    .scaleEffect(drar ? 1.05 : 1)
+                    .opacity(drar ? 0.9 : 1)
+                    .shadow(color: drar ? .black.opacity(0.5) : .clear, radius: drar ? 10 : 0, y: 4)
+                    .zIndex(drar ? 10 : 0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.8), value: drar)
+                    .onTapGesture { onTapMeeting(m) }
+                    // Hold (0.25s) + dra: vertikalt = ny tid, horisontalt =
+                    // ny dag. Sekvensert gest så kalender-scrollen ikke
+                    // kaprer; blokka «løfter seg» straks holdet er anerkjent.
+                    .gesture(
+                        LongPressGesture(minimumDuration: 0.25)
+                            .sequenced(before: DragGesture(minimumDistance: 0))
+                            .onChanged { verdi in
+                                switch verdi {
+                                case .second(true, nil):
+                                    // Holdet er anerkjent — løft blokka.
+                                    draId = m.id
+                                    draOffset = .zero
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                case .second(true, let drag?):
+                                    draId = m.id
+                                    draOffset = drag.translation
+                                default:
+                                    break
+                                }
                             }
-                        }
-                        .onEnded { verdi in
-                            defer { draId = nil; draOffset = .zero }
-                            guard case .second(true, let drag?) = verdi else { return }
-                            let deltaDager = Int((drag.translation.width / colWidth).rounded())
-                            let raaMin = (drag.translation.height / rowHeight) * 60
-                            let deltaMin = Int((raaMin / 30).rounded()) * 30
-                            if deltaDager != 0 || deltaMin != 0 {
-                                onMove?(m, deltaDager, deltaMin)
+                            .onEnded { verdi in
+                                defer { draId = nil; draOffset = .zero }
+                                guard case .second(true, let drag?) = verdi else { return }
+                                let deltaDager = Int((drag.translation.width / colWidth).rounded())
+                                let raaMin = (drag.translation.height / rowHeight) * 60
+                                let deltaMin = Int((raaMin / 30).rounded()) * 30
+                                if deltaDager != 0 || deltaMin != 0 {
+                                    onMove?(m, deltaDager, deltaMin)
+                                }
                             }
-                        }
-                )
+                    )
             }
             // Onsdag-fredag upcoming
             ForEach(upcoming) { u in
