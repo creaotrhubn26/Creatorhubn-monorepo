@@ -420,6 +420,11 @@ struct MeetingsView: View {
     @State private var calMode: CalendarMode = .agenda
     /// «Endre tidspunkt» fra agenda/uke/detalj — sheet-item.
     @State private var reschedulingMeeting: Meeting? = nil
+    /// Etter-møte-triggeren: minutt-tikk så «Logg møtet»-CTA/badge slår
+    /// inn av seg selv når sluttiden passeres.
+    @State private var naa = Date()
+    /// Deep-link fra lokalt «logg møtet»-varsel → åpne etterarbeidet.
+    @State private var etterMoteFraVarsel: Meeting? = nil
     /// Demo: flyttede møtetider (id → (start, slutt, dagkolonne)) så
     /// kalenderen flytter blokka umiddelbart uten backend.
     @State private var demoTidOverstyringer: [UUID: (String, String, Int?)] = [:]
@@ -506,6 +511,22 @@ struct MeetingsView: View {
         appState.leads.first {
             $0.name.caseInsensitiveCompare(event.leadName) == .orderedSame
         }
+    }
+
+    /// Sluttid («10:00») → Date i dag. Brukes av etter-møte-triggeren.
+    private func sluttDatoIDag(_ endTime: String) -> Date? {
+        let deler = endTime.split(separator: ":")
+        guard deler.count == 2, let t = Int(deler[0]), let mn = Int(deler[1]) else { return nil }
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = t
+        comps.minute = mn
+        return Calendar.current.date(from: comps)
+    }
+
+    /// Ferdig + ikke logget = etterarbeids-gjeld (CTA + badge + varsel).
+    private func trengerLogg(_ m: Meeting) -> Bool {
+        guard let slutt = sluttDatoIDag(m.endTime) else { return false }
+        return naa > slutt && !MoteLoggStatus.erLogget(m.id)
     }
 
     /// Lagre ny møtetid: demo → flytt blokka i minnet; ekte → PATCH
@@ -623,6 +644,37 @@ struct MeetingsView: View {
                 lagreNyMotetid(m, start: nyStart, varighetMin: varighet)
             }
         }
+        .sheet(item: $etterMoteFraVarsel) { m in
+            EtterMoteSheet(selskap: m.company, kontakt: m.contactName,
+                           moteId: m.id)
+        }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { t in
+            naa = t
+        }
+        // Planlegg «logg møtet»-varsler ved møteslutt (re-planlegging er
+        // idempotent — samme identifier erstatter).
+        .task(id: sourceAgenda.count) {
+            let moter = sourceAgenda.compactMap { m -> (UUID, String, Date)? in
+                guard let slutt = sluttDatoIDag(m.endTime) else { return nil }
+                return (m.id, m.company, slutt)
+            }
+            MoteVarsler.planlegg(moter: moter.map { (id: $0.0, selskap: $0.1, slutt: $0.2) })
+        }
+        // Varsel-tap («etter_mote») → åpne etterarbeidet for selskapet.
+        .task(id: appState.pendingEtterMoteSelskap) {
+            guard let selskap = appState.pendingEtterMoteSelskap else { return }
+            let m = sourceAgenda.first {
+                $0.company.caseInsensitiveCompare(selskap) == .orderedSame
+            }
+            etterMoteFraVarsel = m ?? Meeting(
+                startTime: "", endTime: "", company: selskap, location: "",
+                contactName: "", contactRole: "", status: .confirmed,
+                icon: "building.2.fill", iconColor: MtBrand.purpleLight,
+                address: "", meetingRoom: nil, leadScore: 0, leadType: "",
+                valueNok: 0, lat: 0, lon: 0, driveTimeMin: 0,
+                driveDistanceKm: 0, trafficStatus: "")
+            appState.clearEtterMoteDeepLink()
+        }
         .sheet(isPresented: $showNewBrief) {
             NewBriefSheet { title, note, startAt, durationMin, recurrence, participants in
                 if isDemo {
@@ -716,7 +768,8 @@ struct MeetingsView: View {
                         .frame(width: 340)
                 } else {
                     MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode,
-                                         onReschedule: { m in reschedulingMeeting = m })
+                                         onReschedule: { m in reschedulingMeeting = m },
+                                         naa: naa)
                         .frame(width: 340)
                 }
             }
@@ -1052,6 +1105,21 @@ struct MeetingsView: View {
                 } else {
                     ForEach(sourceAgenda) { m in
                         agendaRow(m)
+                            .overlay(alignment: .topTrailing) {
+                                // Etterarbeids-gjeld: synlig til møtet logges.
+                                if trengerLogg(m) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "exclamationmark.circle.fill")
+                                            .font(.appScaled(size: 9, weight: .bold))
+                                        Text("Ikke logget")
+                                            .font(.appScaled(size: 9, weight: .bold))
+                                    }
+                                    .foregroundStyle(.black)
+                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                    .background(MtBrand.yellow, in: Capsule())
+                                    .offset(x: -8, y: 6)
+                                }
+                            }
                             .contextMenu {
                                 Button {
                                     reschedulingMeeting = m
@@ -1623,6 +1691,19 @@ struct MeetingDetailSidebar: View {
     /// Forelderen eier flytte-lagringen (backend/demo-overstyring) — uten
     /// callback faller vi tilbake til lokal sheet (visning uten lagring).
     var onReschedule: ((Meeting) -> Void)? = nil
+    /// Minutt-tikk fra forelderen — driver «Logg møtet»-CTA-byttet.
+    var naa: Date = Date()
+
+    /// Etter-møte-triggeren: sluttid passert + ikke logget.
+    private var moteTrengerLogg: Bool {
+        let deler = meeting.endTime.split(separator: ":")
+        guard deler.count == 2, let t = Int(deler[0]), let mn = Int(deler[1]) else { return false }
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = t
+        comps.minute = mn
+        guard let slutt = Calendar.current.date(from: comps) else { return false }
+        return naa > slutt && !MoteLoggStatus.erLogget(meeting.id)
+    }
     @Environment(AppState.self) private var appState
 
     @State private var favorited: Bool = false
@@ -1674,7 +1755,12 @@ struct MeetingDetailSidebar: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
-        .sheet(isPresented: $showStartMeeting)        { StartMeetingSheet(meeting: meeting) }
+        .sheet(isPresented: $showStartMeeting) {
+            StartMeetingSheet(meeting: meeting, onAvsluttOgLogg: {
+                showStartMeeting = false
+                showEtterMote = true
+            })
+        }
         .sheet(isPresented: $showLogNote)             { LogNoteSheet(meeting: meeting) }
         .sheet(isPresented: $showOpenLead)            { LeadDetailStub(meeting: meeting) }
         .sheet(isPresented: $showReschedule)          { RescheduleSheet(meeting: meeting) }
@@ -1685,7 +1771,8 @@ struct MeetingDetailSidebar: View {
         .sheet(isPresented: $showAIInsights)          { PrepInsightsModal(meetingCompany: meeting.company, meetingContact: meeting.contactName) }
         .sheet(isPresented: $showEtterMote) {
             EtterMoteSheet(selskap: meeting.company,
-                           kontakt: meeting.contactName)
+                           kontakt: meeting.contactName,
+                           moteId: meeting.id)
         }
         .sheet(isPresented: $showMoteBrief) {
             MoteBriefSheet(selskap: meeting.company,
@@ -1938,24 +2025,54 @@ struct MeetingDetailSidebar: View {
     /// ÉN primær CTA — «Start møte» er skjermens jobb (audit-regel 2:
     /// én-lilla-per-skjerm). AI/notat/prep bor bak ⋯ («Forberedelse»).
     private var primaerCTA: some View {
-        Button { showStartMeeting = true } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "play.circle.fill")
-                    .font(.appScaled(size: 14, weight: .bold))
-                Text("Start møte")
-                    .font(.appScaled(size: 13, weight: .bold))
+        Group {
+            if moteTrengerLogg {
+                // Møtet er ferdig og ulogget: etterarbeidet ER primær-
+                // handlingen nå (glemselskurven: send innen timen).
+                VStack(spacing: 5) {
+                    Button { showEtterMote = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.rectangle.stack.fill")
+                                .font(.appScaled(size: 14, weight: .bold))
+                            Text("Logg møtet — 2 min")
+                                .font(.appScaled(size: 13, weight: .bold))
+                        }
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(colors: [MtBrand.yellow, MtBrand.orange],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: RoundedRectangle(cornerRadius: 10)
+                        )
+                        .shadow(color: MtBrand.yellow.opacity(0.35), radius: 7, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    Text("Oppfølging innen timen vinner avtaler — 80 % av møtet er glemt i morgen.")
+                        .font(.appScaled(size: 9))
+                        .foregroundStyle(MtBrand.textTertiary)
+                }
+            } else {
+                Button { showStartMeeting = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.appScaled(size: 14, weight: .bold))
+                        Text("Start møte")
+                            .font(.appScaled(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+                    .shadow(color: MtBrand.purple.opacity(0.35), radius: 7, y: 2)
+                }
+                .buttonStyle(.plain)
             }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(
-                LinearGradient(colors: [MtBrand.purple, MtBrand.purpleLight],
-                               startPoint: .leading, endPoint: .trailing),
-                in: RoundedRectangle(cornerRadius: 10)
-            )
-            .shadow(color: MtBrand.purple.opacity(0.35), radius: 7, y: 2)
         }
-        .buttonStyle(.plain)
     }
 
     /// Én sekundær rad: Naviger + AI-innsikt. Ring/e-post ligger allerede

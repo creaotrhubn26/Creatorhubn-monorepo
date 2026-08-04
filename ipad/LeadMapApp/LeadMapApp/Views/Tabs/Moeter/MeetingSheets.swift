@@ -29,6 +29,8 @@ private enum SBrand {
 
 struct StartMeetingSheet: View {
     let meeting: Meeting
+    /// «Avslutt & logg»: hopp rett i etterarbeidet (eies av sidebar-en).
+    var onAvsluttOgLogg: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var mode: Mode = .checkIn
 
@@ -247,6 +249,26 @@ struct StartMeetingSheet: View {
     }
 
     private var actionBar: some View {
+        VStack(spacing: 8) {
+        if let onAvsluttOgLogg {
+            Button {
+                onAvsluttOgLogg()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.rectangle.stack.fill")
+                        .font(.appScaled(size: 12, weight: .bold))
+                    Text("Avslutt & logg møtet")
+                        .font(.appScaled(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(SBrand.purpleLight)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(SBrand.card, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11)
+                    .stroke(SBrand.purple.opacity(0.4), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
         Button {
             if let l = link(for: mode), let url = URL(string: l) {
                 UIApplication.shared.open(url)
@@ -269,6 +291,7 @@ struct StartMeetingSheet: View {
             )
         }
         .buttonStyle(.plain)
+        }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
             SBrand.bg.opacity(0.95)
