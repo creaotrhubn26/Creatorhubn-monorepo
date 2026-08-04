@@ -48,17 +48,11 @@
   status = 301
   force = true
 
-[[redirects]]
-  from = "/talentportal/"
-  to = "/talentportal"
-  status = 301
-  force = true
-
-[[redirects]]
-  from = "/utdanningsinstitusjon/"
-  to = "/utdanningsinstitusjon"
-  status = 301
-  force = true
+# MERK: Vercels «/talentportal/ → /talentportal» + «/utdanningsinstitusjon/ → …»
+# (trailing-slash-stripping) er FJERNET — Netlify normaliserer trailing slash
+# automatisk (Vercel gjør ikke), så reglene matchet «/talentportal» seg selv →
+# 301-loop. Uten dem faller «/talentportal» gjennom til rewrite-en
+# «/talentportal → /theroleroom.html» (200) som forventet.
 
 # Skygget av reglene over (duplikat-source, første-treff vant på Vercel også) — beholdt
 # som dokumentasjon, deaktivert:
