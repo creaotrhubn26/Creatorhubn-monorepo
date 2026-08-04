@@ -85,6 +85,7 @@ docker/
 !THE-ROLE-ROOM-*.md
 docs/
 !docs/
+!docs/netlify-migration-runbook.md
 !docs/role-room/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
 !docs/role-room/tiktok-setup.md
