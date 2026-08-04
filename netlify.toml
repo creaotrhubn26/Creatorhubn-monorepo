@@ -12,12 +12,13 @@
 #   • `force = true` der regelen ellers ville skygges av en ekte fil (/, /robots.txt, proxyer)
 
 [build]
-  base = "frontend"
-  command = "npm run build"
-  publish = "client/dist"
-  # Hopp over preview-bygg når committen ikke rører frontend/ (base). main bygger alltid.
+  # `frontend` er en npm-WORKSPACE → deps (vite m.fl.) hoistes til ROT-node_modules.
+  # Derfor: base = repo-rot (install hoister alt), bygg workspacet, publiser dets dist.
+  command = "npm run build --workspace creatorhub-frontend"
+  publish = "frontend/client/dist"
+  # Hopp over preview-bygg når committen ikke rører frontend/. main bygger alltid.
   # Netlify: exit 0 = hopp over, non-zero = bygg. (Samme churn-filter som vercel.json hadde.)
-  ignore = "if [ \"$BRANCH\" = \"main\" ]; then exit 1; fi; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- ."
+  ignore = "if [ \"$BRANCH\" = \"main\" ]; then exit 1; fi; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend"
 
 [build.environment]
   NPM_FLAGS = "--legacy-peer-deps"   # matcher Vercel installCommand
