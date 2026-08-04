@@ -151,6 +151,9 @@ struct OversiktView: View {
                     if dorsalgAktivert {
                         AnyView(DorsalgOversiktSection(stats: dorsalgStats))
                     }
+                    // Oppgaver fra møtelogging — det møtene ba deg gjøre.
+                    // Skjuler seg selv når lista er tom.
+                    MoteOppgaverCard()
                     if isCompact {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
@@ -3403,6 +3406,108 @@ private struct FilterChip: View {
     }
 }
 
+// MARK: - MoteOppgaverCard (oppgaver fra møtelogging — leadgrid_oppgaver)
+
+/// Avhukbar oppgaveliste fra etter-møte-analysen: det møtet ba deg gjøre
+/// dør ikke i etterarbeids-arket, men dukker opp her til det er gjort.
+private struct MoteOppgaverCard: View {
+    @Environment(AppState.self) private var appState
+    @State private var oppgaver: [MoteOppgaveDTO] = []
+
+    var body: some View {
+        // .task på en tom Group fyrer ikke (EmptyView-fella) — Color.clear
+        // holder viewet i hierarkiet så lastingen alltid kjører.
+        Group {
+            if oppgaver.isEmpty {
+                Color.clear.frame(height: 0)
+            }
+            if !oppgaver.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "checklist")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(Brand.purpleLight)
+                        Text("Oppgaver fra møtene")
+                            .font(.headline).foregroundStyle(.white)
+                        Spacer()
+                        Text("\(oppgaver.count)")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.purpleLight)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Brand.purpleLight.opacity(0.14), in: Capsule())
+                    }
+                    ForEach(oppgaver.prefix(5)) { o in
+                        Button { hukAv(o) } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: "circle")
+                                    .font(.appScaled(size: 14))
+                                    .foregroundStyle(Brand.purpleLight)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(o.tittel)
+                                        .font(.appScaled(size: 12, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+                                    Text(o.selskap)
+                                        .font(.appScaled(size: 10))
+                                        .foregroundStyle(Brand.textTertiary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 6)
+                                if let f = o.frist, !f.isEmpty {
+                                    Text(f)
+                                        .font(.appScaled(size: 9, weight: .bold))
+                                        .foregroundStyle(Brand.purpleLight)
+                                        .padding(.horizontal, 7).padding(.vertical, 3)
+                                        .background(Brand.purpleLight.opacity(0.14),
+                                                    in: Capsule())
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Huk av: \(o.tittel)")
+                    }
+                }
+                .padding(16)
+                .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+            }
+        }
+        .task { await lastOppgaver() }
+    }
+
+    private func lastOppgaver() async {
+        if DemoModeManager.isActiveNonisolated {
+            if oppgaver.isEmpty { oppgaver = Self.demoOppgaver }
+            return
+        }
+        guard let api = appState.api else { return }
+        oppgaver = (try? await api.hentMoteOppgaver()) ?? []
+    }
+
+    /// Huk av: optimistisk fjerning + PATCH (demo: kun lokalt).
+    private func hukAv(_ o: MoteOppgaveDTO) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            oppgaver.removeAll { $0.id == o.id }
+        }
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api else { return }
+        Task { try? await api.settMoteOppgaveStatus(id: o.id, ferdig: true) }
+    }
+
+    private static let demoOppgaver: [MoteOppgaveDTO] = [
+        MoteOppgaveDTO(id: "demo-o1", selskap: "Nordic Elektro AS",
+                       tittel: "Prisforslag rammeavtale", frist: "torsdag",
+                       status: "open"),
+        MoteOppgaveDTO(id: "demo-o2", selskap: "Nordic Elektro AS",
+                       tittel: "Book befaring med teknisk sjef", frist: "neste uke",
+                       status: "open"),
+        MoteOppgaveDTO(id: "demo-o3", selskap: "BoligPartner AS",
+                       tittel: "Send referanse fra Byggmester Hansen",
+                       frist: "i morgen", status: "open"),
+    ]
+}
+
 // MARK: - NextActionsCard
 
 private struct NextActionsCard: View {
@@ -3414,6 +3519,7 @@ private struct NextActionsCard: View {
         leads.sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
     }
     private var topLeads: [LeadModel] { Array(sortedLeads.prefix(4)) }
+
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

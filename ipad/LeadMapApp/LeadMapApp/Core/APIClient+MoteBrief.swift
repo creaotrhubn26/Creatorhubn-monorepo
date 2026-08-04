@@ -85,6 +85,17 @@ struct MoteMaalDTO: Decodable, Hashable {
     let behov: [String]
 }
 
+/// Persistert oppgave fra møtelogging (leadgrid_oppgaver) — ekte, avhukbar.
+struct MoteOppgaveDTO: Decodable, Hashable, Identifiable {
+    let id: String
+    let selskap: String
+    var leadId: String? = nil
+    let tittel: String
+    var frist: String? = nil
+    let status: String
+    var createdAt: String? = nil
+}
+
 extension APIClient {
 
     /// Etterarbeid: rå notater/transkripsjon → strukturert notat + løfter +
@@ -92,20 +103,37 @@ extension APIClient {
     /// NESTE brief åpner med «hva vi lovte sist».
     func sendMoteEtterarbeid(selskap: String, tekst: String,
                              kontakt: String? = nil, moteMaal: String? = nil,
-                             orgnr: String? = nil) async throws -> EtterarbeidDTO {
+                             orgnr: String? = nil,
+                             leadId: String? = nil) async throws -> EtterarbeidDTO {
         struct Body: Encodable {
             let selskap: String
             let tekst: String
             let kontakt: String?
             let moteMaal: String?
             let orgnr: String?
+            let leadId: String?
         }
         struct Resp: Decodable { let resultat: EtterarbeidDTO }
         let r: Resp = try await _post(
             "/api/leadgrid/moter/etterarbeid",
             body: Body(selskap: selskap, tekst: tekst, kontakt: kontakt,
-                       moteMaal: moteMaal, orgnr: orgnr))
+                       moteMaal: moteMaal, orgnr: orgnr, leadId: leadId))
         return r.resultat
+    }
+
+    /// Åpne oppgaver fra møtelogging (ugated) — Oversikt/Neste handlinger.
+    func hentMoteOppgaver() async throws -> [MoteOppgaveDTO] {
+        struct Resp: Decodable { let oppgaver: [MoteOppgaveDTO] }
+        let r: Resp = try await _get("/api/leadgrid/oppgaver")
+        return r.oppgaver
+    }
+
+    /// Huk av / gjenåpne en oppgave.
+    func settMoteOppgaveStatus(id: String, ferdig: Bool) async throws {
+        struct Body: Encodable { let status: String }
+        let data = try JSONEncoder().encode(Body(status: ferdig ? "done" : "open"))
+        _ = try await _request("/api/leadgrid/oppgaver/\(id)",
+                               method: "PATCH", body: data)
     }
 
     /// Mål & behov (ugated): hent/lagre per selskap.

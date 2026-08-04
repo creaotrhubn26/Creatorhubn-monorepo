@@ -175,6 +175,31 @@ async function ensureLoggSchema(pool: Pool): Promise<void> {
   loggSchemaReady = true;
 }
 
+// ── Oppgaver fra møtelogging: ekte, avhukbar liste (ikke bare visning) ──
+
+let oppgaveSchemaReady = false;
+async function ensureOppgaveSchema(pool: Pool): Promise<void> {
+  if (oppgaveSchemaReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_oppgaver (
+      id UUID PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      selskap TEXT NOT NULL,
+      lead_id TEXT,
+      tittel TEXT NOT NULL,
+      frist TEXT,
+      kilde TEXT NOT NULL DEFAULT 'mote_etterarbeid',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      done_at TIMESTAMPTZ
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_leadgrid_oppgaver_bruker
+      ON leadgrid_oppgaver (organization_id, user_id, status, created_at DESC)`);
+  oppgaveSchemaReady = true;
+}
+
 type ForrigeMote = { dato: string; notat: string; lofter: string[] };
 
 async function hentForrigeMote(pool: Pool, orgId: string, selskap: string): Promise<ForrigeMote | null> {
@@ -489,6 +514,7 @@ ${JSON.stringify(fakta)}`;
       }
       const kontakt = String(b.kontakt ?? "").slice(0, 120);
       const orgnr = typeof b.orgnr === "string" && /^\d{9}$/.test(b.orgnr) ? b.orgnr : null;
+      const leadId = typeof b.lead_id === "string" ? b.lead_id.slice(0, 64) : null;
       // Selgerens mål: innsendt verdi vinner, ellers det lagrede målet
       // fra Mål & behov — måloppnåelse vurderes mot dette.
       const lagretMaal = orgId ? await hentMaalBehov(pool, orgId, selskap) : null;
@@ -568,6 +594,21 @@ ${tekst}`;
           for (const key of briefCache.keys()) {
             if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
           }
+          // Oppgavene blir EKTE avhukbare rader (Oversikt/Neste handlinger)
+          // — ikke bare visning i etterarbeids-arket.
+          await ensureOppgaveSchema(pool);
+          const oppgaveListe = (Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])
+            .slice(0, 10) as Array<{ tittel?: unknown; frist?: unknown }>;
+          for (const o of oppgaveListe) {
+            const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
+            if (!tittel) continue;
+            await pool.query(
+              `INSERT INTO leadgrid_oppgaver
+                 (id, organization_id, user_id, selskap, lead_id, tittel, frist)
+               VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+              [randomUUID(), orgId, session.userId, selskap, leadId, tittel,
+               String(o?.frist ?? "").slice(0, 80) || null]);
+          }
         } catch (e) {
           console.warn("[motebrief] logg-lagring feilet:", String(e).slice(0, 120));
         }
@@ -575,6 +616,62 @@ ${tekst}`;
       res.json({ resultat: JSON.parse(match[0]) });
     } catch (e) {
       console.error("[motebrief] etterarbeid failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /**
+   * Oppgavelista (UGATED — kjernefunksjon, ingen AI): åpne oppgaver fra
+   * møtelogging, bruker-scopet. Vises i Oversikt/Neste handlinger.
+   */
+  app.get("/api/leadgrid/oppgaver", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.json({ oppgaver: [] }); return; }
+      await ensureOppgaveSchema(pool);
+      const status = req.query.status === "done" ? "done" : "open";
+      const r = await pool.query(
+        `SELECT id, selskap, lead_id, tittel, frist, status, created_at
+           FROM leadgrid_oppgaver
+          WHERE organization_id = $1 AND user_id = $2 AND status = $3
+          ORDER BY created_at DESC LIMIT 100`,
+        [orgId, session.userId, status]);
+      res.json({
+        oppgaver: r.rows.map((row) => ({
+          id: row.id,
+          selskap: row.selskap,
+          lead_id: row.lead_id,
+          tittel: row.tittel,
+          frist: row.frist,
+          status: row.status,
+          created_at: row.created_at instanceof Date
+            ? row.created_at.toISOString() : String(row.created_at),
+        })),
+      });
+    } catch (e) {
+      console.error("[motebrief] oppgave-liste failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Huk av / gjenåpne en oppgave (bruker-scopet). */
+  app.patch("/api/leadgrid/oppgaver/:id", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const status = (req.body ?? {}).status === "done" ? "done" : "open";
+      await ensureOppgaveSchema(pool);
+      const r = await pool.query(
+        `UPDATE leadgrid_oppgaver
+            SET status = $1, done_at = CASE WHEN $1 = 'done' THEN now() ELSE NULL END
+          WHERE id = $2 AND user_id = $3`,
+        [status, req.params.id, session.userId]);
+      if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ ok: true, status });
+    } catch (e) {
+      console.error("[motebrief] oppgave-patch failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
