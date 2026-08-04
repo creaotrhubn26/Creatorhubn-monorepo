@@ -12,7 +12,7 @@
  */
 
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
-import { parseMermaidMindmap, type MindNode } from './mockupMindmap';
+import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, type Reveal } from './mockupMotion';
 import {
   type MockupDoc,

@@ -292,7 +292,6 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       setVideoBusy(false);
     }
   };
-  };
 
   const assignShot = (shot: CapturedShot) => {
     if (selection.kind === 'device') {
