@@ -53,6 +53,11 @@ interface MockupStudioState {
   undo: () => void;
   redo: () => void;
 
+  // Direktemanipulasjon (dra/tastatur): push ÉN historikk-oppføring ved start,
+  // deretter stille live-oppdateringer uten å flomme angre-stakken.
+  pushHistory: () => void;
+  setDocSilent: (doc: MockupDoc) => void;
+
   // Utvalg
   select: (sel: Selection) => void;
 
@@ -118,6 +123,9 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   },
 
   setName: (name) => commit(set, (d) => ({ ...d, name })),
+
+  pushHistory: () => set((s) => ({ past: [...s.past, s.doc].slice(-HISTORY_CAP), future: [] })),
+  setDocSilent: (next) => { saveDoc(next); set({ doc: next }); },
 
   undo: () => set((s) => {
     if (!s.past.length) return {};
