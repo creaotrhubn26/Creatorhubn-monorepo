@@ -3354,12 +3354,9 @@ struct KartView: View {
         }
     }
 
-    /// Åpne adresse i Apple Maps for navigasjon.
+    /// Naviger til lead-en i den interne nav-motoren (turn-by-turn).
     private func navigateTo(_ lead: MapLeadMock) {
-        let q = "\(lead.name), \(lead.address)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let url = URL(string: "maps://?q=\(q)&ll=\(lead.lat),\(lead.lon)") {
-            UIApplication.shared.open(url)
-        }
+        withAnimation(.easeInOut(duration: 0.4)) { startNavigation(to: lead) }
     }
 
     /// Drop pin på kart-sentrum + åpner AddLeadSheet forhåndsutfylt.
@@ -5546,7 +5543,7 @@ struct KartView: View {
             }
             Menu {
                 Button { navigateTo(selectedLead) } label: {
-                    Label("Naviger i Apple Maps", systemImage: "map.fill")
+                    Label("Naviger", systemImage: "location.north.line.fill")
                 }
                 if let mail = selectedLead.emailOrDemo {
                     Button {

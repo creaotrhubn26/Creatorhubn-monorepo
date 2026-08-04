@@ -143,12 +143,24 @@ struct LeadQuickStatusSheet: View {
                let url = URL(string: "tel:\(phone.replacingOccurrences(of: " ", with: ""))") {
                 quickActionLink(label: "Ring", icon: "phone.fill", tint: .green, url: url)
             }
-            quickActionLink(
-                label: "Naviger",
-                icon: "location.fill",
-                tint: Color(red: 0.66, green: 0.32, blue: 0.99),
-                url: URL(string: "https://maps.apple.com/?daddr=\(lead.latitude),\(lead.longitude)&dirflg=d")!
-            )
+            // Intern nav-motor (Kart-fanen), ikke Apple Maps.
+            Button {
+                appState.requestNavigation(
+                    lat: lead.latitude, lon: lead.longitude,
+                    name: lead.name, address: lead.address ?? "",
+                    start: true, transport: "driving")
+                dismiss()
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "location.fill").font(.subheadline)
+                    Text("Naviger").font(.caption2)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.15),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(Color(red: 0.66, green: 0.32, blue: 0.99))
+            }
+            .buttonStyle(.plain)
             if let email = lead.email, !email.isEmpty,
                let url = URL(string: "mailto:\(email)") {
                 quickActionLink(label: "E-post", icon: "envelope.fill", tint: .blue, url: url)
