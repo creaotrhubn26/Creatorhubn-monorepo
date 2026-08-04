@@ -24,11 +24,21 @@ export function isLeadgridDedicatedHost(hostname: string | null | undefined): bo
   return LEADGRID_DEDICATED_HOSTS.has(hostname.trim().toLowerCase());
 }
 
+// Deploy-preview-domener (Netlify) skal rendre Role Room-appen, slik at migrasjons-
+// og PR-previews viser samme flate som produksjon (theroleroom.com) i stedet for å
+// henge på det statiske «Laster …»-skallet. Påvirker ikke produksjon eller Vercel
+// (hostnavn der er theroleroom.com / *.vercel.app, ikke *.netlify.app).
+const ROLE_ROOM_PREVIEW_HOST_SUFFIXES = ['.netlify.app'];
+
 export function isRoleRoomDedicatedHost(hostname: string | null | undefined): boolean {
   if (typeof hostname !== 'string') {
     return false;
   }
-  return ROLE_ROOM_DEDICATED_HOSTS.has(hostname.trim().toLowerCase());
+  const host = hostname.trim().toLowerCase();
+  return (
+    ROLE_ROOM_DEDICATED_HOSTS.has(host)
+    || ROLE_ROOM_PREVIEW_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
+  );
 }
 
 export function getRoleRoomCanonicalPath(locationLike?: Pick<Location, 'hostname'> | null): string {
