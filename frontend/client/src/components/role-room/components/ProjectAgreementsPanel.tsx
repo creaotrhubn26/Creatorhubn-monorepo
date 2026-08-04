@@ -112,6 +112,9 @@ import { getAbsoluteProjectFileUrl, normalizeProjectFileRecord } from '../utils/
 import { runReceiptOcr } from '../utils/receiptOcr';
 import type { ClientPortalWorkspaceFocus } from '../utils/clientPortal';
 import OffersContractsPanel from './OffersContractsPanel';
+import { useT, type TranslationKey, type TVars } from '../../../i18n';
+
+type TFn = (key: TranslationKey, vars?: TVars) => string;
 
 interface ProjectAgreementsPanelProps {
   project: CastingProject;
@@ -180,52 +183,23 @@ const formatAgreementEventTime = (value?: string | null): string | null => {
   }).format(date);
 };
 
-const REVIEW_STATUS_LABELS: Record<string, string> = {
-  pending: 'Venter på klient',
-  approved: 'Godkjent',
-  changes_requested: 'Endringer ønsket',
-  rejected: 'Avvist',
-};
-
-const GOOGLE_SIGNATURE_TRANSITION_LABELS: Record<RoleRoomGoogleAgreementSignatureStatus, string> = {
-  not_started: 'Ikke startet',
-  prepared: 'Klargjort i Google',
-  sent: 'Sendt til signering',
-  opened_in_google: 'Åpnet i Google',
-  signed: 'Signert i Google',
-  rejected: 'Avvist',
-  changes_requested: 'Endringer ønsket',
-  error: 'Feil i signaturflyten',
-};
-
-const RECEIPT_OCR_STATUS_LABELS = {
-  pending: 'Leser kvittering',
-  completed: 'OCR klar',
-  failed: 'OCR feilet',
-  not_supported: 'Kun fil lagret',
-} as const;
-
-const RECEIPT_OCR_CONFIDENCE_LABELS = {
-  low: 'Lav sikkerhet',
-  medium: 'Middels sikkerhet',
-  high: 'Høy sikkerhet',
-} as const;
-
-const getReviewSummaryCopy = (review: ProducerClientReview): string => {
+const getReviewSummaryCopy = (review: ProducerClientReview, t: TFn): string => {
   const timestamp = formatAgreementEventTime(review.decision_at ?? review.requested_at);
+  const dot = timestamp ? ` · ${timestamp}` : '';
   if (review.status === 'approved') {
-    return `Klienten har godkjent denne avtalen${timestamp ? ` · ${timestamp}` : ''}.`;
+    return t('agr.reviewCopy.approved', { dot });
   }
   if (review.status === 'changes_requested' || review.status === 'rejected') {
-    return `Klienten har bedt om endringer i denne avtalen${timestamp ? ` · ${timestamp}` : ''}.`;
+    return t('agr.reviewCopy.changes', { dot });
   }
-  return `Avtalen venter på klientbeslutning${timestamp ? ` · sendt ${timestamp}` : ''}.`;
+  const sentDot = timestamp ? ` · ${t('agr.reviewCopy.sentWord')} ${timestamp}` : '';
+  return t('agr.reviewCopy.pending', { dot: sentDot });
 };
 
-const getGoogleSignatureSummaryCopy = (agreement: ProjectAgreement): string => {
+const getGoogleSignatureSummaryCopy = (agreement: ProjectAgreement, t: TFn): string => {
   const signature = agreement.google_signature;
   if (!signature) {
-    return 'Avtalen er ikke klargjort for Google-signatur ennå.';
+    return t('agr.googleCopy.notPrepared');
   }
 
   const timestamp = formatAgreementEventTime(
@@ -235,20 +209,24 @@ const getGoogleSignatureSummaryCopy = (agreement: ProjectAgreement): string => {
       ?? signature.lastSyncedAt
       ?? null,
   );
+  const dot = timestamp ? ` · ${timestamp}` : '';
 
   if (signature.status === 'signed') {
-    return `Google-signatur er fullført${timestamp ? ` · ${timestamp}` : ''}.`;
+    return t('agr.googleCopy.signed', { dot });
   }
   if (signature.status === 'rejected' || signature.status === 'changes_requested') {
-    return `${PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS[signature.status]} i Google${timestamp ? ` · ${timestamp}` : ''}.`;
+    return t('agr.googleCopy.statusInGoogle', {
+      status: PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS[signature.status],
+      dot,
+    });
   }
   if (signature.status === 'opened_in_google') {
-    return `Avtalen er åpnet i Google og venter på bekreftet signering tilbake i prosjektet${timestamp ? ` · ${timestamp}` : ''}.`;
+    return t('agr.googleCopy.opened', { dot });
   }
   if (signature.status === 'sent') {
-    return `Avtalen er sendt til Google-signatur${timestamp ? ` · ${timestamp}` : ''}.`;
+    return t('agr.googleCopy.sent', { dot });
   }
-  return `Avtalen er klargjort for Google-signatur${timestamp ? ` · ${timestamp}` : ''}.`;
+  return t('agr.googleCopy.prepared', { dot });
 };
 
 const mergeDraftPartyFields = (
@@ -302,6 +280,34 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { uploadProjectFile } = useProject();
+  const { t } = useT();
+  const reviewStatusLabels = useMemo<Record<string, string>>(() => ({
+    pending: t('agr.reviewStatus.pending'),
+    approved: t('agr.reviewStatus.approved'),
+    changes_requested: t('agr.reviewStatus.changes_requested'),
+    rejected: t('agr.reviewStatus.rejected'),
+  }), [t]);
+  const googleTransitionLabels = useMemo<Record<RoleRoomGoogleAgreementSignatureStatus, string>>(() => ({
+    not_started: t('agr.googleTransition.not_started'),
+    prepared: t('agr.googleTransition.prepared'),
+    sent: t('agr.googleTransition.sent'),
+    opened_in_google: t('agr.googleTransition.opened_in_google'),
+    signed: t('agr.googleTransition.signed'),
+    rejected: t('agr.googleTransition.rejected'),
+    changes_requested: t('agr.googleTransition.changes_requested'),
+    error: t('agr.googleTransition.error'),
+  }), [t]);
+  const receiptOcrStatusLabels = useMemo<Record<'pending' | 'completed' | 'failed' | 'not_supported', string>>(() => ({
+    pending: t('agr.ocrStatus.pending'),
+    completed: t('agr.ocrStatus.completed'),
+    failed: t('agr.ocrStatus.failed'),
+    not_supported: t('agr.ocrStatus.not_supported'),
+  }), [t]);
+  const receiptOcrConfidenceLabels = useMemo<Record<'low' | 'medium' | 'high', string>>(() => ({
+    low: t('agr.ocrConfidence.low'),
+    medium: t('agr.ocrConfidence.medium'),
+    high: t('agr.ocrConfidence.high'),
+  }), [t]);
   const [tabValue, setTabValue] = useState(0);
   // Samarbeidsramme deler 7 logiske grupper inn i 3 sub-tabs så Card-en
   // ikke blir en 475-linjers vegg av input-felt. State i parent slik at
@@ -400,11 +406,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       await castingService.saveProject(nextProject);
     } catch (error) {
       console.error('[ProjectAgreementsPanel] saveProject failed', error);
-      enqueueSnackbar('Kunne ikke lagre samarbeidsrammen — prøv igjen.', { variant: 'error' });
+      enqueueSnackbar(t('agr.toast.saveFrameFailed'), { variant: 'error' });
       return;
     }
     await onProjectUpdated(nextProject);
-  }, [enqueueSnackbar, onProjectUpdated, project]);
+  }, [enqueueSnackbar, onProjectUpdated, project, t]);
 
   const updateCollaborationTextList = useCallback(async (
     key: keyof Pick<
@@ -476,7 +482,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
   const removeCollaborationCostItem = useCallback(async (itemId: string) => {
     if (!canEditCollaborationTerms) return;
-    if (!window.confirm('Slett denne kostnadslinjen?')) return;
+    if (!window.confirm(t('agr.confirm.deleteCostLine'))) return;
     setCollaborationDraft((prev) => ({
       ...prev,
       costItems: (prev.costItems ?? []).filter((entry) => entry.id !== itemId),
@@ -498,8 +504,8 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     await updateCollaborationTerms(() => ({
       ...collaborationDraft,
     }));
-    enqueueSnackbar('Samarbeidsrammen er oppdatert.', { variant: 'success' });
-  }, [canEditCollaborationTerms, collaborationDraft, enqueueSnackbar, updateCollaborationTerms]);
+    enqueueSnackbar(t('agr.toast.frameUpdated'), { variant: 'success' });
+  }, [canEditCollaborationTerms, collaborationDraft, enqueueSnackbar, t, updateCollaborationTerms]);
 
   const deliverablesInScopeValue = (collaborationDraft.deliverablesInScope ?? []).join('\n');
   const productionResponsibilitiesValue = (collaborationDraft.productionResponsibilities ?? []).join('\n');
@@ -554,7 +560,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       const nextNotes = currentItem.notes?.trim()
         ? currentItem.notes
         : summaryParts.length > 0
-          ? `Kvittering: ${summaryParts.join(' · ')}`
+          ? t('agr.receiptNotePrefix', { summary: summaryParts.join(' · ') })
           : currentItem.notes ?? '';
 
       const updateItem = (
@@ -579,9 +585,9 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       await persistCollaborationCostItem(itemId, updateItem);
 
       if (ocrResult.status === 'completed') {
-        enqueueSnackbar('Kvittering lagret og lest med OCR.', { variant: 'success' });
+        enqueueSnackbar(t('agr.toast.receiptSavedOcr'), { variant: 'success' });
       } else {
-        enqueueSnackbar('Kvittering lagret. OCR trengte manuell oppfolging.', { variant: 'info' });
+        enqueueSnackbar(t('agr.toast.receiptSavedManual'), { variant: 'info' });
       }
     } catch (receiptError) {
       console.error('[ProjectAgreementsPanel] Failed to upload collaboration receipt', receiptError);
@@ -590,7 +596,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         ocrStatus: 'failed',
         ocrConfidence: 'low',
       }));
-      enqueueSnackbar('Kunne ikke laste opp kvitteringen.', { variant: 'error' });
+      enqueueSnackbar(t('agr.toast.receiptUploadFailed'), { variant: 'error' });
     } finally {
       setUploadingReceiptItemId((current) => (current === itemId ? null : current));
       setReceiptOcrProgress((prev) => {
@@ -603,6 +609,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     canEditCollaborationTerms,
     collaborationDraft.costItems,
     enqueueSnackbar,
+    t,
     persistCollaborationCostItem,
     project.id,
     updateCollaborationCostItemDraft,
@@ -772,11 +779,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       await producerWorkflowService.createTimelineItem(project.id, payload);
     } catch (error) {
       console.error('[ProjectAgreementsPanel] Failed to sync agreement timeline item', error);
-      enqueueSnackbar('Avtalen ble lagret, men kunne ikke synkroniseres til økonomitidslinjen.', {
+      enqueueSnackbar(t('agr.toast.timelineSyncFailed'), {
         variant: 'warning',
       });
     }
-  }, [enqueueSnackbar, project.id]);
+  }, [enqueueSnackbar, project.id, t]);
 
   const syncAgreementReview = useCallback(async (agreement: ProjectAgreement) => {
     if (!needsClientCollaborationReview(agreement) || agreement.status === 'draft') {
@@ -819,26 +826,26 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       if (agreement.status === 'signed' && review.status !== 'approved') {
         await producerWorkflowService.setReviewDecisionWithTimeline(project.id, review.id, {
           decision: 'approved',
-          reason: 'Avtalen er signert og markert som fullført i prosjektets økonomi.',
+          reason: t('agr.reason.signedComplete'),
         });
       } else if (signatureStatus === 'changes_requested' && review.status !== 'changes_requested') {
         await producerWorkflowService.setReviewDecisionWithTimeline(project.id, review.id, {
           decision: 'changes_requested',
-          reason: 'Motparten har bedt om endringer i Google-signaturflyten.',
+          reason: t('agr.reason.changesRequested'),
         });
       } else if (signatureStatus === 'rejected' && review.status !== 'rejected') {
         await producerWorkflowService.setReviewDecisionWithTimeline(project.id, review.id, {
           decision: 'rejected',
-          reason: 'Motparten har avslått avtalen i Google-signaturflyten.',
+          reason: t('agr.reason.rejected'),
         });
       }
     } catch (error) {
       console.error('[ProjectAgreementsPanel] Failed to sync agreement review item', error);
-      enqueueSnackbar('Avtalen ble lagret, men kunne ikke synkroniseres til klientsamarbeid.', {
+      enqueueSnackbar(t('agr.toast.reviewSyncFailed'), {
         variant: 'warning',
       });
     }
-  }, [enqueueSnackbar, project.id, project.name]);
+  }, [enqueueSnackbar, project.id, project.name, t]);
 
   const loadAgreements = useCallback(async () => {
     setLoading(true);
@@ -849,13 +856,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       setAgreements(sortAgreements(nextAgreements));
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke laste prosjektavtaler',
+        error instanceof Error ? error.message : t('agr.toast.loadAgreementsFailed'),
         { variant: 'error' },
       );
     } finally {
       setLoading(false);
     }
-  }, [enqueueSnackbar, project.id, readLocalAgreements, useLocalFallback]);
+  }, [enqueueSnackbar, project.id, readLocalAgreements, t, useLocalFallback]);
 
   const loadGoogleStatus = useCallback(async () => {
     if (useLocalFallback) {
@@ -867,13 +874,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       setGoogleStatus(await googleWorkspaceApi.getStatus(project.id));
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke laste signeringsgrunnlag',
+        error instanceof Error ? error.message : t('agr.toast.loadSigningStatusFailed'),
         { variant: 'warning' },
       );
     } finally {
       setGoogleStatusLoading(false);
     }
-  }, [enqueueSnackbar, project.id, useLocalFallback]);
+  }, [enqueueSnackbar, project.id, t, useLocalFallback]);
 
   useEffect(() => {
     void loadAgreements();
@@ -1041,15 +1048,15 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
       enqueueSnackbar(
         counterpartyType === 'client'
-          ? `${clientTemplateConfig.shortLabel} opprettet.`
-          : `${extraTemplateConfig.shortLabel} opprettet.`,
+          ? t('agr.toast.created', { label: clientTemplateConfig.shortLabel })
+          : t('agr.toast.created', { label: extraTemplateConfig.shortLabel }),
         { variant: 'success' },
       );
       setClientDialogOpen(false);
       setExtraDialogOpen(false);
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke opprette prosjektavtalen',
+        error instanceof Error ? error.message : t('agr.toast.createFailed'),
         { variant: 'error' },
       );
     } finally {
@@ -1101,12 +1108,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       }
 
       enqueueSnackbar(
-        status === 'sent' ? 'Avtalen er markert som sendt.' : 'Avtalen er markert som signert.',
+        status === 'sent' ? t('agr.toast.markedSent') : t('agr.toast.markedSigned'),
         { variant: 'success' },
       );
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke oppdatere avtalestatus',
+        error instanceof Error ? error.message : t('agr.toast.statusUpdateFailed'),
         { variant: 'error' },
       );
     }
@@ -1158,18 +1165,18 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         mutation: 'signature_updated',
         agreementId: agreement.id,
       });
-      enqueueSnackbar('Avtalen er klargjort for Google-signatur.', { variant: 'success' });
+      enqueueSnackbar(t('agr.toast.preparedGoogle'), { variant: 'success' });
       void loadAgreements();
       void loadGoogleStatus();
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke klargjøre Google-signatur',
+        error instanceof Error ? error.message : t('agr.toast.prepareGoogleFailed'),
         { variant: 'error' },
       );
     } finally {
       setSignatureBusyAgreementId(null);
     }
-  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, t, useLocalFallback]);
 
   const applyGoogleSignatureStatusUpdate = useCallback(async (
     agreement: ProjectAgreement,
@@ -1252,7 +1259,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
     if (!silent) {
       enqueueSnackbar(
-        successMessage ?? `Google-signatur oppdatert: ${GOOGLE_SIGNATURE_TRANSITION_LABELS[status].toLowerCase()}.`,
+        successMessage ?? t('agr.toast.googleStatusUpdated', { status: googleTransitionLabels[status].toLowerCase() }),
         { variant: 'success' },
       );
     }
@@ -1261,7 +1268,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       void loadGoogleStatus();
     }
     return updatedAgreement;
-  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, onCandidateStatusChange, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+  }, [enqueueSnackbar, googleTransitionLabels, loadAgreements, loadGoogleStatus, onCandidateStatusChange, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, t, useLocalFallback]);
 
   const handleUpdateGoogleSignatureStatus = useCallback(async (
     agreement: ProjectAgreement,
@@ -1272,13 +1279,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       await applyGoogleSignatureStatusUpdate(agreement, status);
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke oppdatere Google-signaturstatusen',
+        error instanceof Error ? error.message : t('agr.toast.googleStatusUpdateFailed'),
         { variant: 'error' },
       );
     } finally {
       setSignatureBusyAgreementId(null);
     }
-  }, [applyGoogleSignatureStatusUpdate, enqueueSnackbar]);
+  }, [applyGoogleSignatureStatusUpdate, enqueueSnackbar, t]);
 
   const handleSendGoogleSignatureRequest = useCallback(async (agreement: ProjectAgreement) => {
     setSignatureBusyAgreementId(agreement.id);
@@ -1328,40 +1335,40 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         mutation: 'signature_updated',
         agreementId: agreement.id,
       });
-      enqueueSnackbar('Signaturlenken er sendt og avtalen er lagt i juridisk flyt.', { variant: 'success' });
+      enqueueSnackbar(t('agr.toast.signatureLinkSent'), { variant: 'success' });
       void loadAgreements();
       void loadGoogleStatus();
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke sende signaturlenken',
+        error instanceof Error ? error.message : t('agr.toast.sendSignatureLinkFailed'),
         { variant: 'error' },
       );
     } finally {
       setSignatureBusyAgreementId(null);
     }
-  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, t, useLocalFallback]);
 
   const handleCopyGoogleSignatureLink = useCallback(async (agreement: ProjectAgreement) => {
     const targetUrl = agreement.google_signature?.requestUrl ?? agreement.google_signature?.webViewUrl;
     if (!targetUrl) {
-      enqueueSnackbar('Avtalen mangler en Google-lenke som kan deles.', { variant: 'warning' });
+      enqueueSnackbar(t('agr.toast.noShareableLink'), { variant: 'warning' });
       return;
     }
     try {
       await navigator.clipboard.writeText(targetUrl);
-      enqueueSnackbar('Signaturlenken er kopiert.', { variant: 'success' });
+      enqueueSnackbar(t('agr.toast.linkCopied'), { variant: 'success' });
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke kopiere signaturlenken',
+        error instanceof Error ? error.message : t('agr.toast.copyLinkFailed'),
         { variant: 'error' },
       );
     }
-  }, [enqueueSnackbar]);
+  }, [enqueueSnackbar, t]);
 
   const openGoogleSignature = useCallback((agreement: ProjectAgreement) => {
     const targetUrl = agreement.google_signature?.requestUrl ?? agreement.google_signature?.webViewUrl;
     if (!targetUrl) {
-      enqueueSnackbar('Avtalen mangler en Google-lenke for signering.', { variant: 'warning' });
+      enqueueSnackbar(t('agr.toast.noSigningLink'), { variant: 'warning' });
       return;
     }
     if (typeof window !== 'undefined') {
@@ -1370,7 +1377,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     if (agreement.google_signature?.status === 'prepared' || agreement.google_signature?.status === 'sent') {
       void handleUpdateGoogleSignatureStatus(agreement, 'opened_in_google');
     }
-  }, [enqueueSnackbar, handleUpdateGoogleSignatureStatus]);
+  }, [enqueueSnackbar, handleUpdateGoogleSignatureStatus, t]);
 
   const openAgreementReviewFocus = useCallback((agreement: ProjectAgreement) => {
     onOpenReviews?.({
@@ -1438,7 +1445,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         agreementId: targetAgreement.id,
       });
       if (!silent) {
-        enqueueSnackbar('Google-signaturflyten er synkronisert tilbake til prosjektet.', { variant: 'success' });
+        enqueueSnackbar(t('agr.toast.googleSynced'), { variant: 'success' });
       }
       if (reloadAfter) {
         void loadAgreements();
@@ -1452,13 +1459,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       await syncGoogleSignature(agreement);
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke synkronisere Google-signaturflyten',
+        error instanceof Error ? error.message : t('agr.toast.googleSyncFailed'),
         { variant: 'error' },
       );
     } finally {
       setSignatureBusyAgreementId(null);
     }
-  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, useLocalFallback]);
+  }, [enqueueSnackbar, loadAgreements, loadGoogleStatus, persistLocalAgreement, project.id, syncAgreementReview, syncAgreementTimeline, t, useLocalFallback]);
 
   const syncGoogleSignatureSilently = useCallback(async (agreement: ProjectAgreement) => {
     let updatedAgreement: ProjectAgreement;
@@ -1507,7 +1514,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       const syncedStatus = syncedAgreement.google_signature?.status ?? null;
 
       if (syncedStatus === 'signed' || syncedAgreement.status === 'signed') {
-        enqueueSnackbar('Signeringen er allerede bekreftet og lagret i prosjektet.', { variant: 'success' });
+        enqueueSnackbar(t('agr.toast.alreadyConfirmed'), { variant: 'success' });
         void loadAgreements();
         void loadGoogleStatus();
         return;
@@ -1516,8 +1523,8 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       if (syncedStatus === 'changes_requested' || syncedStatus === 'rejected') {
         enqueueSnackbar(
           syncedStatus === 'changes_requested'
-            ? 'Google-flyten viser at avtalen kom tilbake med endringer. Den ble ikke markert som signert.'
-            : 'Google-flyten viser at avtalen er avvist. Den ble ikke markert som signert.',
+            ? t('agr.toast.googleShowsChanges')
+            : t('agr.toast.googleShowsRejected'),
           { variant: 'warning' },
         );
         void loadAgreements();
@@ -1530,20 +1537,20 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
         skipReload: true,
       });
 
-      enqueueSnackbar('Signeringen er bekreftet. Signert PDF og signaturspor er lagret i prosjektet.', {
+      enqueueSnackbar(t('agr.toast.signingConfirmed'), {
         variant: 'success',
       });
       void loadAgreements();
       void loadGoogleStatus();
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke bekrefte Google-signeringen',
+        error instanceof Error ? error.message : t('agr.toast.confirmGoogleFailed'),
         { variant: 'error' },
       );
     } finally {
       setSignatureBusyAgreementId(null);
     }
-  }, [applyGoogleSignatureStatusUpdate, enqueueSnackbar, loadAgreements, loadGoogleStatus, syncGoogleSignatureSilently]);
+  }, [applyGoogleSignatureStatusUpdate, enqueueSnackbar, loadAgreements, loadGoogleStatus, syncGoogleSignatureSilently, t]);
 
   useEffect(() => {
     if (useLocalFallback || loading || googleStatusLoading) {
@@ -1613,7 +1620,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     if (items.length === 0) {
       return (
         <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
-          Ingen avtaler opprettet ennå i denne kategorien.
+          {t('agr.empty.noneInCategory')}
         </Alert>
       );
     }
@@ -1625,7 +1632,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           const isHighlighted = highlightedAgreementId === agreement.id;
           const linkedReview = agreementReviewByAgreementId[agreement.id];
           const isStatusDriver = linkedReview?.id === statusDriverReview?.id;
-          const linkedReviewStatusLabel = linkedReview ? REVIEW_STATUS_LABELS[linkedReview.status] ?? linkedReview.status : null;
+          const linkedReviewStatusLabel = linkedReview ? reviewStatusLabels[linkedReview.status] ?? linkedReview.status : null;
           const signatureTone = getAgreementSignatureTone(agreement.google_signature);
           const signatureProgress = getAgreementSignatureProgress(agreement);
           const clientFacingStatusSummary = getAgreementClientFacingStatusSummary(agreement);
@@ -1701,7 +1708,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1.25 }}>
                     {isHighlighted ? (
                       <Chip
-                        label="Åpnet fra økonomiflyt"
+                        label={t('agr.chip.openedFromFinance')}
                         size="small"
                         sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
                       />
@@ -1718,7 +1725,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     />
                     {linkedReviewStatusLabel ? (
                       <Chip
-                        label={`Klientstatus · ${linkedReviewStatusLabel}`}
+                        label={t('agr.chip.clientStatus', { status: linkedReviewStatusLabel })}
                         size="small"
                         sx={{
                           bgcolor: linkedReview?.status === 'approved'
@@ -1744,7 +1751,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     />
                     {isStatusDriver ? (
                       <Chip
-                        label="Driver prosjektstatus"
+                        label={t('agr.chip.drivesProjectStatus')}
                         size="small"
                         sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
                       />
@@ -1762,11 +1769,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   </Typography>
                   {linkedReview ? (
                     <Typography sx={{ color: 'rgba(191,219,254,0.88)', fontSize: '0.8rem', mb: 0.35 }}>
-                      {getReviewSummaryCopy(linkedReview)}
+                      {getReviewSummaryCopy(linkedReview, t)}
                     </Typography>
                   ) : null}
                   <Typography sx={{ color: signatureTone.color, fontSize: '0.8rem', mb: 0.35 }}>
-                    {getGoogleSignatureSummaryCopy(agreement)}
+                    {getGoogleSignatureSummaryCopy(agreement, t)}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.79rem', mb: 0.75 }}>
                     {clientFacingStatusSummary}
@@ -1826,14 +1833,14 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   ) : null}
                   {linkedReview ? (
                     <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.78rem', mb: 1.2 }}>
-                      {linkedReview.comments?.length ?? 0} kommentarer
+                      {t('agr.card.comments', { n: linkedReview.comments?.length ?? 0 })}
                       {formatAgreementEventTime(linkedReview.decision_at ?? linkedReview.requested_at)
-                        ? ` · sist oppdatert ${formatAgreementEventTime(linkedReview.decision_at ?? linkedReview.requested_at)}`
+                        ? t('agr.card.lastUpdated', { time: formatAgreementEventTime(linkedReview.decision_at ?? linkedReview.requested_at) ?? '' })
                         : ''}
                     </Typography>
                   ) : (
                     <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.8rem', mb: 1.2 }}>
-                      Ingen klientreview koblet til avtalen ennå.
+                      {t('agr.card.noReviewLinked')}
                     </Typography>
                   )}
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -1879,7 +1886,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       onClick={() => setPreviewAgreement(agreement)}
                       sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
                     >
-                      Se avtale
+                      {t('agr.btn.viewAgreement')}
                     </Button>
                   </Stack>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
@@ -1892,7 +1899,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         disabled={signatureBusy}
                         sx={{ textTransform: 'none', fontWeight: 700 }}
                       >
-                        Åpne i Google
+                        {t('agr.btn.openInGoogle')}
                       </Button>
                     ) : null}
                     {!readOnly && (agreement.google_signature?.requestUrl || agreement.google_signature?.webViewUrl) ? (
@@ -1903,7 +1910,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         disabled={signatureBusy}
                         sx={{ textTransform: 'none', fontWeight: 700 }}
                       >
-                        Kopier signaturlenke
+                        {t('agr.btn.copySignatureLink')}
                       </Button>
                     ) : null}
                     {!readOnly && agreement.google_signature ? (
@@ -1917,7 +1924,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         }}
                         sx={{ textTransform: 'none', fontWeight: 700 }}
                       >
-                        {showAdvancedSignatureControls ? 'Skjul manuelle valg' : 'Vis manuelle valg'}
+                        {showAdvancedSignatureControls ? t('agr.btn.hideManual') : t('agr.btn.showManual')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -1931,7 +1938,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           disabled={signatureBusy}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Sync fra Google
+                          {t('agr.btn.syncFromGoogle')}
                         </Button>
                         {agreement.google_signature.status !== 'signed' ? (
                           <Button
@@ -1942,7 +1949,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             disabled={signatureBusy}
                             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#10b981' }}
                           >
-                            Bekreft signert
+                            {t('agr.btn.confirmSigned')}
                           </Button>
                         ) : null}
                         {agreement.google_signature.status !== 'changes_requested' ? (
@@ -1953,7 +1960,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             disabled={signatureBusy}
                             sx={{ textTransform: 'none', fontWeight: 700, borderColor: '#f59e0b', color: '#fde68a' }}
                           >
-                            Marker endringer
+                            {t('agr.btn.markChanges')}
                           </Button>
                         ) : null}
                         {agreement.google_signature.status !== 'rejected' ? (
@@ -1965,7 +1972,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             disabled={signatureBusy}
                             sx={{ textTransform: 'none', fontWeight: 700 }}
                           >
-                            Marker avvist
+                            {t('agr.btn.markRejected')}
                           </Button>
                         ) : null}
                       </Stack>
@@ -1980,7 +1987,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           onClick={() => openAgreementWorkspaceFocus(agreement)}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Åpne i klientflate
+                          {t('agr.btn.openInClientView')}
                         </Button>
                       ) : null}
                       {onOpenReviews && agreement.status !== 'draft' && needsClientCollaborationReview(agreement) ? (
@@ -1990,7 +1997,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           onClick={() => openAgreementReviewFocus(agreement)}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Åpne i klientsamarbeid
+                          {t('agr.btn.openInClientCollab')}
                         </Button>
                       ) : null}
                       {onOpenTimeline ? (
@@ -2000,7 +2007,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           onClick={() => openAgreementTimelineFocus(agreement)}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Åpne i tidslinje
+                          {t('agr.btn.openInTimeline')}
                         </Button>
                       ) : null}
                     </Stack>
@@ -2019,10 +2026,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
         <Box>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            Prosjektavtaler og godkjenninger
+            {t('agr.header.title')}
           </Typography>
           <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.9rem', maxWidth: 860 }}>
-            Hold samarbeidsavtaler, klientgodkjenninger, endringsordrer, NDA-er og medvirkendevilkår samlet i prosjektets økonomi, uten å blande dem sammen med castingtilbud og rollekontrakter.
+            {t('agr.header.subtitle')}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap">
@@ -2034,7 +2041,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 onClick={openExtraAgreementDialog}
                 sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                Ny medvirkendeavtale
+                {t('agr.btn.newExtraAgreement')}
               </Button>
               <Button
                 variant="contained"
@@ -2042,7 +2049,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 onClick={openClientAgreementDialog}
                 sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-violet, #8b5cf6)' }}
               >
-                Ny klientavtale
+                {t('agr.btn.newClientAgreement')}
               </Button>
             </>
           ) : null}
@@ -2062,10 +2069,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} justifyContent="space-between">
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                  Samarbeidsramme
+                  {t('agr.frame.title')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.88rem', maxWidth: 860 }}>
-                  Avklar hvilken avtale prosjektet faktisk går på, hva som ligger innenfor scope, hvem som dekker ekstrakostnader og hvordan kompensasjonen er tenkt i oppstartsperioden og etterpå.
+                  {t('agr.frame.subtitle')}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -2086,7 +2093,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 />
                 <Chip
                   size="small"
-                  label={collaborationDraft.deliverablesInScopeVisible === false ? 'Scope skjult for klient' : 'Scope synlig for klient'}
+                  label={collaborationDraft.deliverablesInScopeVisible === false ? t('agr.chip.scopeHidden') : t('agr.chip.scopeVisible')}
                   sx={{
                     bgcolor: collaborationDraft.deliverablesInScopeVisible === false ? 'rgba(148,163,184,0.16)' : 'rgba(251,191,36,0.16)',
                     color: collaborationDraft.deliverablesInScopeVisible === false ? '#cbd5e1' : '#fde68a',
@@ -2110,13 +2117,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               }}
             >
               <Typography sx={{ fontWeight: 700, color: '#fde68a' }}>
-                Beslutningsstøtte — ikke juridisk gyldig avtale
+                {t('agr.disclaimer.title')}
               </Typography>
               <Typography sx={{ fontSize: '0.84rem', color: 'rgba(254,243,199,0.92)' }}>
-                Feltene under hjelper deg dokumentere intensjon og struktur. Avtalen er ikke
-                juridisk gyldig før den er gjennomgått av advokat og signert av begge parter.
-                Relevante lover: avtaleloven (avtl.), aksjeloven (asl.), åndsverkloven (åvl.),
-                arbeidsmiljøloven (aml.) og personopplysningsloven (GDPR).
+                {t('agr.disclaimer.body')}
               </Typography>
             </Alert>
 
@@ -2134,13 +2138,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 }}
               >
                 <Typography sx={{ fontWeight: 700, color: '#fca5a5' }}>
-                  Aksjelov-relevant: krever ekstra dokumentasjon
+                  {t('agr.equityWarn.title')}
                 </Typography>
                 <Typography sx={{ fontSize: '0.84rem', color: 'rgba(254,226,226,0.92)' }}>
-                  Eierskaps- og holdingselskap-modeller berører aksjeloven §§ 5 (utbytte),
-                  6 (styre/dgl. leder), 8 (lån/kreditt til aksjonærer). Krev styreprotokoll
-                  og evt. generalforsamlings-vedtak før signering. Aksjonæravtaler bør
-                  separat-revideres av advokat.
+                  {t('agr.equityWarn.body')}
                 </Typography>
               </Alert>
             ) : null}
@@ -2169,19 +2170,19 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
               }}
             >
-              <Tab value="agreement" label="Avtale" />
-              <Tab value="scope" label="Scope & roller" />
-              <Tab value="economy" label="Økonomi & rettigheter" />
+              <Tab value="agreement" label={t('agr.subtab.agreement')} />
+              <Tab value="scope" label={t('agr.subtab.scope')} />
+              <Tab value="economy" label={t('agr.subtab.economy')} />
             </Tabs>
 
             {collaborationTab === 'agreement' ? (
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
+                  <InputLabel>{t('agr.field.status')}</InputLabel>
                   <Select
                     value={collaborationDraft.status ?? 'discovery'}
-                    label="Status"
+                    label={t('agr.field.status')}
                     disabled={!canEditCollaborationTerms}
                     onChange={(event) => {
                       const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['status']>;
@@ -2197,10 +2198,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Avtaletype</InputLabel>
+                  <InputLabel>{t('agr.field.agreementType')}</InputLabel>
                   <Select
                     value={collaborationDraft.agreementModel ?? 'one_time_project'}
-                    label="Avtaletype"
+                    label={t('agr.field.agreementType')}
                     disabled={!canEditCollaborationTerms}
                     onChange={(event) => {
                       const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['agreementModel']>;
@@ -2216,10 +2217,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Kompensasjonsmodell</InputLabel>
+                  <InputLabel>{t('agr.field.compensationModel')}</InputLabel>
                   <Select
                     value={collaborationDraft.compensationModel ?? 'fixed_fee'}
-                    label="Kompensasjonsmodell"
+                    label={t('agr.field.compensationModel')}
                     disabled={!canEditCollaborationTerms}
                     onChange={(event) => {
                       const nextValue = event.target.value as NonNullable<ProducerCollaborationTerms['compensationModel']>;
@@ -2236,29 +2237,29 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Hva slags samarbeid er dette?"
+                  label={t('agr.field.whatCollab')}
                   value={collaborationDraft.agreementLabel ?? ''}
                   onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, agreementLabel: event.target.value }))}
                   onBlur={() => { void persistCollaborationDraft(); }}
                   fullWidth
                   disabled={!canEditCollaborationTerms}
-                  helperText="For eksempel: Holy Crust oppstartsperiode, engangsprosjekt eller holdingselskap-løp."
+                  helperText={t('agr.field.whatCollabHelp')}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Hvilket selskap / vehicle går avtalen gjennom?"
+                  label={t('agr.field.vehicle')}
                   value={collaborationDraft.commercialVehicle ?? ''}
                   onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, commercialVehicle: event.target.value }))}
                   onBlur={() => { void persistCollaborationDraft(); }}
                   fullWidth
                   disabled={!canEditCollaborationTerms}
-                  helperText="For eksempel holdingselskap, driftsselskap eller personlig foretak."
+                  helperText={t('agr.field.vehicleHelp')}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <TextField
-                  label="Kort samarbeidssammendrag"
+                  label={t('agr.field.collabSummary')}
                   value={collaborationDraft.agreementSummary ?? ''}
                   onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, agreementSummary: event.target.value }))}
                   onBlur={() => { void persistCollaborationDraft(); }}
@@ -2275,7 +2276,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Leveranser innenfor scope"
+                  label={t('agr.field.deliverablesInScope')}
                   value={deliverablesInScopeValue}
                   onChange={(event) => setCollaborationDraft((prev) => ({
                     ...prev,
@@ -2286,7 +2287,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   multiline
                   minRows={6}
                   disabled={!canEditCollaborationTerms}
-                  helperText="Én leveranse per linje, for eksempel TikTok-innhold, Instagram reels eller BTS fra kjøkken."
+                  helperText={t('agr.field.deliverablesHelp')}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
@@ -2301,10 +2302,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     disabled={!canEditCollaborationTerms}
                     sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
                   >
-                    {collaborationDraft.deliverablesInScopeVisible === false ? 'Vis scope mot klient' : 'Skjul scope mot klient'}
+                    {collaborationDraft.deliverablesInScopeVisible === false ? t('agr.btn.showScopeToClient') : t('agr.btn.hideScopeFromClient')}
                   </Button>
                   <TextField
-                    label="Produksjonsdager per uke / måned"
+                    label={t('agr.field.productionCadence')}
                     value={collaborationDraft.productionCadence ?? ''}
                     onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, productionCadence: event.target.value }))}
                     onBlur={() => { void persistCollaborationDraft(); }}
@@ -2312,7 +2313,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                     disabled={!canEditCollaborationTerms}
                   />
                   <TextField
-                    label="Oppstartsmodell / økonomi i pilotperioden"
+                    label={t('agr.field.startupModel')}
                     value={collaborationDraft.startupEconomicModel ?? ''}
                     onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, startupEconomicModel: event.target.value }))}
                     onBlur={() => { void persistCollaborationDraft(); }}
@@ -2326,7 +2327,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Rolle og ansvar · Produksjon"
+                  label={t('agr.field.roleProduction')}
                   value={productionResponsibilitiesValue}
                   onChange={(event) => setCollaborationDraft((prev) => ({
                     ...prev,
@@ -2341,7 +2342,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Rolle og ansvar · Branding"
+                  label={t('agr.field.roleBranding')}
                   value={brandingResponsibilitiesValue}
                   onChange={(event) => setCollaborationDraft((prev) => ({
                     ...prev,
@@ -2356,7 +2357,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Rolle og ansvar · Markedsføring"
+                  label={t('agr.field.roleMarketing')}
                   value={marketingResponsibilitiesValue}
                   onChange={(event) => setCollaborationDraft((prev) => ({
                     ...prev,
@@ -2393,15 +2394,14 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               >
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <Typography sx={{ color: '#bfdbfe', fontWeight: 800, mb: 0.4 }}>
-                    Juridisk støtte
+                    {t('agr.legal.title')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(219,234,254,0.84)', fontSize: '0.83rem', mb: 1 }}>
-                    Hentbare maler er kvalitetssikret av bransjeorganisasjonene.
-                    Spesialiserte advokatfirma anbefales for review før signering.
+                    {t('agr.legal.subtitle')}
                   </Typography>
                   <Stack spacing={0.6}>
                     <Typography sx={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.82rem' }}>
-                      Bransje-maler
+                      {t('agr.legal.industryTemplates')}
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap">
                       <Button
@@ -2412,7 +2412,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         rel="noreferrer"
                         sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
                       >
-                        Norsk Filmforbund — avtaler
+                        {t('agr.legal.filmforbundet')}
                       </Button>
                       <Button
                         size="small"
@@ -2442,7 +2442,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         rel="noreferrer"
                         sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
                       >
-                        NFI — produksjonsregler
+                        {t('agr.legal.nfi')}
                       </Button>
                       <Button
                         size="small"
@@ -2452,25 +2452,23 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         rel="noreferrer"
                         sx={{ textTransform: 'none', fontWeight: 700, color: '#bfdbfe', borderColor: 'rgba(147,197,253,0.4)' }}
                       >
-                        TONO — musikkrettigheter
+                        {t('agr.legal.tono')}
                       </Button>
                     </Stack>
                     <Typography sx={{ color: '#dbeafe', fontWeight: 700, fontSize: '0.82rem', mt: 1 }}>
-                      Spesialiserte advokatfirma (film/TV/media)
+                      {t('agr.legal.specializedFirms')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(219,234,254,0.7)', fontSize: '0.78rem', mb: 0.6 }}>
-                      Klikk «Send forespørsel» for å åpne e-post med prefylt forespørsel om review av prosjektets samarbeidsramme.
+                      {t('agr.legal.sendRequestHint')}
                     </Typography>
                     {(() => {
-                      const projectName = project?.name ?? 'prosjektet';
-                      const mailSubject = encodeURIComponent(`Forespørsel om review av samarbeidsavtale — ${projectName}`);
-                      const mailBody = encodeURIComponent(
-                        `Hei,\n\nVi vurderer en samarbeidsavtale knyttet til produksjonen "${projectName}" `
-                        + `og ønsker en gjennomgang før signering.\n\n`
-                        + `Avtaletype: ${PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS[collaborationDraft.agreementModel ?? 'one_time_project']}\n`
-                        + `Status: ${PRODUCER_COLLABORATION_STATUS_LABELS[collaborationDraft.status ?? 'discovery']}\n\n`
-                        + `Kan dere ta en kort innledende samtale denne uka?\n\nMvh,\n`,
-                      );
+                      const projectName = project?.name ?? t('agr.legal.projectFallback');
+                      const mailSubject = encodeURIComponent(t('agr.legal.mailSubject', { projectName }));
+                      const mailBody = encodeURIComponent(t('agr.legal.mailBody', {
+                        projectName,
+                        agreementType: PRODUCER_COLLABORATION_AGREEMENT_MODEL_LABELS[collaborationDraft.agreementModel ?? 'one_time_project'],
+                        status: PRODUCER_COLLABORATION_STATUS_LABELS[collaborationDraft.status ?? 'discovery'],
+                      }));
                       const firms: Array<{
                         name: string;
                         specialty: string;
@@ -2480,35 +2478,35 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       }> = [
                         {
                           name: 'Schjødt',
-                          specialty: 'Teknologi & immaterialrettigheter, M&A',
+                          specialty: t('agr.firm.schjodt'),
                           email: 'post@schjodt.no',
                           phone: '+47 22 01 88 00',
                           site: 'https://www.schjodt.no/fagomrader/teknologi-og-immaterialrettigheter/',
                         },
                         {
                           name: 'Wiersholm',
-                          specialty: 'IP, markedsføring, media, GDPR',
+                          specialty: t('agr.firm.wiersholm'),
                           email: 'post@wiersholm.no',
                           phone: '+47 21 02 10 00',
                           site: 'https://www.wiersholm.no/fagomrader/immaterialrett-og-markedsforing',
                         },
                         {
                           name: 'Wikborg Rein',
-                          specialty: 'Kontraktsrett, M&A, transaksjoner',
+                          specialty: t('agr.firm.wikborg'),
                           email: 'post@wr.no',
                           phone: '+47 22 82 75 00',
                           site: 'https://www.wr.no/',
                         },
                         {
                           name: 'Brækhus',
-                          specialty: 'Forretningsjuridiske tjenester',
+                          specialty: t('agr.firm.braekhus'),
                           email: 'post@braekhus.no',
                           phone: '+47 23 23 90 90',
                           site: 'https://braekhus.no/',
                         },
                         {
                           name: 'Dehnke',
-                          specialty: 'Mindre advokatfirma, kontraktsspesialisering',
+                          specialty: t('agr.firm.dehnke'),
                           email: 'post@dehnke.no',
                           phone: '+47 22 17 17 17',
                           site: 'https://www.dehnke.no/',
@@ -2549,7 +2547,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                     minWidth: 0, py: 0.4, px: 1,
                                   }}
                                 >
-                                  Send forespørsel
+                                  {t('agr.btn.sendRequest')}
                                 </Button>
                                 <Button
                                   size="small"
@@ -2561,7 +2559,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                     minWidth: 0, py: 0.4, px: 1,
                                   }}
                                 >
-                                  Ring
+                                  {t('agr.btn.call')}
                                 </Button>
                                 <Button
                                   size="small"
@@ -2575,7 +2573,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                     minWidth: 0, py: 0.4, px: 0.6,
                                   }}
                                 >
-                                  Nettside
+                                  {t('agr.btn.website')}
                                 </Button>
                               </Stack>
                               <Typography sx={{ color: 'rgba(221,214,254,0.6)', fontSize: '0.7rem', mt: 0.6 }}>
@@ -2598,11 +2596,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                 <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'flex-start' }} spacing={1} sx={{ mb: 1 }}>
                   <Box>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.2 }}>
-                      Kostnader & utlegg
+                      {t('agr.cost.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem' }}>
-                      Hver linje har egen kategori (samme chart-of-accounts som budsjett — du kan også legge til egne).
-                      Bilag lastes opp og OCR-leses for dokumentasjon.
+                      {t('agr.cost.subtitle')}
                     </Typography>
                   </Box>
                   {canEditCollaborationTerms ? (
@@ -2613,13 +2610,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       onClick={() => { void addCollaborationCostItem(); }}
                       sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed', whiteSpace: 'nowrap' }}
                     >
-                      Ny kostnadslinje
+                      {t('agr.btn.newCostLine')}
                     </Button>
                   ) : null}
                 </Stack>
                 {(collaborationDraft.costItems ?? []).length === 0 ? (
                   <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-                    Ingen kostnadslinjer registrert. Klikk «Ny kostnadslinje» for å starte.
+                    {t('agr.cost.empty')}
                   </Alert>
                 ) : null}
                 <Stack spacing={1.5}>
@@ -2657,7 +2654,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         </Grid>
                         <Grid size={{ xs: 12, md: 5 }}>
                           <TextField
-                            label="Beskrivelse"
+                            label={t('agr.field.description')}
                             size="small"
                             value={item.label}
                             onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
@@ -2667,12 +2664,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             onBlur={() => { void persistCollaborationDraft(); }}
                             fullWidth
                             disabled={!canEditCollaborationTerms}
-                            placeholder="F.eks. Statister, busstransport på opptaksdag 2"
+                            placeholder={t('agr.cost.descPlaceholder')}
                           />
                         </Grid>
                         <Grid size={{ xs: 10, md: 2 }}>
                           <TextField
-                            label="Beløp"
+                            label={t('agr.field.amount')}
                             size="small"
                             value={item.amountLabel ?? ''}
                             onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
@@ -2697,9 +2694,9 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>
                           <FormControl fullWidth size="small">
-                            <InputLabel>Dekkes av</InputLabel>
+                            <InputLabel>{t('agr.field.coveredBy')}</InputLabel>
                             <Select
-                              label="Dekkes av"
+                              label={t('agr.field.coveredBy')}
                               value={item.coveredBy}
                               disabled={!canEditCollaborationTerms}
                               onChange={(event) => {
@@ -2724,7 +2721,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         </Grid>
                         <Grid size={{ xs: 12, md: 8 }}>
                           <TextField
-                            label="Notat"
+                            label={t('agr.field.note')}
                             size="small"
                             value={item.notes ?? ''}
                             onChange={(event) => updateCollaborationCostItemDraft(item.id, (entry) => ({
@@ -2757,10 +2754,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
                               {uploadingReceiptItemId === item.id
-                                ? `Behandler${receiptOcrProgress[item.id] ? ` ${Math.round(receiptOcrProgress[item.id] * 100)}%` : '...'}`
+                                ? t('agr.cost.processing', { suffix: receiptOcrProgress[item.id] ? ` ${Math.round(receiptOcrProgress[item.id] * 100)}%` : '...' })
                                 : item.receiptFileId
-                                  ? 'Bytt kvittering'
-                                  : 'Last opp kvittering'}
+                                  ? t('agr.cost.changeReceipt')
+                                  : t('agr.cost.uploadReceipt')}
                               <input
                                 hidden
                                 type="file"
@@ -2784,7 +2781,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                                 rel="noreferrer"
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                Åpne kvittering
+                                {t('agr.btn.openReceipt')}
                               </Button>
                             ) : null}
                             {item.receiptFileName ? (
@@ -2796,14 +2793,14 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                             ) : null}
                             {item.ocrStatus ? (
                               <Chip
-                                label={RECEIPT_OCR_STATUS_LABELS[item.ocrStatus]}
+                                label={receiptOcrStatusLabels[item.ocrStatus]}
                                 color={item.ocrStatus === 'completed' ? 'success' : item.ocrStatus === 'failed' ? 'warning' : 'default'}
                                 variant={item.ocrStatus === 'completed' ? 'filled' : 'outlined'}
                               />
                             ) : null}
                             {item.ocrConfidence ? (
                               <Chip
-                                label={RECEIPT_OCR_CONFIDENCE_LABELS[item.ocrConfidence]}
+                                label={receiptOcrConfidenceLabels[item.ocrConfidence]}
                                 variant="outlined"
                                 sx={{ color: '#cbd5f5', borderColor: 'rgba(99,102,241,0.35)' }}
                               />
@@ -2816,7 +2813,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                               </Typography>
                             ) : (
                               <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: 13 }}>
-                                Last opp mobilbilde av kvittering for automatisk OCR og dokumentasjon av utlegg.
+                                {t('agr.cost.uploadHint')}
                               </Typography>
                             )}
                           </Stack>
@@ -2832,15 +2829,15 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* ── Section 2: Kompensasjon & arbeidsomfang ── */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Kompensasjon & arbeidsomfang
+                      {t('agr.comp.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
-                      Hvordan honorar utbetales etter oppstartsperioden + maks-timer per måned.
+                      {t('agr.comp.subtitle')}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 8 }}>
                         <TextField
-                          label="Kompensasjonsoppsett etter oppstartsperioden"
+                          label={t('agr.comp.setupField')}
                           value={collaborationDraft.compensationSummary ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, compensationSummary: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -2852,7 +2849,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       </Grid>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <TextField
-                          label="Arbeidsomfang / timer per måned"
+                          label={t('agr.comp.workloadField')}
                           value={collaborationDraft.workloadCap ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, workloadCap: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -2866,13 +2863,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* ── Section 3: Evaluering ── */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Evaluering & framdrift
+                      {t('agr.eval.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 1 }}>
-                      Hvordan dere måler om samarbeidet leverer det dere ble enige om.
+                      {t('agr.eval.subtitle')}
                     </Typography>
                     <TextField
-                      label="Evaluering etter samarbeidsperioden"
+                      label={t('agr.eval.field')}
                       value={collaborationDraft.evaluationPlan ?? ''}
                       onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, evaluationPlan: event.target.value }))}
                       onBlur={() => { void persistCollaborationDraft(); }}
@@ -2886,19 +2883,18 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* ── Section 4: Rettigheter ── */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Rettigheter
+                      {t('agr.rights.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
-                      Hva kan kunden bruke materialet til, og hva kan du vise i egen portefølje.
+                      {t('agr.rights.subtitle')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
-                      ⚠ Overdragelse av åndsverk må være skriftlig og spesifikk (åvl. § 67).
-                      Begrens til de beføyelsene kunden faktisk trenger.
+                      {t('agr.rights.warn')}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <TextField
-                          label="Rettigheter til bruk hos kunden"
+                          label={t('agr.rights.clientUsage')}
                           value={collaborationDraft.clientUsageRights ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, clientUsageRights: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -2910,7 +2906,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       </Grid>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <TextField
-                          label="Bruk i egen portefølje / markedsføring"
+                          label={t('agr.rights.portfolio')}
                           value={collaborationDraft.producerPortfolioRights ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, producerPortfolioRights: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -2926,17 +2922,16 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* ── Section 5: Ansvar ── */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Ansvar & garantier
+                      {t('agr.liability.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
-                      Konkret avgrensning av hva innholdsprodusenten ikke holdes ansvarlig for.
+                      {t('agr.liability.subtitle')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
-                      ⚠ Ansvarsfraskrivelser kan settes til side hvis urimelige (avtl. § 36).
-                      For forbrukerforhold gjelder strengere regler i forbrukerkjøpsloven.
+                      {t('agr.liability.warn')}
                     </Typography>
                     <TextField
-                      label="Hva innholdsprodusenten ikke holdes ansvarlig for"
+                      label={t('agr.liability.field')}
                       value={collaborationDraft.liabilityExclusions ?? ''}
                       onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, liabilityExclusions: event.target.value }))}
                       onBlur={() => { void persistCollaborationDraft(); }}
@@ -2954,20 +2949,20 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* Honorar-struktur */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Honorar-struktur
+                      {t('agr.fee.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
-                      Hvordan teamet kompenseres — fast, dagrate, per episode eller royalty-andel.
+                      {t('agr.fee.subtitle')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
-                      ⚠ Frilans vs. fast ansatt-grensen reguleres av aml. § 1-8. Skatt/MVA-konsekvenser bør avklares med regnskapsfører.
+                      {t('agr.fee.warn')}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <FormControl fullWidth>
-                          <InputLabel>Honorar-modell</InputLabel>
+                          <InputLabel>{t('agr.fee.modelField')}</InputLabel>
                           <Select
-                            label="Honorar-modell"
+                            label={t('agr.fee.modelField')}
                             value={collaborationDraft.filmFeeStructure ?? 'fixed_per_project'}
                             disabled={!canEditCollaborationTerms}
                             onChange={(event) => {
@@ -2984,24 +2979,24 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       </Grid>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <TextField
-                          label="Dagrate (NOK)"
+                          label={t('agr.fee.dayRate')}
                           value={collaborationDraft.filmDayRate ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmDayRate: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
                           fullWidth
                           disabled={!canEditCollaborationTerms}
-                          helperText="F.eks. 12 000 NOK / opptaksdag · 8 000 NOK / postdag"
+                          helperText={t('agr.fee.dayRateHelp')}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <TextField
-                          label="Royalty / etterskudd"
+                          label={t('agr.fee.royalty')}
                           value={collaborationDraft.filmRoyaltySplit ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmRoyaltySplit: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
                           fullWidth
                           disabled={!canEditCollaborationTerms}
-                          helperText="F.eks. 5% av nettoinntekt etter break-even"
+                          helperText={t('agr.fee.royaltyHelp')}
                         />
                       </Grid>
                     </Grid>
@@ -3010,14 +3005,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* IP & distribusjon */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      IP & distribusjon
+                      {t('agr.ip.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
-                      Hvem eier sluttverket, hvor og hvor lenge får det vises.
+                      {t('agr.ip.subtitle')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
-                      ⚠ Overdragelse av åndsverk må være skriftlig og spesifisere beføyelser per
-                      åvl. §§ 67–69. Vernetid 70 år etter opphavsmannens død (åvl. § 11).
+                      {t('agr.ip.warn')}
                     </Typography>
                     {collaborationDraft.filmIpOwnership === 'work_for_hire' ? (
                       <Alert
@@ -3031,22 +3025,19 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         }}
                       >
                         <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                          Work-for-hire: pliktig skriftlig overdragelse
+                          {t('agr.ip.wfhTitle')}
                         </Typography>
                         <Typography sx={{ fontSize: '0.8rem' }}>
-                          Full overdragelse til oppdragsgiver krever skriftlig avtale med
-                          eksplisitt liste over beføyelser. Ufullstendig formulering
-                          kan tolkes innskrenkende mot opphavsmann (åvl. § 67 andre ledd).
-                          Distribusjons-rettighetene under <em>må</em> spesifiseres.
+                          {t('agr.ip.wfhBody1')}<em>{t('agr.ip.wfhMust')}</em>{t('agr.ip.wfhBody2')}
                         </Typography>
                       </Alert>
                     ) : null}
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <FormControl fullWidth>
-                          <InputLabel>IP-eierskap</InputLabel>
+                          <InputLabel>{t('agr.ip.ownershipField')}</InputLabel>
                           <Select
-                            label="IP-eierskap"
+                            label={t('agr.ip.ownershipField')}
                             value={collaborationDraft.filmIpOwnership ?? 'production_company'}
                             disabled={!canEditCollaborationTerms}
                             onChange={(event) => {
@@ -3063,7 +3054,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       </Grid>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <TextField
-                          label="Distribusjons-rettigheter"
+                          label={t('agr.ip.distRights')}
                           value={collaborationDraft.filmDistributionRights ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmDistributionRights: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3071,12 +3062,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="Territorier, plattformer, eksklusivitet, varighet"
+                          helperText={t('agr.ip.distHelp')}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <TextField
-                          label="Festival-rettigheter"
+                          label={t('agr.ip.festivalRights')}
                           value={collaborationDraft.filmFestivalRights ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmFestivalRights: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3084,12 +3075,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="Hvem velger festivaler / hvem dekker submission-fees"
+                          helperText={t('agr.ip.festivalHelp')}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <TextField
-                          label="Sequel- / remake-rettigheter"
+                          label={t('agr.ip.sequelRights')}
                           value={collaborationDraft.filmSequelRights ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmSequelRights: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3105,15 +3096,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* Klarering & rettigheter til personer/musikk */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Klarering & rettigheter
+                      {t('agr.clear.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
-                      Synkroniseringsrettigheter og portrettrettigheter til skuespillere.
+                      {t('agr.clear.subtitle')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
-                      ⚠ Musikk: TONO/Gramo-klarering for innspilt musikk + utøvende kunstnere
-                      (åvl. §§ 17, 39). Likeness/portrett: åvl. § 104 + GDPR art. 6 — eksplisitt
-                      samtykke fra avbildede personer.
+                      {t('agr.clear.warn')}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 6 }}>
@@ -3126,12 +3115,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="Hvem klarerer synkronisering — TONO, originalt, library-musikk"
+                          helperText={t('agr.clear.musicHelp')}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, md: 6 }}>
                         <TextField
-                          label="Likeness / portrettrettigheter"
+                          label={t('agr.clear.likeness')}
                           value={collaborationDraft.filmLikenessRights ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmLikenessRights: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3139,7 +3128,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="Bruk av skuespilleres bilde i markedsføring, etc."
+                          helperText={t('agr.clear.likenessHelp')}
                         />
                       </Grid>
                     </Grid>
@@ -3148,20 +3137,18 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* Forsikring & sikkerhet */}
                   <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(255,255,255,0.03)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.4 }}>
-                      Forsikring, sikkerhet & per-diem
+                      {t('agr.ins.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.84rem', mb: 0.4 }}>
-                      Hva er dekket av E&O / utstyrsforsikring, og hvordan er reisedøgn-honorar.
+                      {t('agr.ins.subtitle')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(251,191,36,0.78)', fontSize: '0.74rem', mb: 1 }}>
-                      ⚠ HMS på set reguleres av aml. kap. 4 + internkontrollforskriften. Stunt
-                      og spesialeffekter krever sertifisert koordinator. Per-diem og reisetillegg
-                      har skattemessige konsekvenser per skattebetalingsforskriften.
+                      {t('agr.ins.warn')}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <TextField
-                          label="Forsikrings-policy"
+                          label={t('agr.ins.policyField')}
                           value={collaborationDraft.filmInsurancePolicy ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmInsurancePolicy: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3169,12 +3156,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="E&O, utstyr, aktør-skade, weather-day"
+                          helperText={t('agr.ins.policyHelp')}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <TextField
-                          label="Per-diem-policy"
+                          label={t('agr.ins.perDiemField')}
                           value={collaborationDraft.filmPerDiemPolicy ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmPerDiemPolicy: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3182,12 +3169,12 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="Sats per døgn på reise, hvem tar utlegg"
+                          helperText={t('agr.ins.perDiemHelp')}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, md: 4 }}>
                         <TextField
-                          label="HMS / sikkerhets-krav"
+                          label={t('agr.ins.safetyField')}
                           value={collaborationDraft.filmSafetyRequirements ?? ''}
                           onChange={(event) => setCollaborationDraft((prev) => ({ ...prev, filmSafetyRequirements: event.target.value }))}
                           onBlur={() => { void persistCollaborationDraft(); }}
@@ -3195,7 +3182,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                           multiline
                           minRows={2}
                           disabled={!canEditCollaborationTerms}
-                          helperText="Stunt-koord., HMS-protokoll, sertifiseringer"
+                          helperText={t('agr.ins.safetyHelp')}
                         />
                       </Grid>
                     </Grid>
@@ -3218,9 +3205,9 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #8b5cf6)' },
         }}
       >
-        <Tab label="Casting og rollekontrakter" />
-        <Tab label={`Klientavtaler (${clientAgreements.length})`} />
-        <Tab label={`Statister / medvirkende (${extraAgreements.length})`} />
+        <Tab label={t('agr.tab.casting')} />
+        <Tab label={t('agr.tab.clientAgreements', { n: clientAgreements.length })} />
+        <Tab label={t('agr.tab.extras', { n: extraAgreements.length })} />
       </Tabs>
 
       {tabValue === 0 ? (
@@ -3236,43 +3223,43 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       {tabValue === 1 ? (
         <Stack spacing={2}>
           <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
-            Klientsporet samler NDA, samarbeidsavtaler, endringsordrer og formelle godkjenninger i én sammenhengende flyt.
+            {t('agr.client.intro')}
           </Alert>
           <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
             <Chip
               size="small"
-              label={`Klientavtaler ${clientAgreements.length}`}
+              label={t('agr.chip.clientAgreements', { n: clientAgreements.length })}
               sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
             />
             <Chip
               size="small"
-              label={`Venter ${clientAgreementStatusSummary.pending}`}
+              label={t('agr.chip.pending', { n: clientAgreementStatusSummary.pending })}
               sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#dbeafe' }}
             />
             <Chip
               size="small"
-              label={`Godkjent ${clientAgreementStatusSummary.approved}`}
+              label={t('agr.chip.approved', { n: clientAgreementStatusSummary.approved })}
               sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#86efac' }}
             />
             <Chip
               size="small"
-              label={`Endringer ${clientAgreementStatusSummary.changesRequested}`}
+              label={t('agr.chip.changes', { n: clientAgreementStatusSummary.changesRequested })}
               sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
             />
             <Chip
               size="small"
-              label={`Uten review ${clientAgreementStatusSummary.withoutReview}`}
+              label={t('agr.chip.withoutReview', { n: clientAgreementStatusSummary.withoutReview })}
               sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
             />
             <Chip
               size="small"
-              label={`Klientsamarbeid totalt ${reviewSummary.pending + reviewSummary.approved + reviewSummary.changesRequested + reviewSummary.rejected}`}
+              label={t('agr.chip.collabTotal', { n: reviewSummary.pending + reviewSummary.approved + reviewSummary.changesRequested + reviewSummary.rejected })}
               sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
             />
           </Stack>
           {reviewsLoading ? (
             <Alert severity="info" sx={{ bgcolor: 'rgba(30,41,59,0.72)', color: '#dbeafe' }}>
-              Oppdaterer klientbeslutninger og koblinger mot prosjektstatus…
+              {t('agr.client.updating')}
             </Alert>
           ) : null}
           {statusDriverReview ? (
@@ -3300,7 +3287,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       disabled={!statusDriverAgreement}
                       sx={{ textTransform: 'none', fontWeight: 700, color: '#f8fafc', borderColor: 'rgba(148,163,184,0.35)' }}
                     >
-                      Åpne i klientsamarbeid
+                      {t('agr.btn.openInClientCollab')}
                     </Button>
                   ) : null}
                   {onOpenTimeline && statusDriverAgreement ? (
@@ -3310,19 +3297,19 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       onClick={() => openAgreementTimelineFocus(statusDriverAgreement)}
                       sx={{ textTransform: 'none', fontWeight: 700, color: '#f8fafc', borderColor: 'rgba(148,163,184,0.35)' }}
                     >
-                      Åpne i tidslinje
+                      {t('agr.btn.openInTimeline')}
                     </Button>
                   ) : null}
                 </Stack>
               )}
             >
               {statusDriverAgreement
-                ? `Prosjektstatusen drives nå av avtalen «${statusDriverAgreement.title}» og reviewstatusen ${REVIEW_STATUS_LABELS[statusDriverReview.status] ?? statusDriverReview.status}.`
-                : `Prosjektstatusen drives nå av klientbeslutningen «${statusDriverReview.title}».`}
+                ? t('agr.client.statusDriverAgreement', { title: statusDriverAgreement.title, status: reviewStatusLabels[statusDriverReview.status] ?? statusDriverReview.status })
+                : t('agr.client.statusDriverReview', { title: statusDriverReview.title })}
             </Alert>
           ) : null}
           {loading ? (
-            <Typography sx={{ color: 'rgba(203,213,225,0.74)' }}>Laster klientavtaler…</Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.74)' }}>{t('agr.client.loading')}</Typography>
           ) : renderAgreementCards(clientAgreements)}
         </Stack>
       ) : null}
@@ -3330,16 +3317,16 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
       {tabValue === 2 ? (
         <Stack spacing={2}>
           <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
-            Medvirkende-sporet samler konfidensialitet, oppmøte, praktiske vilkår og bruk av opptak i én avtalestrøm.
+            {t('agr.extra.intro')}
           </Alert>
           {loading ? (
-            <Typography sx={{ color: 'rgba(203,213,225,0.74)' }}>Laster medvirkendeavtaler…</Typography>
+            <Typography sx={{ color: 'rgba(203,213,225,0.74)' }}>{t('agr.extra.loading')}</Typography>
           ) : renderAgreementCards(extraAgreements)}
         </Stack>
       ) : null}
 
       <Dialog open={!readOnly && clientDialogOpen} onClose={() => setClientDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Ny klientavtale</DialogTitle>
+        <DialogTitle>{t('agr.btn.newClientAgreement')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Alert
@@ -3352,11 +3339,10 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               }}
             >
               <Typography sx={{ fontWeight: 700 }}>
-                Beslutningsstøtte — ikke juridisk gyldig avtale
+                {t('agr.disclaimer.title')}
               </Typography>
               <Typography sx={{ fontSize: '0.84rem' }}>
-                Malene under er strukturer og hjelpetekst — de er ikke gjennomgått av advokat.
-                Avtalen er ikke gyldig før den er revidert av advokat og signert av begge parter.
+                {t('agr.clientDialog.disclaimerBody')}
               </Typography>
             </Alert>
             <Alert severity="info" sx={{ bgcolor: 'rgba(16,185,129,0.08)' }}>
@@ -3364,13 +3350,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             </Alert>
             <Box sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(139,92,246,0.24)', bgcolor: 'rgba(76,29,149,0.18)' }}>
               <Typography sx={{ color: '#f8fafc', fontWeight: 800, mb: 0.4 }}>
-                Best egnet for
+                {t('agr.dialog.bestFor')}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.84)', fontSize: '0.92rem', mb: 1.25 }}>
                 {clientTemplateConfig.bestFor}
               </Typography>
               <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.6 }}>
-                Malen dekker
+                {t('agr.dialog.templateCovers')}
               </Typography>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                 {clientTemplateConfig.coveragePoints.map((coveragePoint) => (
@@ -3386,11 +3372,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Maltype</InputLabel>
+                  <InputLabel>{t('agr.field.templateType')}</InputLabel>
                   <Select
                     value={clientDraft.agreementType}
                     onChange={(event) => handleClientTemplateChange(event.target.value as ClientAgreementType)}
-                    label="Maltype"
+                    label={t('agr.field.templateType')}
                   >
                     {CLIENT_AGREEMENT_TEMPLATE_GROUPS.flatMap((group) => [
                       <ListSubheader key={`header-${group.label}`}>{group.label}</ListSubheader>,
@@ -3405,7 +3391,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 8 }}>
                 <TextField
-                  label="Avtaletittel"
+                  label={t('agr.field.agreementTitle')}
                   value={clientDraft.title}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, title: event.target.value }))}
                   fullWidth
@@ -3445,7 +3431,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               ) : null}
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avsender"
+                  label={t('agr.field.sender')}
                   value={clientDraft.disclosingPartyName}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, disclosingPartyName: event.target.value }))}
                   fullWidth
@@ -3453,7 +3439,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avsenders selskap"
+                  label={t('agr.field.senderCompany')}
                   value={clientDraft.disclosingPartyCompanyName}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, disclosingPartyCompanyName: event.target.value }))}
                   fullWidth
@@ -3461,7 +3447,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avsenders org.nr."
+                  label={t('agr.field.senderOrgNr')}
                   value={clientDraft.disclosingPartyOrganizationNumber}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, disclosingPartyOrganizationNumber: event.target.value }))}
                   fullWidth
@@ -3469,7 +3455,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Kontaktperson hos klient"
+                  label={t('agr.field.clientContact')}
                   value={clientDraft.counterpartyName}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, counterpartyName: event.target.value }))}
                   fullWidth
@@ -3477,7 +3463,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Klientselskap"
+                  label={t('agr.field.clientCompany')}
                   value={clientDraft.counterpartyCompanyName}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, counterpartyCompanyName: event.target.value }))}
                   fullWidth
@@ -3485,7 +3471,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Klientens org.nr."
+                  label={t('agr.field.clientOrgNr')}
                   value={clientDraft.counterpartyOrganizationNumber}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, counterpartyOrganizationNumber: event.target.value }))}
                   fullWidth
@@ -3493,7 +3479,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Klientens e-post"
+                  label={t('agr.field.clientEmail')}
                   value={clientDraft.counterpartyEmail}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, counterpartyEmail: event.target.value }))}
                   fullWidth
@@ -3501,7 +3487,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
                 <TextField
-                  label="Startdato"
+                  label={t('agr.field.startDate')}
                   type="date"
                   value={clientDraft.startDate}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, startDate: event.target.value }))}
@@ -3511,7 +3497,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
                 <TextField
-                  label="Sluttdato (valgfri)"
+                  label={t('agr.field.endDate')}
                   type="date"
                   value={clientDraft.endDate}
                   onChange={(event) => setClientDraft((prev) => ({ ...prev, endDate: event.target.value }))}
@@ -3523,7 +3509,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
             <Box sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(15,23,42,0.66)' }}>
               <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1.25 }}>
-                Forhåndsvisning av avtaletekst
+                {t('agr.dialog.previewTitle')}
               </Typography>
               <Stack spacing={1.25}>
                 {clientPreviewSections.map((section) => (
@@ -3541,7 +3527,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setClientDialogOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setClientDialogOpen(false)}>{t('agr.btn.cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => { void createAgreement('client', clientDraft, clientPreviewSections); }}
@@ -3549,13 +3535,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             disabled={submitting || !clientDraft.title.trim() || !clientDraft.disclosingPartyName.trim() || !clientDraft.counterpartyName.trim() || !clientDraft.purpose.trim()}
             sx={{ bgcolor: 'var(--role-violet, #8b5cf6)' }}
           >
-            {`Opprett ${clientTemplateConfig.shortLabel.toLowerCase()}`}
+            {t('agr.btn.createLabel', { label: clientTemplateConfig.shortLabel.toLowerCase() })}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={!readOnly && extraDialogOpen} onClose={() => setExtraDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Ny medvirkendeavtale</DialogTitle>
+        <DialogTitle>{t('agr.btn.newExtraAgreement')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Alert severity="info" sx={{ bgcolor: 'rgba(16,185,129,0.08)' }}>
@@ -3564,11 +3550,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Maltype</InputLabel>
+                  <InputLabel>{t('agr.field.templateType')}</InputLabel>
                   <Select
                     value={extraDraft.agreementType}
                     onChange={(event) => handleExtraTemplateChange(event.target.value as ExtraAgreementType)}
-                    label="Maltype"
+                    label={t('agr.field.templateType')}
                   >
                     {EXTRA_AGREEMENT_TEMPLATE_OPTIONS.map((template) => (
                       <MenuItem key={template.type} value={template.type}>
@@ -3580,11 +3566,11 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth disabled={project.candidates.length === 0}>
-                  <InputLabel>Velg statist / medvirkende</InputLabel>
+                  <InputLabel>{t('agr.field.selectExtra')}</InputLabel>
                   <Select
                     value={extraDraft.counterpartyId ?? ''}
                     onChange={(event) => handleExtraCandidateChange(event.target.value)}
-                    label="Velg statist / medvirkende"
+                    label={t('agr.field.selectExtra')}
                   >
                     {project.candidates.map((candidate) => (
                       <MenuItem key={candidate.id} value={candidate.id}>
@@ -3596,7 +3582,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avtaletittel"
+                  label={t('agr.field.agreementTitle')}
                   value={extraDraft.title}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, title: event.target.value }))}
                   fullWidth
@@ -3636,7 +3622,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               ) : null}
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avsender"
+                  label={t('agr.field.sender')}
                   value={extraDraft.disclosingPartyName}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, disclosingPartyName: event.target.value }))}
                   fullWidth
@@ -3644,7 +3630,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avsenders selskap"
+                  label={t('agr.field.senderCompany')}
                   value={extraDraft.disclosingPartyCompanyName}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, disclosingPartyCompanyName: event.target.value }))}
                   fullWidth
@@ -3652,7 +3638,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Avsenders org.nr."
+                  label={t('agr.field.senderOrgNr')}
                   value={extraDraft.disclosingPartyOrganizationNumber}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, disclosingPartyOrganizationNumber: event.target.value }))}
                   fullWidth
@@ -3660,7 +3646,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Navn på motpart"
+                  label={t('agr.field.counterpartyName')}
                   value={extraDraft.counterpartyName}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, counterpartyName: event.target.value }))}
                   fullWidth
@@ -3668,7 +3654,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Motparts e-post"
+                  label={t('agr.field.counterpartyEmail')}
                   value={extraDraft.counterpartyEmail}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, counterpartyEmail: event.target.value }))}
                   fullWidth
@@ -3676,7 +3662,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Motparts selskap / agentur"
+                  label={t('agr.field.counterpartyCompany')}
                   value={extraDraft.counterpartyCompanyName}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, counterpartyCompanyName: event.target.value }))}
                   fullWidth
@@ -3684,7 +3670,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Startdato"
+                  label={t('agr.field.startDate')}
                   type="date"
                   value={extraDraft.startDate}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, startDate: event.target.value }))}
@@ -3694,7 +3680,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Sluttdato (valgfri)"
+                  label={t('agr.field.endDate')}
                   type="date"
                   value={extraDraft.endDate}
                   onChange={(event) => setExtraDraft((prev) => ({ ...prev, endDate: event.target.value }))}
@@ -3706,13 +3692,13 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
 
             {project.candidates.length === 0 ? (
               <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#fbbf24' }}>
-                Det finnes ingen statister eller medvirkende i prosjektet ennå. Legg til personer først, og opprett deretter medvirkendeavtalen.
+                {t('agr.extra.noCandidates')}
               </Alert>
             ) : null}
 
             <Box sx={{ p: 2, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(15,23,42,0.66)' }}>
               <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1.25 }}>
-                Forhåndsvisning av avtaletekst
+                {t('agr.dialog.previewTitle')}
               </Typography>
               <Stack spacing={1.25}>
                 {extraPreviewSections.map((section) => (
@@ -3730,7 +3716,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setExtraDialogOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setExtraDialogOpen(false)}>{t('agr.btn.cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => { void createAgreement('extra', extraDraft, extraPreviewSections); }}
@@ -3745,7 +3731,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
             }
             sx={{ bgcolor: '#06b6d4' }}
           >
-            {`Opprett ${extraTemplateConfig.shortLabel.toLowerCase()}`}
+            {t('agr.btn.createLabel', { label: extraTemplateConfig.shortLabel.toLowerCase() })}
           </Button>
         </DialogActions>
       </Dialog>
@@ -3847,8 +3833,8 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   </Stack>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
                     {previewAgreement.signed_date
-                      ? `Signert ${new Date(previewAgreement.signed_date).toLocaleString('nb-NO')}`
-                      : 'Ikke signert ennå'}
+                      ? t('agr.drawer.signedAt', { date: new Date(previewAgreement.signed_date).toLocaleString('nb-NO') })
+                      : t('agr.drawer.notSigned')}
                   </Typography>
 
                   {/* Signaturprogress (5 steg) */}
@@ -3895,21 +3881,21 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                   {/* Parter */}
                   <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.66)', border: '1px solid rgba(148,163,184,0.16)' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      Utleverende part
+                      {t('agr.drawer.disclosingParty')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.88rem' }}>
-                      {previewAgreement.disclosing_party_name || 'Ikke oppgitt'}
+                      {previewAgreement.disclosing_party_name || t('agr.drawer.notProvided')}
                       {previewAgreement.disclosing_party_company_name ? `, ${previewAgreement.disclosing_party_company_name}` : ''}
-                      {previewAgreement.disclosing_party_organization_number ? `, org.nr. ${previewAgreement.disclosing_party_organization_number}` : ''}
+                      {previewAgreement.disclosing_party_organization_number ? t('agr.drawer.orgNrSuffix', { org: previewAgreement.disclosing_party_organization_number }) : ''}
                     </Typography>
                     <Divider sx={{ my: 1.25, borderColor: 'rgba(148,163,184,0.14)' }} />
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      Mottakende part
+                      {t('agr.drawer.receivingParty')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.88rem' }}>
                       {previewAgreement.counterparty_name}
                       {previewAgreement.counterparty_company_name ? `, ${previewAgreement.counterparty_company_name}` : ''}
-                      {previewAgreement.counterparty_organization_number ? `, org.nr. ${previewAgreement.counterparty_organization_number}` : ''}
+                      {previewAgreement.counterparty_organization_number ? t('agr.drawer.orgNrSuffix', { org: previewAgreement.counterparty_organization_number }) : ''}
                       {previewAgreement.counterparty_email ? `, ${previewAgreement.counterparty_email}` : ''}
                     </Typography>
                   </Box>
@@ -3973,7 +3959,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                         disabled={drawerSignatureBusy}
                         sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
                       >
-                        Åpne i Google
+                        {t('agr.btn.openInGoogle')}
                       </Button>
                     ) : null}
                     <Button
@@ -3982,7 +3968,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
                       onClick={() => setPreviewAgreement(null)}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Lukk
+                      {t('agr.btn.close')}
                     </Button>
                   </Stack>
                 </Box>
