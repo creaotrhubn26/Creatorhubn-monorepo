@@ -198,11 +198,38 @@ struct EtterMoteSheet: View {
     private func resultatVisning(_ r: EtterarbeidDTO) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                // Måloppnåelse: ærlig vurdering mot selgerens eget mål.
+                if let vurdering = r.maalVurdering, !vurdering.isEmpty {
+                    seksjon("Måloppnåelse", ikon: "target", tint: maalTint(vurdering)) {
+                        Text(vurdering)
+                            .font(.appScaled(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 seksjon("Møtenotat", ikon: "doc.text.fill", tint: EmBrand.blue) {
                     Text(r.notat)
                         .font(.appScaled(size: 13))
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                // Behovsbanken: det møtet lærte oss om kunden.
+                if let nye = r.nyeBehov, !nye.isEmpty {
+                    seksjon("Nye behov", ikon: "person.text.rectangle.fill", tint: EmBrand.blue) {
+                        ForEach(nye, id: \.self) { b in
+                            HStack(alignment: .top, spacing: 7) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.appScaled(size: 11))
+                                    .foregroundStyle(EmBrand.blue)
+                                Text(b)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        Text("Lagt i behovsbanken — neste møtebrief graver videre i disse.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(EmBrand.textTertiary)
+                    }
                 }
                 if let lofter = r.lofter, !lofter.isEmpty {
                     seksjon("Det vi lovte", ikon: "hand.raised.fill", tint: EmBrand.yellow) {
@@ -361,6 +388,13 @@ struct EtterMoteSheet: View {
         String(format: "%d:%02d", s / 60, s % 60)
     }
 
+    private func maalTint(_ vurdering: String) -> Color {
+        let v = vurdering.lowercased()
+        if v.hasPrefix("nådd") { return EmBrand.green }
+        if v.hasPrefix("delvis") { return EmBrand.yellow }
+        return EmBrand.red
+    }
+
     // MARK: Demo
 
     static func demoResultat(selskap: String, kontakt: String?) -> EtterarbeidDTO {
@@ -377,6 +411,8 @@ struct EtterMoteSheet: View {
             statusForslag: "tilbud_sendes",
             epost: EtterarbeidEpostDTO(
                 emne: "Takk for møtet i dag — neste steg",
-                brodtekst: "Hei \(kontakt ?? "")!\n\nTakk for et godt møte i dag. Som avtalt sender jeg prisforslag på rammeavtalen innen torsdag, sammen med referansen fra et tilsvarende prosjekt.\n\nForeslår at vi booker befaringen med teknisk sjef i neste uke — jeg sender noen tidspunkter i morgen.\n\nMvh"))
+                brodtekst: "Hei \(kontakt ?? "")!\n\nTakk for et godt møte i dag. Som avtalt sender jeg prisforslag på rammeavtalen innen torsdag, sammen med referansen fra et tilsvarende prosjekt.\n\nForeslår at vi booker befaringen med teknisk sjef i neste uke — jeg sender noen tidspunkter i morgen.\n\nMvh"),
+            maalVurdering: "Delvis nådd: befaring er avtalt i prinsippet, men teknisk sjef er ennå ikke booket inn.",
+            nyeBehov: ["Rask oppstart før Q4", "Én kontaktperson for hele leveransen"])
     }
 }
