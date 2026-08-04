@@ -429,6 +429,21 @@ struct MeetingsView: View {
     @State private var ukeOffset = 0
     /// Konflikt-vakt: flytting som overlapper et annet møte stoppes.
     @State private var konfliktMelding: String? = nil
+    /// Etter vellykket flytting (drag i dag/uke): tilby å varsle kontakten
+    /// med ferdig e-postutkast — samme tilbud som Endre tidspunkt-arket.
+    struct FlyttetInfo: Identifiable {
+        let id = UUID()
+        let meeting: Meeting
+        let nyStart: Date
+        var varighetMin: Int = 60
+        /// Reisetids-vakta: «kjøreturen tar ~32 min, du har 25».
+        var reisevarsel: String? = nil
+        /// Ruteplanleggerens forslag til tid som faktisk går opp.
+        var anbefaltStart: Date? = nil
+    }
+    @State private var flyttetInfo: FlyttetInfo? = nil
+    /// Passiv reisetids-vakt i agendaen: møte-id → «~32 min kjøring fra X».
+    @State private var reisetidsAdvarsler: [UUID: String] = [:]
 
     /// Mandag i vist uke (ISO-uke).
     private var ukeStart: Date {
@@ -619,6 +634,17 @@ struct MeetingsView: View {
             let gammelKol = demoTidOverstyringer[m.id]?.2 ?? 1  // tirsdag
             let nyKol = min(max(gammelKol + deltaDager, 0), 4)
             demoTidOverstyringer[m.id] = (nyStart, nySlutt, deltaDager == 0 ? demoTidOverstyringer[m.id]?.2 : nyKol)
+            var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            comps.hour = nyStartMin / 60
+            comps.minute = nyStartMin % 60
+            if let basis = Calendar.current.date(from: comps),
+               let dato = Calendar.current.date(byAdding: .day, value: deltaDager, to: basis) {
+                Task { @MainActor in
+                    flyttetInfo = await medReisetidsSjekk(
+                        m, nyStart: dato, nyStartMin: nyStartMin,
+                        varighet: varighet, dagKol: nyKol)
+                }
+            }
             return
         }
         // Ekte: ny dato = i dag + deltaDager, nytt klokkeslett.
@@ -632,10 +658,146 @@ struct MeetingsView: View {
             do {
                 try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: nyDato)
                 await appState.refreshAll()
+                // Reisetids-sjekken kjenner bare dagens agenda — hopp over
+                // ved dag-bytte (måldagens agenda er ukjent her).
+                if deltaDager == 0 {
+                    flyttetInfo = await medReisetidsSjekk(
+                        m, nyStart: nyDato, nyStartMin: nyStartMin,
+                        varighet: varighet, dagKol: nil)
+                } else {
+                    flyttetInfo = FlyttetInfo(meeting: m, nyStart: nyDato,
+                                              varighetMin: varighet)
+                }
             } catch {
                 print("[Møter] dra-flytting feilet: \(error)")
             }
         }
+    }
+
+    /// «HH:mm» → minutter siden midnatt.
+    private func minutter(_ s: String) -> Int? {
+        let d = s.split(separator: ":")
+        guard d.count == 2, let t = Int(d[0]), let mn = Int(d[1]) else { return nil }
+        return t * 60 + mn
+    }
+
+    /// «10:45» av en Date — til anbefalt-knappen.
+    private func kortTid(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: d)
+    }
+
+    /// Klokkeslett (minutter) på samme dag som referansedatoen.
+    private func dato(paaSammeDagSom d: Date, minutt: Int) -> Date? {
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        comps.hour = minutt / 60
+        comps.minute = minutt % 60
+        return Calendar.current.date(from: comps)
+    }
+
+    /// Ruteplanlegger-motoren kicker inn på flytting: rekker du kjøreturen
+    /// fra forrige møte, og videre til neste? Ved for lite luft foreslås
+    /// et tidspunkt som faktisk går opp (kjøretid + 5 min buffer, kvarter-
+    /// snappet, aldri oppå et annet møte).
+    private func medReisetidsSjekk(_ m: Meeting, nyStart: Date, nyStartMin: Int,
+                                   varighet: Int, dagKol: Int?) async -> FlyttetInfo {
+        var info = FlyttetInfo(meeting: m, nyStart: nyStart, varighetMin: varighet)
+        let naboer = sourceAgenda.filter { andre in
+            guard andre.id != m.id else { return false }
+            if isDemo { return (andre.demoDagKolonne ?? 1) == (dagKol ?? 1) }
+            return true
+        }
+        let nySluttMin = nyStartMin + varighet
+        let buffer = ReisetidsVakt.bufferMin
+
+        // Bakover: rekker du FRAM hit fra møtet før?
+        if let (forrige, forrigeSlutt) = naboer.compactMap({ a -> (Meeting, Int)? in
+            guard let slutt = minutter(a.endTime), slutt <= nyStartMin else { return nil }
+            return (a, slutt)
+        }).max(by: { $0.1 < $1.1 }),
+           let kjore = await ReisetidsVakt.kjoretidMin(
+               fraLat: forrige.lat, fraLon: forrige.lon, tilLat: m.lat, tilLon: m.lon),
+           kjore > 0, kjore + buffer > nyStartMin - forrigeSlutt {
+            let gap = max(nyStartMin - forrigeSlutt, 0)
+            info.reisevarsel = "Kjøreturen fra \(forrige.company) tar ~\(kjore) min — du har \(gap) min."
+            let snappet = Int((Double(forrigeSlutt + kjore + buffer) / 15).rounded(.up)) * 15
+            if snappet + varighet <= 20 * 60,
+               overlappendeMote(m, nyStartMin: snappet, varighet: varighet,
+                                nyDagKol: dagKol) == nil {
+                info.anbefaltStart = dato(paaSammeDagSom: nyStart, minutt: snappet)
+            }
+        }
+
+        // Framover: rekker du VIDERE til neste møte?
+        if info.reisevarsel == nil,
+           let (neste, nesteStart) = naboer.compactMap({ a -> (Meeting, Int)? in
+            guard let start = minutter(a.startTime), start >= nySluttMin else { return nil }
+            return (a, start)
+        }).min(by: { $0.1 < $1.1 }),
+           let kjore = await ReisetidsVakt.kjoretidMin(
+               fraLat: m.lat, fraLon: m.lon, tilLat: neste.lat, tilLon: neste.lon),
+           kjore > 0, kjore + buffer > nesteStart - nySluttMin {
+            let gap = max(nesteStart - nySluttMin, 0)
+            info.reisevarsel = "Du får \(gap) min til \(neste.company) — kjøreturen tar ~\(kjore) min."
+            let snappet = Int((Double(nesteStart - kjore - buffer - varighet) / 15)
+                .rounded(.down)) * 15
+            if snappet >= 7 * 60,
+               overlappendeMote(m, nyStartMin: snappet, varighet: varighet,
+                                nyDagKol: dagKol) == nil {
+                info.anbefaltStart = dato(paaSammeDagSom: nyStart, minutt: snappet)
+            }
+        }
+        return info
+    }
+
+    /// Passiv reisetids-vakt: sveip over dagens agenda og merk møter du
+    /// ikke rekker å kjøre til fra møtet før.
+    private func oppdaterReisetidsAdvarsler() async {
+        var nye: [UUID: String] = [:]
+        // Demo: kun møter i samme ukedag-kolonne henger sammen tidsmessig.
+        let grupper: [[Meeting]] = isDemo
+            ? Dictionary(grouping: sourceAgenda, by: { $0.demoDagKolonne ?? 1 })
+                .values.map { $0.sorted { $0.startTime < $1.startTime } }
+            : [sourceAgenda]
+        for liste in grupper {
+            for (a, b) in zip(liste, liste.dropFirst()) {
+                guard let aSlutt = minutter(a.endTime),
+                      let bStart = minutter(b.startTime) else { continue }
+                let gap = bStart - aSlutt
+                guard gap >= 0 else { continue }  // overlapp eies av konflikt-vakta
+                guard let kjore = await ReisetidsVakt.kjoretidMin(
+                    fraLat: a.lat, fraLon: a.lon, tilLat: b.lat, tilLon: b.lon),
+                      kjore > 0 else { continue }
+                if kjore + ReisetidsVakt.bufferMin > gap {
+                    nye[b.id] = "~\(kjore) min kjøring fra \(a.company) — \(gap) min mellom"
+                }
+            }
+        }
+        reisetidsAdvarsler = nye
+    }
+
+    /// Endrer agendaen seg (flytt/varighet/refresh) → sjekk reisetidene på nytt.
+    private var agendaTidsSignatur: String {
+        sourceAgenda
+            .map { "\($0.id.uuidString)|\($0.startTime)|\($0.endTime)|\($0.demoDagKolonne ?? -1)" }
+            .joined(separator: ";")
+    }
+
+    /// «Varsle kontakten» etter drag-flytt: ferdig Mail-utkast (aldri
+    /// auto-send) — samme tilbud som Endre tidspunkt-arkets toggle.
+    private func aapneFlytteUtkast(_ info: FlyttetInfo) {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "EEEE d. MMMM 'kl.' HH:mm"
+        var brodtekst = "Hei \(info.meeting.contactName)!\n\nMøtet vårt er flyttet til \(df.string(from: info.nyStart))."
+        brodtekst += "\n\nGi beskjed om det ikke passer, så finner vi et annet tidspunkt.\n\nMvh"
+        var comps = URLComponents(string: "mailto:")
+        comps?.queryItems = [
+            URLQueryItem(name: "subject", value: "Nytt tidspunkt — møtet med \(info.meeting.company)"),
+            URLQueryItem(name: "body", value: brodtekst),
+        ]
+        if let url = comps?.url { UIApplication.shared.open(url) }
     }
 
     /// Dagens møter (agenda-lista + dag/uke/måned-visningene).
@@ -725,6 +887,29 @@ struct MeetingsView: View {
         } message: {
             Text(konfliktMelding ?? "")
         }
+        .alert("Møtet er flyttet", isPresented: Binding(
+            get: { flyttetInfo != nil },
+            set: { if !$0 { flyttetInfo = nil } }), presenting: flyttetInfo) { info in
+            if let anbefalt = info.anbefaltStart {
+                Button("Flytt til \(kortTid(anbefalt)) (anbefalt)") {
+                    lagreNyMotetid(info.meeting, start: anbefalt,
+                                   varighetMin: info.varighetMin)
+                }
+            }
+            Button("Varsle kontakten") { aapneFlytteUtkast(info) }
+            Button("Ferdig", role: .cancel) {}
+        } message: { info in
+            let df: DateFormatter = {
+                let f = DateFormatter()
+                f.locale = Locale(identifier: "nb_NO")
+                f.dateFormat = "EEEE d. MMMM 'kl.' HH:mm"
+                return f
+            }()
+            let basis = "\(info.meeting.company) → \(df.string(from: info.nyStart)). Vil du sende beskjed til \(info.meeting.contactName)?"
+            Text(info.reisevarsel.map { "\(basis)\n\n⚠️ \($0)" } ?? basis)
+        }
+        // Reisetids-vakta: re-sjekk agendaen når tider/rekkefølge endres.
+        .task(id: agendaTidsSignatur) { await oppdaterReisetidsAdvarsler() }
         // Kveldsbrief: kl. 17 hvis morgendagen har møter (idempotent per dag).
         .task(id: sourceUpcoming.count) {
             let kal = Calendar.current
@@ -1235,6 +1420,22 @@ struct MeetingsView: View {
                                     .offset(x: -8, y: 6)
                                 }
                             }
+                            .overlay(alignment: .bottomTrailing) {
+                                // Reisetids-vakta: du rekker ikke kjøreturen hit.
+                                if let varsel = reisetidsAdvarsler[m.id] {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "car.fill")
+                                            .font(.appScaled(size: 9, weight: .bold))
+                                        Text(varsel)
+                                            .font(.appScaled(size: 9, weight: .bold))
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                    .background(MtBrand.orange, in: Capsule())
+                                    .offset(x: -8, y: -6)
+                                }
+                            }
                             .contextMenu {
                                 Button {
                                     reschedulingMeeting = m
@@ -1593,12 +1794,20 @@ struct MeetingsView: View {
                         seeAllCard
                     }
                 } else {
-                    HStack(spacing: 10) {
-                        ForEach(sourceUpcoming.prefix(3)) { u in
-                            upcomingMini(u)
+                    // iPad: FAST kortbredde i horisontal scroller — HStack
+                    // med flexible kort ble klemt til uleselige striper når
+                    // sidemenyen (overlay) smalnet innholdsbredden.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(sourceUpcoming.prefix(3)) { u in
+                                upcomingMini(u)
+                                    .frame(width: 200)
+                            }
+                            seeAllCard
+                                .frame(width: 150)
                         }
-                        seeAllCard
                     }
+                    .scrollBounceBehavior(.basedOnSize)
                 }
             } else {
                 VStack(spacing: 8) {
