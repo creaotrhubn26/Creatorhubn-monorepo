@@ -1068,7 +1068,10 @@ struct MeetingsView: View {
                     .padding(.bottom, 4)
                 }
             case .day:
-                DayCalendarView(meetings: sourceAgenda) { m in
+                DayCalendarView(meetings: sourceAgenda,
+                                onMove: { m, minutter in
+                                    flyttMote(m, deltaDager: 0, deltaMin: minutter)
+                                }) { m in
                     selectMeeting(m)
                 }
                 .padding(.horizontal, 12).padding(.bottom, 12)

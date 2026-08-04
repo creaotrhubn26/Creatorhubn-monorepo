@@ -88,8 +88,12 @@ struct CalendarModePicker: View {
 
 struct DayCalendarView: View {
     let meetings: [Meeting]                 // dagens møter
+    /// Hold + dra vertikalt → ny tid (deltaMinutter, snap 30 min).
+    var onMove: ((Meeting, Int) -> Void)? = nil
     let onTap: (Meeting) -> Void
     @State private var selectedID: UUID?
+    @State private var draId: UUID? = nil
+    @State private var draOffsetY: CGFloat = .zero
 
     private let startHour = 7
     private let endHour = 19
@@ -137,13 +141,44 @@ struct DayCalendarView: View {
         GeometryReader { geo in
             ForEach(meetings) { m in
                 let (top, height) = position(for: m)
-                Button { onTap(m) } label: {
-                    meetingBlock(m, isSelected: selectedID == m.id)
-                }
-                .buttonStyle(.plain)
-                .frame(width: max(20, geo.size.width - 60), height: height)
-                .offset(x: 60, y: top)
-                .simultaneousGesture(TapGesture().onEnded { selectedID = m.id })
+                let drar = draId == m.id
+                // Ren view (ikke Button — den sluker long-press-gesten).
+                meetingBlock(m, isSelected: selectedID == m.id)
+                    .frame(width: max(20, geo.size.width - 60), height: height)
+                    .contentShape(Rectangle())
+                    .offset(x: 60, y: top + (drar ? draOffsetY : 0))
+                    .scaleEffect(drar ? 1.03 : 1)
+                    .opacity(drar ? 0.9 : 1)
+                    .shadow(color: drar ? .black.opacity(0.5) : .clear,
+                            radius: drar ? 10 : 0, y: 4)
+                    .zIndex(drar ? 10 : 0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.8), value: drar)
+                    .onTapGesture { selectedID = m.id; onTap(m) }
+                    // Hold (0.25s) + dra vertikalt = ny tid (snap 30 min).
+                    .gesture(
+                        LongPressGesture(minimumDuration: 0.25)
+                            .sequenced(before: DragGesture(minimumDistance: 0))
+                            .onChanged { verdi in
+                                switch verdi {
+                                case .second(true, nil):
+                                    draId = m.id
+                                    draOffsetY = 0
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                case .second(true, let drag?):
+                                    draId = m.id
+                                    draOffsetY = drag.translation.height
+                                default:
+                                    break
+                                }
+                            }
+                            .onEnded { verdi in
+                                defer { draId = nil; draOffsetY = 0 }
+                                guard case .second(true, let drag?) = verdi else { return }
+                                let raaMin = (drag.translation.height / rowHeight) * 60
+                                let deltaMin = Int((raaMin / 30).rounded()) * 30
+                                if deltaMin != 0 { onMove?(m, deltaMin) }
+                            }
+                    )
             }
         }
     }
