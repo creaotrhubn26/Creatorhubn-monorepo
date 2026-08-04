@@ -90,10 +90,14 @@ struct DayCalendarView: View {
     let meetings: [Meeting]                 // dagens møter
     /// Hold + dra vertikalt → ny tid (deltaMinutter, snap 30 min).
     var onMove: ((Meeting, Int) -> Void)? = nil
+    /// Dra i bunnkanten → endre varighet (deltaMinutter, snap 30 min).
+    var onResize: ((Meeting, Int) -> Void)? = nil
     let onTap: (Meeting) -> Void
     @State private var selectedID: UUID?
     @State private var draId: UUID? = nil
     @State private var draOffsetY: CGFloat = .zero
+    @State private var resizeId: UUID? = nil
+    @State private var resizeDeltaY: CGFloat = .zero
 
     private let startHour = 7
     private let endHour = 19
@@ -143,9 +147,32 @@ struct DayCalendarView: View {
                 let (top, height) = position(for: m)
                 let drar = draId == m.id
                 // Ren view (ikke Button — den sluker long-press-gesten).
+                let resizer = resizeId == m.id
                 meetingBlock(m, isSelected: selectedID == m.id)
-                    .frame(width: max(20, geo.size.width - 60), height: height)
+                    .frame(width: max(20, geo.size.width - 60),
+                           height: max(24, height + (resizer ? resizeDeltaY : 0)))
                     .contentShape(Rectangle())
+                    .overlay(alignment: .bottom) {
+                        // Varighet-grip: dra bunnkanten → lengre/kortere møte.
+                        Capsule()
+                            .fill(m.iconColor.opacity(resizer ? 0.9 : 0.45))
+                            .frame(width: 34, height: 4)
+                            .padding(.bottom, 2)
+                            .contentShape(Rectangle().inset(by: -8))
+                            .gesture(
+                                DragGesture(minimumDistance: 2)
+                                    .onChanged { drag in
+                                        resizeId = m.id
+                                        resizeDeltaY = drag.translation.height
+                                    }
+                                    .onEnded { drag in
+                                        defer { resizeId = nil; resizeDeltaY = 0 }
+                                        let raaMin = (drag.translation.height / rowHeight) * 60
+                                        let deltaMin = Int((raaMin / 30).rounded()) * 30
+                                        if deltaMin != 0 { onResize?(m, deltaMin) }
+                                    }
+                            )
+                    }
                     .offset(x: 60, y: top + (drar ? draOffsetY : 0))
                     .scaleEffect(drar ? 1.03 : 1)
                     .opacity(drar ? 0.9 : 1)
@@ -290,12 +317,37 @@ struct WeekCalendarView: View {
     @State private var draId: UUID? = nil
     @State private var draOffset: CGSize = .zero
 
+    /// Mandag i vist uke — ukenavigasjonen eies av MeetingsView.
+    var ukeStart: Date = Date()
+    /// Dagens møter vises kun i inneværende uke (offset 0).
+    var visDagensMoter: Bool = true
+
     private let startHour = 8
     private let endHour = 18
     private let rowHeight: CGFloat = 32
     private let weekDays = ["Man", "Tir", "Ons", "Tor", "Fre"]
-    private let weekDates = [19, 20, 21, 22, 23]  // mai
-    private let todayIndex = 1                     // tirsdag 20. mai
+
+    /// Ekte dag-i-måned for man–fre i vist uke (var hardkodet 19–23 mai).
+    private var weekDates: [Int] {
+        let kal = Calendar.current
+        return (0..<5).map { i in
+            kal.component(.day, from: kal.date(byAdding: .day, value: i, to: ukeStart) ?? ukeStart)
+        }
+    }
+
+    /// Kolonneindeks for «i dag» — nil når i dag ikke er i vist uke
+    /// (annen uke, eller helg).
+    private var todayIndexOpt: Int? {
+        let kal = Calendar.current
+        let dager = kal.dateComponents(
+            [.day],
+            from: kal.startOfDay(for: ukeStart),
+            to: kal.startOfDay(for: Date())).day ?? -1
+        return (0..<5).contains(dager) ? dager : nil
+    }
+
+    /// Dagens møteblokker trenger en kolonne også i demo (helg → tirsdag).
+    private var todayIndex: Int { todayIndexOpt ?? 1 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -319,10 +371,10 @@ struct WeekCalendarView: View {
                 VStack(spacing: 2) {
                     Text(weekDays[i].uppercased())
                         .font(.appScaled(size: 9, weight: .black))
-                        .foregroundStyle(i == todayIndex ? CBrand.purpleLight : CBrand.textSecondary)
+                        .foregroundStyle(i == todayIndexOpt ? CBrand.purpleLight : CBrand.textSecondary)
                         .tracking(0.5)
                     ZStack {
-                        if i == todayIndex {
+                        if i == todayIndexOpt {
                             Circle().fill(CBrand.purple)
                                 .frame(width: 22, height: 22)
                         }
@@ -371,8 +423,8 @@ struct WeekCalendarView: View {
     private var weekEventBlocks: some View {
         GeometryReader { geo in
             let colWidth = (geo.size.width - 60) / CGFloat(weekDays.count)
-            // I dag's meetings (todayIndex = tirsdag)
-            ForEach(meetings) { m in
+            // Dagens møter — kun i inneværende uke (offset 0).
+            ForEach(visDagensMoter ? meetings : []) { m in
                 let (top, height) = position(for: m)
                 let drar = draId == m.id
                 // IKKE Button: den sluker long-press-gesten før dra-
@@ -421,9 +473,11 @@ struct WeekCalendarView: View {
                             }
                     )
             }
-            // Onsdag-fredag upcoming
+            // Kommende møter — plassert etter DATO i vist uke (demo-mockene
+            // mangler dato → dayLabel-fallback, kun i inneværende uke).
             ForEach(upcoming) { u in
-                if let col = weekDayCol(for: u.dayLabel) {
+                if let col = kolonne(for: u.date)
+                    ?? (visDagensMoter ? weekDayCol(for: u.dayLabel) : nil) {
                     let (top, height) = positionUpcoming(u)
                     Button { onTapUpcoming(u) } label: {
                         weekBlock(company: u.company, color: u.iconColor, icon: u.icon, time: u.time)
@@ -486,6 +540,17 @@ struct WeekCalendarView: View {
         let endMin = CGFloat((eh - startHour) * 60 + em)
         let ppm = rowHeight / 60.0
         return (startMin * ppm, max(20, (endMin - startMin) * ppm - 1))
+    }
+
+    /// Kolonne for en dato i vist uke (0–4 = man–fre), ellers nil.
+    private func kolonne(for dato: Date?) -> Int? {
+        guard let dato else { return nil }
+        let kal = Calendar.current
+        let dager = kal.dateComponents(
+            [.day],
+            from: kal.startOfDay(for: ukeStart),
+            to: kal.startOfDay(for: dato)).day ?? -1
+        return (0..<5).contains(dager) ? dager : nil
     }
 
     private func weekDayCol(for dayLabel: String) -> Int? {

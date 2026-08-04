@@ -537,6 +537,9 @@ final class AppState {
             // Nye anbuds-treff (2026-08-03): varselet peker på
             // leadgrid://anbud — rett til Anbud-fanen, ikke innboksen.
             selectedSidebarItem = .anbud
+        case "brief_klar":
+            // Kveldsbriefen: rett til Møter — briefene ligger klare der.
+            selectedSidebarItem = .moter
         case "etter_mote":
             // Lokalt «logg møtet»-varsel: rett til Møter, og MeetingsView
             // åpner etterarbeids-arket for selskapet.
