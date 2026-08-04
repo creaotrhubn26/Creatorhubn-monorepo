@@ -196,11 +196,16 @@ extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
         if hasRoutable {
             // Snap ut Sendable-felter FØR task-grensen (Swift 6 strict).
             let deepLink = userInfo["deep_link"] as? String
+            // Etter-møte-varselet (lokal notif) bærer selskap + møte-id.
+            let selskap = userInfo["selskap"] as? String
+            let moteId = userInfo["mote_id"] as? String
             let safeEventType = eventType
             Task { @MainActor in
                 var payload: [String: String] = ["event_type": safeEventType]
                 if let leadId { payload["lead_id"] = leadId }
                 if let deepLink { payload["deep_link"] = deepLink }
+                if let selskap { payload["selskap"] = selskap }
+                if let moteId { payload["mote_id"] = moteId }
                 // Buffer via bridge: et cold-start-tap fyrer FØR noe view
                 // abonnerer → gikk tapt før. Bridge-en deployer så snart en
                 // header monteres.

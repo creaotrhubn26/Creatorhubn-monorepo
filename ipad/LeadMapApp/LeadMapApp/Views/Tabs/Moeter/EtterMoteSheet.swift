@@ -35,6 +35,9 @@ struct EtterMoteSheet: View {
     var kontakt: String? = nil
     var kontaktEpost: String? = nil
     var moteMaal: String? = nil
+    /// Møte-id: analysen merker møtet som LOGGET (slukker «Logg møtet»-
+    /// CTA/badge) og avlyser det planlagte etter-møte-varselet.
+    var moteId: UUID? = nil
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -357,6 +360,7 @@ struct EtterMoteSheet: View {
         feil = nil
         if DemoModeManager.isActiveNonisolated {
             resultat = Self.demoResultat(selskap: selskap, kontakt: kontakt)
+            merkSomLogget()
             return
         }
         guard let api = appState.api else {
@@ -369,9 +373,17 @@ struct EtterMoteSheet: View {
             resultat = try await api.sendMoteEtterarbeid(
                 selskap: selskap, tekst: samletTekst,
                 kontakt: kontakt, moteMaal: moteMaal)
+            merkSomLogget()
         } catch {
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert for organisasjonen."
         }
+    }
+
+    /// Etterarbeidet er gjort → slukk CTA/badge og avlys varselet.
+    private func merkSomLogget() {
+        guard let moteId else { return }
+        MoteLoggStatus.merkLogget(moteId)
+        MoteVarsler.avlys(moteId)
     }
 
     private func aapneIMail(_ epost: EtterarbeidEpostDTO) {

@@ -246,6 +246,14 @@ final class AppState {
         try? await api.settRuteStatus(id: dto.id, status: "akseptert")
     }
 
+    // ── Etter-møte-deep-link (lokalt varsel → EtterMoteSheet) ──────────
+    var pendingEtterMoteSelskap: String?
+    var pendingEtterMoteId: String?
+    func clearEtterMoteDeepLink() {
+        pendingEtterMoteSelskap = nil
+        pendingEtterMoteId = nil
+    }
+
     // Klienter (lazy-init når token er satt)
     private(set) var api: APIClient?
 
@@ -529,6 +537,12 @@ final class AppState {
             // Nye anbuds-treff (2026-08-03): varselet peker på
             // leadgrid://anbud — rett til Anbud-fanen, ikke innboksen.
             selectedSidebarItem = .anbud
+        case "etter_mote":
+            // Lokalt «logg møtet»-varsel: rett til Møter, og MeetingsView
+            // åpner etterarbeids-arket for selskapet.
+            pendingEtterMoteSelskap = payload["selskap"]
+            pendingEtterMoteId = payload["mote_id"]
+            selectedSidebarItem = .moter
         case "leadgrid_rute_tildelt":
             // Rute tildelt av salgssjef (nivå 3): hent ruta rett inn i
             // Kart-fanens rute-motor.
