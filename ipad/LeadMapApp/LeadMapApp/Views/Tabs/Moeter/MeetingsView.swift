@@ -429,6 +429,14 @@ struct MeetingsView: View {
     @State private var ukeOffset = 0
     /// Konflikt-vakt: flytting som overlapper et annet møte stoppes.
     @State private var konfliktMelding: String? = nil
+    /// Etter vellykket flytting (drag i dag/uke): tilby å varsle kontakten
+    /// med ferdig e-postutkast — samme tilbud som Endre tidspunkt-arket.
+    struct FlyttetInfo: Identifiable {
+        let id = UUID()
+        let meeting: Meeting
+        let nyStart: Date
+    }
+    @State private var flyttetInfo: FlyttetInfo? = nil
 
     /// Mandag i vist uke (ISO-uke).
     private var ukeStart: Date {
@@ -619,6 +627,13 @@ struct MeetingsView: View {
             let gammelKol = demoTidOverstyringer[m.id]?.2 ?? 1  // tirsdag
             let nyKol = min(max(gammelKol + deltaDager, 0), 4)
             demoTidOverstyringer[m.id] = (nyStart, nySlutt, deltaDager == 0 ? demoTidOverstyringer[m.id]?.2 : nyKol)
+            var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            comps.hour = nyStartMin / 60
+            comps.minute = nyStartMin % 60
+            if let basis = Calendar.current.date(from: comps),
+               let dato = Calendar.current.date(byAdding: .day, value: deltaDager, to: basis) {
+                flyttetInfo = FlyttetInfo(meeting: m, nyStart: dato)
+            }
             return
         }
         // Ekte: ny dato = i dag + deltaDager, nytt klokkeslett.
@@ -632,10 +647,27 @@ struct MeetingsView: View {
             do {
                 try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: nyDato)
                 await appState.refreshAll()
+                flyttetInfo = FlyttetInfo(meeting: m, nyStart: nyDato)
             } catch {
                 print("[Møter] dra-flytting feilet: \(error)")
             }
         }
+    }
+
+    /// «Varsle kontakten» etter drag-flytt: ferdig Mail-utkast (aldri
+    /// auto-send) — samme tilbud som Endre tidspunkt-arkets toggle.
+    private func aapneFlytteUtkast(_ info: FlyttetInfo) {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "EEEE d. MMMM 'kl.' HH:mm"
+        var brodtekst = "Hei \(info.meeting.contactName)!\n\nMøtet vårt er flyttet til \(df.string(from: info.nyStart))."
+        brodtekst += "\n\nGi beskjed om det ikke passer, så finner vi et annet tidspunkt.\n\nMvh"
+        var comps = URLComponents(string: "mailto:")
+        comps?.queryItems = [
+            URLQueryItem(name: "subject", value: "Nytt tidspunkt — møtet med \(info.meeting.company)"),
+            URLQueryItem(name: "body", value: brodtekst),
+        ]
+        if let url = comps?.url { UIApplication.shared.open(url) }
     }
 
     /// Dagens møter (agenda-lista + dag/uke/måned-visningene).
@@ -724,6 +756,20 @@ struct MeetingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(konfliktMelding ?? "")
+        }
+        .alert("Møtet er flyttet", isPresented: Binding(
+            get: { flyttetInfo != nil },
+            set: { if !$0 { flyttetInfo = nil } }), presenting: flyttetInfo) { info in
+            Button("Varsle kontakten") { aapneFlytteUtkast(info) }
+            Button("Ferdig", role: .cancel) {}
+        } message: { info in
+            let df: DateFormatter = {
+                let f = DateFormatter()
+                f.locale = Locale(identifier: "nb_NO")
+                f.dateFormat = "EEEE d. MMMM 'kl.' HH:mm"
+                return f
+            }()
+            Text("\(info.meeting.company) → \(df.string(from: info.nyStart)). Vil du sende beskjed til \(info.meeting.contactName)?")
         }
         // Kveldsbrief: kl. 17 hvis morgendagen har møter (idempotent per dag).
         .task(id: sourceUpcoming.count) {
@@ -1593,12 +1639,20 @@ struct MeetingsView: View {
                         seeAllCard
                     }
                 } else {
-                    HStack(spacing: 10) {
-                        ForEach(sourceUpcoming.prefix(3)) { u in
-                            upcomingMini(u)
+                    // iPad: FAST kortbredde i horisontal scroller — HStack
+                    // med flexible kort ble klemt til uleselige striper når
+                    // sidemenyen (overlay) smalnet innholdsbredden.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(sourceUpcoming.prefix(3)) { u in
+                                upcomingMini(u)
+                                    .frame(width: 200)
+                            }
+                            seeAllCard
+                                .frame(width: 150)
                         }
-                        seeAllCard
                     }
+                    .scrollBounceBehavior(.basedOnSize)
                 }
             } else {
                 VStack(spacing: 8) {
