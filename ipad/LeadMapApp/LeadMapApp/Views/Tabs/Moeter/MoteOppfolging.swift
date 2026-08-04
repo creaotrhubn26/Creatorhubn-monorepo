@@ -8,7 +8,9 @@
 //   2. Lokal push ved møteslutt («Hvordan gikk møtet med X?») → deep-link
 //   3. Varselet avlyses i det møtet faktisk logges
 
+import CoreLocation
 import Foundation
+import MapKit
 import UserNotifications
 
 /// Hvilke møter er logget (etterarbeid fullført)? Lokal, lettvekts —
@@ -85,5 +87,46 @@ enum MoteVarsler {
     static func avlys(_ id: UUID) {
         UNUserNotificationCenter.current()
             .removePendingNotificationRequests(withIdentifiers: [identifikator(id)])
+    }
+}
+
+/// Reisetids-vakta: rekker du fysisk fram mellom to møter? Konflikt-vakta
+/// fanger overlapp — dette fanger «30 min mellom, men kjøreturen tar 32».
+/// Samme rutemotor som ruteplanleggeren (MKDirections), med luftlinje ×
+/// 35 km/t som fallback når ruting feiler (offline).
+@MainActor
+enum ReisetidsVakt {
+    /// Margin for parkering + å komme seg inn døra.
+    static let bufferMin = 5
+
+    private static var cache: [String: Int] = [:]
+
+    /// Kjøretid i minutter, eller nil når koordinater mangler (lat/lon 0).
+    static func kjoretidMin(fraLat: Double, fraLon: Double,
+                            tilLat: Double, tilLon: Double) async -> Int? {
+        guard fraLat != 0, fraLon != 0, tilLat != 0, tilLon != 0 else { return nil }
+        let key = String(format: "%.4f,%.4f→%.4f,%.4f", fraLat, fraLon, tilLat, tilLon)
+        if let hit = cache[key] { return hit }
+        let luftKm = CLLocation(latitude: fraLat, longitude: fraLon)
+            .distance(from: CLLocation(latitude: tilLat, longitude: tilLon)) / 1000
+        // Samme adresse/bygg — ingen reise å advare om.
+        if luftKm < 0.15 {
+            cache[key] = 0
+            return 0
+        }
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(
+            coordinate: .init(latitude: fraLat, longitude: fraLon)))
+        req.destination = MKMapItem(placemark: MKPlacemark(
+            coordinate: .init(latitude: tilLat, longitude: tilLon)))
+        req.transportType = .automobile
+        let minutter: Int
+        if let rute = try? await MKDirections(request: req).calculate().routes.first {
+            minutter = Int((rute.expectedTravelTime / 60).rounded(.up))
+        } else {
+            minutter = Int((luftKm * 1.3 / 35 * 60).rounded(.up))
+        }
+        cache[key] = minutter
+        return minutter
     }
 }
