@@ -2399,17 +2399,12 @@ private struct LeadsInAreaCard: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            // Åpne Apple Maps direkte
+            // Leadgrids egen nav-motor (Kart-fanen), ikke Apple Maps.
             Button {
-                let coord = CLLocationCoordinate2D(
-                    latitude: dest.latitude,
-                    longitude: dest.longitude
-                )
-                let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
-                item.name = dest.name
-                item.openInMaps(launchOptions: [
-                    MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
-                ])
+                appState.requestNavigation(
+                    lat: dest.latitude, lon: dest.longitude,
+                    name: dest.name, address: dest.address ?? "",
+                    start: true, transport: "driving")
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "location.north.line.fill")
@@ -2885,6 +2880,7 @@ private struct LeadScoreFilterStrip: View {
 /// Viser navn, logo/initialer, score-pin, adresse, telefon/e-post og status.
 /// «Les mer» → NotificationCenter → bytt til Leads-fanen + åpne detalj.
 private struct MapLeadInfoCard: View {
+    @Environment(AppState.self) private var appState
     let lead: LeadModel
     let onClose: () -> Void
     let onOpenLead: (LeadModel) -> Void
@@ -3152,16 +3148,13 @@ private struct MapLeadInfoCard: View {
         } // slutt VStack actions
     }
 
-    /// Åpne Apple Maps med kjørerute til lead-en. Fungerer identisk på
-    /// iOS/iPadOS/Mac Catalyst — MKMapItem tar over og lanserer maps-appen.
+    /// Naviger til lead-en i Leadgrids egen nav-motor (Kart-fanen) —
+    /// turn-by-turn in-app, ikke Apple Maps.
     private func openInAppleMaps() {
-        let coord = CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
-        let placemark = MKPlacemark(coordinate: coord)
-        let item = MKMapItem(placemark: placemark)
-        item.name = lead.name
-        item.openInMaps(launchOptions: [
-            MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
-        ])
+        appState.requestNavigation(
+            lat: lead.latitude, lon: lead.longitude,
+            name: lead.name, address: lead.address ?? "",
+            start: true, transport: "driving")
     }
 }
 

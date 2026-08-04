@@ -164,11 +164,15 @@ struct LeadDetailSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if let url = URL(string: "https://maps.apple.com/?daddr=\(lead.latitude),\(lead.longitude)&dirflg=d") {
-                    Link("Naviger", destination: url)
-                        .font(.callout.bold())
-                        .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+                Button("Naviger") {
+                    appState.requestNavigation(
+                        lat: lead.latitude, lon: lead.longitude,
+                        name: lead.name, address: lead.address ?? "",
+                        start: true, transport: "driving")
+                    dismiss()
                 }
+                .font(.callout.bold())
+                .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
             }
             .padding(10)
             .background(Color(red: 0.75, green: 0.52, blue: 0.99).opacity(0.10),

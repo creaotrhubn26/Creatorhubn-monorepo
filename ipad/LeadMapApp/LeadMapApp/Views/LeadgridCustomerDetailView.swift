@@ -162,10 +162,11 @@ struct LeadgridCustomerDetailView: View {
                          icon: "point.topleft.down.to.point.bottomright.curvepath",
                          enabled: matchingLead != nil) {
                 if let lead = matchingLead {
-                    let coord = "\(lead.latitude),\(lead.longitude)"
-                    if let url = URL(string: "http://maps.apple.com/?daddr=\(coord)") {
-                        UIApplication.shared.open(url)
-                    }
+                    appState.requestNavigation(
+                        lat: lead.latitude, lon: lead.longitude,
+                        name: lead.name, address: lead.address ?? "",
+                        start: true, transport: "driving")
+                    dismiss()
                 }
             }
             actionButton(title: "Status", icon: "flag.fill") {
