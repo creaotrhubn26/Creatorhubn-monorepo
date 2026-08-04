@@ -425,6 +425,40 @@ struct MeetingsView: View {
     @State private var naa = Date()
     /// Deep-link fra lokalt «logg møtet»-varsel → åpne etterarbeidet.
     @State private var etterMoteFraVarsel: Meeting? = nil
+    /// Ukenavigasjon: 0 = inneværende uke, ±1 per uke.
+    @State private var ukeOffset = 0
+    /// Konflikt-vakt: flytting som overlapper et annet møte stoppes.
+    @State private var konfliktMelding: String? = nil
+
+    /// Mandag i vist uke (ISO-uke).
+    private var ukeStart: Date {
+        var kal = Calendar(identifier: .iso8601)
+        kal.firstWeekday = 2
+        let mandag = kal.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        return kal.date(byAdding: .day, value: ukeOffset * 7, to: mandag) ?? mandag
+    }
+
+    /// Overlapper det nye tidsrommet et annet møte samme dag?
+    private func overlappendeMote(_ m: Meeting, nyStartMin: Int, varighet: Int,
+                                  nyDagKol: Int?) -> Meeting? {
+        for andre in sourceAgenda where andre.id != m.id {
+            if isDemo {
+                let andreKol = andre.demoDagKolonne ?? 1
+                guard andreKol == (nyDagKol ?? 1) else { continue }
+            }
+            let sd = andre.startTime.split(separator: ":")
+            let ed = andre.endTime.split(separator: ":")
+            guard sd.count == 2, ed.count == 2,
+                  let st = Int(sd[0]), let sm = Int(sd[1]),
+                  let et = Int(ed[0]), let em = Int(ed[1]) else { continue }
+            let aStart = st * 60 + sm
+            let aSlutt = et * 60 + em
+            if nyStartMin < aSlutt && (nyStartMin + varighet) > aStart {
+                return andre
+            }
+        }
+        return nil
+    }
     /// Demo: flyttede møtetider (id → (start, slutt, dagkolonne)) så
     /// kalenderen flytter blokka umiddelbart uten backend.
     @State private var demoTidOverstyringer: [UUID: (String, String, Int?)] = [:]
@@ -563,6 +597,19 @@ struct MeetingsView: View {
             return max(30, (st * 60 + sm) - (t * 60 + mn))
         }()
         let nyStartMin = min(max(t * 60 + mn + deltaMin, 7 * 60), 18 * 60 + 30)
+        // Konflikt-vakt: stopp flytting som lander oppå et annet møte
+        // (samme dag — dag-bytte i ekte modus sjekkes ikke, vi kjenner
+        // ikke måldagens agenda her).
+        let sjekkKol = isDemo
+            ? min(max((demoTidOverstyringer[m.id]?.2 ?? 1) + deltaDager, 0), 4)
+            : nil
+        if isDemo || deltaDager == 0 {
+            if let kollisjon = overlappendeMote(m, nyStartMin: nyStartMin,
+                                               varighet: varighet, nyDagKol: sjekkKol) {
+                konfliktMelding = "Overlapper med \(kollisjon.company) (\(kollisjon.startTime)–\(kollisjon.endTime)). Møtet ble ikke flyttet."
+                return
+            }
+        }
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
         if isDemo {
@@ -592,23 +639,43 @@ struct MeetingsView: View {
     }
 
     /// Dagens møter (agenda-lista + dag/uke/måned-visningene).
+    /// Tidsoverstyring på et møte (flytt/varighet) — umiddelbar visning.
+    private func medOverstyring(_ m: Meeting) -> Meeting {
+        guard let ny = demoTidOverstyringer[m.id] else { return m }
+        var kopi = m
+        kopi.startTime = ny.0
+        kopi.endTime = ny.1
+        kopi.demoDagKolonne = ny.2
+        return kopi
+    }
+
+    /// Varighet-drag (bunnkant av blokk): endre sluttiden ±30 min-snap.
+    /// Varighet persisteres ikke i backend — lokal visning i begge moduser.
+    private func endreVarighet(_ m: Meeting, deltaMin: Int) {
+        let sd = m.startTime.split(separator: ":")
+        let ed = m.endTime.split(separator: ":")
+        guard sd.count == 2, ed.count == 2,
+              let st = Int(sd[0]), let sm = Int(sd[1]),
+              let et = Int(ed[0]), let em = Int(ed[1]) else { return }
+        let startMin = st * 60 + sm
+        let nySluttMin = min(max(et * 60 + em + deltaMin, startMin + 30), 20 * 60)
+        let nySlutt = String(format: "%02d:%02d", nySluttMin / 60, nySluttMin % 60)
+        let dagKol = demoTidOverstyringer[m.id]?.2
+        demoTidOverstyringer[m.id] = (m.startTime, nySlutt, dagKol)
+    }
+
     private var sourceAgenda: [Meeting] {
         if isDemo {
-            return MeetingsData.agenda.map { m in
-                guard let ny = demoTidOverstyringer[m.id] else { return m }
-                var kopi = m
-                kopi.startTime = ny.0
-                kopi.endTime = ny.1
-                kopi.demoDagKolonne = ny.2
-                return kopi
-            }
-            .sorted { $0.startTime < $1.startTime }
+            return MeetingsData.agenda.map(medOverstyring)
+                .sorted { $0.startTime < $1.startTime }
         }
         let cal = Calendar.current
+        // Ekte modus: varighet finnes ikke server-side (kalenderen er
+        // avledet av next_follow_up_at) — varighet-endringer vises lokalt.
         return meetingEvents
             .filter { cal.isDateInToday($0.datetime ?? .distantPast) }
             .sorted { ($0.datetime ?? .distantPast) < ($1.datetime ?? .distantPast) }
-            .map { Meeting(from: $0, lead: leadFor($0)) }
+            .map { medOverstyring(Meeting(from: $0, lead: leadFor($0))) }
     }
 
     /// Kommende møter (etter i dag).
@@ -650,6 +717,22 @@ struct MeetingsView: View {
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { t in
             naa = t
+        }
+        .alert("Møtekonflikt", isPresented: Binding(
+            get: { konfliktMelding != nil },
+            set: { if !$0 { konfliktMelding = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(konfliktMelding ?? "")
+        }
+        // Kveldsbrief: kl. 17 hvis morgendagen har møter (idempotent per dag).
+        .task(id: sourceUpcoming.count) {
+            let kal = Calendar.current
+            let iMorgen = sourceUpcoming.filter { u in
+                guard let d = u.date else { return false }
+                return kal.isDateInTomorrow(d)
+            }.count
+            MoteVarsler.planleggKveldsbrief(antallIMorgen: iMorgen)
         }
         // Planlegg «logg møtet»-varsler ved møteslutt (re-planlegging er
         // idempotent — samme identifier erstatter).
@@ -1086,6 +1169,38 @@ struct MeetingsView: View {
                         .foregroundStyle(MtBrand.textSecondary)
                 }
                 Spacer()
+                if calMode == .week {
+                    // Ukenavigasjon — uka var hardkodet «19.–25. mai» før.
+                    HStack(spacing: 4) {
+                        Button { ukeOffset -= 1 } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(MtBrand.textSecondary)
+                                .frame(width: 26, height: 26)
+                                .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                        if ukeOffset != 0 {
+                            Button { ukeOffset = 0 } label: {
+                                Text("I dag")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                    .foregroundStyle(MtBrand.purpleLight)
+                                    .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Button { ukeOffset += 1 } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(MtBrand.textSecondary)
+                                .frame(width: 26, height: 26)
+                                .background(MtBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.trailing, 6)
+                }
                 CalendarModePicker(mode: $calMode)
             }
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
@@ -1139,6 +1254,9 @@ struct MeetingsView: View {
                 DayCalendarView(meetings: sourceAgenda,
                                 onMove: { m, minutter in
                                     flyttMote(m, deltaDager: 0, deltaMin: minutter)
+                                },
+                                onResize: { m, minutter in
+                                    endreVarighet(m, deltaMin: minutter)
                                 }) { m in
                     selectMeeting(m)
                 }
@@ -1150,12 +1268,12 @@ struct MeetingsView: View {
                     onReschedule: { m in reschedulingMeeting = m },
                     onMove: { m, dager, minutter in
                         flyttMote(m, deltaDager: dager, deltaMin: minutter)
-                    }
-                ) { m in
-                    selectMeeting(m)
-                } onTapUpcoming: { u in
-                    upcomingDetail = u
-                }
+                    },
+                    onTapMeeting: { m in selectMeeting(m) },
+                    onTapUpcoming: { u in upcomingDetail = u },
+                    ukeStart: ukeStart,
+                    visDagensMoter: ukeOffset == 0
+                )
                 .padding(.horizontal, 12).padding(.bottom, 12)
             case .month:
                 MonthCalendarView(
@@ -1179,13 +1297,28 @@ struct MeetingsView: View {
         }
     }
 
+    /// «Uke N · d.–d. MMM» fra vist uke (ekte datoer, begge moduser).
+    private var ukeSubtitle: String {
+        var kal = Calendar(identifier: .iso8601)
+        kal.firstWeekday = 2
+        let ukeNr = kal.component(.weekOfYear, from: ukeStart)
+        let slutt = kal.date(byAdding: .day, value: 6, to: ukeStart) ?? ukeStart
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "d."
+        let df2 = DateFormatter()
+        df2.locale = Locale(identifier: "nb_NO")
+        df2.dateFormat = "d. MMM"
+        return "Uke \(ukeNr) · \(df.string(from: ukeStart))–\(df2.string(from: slutt))"
+    }
+
     private var calendarCardSubtitle: String {
         // Demo viser mockup-datoene; ellers ekte dato/uke/måned.
         if isDemo {
             switch calMode {
             case .agenda: return "Tirsdag 20. mai · \(sourceAgenda.count) møter"
             case .day:    return "Tirsdag 20. mai · 07–19"
-            case .week:   return "Uke 21 · 19.–25. mai"
+            case .week:   return ukeSubtitle
             case .month:  return "Mai 2026"
             }
         }

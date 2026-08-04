@@ -50,6 +50,26 @@ struct RescheduleSheet: View {
         return Calendar.current.date(from: comps) ?? newDate
     }
 
+    /// «Varsle kontakten»: ferdig e-postutkast om flyttingen (åpner Mail —
+    /// sendes aldri automatisk). Toggelen var kosmetisk før.
+    private func aapneVarsleUtkast() {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "EEEE d. MMMM"
+        let dato = df.string(from: nyStart)
+        let klokke = String(format: "%02d:%02d", startHour, startMinute)
+        let grunn = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        var brodtekst = "Hei \(meeting.contactName)!\n\nMøtet vårt er flyttet til \(dato) kl. \(klokke)."
+        if !grunn.isEmpty { brodtekst += " Årsak: \(grunn)." }
+        brodtekst += "\n\nGi beskjed om det ikke passer, så finner vi et annet tidspunkt.\n\nMvh"
+        var comps = URLComponents(string: "mailto:")
+        comps?.queryItems = [
+            URLQueryItem(name: "subject", value: "Nytt tidspunkt — møtet med \(meeting.company)"),
+            URLQueryItem(name: "body", value: brodtekst),
+        ]
+        if let url = comps?.url { UIApplication.shared.open(url) }
+    }
+
     /// Forhåndsutfyll klokkeslettet fra møtets nåværende tid («09:00»).
     private func lastInnNaavaerende() {
         let deler = meeting.startTime.split(separator: ":")
@@ -252,6 +272,7 @@ struct RescheduleSheet: View {
             Button {
                 // Var toast-fasade (dismiss uten effekt) — nå ekte lagring.
                 onSave?(nyStart, duration)
+                if notify { aapneVarsleUtkast() }
                 dismiss()
             } label: {
                 HStack(spacing: 6) {

@@ -59,6 +59,28 @@ enum MoteVarsler {
         }
     }
 
+    /// «Brief klar»-push kvelden før: kl. 17 i dag hvis morgendagen har
+    /// møter — symmetrien til etter-møte-varselet (forberedt inn, logget ut).
+    static func planleggKveldsbrief(antallIMorgen: Int) {
+        guard antallIMorgen > 0 else { return }
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = 17
+        comps.minute = 0
+        guard let tid = Calendar.current.date(from: comps), tid > Date() else { return }
+        let innhold = UNMutableNotificationContent()
+        innhold.title = "I morgen: \(antallIMorgen) møte\(antallIMorgen == 1 ? "" : "r")"
+        innhold.body = "Møtebriefene dine er klare — les dem i kveld, eller la bilen lese dem på veien i morgen."
+        innhold.sound = .default
+        innhold.userInfo = ["event_type": "brief_klar"]
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        UNUserNotificationCenter.current().add(UNNotificationRequest(
+            identifier: "kveldsbrief-\(df.string(from: Date()))",
+            content: innhold,
+            trigger: UNTimeIntervalNotificationTrigger(
+                timeInterval: max(60, tid.timeIntervalSinceNow), repeats: false)))
+    }
+
     /// Møtet er logget (eller flyttet) → varselet er utdatert.
     static func avlys(_ id: UUID) {
         UNUserNotificationCenter.current()
