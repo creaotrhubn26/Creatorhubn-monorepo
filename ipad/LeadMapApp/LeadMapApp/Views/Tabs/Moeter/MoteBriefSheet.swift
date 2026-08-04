@@ -154,6 +154,41 @@ struct MoteBriefSheet: View {
                 }
                 seksjon("Mål for møtet", ikon: "target", tint: BfBrand.green) {
                     briefTekst(b.brief.moteMaal)
+                    if let eget = b.fakta.selgersMaal, !eget.isEmpty {
+                        Text("Ditt mål: \(eget)")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(BfBrand.textSecondary)
+                    } else {
+                        // «Møte uten mål»-vakta: forskningen er entydig —
+                        // uten definert mål blir det et «bli kjent»-møte.
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.appScaled(size: 10))
+                                .foregroundStyle(BfBrand.orange)
+                            Text("Du har ikke satt eget mål — sett det i Mål & behov (⋯-menyen).")
+                                .font(.appScaled(size: 10, weight: .semibold))
+                                .foregroundStyle(BfBrand.orange)
+                        }
+                    }
+                }
+                // Behovsbanken: akkumulert kundeforståelse på tvers av møter.
+                if let kjente = b.fakta.kjenteBehov, !kjente.isEmpty {
+                    seksjon("Kjente behov", ikon: "person.text.rectangle.fill",
+                            tint: BfBrand.blue) {
+                        ForEach(kjente, id: \.self) { behov in
+                            HStack(alignment: .top, spacing: 7) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.appScaled(size: 11))
+                                    .foregroundStyle(BfBrand.blue)
+                                Text(behov)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        Text("Grav videre i disse — ikke spør om det vi allerede vet.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(BfBrand.textTertiary)
+                    }
                 }
                 seksjon("Still disse spørsmålene", ikon: "questionmark.bubble.fill",
                         tint: BfBrand.purpleLight) {
@@ -334,7 +369,10 @@ struct MoteBriefSheet: View {
                     dato: "2026-07-21",
                     notat: "Første møte: kartla behovet for samlet el-leveranse; positiv daglig leder, teknisk sjef må med videre.",
                     lofter: ["Sende referanseliste fra lignende prosjekter",
-                             "Komme tilbake med prisindikasjon på rammeavtale"])))
+                             "Komme tilbake med prisindikasjon på rammeavtale"]),
+                selgersMaal: "Avdekk beslutningsprosessen og avtal befaring med teknisk sjef innen fredag.",
+                kjenteBehov: ["Kortere responstid på service",
+                              "Samlet el-leveranse i én avtale"]))
     }
 }
 

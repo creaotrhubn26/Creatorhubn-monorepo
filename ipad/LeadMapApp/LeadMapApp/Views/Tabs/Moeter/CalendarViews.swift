@@ -243,6 +243,8 @@ struct DayCalendarView: View {
 struct WeekCalendarView: View {
     let meetings: [Meeting]                 // dagens (mandag-fredag mock)
     let upcoming: [UpcomingMeetingMini]     // resten av uka
+    /// Long-press på en blokk → «Endre tidspunkt» (eies av MeetingsView).
+    var onReschedule: ((Meeting) -> Void)? = nil
     let onTapMeeting: (Meeting) -> Void
     let onTapUpcoming: (UpcomingMeetingMini) -> Void
 
@@ -334,6 +336,18 @@ struct WeekCalendarView: View {
                     weekBlock(company: m.company, color: m.iconColor, icon: m.icon, time: m.startTime)
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    if let onReschedule {
+                        Button {
+                            onReschedule(m)
+                        } label: {
+                            Label("Endre tidspunkt", systemImage: "calendar.badge.clock")
+                        }
+                    }
+                    Button { onTapMeeting(m) } label: {
+                        Label("Vis detaljer", systemImage: "sidebar.trailing")
+                    }
+                }
                 .frame(width: colWidth - 4, height: height)
                 .offset(x: 60 + CGFloat(todayIndex) * colWidth + 2, y: top)
             }

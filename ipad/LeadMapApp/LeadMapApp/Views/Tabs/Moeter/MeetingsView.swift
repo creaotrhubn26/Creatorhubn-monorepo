@@ -40,8 +40,8 @@ struct Meeting: Identifiable, Hashable {
     /// Mock-rader får tilfeldig UUID; backend-rader (CalendarEvent) får
     /// uuid avledet fra event-id slik at seleksjon overlever re-mapping.
     var id = UUID()
-    let startTime: String       // "09:00"
-    let endTime: String         // "10:00"
+    var startTime: String       // "09:00" (var: kan flyttes fra agendaen)
+    var endTime: String         // "10:00"
     let company: String
     let location: String        // "Oslo, Norge"
     let contactName: String
@@ -85,9 +85,9 @@ struct Meeting: Identifiable, Hashable {
 
 struct UpcomingMeetingMini: Identifiable, Hashable {
     var id = UUID()
-    let dayLabel: String       // "Ons 21. mai"
-    let time: String           // "09:00"
-    let endTime: String        // "10:00"
+    var dayLabel: String       // "Ons 21. mai" (var: kan flyttes)
+    var time: String           // "09:00"
+    var endTime: String        // "10:00"
     let company: String
     let location: String
     let address: String
@@ -416,6 +416,11 @@ struct MeetingsView: View {
     @State private var upcomingDetail: UpcomingMeetingMini?
     @State private var showAllUpcoming: Bool = false
     @State private var calMode: CalendarMode = .agenda
+    /// «Endre tidspunkt» fra agenda/uke/detalj — sheet-item.
+    @State private var reschedulingMeeting: Meeting? = nil
+    /// Demo: flyttede møtetider (id → (start, slutt)) så kalenderen flytter
+    /// blokka umiddelbart uten backend.
+    @State private var demoTidOverstyringer: [UUID: (String, String)] = [:]
     @State private var showStatsModal = false
     @State private var bookDayOfMonth: Int?
     // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
@@ -501,9 +506,39 @@ struct MeetingsView: View {
         }
     }
 
+    /// Lagre ny møtetid: demo → flytt blokka i minnet; ekte → PATCH
+    /// next_follow_up_at (kalenderen er avledet av den) + full refresh.
+    private func lagreNyMotetid(_ m: Meeting, start: Date, varighetMin: Int) {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm"
+        let nyStart = df.string(from: start)
+        let nySlutt = df.string(from: start.addingTimeInterval(Double(varighetMin) * 60))
+        if isDemo {
+            demoTidOverstyringer[m.id] = (nyStart, nySlutt)
+            return
+        }
+        Task { @MainActor in
+            do {
+                try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: start)
+                await appState.refreshAll()
+            } catch {
+                print("[Møter] flytting feilet: \(error)")
+            }
+        }
+    }
+
     /// Dagens møter (agenda-lista + dag/uke/måned-visningene).
     private var sourceAgenda: [Meeting] {
-        if isDemo { return MeetingsData.agenda }
+        if isDemo {
+            return MeetingsData.agenda.map { m in
+                guard let ny = demoTidOverstyringer[m.id] else { return m }
+                var kopi = m
+                kopi.startTime = ny.0
+                kopi.endTime = ny.1
+                return kopi
+            }
+            .sorted { $0.startTime < $1.startTime }
+        }
         let cal = Calendar.current
         return meetingEvents
             .filter { cal.isDateInToday($0.datetime ?? .distantPast) }
@@ -539,6 +574,11 @@ struct MeetingsView: View {
             if selectedID == nil { selectedID = sourceAgenda.first?.id }
         }
         .task { await loadBriefs() }
+        .sheet(item: $reschedulingMeeting) { m in
+            RescheduleSheet(meeting: m) { nyStart, varighet in
+                lagreNyMotetid(m, start: nyStart, varighetMin: varighet)
+            }
+        }
         .sheet(isPresented: $showNewBrief) {
             NewBriefSheet { title, note, startAt, durationMin, recurrence, participants in
                 if isDemo {
@@ -631,7 +671,8 @@ struct MeetingsView: View {
                     MeetingDetailEmptyState()
                         .frame(width: 340)
                 } else {
-                    MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode)
+                    MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode,
+                                         onReschedule: { m in reschedulingMeeting = m })
                         .frame(width: 340)
                 }
             }
@@ -967,6 +1008,18 @@ struct MeetingsView: View {
                 } else {
                     ForEach(sourceAgenda) { m in
                         agendaRow(m)
+                            .contextMenu {
+                                Button {
+                                    reschedulingMeeting = m
+                                } label: {
+                                    Label("Endre tidspunkt", systemImage: "calendar.badge.clock")
+                                }
+                                Button {
+                                    selectMeeting(m)
+                                } label: {
+                                    Label("Vis detaljer", systemImage: "sidebar.trailing")
+                                }
+                            }
                     }
                     .padding(.bottom, 4)
                 }
@@ -978,7 +1031,8 @@ struct MeetingsView: View {
             case .week:
                 WeekCalendarView(
                     meetings: sourceAgenda,
-                    upcoming: sourceUpcoming
+                    upcoming: sourceUpcoming,
+                    onReschedule: { m in reschedulingMeeting = m }
                 ) { m in
                     selectMeeting(m)
                 } onTapUpcoming: { u in
@@ -1516,6 +1570,9 @@ enum MeetingFavorites {
 struct MeetingDetailSidebar: View {
     let meeting: Meeting
     @Binding var calMode: CalendarMode
+    /// Forelderen eier flytte-lagringen (backend/demo-overstyring) — uten
+    /// callback faller vi tilbake til lokal sheet (visning uten lagring).
+    var onReschedule: ((Meeting) -> Void)? = nil
     @Environment(AppState.self) private var appState
 
     @State private var favorited: Bool = false
@@ -1654,7 +1711,10 @@ struct MeetingDetailSidebar: View {
                 Button { showStartMeeting = true } label: {
                     Label("Start møte", systemImage: "play.circle.fill")
                 }
-                Button { showReschedule = true } label: {
+                Button {
+                    if let onReschedule { onReschedule(meeting) }
+                    else { showReschedule = true }
+                } label: {
                     Label("Endre tidspunkt", systemImage: "calendar.badge.clock")
                 }
                 Button { showStatusPicker = true } label: {

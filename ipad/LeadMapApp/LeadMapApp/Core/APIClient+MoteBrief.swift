@@ -45,6 +45,9 @@ struct MoteBriefFaktaDTO: Decodable, Hashable {
     var aktiveAnbud: [MoteBriefAnbudDTO]? = nil
     /// Fase 3-sløyfen: forrige møtelogg — «hva vi lovte sist».
     var forrigeMote: MoteBriefForrigeMoteDTO? = nil
+    /// Mål & behov-kjeden: selgerens eget mål + behovsbanken.
+    var selgersMaal: String? = nil
+    var kjenteBehov: [String]? = nil
 }
 
 struct MoteBriefDTO: Decodable, Hashable {
@@ -70,6 +73,16 @@ struct EtterarbeidDTO: Decodable, Hashable {
     var oppgaver: [EtterarbeidOppgaveDTO]? = nil
     var statusForslag: String? = nil
     var epost: EtterarbeidEpostDTO? = nil
+    /// Mål & behov-kjeden: ærlig vurdering mot selgerens mål + behov som
+    /// kom fram i møtet (flettes inn i behovsbanken server-side).
+    var maalVurdering: String? = nil
+    var nyeBehov: [String]? = nil
+}
+
+/// Mål & behov per selskap (leadgrid_mote_maal — datakilden for briefen).
+struct MoteMaalDTO: Decodable, Hashable {
+    let maal: String
+    let behov: [String]
 }
 
 extension APIClient {
@@ -93,6 +106,35 @@ extension APIClient {
             body: Body(selskap: selskap, tekst: tekst, kontakt: kontakt,
                        moteMaal: moteMaal, orgnr: orgnr))
         return r.resultat
+    }
+
+    /// Mål & behov (ugated): hent/lagre per selskap.
+    func hentMoteMaal(selskap: String) async throws -> MoteMaalDTO {
+        var comps = URLComponents(string: "/api/leadgrid/moter/maal")!
+        comps.queryItems = [URLQueryItem(name: "selskap", value: selskap)]
+        return try await _get(comps.string ?? "/api/leadgrid/moter/maal")
+    }
+
+    func lagreMoteMaal(selskap: String, maal: String, behov: [String]) async throws {
+        struct Body: Encodable {
+            let selskap: String
+            let maal: String
+            let behov: [String]
+        }
+        struct Resp: Decodable { let ok: Bool }
+        let _: Resp = try await _put(
+            "/api/leadgrid/moter/maal",
+            body: Body(selskap: selskap, maal: maal, behov: behov))
+    }
+
+    /// Flytt et møte (= leadens next_follow_up_at) til nytt tidspunkt.
+    func flyttMoteTid(leadId: String, til dato: Date) async throws {
+        struct Body: Encodable { let datetime: String }
+        let iso = ISO8601DateFormatter().string(from: dato)
+        let data = try JSONEncoder().encode(Body(datetime: iso))
+        _ = try await _request(
+            "/api/admin-room/lead-map/calendar/\(leadId)",
+            method: "PATCH", body: data)
     }
 
     /// Hent AI-møtebrief for et selskap/møte. Orgnr er valgfritt — backend

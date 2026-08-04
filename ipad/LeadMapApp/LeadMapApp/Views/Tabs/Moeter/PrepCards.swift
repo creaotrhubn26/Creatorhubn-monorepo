@@ -1278,13 +1278,30 @@ struct PrepInsightsModal: View {
 struct PrepCoreModal: View {
     let meetingCompany: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+
+    // Mål & behov-kjeden (2026-08-04): dette er DATAKILDEN som styrer
+    // møtebriefen (mål + kjente behov inn i prompten) og etterarbeidet
+    // (måloppnåelse vurderes mot målet). Lagres per selskap i backend;
+    // behovsbanken fylles også automatisk av etterarbeids-analysen.
+    @State private var maal = ""
+    @State private var behov: [String] = []
+    @State private var nyttBehov = ""
+    @State private var lagrer = false
+    @State private var melding: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
                     contextHeader
-                    PrepCoreCard(items: MeetingsData.prep)
+                    maalKort
+                    behovKort
+                    if let melding {
+                        Text(melding)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(PBrand.green)
+                    }
                     Color.clear.frame(height: 16)
                 }
                 .padding(20)
@@ -1296,10 +1313,134 @@ struct PrepCoreModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.foregroundStyle(PBrand.purpleLight)
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { Task { await lagre() } } label: {
+                        if lagrer { ProgressView().controlSize(.small) }
+                        else { Text("Lagre").fontWeight(.semibold) }
+                    }
+                    .tint(PBrand.purpleLight)
+                }
             }
             .toolbarBackground(PBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .task { await last() }
+    }
+
+    private var maalKort: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("MÅL FOR NESTE MØTE")
+                .font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(PBrand.textSecondary)
+                .tracking(0.7)
+            TextEditor(text: $maal)
+                .font(.appScaled(size: 13))
+                .foregroundStyle(.white)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 70)
+                .padding(8)
+                .background(PBrand.cardHi.opacity(0.6), in: RoundedRectangle(cornerRadius: 9))
+            Text("Målet styrer møtebriefen — og etterarbeidet vurderer ærlig om du nådde det. Møter uten mål ender som «bli kjent»-møter.")
+                .font(.appScaled(size: 10))
+                .foregroundStyle(PBrand.textTertiary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(PBrand.stroke, lineWidth: 1))
+    }
+
+    private var behovKort: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("KUNDENS BEHOV (BEHOVSBANKEN)")
+                .font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(PBrand.textSecondary)
+                .tracking(0.7)
+            ForEach(behov, id: \.self) { b in
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(PBrand.blue)
+                    Text(b)
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Button { behov.removeAll { $0 == b } } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.appScaled(size: 13))
+                            .foregroundStyle(PBrand.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(PBrand.cardHi.opacity(0.6), in: RoundedRectangle(cornerRadius: 9))
+            }
+            HStack(spacing: 8) {
+                TextField("", text: $nyttBehov,
+                          prompt: Text("Legg til behov …")
+                              .foregroundColor(PBrand.textTertiary))
+                    .textFieldStyle(.plain)
+                    .font(.appScaled(size: 12))
+                    .foregroundStyle(.white)
+                    .onSubmit { leggTilBehov() }
+                Button { leggTilBehov() } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.appScaled(size: 18))
+                        .foregroundStyle(PBrand.purpleLight)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(PBrand.cardHi.opacity(0.4), in: RoundedRectangle(cornerRadius: 9))
+            Text("Behovene dukker opp i neste møtebrief («grav videre i disse») og fylles også automatisk fra møte-analysen.")
+                .font(.appScaled(size: 10))
+                .foregroundStyle(PBrand.textTertiary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(PBrand.stroke, lineWidth: 1))
+    }
+
+    private func leggTilBehov() {
+        let t = nyttBehov.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !behov.contains(t), behov.count < 12 else { return }
+        behov.append(t)
+        nyttBehov = ""
+    }
+
+    @MainActor
+    private func last() async {
+        if DemoModeManager.isActiveNonisolated {
+            if maal.isEmpty {
+                maal = "Avdekk beslutningsprosessen og avtal befaring med teknisk sjef innen fredag."
+                behov = ["Kortere responstid på service", "Samlet el-leveranse i én avtale",
+                         "Forutsigbar pris (rammeavtale)"]
+            }
+            return
+        }
+        guard let api = appState.api else { return }
+        if let mb = try? await api.hentMoteMaal(selskap: meetingCompany) {
+            maal = mb.maal
+            behov = mb.behov
+        }
+    }
+
+    @MainActor
+    private func lagre() async {
+        if DemoModeManager.isActiveNonisolated {
+            melding = "Demo: mål og behov lagres i innlogget modus."
+            return
+        }
+        guard let api = appState.api else { melding = "Krever innlogget modus."; return }
+        lagrer = true
+        defer { lagrer = false }
+        do {
+            try await api.lagreMoteMaal(selskap: meetingCompany, maal: maal, behov: behov)
+            melding = "Lagret — møtebriefen bruker dette fra nå."
+        } catch {
+            melding = "Lagring feilet — prøv igjen."
         }
     }
 
