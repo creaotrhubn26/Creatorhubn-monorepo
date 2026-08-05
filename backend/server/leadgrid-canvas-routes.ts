@@ -91,6 +91,11 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_canvas_versjoner_notat
       ON leadgrid_canvas_versjoner (notat_id, created_at DESC)`);
+  // Ekte PDF-håndtering (Daniel 2026-08-05): originaldokumentene lagres
+  // som base64 (vektor-rendering + tapsfri eksport på klienten).
+  await pool.query(`
+    ALTER TABLE leadgrid_canvas_notater
+      ADD COLUMN IF NOT EXISTS dokumenter TEXT NOT NULL DEFAULT '[]'`);
   // Papirkurv (Daniel 2026-08-05): soft delete — notatet ligger 30 dager
   // i papirkurven før det tømmes for godt (lat opprydding i GET).
   await pool.query(`
@@ -133,6 +138,7 @@ type NotatFelter = {
   sider: number;
   objekter: string;
   sokbarTekst: string;
+  dokumenter: string;
 };
 
 function parseFelter(b: Record<string, unknown>): NotatFelter | null {
@@ -156,6 +162,8 @@ function parseFelter(b: Record<string, unknown>): NotatFelter | null {
     sider: Math.min(20, Math.max(1, Number(b.sider ?? 1) || 1)),
     objekter: String(b.objekter ?? "[]").slice(0, 12_000_000),
     sokbarTekst: String(b.sokbar_tekst ?? b.sokbarTekst ?? "").slice(0, 20_000),
+    // Original-PDF-er (base64) — vektor-kvalitet hele veien.
+    dokumenter: String(b.dokumenter ?? "[]").slice(0, 16_000_000),
   };
 }
 
@@ -183,7 +191,7 @@ export function registerLeadgridCanvasRoutes(deps: {
             `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
                     n.drawing_base64, n.updated_at, n.delt, n.user_id,
                     n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
-                    n.noder, n.sider, n.objekter, n.sokbar_tekst, n.slettet_at,
+                    n.noder, n.sider, n.objekter, n.sokbar_tekst, n.dokumenter, n.slettet_at,
                     '' AS eier_navn
                FROM leadgrid_canvas_notater n
               WHERE n.organization_id = $1 AND n.user_id = $2
@@ -194,7 +202,7 @@ export function registerLeadgridCanvasRoutes(deps: {
             `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
                     n.drawing_base64, n.updated_at, n.delt, n.user_id,
                     n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
-                    n.noder, n.sider, n.objekter, n.sokbar_tekst, n.slettet_at,
+                    n.noder, n.sider, n.objekter, n.sokbar_tekst, n.dokumenter, n.slettet_at,
                     COALESCE(u.name, u.email, '') AS eier_navn
                FROM leadgrid_canvas_notater n
                LEFT JOIN users u ON u.id::text = n.user_id
@@ -221,6 +229,7 @@ export function registerLeadgridCanvasRoutes(deps: {
           sider: row.sider ?? 1,
           objekter: row.objekter ?? "[]",
           sokbar_tekst: row.sokbar_tekst ?? "",
+          dokumenter: row.dokumenter ?? "[]",
           slettet_at: row.slettet_at instanceof Date
             ? row.slettet_at.toISOString()
             : (row.slettet_at ? String(row.slettet_at) : null),
@@ -252,13 +261,13 @@ export function registerLeadgridCanvasRoutes(deps: {
         `INSERT INTO leadgrid_canvas_notater
            (id, organization_id, user_id, tittel, kategori, selskap, lead_id,
             drawing_base64, delt, lat, lon, stempler, tekstbokser, figurer,
-            papir, noder, sider, objekter, sokbar_tekst)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+            papir, noder, sider, objekter, sokbar_tekst, dokumenter)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
         [id, orgId, session.userId, felter.tittel, felter.kategori,
          felter.selskap, felter.leadId, felter.drawing, felter.delt,
          felter.lat, felter.lon, felter.stempler, felter.tekstbokser,
          felter.figurer, felter.papir, felter.noder, felter.sider,
-         felter.objekter, felter.sokbarTekst]);
+         felter.objekter, felter.sokbarTekst, felter.dokumenter]);
       res.json({ id });
     } catch (e) {
       console.error("[canvas] POST failed:", e);
@@ -306,13 +315,13 @@ export function registerLeadgridCanvasRoutes(deps: {
                 drawing_base64 = $5, delt = $6, lat = $7, lon = $8,
                 stempler = $9, tekstbokser = $10, figurer = $11,
                 papir = $12, noder = $13, sider = $14, objekter = $15,
-                sokbar_tekst = $16, updated_at = now()
-          WHERE id = $17 AND user_id = $18 AND slettet_at IS NULL`,
+                sokbar_tekst = $16, dokumenter = $17, updated_at = now()
+          WHERE id = $18 AND user_id = $19 AND slettet_at IS NULL`,
         [felter.tittel, felter.kategori, felter.selskap, felter.leadId,
          felter.drawing, felter.delt, felter.lat, felter.lon,
          felter.stempler, felter.tekstbokser, felter.figurer,
          felter.papir, felter.noder, felter.sider, felter.objekter,
-         felter.sokbarTekst, req.params.id, session.userId]);
+         felter.sokbarTekst, felter.dokumenter, req.params.id, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {

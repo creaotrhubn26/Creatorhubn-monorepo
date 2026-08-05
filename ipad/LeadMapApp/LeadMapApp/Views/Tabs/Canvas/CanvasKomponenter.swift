@@ -502,9 +502,55 @@ struct NodeView: View {
 /// Bilde-, lead-, KPI-, kart- og oppgave-objekter. I objekt-modus:
 /// dra flytter, klyp skalerer, hold fjerner. Ellers er laget passivt
 /// og blekket tegnes oppå (annotering).
+// MARK: - Ekte PDF-håndtering (vektor, aldri bilder)
+
+/// Delt PDFDocument-cache: ett dokument dekodes én gang uansett hvor
+/// mange sider som vises på flata.
+@MainActor
+enum PdfDokumentCache {
+    private static let cache = NSCache<NSString, PDFDocument>()
+    static func dokument(for dok: CanvasDokument) -> PDFDocument? {
+        if let d = cache.object(forKey: dok.id as NSString) { return d }
+        guard let data = Data(base64Encoded: dok.base64),
+              let d = PDFDocument(data: data) else { return nil }
+        cache.setObject(d, forKey: dok.id as NSString)
+        return d
+    }
+}
+
+/// Én PDF-side rendret av PDFKit (tiled/vektor) — skarp i alle
+/// zoom-nivåer, i motsetning til raster-bildene den erstatter.
+struct PdfSideView: UIViewRepresentable {
+    let dokument: PDFDocument
+    let sideIndeks: Int
+
+    func makeUIView(context: Context) -> PDFView {
+        let v = PDFView()
+        v.displayMode = .singlePage
+        v.displaysPageBreaks = false
+        v.pageShadowsEnabled = false
+        v.isUserInteractionEnabled = false
+        v.backgroundColor = .white
+        v.autoScales = true
+        v.document = dokument
+        if let side = dokument.page(at: sideIndeks) { v.go(to: side) }
+        return v
+    }
+
+    func updateUIView(_ v: PDFView, context: Context) {
+        if v.document !== dokument { v.document = dokument }
+        if let side = dokument.page(at: sideIndeks), v.currentPage !== side {
+            v.go(to: side)
+        }
+        v.autoScales = true
+    }
+}
+
 struct ObjektView: View {
     let objekt: CanvasObjekt
     let redigerbar: Bool
+    /// Ekte PDF: originaldokumentet siden hører til (vektor-rendering).
+    var pdfDok: CanvasDokument? = nil
     /// Living Canvas: ferskt (tittel, detalj) fra appState — overstyrer
     /// snapshotet i objektet.
     var liveInnhold: (String, String)? = nil
@@ -558,7 +604,26 @@ struct ObjektView: View {
 
     @ViewBuilder
     private var innhold: some View {
-        if let b64 = objekt.bildeBase64,
+        if let dok = pdfDok, let sideIndeks = objekt.side,
+           let pdfd = PdfDokumentCache.dokument(for: dok),
+           let pdfSide = pdfd.page(at: sideIndeks) {
+            // Ekte PDF-side: vektor-skarp uansett zoom.
+            let ramme = pdfSide.bounds(for: .mediaBox)
+            let bredde = 1520 * objekt.skala
+            let hoyde = ramme.height / max(ramme.width, 1) * bredde
+            VStack(spacing: 0) {
+                PdfSideView(dokument: pdfd, sideIndeks: sideIndeks)
+                    .frame(width: bredde, height: hoyde)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                if let tittel = objekt.tittel, !tittel.isEmpty {
+                    Text(tittel)
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .padding(.top, 3)
+                }
+            }
+            .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+        } else if let b64 = objekt.bildeBase64,
            let data = Data(base64Encoded: b64),
            let img = UIImage(data: data) {
             // Bilde / kart-utsnitt

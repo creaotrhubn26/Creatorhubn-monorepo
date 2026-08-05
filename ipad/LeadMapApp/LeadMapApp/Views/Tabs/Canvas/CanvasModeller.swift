@@ -207,15 +207,27 @@ struct CanvasSnapshot: Hashable {
 /// gjør dem flyttbare/skalerbare; ellers går all touch til Pencil.
 struct CanvasObjekt: Codable, Identifiable, Hashable {
     var id: String = UUID().uuidString
-    var type: String        // bilde / lead / kpi / kart / oppgave
+    var type: String        // bilde / lead / kpi / kart / oppgave / pdf
     var x: Double
     var y: Double
     var skala: Double = 1.0
-    /// JPEG-base64 for bilde- og kart-objekter.
+    /// JPEG-base64 for bilde- og kart-objekter (legacy-PDF-sider også).
     var bildeBase64: String? = nil
     var tittel: String? = nil
     var detalj: String? = nil
     var refId: String? = nil
+    /// Ekte PDF: referanse til originaldokumentet + sideindeks —
+    /// rendres vektor-skarpt via PDFKit, aldri som bilde.
+    var dokId: String? = nil
+    var side: Int? = nil
+}
+
+/// Originaldokument (PDF) lagret tapsfritt i notatet: vektor-rendering
+/// på flata og eksport i original kvalitet med annoteringene oppå.
+struct CanvasDokument: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var navn: String
+    var base64: String
 }
 
 /// Levende tankekart/brainstorm-node (fase 7): boblene er OBJEKTER —
@@ -284,6 +296,8 @@ struct CanvasNotat: Identifiable, Hashable {
     var objekter: [CanvasObjekt] = []
     /// Universalsøk: OCR av blekk + PDF-tekst + bilde-OCR + tekster.
     var sokbarTekst: String = ""
+    /// Ekte PDF-håndtering: originaldokumentene i notatet.
+    var dokumenter: [CanvasDokument] = []
     /// Papirkurven: satt når notatet er soft-slettet (tømmes etter 30 dager).
     var slettetAt: Date? = nil
 
