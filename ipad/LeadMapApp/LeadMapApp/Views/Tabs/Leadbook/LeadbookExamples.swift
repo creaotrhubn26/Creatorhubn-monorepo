@@ -4392,6 +4392,23 @@ struct LeadbookAIUsageSheet: View {
         }
     }
 
+    /// Norske etiketter for AI-funksjonene i kost-oversikten.
+    private static func funksjonsNavn(_ feature: String) -> String {
+        switch feature {
+        case "mote_brief": return "Møtebrief"
+        case "mote_etterarbeid": return "Møte-etterarbeid"
+        case "canvas_analyse": return "Canvas-analyse (håndskrift)"
+        case "anbud_score": return "Anbud «passer oss»-score"
+        case "anbud_lesehjelp": return "Anbud-lesehjelp"
+        case "anbud_tilbud": return "Tilbuds-assistent"
+        case "leadbook_strukturering": return "Leadbook-strukturering"
+        case "leadbook_mal_forslag": return "Leadbook mal-forslag"
+        case "transcript_analyse": return "Transkript-analyse"
+        case "": return "Ukjent"
+        default: return feature.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
     private func content(_ u: APIClient.AIUsageResponse) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -4404,6 +4421,34 @@ struct LeadbookAIUsageSheet: View {
                     .font(.appScaled(size: 10))
                     .foregroundStyle(LBrand.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                // Per funksjon: nøyaktig hva AI-forbruket går til.
+                if let funksjoner = u.byFeature, !funksjoner.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "square.grid.2x2.fill")
+                                .foregroundStyle(LBrand.purpleLight)
+                            Text("PER FUNKSJON").font(.appScaled(size: 10, weight: .black))
+                                .foregroundStyle(LBrand.textTertiary).tracking(0.8)
+                        }
+                        ForEach(funksjoner) { row in
+                            HStack(spacing: 10) {
+                                Text(Self.funksjonsNavn(row.feature))
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(row.calls) kall")
+                                    .font(.appScaled(size: 11, design: .monospaced))
+                                    .foregroundStyle(LBrand.textSecondary)
+                                Text(String(format: "$%.2f", row.costUsd))
+                                    .font(.appScaled(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(LBrand.green)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                        }
+                    }
+                }
                 if !u.byUser.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 7) {

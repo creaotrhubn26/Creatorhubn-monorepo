@@ -581,10 +581,25 @@ ${text.slice(0, 2000)}`;
           LIMIT 25`,
         [g.orgId],
       );
+      // Per FUNKSJON: kunden ser nøyaktig hva AI-forbruket går til
+      // (møtebrief, etterarbeid, Canvas-analyse, anbud-score, …).
+      const byFeature = await pool.query<{
+        feature: string; calls: number; cost_usd: string;
+      }>(
+        `SELECT feature, COUNT(*)::int AS calls,
+                COALESCE(SUM(cost_usd),0) AS cost_usd
+           FROM leadbook_ai_usage
+          WHERE organization_id = $1
+          GROUP BY feature
+          ORDER BY SUM(cost_usd) DESC NULLS LAST
+          LIMIT 25`,
+        [g.orgId],
+      );
       return res.json({
         total: totals.rows[0],
         this_month: month.rows[0],
         by_user: byUser.rows,
+        by_feature: byFeature.rows,
       });
     } catch (err) {
       console.warn("[leadbook-examples] ai-usage failed:", (err as Error).message);

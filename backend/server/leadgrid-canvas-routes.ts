@@ -285,6 +285,7 @@ export function registerLeadgridCanvasRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.json({ versjoner: [] }); return; }
       await ensureSchema(pool);

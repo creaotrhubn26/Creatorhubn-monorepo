@@ -15,6 +15,11 @@ import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 const GYLDIGE_KORT = new Set(["kpi", "dorsalg", "neste_handling", "oppgaver", "leads"]);
+// Canvas-funksjonene org-en kan rolle-styre (samme hierarki som kortene).
+const GYLDIGE_CANVAS_FUNKSJONER = new Set([
+  "deling", "pdf", "bilder", "livekort", "tidsreise",
+  "kundeminne", "bibliotek", "analyse",
+]);
 const GYLDIGE_MALGRUPPER = new Set(["selger", "leder"]);
 const ADMIN_ROLLER = ["super_admin", "admin", "owner"];
 const LEDER_ROLLER = [...ADMIN_ROLLER, "markedssjef", "salgssjef", "teamleder"];
@@ -27,6 +32,16 @@ async function ensureSchema(pool: Pool): Promise<void> {
       organization_id TEXT NOT NULL,
       malgruppe TEXT NOT NULL,
       skjulte_kort JSONB NOT NULL DEFAULT '[]',
+      updated_by TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (organization_id, malgruppe)
+    )`);
+  // Canvas rolle-policy: org styrer salgslederes/selgeres Canvas-funksjoner.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_canvas_policy (
+      organization_id TEXT NOT NULL,
+      malgruppe TEXT NOT NULL,
+      skjulte_funksjoner JSONB NOT NULL DEFAULT '[]',
       updated_by TEXT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (organization_id, malgruppe)
@@ -124,6 +139,67 @@ export function registerLeadgridOversiktRoutes(deps: {
       res.json({ ok: true, malgruppe, skjulte_kort: skjulte });
     } catch (e) {
       console.error("[oversikt-policy] PUT failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Canvas rolle-policy: hvilke Canvas-funksjoner er skjult per rolle. */
+  app.get("/api/leadgrid/canvas-rolle-policy", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.json({ selger: [], leder: [] }); return; }
+      await ensureSchema(pool);
+      const r = await pool.query<{ malgruppe: string; skjulte_funksjoner: unknown }>(
+        `SELECT malgruppe, skjulte_funksjoner FROM leadgrid_canvas_policy
+          WHERE organization_id = $1`, [orgId]);
+      const ut: Record<string, string[]> = { selger: [], leder: [] };
+      for (const row of r.rows) {
+        if (GYLDIGE_MALGRUPPER.has(row.malgruppe) && Array.isArray(row.skjulte_funksjoner)) {
+          ut[row.malgruppe] = (row.skjulte_funksjoner as unknown[]).map(String)
+            .filter((k) => GYLDIGE_CANVAS_FUNKSJONER.has(k));
+        }
+      }
+      res.json(ut);
+    } catch (e) {
+      console.error("[canvas-policy] GET failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Sett Canvas-funksjoner for en målgruppe (samme rolle-krav som kortene:
+   *  «selger» krever leder-rolle, «leder» krever admin/owner). */
+  app.put("/api/leadgrid/canvas-rolle-policy", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const malgruppe = String(b.malgruppe ?? "");
+      if (!GYLDIGE_MALGRUPPER.has(malgruppe)) {
+        res.status(400).json({ error: "bad_request" });
+        return;
+      }
+      const skjulte = (Array.isArray(b.skjulte_funksjoner) ? b.skjulte_funksjoner : [])
+        .map(String).filter((k) => GYLDIGE_CANVAS_FUNKSJONER.has(k)).slice(0, 12);
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      const roller = await hentRoller(pool, session.userId);
+      const krav = malgruppe === "leder" ? ADMIN_ROLLER : LEDER_ROLLER;
+      if (!harRolle(roller, krav)) { res.status(403).json({ error: "forbidden" }); return; }
+      await ensureSchema(pool);
+      await pool.query(
+        `INSERT INTO leadgrid_canvas_policy
+           (organization_id, malgruppe, skjulte_funksjoner, updated_by, updated_at)
+         VALUES ($1, $2, $3::jsonb, $4, now())
+         ON CONFLICT (organization_id, malgruppe)
+         DO UPDATE SET skjulte_funksjoner = EXCLUDED.skjulte_funksjoner,
+                       updated_by = EXCLUDED.updated_by,
+                       updated_at = now()`,
+        [orgId, malgruppe, JSON.stringify(skjulte), session.userId]);
+      res.json({ ok: true, malgruppe, skjulte_funksjoner: skjulte });
+    } catch (e) {
+      console.error("[canvas-policy] PUT failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
