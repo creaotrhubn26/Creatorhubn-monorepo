@@ -7,6 +7,7 @@ import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/access
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
+import { useT } from '../../../i18n';
 import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
@@ -480,46 +481,14 @@ const STORYBOARD_TAB_INDEX = 16;
 // Pre-prod-tabs som grupperes visuelt i sub-tab-strip-en. Ikke en endring
 // av faktisk tab-indeks-systemet — bare en kontekst-strip når en av disse
 // er aktiv så bruker ser at de fire er semantisk sammenkoblet.
-const PREPROD_GROUP_TABS: ReadonlyArray<PreprodSubTabItem> = [
-  { tabIndex: LOCATIONS_TAB_INDEX, label: 'Lokasjoner' },
-  { tabIndex: CALENDAR_TAB_INDEX, label: 'Produksjonsplan' },
-  { tabIndex: TEAM_TAB_INDEX, label: 'Team' },
-  { tabIndex: EQUIPMENT_TAB_INDEX, label: 'Rekvisitter' },
-];
+// PREPROD_GROUP_TABS moved into the component as `preprodGroupTabs` (t()-mapped).
 
 // Stabil tab-spec for Cmd+K command palette og breadcrumbs. Vi bruker ikke
 // `tabLabels`-arrayen som bygges inni render-callbacken (den er mode-avhengig)
 // — for paletten holder vi oss til faste, generelle norske labels.
-const COMMAND_PALETTE_TABS: ReadonlyArray<{
-  tabIndex: number;
-  label: string;
-  keywords: string[];
-}> = [
-  { tabIndex: 0, label: 'Oversikt', keywords: ['oversikt', 'dashboard', 'home'] },
-  { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'planner'] },
-  { tabIndex: STORYBOARD_TAB_INDEX, label: 'Storyboard', keywords: ['storyboard', 'tegne', 'frame', 'shot', 'sketch'] },
-  { tabIndex: ROLES_TAB_INDEX, label: 'Roller', keywords: ['roller', 'roles'] },
-  { tabIndex: CANDIDATES_TAB_INDEX, label: 'Kandidater', keywords: ['kandidater', 'candidates', 'medvirkende'] },
-  { tabIndex: AUDITIONS_TAB_INDEX, label: 'Auditions', keywords: ['audition', 'casting-call'] },
-  { tabIndex: SELECTION_TAB_INDEX, label: 'Utvelgelse', keywords: ['utvelgelse', 'selection'] },
-  { tabIndex: LOCATIONS_TAB_INDEX, label: 'Lokasjoner', keywords: ['lokasjon', 'location', 'sted'] },
-  { tabIndex: CALENDAR_TAB_INDEX, label: 'Produksjonsplan', keywords: ['kalender', 'schedule', 'plan'] },
-  { tabIndex: TEAM_TAB_INDEX, label: 'Team', keywords: ['team', 'crew', 'mannskap'] },
-  { tabIndex: EQUIPMENT_TAB_INDEX, label: 'Rekvisitter', keywords: ['rekvisitter', 'props', 'utstyr', 'equipment'] },
-  { tabIndex: LIVE_SET_TAB_INDEX, label: 'Live Set', keywords: ['live', 'set', 'opptak'] },
-  { tabIndex: PRODUCER_MEDIA_TAB_INDEX, label: 'Prosjektrom', keywords: ['prosjektrom', 'media', 'workspace'] },
-  { tabIndex: PRODUCER_ECONOMY_TAB_INDEX, label: 'Økonomi', keywords: ['økonomi', 'budget', 'fakturering'] },
-  { tabIndex: PRODUCER_TIMELINE_TAB_INDEX, label: 'Planner', keywords: ['planner', 'timeline', 'tidslinje'] },
-  { tabIndex: PRODUCER_REVIEWS_TAB_INDEX, label: 'Godkjenning', keywords: ['godkjenning', 'klient', 'review'] },
-  { tabIndex: PRODUCER_EXPORT_TAB_INDEX, label: 'Levering', keywords: ['levering', 'eksport', 'export'] },
-];
+// COMMAND_PALETTE_TABS moved into the component as `commandPaletteTabs` (t()-mapped; keywords kept).
 
-const PRODUCER_PROJECT_STATUS_LABELS: Record<NonNullable<CastingProject['producerWorkflowStatus']>, string> = {
-  planning: 'Planlegging',
-  awaiting_client: 'Venter på klient',
-  changes_requested: 'Endringer ønsket',
-  approved: 'Godkjent',
-};
+// PRODUCER_PROJECT_STATUS_LABELS moved into the component as `producerProjectStatusLabels` (t()-mapped).
 
 const PRODUCER_PROJECT_STATUS_COLORS: Record<NonNullable<CastingProject['producerWorkflowStatus']>, { background: string; color: string; border: string }> = {
   planning: {
@@ -579,12 +548,7 @@ const DEFAULT_SELECTION_MEET_DRAFT: SelectionMeetDraftState = {
 
 type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
 
-const ROLE_ROOM_PREVIEW_MODE_LABELS: Record<RoleRoomAdminPreviewMode, string> = {
-  admin: 'Administrator',
-  production_team: 'Produksjon',
-  content_producer: 'Innhold',
-  client: 'Klient',
-};
+// ROLE_ROOM_PREVIEW_MODE_LABELS moved into the component (t()-mapped at use site).
 
 const SELECTION_STATUS_BY_STAGE: Record<SelectionStage, string> = {
   screening: 'auditioned',
@@ -626,19 +590,7 @@ function normalizeSelectionDecisionLog(value: unknown): SelectionDecisionLogEntr
     .slice(0, MAX_SELECTION_DECISION_LOG_ENTRIES);
 }
 
-const SELECTION_SHORTCUTS: Array<{
-  keys: string;
-  action: string;
-  scope: 'Utvelgelse';
-}> = [
-  { keys: 'J', action: 'Neste kandidatkort', scope: 'Utvelgelse' },
-  { keys: 'K', action: 'Forrige kandidatkort', scope: 'Utvelgelse' },
-  { keys: '1', action: 'Flytt kandidat til Screening', scope: 'Utvelgelse' },
-  { keys: '2', action: 'Flytt kandidat til Callbacks', scope: 'Utvelgelse' },
-  { keys: '3', action: 'Flytt kandidat til Final selection', scope: 'Utvelgelse' },
-  { keys: 'B', action: 'Åpne/lukk Casting board', scope: 'Utvelgelse' },
-  { keys: '?', action: 'Åpne denne snarvei-dialogen', scope: 'Utvelgelse' },
-];
+// SELECTION_SHORTCUTS moved into the component as `selectionShortcuts` (t()-mapped).
 
 const TabPanel = memo(function TabPanel({ children, value, index, immersive = false }: TabPanelProps) {
   const theme = useTheme();
@@ -776,6 +728,47 @@ export function CastingPlannerPanel({
   const useDenseDesktopHeader = !useCompactHeaderLayout && isDenseDesktopViewport;
   const toast = useToast();
   const branding = useBrandingSettings();
+  const { t } = useT();
+  const producerProjectStatusLabels = useMemo<Record<string, string>>(() => ({
+    planning: t('shell.status.planning'),
+    awaiting_client: t('shell.status.awaitingClient'),
+    changes_requested: t('shell.status.changesRequested'),
+    approved: t('shell.status.approved'),
+  }), [t]);
+  const preprodGroupTabs = useMemo(() => [
+    { tabIndex: LOCATIONS_TAB_INDEX, label: t('shell.tab.locations') },
+    { tabIndex: CALENDAR_TAB_INDEX, label: t('shell.tab.productionPlan') },
+    { tabIndex: TEAM_TAB_INDEX, label: t('shell.tab.team') },
+    { tabIndex: EQUIPMENT_TAB_INDEX, label: t('shell.tab.props') },
+  ], [t]);
+  const commandPaletteTabs = useMemo(() => [
+    { tabIndex: 0, label: t('shell.overview'), keywords: ['oversikt', 'dashboard', 'home'] },
+    { tabIndex: STORY_ARC_TAB_INDEX, label: 'Story Arc Studio', keywords: ['story', 'manus', 'planner'] },
+    { tabIndex: STORYBOARD_TAB_INDEX, label: 'Storyboard', keywords: ['storyboard', 'tegne', 'frame', 'shot', 'sketch'] },
+    { tabIndex: ROLES_TAB_INDEX, label: t('shell.tab.roles'), keywords: ['roller', 'roles'] },
+    { tabIndex: CANDIDATES_TAB_INDEX, label: t('shell.tab.candidates'), keywords: ['kandidater', 'candidates', 'medvirkende'] },
+    { tabIndex: AUDITIONS_TAB_INDEX, label: 'Auditions', keywords: ['audition', 'casting-call'] },
+    { tabIndex: SELECTION_TAB_INDEX, label: t('shell.selection'), keywords: ['utvelgelse', 'selection'] },
+    { tabIndex: LOCATIONS_TAB_INDEX, label: t('shell.tab.locations'), keywords: ['lokasjon', 'location', 'sted'] },
+    { tabIndex: CALENDAR_TAB_INDEX, label: t('shell.tab.productionPlan'), keywords: ['kalender', 'schedule', 'plan'] },
+    { tabIndex: TEAM_TAB_INDEX, label: t('shell.tab.team'), keywords: ['team', 'crew', 'mannskap'] },
+    { tabIndex: EQUIPMENT_TAB_INDEX, label: t('shell.tab.props'), keywords: ['rekvisitter', 'props', 'utstyr', 'equipment'] },
+    { tabIndex: LIVE_SET_TAB_INDEX, label: 'Live Set', keywords: ['live', 'set', 'opptak'] },
+    { tabIndex: PRODUCER_MEDIA_TAB_INDEX, label: t('shell.projectRoom'), keywords: ['prosjektrom', 'media', 'workspace'] },
+    { tabIndex: PRODUCER_ECONOMY_TAB_INDEX, label: t('shell.economy'), keywords: ['økonomi', 'budget', 'fakturering'] },
+    { tabIndex: PRODUCER_TIMELINE_TAB_INDEX, label: 'Planner', keywords: ['planner', 'timeline', 'tidslinje'] },
+    { tabIndex: PRODUCER_REVIEWS_TAB_INDEX, label: t('shell.approval'), keywords: ['godkjenning', 'klient', 'review'] },
+    { tabIndex: PRODUCER_EXPORT_TAB_INDEX, label: t('shell.delivery'), keywords: ['levering', 'eksport', 'export'] },
+  ], [t]);
+  const selectionShortcuts = useMemo(() => [
+    { keys: 'J', action: t('shell.shortcut.nextCard'), scope: t('shell.selection') },
+    { keys: 'K', action: t('shell.shortcut.prevCard'), scope: t('shell.selection') },
+    { keys: '1', action: t('shell.shortcut.toScreening'), scope: t('shell.selection') },
+    { keys: '2', action: t('shell.shortcut.toCallbacks'), scope: t('shell.selection') },
+    { keys: '3', action: t('shell.shortcut.toFinal'), scope: t('shell.selection') },
+    { keys: 'B', action: t('shell.shortcut.toggleBoard'), scope: t('shell.selection') },
+    { keys: '?', action: t('shell.shortcut.openHelp'), scope: t('shell.selection') },
+  ], [t]);
 
   // Projects loading state
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -1096,30 +1089,30 @@ type RoleRoomProjectWorkspaceState = {
   }>>(() => [
     {
       value: 'overview',
-      label: 'Oversikt',
-      description: 'Se fremdrift, varsler, møter og administrative blokker i én samlet startflate.',
+      label: t('shell.overview'),
+      description: t('shell.surface.overviewDesc'),
     },
     {
       value: 'project_room',
-      label: 'Prosjektrom',
-      description: 'Jobb med brief, materialer, storyboard, manus, shotlist og prosjektgrunnlag.',
+      label: t('shell.projectRoom'),
+      description: t('shell.surface.projectRoomDesc'),
     },
     {
       value: 'approval',
-      label: 'Godkjenning',
-      description: 'Samle klientfeedback, beslutninger og endringer som må avklares før neste steg.',
+      label: t('shell.approval'),
+      description: t('shell.surface.approvalDesc'),
     },
     {
       value: 'delivery',
-      label: 'Levering',
-      description: 'Hold kontroll på leveranser, eksport, overlevering og hva som faktisk er klart til utsending.',
+      label: t('shell.delivery'),
+      description: t('shell.surface.deliveryDesc'),
     },
     {
       value: 'economy',
-      label: 'Økonomi',
-      description: 'Følg budsjett, økonomiske beslutninger og hva som må godkjennes kommersielt.',
+      label: t('shell.economy'),
+      description: t('shell.surface.economyDesc'),
     },
-  ], []);
+  ], [t]);
   type RoleRoomWorkspaceState = {
     projectId: string | null;
     lastRealProjectId?: string | null;
@@ -1647,7 +1640,7 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     return window.confirm(
-      `Du har ulagret arbeid i ${reasonText}. Hvis du bytter til "${targetProject.name}", kan endringene gå tapt. Vil du fortsette?`,
+      t('shell.unsaved.switch', { reason: reasonText, name: targetProject.name }),
     );
   }, []);
 
@@ -1676,7 +1669,7 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     return window.confirm(
-      `Du har ulagret arbeid i ${reasonText}. Hvis du går tilbake nå, kan endringene gå tapt. Vil du fortsette?`,
+      t('shell.unsaved.back', { reason: reasonText }),
     );
   }, []);
 
@@ -1911,7 +1904,7 @@ type RoleRoomProjectWorkspaceState = {
     }
     if (tabIndex === LIVE_SET_TAB_INDEX && !currentProject) {
       setProjectSelectorOpen(true);
-      toast.showWarning('Velg prosjekt før du åpner Live Set.');
+      toast.showWarning(t('shell.toast.selectProjectLiveSet'));
       return;
     }
     if (tabIndex === LIVE_SET_TAB_INDEX) {
@@ -2041,7 +2034,7 @@ type RoleRoomProjectWorkspaceState = {
     openReviewsAfterCreate?: boolean;
   }) => {
     if (!currentProject) {
-      toast.showWarning('Velg prosjekt før du sender til klientgodkjenning.');
+      toast.showWarning(t('shell.toast.selectProjectClientApproval'));
       return;
     }
 
@@ -2052,11 +2045,11 @@ type RoleRoomProjectWorkspaceState = {
       : undefined;
 
     if (!approvalTemplate) {
-      toast.showWarning('Denne klientgodkjenningen må opprettes fra økonomisenteret.');
+      toast.showWarning(t('shell.toast.clientApprovalFromEconomy'));
       return;
     }
 
-    toast.showSuccess(`${draft.title} er klargjort i økonomisenteret.`);
+    toast.showSuccess(t('shell.toast.draftReadyInEconomy', { title: draft.title }));
     navigateToProducerWorkflowTabWithFocus(PRODUCER_ECONOMY_TAB_INDEX, {
       economyView: 'approvals',
       approvalTemplate,
@@ -2086,7 +2079,7 @@ type RoleRoomProjectWorkspaceState = {
   }, [projectSelectorOpen]);
 
   const getTabReturnLabel = useCallback((tabIndex: number): string => {
-    const activePlannerSurfaceLabel = CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS.find((item) => item.value === contentProducerPlannerSurface)?.label ?? 'Oversikt';
+    const activePlannerSurfaceLabel = CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS.find((item) => item.value === contentProducerPlannerSurface)?.label ?? t('shell.overview');
     switch (tabIndex) {
       case STORY_ARC_TAB_INDEX:
         return isContentProducerMode ? `Planner · ${activePlannerSurfaceLabel}` : 'Role Room Studio';
@@ -2099,7 +2092,7 @@ type RoleRoomProjectWorkspaceState = {
       case AUDITIONS_TAB_INDEX:
         return branding.tokens.labels.auditions;
       case SELECTION_TAB_INDEX:
-        return 'Utvelgelse';
+        return t('shell.selection');
       case LOCATIONS_TAB_INDEX:
         return branding.tokens.labels.locations;
       case CALENDAR_TAB_INDEX:
@@ -2109,20 +2102,20 @@ type RoleRoomProjectWorkspaceState = {
       case EQUIPMENT_TAB_INDEX:
         return branding.tokens.labels.equipment;
       case PRODUCER_MEDIA_TAB_INDEX:
-        return 'Prosjektrom';
+        return t('shell.projectRoom');
       case PRODUCER_ECONOMY_TAB_INDEX:
-        return 'Økonomi';
+        return t('shell.economy');
       case PRODUCER_TIMELINE_TAB_INDEX:
-        return isContentProducerMode ? 'Planner · Oversikt' : 'Planner';
+        return isContentProducerMode ? `Planner · ${t('shell.overview')}` : 'Planner';
       case PRODUCER_REVIEWS_TAB_INDEX:
-        return 'Godkjenning';
+        return t('shell.approval');
       case PRODUCER_EXPORT_TAB_INDEX:
-        return 'Levering';
+        return t('shell.delivery');
       case 0:
       default:
         return branding.tokens.labels.dashboard;
     }
-  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, branding.tokens.labels, contentProducerPlannerSurface, isContentProducerMode]);
+  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, branding.tokens.labels, contentProducerPlannerSurface, isContentProducerMode, t]);
 
   const handleExitLiveSet = useCallback(() => {
     const nextTab = lastNonLiveTab === LIVE_SET_TAB_INDEX ? 0 : lastNonLiveTab;
@@ -2522,8 +2515,8 @@ type RoleRoomProjectWorkspaceState = {
     const meta = projectSyncMetaById[projectId];
     if (!meta) {
       return {
-        label: 'Sjekker lagring',
-        helper: 'Åpne prosjektstatus for å hente siste sync-status.',
+        label: t('shell.sync.checking'),
+        helper: t('shell.sync.openStatusHelper'),
         bgcolor: 'rgba(148,163,184,0.12)',
         color: 'rgba(226,232,240,0.86)',
         border: '1px solid rgba(148,163,184,0.18)',
@@ -2531,8 +2524,8 @@ type RoleRoomProjectWorkspaceState = {
     }
     if (meta.queuedChangeCount > 0) {
       return {
-        label: `${meta.queuedChangeCount} venter på sync`,
-        helper: meta.lastError || 'Prosjektet er lagret lokalt, men ikke bekreftet på server ennå.',
+        label: t('shell.sync.queued', { n: meta.queuedChangeCount }),
+        helper: meta.lastError || t('shell.sync.localNotConfirmed'),
         bgcolor: 'rgba(251,191,36,0.16)',
         color: '#fde68a',
         border: '1px solid rgba(251,191,36,0.34)',
@@ -2540,7 +2533,7 @@ type RoleRoomProjectWorkspaceState = {
     }
     if (meta.lastError) {
       return {
-        label: 'Sync må sjekkes',
+        label: t('shell.sync.mustCheck'),
         helper: meta.lastError,
         bgcolor: 'rgba(248,113,113,0.14)',
         color: '#fecaca',
@@ -2549,8 +2542,8 @@ type RoleRoomProjectWorkspaceState = {
     }
     if (meta.lastSyncedAt) {
       return {
-        label: 'Lagret på server',
-        helper: `Server bekreftet lagring ${new Date(meta.lastSyncedAt).toLocaleString('nb-NO')}.`,
+        label: t('shell.sync.savedOnServer'),
+        helper: t('shell.sync.serverConfirmedAt', { time: new Date(meta.lastSyncedAt).toLocaleString('nb-NO') }),
         bgcolor: 'rgba(16,185,129,0.14)',
         color: '#bbf7d0',
         border: '1px solid rgba(16,185,129,0.28)',
@@ -2558,16 +2551,16 @@ type RoleRoomProjectWorkspaceState = {
     }
     if (meta.lastLocalSaveAt) {
       return {
-        label: 'Kun lokalt',
-        helper: 'Prosjektet finnes lokalt, men serverlagring er ikke bekreftet ennå.',
+        label: t('shell.sync.localOnly'),
+        helper: t('shell.sync.localOnlyHelper'),
         bgcolor: 'rgba(251,146,60,0.14)',
         color: '#fed7aa',
         border: '1px solid rgba(251,146,60,0.3)',
       };
     }
     return {
-      label: 'Ikke verifisert',
-      helper: 'Ingen lagringsbekreftelse er registrert for dette prosjektet.',
+      label: t('shell.sync.notVerified'),
+      helper: t('shell.sync.notVerifiedHelper'),
       bgcolor: 'rgba(148,163,184,0.12)',
       color: 'rgba(226,232,240,0.86)',
       border: '1px solid rgba(148,163,184,0.18)',
@@ -3011,9 +3004,9 @@ type RoleRoomProjectWorkspaceState = {
     ? 'content-producer'
     : 'casting-planner';
   const headerProfessionLabel = isContentProducerSession
-    ? 'Innholdsprodusent'
+    ? t('shell.header.contentProducer')
     : isClientReviewerSession
-      ? 'Klient'
+      ? t('shell.client')
       : profession
         ? PROFESSION_CONFIG[profession]?.name
         : '';
@@ -3028,40 +3021,40 @@ type RoleRoomProjectWorkspaceState = {
   const canRequestProducerReviewChanges = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canRequestReviewChanges);
   const canMakeProducerReviewDecision = !isReadOnlyProtectedDemoView && (isClientReviewerSession || producerAccess.canMakeReviewDecision);
   const canSendBudgetReview = canEditProducerWorkflow && canViewProducerEconomy && !isClientReviewerMode;
-  const producerWorkspaceBadgeLabel = isClientReviewerMode ? 'Klient' : 'Innholdsprodusent';
+  const producerWorkspaceBadgeLabel = isClientReviewerMode ? t('shell.client') : t('shell.header.contentProducer');
   const plannerAudience: 'production_team' | 'content_producer' = isContentProducerMode ? 'content_producer' : 'production_team';
   const producerCoreTabMetaLabel = isContentProducerMode || isClientReviewerMode
     ? producerWorkspaceBadgeLabel
-    : 'Prosjektstyring';
+    : t('shell.header.projectManagement');
   const isFreshProjectCreationFlow = projectCreationModalOpen && !projectToEdit;
   const headerActiveProject = isFreshProjectCreationFlow ? null : currentProject;
   const useFocusedWorkspaceHeader = !useCompactHeaderLayout && (isContentProducerMode || isClientReviewerMode);
   const showDenseDesktopHeaderUtilities = !useCompactHeaderLayout && useDenseDesktopHeader;
   const headerBrandSubtitle = isClientReviewerMode
-    ? 'Klientrom'
+    ? t('shell.header.clientRoom')
     : isContentProducerMode
-      ? 'Innholdsarbeid'
-      : 'Produksjonsarbeid';
+      ? t('shell.header.contentWork')
+      : t('shell.header.productionWork');
   const headerBrandDisplaySubtitle = isClientReviewerMode
-    ? 'Klientrom'
+    ? t('shell.header.clientRoom')
     : isContentProducerMode
-      ? 'Innhold'
-      : 'Produksjon';
-  const headerOpenProjectsButtonLabel = useDenseDesktopHeader ? 'Prosjekter' : 'Åpne prosjekter';
-  const headerWorkspaceActionLabel = useFocusedWorkspaceHeader ? 'Prosjekter' : headerOpenProjectsButtonLabel;
+      ? t('shell.header.content')
+      : t('shell.production');
+  const headerOpenProjectsButtonLabel = useDenseDesktopHeader ? t('shell.projects') : t('shell.header.openProjects');
+  const headerWorkspaceActionLabel = useFocusedWorkspaceHeader ? t('shell.projects') : headerOpenProjectsButtonLabel;
   const headerProjectMetaHint = useDenseDesktopHeader
-    ? 'Klikk for å bytte prosjekt'
-    : 'Klikk for å bytte eller åpne eksisterende prosjekt';
+    ? t('shell.header.switchProjectHint')
+    : t('shell.header.switchOrOpenHint');
   const workspaceAccountStatusColor = billingAccount?.paymentStatus === 'payment_failed'
     ? '#fb7185'
     : billingAccount?.paymentCompleted
       ? '#34d399'
       : '#38bdf8';
   const workspaceAccountStatusLabel = billingAccount?.paymentStatus === 'payment_failed'
-    ? 'Betaling krever oppfølging'
+    ? t('shell.header.paymentNeedsFollowup')
     : billingAccount?.paymentCompleted
-      ? 'Abonnement aktivt'
-      : 'Workspace-oversikt';
+      ? t('shell.header.subscriptionActive')
+      : t('shell.header.workspaceOverview');
   const workspaceAccountInitials = useMemo(() => {
     const source = adminUser?.display_name || adminUser?.email || branding.appName;
     return String(source)
@@ -3750,7 +3743,7 @@ type RoleRoomProjectWorkspaceState = {
     if (!result.warn) return;
 
     toast.showWarning(
-      `Prosjektet er eid av ${result.ownerLabel}. Du er logget inn som ${result.currentLabel} — paneler kan være tomme hvis du ikke har tilgang.`,
+      t('shell.ownedByNotice', { owner: result.ownerLabel, current: result.currentLabel }),
       8000,
     );
     projectAccessNotifiedRef.current.add(project.id);
@@ -3814,7 +3807,7 @@ type RoleRoomProjectWorkspaceState = {
 
   const handleSelectProjectFromSelector = useCallback(async (project: CastingProject) => {
     if ((isClientReviewerMode || isClientReviewerSession) && isProtectedDemoProject(project)) {
-      toast.showWarning('Demo-prosjekter er ikke tilgjengelige for klienter.');
+      toast.showWarning(t('shell.toast.demoNotForClients'));
       return;
     }
 
@@ -3822,7 +3815,7 @@ type RoleRoomProjectWorkspaceState = {
     // er den ekte modus-sjekken; isProducerWorkspaceSession er motsatt navngitt
     // (true for innholdsprodusent), så bruker av den fanget feil retning.
     if (plannerAudience !== 'production_team' && isTrollProject(project)) {
-      toast.showWarning('TROLL-prosjektet er kun tilgjengelig for produksjonsteam.');
+      toast.showWarning(t('shell.toast.trollProductionOnly'));
       return;
     }
 
@@ -3926,22 +3919,22 @@ type RoleRoomProjectWorkspaceState = {
     try {
       const syncMeta = projectSyncMetaById[project.id] ?? await castingService.getProjectSyncMeta(project.id);
       let nextProject: CastingProject | null = null;
-      let notice = 'Prosjektlagring er verifisert.';
+      let notice = t('shell.sync.verified');
 
       if (syncMeta.queuedChangeCount > 0) {
         const result = await castingService.syncQueuedProjectChanges(project.id);
         if (result.failed.length > 0) {
-          throw new Error(result.failed[0]?.error ?? 'Kunne ikke synkronisere lokale endringer.');
+          throw new Error(result.failed[0]?.error ?? t('shell.sync.syncFailed'));
         }
         nextProject = await castingService.getProject(project.id);
-        notice = 'Lokale endringer er synkronisert og bekreftet på server.';
+        notice = t('shell.sync.syncedConfirmed');
       } else if (!syncMeta.lastSyncedAt) {
         await castingService.saveProject(project);
         nextProject = await castingService.getProject(project.id);
-        notice = 'Prosjektet er sendt til server og bekreftet lagret.';
+        notice = t('shell.sync.sentConfirmed');
       } else {
         nextProject = await castingService.resyncProjectFromServer(project.id);
-        notice = 'Prosjektet er hentet fra server uten hard refresh.';
+        notice = t('shell.sync.refetched');
       }
 
       if (nextProject) {
@@ -3951,7 +3944,7 @@ type RoleRoomProjectWorkspaceState = {
       toast.showSuccess(notice);
     } catch (error) {
       console.error('Failed to verify project storage:', error);
-      toast.showError(error instanceof Error ? error.message : 'Kunne ikke verifisere prosjektlagringen.');
+      toast.showError(error instanceof Error ? error.message : t('shell.toast.verifyStorageFailed'));
       await loadProjectSyncMeta([project.id]).catch(() => undefined);
     } finally {
       setProjectSyncActionProjectId(null);
@@ -4011,12 +4004,12 @@ type RoleRoomProjectWorkspaceState = {
       setProjectCopyDialog(null);
       toast.showSuccess(
         isTemplateProject(project)
-          ? 'Ny prosjektkopi ble opprettet fra malen.'
-          : 'Ny trygg prosjektkopi ble opprettet.',
+          ? t('shell.toast.copyFromTemplate')
+          : t('shell.toast.safeCopyCreated'),
       );
     } catch (error) {
       console.error('Failed to create project copy:', error);
-      toast.showError('Kunne ikke lage en kopi av prosjektet.');
+      toast.showError(t('shell.toast.copyFailed'));
     } finally {
       setProjectCopySubmitting(false);
     }
@@ -4040,7 +4033,7 @@ type RoleRoomProjectWorkspaceState = {
       );
     } catch (error) {
       console.error('Failed to publish project as template:', error);
-      toast.showError('Kunne ikke publisere prosjektet som template.');
+      toast.showError(t('shell.toast.publishTemplateFailed'));
     }
   }, [filterProjectsForSession, templateAudienceForSession, toast]);
 
@@ -4060,10 +4053,10 @@ type RoleRoomProjectWorkspaceState = {
       const archivedProject = await castingService.archiveProject(project.id);
       await refreshProjectsAfterLifecycleChange(archivedProject);
       handleCloseProjectQuickActions();
-      toast.showSuccess('Prosjektet er arkivert.');
+      toast.showSuccess(t('shell.toast.archived'));
     } catch (error) {
       console.error('Failed to archive project:', error);
-      toast.showError(error instanceof Error ? error.message : 'Kunne ikke arkivere prosjektet.');
+      toast.showError(error instanceof Error ? error.message : t('shell.toast.archiveFailed'));
     }
   }, [handleCloseProjectQuickActions, refreshProjectsAfterLifecycleChange, toast]);
 
@@ -4072,10 +4065,10 @@ type RoleRoomProjectWorkspaceState = {
       const restoredProject = await castingService.restoreArchivedProject(project.id);
       await refreshProjectsAfterLifecycleChange(restoredProject);
       handleCloseProjectQuickActions();
-      toast.showSuccess('Prosjektet er gjenopprettet.');
+      toast.showSuccess(t('shell.toast.restored'));
     } catch (error) {
       console.error('Failed to restore project:', error);
-      toast.showError(error instanceof Error ? error.message : 'Kunne ikke gjenopprette prosjektet.');
+      toast.showError(error instanceof Error ? error.message : t('shell.toast.restoreFailed'));
     }
   }, [handleCloseProjectQuickActions, refreshProjectsAfterLifecycleChange, toast]);
 
@@ -4325,8 +4318,8 @@ type RoleRoomProjectWorkspaceState = {
     shotlist: 'Shotlist',
     brand: 'Merkevare',
     accounts: 'Kontotilgang',
-    delivery: 'Levering',
-    meetings: 'Møter',
+    delivery: t('shell.delivery'),
+    meetings: t('shell.ws.meetings'),
   };
 
   const contentProducerResumeCard = useMemo(() => {
@@ -4343,26 +4336,26 @@ type RoleRoomProjectWorkspaceState = {
       return {
         title: workspaceLabel,
         detail: pageDetail
-          ? `Sist jobbet du i ${workspaceLabel.toLowerCase()} · ${pageDetail}`
-          : `Sist jobbet du i ${workspaceLabel.toLowerCase()}.`,
-        actionLabel: `Fortsett i ${workspaceLabel.toLowerCase()}`,
+          ? t('shell.resume.lastWorkedDetail', { label: workspaceLabel.toLowerCase(), detail: pageDetail })
+          : t('shell.resume.lastWorked', { label: workspaceLabel.toLowerCase() }),
+        actionLabel: t('shell.resume.continueIn', { label: workspaceLabel.toLowerCase() }),
       };
     }
 
     const surfaceLabel = CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS.find((item) => item.value === contentProducerResumeTarget.surface)?.label
-      ?? 'Oversikt';
+      ?? t('shell.overview');
     const surfaceDetails: Record<Exclude<ContentProducerPlannerSurface, 'overview' | 'project_room'>, string> = {
-      approval: 'Gå tilbake til klientfeedback, åpne punkter og beslutninger som venter.',
-      delivery: 'Fortsett med leveranser, eksport og hva som skal ut til kunden.',
-      economy: 'Gå tilbake til budsjett, økonomiske avklaringer og godkjenninger.',
+      approval: t('shell.surfaceDetail.approval'),
+      delivery: t('shell.surfaceDetail.delivery'),
+      economy: t('shell.surfaceDetail.economy'),
     };
 
     return {
       title: surfaceLabel,
       detail: surfaceDetails[contentProducerResumeTarget.surface as Exclude<ContentProducerPlannerSurface, 'overview' | 'project_room'>],
-      actionLabel: `Fortsett i ${surfaceLabel.toLowerCase()}`,
+      actionLabel: t('shell.resume.continueIn', { label: surfaceLabel.toLowerCase() }),
     };
-  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, contentProducerResumeTarget, contentProducerWorkspaceLabels, isContentProducerMode]);
+  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, contentProducerResumeTarget, contentProducerWorkspaceLabels, isContentProducerMode, t]);
 
   const handleResumeContentProducerWorkspace = useCallback(() => {
     const resumeTarget = contentProducerResumeTarget;
@@ -5110,21 +5103,27 @@ type RoleRoomProjectWorkspaceState = {
         }
       }
 
-      const modeLabel = ROLE_ROOM_PREVIEW_MODE_LABELS[mode];
+      const modeLabel = ({
+        admin: t('shell.previewMode.admin'),
+        production_team: t('shell.previewMode.productionTeam'),
+        content_producer: t('shell.previewMode.content'),
+        client: t('shell.previewMode.client'),
+      } as Record<RoleRoomAdminPreviewMode, string>)[mode];
 
       if (mode === currentAdminPreviewMode) {
-        toast.showSuccess(`${modeLabel} er allerede aktivt.`);
+        toast.showSuccess(t('shell.toast.modeAlreadyActive', { mode: modeLabel }));
         return;
       }
 
-      toast.showSuccess(`${modeLabel} er aktivert for denne adminøkten.`);
+      toast.showSuccess(t('shell.toast.modeActivated', { mode: modeLabel }));
     } catch (error) {
       console.error('Failed to switch Role Room preview mode:', error);
-      toast.showError('Kunne ikke bytte visningsmodus.');
+      toast.showError(t('shell.toast.couldNotSwitchMode'));
     } finally {
       setBillingActionPending(false);
     }
   }, [
+    t,
     canSwitchRoleRoomRole,
     clearClientPortalIntentUrl,
     clientPortalIntent,
@@ -5140,7 +5139,7 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     if (!currentProject?.id || !currentClientPortalPreviewUrl) {
-      toast.showError('Velg et prosjekt før du åpner klientportalen.');
+      toast.showError(t('shell.toast.selectProjectClientPortal'));
       return;
     }
 
@@ -5164,7 +5163,7 @@ type RoleRoomProjectWorkspaceState = {
   const handleProfessionSelect = useCallback(async ({ categoryId, roleId }: CastingProfessionSelection) => {
     if (!canSwitchRoleRoomRole) {
       setProfessionDialogOpen(false);
-      toast.showError('Bare admin kan bytte rolle i The Role Room.');
+      toast.showError(t('shell.toast.onlyAdminSwitchRole'));
       return;
     }
 
@@ -5290,7 +5289,7 @@ type RoleRoomProjectWorkspaceState = {
         }
 
         if (!adminUser) {
-        toast.showError('Du må være innlogget i Role Room før kontoprofilen kan oppdateres');
+        toast.showError(t('shell.toast.loginBeforeProfile'));
           clearGoogleIntentFromUrl();
           return;
         }
@@ -5309,7 +5308,7 @@ type RoleRoomProjectWorkspaceState = {
         if (cancelled) {
           return;
         }
-        toast.showError(googleError instanceof Error ? googleError.message : 'Kunne ikke fullføre Google Workspace-flyten');
+        toast.showError(googleError instanceof Error ? googleError.message : t('shell.toast.googleFlowFailed'));
         clearGoogleIntentFromUrl();
       }
     })();
@@ -5367,7 +5366,7 @@ type RoleRoomProjectWorkspaceState = {
         }
 
         if (!adminUser) {
-          toast.showError('Du må være innlogget i Role Room før du kan koble LinkedIn');
+          toast.showError(t('shell.toast.loginBeforeLinkedIn'));
           clearLinkedInIntentFromUrl();
           return;
         }
@@ -5379,7 +5378,7 @@ type RoleRoomProjectWorkspaceState = {
         if (cancelled) {
           return;
         }
-        toast.showError(linkedInError instanceof Error ? linkedInError.message : 'Kunne ikke fullføre LinkedIn-flyten');
+        toast.showError(linkedInError instanceof Error ? linkedInError.message : t('shell.toast.linkedInFlowFailed'));
         clearLinkedInIntentFromUrl();
       }
     })();
@@ -5487,7 +5486,7 @@ type RoleRoomProjectWorkspaceState = {
     } catch (billingError) {
       const message = billingError instanceof Error
         ? billingError.message
-        : 'Kunne ikke åpne betalingsportalen';
+        : t('shell.toast.couldNotOpenPayment');
       setBillingAccountError(message);
       toast.showError(message);
     } finally {
@@ -5507,13 +5506,13 @@ type RoleRoomProjectWorkspaceState = {
       if (result.paymentCompleted || result.alreadyPaid) {
         toast.showSuccess('Betalingen er registrert. Abonnementet er aktivt igjen.');
       } else {
-        toast.showInfo('Stripe behandler fortsatt betalingen. Oppdater status om et øyeblikk.');
+        toast.showInfo(t('shell.toast.stripeProcessing'));
       }
       await loadBillingAccount();
     } catch (billingError) {
       const message = billingError instanceof Error
         ? billingError.message
-        : 'Kunne ikke prøve betalingen på nytt';
+        : t('shell.toast.couldNotRetryPayment');
       setBillingAccountError(message);
       toast.showError(message);
       await loadBillingAccount();
@@ -6702,11 +6701,11 @@ type RoleRoomProjectWorkspaceState = {
   const commandPaletteItems = useMemo<CommandPaletteItem[]>(() => {
     const items: CommandPaletteItem[] = [];
 
-    for (const tab of COMMAND_PALETTE_TABS) {
+    for (const tab of commandPaletteTabs) {
       items.push({
         id: `tab:${tab.tabIndex}`,
         label: tab.label,
-        category: 'Tab',
+        category: t('shell.cmd.tab'),
         keywords: tab.keywords,
         onSelect: () => navigateToTab(tab.tabIndex),
       });
@@ -6716,9 +6715,9 @@ type RoleRoomProjectWorkspaceState = {
       const isCurrent = currentProject?.id === project.id;
       items.push({
         id: `project:${project.id}`,
-        label: project.name || 'Uten navn',
-        description: isCurrent ? 'Åpent nå' : project.clientCompanyName || project.clientName || undefined,
-        category: 'Prosjekt',
+        label: project.name || t('shell.untitled'),
+        description: isCurrent ? t('shell.cmd.openNow') : project.clientCompanyName || project.clientName || undefined,
+        category: t('shell.cmd.project'),
         keywords: [
           project.id,
           project.clientName ?? '',
@@ -6737,7 +6736,7 @@ type RoleRoomProjectWorkspaceState = {
         id: `candidate:${candidate.id}`,
         label: candidate.name,
         description: candidate.email || candidate.agency || undefined,
-        category: 'Kandidat',
+        category: t('shell.cmd.candidate'),
         keywords: [
           candidate.email ?? '',
           candidate.phone ?? '',
@@ -6755,6 +6754,8 @@ type RoleRoomProjectWorkspaceState = {
     allCandidates,
     navigateToTab,
     handleSelectProjectFromSelector,
+    commandPaletteTabs,
+    t,
   ]);
 
   const currentWorkspaceMode = useMemo<WorkspaceMode>(() => {
@@ -6771,38 +6772,38 @@ type RoleRoomProjectWorkspaceState = {
   const currentWorkspaceModeTooltip = useMemo(() => {
     switch (currentWorkspaceMode) {
       case 'content_producer':
-        return 'Du jobber som innholdsprodusent — tabs og verktøy er tilpasset content-pipeline.';
+        return t('shell.mode.contentProducerTip');
       case 'production_team':
-        return 'Du jobber som produksjonsteam — full casting/crew/produksjon-flyt.';
+        return t('shell.mode.productionTeamTip');
       case 'client_reviewer':
-        return 'Du ser et klient-godkjenningsperspektiv. Begrenset redigering.';
+        return t('shell.mode.clientReviewerTip');
       case 'dance':
-        return 'Du jobber i dansestudio-modus — koreografi og elever er primært fokus.';
+        return t('shell.mode.danceTip');
       case 'admin':
-        return 'Administrator-modus — full tilgang.';
+        return t('shell.mode.adminTip');
     }
   }, [currentWorkspaceMode]);
 
   const breadcrumbSegments = useMemo<PlannerBreadcrumbSegment[]>(() => {
     const segments: PlannerBreadcrumbSegment[] = [
       {
-        label: 'Casting Planner',
+        label: t('shell.breadcrumb.root'),
         onClick: () => navigateToTab(0),
       },
     ];
     if (currentProject) {
       segments.push({
-        label: currentProject.name || 'Uten navn',
+        label: currentProject.name || t('shell.untitled'),
         onClick: () => setProjectSelectorOpen(true),
-        ariaLabel: `Bytt prosjekt (nåværende: ${currentProject.name || 'Uten navn'})`,
+        ariaLabel: t('shell.switchProjectAria', { name: currentProject.name || t('shell.untitled') }),
       });
     }
-    const tabSpec = COMMAND_PALETTE_TABS.find((tab) => tab.tabIndex === activeTab);
+    const tabSpec = commandPaletteTabs.find((tab) => tab.tabIndex === activeTab);
     if (tabSpec) {
       segments.push({ label: tabSpec.label });
     }
     return segments;
-  }, [activeTab, currentProject, navigateToTab]);
+  }, [activeTab, currentProject, navigateToTab, commandPaletteTabs]);
 
   const activeWorkflowStep = useMemo(
     () => deriveActiveWorkflowStep(contentProducerPlannerSurface, producerMediaFocus?.workspace),
@@ -6847,11 +6848,11 @@ type RoleRoomProjectWorkspaceState = {
       brief: 'Brief',
       story: 'Story',
       storyboard: 'Storyboard',
-      approval: 'Klient',
-      delivery: 'Levering',
-      economy: 'Økonomi',
+      approval: t('shell.step.client'),
+      delivery: t('shell.delivery'),
+      economy: t('shell.economy'),
     };
-    setStepChangeToast(`Nå i: ${stepToastLabels[step]}`);
+    setStepChangeToast(t('shell.step.nowIn', { label: stepToastLabels[step] }));
     switch (step) {
       case 'brief':
         openContentProducerPlannerSurface('project_room', {
@@ -6878,7 +6879,7 @@ type RoleRoomProjectWorkspaceState = {
         openContentProducerPlannerSurface('economy', { focusPanel: 'economy' });
         return;
     }
-  }, [openContentProducerPlannerSurface]);
+  }, [openContentProducerPlannerSurface, t]);
 
   const globalTagSeedList = useMemo(() => {
     const deduped = new Set<string>();
@@ -7196,7 +7197,7 @@ type RoleRoomProjectWorkspaceState = {
     if (score >= 82) {
       return {
         label: 'Klar for finale',
-        description: 'Sterk kandidat for endelig beslutning.',
+        description: t('shell.insight.strongFinal'),
         color: '#86efac',
         bgcolor: 'rgba(22,101,52,0.28)',
         border: '1px solid rgba(74,222,128,0.44)',
@@ -7205,7 +7206,7 @@ type RoleRoomProjectWorkspaceState = {
     if (score >= 66) {
       return {
         label: 'Klar for callback',
-        description: 'Bør videre til neste runde.',
+        description: t('shell.insight.nextRound'),
         color: '#c4b5fd',
         bgcolor: 'rgba(91,33,182,0.26)',
         border: '1px solid rgba(167,139,250,0.44)',
@@ -7321,7 +7322,7 @@ type RoleRoomProjectWorkspaceState = {
     const entry: SelectionDecisionLogEntry = {
       id: `selection-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       candidateId: candidate.id,
-      candidateName: candidate.name || 'Ukjent kandidat',
+      candidateName: candidate.name || t('shell.unknownCandidate'),
       action,
       actor: selectionActorLabel,
       createdAt: new Date().toISOString(),
@@ -7349,7 +7350,7 @@ type RoleRoomProjectWorkspaceState = {
     const isCompared = selectionCompareCandidateIds.includes(candidate.id);
     if (isCompared) {
       setSelectionCompareCandidateIds((prev) => prev.filter((id) => id !== candidate.id));
-      appendSelectionDecisionLog(candidate, 'Fjernet fra sammenligning');
+      appendSelectionDecisionLog(candidate, t('shell.removedFromCompare'));
       return;
     }
     if (selectionCompareCandidateIds.length >= MAX_SELECTION_COMPARE) {
@@ -7434,15 +7435,15 @@ type RoleRoomProjectWorkspaceState = {
       if (rating >= 8) strengths.push(`Sterk audition-score (${rating}/10)`);
       if (rating <= 5) risks.push(`Lav audition-score (${rating}/10)`);
     } else {
-      risks.push('Ingen registrert audition-score');
+      risks.push(t('shell.insight.noScore'));
     }
 
     if (notes.trim().length > 0) {
       if (/(sterk|god|overbevisende|karismatisk|naturlig|perfekt|fantastisk)/i.test(notes)) {
-        strengths.push('Notater peker på sterk sceneleveranse');
+        strengths.push(t('shell.insight.strongScene'));
       }
       if (/(stiv|usikker|svak|mangler|uklar|tempo|kjemi)/i.test(notes)) {
-        risks.push('Notater peker på forbedringspunkter i audition');
+        risks.push(t('shell.insight.improvePoints'));
       }
     } else {
       risks.push('Mangler detaljerte audition-notater');
@@ -7451,20 +7452,20 @@ type RoleRoomProjectWorkspaceState = {
     if (assignedRoleNames.length > 0) {
       strengths.push(`Tilknyttet rolle: ${assignedRoleNames.join(', ')}`);
     } else {
-      risks.push('Ingen rolle-tilknytning satt');
+      risks.push(t('shell.insight.noRole'));
     }
 
     if (selectedSelectionCandidateSchedules.length > 0) {
-      strengths.push(`${selectedSelectionCandidateSchedules.length} audition-/callback-økter registrert`);
+      strengths.push(t('shell.insight.sessionsRegistered', { n: selectedSelectionCandidateSchedules.length }));
     } else {
-      risks.push('Ingen audition-økter registrert');
+      risks.push(t('shell.insight.noSessions'));
     }
 
     const recommendation =
       phase === 'final'
         ? 'Klar for endelig casting-beslutning.'
         : phase === 'callbacks'
-          ? 'Aktiv callback-kandidat. Evaluer kjemi og tilgjengelighet før finalen.'
+          ? t('shell.insight.activeCallback')
           : 'Fortsett screening og vurder callback ved neste gjennomgang.';
 
     return { rating, notes, phase, assignedRoleNames, strengths, risks, recommendation };
@@ -7792,13 +7793,13 @@ type RoleRoomProjectWorkspaceState = {
       return;
     }
     if (!selectionMeetDraft.date || !selectionMeetDraft.time) {
-      toast.showError('Velg dato og klokkeslett før møtet planlegges.');
+      toast.showError(t('shell.toast.selectDateTime'));
       return;
     }
 
     const startValue = new Date(`${selectionMeetDraft.date}T${selectionMeetDraft.time}:00`);
     if (Number.isNaN(startValue.getTime())) {
-      toast.showError('Møtetidspunktet kunne ikke tolkes.');
+      toast.showError(t('shell.toast.meetingTimeUnparsed'));
       return;
     }
 
@@ -7833,12 +7834,12 @@ type RoleRoomProjectWorkspaceState = {
       await loadSelectionGoogleStatus();
 
       const meetUrl = typeof response.event?.meetUrl === 'string' ? response.event.meetUrl : '';
-      toast.showSuccess(meetUrl ? 'Google Meet er planlagt fra utvelgelsen.' : 'Kalenderhendelsen er opprettet.');
+      toast.showSuccess(meetUrl ? t('shell.toast.meetScheduled') : t('shell.toast.calendarEventCreated'));
       if (meetUrl) {
         window.open(meetUrl, '_blank', 'noopener,noreferrer');
       }
     } catch (error) {
-      toast.showError(error instanceof Error ? error.message : 'Kunne ikke opprette Google Meet fra utvelgelsen.');
+      toast.showError(error instanceof Error ? error.message : t('shell.toast.meetCreateFailed'));
     } finally {
       setSelectionMeetBusy(false);
     }
@@ -8246,7 +8247,7 @@ type RoleRoomProjectWorkspaceState = {
   const handleSaveSelectionNotes = useCallback(async () => {
     if (!currentProject || !selectedSelectionCandidate) return;
     if (!selectionNotesHasChanges) {
-      toast.showInfo('Ingen endringer i utvelgelsesnotatene.', 2500);
+      toast.showInfo(t('shell.toast.noChangesInNotes'), 2500);
       return;
     }
 
@@ -8286,7 +8287,7 @@ type RoleRoomProjectWorkspaceState = {
       }
 
       appendSelectionDecisionLog(selectedSelectionCandidate, 'Oppdaterte utvelgelsesnotater');
-      toast.showSuccess('Utvelgelsesnotater lagret.', 2800);
+      toast.showSuccess(t('shell.toast.notesSaved'), 2800);
       await loadProjects();
     } catch (error) {
       console.error('Error saving selection notes:', error);
@@ -8558,8 +8559,8 @@ type RoleRoomProjectWorkspaceState = {
             <IconButton
               size="small"
               onClick={openProducerInbox}
-              aria-label="Åpne innboks"
-              title="Innboks"
+              aria-label={t('shell.openInbox')}
+              title={t('shell.inbox.title')}
               data-testid="role-room-inbox-button"
               sx={{
                 width: safeHeaderActionButtonSizePx,
@@ -8677,7 +8678,7 @@ type RoleRoomProjectWorkspaceState = {
                     headerProfessionLabel || headerRoleLabel,
                   ]
                     .filter(Boolean)
-                    .join(' • ') || 'Åpne prosjekter og arbeidsflater'}
+                    .join(' • ') || t('shell.openProjectsAndSurfaces')}
                 </Typography>
               </Box>
             </Box>
@@ -8777,12 +8778,12 @@ type RoleRoomProjectWorkspaceState = {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        {headerActiveProject?.name || 'Velg aktivt prosjekt'}
+                        {headerActiveProject?.name || t('shell.selectActiveProject')}
                       </Typography>
                       {headerActiveProject?.producerWorkflowStatus && !useDenseDesktopHeader ? (
                         <Chip
                           size="small"
-                          label={PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] || 'Klar for arbeid'}
+                          label={producerProjectStatusLabels[headerActiveProject.producerWorkflowStatus] || t('shell.status.readyForWork')}
                           sx={{
                             height: 20,
                             bgcolor: 'rgba(246,195,88,0.12)',
@@ -8802,7 +8803,7 @@ type RoleRoomProjectWorkspaceState = {
                       {headerActiveProject && isProtectedDemoProject(headerActiveProject) && !useDenseDesktopHeader ? (
                         <Chip
                           size="small"
-                          label="Låst demo-mal"
+                          label={t('shell.lockedDemoTemplate')}
                           sx={{
                             height: 22,
                             bgcolor: 'rgba(244,114,182,0.12)',
@@ -8830,10 +8831,10 @@ type RoleRoomProjectWorkspaceState = {
                         headerActiveProject?.clientName,
                         producerWorkspaceBadgeLabel,
                         headerActiveProject && isProtectedDemoProject(headerActiveProject) && !canMutateProtectedDemoData
-                          ? 'Demoen er låst. Lag kopi for å jobbe videre.'
+                          ? t('shell.demoLockedMakeCopy')
                           : headerActiveProject
                             ? headerProjectMetaHint
-                            : 'Åpne arbeidsbiblioteket',
+                            : t('shell.openWorkLibrary'),
                       ].filter(Boolean).join(' • ')}
                     </Typography>
                   </Box>
@@ -8877,8 +8878,8 @@ type RoleRoomProjectWorkspaceState = {
               const candidateCount = project.candidates?.length || 0;
               const workflowStatus = project.producerWorkflowStatus;
               const workflowStatusLabel = workflowStatus
-                ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
-                : 'Klar for arbeid';
+                ? producerProjectStatusLabels[workflowStatus]
+                : t('shell.status.readyForWork');
               const workflowStatusStyle = workflowStatus
                 ? PRODUCER_PROJECT_STATUS_COLORS[workflowStatus]
                 : {
@@ -9117,7 +9118,7 @@ type RoleRoomProjectWorkspaceState = {
                   },
                 }}
               >
-                {hiddenVisibleHeaderProjectsCount > 0 ? `Prosjekter · ${orderedProjects.length}` : 'Prosjekter'}
+                {hiddenVisibleHeaderProjectsCount > 0 ? t('shell.projectsCount', { n: orderedProjects.length }) : t('shell.projects')}
               </Button>
                 )}
               </>
@@ -9156,7 +9157,7 @@ type RoleRoomProjectWorkspaceState = {
                 sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
               >
                 <ContentCopyIcon sx={{ fontSize: 18, color: '#f9a8d4' }} />
-                {isTemplateProject(projectQuickActionsProject) ? 'Lag prosjekt fra mal' : 'Lag kopi av demo'}
+                {isTemplateProject(projectQuickActionsProject) ? t('shell.makeProjectFromTemplate') : t('shell.makeDemoCopy')}
               </MenuItem>
             ) : null}
             <MenuItem
@@ -9176,7 +9177,7 @@ type RoleRoomProjectWorkspaceState = {
                   transform: pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'rotate(0deg)' : 'rotate(35deg)',
                 }}
               />
-              {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'Løsne fra toppen' : 'Fest til toppen'}
+              {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? t('shell.unpinFromTop') : t('shell.pinToTop')}
             </MenuItem>
             <MenuItem
               onClick={() => {
@@ -9196,7 +9197,7 @@ type RoleRoomProjectWorkspaceState = {
               sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
             >
               <CloseIcon sx={{ fontSize: 18, color: '#fda4af' }} />
-              Lukk prosjekt
+              {t('shell.closeProject')}
             </MenuItem>
             {projectQuickActionsProject && canSwitchRoleRoomRole && !isTemplateProject(projectQuickActionsProject) ? (
               <MenuItem
@@ -9207,7 +9208,7 @@ type RoleRoomProjectWorkspaceState = {
                 sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
               >
                 <PublishIcon sx={{ fontSize: 18, color: '#c084fc' }} />
-                Publiser som template
+                {t('shell.publishAsTemplate')}
               </MenuItem>
             ) : null}
             {(!projectQuickActionsProject || !isProtectedDemoProject(projectQuickActionsProject) || canMutateProtectedDemoData) ? (
@@ -9221,7 +9222,7 @@ type RoleRoomProjectWorkspaceState = {
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <EditIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
-                  Rediger prosjekt
+                  {t('shell.editProject')}
                 </MenuItem>
                 {projectQuickActionsProject && !isTemplateProject(projectQuickActionsProject) && !isProtectedDemoProject(projectQuickActionsProject) ? (
                   <MenuItem
@@ -9240,7 +9241,7 @@ type RoleRoomProjectWorkspaceState = {
                     ) : (
                       <ArchiveIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
                     )}
-                    {isArchivedWorkspaceProject(projectQuickActionsProject) ? 'Gjenopprett prosjekt' : 'Arkiver prosjekt'}
+                    {isArchivedWorkspaceProject(projectQuickActionsProject) ? t('shell.restoreProject') : t('shell.archiveProject')}
                   </MenuItem>
                 ) : null}
                 {projectQuickActionsProject && isViewerLeaderOf(projectQuickActionsProject) ? (
@@ -9309,7 +9310,7 @@ type RoleRoomProjectWorkspaceState = {
               <Tooltip title={`${workspaceAccountStatusLabel} · ${adminUser.display_name || adminUser.email}`}>
                 <IconButton
                   onClick={handleOpenBillingAccountDialog}
-                  aria-label="Åpne konto, abonnement og team"
+                  aria-label={t('shell.openAccountAria')}
                   data-testid="role-room-account-button"
                   sx={{
                     width: safeHeaderActionButtonSizePx,
@@ -9518,7 +9519,7 @@ type RoleRoomProjectWorkspaceState = {
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                 <PlayArrowIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
-                Start intro på nytt
+                {t('shell.restartIntro')}
               </MenuItem>
               {(adminUser.role === 'owner' || adminUser.role === 'admin') ? (
                 <MenuItem
@@ -9529,7 +9530,7 @@ type RoleRoomProjectWorkspaceState = {
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <TutorialIcon sx={{ fontSize: 18, color: '#f472b6' }} />
-                  Rediger opplæring
+                  {t('shell.editTraining')}
                 </MenuItem>
               ) : null}
               {(adminUser.role === 'owner' || adminUser.role === 'admin') ? (
@@ -9541,7 +9542,7 @@ type RoleRoomProjectWorkspaceState = {
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
                   <AdminPanelSettingsIcon sx={{ fontSize: 18, color: '#a78bfa' }} />
-                  Åpne adminpanel
+                  {t('shell.openAdminPanel')}
                 </MenuItem>
               ) : null}
               <MenuItem
@@ -9568,7 +9569,7 @@ type RoleRoomProjectWorkspaceState = {
                 onClick={handleOpenBillingAccountDialog}
                 sx={{ fontWeight: 700 }}
               >
-                Oppdater
+                {t('shell.refresh')}
               </Button>
             ) : undefined}
             sx={{
@@ -9606,8 +9607,8 @@ type RoleRoomProjectWorkspaceState = {
               size="small"
               icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
               label={currentProject.producerWorkflowStatus === 'approved'
-                ? 'Godkjent av klient'
-                : 'Venter på klient-godkjenning'}
+                ? t('shell.approvedByClient')
+                : t('shell.awaitingClientApproval')}
               onClick={() => {
                 if (isContentProducerMode) {
                   openContentProducerPlannerSurface('approval', { focusPanel: 'reviews' });
@@ -9651,7 +9652,7 @@ type RoleRoomProjectWorkspaceState = {
                 display: { xs: 'none', sm: 'inline-flex' },
               }}
             >
-              Send til klient
+              {t('shell.sendToClient')}
             </Button>
           ) : null}
           <WorkspaceModeBadge
@@ -9678,7 +9679,7 @@ type RoleRoomProjectWorkspaceState = {
         && (activeWorkflowStep === 'delivery' || activeWorkflowStep === 'economy')
         && (() => {
           const phaseStep: 'delivery' | 'economy' = activeWorkflowStep === 'delivery' ? 'delivery' : 'economy';
-          const stepLabel = phaseStep === 'delivery' ? 'Levering' : 'Økonomi';
+          const stepLabel = phaseStep === 'delivery' ? t('shell.delivery') : t('shell.economy');
           const completedAt = currentProject.producerPhaseCompletion?.[phaseStep] ?? null;
           return (
             <Box
@@ -9695,8 +9696,8 @@ type RoleRoomProjectWorkspaceState = {
             >
               <Typography sx={{ fontSize: '0.8rem', color: completedAt ? '#86efac' : 'rgba(203,213,225,0.8)' }}>
                 {completedAt
-                  ? `✓ ${stepLabel} er markert som fullført ${new Date(completedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' })}`
-                  : `${stepLabel}-steget vises som uferdig i oversikten til du markerer det fullført.`}
+                  ? t('shell.phase.markedDone', { label: stepLabel, date: new Date(completedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' }) })
+                  : t('shell.phase.unfinished', { label: stepLabel })}
               </Typography>
               <Button
                 size="small"
@@ -9712,7 +9713,7 @@ type RoleRoomProjectWorkspaceState = {
                     : { bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }),
                 }}
               >
-                {completedAt ? 'Angre' : `Marker ${stepLabel.toLowerCase()} som fullført`}
+                {completedAt ? t('shell.undo') : t('shell.phase.markComplete', { label: stepLabel.toLowerCase() })}
               </Button>
             </Box>
           );
@@ -9866,19 +9867,19 @@ type RoleRoomProjectWorkspaceState = {
               isContentProducerMode ? 'Planner' : 'Role Room Studio',
               'Storyboard',
               branding.tokens.labels.roles,
-              isContentProducerMode ? 'Medvirkende' : branding.tokens.labels.candidates,
+              isContentProducerMode ? t('shell.tab.contributors') : branding.tokens.labels.candidates,
               branding.tokens.labels.auditions,
-              'Utvelgelse',
+              t('shell.selection'),
               branding.tokens.labels.locations,
               branding.tokens.labels.schedule,
               branding.tokens.labels.team,
-              isContentProducerMode ? 'Utstyr' : branding.tokens.labels.equipment,
+              isContentProducerMode ? t('shell.tab.equipment') : branding.tokens.labels.equipment,
               'Live Set',
-              isExternalClientPortalMode ? 'Workspace' : isClientReviewerMode ? 'Klientflate' : 'Prosjektrom',
-              'Økonomi',
+              isExternalClientPortalMode ? 'Workspace' : isClientReviewerMode ? t('shell.clientView') : t('shell.projectRoom'),
+              t('shell.economy'),
               'Planner',
-              'Godkjenning',
-              'Levering',
+              t('shell.approval'),
+              t('shell.delivery'),
             ];
             const tabIds = [
               'tab-oversikt',
@@ -10171,7 +10172,7 @@ type RoleRoomProjectWorkspaceState = {
 
       <PreprodSubTabStrip
         activeTab={activeTab}
-        preprodTabs={PREPROD_GROUP_TABS}
+        preprodTabs={preprodGroupTabs}
         onSelectTab={(idx) => navigateToTab(idx)}
         hidden={isLiveSetImmersive}
       />
@@ -10188,7 +10189,7 @@ type RoleRoomProjectWorkspaceState = {
           >
             <VisibilityIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />
             <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>
-              Skrivebeskyttet — du har «Se»-tilgang til denne fanen. Kontakt prosjektlederen for å administrere.
+              {t('shell.readonlyNotice')}
             </Typography>
           </Box>
         ) : null}
@@ -10654,13 +10655,13 @@ type RoleRoomProjectWorkspaceState = {
                       color: '#e0f2fe',
                     }}
                   >
-                    {selectionBoardMode ? 'Lukk board' : 'Åpne board'}
+                    {selectionBoardMode ? t('shell.closeBoard') : t('shell.openBoard')}
                   </Button>
-                  <Tooltip title="Tastatursnarveier (?)">
+                  <Tooltip title={t('shell.keyboardShortcutsTip')}>
                     <IconButton
                       size="small"
                       onClick={() => setSelectionShortcutsOpen(true)}
-                      aria-label="Åpne utvelgelse-snarveier"
+                      aria-label={t('shell.openSelectionShortcuts')}
                       sx={{
                         color: '#bae6fd',
                         border: '1px solid rgba(125,211,252,0.46)',
@@ -10681,7 +10682,7 @@ type RoleRoomProjectWorkspaceState = {
                   ['screening', `Screening (${selectionMetrics.screening})`],
                   ['callbacks', `Callbacks (${selectionMetrics.callbacks})`],
                   ['final', `Final selection (${selectionMetrics.final})`],
-                  ['all', `Alle (${selectionMetrics.total})`],
+                  ['all', `${t('shell.all')} (${selectionMetrics.total})`],
                 ] as const).map(([phase, label]) => (
                   <Button
                     key={phase}
@@ -10719,7 +10720,7 @@ type RoleRoomProjectWorkspaceState = {
                     Ingen kandidater klare for utvelgelse enda
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.75)' }}>
-                    Legg inn audition-notater eller planlegg auditions for å aktivere screening.
+                    {t('shell.selectCandidatePrompt')}
                   </Typography>
                 </Box>
               ) : (
@@ -10766,7 +10767,7 @@ type RoleRoomProjectWorkspaceState = {
                             Board er klart
                           </Typography>
                           <Typography sx={{ color: 'rgba(186,230,253,0.86)', fontSize: '0.84rem' }}>
-                            Velg en kandidat for å starte gjennomgang av self-tapes og notater.
+                            {t('shell.reviewSelftapesPrompt')}
                           </Typography>
                         </Box>
                       ) : (
@@ -10821,7 +10822,7 @@ type RoleRoomProjectWorkspaceState = {
                                     }}
                                   >
                                     <Typography sx={{ color: 'rgba(186,230,253,0.86)', fontSize: '0.82rem', maxWidth: 420 }}>
-                                      Ingen self-tape registrert. Legg video på kandidaten for komplett gjennomgang.
+                                      {t('shell.noSelftapeFull')}
                                     </Typography>
                                   </Box>
                                 )}
@@ -10852,7 +10853,7 @@ type RoleRoomProjectWorkspaceState = {
                                 Audition-notater
                               </Typography>
                               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', lineHeight: 1.45 }}>
-                                {selectedSelectionSummary.notes.trim() || 'Ingen detaljerte notater registrert.'}
+                                {selectedSelectionSummary.notes.trim() || t('shell.noDetailedNotes')}
                               </Typography>
                               <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.67rem' }}>
                                 Skrevet av (audition): {selectedAuditionNotesMeta.author}
@@ -10967,16 +10968,16 @@ type RoleRoomProjectWorkspaceState = {
                                   color: '#ecfeff',
                                 }}
                               >
-                                Lagre utvelgelsesnotat
+                                {t('shell.saveSelectionNote')}
                               </Button>
                             </Box>
                           </Box>
 
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8 }}>
                             {([
-                              ['screening', 'Til screening', '#38bdf8'],
-                              ['callbacks', 'Send til callbacks', '#c084fc'],
-                              ['final', 'Marker som finalist', '#34d399'],
+                              ['screening', t('shell.stage.toScreening'), '#38bdf8'],
+                              ['callbacks', t('shell.stage.sendCallbacks'), '#c084fc'],
+                              ['final', t('shell.stage.markFinalist'), '#34d399'],
                             ] as const).map(([stage, label, color]) => {
                               const isCurrentStage = selectedSelectionSummary.phase === stage;
                               return (
@@ -11046,8 +11047,8 @@ type RoleRoomProjectWorkspaceState = {
                               const assignedRoleNames = assignedRoleIds
                                 .map((roleId) => roles.find((role) => role.id === roleId)?.name)
                                 .filter((value): value is string => Boolean(value));
-                              const roleLabel = assignedRoleNames[0] || 'Ingen rolle valgt';
-                              const notePreview = getCandidateAuditionNotes(candidate).trim() || 'Ingen audition-notater.';
+                              const roleLabel = assignedRoleNames[0] || t('shell.noRoleSelected');
+                              const notePreview = getCandidateAuditionNotes(candidate).trim() || t('shell.noAuditionNotes');
 
                               return (
                                 <Box
@@ -11142,7 +11143,7 @@ type RoleRoomProjectWorkspaceState = {
                                             boxShadow: `0 0 8px ${style.border}`,
                                             '&:hover': { filter: 'brightness(1.15)' },
                                           }}
-                                          title={`${style.label} — klikk for å åpne`}
+                                          title={t('shell.styleClickOpen', { label: style.label })}
                                         >
                                           <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
                                           {style.label}
@@ -11379,7 +11380,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Button>
                               {!selectedSelectionActiveSelfTape && (
                                 <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.67rem' }}>
-                                  Ingen self-tape registrert på kandidaten ennå.
+                                  {t('shell.noSelftapeYet')}
                                 </Typography>
                               )}
                               {selectedSelectionCandidateSelfTapes.length > 1 && (
@@ -11404,10 +11405,10 @@ type RoleRoomProjectWorkspaceState = {
                                     Vurderingssignal
                                   </Typography>
                                   {([
-                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, 'var(--role-cyan, #22d3ee)'],
-                                    ['Kjemi', selectedSelectionSignals.chemistry, '#c084fc'],
-                                    ['Tilgjengelighet', selectedSelectionSignals.availability, '#4ade80'],
-                                    ['Risiko', selectedSelectionSignals.risk, '#fb7185'],
+                                    [t('shell.signal.scenePerformance'), selectedSelectionSignals.scenePerformance, 'var(--role-cyan, #22d3ee)'],
+                                    [t('shell.signal.chemistry'), selectedSelectionSignals.chemistry, '#c084fc'],
+                                    [t('shell.signal.availability'), selectedSelectionSignals.availability, '#4ade80'],
+                                    [t('shell.signal.risk'), selectedSelectionSignals.risk, '#fb7185'],
                                   ] as const).map(([label, value, color]) => (
                                     <Box key={`signal-${label}`} sx={{ display: 'flex', flexDirection: 'column', gap: 0.18 }}>
                                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.45 }}>
@@ -11424,9 +11425,9 @@ type RoleRoomProjectWorkspaceState = {
 
                               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.55 }}>
                                 {([
-                                  ['screening', 'Til screening', '#38bdf8'],
-                                  ['callbacks', 'Send til callbacks', '#c084fc'],
-                                  ['final', 'Marker som finalist', '#34d399'],
+                                  ['screening', t('shell.stage.toScreening'), '#38bdf8'],
+                                  ['callbacks', t('shell.stage.sendCallbacks'), '#c084fc'],
+                                  ['final', t('shell.stage.markFinalist'), '#34d399'],
                                 ] as const).map(([stage, label, color]) => {
                                   const isCurrentStage = selectedSelectionSummary.phase === stage;
                                   return (
@@ -11456,10 +11457,10 @@ type RoleRoomProjectWorkspaceState = {
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(15,23,42,0.56)', p: 0.7 }}>
                                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.69rem', mb: 0.35 }}>
-                                  Audition-notater
+                                  {t('shell.auditionNotes')}
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(226,232,240,0.84)', fontSize: '0.69rem', lineHeight: 1.4 }}>
-                                  {selectedSelectionSummary.notes.trim() || 'Ingen detaljerte notater registrert.'}
+                                  {selectedSelectionSummary.notes.trim() || t('shell.noDetailedNotes')}
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.63rem', mt: 0.35 }}>
                                   Skrevet av (audition): {selectedAuditionNotesMeta.author}
@@ -11574,7 +11575,7 @@ type RoleRoomProjectWorkspaceState = {
                                     color: '#ecfeff',
                                   }}
                                 >
-                                  Lagre utvelgelsesnotat
+                                  {t('shell.saveSelectionNote')}
                                 </Button>
                               </Box>
 
@@ -11584,7 +11585,7 @@ type RoleRoomProjectWorkspaceState = {
                                 </Typography>
                                 {selectedSelectionSummary.strengths.length === 0 ? (
                                   <Typography sx={{ color: 'rgba(134,239,172,0.86)', fontSize: '0.68rem' }}>
-                                    Ingen styrker registrert ennå.
+                                    {t('shell.noStrengthsYet')}
                                   </Typography>
                                 ) : (
                                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.22 }}>
@@ -11631,7 +11632,7 @@ type RoleRoomProjectWorkspaceState = {
                                 </Typography>
                                 {selectedSelectionDecisionLog.length === 0 ? (
                                   <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.67rem' }}>
-                                    Ingen beslutningshendelser registrert ennå.
+                                    {t('shell.noDecisionEvents')}
                                   </Typography>
                                 ) : (
                                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.26 }}>
@@ -12250,7 +12251,7 @@ type RoleRoomProjectWorkspaceState = {
                       </Typography>
                       <Chip
                         size="small"
-                        label={isClientReviewerMode ? 'Klient' : isContentProducerMode ? 'Innholdsprodusent' : 'Produksjon'}
+                        label={isClientReviewerMode ? t('shell.client') : isContentProducerMode ? t('shell.header.contentProducer') : t('shell.production')}
                         sx={{
                           height: 20,
                           fontSize: 11,
@@ -12508,8 +12509,8 @@ type RoleRoomProjectWorkspaceState = {
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
                       {plannerAudience === 'content_producer'
-                        ? 'Samle brief, leveranser, reviews og møtepunkter i én planflate for innholdsarbeidet.'
-                        : 'Samle produksjonsdager, teamrytme og møtelogikk i én planflate for studioet.'}
+                        ? t('shell.plannerContentDesc')
+                        : t('shell.plannerStudioDesc')}
                     </Typography>
                     <Chip
                       label="PLANNING"
@@ -12550,7 +12551,7 @@ type RoleRoomProjectWorkspaceState = {
                       navigateToTab(PRODUCER_ECONOMY_TAB_INDEX);
                     }}
                     role="button"
-                    aria-label="Åpne Økonomi"
+                    aria-label={t('shell.openEconomy')}
                   >
                     <CardContent sx={{ p: 3, textAlign: 'center' }}>
                       <Box
@@ -12571,13 +12572,13 @@ type RoleRoomProjectWorkspaceState = {
                         💰
                       </Box>
                       <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
-                        Økonomi
+                        {t('shell.economy')}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.88)', mb: 2 }}>
-                        Budsjett, fakturering og kommersielle godkjenninger for prosjektet.
+                        {t('shell.economyCardDesc')}
                       </Typography>
                       <Chip
-                        label="ØKONOMI"
+                        label={t('shell.economyChip')}
                         size="small"
                         sx={{
                           bgcolor: 'rgba(34,197,94,0.22)',
@@ -12628,8 +12629,8 @@ type RoleRoomProjectWorkspaceState = {
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.72)' }}>
                       {plannerAudience === 'content_producer'
-                        ? 'Prosjektrom, godkjenning og levering samlet i én operativ flate.'
-                        : 'Produksjonsplan, Meet-flyt og teamrytme i ett studio.'}
+                        ? t('shell.plannerContentSub')
+                        : t('shell.plannerStudioSub')}
                     </Typography>
                   </Box>
                 </Box>
@@ -12648,7 +12649,7 @@ type RoleRoomProjectWorkspaceState = {
                       />
                       <Chip
                         size="small"
-                        label={`${currentProject?.sceneBreakdowns?.length ?? 0} storyboardseksjoner`}
+                        label={t('shell.chip.storyboardSections', { n: currentProject?.sceneBreakdowns?.length ?? 0 })}
                         sx={{
                           bgcolor: 'rgba(59,130,246,0.18)',
                           color: '#bfdbfe',
@@ -12661,7 +12662,7 @@ type RoleRoomProjectWorkspaceState = {
                     <>
                       <Chip
                         size="small"
-                        label={`${currentProject?.productionDays?.length ?? 0} produksjonsdager`}
+                        label={t('shell.chip.productionDays', { n: currentProject?.productionDays?.length ?? 0 })}
                         sx={{
                           bgcolor: 'rgba(245,158,11,0.18)',
                           color: '#fde68a',
@@ -12710,13 +12711,13 @@ type RoleRoomProjectWorkspaceState = {
                 <Box sx={{ maxWidth: 720 }}>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.35 }}>
                     {plannerAudience === 'content_producer'
-                      ? `Planner · ${activeContentProducerPlannerSurfaceItem?.label ?? 'Oversikt'}`
-                      : 'Planlegg dager, samarbeid og møter fra samme operasjonsflate'}
+                      ? `Planner · ${activeContentProducerPlannerSurfaceItem?.label ?? t('shell.overview')}`
+                      : t('shell.plannerStudioHead')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.82rem', lineHeight: 1.55 }}>
                     {plannerAudience === 'content_producer'
-                      ? activeContentProducerPlannerSurfaceItem?.description ?? 'Planner er hovedhjemmet for innholdsprodusent.'
-                      : 'Bruk denne flaten som planning-leddet i Role Room Studio. Produksjonsteamet kan hoppe direkte til utvelgelse for Meet-planlegging, videre til produksjonsplanen for dagsstyring og til teamet for bemanning.'}
+                      ? activeContentProducerPlannerSurfaceItem?.description ?? t('shell.plannerContentBodyFallback')
+                      : t('shell.plannerStudioBody')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -12904,7 +12905,7 @@ type RoleRoomProjectWorkspaceState = {
               ) : !canManageProductionWorkspace ? (
                 <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
                   <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
-                    Du mangler tilgang til å styre The Role Room Planning for dette prosjektet.
+                    {t('shell.noPlanningAccess')}
                   </Typography>
                 </Box>
               ) : (
@@ -13031,8 +13032,8 @@ type RoleRoomProjectWorkspaceState = {
                           }
                           queueProducerReviewCreate({
                             reviewType: 'storyboard',
-                            title: 'Storyboard klar for klientgodkjenning',
-                            description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
+                            title: t('shell.review.storyboardTitle'),
+                            description: t('shell.review.storyboardDesc'),
                             targetEntityType: 'storyboard',
                             targetEntityId: makeProducerPackageEntityId('storyboard', currentProject.id),
                           });
@@ -13043,8 +13044,8 @@ type RoleRoomProjectWorkspaceState = {
                           }
                           queueProducerReviewCreate({
                             reviewType: 'manuscript',
-                            title: 'Manus klar for klientgodkjenning',
-                            description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
+                            title: t('shell.review.manuscriptTitle'),
+                            description: t('shell.review.manuscriptDesc'),
                             targetEntityType: 'manuscript',
                             targetEntityId: makeProducerPackageEntityId('manuscript', currentProject.id),
                           });
@@ -13055,8 +13056,8 @@ type RoleRoomProjectWorkspaceState = {
                           }
                           queueProducerReviewCreate({
                             reviewType: 'shotlist',
-                            title: 'Shotlist klar for klientgodkjenning',
-                            description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
+                            title: t('shell.review.shotlistTitle'),
+                            description: t('shell.review.shotlistDesc'),
                             targetEntityType: 'shotlist',
                             targetEntityId: makeProducerPackageEntityId('shotlist', currentProject.id),
                           });
@@ -13338,10 +13339,10 @@ type RoleRoomProjectWorkspaceState = {
                         setCurrentProject(updated);
                         try {
                           await castingService.saveProject(updated);
-                          toast.showSuccess(minutes ? `Mål-lengde satt til ${minutes} min` : 'Mål-lengde fjernet');
+                          toast.showSuccess(minutes ? t('shell.targetLengthSet', { min: minutes }) : t('shell.targetLengthCleared'));
                         } catch (error) {
                           console.error('Kunne ikke lagre mål-lengde:', error);
-                          toast.showError('Kunne ikke lagre mål-lengde');
+                          toast.showError(t('shell.toast.saveTargetLengthFailed'));
                         }
                       }}
                       headerLeftContentKey={`${branding.tokens.labels.storyArcBackLabel}|${branding.tokens.labels.storyWriterHeader}`}
@@ -13535,8 +13536,8 @@ type RoleRoomProjectWorkspaceState = {
                   }
                   queueProducerReviewCreate({
                     reviewType: 'storyboard',
-                    title: 'Storyboard klar for klientgodkjenning',
-                    description: 'Vennligst gjennomgå storyboard og gi godkjenning eller endringsønsker.',
+                    title: t('shell.review.storyboardTitle'),
+                    description: t('shell.review.storyboardDesc'),
                     targetEntityType: 'storyboard',
                     targetEntityId: makeProducerPackageEntityId('storyboard', currentProject.id),
                   });
@@ -13547,8 +13548,8 @@ type RoleRoomProjectWorkspaceState = {
                   }
                   queueProducerReviewCreate({
                     reviewType: 'manuscript',
-                    title: 'Manus klar for klientgodkjenning',
-                    description: 'Vennligst gjennomgå manus og gi godkjenning eller endringsønsker.',
+                    title: t('shell.review.manuscriptTitle'),
+                    description: t('shell.review.manuscriptDesc'),
                     targetEntityType: 'manuscript',
                     targetEntityId: makeProducerPackageEntityId('manuscript', currentProject.id),
                   });
@@ -13559,8 +13560,8 @@ type RoleRoomProjectWorkspaceState = {
                   }
                   queueProducerReviewCreate({
                     reviewType: 'shotlist',
-                    title: 'Shotlist klar for klientgodkjenning',
-                    description: 'Vennligst gjennomgå shotlist og gi godkjenning eller endringsønsker.',
+                    title: t('shell.review.shotlistTitle'),
+                    description: t('shell.review.shotlistDesc'),
                     targetEntityType: 'shotlist',
                     targetEntityId: makeProducerPackageEntityId('shotlist', currentProject.id),
                   });
@@ -13864,7 +13865,7 @@ type RoleRoomProjectWorkspaceState = {
                   },
                 }}
               >
-                {isBrowserFullscreen ? 'Fullskjerm aktiv' : 'Gå i fullskjerm'}
+                {isBrowserFullscreen ? t('shell.fullscreenActive') : t('shell.goFullscreen')}
               </Button>
               <Button
                 size="small"
@@ -13890,8 +13891,8 @@ type RoleRoomProjectWorkspaceState = {
               variant="contained"
               onClick={handleExitLiveSet}
               startIcon={<CloseIcon />}
-              aria-label="Avslutt Live Set og gå tilbake til Planner (Esc)"
-              title="Esc lukker også Live Set"
+              aria-label={t('shell.exitLiveSetAria')}
+              title={t('shell.escClosesLiveSet')}
               sx={{
                 position: 'fixed',
                 top: 16,
@@ -14065,7 +14066,7 @@ type RoleRoomProjectWorkspaceState = {
           </Box>
           <IconButton
             onClick={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
-            aria-label="Lukk dialog"
+            aria-label={t('shell.closeDialog')}
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
@@ -14179,7 +14180,7 @@ type RoleRoomProjectWorkspaceState = {
                       <RichTextEditor
                         value={toRichTextContent(selectedRole.description || '')}
                         onChange={(value) => setSelectedRole({ ...selectedRole, description: value })}
-                        placeholder="Skriv rollebeskrivelse, bakgrunn, tone og viktig informasjon..."
+                        placeholder={t('shell.rolePlaceholder')}
                         minHeight={{ xs: 220, sm: 250, md: 280 }}
                         accentColor={roleDialogAccentColor}
                       />
@@ -14828,7 +14829,7 @@ type RoleRoomProjectWorkspaceState = {
                         color: 'rgba(255,255,255,0.8)',
                       }}
                     >
-                      Klikk på et bilde for å velge fokuspunkt. Første bilde brukes som profilbilde.
+                      {t('shell.photoFocusPrompt')}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, flexWrap: 'wrap' }}>
                       {(selectedCandidate.photos || []).map((photo, idx) => {
@@ -14839,7 +14840,7 @@ type RoleRoomProjectWorkspaceState = {
                               component="button"
                               type="button"
                               onClick={(event: MouseEvent<HTMLButtonElement>) => handleCandidatePhotoFocalPointClick(event, idx)}
-                              title="Velg fokuspunkt"
+                              title={t('shell.chooseFocalPoint')}
                               sx={{
                                 position: 'relative',
                                 display: 'block',
@@ -14888,7 +14889,7 @@ type RoleRoomProjectWorkspaceState = {
                               {idx === 0 ? (
                                 <Chip
                                   size="small"
-                                  label="Primær"
+                                  label={t('shell.primary')}
                                   sx={{
                                     height: 22,
                                     bgcolor: 'rgba(184,107,255,0.25)',
@@ -14910,7 +14911,7 @@ type RoleRoomProjectWorkspaceState = {
                                     color: 'rgba(255,255,255,0.87)',
                                   }}
                                 >
-                                  Sett som primær
+                                  {t('shell.setPrimary')}
                                 </Button>
                               )}
                               <Button
@@ -15708,10 +15709,10 @@ type RoleRoomProjectWorkspaceState = {
             </Badge>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 850, lineHeight: 1.15 }}>
-                Innboks
+                {t('shell.inbox.title')}
               </Typography>
               <Typography sx={{ mt: 0.2, fontSize: '0.75rem', color: 'rgba(226,232,240,0.62)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {currentProject ? currentProject.name : 'Velg prosjekt for varsler'}
+                {currentProject ? currentProject.name : t('shell.inbox.selectProjectForAlerts')}
               </Typography>
             </Box>
           </Box>
@@ -15722,9 +15723,9 @@ type RoleRoomProjectWorkspaceState = {
               startIcon={producerInboxLoading ? <CircularProgress size={13} color="inherit" /> : <RefreshIcon sx={{ fontSize: 16 }} />}
               sx={{ textTransform: 'none', color: '#bae6fd', fontWeight: 800 }}
             >
-              Oppdater
+              {t('shell.refresh')}
             </Button>
-            <IconButton onClick={() => setProducerInboxOpen(false)} aria-label="Lukk innboks" sx={{ color: 'rgba(255,255,255,0.78)' }}>
+            <IconButton onClick={() => setProducerInboxOpen(false)} aria-label={t('shell.inbox.close')} sx={{ color: 'rgba(255,255,255,0.78)' }}>
               <CloseIcon />
             </IconButton>
           </Stack>
@@ -15739,8 +15740,8 @@ type RoleRoomProjectWorkspaceState = {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
                 {filteredProducerInboxItems.length === 0
-                  ? (producerInboxScope === 'client' ? 'Ingen klient-handlinger akkurat nå.' : 'Ingen aktive meldinger akkurat nå.')
-                  : `${filteredProducerInboxItems.length} ${producerInboxScope === 'client' ? 'klient-handlinger' : 'aktive meldinger'} · ${producerInboxUnreadCount} uleste`}
+                  ? (producerInboxScope === 'client' ? t('shell.inbox.noClientActionsNow') : t('shell.inbox.noActiveNow'))
+                  : `${filteredProducerInboxItems.length} ${producerInboxScope === 'client' ? t('shell.inbox.clientActionsWord') : t('shell.inbox.activeMessagesWord')} · ${producerInboxUnreadCount} ${t('shell.inbox.unreadWord')}`}
               </Typography>
               {producerInboxUnreadCount > 0 ? (
                 <Button
@@ -15748,7 +15749,7 @@ type RoleRoomProjectWorkspaceState = {
                   onClick={() => { void markAllProducerInboxAsRead(); }}
                   sx={{ textTransform: 'none', color: '#86efac', fontWeight: 800, alignSelf: { xs: 'flex-start', sm: 'center' } }}
                 >
-                  Merk alle lest
+                  {t('shell.inbox.markAllRead')}
                 </Button>
               ) : null}
             </Stack>
@@ -15757,7 +15758,7 @@ type RoleRoomProjectWorkspaceState = {
             <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
-                label="Alle"
+                label={t('shell.all')}
                 onClick={() => setProducerInboxScope('all')}
                 variant={producerInboxScope === 'all' ? 'filled' : 'outlined'}
                 sx={{
@@ -15769,7 +15770,7 @@ type RoleRoomProjectWorkspaceState = {
               />
               <Chip
                 size="small"
-                label={producerInboxUnreadCount > 0 ? `Ulest (${producerInboxUnreadCount})` : 'Ulest'}
+                label={producerInboxUnreadCount > 0 ? t('shell.inbox.unreadCount', { n: producerInboxUnreadCount }) : t('shell.inbox.unread')}
                 onClick={() => setProducerInboxScope('unread')}
                 variant={producerInboxScope === 'unread' ? 'filled' : 'outlined'}
                 sx={{
@@ -15781,7 +15782,7 @@ type RoleRoomProjectWorkspaceState = {
               />
               <Chip
                 size="small"
-                label={clientActionInboxCount > 0 ? `Klient-handlinger (${clientActionInboxCount})` : 'Klient-handlinger'}
+                label={clientActionInboxCount > 0 ? t('shell.inbox.clientActionsCount', { n: clientActionInboxCount }) : t('shell.inbox.clientActions')}
                 onClick={() => setProducerInboxScope('client')}
                 variant={producerInboxScope === 'client' ? 'filled' : 'outlined'}
                 sx={{
@@ -15794,7 +15795,7 @@ type RoleRoomProjectWorkspaceState = {
               {dueInboxCount > 0 ? (
                 <Chip
                   size="small"
-                  label={`Forfaller (${dueInboxCount})`}
+                  label={t('shell.inbox.dueCount', { n: dueInboxCount })}
                   onClick={() => setProducerInboxScope('due')}
                   variant={producerInboxScope === 'due' ? 'filled' : 'outlined'}
                   sx={{
@@ -15816,12 +15817,12 @@ type RoleRoomProjectWorkspaceState = {
             {!producerInboxLoading && filteredProducerInboxItems.length === 0 ? (
               <Box sx={{ p: 2.25, borderRadius: 2.4, border: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                  {producerInboxScope === 'client' ? 'Ingen klient-handlinger' : 'Innboksen er tom'}
+                  {producerInboxScope === 'client' ? t('shell.inbox.clientActions') : t('shell.inbox.empty')}
                 </Typography>
                 <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.62)', fontSize: '0.82rem' }}>
                   {producerInboxScope === 'client'
-                    ? 'Klient-svar, godkjenninger og endringsønsker dukker opp her når klienten handler.'
-                    : 'Klientbrief, godkjenninger, endringsønsker og leveransevarsler samles her når de oppstår.'}
+                    ? t('shell.inbox.emptyClientDesc')
+                    : t('shell.inbox.emptyDesc')}
                 </Typography>
               </Box>
             ) : null}
@@ -15860,7 +15861,7 @@ type RoleRoomProjectWorkspaceState = {
                           sx={{ height: 21, bgcolor: category.bg, color: category.color, fontWeight: 800, '& .MuiChip-icon': { ml: 0.5 } }}
                         />
                         {!item.read ? <Chip size="small" label="Ulest" sx={{ height: 21, bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca', fontWeight: 800 }} /> : null}
-                        {isResolved ? <Chip size="small" label="Løst" sx={{ height: 21, bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 800 }} /> : null}
+                        {isResolved ? <Chip size="small" label={t('shell.resolved')} sx={{ height: 21, bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 800 }} /> : null}
                       </Stack>
                       <Typography sx={{ mt: 0.75, color: '#fff', fontWeight: 850, lineHeight: 1.25 }}>
                         {item.title}
@@ -15871,7 +15872,7 @@ type RoleRoomProjectWorkspaceState = {
                         </Typography>
                       ) : null}
                       <Typography sx={{ mt: 0.55, color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem' }}>
-                        {[item.client_name, createdAtLabel, item.assigned_to_label ? `Ansvar: ${item.assigned_to_label}` : null].filter(Boolean).join(' • ')}
+                        {[item.client_name, createdAtLabel, item.assigned_to_label ? t('shell.inbox.responsible', { name: item.assigned_to_label }) : null].filter(Boolean).join(' • ')}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
@@ -15881,7 +15882,7 @@ type RoleRoomProjectWorkspaceState = {
                           onClick={() => { void markProducerInboxAsRead(item.id); }}
                           sx={{ textTransform: 'none', color: '#bae6fd', fontWeight: 800 }}
                         >
-                          Lest
+                          {t('shell.read')}
                         </Button>
                       ) : null}
                       {!isResolved ? (
@@ -15890,7 +15891,7 @@ type RoleRoomProjectWorkspaceState = {
                           onClick={() => { void resolveProducerInboxNotification(item.id, true); }}
                           sx={{ textTransform: 'none', color: '#86efac', fontWeight: 800 }}
                         >
-                          Løs
+                          {t('shell.resolve')}
                         </Button>
                       ) : null}
                       <Button
@@ -15994,7 +15995,7 @@ type RoleRoomProjectWorkspaceState = {
               autoFocus
               value={projectSelectorQuery}
               onChange={(e) => setProjectSelectorQuery(e.target.value)}
-              placeholder="Søk på prosjektnavn, ID eller klient"
+              placeholder={t('shell.searchPlaceholder')}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -16037,7 +16038,7 @@ type RoleRoomProjectWorkspaceState = {
 	                return (
 	                  <>
                     <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
-                      Aktivt nå
+                      {t('shell.activeNow')}
                     </Typography>
                     <Box
                       sx={{
@@ -16100,24 +16101,24 @@ type RoleRoomProjectWorkspaceState = {
                         <Typography sx={{ mt: 0.55, fontSize: '0.78rem', color: 'rgba(255,255,255,0.64)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {[
                             headerActiveProject.clientName,
-                            headerActiveProject.producerWorkflowStatus ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus] : null,
+                            headerActiveProject.producerWorkflowStatus ? producerProjectStatusLabels[headerActiveProject.producerWorkflowStatus] : null,
                           ].filter(Boolean).join(' • ')}
                         </Typography>
 	                        {creatorLabel ? (
 	                          <Typography sx={{ mt: 0.45, fontSize: '0.74rem', color: 'rgba(255,255,255,0.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-	                            Opprettet av {creatorLabel}
+	                            {t('shell.createdBy')} {creatorLabel}
 	                          </Typography>
 	                        ) : null}
 	                        {showOwnerLabel ? (
 	                          <Typography sx={{ mt: 0.25, fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-	                            Eier {ownerLabel}
+	                            {t('shell.owner')} {ownerLabel}
 	                          </Typography>
 	                        ) : null}
 	                      </Box>
 	                      <Stack spacing={0.75} alignItems="flex-end">
 	                        <Chip
 	                          size="small"
-	                          label="Aktivt prosjekt"
+	                          label={t('shell.activeProject')}
 	                          sx={{
 	                            bgcolor: 'rgba(34,211,238,0.12)',
 	                            color: '#67e8f9',
@@ -16209,7 +16210,7 @@ type RoleRoomProjectWorkspaceState = {
                           </Typography>
                         </Box>
                         <Typography sx={{ mt: 0.55, fontSize: '0.76rem', color: 'rgba(255,255,255,0.66)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {template.description || 'Klargjort av admin som gjenbrukbar prosjektmal.'}
+                          {template.description || t('shell.templatePrepared')}
                         </Typography>
                       </Box>
                       <Button
@@ -16226,7 +16227,7 @@ type RoleRoomProjectWorkspaceState = {
                           '&:hover': { bgcolor: 'rgba(168,85,247,0.22)', borderColor: 'rgba(216,180,254,0.48)' },
                         }}
                       >
-                        Bruk mal
+                        {t('shell.useTemplate')}
                       </Button>
                     </Box>
                   ))}
@@ -16236,10 +16237,10 @@ type RoleRoomProjectWorkspaceState = {
             {filteredPinnedProjectSelectorItems.length > 0 ? (
               <Box sx={{ px: 2, pt: 1.25, pb: 0.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.56)' }}>
-                  Pinnet
+                  {t('shell.pinned')}
                 </Typography>
                 <Typography sx={{ mt: 0.35, fontSize: '0.76rem', color: 'rgba(255,255,255,0.52)' }}>
-                  Maks tre prosjekter kan ligge fast øverst.
+                  {t('shell.maxThreePinned')}
                 </Typography>
                 <Box
                   sx={{
@@ -16268,8 +16269,8 @@ type RoleRoomProjectWorkspaceState = {
                     const pinnedAccentColor = pinnedProjectAccentColorById.get(project.id) ?? '#fbbf24';
                     const workflowStatus = project.producerWorkflowStatus;
                     const workflowStatusLabel = workflowStatus
-                      ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
-                      : 'Klar for arbeid';
+                      ? producerProjectStatusLabels[workflowStatus]
+                      : t('shell.status.readyForWork');
 		                    const { roleLabel, accessLabel } = getProjectRoleDetails(project);
 		                    const creatorLabel = getProjectCreatorLabel(project);
 		                    const ownerLabel = getProjectOwnerLabel(project);
@@ -16353,12 +16354,12 @@ type RoleRoomProjectWorkspaceState = {
                         </Typography>
 		                        {creatorLabel ? (
 		                          <Typography sx={{ mt: 0.45, fontSize: '0.7rem', color: 'rgba(255,255,255,0.54)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-		                            Opprettet av {creatorLabel}
+		                            {t('shell.createdBy')} {creatorLabel}
 		                          </Typography>
 		                        ) : null}
 		                        {showOwnerLabel ? (
 		                          <Typography sx={{ mt: 0.25, fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-		                            Eier {ownerLabel}
+		                            {t('shell.owner')} {ownerLabel}
 		                          </Typography>
 		                        ) : null}
                         <Box sx={{ mt: 0.8, display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap' }}>
@@ -16444,7 +16445,7 @@ type RoleRoomProjectWorkspaceState = {
                               '&:hover': { bgcolor: `${pinnedAccentColor}14` },
                             }}
                           >
-                            Løsne
+                            {t('shell.unpin')}
                           </Button>
                         </Box>
                       </Box>
@@ -16456,10 +16457,10 @@ type RoleRoomProjectWorkspaceState = {
             {filteredProjectSelectorItems.length === 0 && filteredPublishedTemplates.length === 0 ? (
               <Box sx={{ px: 3, py: 3.5 }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 600 }}>
-                  Ingen prosjekter eller templates matcher søket
+                  {t('shell.noProjectsOrTemplates')}
                 </Typography>
                 <Typography sx={{ mt: 0.5, fontSize: '0.82rem', color: 'rgba(255,255,255,0.64)' }}>
-                  Prøv et annet søkeord, eller opprett et nytt prosjekt.
+                  {t('shell.tryAnotherOrCreate')}
                 </Typography>
               </Box>
             ) : (
@@ -16467,13 +16468,13 @@ type RoleRoomProjectWorkspaceState = {
                 {
                   key: 'pinned',
                   title: 'Pinnet',
-                  description: 'Prosjekter du holder faste øverst i arbeidsflaten.',
+                  description: t('shell.pinnedSectionDesc'),
                   items: filteredPinnedProjectSelectorItems,
                 },
                 {
                   key: 'all',
-                  title: filteredPinnedProjectSelectorItems.length > 0 ? 'Andre prosjekter' : 'Prosjekter',
-                  description: filteredPinnedProjectSelectorItems.length > 0 ? 'Resterende prosjekter i arbeidsbiblioteket.' : null,
+                  title: filteredPinnedProjectSelectorItems.length > 0 ? t('shell.otherProjects') : t('shell.projects'),
+                  description: filteredPinnedProjectSelectorItems.length > 0 ? t('shell.remainingInLibrary') : null,
                   items: filteredPinnedProjectSelectorItems.length > 0 ? filteredUnpinnedProjectSelectorItems : filteredProjectSelectorItems,
                 },
               ]
@@ -16499,8 +16500,8 @@ type RoleRoomProjectWorkspaceState = {
                       const candidateCount = project.candidatesCount ?? project.candidates?.length ?? 0;
                       const workflowStatus = project.producerWorkflowStatus;
                       const workflowStatusLabel = workflowStatus
-                        ? PRODUCER_PROJECT_STATUS_LABELS[workflowStatus]
-                        : 'Klar for arbeid';
+                        ? producerProjectStatusLabels[workflowStatus]
+                        : t('shell.status.readyForWork');
                       const workflowStatusStyle = workflowStatus
                         ? PRODUCER_PROJECT_STATUS_COLORS[workflowStatus]
                         : {
@@ -16524,7 +16525,7 @@ type RoleRoomProjectWorkspaceState = {
                             minute: '2-digit',
                           })
                         : branding.tokens.labels.unknownLabel;
-                      const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? 'Lag kopi' : 'Åpne';
+                      const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? t('shell.makeCopy') : t('shell.open');
                       const handlePrimaryAction = () => {
                         if (isProtectedDemo && !canMutateProtectedDemoData) {
                           handleOpenProjectCopyDialog(project, { closeSelector: true });
@@ -16592,7 +16593,7 @@ type RoleRoomProjectWorkspaceState = {
                               {isLatestCreated ? (
                                 <Chip
                                   size="small"
-                                  label="Siste opprettet"
+                                  label={t('shell.latestCreated')}
                                   sx={{
                                     height: 22,
                                     bgcolor: 'rgba(16,185,129,0.14)',
@@ -16610,7 +16611,7 @@ type RoleRoomProjectWorkspaceState = {
 	                              {isProtectedDemo ? (
 	                                <Chip
 	                                  size="small"
-                                  label="Demo-mal"
+                                  label={t('shell.demoTemplate')}
                                   sx={{
                                     height: 20,
                                     bgcolor: 'rgba(244,114,182,0.12)',
@@ -16658,12 +16659,12 @@ type RoleRoomProjectWorkspaceState = {
                             </Box>
                             {creatorLabel ? (
                               <Typography sx={{ mt: 0.55, fontSize: '0.72rem', color: 'rgba(255,255,255,0.52)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-	                                Opprettet av {creatorLabel}
+	                                {t('shell.createdBy')} {creatorLabel}
 	                              </Typography>
 	                            ) : null}
 	                            {showOwnerLabel ? (
 	                              <Typography sx={{ mt: 0.25, fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-	                                Eier {ownerLabel}
+	                                {t('shell.owner')} {ownerLabel}
 	                              </Typography>
 	                            ) : null}
 	                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mt: 0.8, minWidth: 0, flexWrap: 'wrap' }}>
@@ -16756,7 +16757,7 @@ type RoleRoomProjectWorkspaceState = {
 	                            >
 	                              {primaryActionLabel}
 	                            </Button>
-	                            <Tooltip title={syncActionPending ? 'Verifiserer prosjektlagring...' : syncStatus.helper}>
+	                            <Tooltip title={syncActionPending ? t('shell.sync.verifyingTooltip') : syncStatus.helper}>
 	                              <span>
 	                                <IconButton
 	                                  size="small"
@@ -16950,10 +16951,10 @@ type RoleRoomProjectWorkspaceState = {
         </DialogTitle>
         <DialogContent sx={{ p: { xs: 1.2, sm: 1.4 }, mt: 0.6 }}>
           <Typography sx={{ color: 'rgba(186,230,253,0.9)', fontSize: '0.78rem', mb: 1 }}>
-            Hurtigtaster for Utvelgelse og Casting board.
+            {t('shell.shortcutsIntro')}
           </Typography>
           <Stack spacing={0.65}>
-            {SELECTION_SHORTCUTS.map((shortcut) => (
+            {selectionShortcuts.map((shortcut) => (
               <Box
                 key={`${shortcut.scope}-${shortcut.keys}`}
                 sx={{
@@ -17089,13 +17090,13 @@ type RoleRoomProjectWorkspaceState = {
                   {projectToEdit
                     ? branding.tokens.labels.editProjectTitle
                     : projectCreationDialogTab === 'existing'
-                      ? 'Prosjektbibliotek'
-                      : 'Nytt Role Room prosjekt'}
+                      ? t('shell.projectLibrary')
+                      : t('shell.newRoleRoomProject')}
                 </Typography>
                 <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.68)' }}>
                   {projectCreationDialogTab === 'existing' && !projectToEdit
-                    ? 'Åpne eksisterende prosjekt eller bytt tilbake for å starte nytt.'
-                    : 'The Role Room flyt: grunnlag, team, økonomi og lagring.'}
+                    ? t('shell.openExistingOrSwitch')
+                    : t('shell.roleRoomFlow')}
                 </Typography>
               </Box>
             </Box>
@@ -17194,8 +17195,8 @@ type RoleRoomProjectWorkspaceState = {
                   '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
                 }}
               >
-                <Tab value="new" label="Nytt prosjekt" />
-                <Tab value="existing" label={`Eksisterende (${orderedProjects.length})`} />
+                <Tab value="new" label={t('shell.newProject')} />
+                <Tab value="existing" label={t('shell.existingCount', { n: orderedProjects.length })} />
               </Tabs>
             </Box>
           ) : null}
@@ -17208,7 +17209,7 @@ type RoleRoomProjectWorkspaceState = {
                   size="small"
                   value={projectSelectorQuery}
                   onChange={(event) => setProjectSelectorQuery(event.target.value)}
-                  placeholder="Søk på prosjektnavn, ID eller klient"
+                  placeholder={t('shell.searchPlaceholder')}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -17245,7 +17246,7 @@ type RoleRoomProjectWorkspaceState = {
                     '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
                   }}
                 >
-                  Opprett nytt
+                  {t('shell.createNew')}
                 </Button>
               </Box>
 
@@ -17281,7 +17282,7 @@ type RoleRoomProjectWorkspaceState = {
                             {String(template.templateSourceProjectName || template.name).replace(/^Template\s*·\s*/i, '')}
                           </Typography>
                           <Typography sx={{ mt: 0.2, color: 'rgba(226,232,240,0.58)', fontSize: '0.76rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {template.description || 'Publisert prosjektmal'}
+                            {template.description || t('shell.publishedTemplate')}
                           </Typography>
                         </Box>
                         <Button
@@ -17293,7 +17294,7 @@ type RoleRoomProjectWorkspaceState = {
                           }}
                           sx={{ textTransform: 'none', fontWeight: 800, color: '#f5d0fe', border: '1px solid rgba(216,180,254,0.3)' }}
                         >
-                          Bruk mal
+                          {t('shell.useTemplate')}
                         </Button>
                       </Box>
                     ))}
@@ -17304,9 +17305,9 @@ type RoleRoomProjectWorkspaceState = {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.85 }}>
                 {filteredProjectSelectorItems.length === 0 ? (
                   <Box sx={{ p: 2.5, borderRadius: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <Typography sx={{ color: '#fff', fontWeight: 800 }}>Ingen prosjekter matcher søket</Typography>
+                    <Typography sx={{ color: '#fff', fontWeight: 800 }}>{t('shell.noProjectsMatch')}</Typography>
                     <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.64)', fontSize: '0.84rem' }}>
-                      Opprett et nytt prosjekt, eller prøv et annet søkeord.
+                      {t('shell.createOrTryAnother')}
                     </Typography>
                   </Box>
                 ) : filteredProjectSelectorItems.map((project) => {
@@ -17316,7 +17317,7 @@ type RoleRoomProjectWorkspaceState = {
                   const { roleLabel, accessLabel } = getProjectRoleDetails(project);
                   const creatorLabel = getProjectCreatorLabel(project);
                   const syncStatus = getProjectSyncStatus(project.id);
-                  const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? 'Lag kopi' : (isActive ? 'Åpent' : 'Åpne');
+                  const primaryActionLabel = isProtectedDemo && !canMutateProtectedDemoData ? t('shell.makeCopy') : (isActive ? t('shell.opened') : t('shell.open'));
 
                   return (
                     <Box
@@ -17340,14 +17341,14 @@ type RoleRoomProjectWorkspaceState = {
                           <Typography sx={{ color: '#fff', fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                             {project.name}
                           </Typography>
-                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #7dd3fc)', fontWeight: 800 }} /> : null}
+                          {isActive ? <Chip size="small" label={t('shell.active')} sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #7dd3fc)', fontWeight: 800 }} /> : null}
                         </Box>
                         <Typography sx={{ mt: 0.45, color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {[project.clientName, `Rolle: ${roleLabel}`, `Tilgang: ${accessLabel}`].filter(Boolean).join(' • ')}
+                          {[project.clientName, t('shell.roleColon', { role: roleLabel }), t('shell.accessColon', { access: accessLabel })].filter(Boolean).join(' • ')}
                         </Typography>
                         {creatorLabel ? (
                           <Typography sx={{ mt: 0.25, color: 'rgba(226,232,240,0.48)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            Opprettet av {creatorLabel}
+                            {t('shell.createdBy')} {creatorLabel}
                           </Typography>
                         ) : null}
                         <PlannerProjectHealthBadge project={project} />
@@ -17680,10 +17681,10 @@ type RoleRoomProjectWorkspaceState = {
         <DialogContent sx={{ pt: 1.5 }}>
           <Stack spacing={2}>
             <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.25)' }}>
-              Secrets og Client Access Vault kopieres aldri. Klientdata, reviewhistorikk og økonomi er av som standard.
+              {t('shell.copy.secretsNotice')}
             </Alert>
             <TextField
-              label="Navn på ny kopi"
+              label={t('shell.copy.newCopyName')}
               value={projectCopyDialog?.name ?? ''}
               onChange={(event) => {
                 const value = event.target.value;
@@ -17705,27 +17706,27 @@ type RoleRoomProjectWorkspaceState = {
               <FormControlLabel
                 control={<Checkbox checked={projectCopyDialog?.includeClientData ?? false} />}
                 onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeClientData: checked } : current)}
-                label="Ta med klientdata"
+                label={t('shell.copy.includeClientData')}
               />
               <FormControlLabel
                 control={<Checkbox checked={projectCopyDialog?.includeReviewHistory ?? false} />}
                 onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeReviewHistory: checked } : current)}
-                label="Ta med reviewhistorikk og godkjenninger"
+                label={t('shell.copy.includeReviewHistory')}
               />
               <FormControlLabel
                 control={<Checkbox checked={projectCopyDialog?.includeEconomy ?? false} />}
                 onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeEconomy: checked } : current)}
-                label="Ta med økonomi, avtaler og utlegg"
+                label={t('shell.copy.includeEconomy')}
               />
               <FormControlLabel
                 control={<Checkbox checked={projectCopyDialog?.includeTeam ?? true} />}
                 onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeTeam: checked } : current)}
-                label="Ta med team og møteplan"
+                label={t('shell.copy.includeTeam')}
               />
               <FormControlLabel
                 control={<Checkbox checked={projectCopyDialog?.includeProductionData ?? true} />}
                 onChange={(_, checked) => setProjectCopyDialog((current) => current ? { ...current, includeProductionData: checked } : current)}
-                label="Ta med produksjonsdata, scener og shotlist"
+                label={t('shell.copy.includeProductionData')}
               />
             </Stack>
           </Stack>
@@ -17908,7 +17909,7 @@ type RoleRoomProjectWorkspaceState = {
           name: headerActiveProject.name,
           clientName: headerActiveProject.clientName,
           workflowLabel: headerActiveProject.producerWorkflowStatus
-            ? PRODUCER_PROJECT_STATUS_LABELS[headerActiveProject.producerWorkflowStatus]
+            ? producerProjectStatusLabels[headerActiveProject.producerWorkflowStatus]
             : null,
           teamMembers: currentProjectTeamMembers,
         } : null}
@@ -18010,7 +18011,7 @@ type RoleRoomProjectWorkspaceState = {
           email: adminUser.email,
           name: adminUser.display_name || adminUser.name,
         } : null}
-        currentTabLabel={COMMAND_PALETTE_TABS.find((t) => t.tabIndex === activeTab)?.label}
+        currentTabLabel={commandPaletteTabs.find((tab) => tab.tabIndex === activeTab)?.label}
         currentProjectId={currentProject?.id ?? null}
         currentProjectName={currentProject?.name ?? null}
         hidden={isLiveSetImmersive}
