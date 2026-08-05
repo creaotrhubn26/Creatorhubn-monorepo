@@ -26,6 +26,8 @@ struct CanvasNotatDTO: Decodable, Hashable {
     var sider: Int? = nil
     var objekter: String? = nil
     var sokbarTekst: String? = nil
+    /// Ekte PDF-håndtering: originaldokumentene (JSON-array m/ base64).
+    var dokumenter: String? = nil
     /// Papirkurven: når notatet ble slettet (soft delete, 30 dager).
     var slettetAt: String? = nil
 }
@@ -70,7 +72,8 @@ extension APIClient {
                             noder: String = "[]",
                             sider: Int = 1,
                             objekter: String = "[]",
-                            sokbarTekst: String = "") async throws -> String {
+                            sokbarTekst: String = "",
+                            dokumenter: String = "[]") async throws -> String {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -88,6 +91,7 @@ extension APIClient {
             let sider: Int
             let objekter: String
             let sokbarTekst: String
+            let dokumenter: String
         }
         struct Resp: Decodable { let id: String }
         let r: Resp = try await _post(
@@ -97,7 +101,7 @@ extension APIClient {
                        lat: lat, lon: lon, stempler: stempler,
                        tekstbokser: tekstbokser, figurer: figurer, papir: papir,
                        noder: noder, sider: sider, objekter: objekter,
-                       sokbarTekst: sokbarTekst))
+                       sokbarTekst: sokbarTekst, dokumenter: dokumenter))
         return r.id
     }
 
@@ -113,7 +117,8 @@ extension APIClient {
                              noder: String = "[]",
                              sider: Int = 1,
                              objekter: String = "[]",
-                             sokbarTekst: String = "") async throws {
+                             sokbarTekst: String = "",
+                             dokumenter: String = "[]") async throws {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -131,6 +136,7 @@ extension APIClient {
             let sider: Int
             let objekter: String
             let sokbarTekst: String
+            let dokumenter: String
         }
         let data = try JSONEncoder().encode(
             Body(tittel: tittel, kategori: kategori, selskap: selskap,
@@ -138,7 +144,7 @@ extension APIClient {
                  lat: lat, lon: lon, stempler: stempler,
                  tekstbokser: tekstbokser, figurer: figurer, papir: papir,
                  noder: noder, sider: sider, objekter: objekter,
-                 sokbarTekst: sokbarTekst))
+                 sokbarTekst: sokbarTekst, dokumenter: dokumenter))
         // _request tar rå JSON — feltene her er allerede snake-frie
         // bortsett fra leadId/drawingBase64; backend godtar begge former.
         _ = try await _request("/api/leadgrid/canvas/\(id)",

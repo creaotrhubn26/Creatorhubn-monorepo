@@ -7,6 +7,7 @@ NYTT I DETTE BYGGET — CANVAS ORGANISERT
 • Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯-meny — én ting om gangen
 • Auto-tittel: øverste håndskrift-linje blir notatets tittel mens du skriver
 • PDF-analyse: importert tilbud/kontrakt leses av AI med en gang — viktig oppsummering + punkter du huker av og tar opp på møtet (havner i møtesløyfa og som kort på flata)
+• Ekte PDF-håndtering: dokumentet lagres i original, sidene rendres vektor-skarpt (aldri bilder) — og «Del dokumentet (annotert PDF)» beholder søkbar tekst med blekket oppå
 
 NYTT: LEADGRID CANVAS
 • Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso

@@ -44,6 +44,8 @@ struct CanvasView: View {
     @State private var sider: Int = 1
     @State private var redigererNode: CanvasNode?
     @State private var objekter: [CanvasObjekt] = []
+    // Ekte PDF-håndtering: originaldokumentene i notatet (vektor).
+    @State private var dokumenter: [CanvasDokument] = []
     /// Lasso/objekt-modus: touch går til objektene (flytt/skaler) i
     /// stedet for pennen. Av = tegn fritt OPPÅ objektene (annoter).
     @State private var objektModus = false
@@ -184,15 +186,40 @@ struct CanvasView: View {
         }
         .background(CvBrand.bg)
         .task { await lastInn() }
-        // QA-hook (mockups/verifisering): åpne PDF-analyse-arket i demo.
+        // QA-hook (mockups/verifisering): generer en ekte PDF i minnet og
+        // kjør hele import-pipelinen (vektor-sider + analyse-arket).
+        // QA_PDF=1 → med analyse-ark; QA_PDF=2 → kun sidene på flata.
         .task {
-            guard isDemo,
-                  ProcessInfo.processInfo.environment["QA_PDF"] == "1",
-                  !visPdfAnalyse else { return }
+            let modus = ProcessInfo.processInfo.environment["QA_PDF"]
+            guard isDemo, modus == "1" || modus == "2",
+                  dokumenter.isEmpty else { return }
             try? await Task.sleep(nanoseconds: 800_000_000)
             if let n = notater.first { velg(n) }
-            pdfAnalyseNavn = "Tilbud-Nordic-Elektro"
-            visPdfAnalyse = true
+            let a4 = CGRect(x: 0, y: 0, width: 595, height: 842)
+            let data = UIGraphicsPDFRenderer(bounds: a4).pdfData { ctx in
+                ctx.beginPage()
+                let tittelAttr: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: 26)]
+                let brodAttr: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 13)]
+                ("Tilbud — Nordic Elektro AS" as NSString)
+                    .draw(at: CGPoint(x: 48, y: 60), withAttributes: tittelAttr)
+                let linjer = ["Totalsum: kr 480 000 eks. mva.",
+                              "Leveranse: 6 uker fra signering",
+                              "Betaling: 10 % forskudd",
+                              "Forbehold: befaring av føringsveier før endelig pris",
+                              "Omfang: 42 punkter — belysning, føringsveier, tavlearbeid"]
+                for (i, linje) in linjer.enumerated() {
+                    (linje as NSString).draw(
+                        at: CGPoint(x: 48, y: 140 + CGFloat(i) * 28),
+                        withAttributes: brodAttr)
+                }
+                ctx.beginPage()
+                ("Vedlegg — fremdriftsplan" as NSString)
+                    .draw(at: CGPoint(x: 48, y: 60), withAttributes: tittelAttr)
+            }
+            importerPDFData(data, navn: "Tilbud-Nordic-Elektro")
+            if modus == "2" { visPdfAnalyse = false }
         }
         // Møter «Tegn i Canvas» → åpne/opprett notat koblet til selskapet.
         .task(id: appState.pendingCanvasRequestedAt) {
@@ -912,6 +939,9 @@ struct CanvasView: View {
                 ForEach(objekter.filter { !erLagSkjult($0.type) }) { obj in
                     ObjektView(objekt: obj,
                                redigerbar: valgtErMin && objektModus,
+                               pdfDok: obj.dokId.flatMap { id in
+                                   dokumenter.first { $0.id == id }
+                               },
                                liveInnhold: liveInnhold(obj),
                                erValgt: valgte.contains(obj.id),
                                onToggleValg: {
@@ -1743,6 +1773,7 @@ struct CanvasView: View {
         noder = n.noder
         sider = max(1, n.sider)
         objekter = n.objekter
+        dokumenter = n.dokumenter
         objektModus = false
         verktoyModus = .tegn
         notatLat = n.lat
@@ -1780,6 +1811,10 @@ struct CanvasView: View {
         n.noder = noder
         n.sider = sider
         n.objekter = objekter
+        // Dokumenter uten gjenlevende side-objekter ryddes bort.
+        n.dokumenter = dokumenter.filter { d in
+            objekter.contains { $0.dokId == d.id }
+        }
         n.lat = notatLat
         n.lon = notatLon
         n.sokbarTekst = await byggSokbarTekst()
@@ -1807,6 +1842,8 @@ struct CanvasView: View {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let objekterJSON = (try? JSONEncoder().encode(n.objekter))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let dokumenterJSON = (try? JSONEncoder().encode(n.dokumenter))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
@@ -1816,7 +1853,7 @@ struct CanvasView: View {
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
                     noder: noderJSON, sider: n.sider, objekter: objekterJSON,
-                    sokbarTekst: n.sokbarTekst)
+                    sokbarTekst: n.sokbarTekst, dokumenter: dokumenterJSON)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -1829,7 +1866,7 @@ struct CanvasView: View {
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
                     noder: noderJSON, sider: n.sider, objekter: objekterJSON,
-                    sokbarTekst: n.sokbarTekst)
+                    sokbarTekst: n.sokbarTekst, dokumenter: dokumenterJSON)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -1898,6 +1935,8 @@ struct CanvasView: View {
             objekter: (dto.objekter?.data(using: .utf8))
                 .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [],
             sokbarTekst: dto.sokbarTekst ?? "",
+            dokumenter: (dto.dokumenter?.data(using: .utf8))
+                .flatMap { try? JSONDecoder().decode([CanvasDokument].self, from: $0) } ?? [],
             slettetAt: Self.isoDato(dto.slettetAt))
     }
 
@@ -2077,6 +2116,54 @@ struct CanvasView: View {
         }
     }
 
+    /// Ekte PDF-eksport: originalsidene tegnes som VEKTOR (teksten forblir
+    /// søkbar og skarp) — blekket som ligger over hver side legges oppå
+    /// som gjennomsiktig overlay. Ingen rasterisering av dokumentet.
+    private func eksporterDokument(_ dok: CanvasDokument) -> URL? {
+        guard let data = Data(base64Encoded: dok.base64),
+              let pdf = PDFDocument(data: data) else { return nil }
+        let sideObjekter = objekter
+            .filter { $0.dokId == dok.id && $0.side != nil }
+            .sorted { ($0.side ?? 0) < ($1.side ?? 0) }
+        guard !sideObjekter.isEmpty,
+              let forste = pdf.page(at: sideObjekter[0].side ?? 0) else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(dok.navn.replacingOccurrences(of: "/", with: "-"))-annotert.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: forste.bounds(for: .mediaBox))
+        do {
+            try renderer.writePDF(to: url) { ctx in
+                for objekt in sideObjekter {
+                    guard let side = pdf.page(at: objekt.side ?? 0) else { continue }
+                    let sr = side.bounds(for: .mediaBox)
+                    ctx.beginPage(withBounds: CGRect(origin: .zero, size: sr.size),
+                                  pageInfo: [:])
+                    let cg = ctx.cgContext
+                    // PDF-koordinater har origo nede til venstre → flipp.
+                    cg.saveGState()
+                    cg.translateBy(x: 0, y: sr.height)
+                    cg.scaleBy(x: 1, y: -1)
+                    side.draw(with: .mediaBox, to: cg)
+                    cg.restoreGState()
+                    // Blekket over akkurat denne siden på flata.
+                    let visningBredde = 1520 * objekt.skala
+                    let visningHoyde = sr.height / max(sr.width, 1) * visningBredde
+                    let flateRect = CGRect(x: objekt.x - visningBredde / 2,
+                                           y: objekt.y - visningHoyde / 2,
+                                           width: visningBredde,
+                                           height: visningHoyde)
+                    if !drawing.strokes.isEmpty,
+                       drawing.bounds.intersects(flateRect) {
+                        // Strøkene er lagret i lys-referanse → riktig på hvitt.
+                        let blekk = drawing.image(from: flateRect, scale: 2)
+                        blekk.draw(in: CGRect(origin: .zero, size: sr.size))
+                    }
+                }
+            }
+            return url
+        } catch { return nil }
+    }
+
     /// PDF til temp-fil for ShareLink (én side = komposittbildet).
     private func pdfFil() -> URL? {
         let bilde = komponertBilde()
@@ -2149,8 +2236,21 @@ struct CanvasView: View {
     private func importerPDF(fra url: URL) {
         let tilgang = url.startAccessingSecurityScopedResource()
         defer { if tilgang { url.stopAccessingSecurityScopedResource() } }
-        guard let dok = PDFDocument(url: url) else { return }
-        let antall = min(dok.pageCount, 12)
+        guard let data = try? Data(contentsOf: url) else { return }
+        importerPDFData(data, navn: url.deletingPathExtension().lastPathComponent)
+    }
+
+    /// Ekte PDF-håndtering: originaldokumentet lagres tapsfritt, sidene
+    /// rendres vektor-skarpt via PDFKit — aldri som bilder.
+    private func importerPDFData(_ data: Data, navn: String) {
+        guard let dok = PDFDocument(data: data) else { return }
+        guard data.count <= 10_000_000 else {
+            feilVedImport = "PDF-en er over 10 MB — komprimer den og prøv igjen."
+            return
+        }
+        let antall = min(dok.pageCount, 20)
+        let dokument = CanvasDokument(navn: navn, base64: data.base64EncodedString())
+        dokumenter.append(dokument)
         var y: Double = 60
         var fullTekst = ""
         for i in 0..<antall {
@@ -2158,18 +2258,12 @@ struct CanvasView: View {
             let ramme = side.bounds(for: .mediaBox)
             let bredde: CGFloat = 760
             let hoyde = ramme.height / max(ramme.width, 1) * bredde
-            let bilde = side.thumbnail(of: CGSize(width: bredde * 2,
-                                                  height: hoyde * 2),
-                                       for: .mediaBox)
-            guard let jpeg = bilde.jpegData(compressionQuality: 0.7) else { continue }
             y += Double(hoyde) / 2
             objekter.append(CanvasObjekt(
                 type: "pdf", x: 430, y: y, skala: 0.5,
-                bildeBase64: jpeg.base64EncodedString(),
-                tittel: antall > 1
-                    ? "\(url.deletingPathExtension().lastPathComponent) · s. \(i + 1)"
-                    : url.deletingPathExtension().lastPathComponent,
-                detalj: String((side.string ?? "").prefix(2000))))
+                tittel: antall > 1 ? "\(navn) · s. \(i + 1)" : navn,
+                detalj: String((side.string ?? "").prefix(2000)),
+                dokId: dokument.id, side: i))
             fullTekst += (side.string ?? "") + "\n"
             y += Double(hoyde) / 2 + 40
         }
@@ -2178,7 +2272,7 @@ struct CanvasView: View {
         let renTekst = fullTekst.trimmingCharacters(in: .whitespacesAndNewlines)
         if kan(.canvasAnalyse), renTekst.count > 40 {
             pdfAnalyseTekst = String(renTekst.prefix(15_000))
-            pdfAnalyseNavn = url.deletingPathExtension().lastPathComponent
+            pdfAnalyseNavn = navn
             visPdfAnalyse = true
         }
         // Flata må være høy nok for alle sidene (nominell sidehøyde ~900pt).
@@ -2459,6 +2553,16 @@ struct CanvasView: View {
                             if let pdfURL = pdfFil() {
                                 ShareLink(item: pdfURL) {
                                     Label("Del som PDF", systemImage: "doc.richtext")
+                                }
+                            }
+                            // Ekte PDF-eksport: original vektor-kvalitet
+                            // (søkbar tekst) med annoteringene oppå.
+                            ForEach(dokumenter) { dok in
+                                if let url = eksporterDokument(dok) {
+                                    ShareLink(item: url) {
+                                        Label("Del «\(dok.navn)» (annotert PDF)",
+                                              systemImage: "doc.badge.arrow.up")
+                                    }
                                 }
                             }
                         } label: {
