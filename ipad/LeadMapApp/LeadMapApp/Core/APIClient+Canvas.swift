@@ -194,6 +194,23 @@ extension APIClient {
         return r.versjoner
     }
 
+    /// Rolle-policy: org styrer salgslederes/selgeres Canvas-funksjoner.
+    func hentCanvasRollePolicy() async throws -> OversiktPolicyDTO {
+        try await _get("/api/leadgrid/canvas-rolle-policy")
+    }
+
+    func lagreCanvasRollePolicy(malgruppe: String,
+                                skjulteFunksjoner: [String]) async throws {
+        struct Body: Encodable {
+            let malgruppe: String
+            let skjulteFunksjoner: [String]
+        }
+        struct Resp: Decodable { let ok: Bool }
+        let _: Resp = try await _put(
+            "/api/leadgrid/canvas-rolle-policy",
+            body: Body(malgruppe: malgruppe, skjulteFunksjoner: skjulteFunksjoner))
+    }
+
     func slettCanvasNotat(id: String) async throws {
         _ = try await _request("/api/leadgrid/canvas/\(id)",
                                method: "DELETE", body: nil)

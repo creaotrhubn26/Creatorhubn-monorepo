@@ -343,6 +343,8 @@ struct CanvasView: View {
     @State private var sokTreffIndeks = 0
     /// Smart Layers: lag som er slått AV (rendring + eksport).
     @State private var skjulteLag: Set<String> = []
+    /// Rolle-policy: org→leder→selger styrer Canvas-funksjonene.
+    @State private var rollePolicy = OversiktPolicyDTO()
     /// Live collab v1: delt notat oppdatert av kollega → puls-banner.
     @State private var kollegaOppdatering: String?
     /// Undo-HISTORIKK (ikke bare angre): snapshots per notat m/ tidspunkt —
@@ -361,6 +363,64 @@ struct CanvasView: View {
     @State private var thumbs: [String: UIImage] = [:]
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    /// RBAC i tre lag: superadmin (entitlement per org) → org/admin
+    /// (salgslederes funksjoner) → salgsleder (selgernes funksjoner).
+    private func kan(_ f: LeadgridFeature) -> Bool {
+        guard EntitlementStore.shared.canUse(f) else { return false }
+        guard let nokkel = Self.policyNokkel(f) else { return true }
+        return !rolleSkjulteForMeg.contains(nokkel)
+    }
+
+    private static func policyNokkel(_ f: LeadgridFeature) -> String? {
+        switch f {
+        case .canvasDeling: return "deling"
+        case .canvasPdf: return "pdf"
+        case .canvasBilder: return "bilder"
+        case .canvasLiveKort: return "livekort"
+        case .canvasTidsreise: return "tidsreise"
+        case .canvasKundeminne: return "kundeminne"
+        case .canvasBibliotek: return "bibliotek"
+        case .canvasAnalyse: return "analyse"
+        default: return nil
+        }
+    }
+
+    private var erAdminRolle: Bool {
+        appState.isSuperAdmin || ["admin", "owner"].contains(appState.roleInOrg ?? "")
+    }
+    private var erLederRolle: Bool {
+        erAdminRolle || ["markedssjef", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+    }
+    private var rolleSkjulteForMeg: Set<String> {
+        if erAdminRolle { return [] }
+        return Set(erLederRolle ? rollePolicy.leder : rollePolicy.selger)
+    }
+
+    private func rolleBinding(_ nokkel: String, gruppe: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                let liste = gruppe == "selger" ? rollePolicy.selger : rollePolicy.leder
+                return !liste.contains(nokkel)
+            },
+            set: { synlig in
+                var liste = gruppe == "selger" ? rollePolicy.selger : rollePolicy.leder
+                if synlig { liste.removeAll { $0 == nokkel } }
+                else if !liste.contains(nokkel) { liste.append(nokkel) }
+                if gruppe == "selger" { rollePolicy.selger = liste }
+                else { rollePolicy.leder = liste }
+                guard !isDemo, let api = appState.api else { return }
+                Task { try? await api.lagreCanvasRollePolicy(
+                    malgruppe: gruppe, skjulteFunksjoner: liste) }
+            })
+    }
+
+    private static let policyFunksjoner: [(String, String)] = [
+        ("deling", "Deling i teamet"), ("pdf", "PDF-annotering"),
+        ("bilder", "Bilder"), ("livekort", "Levende kort"),
+        ("tidsreise", "Tidsreise"), ("kundeminne", "Kundeminnet"),
+        ("bibliotek", "Element-bibliotek"), ("analyse", "AI-analyse"),
+    ]
 
     private var filtrerte: [CanvasNotat] {
         var liste = kategoriFilter.map { f in notater.filter { $0.kategori == f } } ?? notater
@@ -730,6 +790,7 @@ struct CanvasView: View {
                                 .background(CvBrand.red.opacity(0.15), in: Circle())
                         }
                         .buttonStyle(.plain)
+                        if kan(.canvasBibliotek) {
                         Button {
                             elementNavn = ""
                             lagrerElementNavn = true
@@ -745,9 +806,10 @@ struct CanvasView: View {
                             .background(CvBrand.green.opacity(0.15), in: Capsule())
                         }
                         .buttonStyle(.plain)
+                        }
                     }
                     // Element-biblioteket: gjenbrukbare elementer.
-                    if !bibliotek.isEmpty {
+                    if !bibliotek.isEmpty && kan(.canvasBibliotek) {
                         Menu {
                             ForEach(bibliotek) { el in
                                 Menu(el.navn) {
@@ -778,17 +840,22 @@ struct CanvasView: View {
                     }
                     // «Sett inn»: bilder + levende kort fra resten av appen.
                     Menu {
-                        Button {
-                            bildeVelgerAapen = true
-                        } label: {
-                            Label("Bilde fra Bilder", systemImage: "photo")
+                        if kan(.canvasBilder) {
+                            Button {
+                                bildeVelgerAapen = true
+                            } label: {
+                                Label("Bilde fra Bilder", systemImage: "photo")
+                            }
                         }
-                        Button {
-                            pdfVelgerAapen = true
-                        } label: {
-                            Label("PDF — tilbud/kontrakt/plantegning",
-                                  systemImage: "doc.fill")
+                        if kan(.canvasPdf) {
+                            Button {
+                                pdfVelgerAapen = true
+                            } label: {
+                                Label("PDF — tilbud/kontrakt/plantegning",
+                                      systemImage: "doc.fill")
+                            }
                         }
+                        if kan(.canvasLiveKort) {
                         Menu {
                             ForEach(appState.leads.sorted {
                                 ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
@@ -834,6 +901,7 @@ struct CanvasView: View {
                             }
                         } label: {
                             Label("Oppgave", systemImage: "checklist")
+                        }
                         }
                     } label: {
                         HStack(spacing: 5) {
@@ -1025,8 +1093,31 @@ struct CanvasView: View {
                                     ? CvBrand.cardHi : CvBrand.orange.opacity(0.2),
                                     in: Capsule())
                     }
+                    // RBAC: org/leder styrer teamets Canvas-funksjoner.
+                    if erLederRolle && !isDemo {
+                        Menu {
+                            Section("Selgernes Canvas") {
+                                ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
+                                    Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "selger"))
+                                }
+                            }
+                            if erAdminRolle {
+                                Section("Salgsledernes Canvas") {
+                                    ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
+                                        Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "leder"))
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "person.badge.key.fill")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(CvBrand.textSecondary)
+                                .frame(width: 28, height: 26)
+                                .background(CvBrand.cardHi, in: Capsule())
+                        }
+                    }
                     // Time Travel: se hvordan idéene utviklet seg over dager.
-                    if valgtId != nil, !isDemo {
+                    if valgtId != nil, !isDemo, kan(.canvasTidsreise) {
                         Button {
                             visTidsreise = true
                         } label: {
@@ -1310,7 +1401,7 @@ struct CanvasView: View {
             }
             .frame(height: geo.size.height * CGFloat(sider))
             .dropDestination(for: Data.self) { biter, plassering in
-                guard valgtErMin, let data = biter.first,
+                guard valgtErMin, kan(.canvasBilder), let data = biter.first,
                       UIImage(data: data) != nil else { return false }
                 leggTilBilde(data, ved: plassering)
                 return true
@@ -1377,12 +1468,12 @@ struct CanvasView: View {
                                selskap: kobletSelskap ?? tittel,
                                leadId: kobletLeadId,
                                romligTillegg: romligBeskrivelse(),
-                               onFestIMinne: { resultat in
+                               onFestIMinne: kan(.canvasKundeminne) ? { resultat in
                                    visAnalyse = false
                                    festIMinne(resultat,
                                               selskap: kobletSelskap ?? tittel,
                                               leadId: kobletLeadId)
-                               })
+                               } : nil)
         }
         .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
                       matching: .images)
@@ -1450,12 +1541,14 @@ struct CanvasView: View {
         Menu {
             if kobletLeadId != nil || kobletSelskap != nil {
                 // Spatial Sales Memory: hele kundeforholdet på ETT lerret.
-                Button {
-                    if let selskap = kobletSelskap {
-                        aapneKundeminne(selskap: selskap, leadId: kobletLeadId)
+                if kan(.canvasKundeminne) {
+                    Button {
+                        if let selskap = kobletSelskap {
+                            aapneKundeminne(selskap: selskap, leadId: kobletLeadId)
+                        }
+                    } label: {
+                        Label("Åpne kundeminnet", systemImage: "brain.head.profile")
                     }
-                } label: {
-                    Label("Åpne kundeminnet", systemImage: "brain.head.profile")
                 }
                 Button(role: .destructive) {
                     kobletLeadId = nil
@@ -1678,6 +1771,7 @@ struct CanvasView: View {
         genererThumbs()
         if let api = appState.api {
             oppgaverCache = (try? await api.hentMoteOppgaver()) ?? []
+            if let p = try? await api.hentCanvasRollePolicy() { rollePolicy = p }
         }
     }
 
@@ -2079,6 +2173,7 @@ struct CanvasView: View {
                         .textFieldStyle(.plain)
                     Spacer()
                     // Fase 3: håndskrift → tekst → AI (oppgaver + møtelogg).
+                    if kan(.canvasAnalyse) {
                     Button { visAnalyse = true } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "sparkles")
@@ -2093,6 +2188,7 @@ struct CanvasView: View {
                             .stroke(CvBrand.purple.opacity(0.5), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    }
                     Button { Task { await lagre() } } label: {
                         HStack(spacing: 6) {
                             if lagrer {
@@ -2125,8 +2221,8 @@ struct CanvasView: View {
                     .foregroundStyle(CvBrand.blue)
                 }
                 HStack(spacing: 8) {
-                    // Del med teamet (kun egne notater)
-                    if valgtErMin {
+                    // Del med teamet (kun egne notater, RBAC-gated)
+                    if valgtErMin && kan(.canvasDeling) {
                         Button {
                             deltMedTeam.toggle()
                         } label: {
