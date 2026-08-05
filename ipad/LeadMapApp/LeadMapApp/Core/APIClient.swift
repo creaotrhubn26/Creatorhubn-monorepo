@@ -62,6 +62,15 @@ actor APIClient {
         try await get("/api/admin-room/lead-map/reminders\(projectQuery(projectId))")
     }
 
+    /// Leadgrid-uavhengighet: opprett prosjekt UTEN Role Room.
+    func createLeadMapProject(name: String, description: String? = nil) async throws -> ProjectListItem {
+        struct Resp: Codable { let project: ProjectListItem }
+        let resp: Resp = try await post(
+            "/api/admin-room/lead-map/projects",
+            body: ["name": name, "description": description ?? ""])
+        return resp.project
+    }
+
     func fetchProjects() async throws -> [ProjectListItem] {
         let resp: ProjectsResponse = try await get("/api/admin-room/lead-map/projects")
         return resp.projects

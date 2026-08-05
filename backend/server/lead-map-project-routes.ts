@@ -37,6 +37,51 @@ function getUser(
 }
 
 export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps): void {
+  // ─── POST /admin-room/lead-map/projects ──
+  // Leadgrid-uavhengighet (Daniel 2026-08-05): prosjekter kunne før KUN
+  // opprettes i The Role Room — Leadgrid oppretter nå sine egne. Samme
+  // tabell (casting_projects) så alt nedstrøms (lead-filter, summary,
+  // RBAC, team) virker uendret; project_type 'b2b_sales' holder dem
+  // utenfor film/casting-flatene.
+  app.post(
+    "/api/admin-room/lead-map/projects",
+    async (req: Request, res: Response) => {
+      const session = getUser(req, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const b = (req.body ?? {}) as Record<string, unknown>;
+        const name = String(b.name ?? "").trim().slice(0, 200);
+        if (name.length < 2) {
+          return res.status(400).json({ error: "bad_request", message: "Prosjektnavn kreves" });
+        }
+        const description = typeof b.description === "string"
+          ? b.description.slice(0, 1000) : null;
+        const orgR = await pool.query<{ organization_id: string | null }>(
+          `SELECT organization_id::text FROM organization_members
+            WHERE user_id = $1 LIMIT 1`,
+          [session.userId]);
+        const orgId = orgR.rows[0]?.organization_id ?? null;
+        const projectId = `leadgrid-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+        await pool.query(
+          `INSERT INTO casting_projects
+             (id, organization_id, name, description, status, project_type,
+              created_at, created_by, metadata)
+           VALUES ($1, $2, $3, $4, 'active', 'b2b_sales', now(), $5, $6::jsonb)`,
+          [projectId, orgId, name, description, session.userId,
+           JSON.stringify({ leadgrid_source: "manuell" })]);
+        return res.json({
+          project: {
+            id: projectId, name, description, status: "active",
+            hasBrandKit: false, leadCount: 0, competitorCount: 0,
+          },
+        });
+      } catch (err) {
+        console.error("[lead-map] project create failed:", err);
+        return res.status(500).json({ error: "project_create_failed" });
+      }
+    },
+  );
+
   // ─── GET /admin-room/lead-map/projects ──
   // Liste prosjekter som brukeren har leads, brand-kit, eller scan på.
   // Returnerer projects som har AKTIVITET i Lead Map-kontekst.
