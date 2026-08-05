@@ -573,7 +573,7 @@ struct PhoneMerTab: View {
     @Environment(AppState.self) private var state
 
     private enum Destination: Int, Hashable {
-        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10
+        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10, canvas = 11
     }
 
     @State private var path: [Destination] = {
@@ -605,6 +605,10 @@ struct PhoneMerTab: View {
                            title: "Kvalitet", subtitle: "Verifiser salg med velkomstsamtale")
                     merRow(.anbud, icon: "doc.text.magnifyingglass", color: .indigo,
                            title: "Anbud", subtitle: "Offentlige anskaffelser fra Doffin")
+                    if EntitlementStore.shared.canUse(.leadgridCanvas) {
+                        merRow(.canvas, icon: "pencil.and.outline", color: .purple,
+                               title: "Canvas", subtitle: "Pencil-notater koblet til leads")
+                    }
                 }
             }
             .navigationTitle("Mer")
@@ -628,6 +632,9 @@ struct PhoneMerTab: View {
                         .toolbar(.hidden, for: .navigationBar)
                 case .anbud:
                     AnbudView(embedded: true)
+                        .toolbar(.hidden, for: .navigationBar)
+                case .canvas:
+                    CanvasView()
                         .toolbar(.hidden, for: .navigationBar)
                 }
             }
@@ -854,6 +861,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case leadgridGo
     case kvalitet
     case anbud
+    case canvas
 
     var id: String { rawValue }
 
@@ -869,6 +877,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .leadgridGo:   return "Leadgrid Go"
         case .kvalitet:     return "Kvalitet"
         case .anbud:        return "Anbud"
+        case .canvas:       return "Canvas"
         }
     }
 
@@ -884,6 +893,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .leadgridGo:   return "car.circle.fill"
         case .kvalitet:     return "checkmark.seal.fill"
         case .anbud:        return "doc.text.magnifyingglass"
+        case .canvas:       return "pencil.and.outline"
         }
     }
 }
@@ -960,6 +970,9 @@ struct MainSidebarView: View {
                     if item == .leads {
                         return EntitlementStore.shared.canUse(.leads)
                     }
+                    if item == .canvas {
+                        return EntitlementStore.shared.canUse(.leadgridCanvas)
+                    }
                     return true
                 }
                 ForEach(visibleItems) { item in
@@ -1026,6 +1039,7 @@ struct MainSidebarView: View {
         case .leadgridGo:   LeadgridGoDashboardView()
         case .kvalitet:     KvalitetView()
         case .anbud:        AnbudView()
+        case .canvas:       CanvasView()
         }
     }
 

@@ -119,6 +119,9 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // + Doffin-signal + egne vunnede case). Kostnadsbærende AI — DEFAULT AV
     // (isExplicitlyEnabled-mønsteret, som leadbookAIStrukturering).
     case moteBrief = "Møter · AI-møtebrief"
+    // Leadgrid Canvas (2026-08-05): Pencil-first notater koblet til leads
+    // (PencilKit-tegneflate + kategorier + lead-kobling). Default PÅ.
+    case leadgridCanvas = "Leadgrid Canvas · Pencil-notater"
 
     var id: String { rawValue }
 
@@ -175,6 +178,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridKvalitet: return "checkmark.seal.fill"
         case .leadgridAnbud: return "doc.text.magnifyingglass"
         case .leadgridRuteplanlegger: return "point.topleft.down.curvedto.point.bottomright.up.fill"
+        case .leadgridCanvas: return "pencil.and.outline"
         case .moteBrief: return "brain.head.profile"
         // Områder
         case .omradeTildeling: return "map.circle.fill"
@@ -202,7 +206,8 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .teamCompareToPrevious, .teamForecast30d, .teamPipelineHealth,
              .teamAIFormulaSuggest, .moteBrief: return .analyseAI
         case .routeTracking, .routeAdherenceReports, .teamNearbyView,
-             .createLeadAtPosition, .leadgridRuteplanlegger: return .kjerne
+             .createLeadAtPosition, .leadgridRuteplanlegger,
+             .leadgridCanvas: return .kjerne
         case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo
         case .leadgridKvalitet: return .kvalitet
         case .leadgridAnbud: return .anbud
