@@ -79,6 +79,7 @@ import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/War
 import warehouseInventoryService from '../services/warehouseInventoryService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { useAuth } from '../../../hooks/useAuth';
+import { useT } from '../../../i18n';
 // GLB3DPreview stub — renders inline 3D preview placeholder
 const GLB3DPreview = ({ _src, width, height }: { _src?: string; width?: number; height?: number }) => (
   <Box sx={{ width: width || 200, height: height || 200, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
@@ -127,26 +128,25 @@ type PropItemTypeFilter = 'all' | PropItemType;
 
 interface CategoryDefinition {
   key: string;
-  label: string;
   color: string;
   itemType: PropItemType;
 }
 
 const CATEGORY_DEFINITIONS: CategoryDefinition[] = [
-  { key: 'equipment', label: 'Utstyr', color: '#2196f3', itemType: 'equipment' },
-  { key: 'vehicle', label: 'Kjøretøy', color: '#607d8b', itemType: 'equipment' },
-  { key: 'sanitation', label: 'Sanitet', color: '#26c6da', itemType: 'equipment' },
-  { key: 'power', label: 'Strøm', color: '#ffb300', itemType: 'equipment' },
-  { key: 'safety', label: 'Sikkerhet', color: '#ef5350', itemType: 'equipment' },
-  { key: 'admin', label: 'Administrasjon', color: '#7e57c2', itemType: 'equipment' },
-  { key: 'weather', label: 'Vær', color: '#4fc3f7', itemType: 'equipment' },
-  { key: 'logistics', label: 'Logistikk', color: '#66bb6a', itemType: 'equipment' },
-  { key: 'furniture', label: 'Møbler', color: '#8b4513', itemType: 'prop' },
-  { key: 'decoration', label: 'Dekorasjon', color: '#9c27b0', itemType: 'prop' },
-  { key: 'costume', label: 'Kostyme', color: '#e91e63', itemType: 'prop' },
-  { key: 'prop', label: 'Rekvisitt', color: '#ab47bc', itemType: 'prop' },
-  { key: 'food', label: 'Mat', color: '#4caf50', itemType: 'prop' },
-  { key: 'other', label: 'Annet', color: '#9333ea', itemType: 'prop' },
+  { key: 'equipment', color: '#2196f3', itemType: 'equipment' },
+  { key: 'vehicle', color: '#607d8b', itemType: 'equipment' },
+  { key: 'sanitation', color: '#26c6da', itemType: 'equipment' },
+  { key: 'power', color: '#ffb300', itemType: 'equipment' },
+  { key: 'safety', color: '#ef5350', itemType: 'equipment' },
+  { key: 'admin', color: '#7e57c2', itemType: 'equipment' },
+  { key: 'weather', color: '#4fc3f7', itemType: 'equipment' },
+  { key: 'logistics', color: '#66bb6a', itemType: 'equipment' },
+  { key: 'furniture', color: '#8b4513', itemType: 'prop' },
+  { key: 'decoration', color: '#9c27b0', itemType: 'prop' },
+  { key: 'costume', color: '#e91e63', itemType: 'prop' },
+  { key: 'prop', color: '#ab47bc', itemType: 'prop' },
+  { key: 'food', color: '#4caf50', itemType: 'prop' },
+  { key: 'other', color: '#9333ea', itemType: 'prop' },
 ];
 
 const CATEGORY_BY_KEY = new Map(CATEGORY_DEFINITIONS.map((category) => [category.key, category]));
@@ -314,10 +314,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
   const { user } = useAuth();
+  const { t } = useT();
   const noteActorLabel = useMemo(() => {
     const raw = user?.displayName ?? user?.name ?? user?.email;
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
-  }, [user]);
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : t('prop.unknownUser');
+  }, [user, t]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
 
   // Unique IDs for WCAG
@@ -581,10 +582,30 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     refreshWarehouseSummary();
   }, [refreshWarehouseSummary]);
 
+  const categoryLabelByKey = useMemo<Record<string, string>>(
+    () => ({
+      equipment: t('prop.cat.equipment'),
+      vehicle: t('prop.cat.vehicle'),
+      sanitation: t('prop.cat.sanitation'),
+      power: t('prop.cat.power'),
+      safety: t('prop.cat.safety'),
+      admin: t('prop.cat.admin'),
+      weather: t('prop.cat.weather'),
+      logistics: t('prop.cat.logistics'),
+      furniture: t('prop.cat.furniture'),
+      decoration: t('prop.cat.decoration'),
+      costume: t('prop.cat.costume'),
+      prop: t('prop.cat.prop'),
+      food: t('prop.cat.food'),
+      other: t('prop.cat.other'),
+    }),
+    [t]
+  );
+
   const getCategoryLabel = (category?: string): string => {
     const normalized = normalizeCategoryKey(category);
-    if (!normalized) return 'Annet';
-    return CATEGORY_BY_KEY.get(normalized)?.label || normalized;
+    if (!normalized) return categoryLabelByKey.other;
+    return categoryLabelByKey[normalized] || normalized;
   };
 
   const getCategoryColor = (category?: string): string => {
@@ -624,7 +645,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   }
 
   const getItemTypeLabel = (itemType: PropItemType): string =>
-    itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt';
+    itemType === 'equipment' ? categoryLabelByKey.equipment : categoryLabelByKey.prop;
 
   // Save favorites to localStorage
   useEffect(() => {
@@ -713,7 +734,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     });
 
     return result;
-  }, [props, searchQuery, itemTypeFilter, filterCategory, sortField, sortDirection, favorites]);
+  }, [props, searchQuery, itemTypeFilter, filterCategory, sortField, sortDirection, favorites, t]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -829,7 +850,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     try {
       const imagePromises = files.map(file => {
         if (!file.type.startsWith('image/')) {
-          throw new Error('Vennligst velg bare bildefiler');
+          throw new Error(t('prop.err.imageFilesOnly'));
         }
         return convertFileToDataURL(file);
       });
@@ -841,7 +862,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       });
     } catch (error) {
       console.error('Error uploading images:', error);
-      alert(error instanceof Error ? error.message : 'Kunne ikke laste opp bilder');
+      alert(error instanceof Error ? error.message : t('prop.err.uploadImages'));
     }
     
     // Reset input
@@ -862,7 +883,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
-      showError('⚠️ Navn er påkrevd');
+      showError(t('prop.err.nameRequired'));
       return;
     }
 
@@ -921,7 +942,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         .filter((value) => value.length >= 2);
       if (mentionSeed.length > 0) {
         void globalTagService.add(mentionSeed).catch((error) => {
-          console.warn('Kunne ikke oppdatere globalt mention-register for rekvisitter:', error);
+          console.warn('Could not update global mention register for props:', error);
         });
       }
       const loadedProps = await castingService.getProps(projectId);
@@ -929,16 +950,16 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
       // Show success notification
       if (editingProp) {
-        showSuccess(`✅ ${formData.name} oppdatert`, 3000);
+        showSuccess(t('prop.toast.updated', { name: formData.name }), 3000);
       } else {
-        showSuccess(`📦 ${formData.name} lagt til`, 3000);
+        showSuccess(t('prop.toast.added', { name: formData.name }), 3000);
       }
 
       handleCloseDialog();
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error saving prop:', error);
-      showError('Feil ved lagring av rekvisitt');
+      showError(t('prop.err.save'));
     }
   };
 
@@ -951,11 +972,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         const loadedProps = await castingService.getProps(projectId);
         setProps(Array.isArray(loadedProps) ? loadedProps : []);
         setUndoSnackbarOpen(true);
-        showInfo(`🗑️ ${prop.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+        showInfo(t('prop.toast.deleted', { name: prop.name }), 6000);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting prop:', error);
-        showError('Feil ved sletting av rekvisitt');
+        showError(t('prop.err.delete'));
       }
     }
   };
@@ -966,13 +987,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         await castingService.saveProp(projectId, deletedProp);
         const loadedProps = await castingService.getProps(projectId);
         setProps(Array.isArray(loadedProps) ? loadedProps : []);
-        showSuccess(`↩️ ${deletedProp.name} gjenopprettet`, 3000);
+        showSuccess(t('prop.toast.restored', { name: deletedProp.name }), 3000);
         setDeletedProp(null);
         setUndoSnackbarOpen(false);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error undoing delete:', error);
-        showError('Feil ved gjenoppretting av rekvisitt');
+        showError(t('prop.err.restore'));
       }
     }
   };
@@ -1016,7 +1037,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (window.confirm(`Er du sikker på at du vil slette ${selectedIds.size} rekvisitt(er)?`)) {
+    if (window.confirm(t('prop.confirm.bulkDelete', { n: selectedIds.size }))) {
       try {
         for (const id of selectedIds) {
           await castingService.deleteProp(projectId, id);
@@ -1027,7 +1048,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting props:', error);
-        showError('Feil ved sletting av rekvisitter');
+        showError(t('prop.err.bulkDelete'));
       }
     }
   };
@@ -1037,7 +1058,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       const newProp: Prop = {
         ...prop,
         id: `prop-${Date.now()}`,
-        name: `${prop.name} (kopi)`,
+        name: `${prop.name} ${t('prop.copySuffix')}`,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1047,7 +1068,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error duplicating prop:', error);
-      showError('Feil ved duplisering av rekvisitt');
+      showError(t('prop.err.duplicate'));
     }
   };
 
@@ -1055,7 +1076,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        alert('Prosjekt ikke funnet');
+        alert(t('prop.err.projectNotFound'));
         return;
       }
 
@@ -1063,7 +1084,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        alert(t('prop.err.exportWindow'));
         return;
       }
 
@@ -1075,7 +1096,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       }, 250);
     } catch (error) {
       console.error('Error exporting props:', error);
-      alert('Kunne ikke eksportere rekvisitter');
+      alert(t('prop.err.export'));
     }
   };
 
@@ -1103,7 +1124,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${project.name} - Utstyr</title>
+  <title>${project.name} - ${t('prop.cat.equipment')}</title>
   <style>
     @page { margin: 0; counter-increment: page; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1154,47 +1175,45 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     <div class="header">
       <div class="title">
         ${propIconSVG}
-        ${project.name} - Utstyr
+        ${project.name} - ${t('prop.cat.equipment')}
       </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('prop.export.exportedAt', { date: dateStr })}</div>
     </div>
     <div class="summary">
       <div class="summary-title">
         ${propIconSVG}
-        Oversikt
+        ${t('prop.export.overview')}
       </div>
       <div class="summary-grid">
         <div class="summary-item">
           <span class="summary-number">${totalProps}</span>
-          <span class="summary-label">Totalt Utstyr</span>
+          <span class="summary-label">${t('prop.export.totalEquipment')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${propsWithScenes}</span>
-          <span class="summary-label">Med Tildelte Scener</span>
+          <span class="summary-label">${t('prop.export.withAssignedScenes')}</span>
         </div>
       </div>
     </div>
     <div class="section">
       <div class="section-header">
         <div class="section-title">
-          <span class="section-icon">${propIconSVG}</span>
-          Utstyr
-        </div>
-        <span class="section-count">${totalProps} ${totalProps !== 1 ? 'enheter' : 'enhet'}</span>
+          <span class="section-icon">${propIconSVG}</span>${t('prop.cat.equipment')}</div>
+        <span class="section-count">${totalProps} ${totalProps !== 1 ? t('prop.export.units') : t('prop.export.unit')}</span>
       </div>
       <div class="section-content">
         ${props.length === 0
-          ? '<div class="empty-state">Ingen utstyr ennå</div>'
+          ? `<div class="empty-state">${t('prop.export.noEquipment')}</div>`
           : `<table>
           <thead>
             <tr>
-              <th style="width: 18%;">Navn</th>
-              <th style="width: 12%;">Kategori</th>
-              <th style="width: 25%;">Beskrivelse</th>
-              <th style="width: 8%;">Antall</th>
-              <th style="width: 15%;">Lagringssted</th>
-              <th style="width: 7%;">Scener</th>
-              <th style="width: 15%;">Notater</th>
+              <th style="width: 18%;">${t('prop.export.colName')}</th>
+              <th style="width: 12%;">${t('prop.export.colCategory')}</th>
+              <th style="width: 25%;">${t('prop.export.colDescription')}</th>
+              <th style="width: 8%;">${t('prop.export.colQuantity')}</th>
+              <th style="width: 15%;">${t('prop.export.colLocation')}</th>
+              <th style="width: 7%;">${t('prop.export.colScenes')}</th>
+              <th style="width: 15%;">${t('prop.export.colNotes')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1223,7 +1242,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
       <div class="footer-right">
-        <span class="page-number">Side </span>
+        <span class="page-number">${t('prop.export.page')} </span>
         <span>|</span>
         <span>${dateStr}</span>
       </div>
@@ -1321,7 +1340,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 backgroundClip: 'text',
               }}
             >
-              Utstyr & Rekvisitter
+              {t('prop.header.title')}
             </Typography>
             <Typography
               sx={{
@@ -1335,7 +1354,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             >
               <CategoryIcon sx={{ fontSize: { xs: 14, sm: 16 }, opacity: 0.7 }} />
-              Role Room: operativ styring av utstyr og rekvisitter
+              {t('prop.header.subtitle')}
             </Typography>
           </Box>
         </Box>
@@ -1349,11 +1368,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             justifyContent: { xs: 'space-between', sm: 'flex-end' },
           }}
         >
-          <Tooltip title="Eksporter til CSV (Ctrl+E)">
+          <Tooltip title={t('prop.tip.exportCsv')}>
             <Button
               variant="outlined"
               onClick={handleExportCSV}
-              aria-label="Eksporter rekvisitter til CSV"
+              aria-label={t('prop.aria.exportCsv')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -1364,11 +1383,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             >
               <ExportIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Eksporter</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>{t('prop.btn.export')}</Box>}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Vis/skjul statistikk">
+          <Tooltip title={t('prop.tip.toggleStats')}>
             <Button
               variant="outlined"
               onClick={() => setShowStats(!showStats)}
@@ -1386,14 +1405,14 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             </Button>
           </Tooltip>
 
-          <Tooltip title="Lagerstyring, reservasjoner og konsistens">
+          <Tooltip title={t('prop.tip.warehouse')}>
             <Button
               variant="outlined"
               onClick={() => {
                 blurFocusedElement();
                 setWarehouseDialogOpen(true);
               }}
-              aria-label="Åpne lagerstyring"
+              aria-label={t('prop.aria.openWarehouse')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -1410,17 +1429,17 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               <Inventory2Icon />
               {!isMobile && (
                 <Box component="span" sx={{ ml: 1 }}>
-                  {warehouseIssueCount > 0 ? `Lager (${warehouseIssueCount})` : 'Lager'}
+                  {warehouseIssueCount > 0 ? t('prop.btn.warehouseWithCount', { n: warehouseIssueCount }) : t('prop.btn.warehouse')}
                 </Box>
               )}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Legg til utstyr (Ctrl+N)">
+          <Tooltip title={t('prop.tip.addItem')}>
             <Button
               variant="contained"
               onClick={() => handleOpenDialog()}
-              aria-label="Legg til ny rekvisitt"
+              aria-label={t('prop.aria.addItem')}
               sx={{
                 bgcolor: '#9333ea',
                 color: '#fff',
@@ -1432,7 +1451,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
               >
                 <AddIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Ny post</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>{t('prop.btn.newItem')}</Box>}
             </Button>
           </Tooltip>
         </Box>
@@ -1470,7 +1489,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               textTransform: 'none',
             }}
           >
-            Alle ({props.length})
+            {t('prop.filter.all', { n: props.length })}
           </Button>
           <Button
             size="small"
@@ -1486,7 +1505,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               textTransform: 'none',
             }}
           >
-            Utstyr ({stats.itemTypeCount.equipment})
+            {t('prop.cat.equipment')} ({stats.itemTypeCount.equipment})
           </Button>
           <Button
             size="small"
@@ -1502,13 +1521,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               textTransform: 'none',
             }}
           >
-            Rekvisitter ({stats.itemTypeCount.prop})
+            {t('prop.filter.props')} ({stats.itemTypeCount.prop})
           </Button>
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', fontWeight: 600 }}>
-            Arbeidsmodus:
+            {t('prop.label.workMode')}
           </Typography>
           <Button
             size="small"
@@ -1538,7 +1557,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               textTransform: 'none',
             }}
           >
-            Pro-visning
+            {t('prop.mode.pro')}
           </Button>
         </Box>
       </Box>
@@ -1556,7 +1575,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             borderRadius: 2,
           }}
           role="region"
-          aria-label="Statistikk over rekvisitter"
+          aria-label={t('prop.aria.stats')}
         >
           <Box sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -1565,7 +1584,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.total}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Unike</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('prop.stat.unique')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -1574,7 +1593,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.totalQuantity}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Totalt antall</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('prop.stat.totalQuantity')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -1583,7 +1602,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.favorites}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Favoritter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('prop.stat.favorites')}</Typography>
           </Box>
           {!isMobile && Object.entries(stats.categoryCount).slice(0, 4).map(([cat, count]) => (
             <Box key={cat} sx={{ textAlign: 'center' }}>
@@ -1609,7 +1628,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         }}
       >
         <TextField
-          placeholder={isMobile ? 'Søk...' : 'Søk etter navn, kategori, beskrivelse...'}
+          placeholder={isMobile ? t('prop.search.placeholderShort') : t('prop.search.placeholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           size="small"
@@ -1618,7 +1637,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 1 }} />,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
-            htmlInput: { 'aria-label': 'Søk i rekvisitter' },
+            htmlInput: { 'aria-label': t('prop.aria.search') },
           }}
           sx={{
             flex: 1,
@@ -1632,7 +1651,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         />
 
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-          <Tooltip title="Vis/skjul filtre">
+          <Tooltip title={t('prop.tip.toggleFilters')}>
             <Button
               variant={showFilters ? 'contained' : 'outlined'}
               onClick={() => setShowFilters(!showFilters)}
@@ -1650,7 +1669,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             </Button>
           </Tooltip>
 
-          <Tooltip title="Kortvisning">
+          <Tooltip title={t('prop.tip.gridView')}>
             <Button
               variant={viewMode === 'grid' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('grid')}
@@ -1668,7 +1687,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             </Button>
           </Tooltip>
 
-          <Tooltip title="Tabellvisning">
+          <Tooltip title={t('prop.tip.tableView')}>
             <Button
               variant={viewMode === 'table' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('table')}
@@ -1687,7 +1706,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           </Tooltip>
 
           {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+            <Tooltip title={t('prop.tip.deleteSelected', { n: selectedIds.size })}>
               <Button
                 variant="contained"
                 onClick={handleBulkDelete}
@@ -1721,18 +1740,18 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           }}
         >
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Filtrer på kategori</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('prop.filter.category')}</InputLabel>
             <Select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              label="Filtrer på kategori"
+              label={t('prop.filter.category')}
               sx={{
                 color: '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
               }}
             >
-              <MenuItem value="all">Alle kategorier</MenuItem>
+              <MenuItem value="all">{t('prop.filter.allCategories')}</MenuItem>
               {availableCategories.map((cat) => (
                 <MenuItem key={cat} value={cat} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
                   {getCategoryLabel(cat)}
@@ -1751,7 +1770,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
               sx={{ color: '#9333ea', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
             >
-              Nullstill
+              {t('prop.btn.reset')}
             </Button>
           )}
         </Box>
@@ -1768,7 +1787,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           }}
         >
           <Typography sx={{ color: '#81c784', fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>
-            Pro-operasjoner
+            {t('prop.pro.operations')}
           </Typography>
           <Box
             sx={{
@@ -1778,32 +1797,32 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             }}
           >
             <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(76,175,80,0.13)', border: '1px solid rgba(76,175,80,0.3)' }}>
-              <Typography sx={{ color: '#a5d6a7', fontSize: '0.72rem', fontWeight: 700 }}>Klar for opptak</Typography>
+              <Typography sx={{ color: '#a5d6a7', fontSize: '0.72rem', fontWeight: 700 }}>{t('prop.pro.readyForShoot')}</Typography>
               <Typography sx={{ color: '#4caf50', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.readyCount}</Typography>
             </Box>
             <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,152,0,0.12)', border: '1px solid rgba(255,152,0,0.3)' }}>
-              <Typography sx={{ color: '#ffcc80', fontSize: '0.72rem', fontWeight: 700 }}>Mangler sted</Typography>
+              <Typography sx={{ color: '#ffcc80', fontSize: '0.72rem', fontWeight: 700 }}>{t('prop.pro.missingLocation')}</Typography>
               <Typography sx={{ color: '#ffb74d', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.missingLocationCount}</Typography>
             </Box>
             <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(3,169,244,0.12)', border: '1px solid rgba(3,169,244,0.3)' }}>
-              <Typography sx={{ color: '#81d4fa', fontSize: '0.72rem', fontWeight: 700 }}>Mangler scenekobling</Typography>
+              <Typography sx={{ color: '#81d4fa', fontSize: '0.72rem', fontWeight: 700 }}>{t('prop.pro.missingScene')}</Typography>
               <Typography sx={{ color: '#4fc3f7', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.missingSceneCount}</Typography>
             </Box>
             <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(244,67,54,0.12)', border: '1px solid rgba(244,67,54,0.3)' }}>
               <Typography sx={{ color: '#ef9a9a', fontSize: '0.72rem', fontWeight: 700 }}>
-                {'Lav beholdning (<=1)'}
+                {t('prop.pro.lowStock')}
               </Typography>
               <Typography sx={{ color: '#ef5350', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.lowStockCount}</Typography>
             </Box>
             <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(76,175,80,0.12)', border: '1px solid rgba(76,175,80,0.3)' }}>
               <Typography sx={{ color: '#a5d6a7', fontSize: '0.72rem', fontWeight: 700 }}>
-                Lager tilgjengelig
+                {t('prop.pro.stockAvailable')}
               </Typography>
               <Typography sx={{ color: '#81c784', fontWeight: 800, fontSize: '1.1rem' }}>{warehouseTotals.available}</Typography>
             </Box>
             <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,183,77,0.12)', border: '1px solid rgba(255,183,77,0.3)' }}>
               <Typography sx={{ color: '#ffcc80', fontSize: '0.72rem', fontWeight: 700 }}>
-                Lageravvik
+                {t('prop.pro.stockDiscrepancy')}
               </Typography>
               <Typography sx={{ color: '#ffb74d', fontWeight: 800, fontSize: '1.1rem' }}>{warehouseIssueCount}</Typography>
             </Box>
@@ -1822,7 +1841,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             '& .MuiAlert-icon': { color: '#9333ea' },
           }}
         >
-          Viser {filteredAndSortedProps.length} av {props.length} elementer
+          {t('prop.results.showing', { shown: filteredAndSortedProps.length, total: props.length })}
         </Alert>
       )}
 
@@ -1830,14 +1849,14 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       {props.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={equipPng}
-          title="Ingen utstyr eller rekvisitter ennå"
-          subtitle="Legg til første post for å bygge en strukturert produksjonsliste"
+          title={t('prop.empty.title')}
+          subtitle={t('prop.empty.subtitle')}
           color="#9333ea"
         />
       ) : filteredAndSortedProps.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-          <Typography variant="body1">Ingen treff på søket</Typography>
+          <Typography variant="body1">{t('prop.empty.noResults')}</Typography>
         </Box>
       ) : viewMode === 'table' ? (
         /* Table View */
@@ -1851,7 +1870,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          <Table aria-label="Rekvisitter tabell" sx={{ minWidth: { xs: 600, sm: 'auto' } }}>
+          <Table aria-label={t('prop.aria.tableItems')} sx={{ minWidth: { xs: 600, sm: 'auto' } }}>
             <TableHead>
               <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
                 <TableCell padding="checkbox">
@@ -1859,7 +1878,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     checked={selectedIds.size === filteredAndSortedProps.length && filteredAndSortedProps.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedProps.length}
                     onChange={handleSelectAll}
-                    aria-label="Velg alle rekvisitter"
+                    aria-label={t('prop.aria.selectAll')}
                     sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9333ea' } }}
                   />
                 </TableCell>
@@ -1869,9 +1888,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
-                  >
-                    Navn
-                  </TableSortLabel>
+                  >{t('prop.col.name')}</TableSortLabel>
                 </TableCell>
                 <TableCell>
                   <TableSortLabel
@@ -1879,9 +1896,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     direction={sortField === 'category' ? sortDirection : 'asc'}
                     onClick={() => handleSort('category')}
                     sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
-                  >
-                    Kategori
-                  </TableSortLabel>
+                  >{t('prop.col.category')}</TableSortLabel>
                 </TableCell>
                 <TableCell>
                   <TableSortLabel
@@ -1889,24 +1904,20 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     direction={sortField === 'quantity' ? sortDirection : 'asc'}
                     onClick={() => handleSort('quantity')}
                     sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
-                  >
-                    Antall
-                  </TableSortLabel>
+                  >{t('prop.col.quantity')}</TableSortLabel>
                 </TableCell>
-                <TableCell>Lagerstatus</TableCell>
+                <TableCell>{t('prop.col.stockStatus')}</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Lagringssted</TableCell>
+                <TableCell>{t('prop.col.location')}</TableCell>
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'scenes'}
                     direction={sortField === 'scenes' ? sortDirection : 'asc'}
                     onClick={() => handleSort('scenes')}
                     sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
-                  >
-                    Scener
-                  </TableSortLabel>
+                  >{t('prop.col.scenes')}</TableSortLabel>
                 </TableCell>
-                <TableCell align="right">Handlinger</TableCell>
+                <TableCell align="right">{t('prop.col.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1926,7 +1937,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     <Checkbox
                       checked={selectedIds.has(prop.id)}
                       onChange={() => handleToggleSelect(prop.id)}
-                      inputProps={{ 'aria-label': `Velg rekvisitt ${prop.name}` }}
+                      inputProps={{ 'aria-label': t('prop.aria.selectItem', { name: prop.name }) }}
                       sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9333ea' } }}
                     />
                   </TableCell>
@@ -1952,7 +1963,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     {warehouseTotalsForItem ? (
                       <Stack direction="row" spacing={0.5} flexWrap="wrap">
                         <Chip
-                          label={`Tilg ${warehouseTotalsForItem.available}`}
+                          label={t('prop.chip.availShort', { n: warehouseTotalsForItem.available })}
                           size="small"
                           sx={{
                             bgcolor: 'rgba(76,175,80,0.15)',
@@ -1963,7 +1974,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           }}
                         />
                         <Chip
-                          label={`Res ${warehouseTotalsForItem.reserved}`}
+                          label={t('prop.chip.resShort', { n: warehouseTotalsForItem.reserved })}
                           size="small"
                           sx={{
                             bgcolor: 'rgba(255,183,77,0.15)',
@@ -2003,37 +2014,37 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   </TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <Tooltip title={favorites.has(prop.id) ? 'Fjern favoritt' : 'Favoritt'}>
+                      <Tooltip title={favorites.has(prop.id) ? t('prop.tip.removeFavorite') : t('prop.tip.favorite')}>
                         <IconButton
                           onClick={() => toggleFavorite(prop.id)}
-                          aria-label={favorites.has(prop.id) ? `Fjern ${prop.name} fra favoritter` : `Legg til ${prop.name} i favoritter`}
+                          aria-label={favorites.has(prop.id) ? t('prop.aria.removeFromFavorites', { name: prop.name }) : t('prop.aria.addToFavorites', { name: prop.name })}
                           sx={{ color: favorites.has(prop.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}
                         >
                           {favorites.has(prop.id) ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Dupliser">
+                      <Tooltip title={t('prop.tip.duplicate')}>
                         <IconButton
                           onClick={() => handleDuplicate(prop)}
-                          aria-label={`Dupliser ${prop.name}`}
+                          aria-label={t('prop.aria.duplicate', { name: prop.name })}
                           sx={{ color: 'rgba(255,255,255,0.87)' }}
                         >
                           <DuplicateIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger">
+                      <Tooltip title={t('prop.tip.edit')}>
                         <IconButton
                           onClick={() => handleOpenDialog(prop)}
-                          aria-label={`Rediger ${prop.name}`}
+                          aria-label={t('prop.aria.edit', { name: prop.name })}
                           sx={{ color: '#9333ea' }}
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('prop.tip.delete')}>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(prop.id)}
-                          aria-label={`Slett ${prop.name}`}
+                          aria-label={t('prop.aria.delete', { name: prop.name })}
                           sx={{ color: '#ff4444' }}
                         >
                           <DeleteIcon fontSize="small" />
@@ -2051,7 +2062,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         /* Kortvisning - CSS Grid */
         <Box
           role="list"
-          aria-label="Liste over rekvisitter"
+          aria-label={t('prop.aria.itemsList')}
           sx={{
             display: 'grid',
             gridTemplateColumns: {
@@ -2164,7 +2175,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       <Checkbox
                         checked={selectedIds.has(prop.id)}
                         onChange={() => handleToggleSelect(prop.id)}
-                        inputProps={{ 'aria-label': `Velg rekvisitt ${prop.name}` }}
+                        inputProps={{ 'aria-label': t('prop.aria.selectItem', { name: prop.name }) }}
                         sx={{
                           p: 0.5,
                           color: 'rgba(255,255,255,0.87)',
@@ -2200,7 +2211,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     </Box>
                     <IconButton
                       onClick={() => toggleFavorite(prop.id)}
-                      aria-label={favorites.has(prop.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
+                      aria-label={favorites.has(prop.id) ? t('prop.tip.removeFavorite') : t('prop.tip.addFavorite')}
                       sx={{
                         color: favorites.has(prop.id) ? '#ffc107' : 'rgba(255,255,255,0.7)',
                         bgcolor: 'rgba(0,0,0,0.3)',
@@ -2270,7 +2281,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     >
                       <InventoryIcon sx={{ fontSize: 16, color: '#a78bfa' }} />
                       <Typography sx={{ color: '#a78bfa', fontSize: '0.85rem', fontWeight: 700 }}>
-                        {prop.quantity} stk
+                        {t('prop.card.pieces', { n: prop.quantity })}
                       </Typography>
                     </Box>
                   )}
@@ -2278,7 +2289,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   {warehouseTotalsForItem && (
                     <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
                       <Chip
-                        label={`Tilgjengelig ${warehouseTotalsForItem.available}`}
+                        label={t('prop.chip.available', { n: warehouseTotalsForItem.available })}
                         size="small"
                         sx={{
                           bgcolor: 'rgba(76,175,80,0.15)',
@@ -2289,7 +2300,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         }}
                       />
                       <Chip
-                        label={`Reservert ${warehouseTotalsForItem.reserved}`}
+                        label={t('prop.chip.reserved', { n: warehouseTotalsForItem.reserved })}
                         size="small"
                         sx={{
                           bgcolor: 'rgba(255,183,77,0.15)',
@@ -2348,9 +2359,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         <LocationIcon sx={{ fontSize: 20, color: '#81c784' }} />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase' }}>
-                          Lagringsplass
-                        </Typography>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase' }}>{t('prop.card.storageLocation')}</Typography>
                         <Typography sx={{ color: '#fff', fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {prop.location}
                         </Typography>
@@ -2386,7 +2395,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         <CategoryIcon sx={{ fontSize: 16, color: '#c084fc' }} />
                       </Box>
                       <Typography sx={{ color: '#c084fc', fontSize: '0.8rem', fontWeight: 600 }}>
-                        {(prop.assignedScenes?.length || 0)} scene{(prop.assignedScenes?.length || 0) !== 1 ? 'r' : ''} tildelt
+                        {t('prop.card.scenesAssigned', { n: prop.assignedScenes?.length || 0 })}
                       </Typography>
                     </Box>
                   )}
@@ -2404,14 +2413,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                             border: '1px solid rgba(255,255,255,0.1)',
                           }}
                         >
-                          <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', mb: 0.5 }}>
-                            Notater
-                          </Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', mb: 0.5 }}>{t('prop.card.notes')}</Typography>
                           <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.85rem', lineHeight: 1.5 }}>
                             {prop.notes}
                           </Typography>
                           <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', mt: 0.55 }}>
-                            Skrevet av:{' '}
+                            {t('prop.card.writtenBy')}{' '}
                             {(() => {
                               const rawAuthor =
                                 prop.notesAuthorName
@@ -2419,7 +2426,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                                 ?? prop.notesBy;
                               return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                                 ? rawAuthor.trim()
-                                : 'Ikke registrert';
+                                : t('prop.card.notRegistered');
                             })()}
                             {(() => {
                               const rawUpdatedAt =
@@ -2437,7 +2444,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       {prop.images && prop.images.length > 1 && (
                         <Box>
                           <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', mb: 1 }}>
-                            Flere bilder ({prop.images.length})
+                            {t('prop.card.moreImages', { n: prop.images.length })}
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             {prop.images.slice(1, 5).map((image, idx) => (
@@ -2501,7 +2508,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       onClick={() => toggleCardExpanded(prop.id)}
                       endIcon={expandedCards.has(prop.id) ? <CollapseIcon /> : <ExpandIcon />}
                       aria-expanded={expandedCards.has(prop.id)}
-                      aria-label={expandedCards.has(prop.id) ? 'Skjul detaljer' : 'Vis mer'}
+                      aria-label={expandedCards.has(prop.id) ? t('prop.card.hideDetails') : t('prop.card.showMore')}
                       sx={{
                         bgcolor: expandedCards.has(prop.id) ? 'rgba(147,51,234,0.25)' : 'rgba(147,51,234,0.15)',
                         color: expandedCards.has(prop.id) ? '#c084fc' : '#fff',
@@ -2523,13 +2530,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         ...focusVisibleStyles,
                       }}
                     >
-                      {expandedCards.has(prop.id) ? 'Skjul detaljer' : 'Vis detaljer'}
+                      {expandedCards.has(prop.id) ? t('prop.card.hideDetails') : t('prop.card.showDetails')}
                     </Button>
                     <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 1 } }}>
-                      <Tooltip title="Dupliser" arrow>
+                      <Tooltip title={t('prop.tip.duplicate')} arrow>
                         <IconButton
                           onClick={() => handleDuplicate(prop)}
-                          aria-label={`Dupliser ${prop.name}`}
+                          aria-label={t('prop.aria.duplicate', { name: prop.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -2541,10 +2548,10 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger" arrow>
+                      <Tooltip title={t('prop.tip.edit')} arrow>
                         <IconButton
                           onClick={() => handleOpenDialog(prop)}
-                          aria-label={`Rediger ${prop.name}`}
+                          aria-label={t('prop.aria.edit', { name: prop.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -2556,10 +2563,10 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           <EditIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett" arrow>
+                      <Tooltip title={t('prop.tip.delete')} arrow>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(prop.id)}
-                          aria-label={`Slett ${prop.name}`}
+                          aria-label={t('prop.aria.delete', { name: prop.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -2586,11 +2593,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         open={undoSnackbarOpen}
         autoHideDuration={6000}
         onClose={() => setUndoSnackbarOpen(false)}
-        message={`"${deletedProp?.name}" slettet`}
+        message={t('prop.snackbar.deleted', { name: deletedProp?.name ?? '' })}
         action={
-          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#9333ea' }}>
-            Angre
-          </Button>
+          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#9333ea' }}>{t('prop.btn.undo')}</Button>
         }
         sx={{
           '& .MuiSnackbarContent-root': {
@@ -2653,16 +2658,16 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             px: { xs: 2, sm: 3 },
           }}
         >
-          {editingProp ? 'Rediger post' : 'Ny post'}
+          {editingProp ? t('prop.dialog.editTitle') : t('prop.dialog.newTitle')}
           {isMobile && (
-            <IconButton onClick={handleCloseDialog} aria-label="Lukk dialog" sx={{ color: 'rgba(255,255,255,0.87)', mr: -1 }}>
+            <IconButton onClick={handleCloseDialog} aria-label={t('prop.aria.closeDialog')} sx={{ color: 'rgba(255,255,255,0.87)', mr: -1 }}>
               <CloseIcon />
             </IconButton>
           )}
         </DialogTitle>
         <DialogContent sx={{ pt: { xs: 2, sm: 3 }, px: { xs: 2, sm: 3 }, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <Typography id={dialogDescId} variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            Fyll ut informasjon om utstyr eller rekvisitt. Felter merket med * er påkrevd.
+            {t('prop.dialog.description')}
           </Typography>
           <Box
             sx={{
@@ -2673,7 +2678,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             }}
           >
             <TextField
-              label="Navn *"
+              label={t('prop.field.name')}
               fullWidth
               value={formData.name || ''}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -2724,12 +2729,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                 }}
               >
-                <MenuItem value="equipment" sx={{ minHeight: TOUCH_TARGET_SIZE }}>
-                  Utstyr
-                </MenuItem>
-                <MenuItem value="prop" sx={{ minHeight: TOUCH_TARGET_SIZE }}>
-                  Rekvisitt
-                </MenuItem>
+                <MenuItem value="equipment" sx={{ minHeight: TOUCH_TARGET_SIZE }}>{t('prop.cat.equipment')}</MenuItem>
+                <MenuItem value="prop" sx={{ minHeight: TOUCH_TARGET_SIZE }}>{t('prop.cat.prop')}</MenuItem>
               </Select>
             </FormControl>
 
@@ -2739,11 +2740,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 gridColumn: { xs: '1 / -1', sm: '2 / span 1' },
               }}
             >
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kategori</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('prop.field.category')}</InputLabel>
               <Select
                 value={normalizeCategoryKey(formData.category)}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                label="Kategori"
+                label={t('prop.field.category')}
                 MenuProps={selectMenuProps}
                 sx={{
                   color: '#fff',
@@ -2760,7 +2761,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             </FormControl>
 
             <TextField
-              label="Beskrivelse"
+              label={t('prop.field.description')}
               fullWidth
               multiline
               rows={2}
@@ -2787,9 +2788,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             <Box sx={{ gridColumn: '1 / -1' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                 <ImageIcon sx={{ color: '#9333ea', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
-                <Typography variant="subtitle2" sx={{ color: '#9333ea', fontWeight: 600 }}>
-                  Bilder
-                </Typography>
+                <Typography variant="subtitle2" sx={{ color: '#9333ea', fontWeight: 600 }}>{t('prop.field.images')}</Typography>
               </Box>
               
               {/* Existing images */}
@@ -2820,7 +2819,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       <Box
                         component="img"
                         src={image}
-                        alt={`Bilde ${index + 1}`}
+                        alt={t('prop.aria.image', { n: index + 1 })}
                         sx={{
                           width: '100%',
                           height: '100%',
@@ -2830,7 +2829,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       <IconButton
                         size="small"
                         onClick={() => handleRemoveImage(index)}
-                        aria-label={`Fjern bilde ${index + 1}`}
+                        aria-label={t('prop.aria.removeImage', { n: index + 1 })}
                         sx={{
                           position: 'absolute',
                           top: 4,
@@ -2874,14 +2873,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       bgcolor: 'rgba(147,51,234,0.1)',
                     },
                   }}
-                >
-                  Last opp bilder
-                </Button>
+                >{t('prop.btn.uploadImages')}</Button>
               </label>
             </Box>
 
             <TextField
-              label="Antall"
+              label={t('prop.field.quantity')}
               fullWidth
               type="number"
               value={formData.quantity || 1}
@@ -2906,7 +2903,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             />
 
             <TextField
-              label="Lagringssted"
+              label={t('prop.field.location')}
               fullWidth
               value={formData.location || ''}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -2929,7 +2926,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             />
 
             <TextField
-              label="Notater"
+              label={t('prop.field.notes')}
               fullWidth
               multiline
               rows={3}
@@ -2952,7 +2949,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             />
             <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
-              Skrevet av:{' '}
+              {t('prop.card.writtenBy')}{' '}
               {(() => {
                 const rawAuthor =
                   formData.notesAuthorName
@@ -2960,7 +2957,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   ?? formData.notesBy;
                 return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                   ? rawAuthor.trim()
-                  : 'Ikke registrert';
+                  : t('prop.card.notRegistered');
               })()}
               {(() => {
                 const rawUpdatedAt =
@@ -2999,9 +2996,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             startIcon={<CancelIcon />}
             fullWidth={isMobile}
             sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
-          >
-            Avbryt
-          </Button>
+          >{t('prop.btn.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleSave}
@@ -3015,9 +3010,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               ...focusVisibleStyles,
               '&:hover': { bgcolor: '#6d28d9' },
             }}
-          >
-            Lagre
-          </Button>
+          >{t('prop.btn.save')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -3028,7 +3021,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           refreshWarehouseSummary();
         }}
         projectId={projectId}
-        title="Lagerstyring - Utstyr & rekvisitter"
+        title={t('prop.warehouse.dialogTitle')}
         items={warehouseDialogItems}
         locationSeeds={warehouseLocationSeeds}
         onRequestEditItem={(item) => {
