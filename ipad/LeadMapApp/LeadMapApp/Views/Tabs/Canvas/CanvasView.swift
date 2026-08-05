@@ -422,6 +422,34 @@ struct CanvasView: View {
             }
             .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
 
+            // Context Awareness: Canvas VET hvor du er, hvilket møte du
+            // har og hvilken rute du kjører — foreslår riktig notat.
+            if let forslag = kontekstForslag() {
+                Button {
+                    forslag.handling()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: forslag.ikon)
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(CvBrand.purpleLight)
+                        Text(forslag.tekst)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 4)
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.appScaled(size: 14))
+                            .foregroundStyle(CvBrand.purpleLight)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(CvBrand.purple.opacity(0.16),
+                                in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(CvBrand.purple.opacity(0.45), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16).padding(.bottom, 10)
+            }
             // Søk (tittel/selskap)
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
@@ -711,6 +739,16 @@ struct CanvasView: View {
                             }
                         } label: {
                             Label("Lead-kort", systemImage: "person.crop.rectangle")
+                        }
+                        Menu {
+                            ForEach(appState.leads.sorted {
+                                ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
+                            }.prefix(20), id: \.id) { lead in
+                                Button(lead.name) { settInnStakeholderKart(lead) }
+                            }
+                        } label: {
+                            Label("Stakeholder-kart (Visual CRM)",
+                                  systemImage: "person.3.sequence.fill")
                         }
                         Menu {
                             Button("Leads totalt") { settInnKPI(nokkel: "leads") }
@@ -2038,6 +2076,100 @@ struct CanvasView: View {
             }
         }
         return linjer.isEmpty ? "" : linjer.joined(separator: "; ")
+    }
+
+    // MARK: Context Awareness
+
+    struct KontekstForslag {
+        let ikon: String
+        let tekst: String
+        let handling: () -> Void
+    }
+
+    /// Prioritet: pågående/nært møte > aktiv rute > fysisk nær en lead.
+    private func kontekstForslag() -> KontekstForslag? {
+        // 1) Møte innen ±30 min → møtenotatet for selskapet.
+        let naa = Date()
+        if let mote = appState.calendar
+            .filter({ $0.eventType == "meeting" })
+            .compactMap({ m -> (CalendarEvent, Date)? in
+                guard let t = m.datetime else { return nil }
+                return abs(t.timeIntervalSince(naa)) < 30 * 60 ? (m, t) : nil
+            })
+            .min(by: { abs($0.1.timeIntervalSince(naa)) < abs($1.1.timeIntervalSince(naa)) }) {
+            let selskap = mote.0.leadName
+            let minutter = Int(mote.1.timeIntervalSince(naa) / 60)
+            let nar = minutter > 1 ? "om \(minutter) min" : "nå"
+            return KontekstForslag(
+                ikon: "person.2.wave.2.fill",
+                tekst: "Møte med \(selskap) \(nar) — åpne møtenotatet",
+                handling: { aapneEllerOpprett(selskap: selskap, type: .mote) })
+        }
+        // 2) Aktiv rute → rutenotatet.
+        if let plan = appState.rutePlan, plan.index < plan.stopp.count {
+            let stopp = plan.stopp[plan.index]
+            return KontekstForslag(
+                ikon: "point.topleft.down.curvedto.point.bottomright.up.fill",
+                tekst: "Aktiv rute — neste: \(stopp.name). Åpne rutenotatet",
+                handling: { aapneEllerOpprett(selskap: stopp.name, type: .rute) })
+        }
+        // 3) Fysisk nær en lead (<300 m) → lead-notatet.
+        if let pos = KartLocationManager.shared.currentCoordinate {
+            let her = CLLocation(latitude: pos.latitude, longitude: pos.longitude)
+            if let naer = appState.leads
+                .map({ ($0, her.distance(from: CLLocation(latitude: $0.latitude,
+                                                          longitude: $0.longitude))) })
+                .filter({ $0.1 < 300 })
+                .min(by: { $0.1 < $1.1 }) {
+                let lead = naer.0
+                return KontekstForslag(
+                    ikon: "mappin.and.ellipse",
+                    tekst: "Du er hos \(lead.name) — åpne notatet",
+                    handling: { aapneEllerOpprett(selskap: lead.name, type: .lead,
+                                                  leadId: lead.id) })
+            }
+        }
+        return nil
+    }
+
+    /// Åpne siste notat for selskapet — eller opprett nytt pre-koblet.
+    private func aapneEllerOpprett(selskap: String, type: CanvasKategori,
+                                   leadId: String? = nil) {
+        if let eksisterende = notater.first(where: {
+            $0.erMin && ($0.selskap ?? "").caseInsensitiveCompare(selskap) == .orderedSame
+        }) {
+            velg(eksisterende)
+        } else {
+            nyttNotat(type: type)
+            tittel = "\(type.etikett) — \(selskap)"
+            kobletSelskap = selskap
+            kobletLeadId = leadId
+        }
+    }
+
+    // MARK: Visual CRM (stakeholder-kart)
+
+    /// Stakeholder-kartet: selskapet i midten, rollene rundt — flytt,
+    /// koble videre, bygg organisasjonen slik den faktisk er.
+    private func settInnStakeholderKart(_ lead: LeadModel) {
+        papir = .tankekart
+        kobletSelskap = lead.name
+        kobletLeadId = lead.id
+        let senterId = UUID().uuidString
+        noder.append(CanvasNode(id: senterId, parentId: nil,
+                                tekst: lead.name, x: 470, y: 330,
+                                fargeHex: "#B973FF"))
+        let roller: [(String, Double, Double, String)] = [
+            ("CEO", 250, 160, "#FA7333"),
+            ("CFO", 690, 160, "#F9BF24"),
+            ("Innkjøp", 210, 430, "#33D999"),
+            ("IT", 470, 540, "#579BF9"),
+            ("Prosjekt", 720, 430, "#59D9D9"),
+        ]
+        for (navn, x, y, farge) in roller {
+            noder.append(CanvasNode(parentId: senterId, tekst: navn,
+                                    x: x, y: y, fargeHex: farge))
+        }
     }
 
     // MARK: Multi-select + bibliotek
