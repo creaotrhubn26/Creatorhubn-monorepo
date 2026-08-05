@@ -8,6 +8,11 @@ NYTT I DETTE BYGGET — CANVAS ORGANISERT
 • Auto-tittel: øverste håndskrift-linje blir notatets tittel mens du skriver
 • PDF-analyse: importert tilbud/kontrakt leses av AI med en gang — viktig oppsummering + punkter du huker av og tar opp på møtet (havner i møtesløyfa og som kort på flata)
 • Ekte PDF-håndtering: dokumentet lagres i original, sidene rendres vektor-skarpt (aldri bilder) — og «Del dokumentet (annotert PDF)» beholder søkbar tekst med blekket oppå
+• Marker med tusjen i PDF-en → teksten under foreslås som punkt: «Ta opp på møtet» eller rett i kundeminnet
+• Leser-modus: åpne dokumentet i fullskjerm med søk, klyp-zoom, tekstmarkering og side-navigator
+• «Send til kontakten»: e-post med den annoterte PDF-en vedlagt — logges i møteloggen
+• Tilbuds-diff: ny versjon i samme kundemappe sammenlignes automatisk med forrige (pris/frister/forbehold)
+• Den annoterte eksporten tar nå med tekstbokser, stempler og former — og notatlista laster raskere (dokumentene hentes først når du åpner notatet)
 
 NYTT: LEADGRID CANVAS
 • Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso

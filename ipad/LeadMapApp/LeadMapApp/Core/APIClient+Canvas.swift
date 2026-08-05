@@ -227,6 +227,28 @@ extension APIClient {
             method: "DELETE", body: nil)
     }
 
+    /// Last opp dokument-bytes til egen tabell (klient-generert id).
+    func lastOppCanvasDokument(notatId: String, dokId: String,
+                               navn: String, base64: String) async throws {
+        struct Body: Encodable { let id: String; let navn: String; let base64: String }
+        let data = try JSONEncoder().encode(Body(id: dokId, navn: navn, base64: base64))
+        _ = try await _request("/api/leadgrid/canvas/\(notatId)/dokumenter",
+                               method: "POST", body: data)
+    }
+
+    /// Hent dokument-bytes on-demand (lazy — lista bærer kun metadata).
+    func hentCanvasDokument(dokId: String) async throws -> (navn: String, base64: String) {
+        struct Dok: Decodable { let id: String; let navn: String; let base64: String }
+        struct Resp: Decodable { let dokument: Dok }
+        let r: Resp = try await _get("/api/leadgrid/canvas/dokumenter/\(dokId)")
+        return (r.dokument.navn, r.dokument.base64)
+    }
+
+    func slettCanvasDokument(dokId: String) async throws {
+        _ = try await _request("/api/leadgrid/canvas/dokumenter/\(dokId)",
+                               method: "DELETE", body: nil)
+    }
+
     /// Hent notatet tilbake fra papirkurven.
     func gjenopprettCanvasNotat(id: String) async throws {
         _ = try await _request("/api/leadgrid/canvas/\(id)/gjenopprett",

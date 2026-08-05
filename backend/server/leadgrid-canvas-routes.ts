@@ -96,6 +96,21 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE leadgrid_canvas_notater
       ADD COLUMN IF NOT EXISTS dokumenter TEXT NOT NULL DEFAULT '[]'`);
+  // Nivå 2 (Daniel 2026-08-05): dokument-bytene flyttes til egen tabell —
+  // notat-raden bærer kun metadata, klienten henter bytes on-demand.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_canvas_dokumenter (
+      id TEXT PRIMARY KEY,
+      notat_id UUID NOT NULL,
+      organization_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      navn TEXT NOT NULL DEFAULT '',
+      base64 TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_canvas_dokumenter_notat
+      ON leadgrid_canvas_dokumenter (notat_id)`);
   // Papirkurv (Daniel 2026-08-05): soft delete — notatet ligger 30 dager
   // i papirkurven før det tømmes for godt (lat opprydding i GET).
   await pool.query(`
@@ -391,6 +406,88 @@ export function registerLeadgridCanvasRoutes(deps: {
       res.json({ ok: true });
     } catch (e) {
       console.error("[canvas] DELETE failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Last opp et dokument (PDF) til notatet — klient-generert id så
+   *  side-objektenes referanser står seg. Maks ~20 MB (27M base64-tegn). */
+  app.post("/api/leadgrid/canvas/:id/dokumenter", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      await ensureSchema(pool);
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const dokId = String(b.id ?? "").slice(0, 64);
+      const navn = String(b.navn ?? "").slice(0, 200);
+      const base64 = String(b.base64 ?? "");
+      if (!dokId || !base64) { res.status(400).json({ error: "bad_request" }); return; }
+      if (base64.length > 27_000_000) {
+        res.status(413).json({ error: "dokument_for_stort" });
+        return;
+      }
+      // Eier-sjekk på notatet.
+      const eier = await pool.query(
+        `SELECT 1 FROM leadgrid_canvas_notater
+          WHERE id = $1 AND organization_id = $2 AND user_id = $3`,
+        [req.params.id, orgId, session.userId]);
+      if (eier.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      await pool.query(
+        `INSERT INTO leadgrid_canvas_dokumenter
+           (id, notat_id, organization_id, user_id, navn, base64)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET navn = EXCLUDED.navn,
+                                        base64 = EXCLUDED.base64`,
+        [dokId, req.params.id, orgId, session.userId, navn, base64]);
+      res.json({ ok: true, id: dokId });
+    } catch (e) {
+      console.error("[canvas] dokument-opplasting failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Hent dokument-bytes on-demand (eier ELLER delt i org-en). */
+  app.get("/api/leadgrid/canvas/dokumenter/:dokId", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `SELECT d.id, d.navn, d.base64
+           FROM leadgrid_canvas_dokumenter d
+           JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
+          WHERE d.id = $1 AND n.organization_id = $2
+            AND (n.user_id = $3 OR n.delt)`,
+        [req.params.dokId, orgId, session.userId]);
+      const rad = r.rows[0];
+      if (!rad) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ dokument: { id: rad.id, navn: rad.navn, base64: rad.base64 } });
+    } catch (e) {
+      console.error("[canvas] dokument-henting failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Slett dokument (eier) — kalles når siste side-objekt fjernes. */
+  app.delete("/api/leadgrid/canvas/dokumenter/:dokId", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `DELETE FROM leadgrid_canvas_dokumenter
+          WHERE id = $1 AND user_id = $2`,
+        [req.params.dokId, session.userId]);
+      if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("[canvas] dokument-sletting failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });

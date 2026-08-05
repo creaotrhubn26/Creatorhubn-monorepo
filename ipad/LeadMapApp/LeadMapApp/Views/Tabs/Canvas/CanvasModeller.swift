@@ -227,7 +227,11 @@ struct CanvasObjekt: Codable, Identifiable, Hashable {
 struct CanvasDokument: Codable, Identifiable, Hashable {
     var id: String = UUID().uuidString
     var navn: String
+    /// Tom når bytene bor i backend-tabellen (lazy) — hentes ved åpning.
     var base64: String
+    /// Bytene er lastet opp til egen backend-tabell → notatet lagrer kun
+    /// metadata (rask liste). nil/false = inline (legacy / ikke synket).
+    var opplastet: Bool? = nil
 }
 
 /// Levende tankekart/brainstorm-node (fase 7): boblene er OBJEKTER —
