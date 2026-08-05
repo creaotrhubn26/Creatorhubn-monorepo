@@ -125,6 +125,7 @@ import { ProductionDayCardInfo } from './ProductionDayCardInfo';
 import { castingAuthService } from '../services/castingAuthService';
 import settingsService, { getCurrentUserId } from '../services/settingsService';
 import { useAuth } from '@/hooks/useAuth';
+import { useT } from '../../../i18n';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
 import AddShotDialog, { type AddShotDialogCreatePayload } from './production/AddShotDialog';
 import SceneStoryboardDialog from './production/SceneStoryboardDialog';
@@ -176,20 +177,7 @@ type SortField = 'scene' | 'shots' | 'updated';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table' | '2d-planner';
 
-const STORYBOARD_TEMPLATE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'cinematic', label: 'Filmisk - Dramatisk kinolook' },
-  { value: 'documentary', label: 'Dokumentar - Naturlig stil' },
-  { value: 'commercial', label: 'Reklame - Profesjonelt' },
-  { value: 'drama', label: 'Drama/TV-serie - Varme toner' },
-  { value: 'music_video', label: 'Musikkvideo - Kreativ' },
-  { value: 'news', label: 'Nyhetsreportasje - Nøytral' },
-  { value: 'horror', label: 'Skrekk/Thriller - Mørk' },
-  { value: 'comedy', label: 'Komedie - Lys stemning' },
-  { value: 'action', label: 'Action - Dynamisk' },
-  { value: 'noir', label: 'Film Noir - Klassisk' },
-  { value: 'romantic', label: 'Romantisk - Myk stemning' },
-  { value: 'sci_fi', label: 'Sci-Fi - Futuristisk' },
-];
+// Storyboard template options are built inside the component via t() (see storyboardTemplateOptions).
 
 const applyMentionSuggestion = (sourceText: string | undefined, name: string): string => {
   const current = typeof sourceText === 'string' ? sourceText : '';
@@ -282,12 +270,30 @@ export function CastingShotListPanel({
   const toast = useToast();
   const { user } = useAuth();
   const branding = useBrandingSettings();
+  const { t } = useT();
+  const storyboardTemplateOptions = useMemo(
+    () => [
+      { value: 'cinematic', label: t('shot.tpl.cinematic') },
+      { value: 'documentary', label: t('shot.tpl.documentary') },
+      { value: 'commercial', label: t('shot.tpl.commercial') },
+      { value: 'drama', label: t('shot.tpl.drama') },
+      { value: 'music_video', label: t('shot.tpl.music_video') },
+      { value: 'news', label: t('shot.tpl.news') },
+      { value: 'horror', label: t('shot.tpl.horror') },
+      { value: 'comedy', label: t('shot.tpl.comedy') },
+      { value: 'action', label: t('shot.tpl.action') },
+      { value: 'noir', label: t('shot.tpl.noir') },
+      { value: 'romantic', label: t('shot.tpl.romantic') },
+      { value: 'sci_fi', label: t('shot.tpl.sci_fi') },
+    ],
+    [t],
+  );
 
   // ── Real-time collaboration ─────────────────────────────────────────────
   const rt = useShotListRealTime({
     projectId,
     userId:   user?.id ?? 'anonymous',
-    userName: (user as any)?.displayName ?? user?.email?.split('@')[0] ?? 'Ukjent',
+    userName: (user as any)?.displayName ?? user?.email?.split('@')[0] ?? t('shot.unknownUser'),
   });
   const [showAuditLog, setShowAuditLog] = useState(false);
   const auditLogAnchorRef = useRef<HTMLButtonElement | null>(null);
@@ -824,25 +830,25 @@ export function CastingShotListPanel({
   };
 
   const getUserRoleLabel = (role?: UserRoleType | null): string => {
-    if (!role) return 'Bruker';
+    if (!role) return t('shot.role.user');
     const labels: Record<UserRoleType, string> = {
-      director: 'Regissør',
-      producer: 'Produsent',
-      casting_director: 'Castingansvarlig',
-      production_manager: 'Produsentleder',
-      camera_team: 'Kamerateam',
-      content_producer: 'Innholdsprodusent',
-      client_reviewer: 'Klient-revisor',
-      agency: 'Byrå',
-      writer: 'Forfatter',
-      script_editor: 'Manusredaktor',
-      reader: 'Leser',
+      director: t('shot.role.director'),
+      producer: t('shot.role.producer'),
+      casting_director: t('shot.role.castingDirector'),
+      production_manager: t('shot.role.productionManager'),
+      camera_team: t('shot.role.cameraTeam'),
+      content_producer: t('shot.role.contentProducer'),
+      client_reviewer: t('shot.role.clientReviewer'),
+      agency: t('shot.role.agency'),
+      writer: t('shot.role.writer'),
+      script_editor: t('shot.role.scriptEditor'),
+      reader: t('shot.role.reader'),
     };
     return labels[role] || role;
   };
 
   const formatRoleLabel = (role?: string | null): string => {
-    if (!role) return 'Ukjent rolle';
+    if (!role) return t('shot.role.unknown');
     if (role in {
       director: true,
       producer: true,
@@ -867,7 +873,7 @@ export function CastingShotListPanel({
   const getProfileById = (profileId?: string): { name: string; email?: string; avatar?: string } | null => {
     if (!profileId) return null;
     if (user && profileId === user.id) {
-      return { name: user.name || 'Meg', email: user.email, avatar: getUserAvatarUrl() };
+      return { name: user.name || t('shot.me'), email: user.email, avatar: getUserAvatarUrl() };
     }
     const crewMember = crewMembers.find((member) => member.id === profileId);
     if (crewMember) {
@@ -877,15 +883,15 @@ export function CastingShotListPanel({
   };
 
   const getAssigneeLabel = (assigneeId?: string): string => {
-    if (!assigneeId) return 'Ingen';
+    if (!assigneeId) return t('shot.assignee.none');
     if (user && assigneeId === user.id) {
-      return `${user.name} (meg)`;
+      return `${user.name} (${t('shot.meLower')})`;
     }
     const crewMember = crewMembers.find((member) => member.id === assigneeId);
     if (crewMember) {
       return `${crewMember.name} (${crewMember.role})`;
     }
-    return 'Ukjent';
+    return t('shot.unknown');
   };
 
   const getInitials = (name?: string): string => {
@@ -941,7 +947,7 @@ export function CastingShotListPanel({
     if (rounded < 60) return `${rounded}m`;
     const hours = Math.floor(rounded / 60);
     const remainder = rounded % 60;
-    return remainder > 0 ? `${hours}t ${remainder}m` : `${hours}t`;
+    return remainder > 0 ? `${hours}${t('shot.unit.hour')} ${remainder}m` : `${hours}${t('shot.unit.hour')}`;
   };
 
   const formatSecondsLabel = (seconds: number): string => {
@@ -955,11 +961,11 @@ export function CastingShotListPanel({
   const getEstimateConfidenceLabel = (confidence: 'low' | 'medium' | 'high'): string => {
     switch (confidence) {
       case 'high':
-        return 'Solid datagrunnlag';
+        return t('shot.conf.high');
       case 'medium':
-        return 'Godt datagrunnlag';
+        return t('shot.conf.medium');
       default:
-        return 'Foreløpig estimat';
+        return t('shot.conf.low');
     }
   };
 
@@ -967,28 +973,28 @@ export function CastingShotListPanel({
     switch (status) {
       case 'overloaded':
         return {
-          label: 'Overbooket',
+          label: t('shot.dayload.overloaded'),
           color: '#f97316',
           bg: 'rgba(249,115,22,0.14)',
           border: 'rgba(249,115,22,0.28)',
         };
       case 'tight':
         return {
-          label: 'Tett dag',
+          label: t('shot.dayload.tight'),
           color: '#facc15',
           bg: 'rgba(250,204,21,0.12)',
           border: 'rgba(250,204,21,0.24)',
         };
       case 'unscheduled':
         return {
-          label: 'Mangler plan',
+          label: t('shot.dayload.unscheduled'),
           color: '#94a3b8',
           bg: 'rgba(148,163,184,0.12)',
           border: 'rgba(148,163,184,0.22)',
         };
       default:
         return {
-          label: 'God margin',
+          label: t('shot.dayload.healthy'),
           color: '#4ade80',
           bg: 'rgba(74,222,128,0.12)',
           border: 'rgba(74,222,128,0.22)',
@@ -1023,15 +1029,15 @@ export function CastingShotListPanel({
 
   const getShotTypeLabel = (type: ShotType): string => {
     const labels: Record<ShotType, string> = {
-      'Wide': 'Totalbilde',
-      'Medium': 'Halvtotalt',
-      'Close-up': 'Nærbilde',
-      'Extreme Close-up': 'Ekstrem nærbilde',
-      'Establishing': 'Etableringsbilde',
-      'Detail': 'Detaljbilde',
-      'Two Shot': 'Tobilde',
-      'Over Shoulder': 'Over skulder',
-      'Point of View': 'POV',
+      'Wide': t('shot.type.wide'),
+      'Medium': t('shot.type.medium'),
+      'Close-up': t('shot.type.closeUp'),
+      'Extreme Close-up': t('shot.type.extremeCloseUp'),
+      'Establishing': t('shot.type.establishing'),
+      'Detail': t('shot.type.detail'),
+      'Two Shot': t('shot.type.twoShot'),
+      'Over Shoulder': t('shot.type.overShoulder'),
+      'Point of View': t('shot.type.pov'),
     };
     return labels[type] || type;
   };
@@ -1052,21 +1058,21 @@ export function CastingShotListPanel({
   };
 
   const mediaTypeConfig: Record<MediaType, { label: string; color: string; icon: ReactElement }> = {
-    photo: { label: 'Foto', color: '#2196f3', icon: <PhotoCameraIcon sx={{ fontSize: 14 }} /> },
+    photo: { label: t('shot.media.photo'), color: '#2196f3', icon: <PhotoCameraIcon sx={{ fontSize: 14 }} /> },
     video: { label: 'Video', color: '#e91e63', icon: <VideocamIcon sx={{ fontSize: 14 }} /> },
     hybrid: { label: 'Hybrid', color: '#9c27b0', icon: <MovieIcon sx={{ fontSize: 14 }} /> },
   };
 
   const priorityConfig: Record<ShotPriority, { label: string; color: string; bgColor: string }> = {
-    critical: { label: 'Kritisk', color: '#f44336', bgColor: 'rgba(244,67,54,0.15)' },
-    important: { label: 'Viktig', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
+    critical: { label: t('shot.priority.critical'), color: '#f44336', bgColor: 'rgba(244,67,54,0.15)' },
+    important: { label: t('shot.priority.important'), color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
     nice_to_have: { label: 'Bonus', color: '#9e9e9e', bgColor: 'rgba(158,158,158,0.15)' },
   };
 
   const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: string }> = {
-    not_started: { label: 'Venter', color: '#78909c', bgColor: 'rgba(120,144,156,0.15)' },
-    in_progress: { label: 'Pågår', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
-    completed: { label: 'Fullført', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
+    not_started: { label: t('shot.status.notStarted'), color: '#78909c', bgColor: 'rgba(120,144,156,0.15)' },
+    in_progress: { label: t('shot.status.inProgress'), color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
+    completed: { label: t('shot.status.completed'), color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
   };
 
   const priorityWeight: Record<ShotPriority, number> = {
@@ -1430,7 +1436,7 @@ export function CastingShotListPanel({
 
   const handleGenerateImage = async () => {
     if (!currentShotListId || !shotFormData.description) {
-      toast.showWarning('Beskrivelse er påkrevd for å generere bilde');
+      toast.showWarning(t('shot.err.descRequiredImage'));
       return;
     }
 
@@ -1455,16 +1461,16 @@ export function CastingShotListPanel({
             ...shotFormData,
             imageUrl,
           });
-          toast.showSuccess('Bilde generert!');
+          toast.showSuccess(t('shot.toast.imageGenerated'));
         } else {
-          toast.showError('Ingen bilde mottatt fra serveren');
+          toast.showError(t('shot.err.noImageServer'));
         }
       } else {
-        toast.showError(result.error || 'Kunne ikke generere bilde');
+        toast.showError(result.error || t('shot.err.genImage'));
       }
     } catch (error) {
       console.error('Error generating image:', error);
-      toast.showError('Feil ved generering av bilde');
+      toast.showError(t('shot.err.genImageGeneric'));
     } finally {
       setGeneratingImage(false);
     }
@@ -1474,7 +1480,7 @@ export function CastingShotListPanel({
     const shotsWithDescription = shotList.shots.filter(s => s.description && s.description.trim());
     
     if (shotsWithDescription.length === 0) {
-      toast.showWarning('Legg til beskrivelse på minst ett shot for å generere storyboard-bilder');
+      toast.showWarning(t('shot.err.descAtLeastOne'));
       return;
     }
 
@@ -1535,17 +1541,17 @@ export function CastingShotListPanel({
       setShotLists(Array.isArray(lists) ? lists : []);
 
       if (successCount > 0 && errorCount === 0) {
-        toast.showSuccess(`${successCount} storyboard-bilder generert!`);
+        toast.showSuccess(t('shot.toast.imagesGenerated', { n: successCount }));
       } else if (successCount > 0 && errorCount > 0) {
-        toast.showWarning(`${successCount} bilder generert, ${errorCount} feilet`);
+        toast.showWarning(t('shot.toast.imagesPartial', { ok: successCount, failed: errorCount }));
       } else {
-        toast.showError('Kunne ikke generere storyboard-bilder');
+        toast.showError(t('shot.err.genStoryboardImages'));
       }
 
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error saving storyboard images:', error);
-      toast.showError('Kunne ikke lagre storyboard-bilder');
+      toast.showError(t('shot.err.saveStoryboardImages'));
     } finally {
       setGeneratingStoryboardImages(prev => ({ ...prev, [shotList.id]: false }));
       setStoryboardGenerationProgress(prev => {
@@ -1564,7 +1570,7 @@ export function CastingShotListPanel({
     template: string = 'cinematic'
   ) => {
     if (!shot.description || !shot.description.trim()) {
-      toast.showWarning('Legg til beskrivelse for å generere bilde');
+      toast.showWarning(t('shot.err.descForImage'));
       return;
     }
 
@@ -1598,17 +1604,17 @@ export function CastingShotListPanel({
           await castingService.saveShotList(projectId, updatedShotList);
           const lists = await castingService.getShotLists(projectId);
           setShotLists(Array.isArray(lists) ? lists : []);
-          toast.showSuccess('Bilde regenerert!');
+          toast.showSuccess(t('shot.toast.imageRegenerated'));
           if (onUpdate) onUpdate();
         } else {
-          toast.showError('Ingen bilde mottatt fra serveren');
+          toast.showError(t('shot.err.noImageServer'));
         }
       } else {
-        toast.showError(result.error || 'Kunne ikke regenerere bilde');
+        toast.showError(result.error || t('shot.err.regenImage'));
       }
     } catch (error) {
       console.error('Error regenerating image:', error);
-      toast.showError('Feil ved regenerering av bilde');
+      toast.showError(t('shot.err.regenImageGeneric'));
     } finally {
       setRegeneratingShotId(null);
     }
@@ -1644,7 +1650,7 @@ export function CastingShotListPanel({
       }
     } catch (error) {
       console.error('Error searching reference shots:', error);
-      toast.showError('Kunne ikke søke referansebilder');
+      toast.showError(t('shot.err.searchReference'));
     }
     return [];
   }, [toast]);
@@ -1750,7 +1756,7 @@ export function CastingShotListPanel({
         return updatedShotList;
       } catch (error) {
         console.error('Error saving shot list update:', error);
-        toast.showError('Kunne ikke lagre storyboard-koblingen');
+        toast.showError(t('shot.err.saveLink'));
         return null;
       }
     },
@@ -1787,16 +1793,16 @@ export function CastingShotListPanel({
         if (successMessage) {
           toast.showSuccess(successMessage);
         } else if (syncedCount > 0) {
-          toast.showSuccess(`Storyboard lagret og ${syncedCount} shot oppdatert`);
+          toast.showSuccess(t('shot.toast.storyboardSaved', { n: syncedCount }));
         } else {
-          toast.showSuccess('Storyboard lagret');
+          toast.showSuccess(t('shot.toast.storyboardSavedSimple'));
         }
 
         if (onUpdate) onUpdate();
         return persistedScene;
       } catch (error) {
         console.error('Error saving storyboard scene:', error);
-        toast.showError('Kunne ikke lagre scene-storyboard');
+        toast.showError(t('shot.err.saveSceneStoryboard'));
         return null;
       }
     },
@@ -1807,12 +1813,12 @@ export function CastingShotListPanel({
     (shotList: ShotList, shot: CastingShot) => {
       const scene = manuscriptSceneById.get(shotList.sceneId);
       if (!scene) {
-        toast.showWarning('Shot-et er ikke koblet til en scene med storyboard');
+        toast.showWarning(t('shot.warn.notLinkedScene'));
         return;
       }
       const resolved = resolveStoryboardShotLink(shot, scene, projectStoryboardLibraryItems);
       if (resolved.status !== 'linked') {
-        toast.showWarning('Dette shot-et er ikke koblet til et aktivt storyboard-frame');
+        toast.showWarning(t('shot.warn.notLinkedFrame'));
         return;
       }
       setSceneStoryboardDialog({
@@ -1827,7 +1833,7 @@ export function CastingShotListPanel({
     (shotList: ShotList, shot: CastingShot) => {
       const scene = manuscriptSceneById.get(shotList.sceneId);
       if (!scene) {
-        toast.showWarning('Velg en shotliste som er koblet til en scene først');
+        toast.showWarning(t('shot.warn.selectLinkedShotlist'));
         return;
       }
       const resolved = resolveStoryboardShotLink(shot, scene, projectStoryboardLibraryItems);
@@ -1844,7 +1850,7 @@ export function CastingShotListPanel({
 
   const handleConfirmShotStoryboardLink = useCallback(async () => {
     if (!shotStoryboardDialog?.selectedCandidateId) {
-      toast.showWarning('Velg et storyboard-frame å koble til');
+      toast.showWarning(t('shot.warn.selectFrame'));
       return;
     }
 
@@ -1855,7 +1861,7 @@ export function CastingShotListPanel({
     );
 
     if (!shotList || !shot || !candidate) {
-      toast.showWarning('Kunne ikke finne shot eller storyboard-frame for koblingen');
+      toast.showWarning(t('shot.warn.cannotFindLink'));
       return;
     }
 
@@ -1866,7 +1872,7 @@ export function CastingShotListPanel({
       updatedAt: new Date().toISOString(),
     };
 
-    const saved = await persistShotListUpdate(updatedShotList, 'Storyboard-frame koblet til shot');
+    const saved = await persistShotListUpdate(updatedShotList, t('shot.toast.frameLinked'));
     if (saved) {
       setShotStoryboardDialog(null);
     }
@@ -1880,7 +1886,7 @@ export function CastingShotListPanel({
         shots: shotList.shots.map((entry) => (entry.id === shot.id ? patchedShot : entry)),
         updatedAt: new Date().toISOString(),
       };
-      await persistShotListUpdate(updatedShotList, 'Storyboard-kobling fjernet');
+      await persistShotListUpdate(updatedShotList, t('shot.toast.linkRemoved'));
     },
     [persistShotListUpdate],
   );
@@ -1889,12 +1895,12 @@ export function CastingShotListPanel({
     async (shotList: ShotList, shot: CastingShot) => {
       const scene = manuscriptSceneById.get(shotList.sceneId);
       if (!scene) {
-        toast.showWarning('Fant ikke scene for dette shot-et');
+        toast.showWarning(t('shot.warn.sceneNotFound'));
         return;
       }
       const resolved = resolveStoryboardShotLink(shot, scene, projectStoryboardLibraryItems);
       if (resolved.status !== 'linked' || !resolved.candidate) {
-        toast.showWarning('Storyboard-koblingen må relinkes før den kan synkes');
+        toast.showWarning(t('shot.warn.mustRelink'));
         return;
       }
       const patchedShot = applyStoryboardCandidateToShot(shot, resolved.candidate, scene.id);
@@ -1903,7 +1909,7 @@ export function CastingShotListPanel({
         shots: shotList.shots.map((entry) => (entry.id === shot.id ? patchedShot : entry)),
         updatedAt: new Date().toISOString(),
       };
-      await persistShotListUpdate(updatedShotList, 'Shot oppdatert fra storyboard');
+      await persistShotListUpdate(updatedShotList, t('shot.toast.shotResynced'));
     },
     [manuscriptSceneById, persistShotListUpdate, projectStoryboardLibraryItems, toast],
   );
@@ -1912,7 +1918,7 @@ export function CastingShotListPanel({
     async (shotList: ShotList, shot: CastingShot) => {
       const scene = manuscriptSceneById.get(shotList.sceneId);
       if (!scene) {
-        toast.showWarning('Fant ikke scene for dette shot-et');
+        toast.showWarning(t('shot.warn.sceneNotFound'));
         return;
       }
 
@@ -1932,7 +1938,7 @@ export function CastingShotListPanel({
       );
 
       if (!candidate) {
-        toast.showWarning('Storyboard-frame ble opprettet, men kunne ikke kobles til shot-et');
+        toast.showWarning(t('shot.warn.frameCreatedNoLink'));
         return;
       }
 
@@ -1943,7 +1949,7 @@ export function CastingShotListPanel({
         updatedAt: new Date().toISOString(),
       };
 
-      const saved = await persistShotListUpdate(updatedShotList, 'Ny storyboard-frame opprettet fra shot');
+      const saved = await persistShotListUpdate(updatedShotList, t('shot.toast.frameCreated'));
       if (saved) {
         setSceneStoryboardDialog({
           sceneId: persistedScene.id,
@@ -1982,21 +1988,21 @@ export function CastingShotListPanel({
           ],
         ]),
       });
-      toast.showSuccess('Storyboard eksportert som board PDF');
+      toast.showSuccess(t('shot.toast.storyboardBoardExported'));
     } catch (error) {
       console.error('Error exporting storyboard PDF:', error);
-      toast.showError('Kunne ikke eksportere storyboard PDF');
+      toast.showError(t('shot.err.exportStoryboardPdf'));
     }
   };
 
   const handleReserveShot = async (shotList: ShotList, shot: CastingShot) => {
     if (!user) {
-      toast.showWarning('Du må være logget inn for å reservere shots');
+      toast.showWarning(t('shot.warn.mustLogin'));
       return;
     }
 
     if (shot.reservedBy && shot.reservedBy !== user.id) {
-      toast.showWarning(`Dette shot-et er allerede reservert av ${shot.reservedByName || 'en annen bruker'}`);
+      toast.showWarning(t('shot.toast.alreadyReserved', { name: shot.reservedByName || t('shot.someoneElse') }));
       return;
     }
 
@@ -2019,11 +2025,11 @@ export function CastingShotListPanel({
       await castingService.saveShotList(projectId, updatedShotList);
       const lists = await castingService.getShotLists(projectId);
       setShotLists(Array.isArray(lists) ? lists : []);
-      toast.showSuccess(isCurrentlyReserved ? 'Reservasjon fjernet' : 'Shot reservert!');
+      toast.showSuccess(isCurrentlyReserved ? t('shot.toast.reservationRemoved') : t('shot.toast.shotReserved'));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error reserving shot:', error);
-      toast.showError('Kunne ikke reservere shot');
+      toast.showError(t('shot.err.reserveShot'));
     }
   };
 
@@ -2044,20 +2050,20 @@ export function CastingShotListPanel({
       await castingService.saveShotList(projectId, updatedShotList);
       const lists = await castingService.getShotLists(projectId);
       setShotLists(Array.isArray(lists) ? lists : []);
-      toast.showSuccess(`Shot tilordnet ${assigneeName}`);
+      toast.showSuccess(t('shot.toast.shotAssigned', { name: assigneeName }));
       // Broadcast assignment to collaborators
       rt.emitShotAssigned({ shotListId: shotList.id, shotId: shot.id, assigneeId, assigneeName });
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error assigning shot:', error);
-      toast.showError('Kunne ikke tilordne shot');
+      toast.showError(t('shot.err.assignShot'));
     }
   };
 
   const handleSaveShotList = async () => {
     const sceneName = formData.sceneId || formData.sceneName || '';
     if (!sceneName && !formData.notes) {
-      toast.showWarning('Vennligst angi scene eller beskrivelse');
+      toast.showWarning(t('shot.warn.enterSceneOrDesc'));
       return;
     }
 
@@ -2098,7 +2104,7 @@ export function CastingShotListPanel({
 
   const handleSaveShot = async () => {
     if (!currentShotListId) {
-      toast.showWarning('Ingen shot list valgt');
+      toast.showWarning(t('shot.warn.noShotListSelected'));
       return;
     }
 
@@ -2220,7 +2226,7 @@ export function CastingShotListPanel({
       );
 
       if (shotsToConvert.length === 0) {
-        toast.showWarning('Velg minst ett shot å konvertere');
+        toast.showWarning(t('shot.warn.selectAtLeastOne'));
         return;
       }
 
@@ -2253,12 +2259,12 @@ export function CastingShotListPanel({
         });
       }
 
-      toast.showSuccess(`Storyboard "${storyboardName}" opprettet med ${frames.length} frames`);
+      toast.showSuccess(t('shot.toast.storyboardCreated', { name: storyboardName, n: frames.length }));
       handleCloseStoryboardDialog();
       handleOpenStoryboardPanel();
     } catch (error) {
       console.error('Error converting to storyboard:', error);
-      toast.showError('Feil ved konvertering til storyboard');
+      toast.showError(t('shot.err.convertStoryboard'));
     }
   };
 
@@ -2399,7 +2405,7 @@ export function CastingShotListPanel({
       setQuickShotDrafts((prev) => ({ ...prev, [shotList.id]: { description: '', shotType: 'Medium', estimatedTime: preset.estimatedTime } }));
     } catch (error) {
       console.error('Error quick-adding shot:', error);
-      toast.showError('Kunne ikke legge til shot');
+      toast.showError(t('shot.err.addShot'));
     }
   };
 
@@ -2510,7 +2516,7 @@ export function CastingShotListPanel({
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        toast.showError('Prosjekt ikke funnet');
+        toast.showError(t('shot.err.projectNotFound'));
         return;
       }
 
@@ -2519,7 +2525,7 @@ export function CastingShotListPanel({
       // Create a new window for printing/viewing
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        toast.showError('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        toast.showError(t('shot.err.exportWindow'));
         return;
       }
 
@@ -2532,7 +2538,7 @@ export function CastingShotListPanel({
       }, 250);
     } catch (error) {
       console.error('Error exporting shot lists:', error);
-      toast.showError('Kunne ikke eksportere shot lists');
+      toast.showError(t('shot.err.exportShotLists'));
     }
   };
 
@@ -2566,7 +2572,7 @@ export function CastingShotListPanel({
         toast.showSuccess(successMessage);
       } catch (error) {
         console.error('Error exporting board PDF:', error);
-        toast.showError('Kunne ikke eksportere board PDF');
+        toast.showError(t('shot.err.exportBoard'));
       }
     },
     [buildExportPayload, toast],
@@ -2579,7 +2585,7 @@ export function CastingShotListPanel({
         toast.showSuccess(successMessage);
       } catch (error) {
         console.error('Error exporting contact sheet PDF:', error);
-        toast.showError('Kunne ikke eksportere contact sheet');
+        toast.showError(t('shot.err.exportContact'));
       }
     },
     [buildExportPayload, toast],
@@ -2592,7 +2598,7 @@ export function CastingShotListPanel({
         toast.showSuccess(successMessage);
       } catch (error) {
         console.error('Error exporting shot deck PDF:', error);
-        toast.showError('Kunne ikke eksportere shot deck');
+        toast.showError(t('shot.err.exportDeck'));
       }
     },
     [buildExportPayload, toast],
@@ -2605,7 +2611,7 @@ export function CastingShotListPanel({
         toast.showSuccess(successMessage);
       } catch (error) {
         console.error('Error exporting clean still bundle:', error);
-        toast.showError('Kunne ikke eksportere clean stills');
+        toast.showError(t('shot.err.exportStills'));
       }
     },
     [buildExportPayload, toast],
@@ -2892,13 +2898,13 @@ export function CastingShotListPanel({
         ${shotListIconSVG}
         ${project.name} - Shot Lists
       </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('shot.export.exportedAt', { date: dateStr })}</div>
     </div>
 
     <div class="summary">
       <div class="summary-title">
         ${shotListIconSVG}
-        Oversikt
+        ${t('shot.export.overview')}
       </div>
       <div class="summary-grid">
         <div class="summary-item">
@@ -2907,11 +2913,11 @@ export function CastingShotListPanel({
         </div>
         <div class="summary-item">
           <span class="summary-number">${totalShots}</span>
-          <span class="summary-label">Totalt Shots</span>
+          <span class="summary-label">${t('shot.export.totalShots')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number" style="font-size: 24px;">${mostCommonShotType}</span>
-          <span class="summary-label">Vanligste Shot Type</span>
+          <span class="summary-label">${t('shot.export.mostCommonType')}</span>
         </div>
       </div>
     </div>
@@ -2922,20 +2928,20 @@ export function CastingShotListPanel({
           <span class="section-icon">${shotListIconSVG}</span>
           Shot Lists
         </div>
-        <span class="section-count">${totalLists} liste${totalLists !== 1 ? 'r' : ''}</span>
+        <span class="section-count">${totalLists} ${totalLists !== 1 ? t('shot.export.lists') : t('shot.export.list')}</span>
       </div>
       <div class="section-content">
         ${
           shotLists.length === 0
-            ? '<div class="empty-state">Ingen shot lists ennå</div>'
+            ? `<div class="empty-state">${t('shot.empty.noShotLists')}</div>`
             : `<table>
           <thead>
             <tr>
               <th>Scene</th>
-              <th>Antall Shots</th>
-              <th>Shot Typer</th>
-              <th>Notater</th>
-              <th>Oppdatert</th>
+              <th>${t('shot.export.colShots')}</th>
+              <th>${t('shot.export.colShotTypes')}</th>
+              <th>${t('shot.export.colNotes')}</th>
+              <th>${t('shot.export.colUpdated')}</th>
             </tr>
           </thead>
           <tbody>
@@ -2963,7 +2969,7 @@ export function CastingShotListPanel({
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
       <div class="footer-right">
-        <span class="page-number">Side </span>
+        <span class="page-number">${t('shot.export.page')} </span>
         <span>|</span>
         <span>${dateStr}</span>
       </div>
@@ -3080,9 +3086,9 @@ export function CastingShotListPanel({
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.65rem', lineHeight: 1 }}>
                 {rt.connectionStatus === 'connected'
                   ? rt.presence.size > 0
-                    ? `${[...rt.presence.values()].map(p => p.userName).join(', ')} er også her`
+                    ? t('shot.presence.alsoHere', { names: [...rt.presence.values()].map(p => p.userName).join(', ') })
                     : 'Live'
-                  : rt.connectionStatus === 'offline' ? 'Offline' : 'Kobler til…'}
+                  : rt.connectionStatus === 'offline' ? 'Offline' : t('shot.presence.connecting')}
               </Typography>
             </Box>
           </Box>
@@ -3098,11 +3104,11 @@ export function CastingShotListPanel({
           }}
         >
           {/* Audit log button */}
-          <Tooltip title={`Aktivitetslogg (${rt.auditLog.length})`}>
+          <Tooltip title={t('shot.tooltip.auditLog', { n: rt.auditLog.length })}>
             <IconButton
               ref={auditLogAnchorRef}
               onClick={() => setShowAuditLog(v => !v)}
-              aria-label="Vis aktivitetslogg"
+              aria-label={t('shot.aria.showAuditLog')}
               sx={{
                 color: rt.auditLog.length > 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.35)',
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3120,11 +3126,11 @@ export function CastingShotListPanel({
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Statistikk">
+          <Tooltip title={t('shot.tooltip.stats')}>
             <Button
               variant="outlined"
               onClick={() => setShowStats(v => !v)}
-              aria-label="Vis/skjul statistikk"
+              aria-label={t('shot.aria.toggleStats')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -3140,14 +3146,14 @@ export function CastingShotListPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Åpne Team Dashboard">
+          <Tooltip title={t('shot.tooltip.openTeam')}>
             <Button
               variant="outlined"
               onClick={() => {
                 setTeamDashboardCrewSegment('all');
                 setShowTeamDashboard(true);
               }}
-              aria-label="Åpne team dashboard"
+              aria-label={t('shot.aria.openTeam')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -3167,7 +3173,7 @@ export function CastingShotListPanel({
             <Button
               variant="outlined"
               onClick={() => setShowStoryboardManager(true)}
-              aria-label="Åpne storyboard manager"
+              aria-label={t('shot.aria.openStoryboardManager')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -3183,11 +3189,11 @@ export function CastingShotListPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Eksporter PDF">
+          <Tooltip title={t('shot.btn.exportPdf')}>
             <Button
               variant="outlined"
               onClick={() => setShowExportDialog(true)}
-              aria-label="Eksporter til PDF"
+              aria-label={t('shot.dialog.exportToPdf')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -3199,15 +3205,15 @@ export function CastingShotListPanel({
               }}
             >
               <PdfIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Eksporter</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>{t('shot.btn.export')}</Box>}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Backup kontroll system (3-2-1 + loggbok)">
+          <Tooltip title={t('shot.tooltip.backupSystem')}>
             <Button
               variant="outlined"
               onClick={() => setMemoryCardControlOpen(true)}
-              aria-label="Åpne minnekort backup-kontroll"
+              aria-label={t('shot.aria.openBackup')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -3219,15 +3225,15 @@ export function CastingShotListPanel({
               }}
             >
               <StorageIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Backup kontroll</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>{t('shot.btn.backupControl')}</Box>}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Opprett scene">
+          <Tooltip title={t('shot.tooltip.createScene')}>
             <Button
               variant="contained"
               onClick={() => handleOpenDialog()}
-              aria-label="Opprett ny scene"
+              aria-label={t('shot.aria.createScene')}
               sx={{
                 bgcolor: '#e91e63',
                 color: '#fff',
@@ -3239,7 +3245,7 @@ export function CastingShotListPanel({
               }}
             >
               <AddIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Ny scene</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>{t('shot.btn.newScene')}</Box>}
             </Button>
           </Tooltip>
         </Box>
@@ -3263,7 +3269,7 @@ export function CastingShotListPanel({
             },
           }}
           role="region"
-          aria-label="Statistikk over shot lists"
+          aria-label={t('shot.aria.stats')}
         >
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3281,7 +3287,7 @@ export function CastingShotListPanel({
             <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.totalShots}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Totalt shots</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.stat.totalShots')}</Typography>
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3290,7 +3296,7 @@ export function CastingShotListPanel({
             <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.favorites}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Favoritter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.stat.favorites')}</Typography>
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3299,7 +3305,7 @@ export function CastingShotListPanel({
             <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {productionDays.length}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Produksjonsdager</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.label.productionDays')}</Typography>
           </Box>
           {/* Status breakdown */}
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
@@ -3309,7 +3315,7 @@ export function CastingShotListPanel({
             <Typography variant="h4" sx={{ color: '#78909c', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.not_started}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Venter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.status.notStarted')}</Typography>
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3318,7 +3324,7 @@ export function CastingShotListPanel({
             <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.in_progress}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Pågår</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.status.inProgress')}</Typography>
           </Box>
           <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3327,13 +3333,13 @@ export function CastingShotListPanel({
             <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.completed}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Fullført</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.status.completed')}</Typography>
           </Box>
           {/* Overall completion progress bar */}
           {stats.totalShots > 0 && (
             <Box sx={{ width: '100%', mt: 0.5 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>Fremdrift totalt</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('shot.stat.totalProgress')}</Typography>
                 <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 600 }}>{stats.completionPercent}%</Typography>
               </Box>
               <LinearProgress
@@ -3369,12 +3375,8 @@ export function CastingShotListPanel({
               }}
             >
               <Box>
-                <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Format- og dagsestimat
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
-                  Basert på manus, shotlist, sceneomfang og planlagte produksjonsdager.
-                </Typography>
+                <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.est.title')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>{t('shot.est.subtitle')}</Typography>
               </Box>
               <Chip
                 label={getEstimateConfidenceLabel(productionEstimate.confidence)}
@@ -3447,48 +3449,38 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Estimert hoveddekning</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.est.mainCoverage')}</Typography>
                 <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
                   {formatSecondsLabel(productionEstimate.totalEstimatedOutputSeconds)}
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
-                  Samlet forventet rå klippelengde fra planlagte shots.
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>{t('shot.est.mainCoverageDesc')}</Typography>
               </Box>
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Realistisk feltbelastning</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.est.fieldLoad')}</Typography>
                 <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
                   {formatMinutesLabel(productionEstimate.totalRealisticFieldMinutes)}
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
-                  Inkluderer rigg, flyt, sceneoverganger og praktiske stopp.
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>{t('shot.est.fieldLoadDesc')}</Typography>
               </Box>
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Rå opptakstid</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.est.rawCapture')}</Typography>
                 <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
                   {formatMinutesLabel(productionEstimate.totalRawCaptureMinutes)}
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
-                  Summen av shot-estimatene før produksjonsmargin legges på.
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>{t('shot.est.rawCaptureDesc')}</Typography>
               </Box>
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.18)' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Foreslåtte opptaksdager</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.est.suggestedDays')}</Typography>
                 <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mt: 0.4 }}>
                   {productionEstimate.suggestedShootDays}
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>
-                  Beregnet ut fra realistisk feltbelastning på omtrent åttetimersdager.
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.64)' }}>{t('shot.est.suggestedDaysDesc')}</Typography>
               </Box>
             </Box>
 
             {productionEstimate.productionDayLoads.length > 0 && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Produksjonsdager
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('shot.label.productionDays')}</Typography>
                 <Box
                   sx={{
                     display: 'grid',
@@ -3517,7 +3509,7 @@ export function CastingShotListPanel({
                               {dayLoad.label}
                             </Typography>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                              {dayLoad.sceneCount} scener • {dayLoad.shotCount} shots
+                              {dayLoad.sceneCount} {t('shot.unit.scenes')} • {dayLoad.shotCount} shots
                             </Typography>
                           </Box>
                           <Chip
@@ -3538,26 +3530,26 @@ export function CastingShotListPanel({
                           }}
                         >
                           <Box>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>På location</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.day.onLocation')}</Typography>
                             <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
-                              {dayLoad.onLocationMinutes > 0 ? formatMinutesLabel(dayLoad.onLocationMinutes) : 'Ikke satt'}
+                              {dayLoad.onLocationMinutes > 0 ? formatMinutesLabel(dayLoad.onLocationMinutes) : t('shot.day.notSet')}
                             </Typography>
                           </Box>
                           <Box>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Aktiv opptakstid</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.day.activeCapture')}</Typography>
                             <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
                               {formatMinutesLabel(dayLoad.rawCaptureMinutes)}
                             </Typography>
                           </Box>
                           <Box>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>Realistisk last</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>{t('shot.day.realisticLoad')}</Typography>
                             <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
                               {formatMinutesLabel(dayLoad.realisticFieldMinutes)}
                             </Typography>
                           </Box>
                           <Box>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.56)' }}>
-                              {dayLoad.bufferMinutes === null ? 'Forslag til dag' : 'Buffer'}
+                              {dayLoad.bufferMinutes === null ? t('shot.day.dayProposal') : 'Buffer'}
                             </Typography>
                             <Typography variant="body2" sx={{ color: dayLoad.bufferMinutes !== null && dayLoad.bufferMinutes < 0 ? '#fca5a5' : '#fff', fontWeight: 600 }}>
                               {dayLoad.bufferMinutes === null
@@ -3615,7 +3607,7 @@ export function CastingShotListPanel({
         }}
       >
         <TextField
-          placeholder={isMobile ? 'Søk...' : 'Søk etter scene, beskrivelse...'}
+          placeholder={isMobile ? t('shot.search.short') : t('shot.search.placeholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           size="small"
@@ -3624,7 +3616,7 @@ export function CastingShotListPanel({
               startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 1 }} />,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
-            htmlInput: { 'aria-label': 'Søk i shot lists' },
+            htmlInput: { 'aria-label': t('shot.aria.search') },
           }}
           sx={{
             flex: 1,
@@ -3652,19 +3644,19 @@ export function CastingShotListPanel({
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#e91e63' },
             }}
           >
-            <MenuItem value="all">Alle typer</MenuItem>
-            <MenuItem value="photo">Foto</MenuItem>
+            <MenuItem value="all">{t('shot.filter.allTypes')}</MenuItem>
+            <MenuItem value="photo">{t('shot.media.photo')}</MenuItem>
             <MenuItem value="video">Video</MenuItem>
             <MenuItem value="hybrid">Hybrid</MenuItem>
           </Select>
         </FormControl>
 
         <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilordnet</InputLabel>
+          <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.filter.assigned')}</InputLabel>
           <Select
             value={assigneeFilter}
             onChange={(e) => setAssigneeFilter(e.target.value as typeof assigneeFilter)}
-            label="Tilordnet"
+            label={t('shot.filter.assigned')}
             startAdornment={<TeamIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 0.5, fontSize: 18 }} />}
             MenuProps={{ sx: { zIndex: Z_INDEX.selectMenu } }}
             sx={{
@@ -3675,17 +3667,17 @@ export function CastingShotListPanel({
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
             }}
           >
-            <MenuItem value="all">Alle</MenuItem>
+            <MenuItem value="all">{t('shot.filter.all')}</MenuItem>
             <MenuItem value="mine">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4caf50' }} />
-                Mine shots
+                {t('shot.filter.myShots')}
               </Box>
             </MenuItem>
             <MenuItem value="unassigned">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#9333ea' }} />
-                Ikke tilordnet
+                {t('shot.filter.unassigned')}
               </Box>
             </MenuItem>
             {crewMembers.map((member) => (
@@ -3697,7 +3689,7 @@ export function CastingShotListPanel({
         </FormControl>
 
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-          <Tooltip title="Kortvisning">
+          <Tooltip title={t('shot.tooltip.cardView')}>
             <Button
               variant={viewMode === 'grid' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('grid')}
@@ -3715,7 +3707,7 @@ export function CastingShotListPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Tabellvisning">
+          <Tooltip title={t('shot.tooltip.tableView')}>
             <Button
               variant={viewMode === 'table' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('table')}
@@ -3752,7 +3744,7 @@ export function CastingShotListPanel({
           </Tooltip>
 
           {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+            <Tooltip title={t('shot.tooltip.deleteSelected', { n: selectedIds.size })}>
               <Button
                 variant="contained"
                 onClick={handleBulkDelete}
@@ -3769,12 +3761,12 @@ export function CastingShotListPanel({
             </Tooltip>
           )}
 
-          <Tooltip title={showFilters ? 'Skjul filtre' : 'Vis filtre'}>
+          <Tooltip title={showFilters ? t('shot.tooltip.hideFilters') : t('shot.tooltip.showFilters')}>
             <Button
               variant={showFilters ? 'contained' : 'outlined'}
               onClick={() => setShowFilters(v => !v)}
               aria-pressed={showFilters}
-              aria-label="Vis/skjul avanserte filtre"
+              aria-label={t('shot.aria.toggleFilters')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -3804,17 +3796,17 @@ export function CastingShotListPanel({
             border: '1px solid rgba(0,212,255,0.2)',
           }}
           role="region"
-          aria-label="Avanserte filtre"
+          aria-label={t('shot.aria.advFilters')}
         >
           <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Prioritet</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.priority')}</InputLabel>
             <Select
               value={priorityFilter ?? 'all'}
               onChange={(e) => {
                 const v = e.target.value;
                 setPriorityFilter(v === 'all' ? null : (v as ShotPriority));
               }}
-              label="Prioritet"
+              label={t('shot.field.priority')}
               MenuProps={{ sx: { zIndex: Z_INDEX.selectMenu } }}
               sx={{
                 color: '#fff',
@@ -3824,9 +3816,9 @@ export function CastingShotListPanel({
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
               }}
             >
-              <MenuItem value="all">Alle</MenuItem>
-              <MenuItem value="critical">Kritisk</MenuItem>
-              <MenuItem value="important">Viktig</MenuItem>
+              <MenuItem value="all">{t('shot.filter.all')}</MenuItem>
+              <MenuItem value="critical">{t('shot.priority.critical')}</MenuItem>
+              <MenuItem value="important">{t('shot.priority.important')}</MenuItem>
               <MenuItem value="nice_to_have">Bonus</MenuItem>
             </Select>
           </FormControl>
@@ -3849,10 +3841,10 @@ export function CastingShotListPanel({
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
               }}
             >
-              <MenuItem value="all">Alle</MenuItem>
-              <MenuItem value="not_started">Venter</MenuItem>
-              <MenuItem value="in_progress">Pågår</MenuItem>
-              <MenuItem value="completed">Fullført</MenuItem>
+              <MenuItem value="all">{t('shot.filter.all')}</MenuItem>
+              <MenuItem value="not_started">{t('shot.status.notStarted')}</MenuItem>
+              <MenuItem value="in_progress">{t('shot.status.inProgress')}</MenuItem>
+              <MenuItem value="completed">{t('shot.status.completed')}</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -3869,7 +3861,7 @@ export function CastingShotListPanel({
             '& .MuiAlert-icon': { color: '#e91e63' },
           }}
         >
-          Viser {filteredAndSortedShotLists.length} av {shotLists.length} shot lists
+          {t('shot.results.showing', { shown: filteredAndSortedShotLists.length, total: shotLists.length })}
         </Alert>
       )}
 
@@ -3877,14 +3869,14 @@ export function CastingShotListPanel({
       {shotLists.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={scenesPng}
-          title="Ingen shot lists ennå"
-          subtitle="Opprett shot lists for å planlegge opptak per scene"
+          title={t('shot.empty.noShotLists')}
+          subtitle={t('shot.empty.noShotListsSub')}
           color="#e91e63"
         />
       ) : filteredAndSortedShotLists.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-          <Typography variant="body1">Ingen treff på søket</Typography>
+          <Typography variant="body1">{t('shot.empty.noResults')}</Typography>
         </Box>
       ) : viewMode === 'table' ? (
         /* Table View */
@@ -3898,7 +3890,7 @@ export function CastingShotListPanel({
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          <Table aria-label="Shot lists tabell" sx={{ minWidth: { xs: 500, sm: 'auto' } }}>
+          <Table aria-label={t('shot.aria.table')} sx={{ minWidth: { xs: 500, sm: 'auto' } }}>
             <TableHead>
               <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
                 <TableCell padding="checkbox">
@@ -3906,7 +3898,7 @@ export function CastingShotListPanel({
                     checked={selectedIds.size === filteredAndSortedShotLists.length && filteredAndSortedShotLists.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedShotLists.length}
                     onChange={handleSelectAll}
-                    aria-label="Velg alle shot lists"
+                    aria-label={t('shot.aria.selectAll')}
                     sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#e91e63' } }}
                   />
                 </TableCell>
@@ -3930,18 +3922,16 @@ export function CastingShotListPanel({
                     Shots
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>Shot typer</TableCell>
+                <TableCell>{t('shot.col.shotTypes')}</TableCell>
                 <TableCell>
                   <TableSortLabel
                     active={sortField === 'updated'}
                     direction={sortField === 'updated' ? sortDirection : 'asc'}
                     onClick={() => handleSort('updated')}
                     sx={{ color: '#fff', '&:hover': { color: '#e91e63' } }}
-                  >
-                    Oppdatert
-                  </TableSortLabel>
+                  >{t('shot.col.updated')}</TableSortLabel>
                 </TableCell>
-                <TableCell align="right">Handlinger</TableCell>
+                <TableCell align="right">{t('shot.col.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -3992,22 +3982,22 @@ export function CastingShotListPanel({
                   </TableCell>
                   <TableCell align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <Tooltip title={favorites.has(shotList.id) ? 'Fjern favoritt' : 'Favoritt'}>
+                      <Tooltip title={favorites.has(shotList.id) ? t('shot.tooltip.removeFavorite') : t('shot.tooltip.favorite')}>
                         <IconButton onClick={() => toggleFavorite(shotList.id)} sx={{ color: favorites.has(shotList.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}>
                           {favorites.has(shotList.id) ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Dupliser">
+                      <Tooltip title={t('shot.tooltip.duplicate')}>
                         <IconButton onClick={() => handleDuplicate(shotList)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
                           <DuplicateIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger">
+                      <Tooltip title={t('shot.tooltip.edit')}>
                         <IconButton onClick={() => handleOpenDialog(shotList)} sx={{ color: '#e91e63' }}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('shot.tooltip.delete')}>
                         <IconButton onClick={() => handleDeleteWithUndo(shotList.id)} sx={{ color: '#ff4444' }}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -4122,7 +4112,7 @@ export function CastingShotListPanel({
                               {ip > 0 && <Chip label={ip} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#9333ea', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
                               {done > 0 && <Chip label={done} size="small" sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#4caf50', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
                             </Box>
-                            <Tooltip title={`${pct}% fullført`}>
+                            <Tooltip title={t('shot.toast.percentDone', { n: pct })}>
                               <LinearProgress
                                 variant="determinate"
                                 value={pct}
@@ -4147,7 +4137,7 @@ export function CastingShotListPanel({
                         return (
                           <Box sx={{ display: 'flex', gap: 0.4, ml: 0.5 }}>
                             {unassigned > 0 && (
-                              <Tooltip title={`${unassigned} shot${unassigned > 1 ? 's' : ''} uten ansvarlig`}>
+                              <Tooltip title={`${unassigned} shot${unassigned > 1 ? 's' : ''} ${t('shot.card.withoutAssignee')}`}>
                                 <Chip
                                   icon={<AssignIcon style={{ fontSize: 11 }} />}
                                   label={unassigned}
@@ -4157,7 +4147,7 @@ export function CastingShotListPanel({
                               </Tooltip>
                             )}
                             {noEst > 0 && (
-                              <Tooltip title={`${noEst} shot${noEst > 1 ? 's' : ''} mangler estimert tid`}>
+                              <Tooltip title={`${noEst} shot${noEst > 1 ? 's' : ''} ${t('shot.card.missingEstimate')}`}>
                                 <Chip
                                   icon={<TimeIcon style={{ fontSize: 11 }} />}
                                   label={noEst}
@@ -4167,7 +4157,7 @@ export function CastingShotListPanel({
                               </Tooltip>
                             )}
                             {nearDeadline && notStartedCount > 0 && (
-                              <Tooltip title={`${notStartedCount} ustartet shot \u2014 innspilling om ${daysUntil ?? 0} dag${daysUntil === 1 ? '' : 'er'}`}>
+                              <Tooltip title={`${notStartedCount} ${t('shot.card.unstartedShot')} \u2014 ${t('shot.card.shootingIn')} ${daysUntil ?? 0} ${daysUntil === 1 ? t('shot.unit.day') : t('shot.unit.days')}`}>
                                 <Chip
                                   icon={<WarningIcon style={{ fontSize: 11 }} />}
                                   label="!"
@@ -4181,7 +4171,7 @@ export function CastingShotListPanel({
                       })()}
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <Tooltip title="Eksporter denne scenen">
+                      <Tooltip title={t('shot.tooltip.exportScene')}>
                         <IconButton
                           onClick={() => {
                             setExportSceneId(shotList.id);
@@ -4198,7 +4188,7 @@ export function CastingShotListPanel({
                           <PdfIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger scene">
+                      <Tooltip title={t('shot.tooltip.editScene')}>
                         <IconButton
                           onClick={() => handleOpenDialog(shotList)}
                           size="small"
@@ -4211,7 +4201,7 @@ export function CastingShotListPanel({
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett scene">
+                      <Tooltip title={t('shot.tooltip.deleteScene')}>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(shotList.id)}
                           size="small"
@@ -4241,7 +4231,7 @@ export function CastingShotListPanel({
                       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: missingCoveragePreview ? 0.75 : 0 }}>
                         <Chip
                           size="small"
-                          label={`${storyboardCoverage.coveredFrames}/${storyboardCoverage.totalFrames} frames brukt`}
+                          label={`${storyboardCoverage.coveredFrames}/${storyboardCoverage.totalFrames} ${t('shot.coverage.framesUsed')}`}
                           onClick={() => {
                             setSceneStoryboardDialog({
                               sceneId: shotList.sceneId,
@@ -4257,7 +4247,7 @@ export function CastingShotListPanel({
                         />
                         <Chip
                           size="small"
-                          label={`${storyboardCoverage.missingFrames} mangler shot`}
+                          label={`${storyboardCoverage.missingFrames} ${t('shot.coverage.missingShot')}`}
                           onClick={() => {
                             const firstMissingFrameId = storyboardCoverage.missingFrameIds[0];
                             const scene = manuscriptSceneById.get(shotList.sceneId);
@@ -4279,7 +4269,7 @@ export function CastingShotListPanel({
                         {storyboardCoverage.coveredFrameIds.length > 0 && (
                           <Chip
                             size="small"
-                            label="Åpne linked frame"
+                            label={t('shot.chip.openLinked')}
                             data-testid={`legacy-shotlist-open-linked-frame-${shotList.id}`}
                             onClick={() => {
                               const firstCoveredFrameId = storyboardCoverage.coveredFrameIds[0];
@@ -4303,7 +4293,7 @@ export function CastingShotListPanel({
                         {storyboardCoverage.missingFrameIds.length > 0 && (
                           <Chip
                             size="small"
-                            label="Åpne manglende frame"
+                            label={t('shot.chip.openMissing')}
                             data-testid={`legacy-shotlist-open-missing-frame-${shotList.id}`}
                             onClick={() => {
                               const firstMissingFrameId = storyboardCoverage.missingFrameIds[0];
@@ -4327,7 +4317,7 @@ export function CastingShotListPanel({
                         {storyboardCoverage.unlinkedShots > 0 && (
                           <Chip
                             size="small"
-                            label={`${storyboardCoverage.unlinkedShots} shots uten storyboard`}
+                            label={`${storyboardCoverage.unlinkedShots} ${t('shot.coverage.shotsNoStoryboard')}`}
                             sx={{
                               bgcolor: 'rgba(148,163,184,0.12)',
                               color: '#cbd5e1',
@@ -4338,7 +4328,7 @@ export function CastingShotListPanel({
                       </Stack>
                       {missingCoveragePreview && (
                         <Typography sx={{ color: 'rgba(255,255,255,0.66)', fontSize: '0.72rem' }}>
-                          Mangler: {missingCoveragePreview}
+                          {t('shot.coverage.missing', { list: missingCoveragePreview })}
                         </Typography>
                       )}
                     </Box>
@@ -4362,7 +4352,7 @@ export function CastingShotListPanel({
                         <>
                           <MUICircularProgress size={14} sx={{ color: 'var(--role-cyan, #00d4ff)', flexShrink: 0 }} />
                           <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)', flex: 1 }}>
-                            Genererer bilde {storyboardGenerationProgress[shotList.id].current} / {storyboardGenerationProgress[shotList.id].total}
+                            {t('shot.gen.imageProgress', { current: storyboardGenerationProgress[shotList.id].current, total: storyboardGenerationProgress[shotList.id].total })}
                           </Typography>
                           {storyboardGenerationProgress[shotList.id].current >= storyboardGenerationProgress[shotList.id].total && (
                             <WarningIcon sx={{ fontSize: 14, color: '#9333ea' }} />
@@ -4371,9 +4361,7 @@ export function CastingShotListPanel({
                       ) : (
                         <>
                           <MUICircularProgress size={14} sx={{ color: 'var(--role-cyan, #00d4ff)', flexShrink: 0 }} />
-                          <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)' }}>
-                            Starter storyboard-generering…
-                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)' }}>{t('shot.gen.starting')}</Typography>
                         </>
                       )}
                     </Box>
@@ -4391,9 +4379,7 @@ export function CastingShotListPanel({
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <AddIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: 18 }} />
-                      <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}>
-                        Legg til shot
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}>{t('shot.btn.addShot')}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                       {(['Wide', 'Medium', 'Close-up', 'Detail', 'Portrait'] as ShotType[]).map((type) => (
@@ -4431,10 +4417,10 @@ export function CastingShotListPanel({
                               const lists = await castingService.getShotLists(projectId);
                               setShotLists(Array.isArray(lists) ? lists : []);
                               if (onUpdate) onUpdate();
-                              toast.showSuccess(`${getShotTypeLabel(type)} shot lagt til`);
+                              toast.showSuccess(t('shot.toast.shotTypeAdded', { type: getShotTypeLabel(type) }));
                             } catch (error) {
                               console.error('Error quick-adding shot:', error);
-                              toast.showError('Kunne ikke legge til shot');
+                              toast.showError(t('shot.err.addShot'));
                             }
                           }}
                           sx={{
@@ -4453,7 +4439,7 @@ export function CastingShotListPanel({
                         />
                       ))}
                       <Chip
-                        label="+ Mer"
+                        label={t('shot.chip.more')}
                         size="small"
                         onClick={() => handleOpenShotDialog(shotList.id)}
                         sx={{
@@ -4487,9 +4473,7 @@ export function CastingShotListPanel({
                   {/* Expandable shots list */}
                   <Collapse in={expandedCards.has(shotList.id)}>
                     <Box sx={{ mb: 1.5, p: 1, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1 }}>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 600, mb: 1, display: 'block' }}>
-                        Shots i denne listen:
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 600, mb: 1, display: 'block' }}>{t('shot.card.shotsInList')}</Typography>
                       {/* Status summary inside drilldown */}
                       {shotList.shots.length > 0 && (() => {
                         const counts: Record<ShotStatus, number> = { not_started: 0, in_progress: 0, completed: 0 };
@@ -4567,9 +4551,7 @@ export function CastingShotListPanel({
                                     }}
                                   >
                                     <AddIcon sx={{ fontSize: 16 }} />
-                                    <Typography variant="caption" sx={{ color: 'inherit' }}>
-                                      Sett inn shot her
-                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: 'inherit' }}>{t('shot.card.insertHere')}</Typography>
                                   </Box>
                                 </Box>
                               )}
@@ -4657,7 +4639,7 @@ export function CastingShotListPanel({
                                   {/* Description input - takes remaining space */}
                                   <TextField
                                     size="small"
-                                    placeholder="Legg til beskrivelse..."
+                                    placeholder={t('shot.ph.addDescription')}
                                     value={inlineDraft.description ?? shot.description ?? ''}
                                     onChange={(e) => handleInlineEditChange(shot.id, { description: e.target.value })}
                                     onBlur={() => handleInlineEditCommit(shotList, shot)}
@@ -4692,7 +4674,7 @@ export function CastingShotListPanel({
                                       transition: 'opacity 0.2s',
                                     }}
                                   >
-                                    <Tooltip title={shot.reservedBy === user?.id ? 'Fjern reservasjon' : 'Reserver'}>
+                                    <Tooltip title={shot.reservedBy === user?.id ? t('shot.tooltip.removeReservation') : t('shot.tooltip.reserve')}>
                                       <span>
                                         <IconButton
                                           size="small"
@@ -4708,17 +4690,17 @@ export function CastingShotListPanel({
                                         </IconButton>
                                       </span>
                                     </Tooltip>
-                                    <Tooltip title={`Neste status: ${getNextStatus(shot.status || 'not_started')}`}>
+                                    <Tooltip title={t('shot.tooltip.nextStatus', { status: statusConfig[getNextStatus(shot.status || 'not_started')].label })}>
                                       <IconButton
                                         size="small"
                                         onClick={() => handleUpdateShotInline(shotList, shot.id, { status: getNextStatus(shot.status || 'not_started') })}
                                         sx={{ p: 0.5, color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#4caf50' } }}
-                                        aria-label="Sett neste status"
+                                        aria-label={t('shot.aria.setNextStatus')}
                                       >
                                         <NextIcon sx={{ fontSize: 16 }} />
                                       </IconButton>
                                     </Tooltip>
-                                    <Tooltip title="Rediger">
+                                    <Tooltip title={t('shot.tooltip.edit')}>
                                       <IconButton
                                         size="small"
                                         onClick={() => handleOpenShotDialog(shotList.id, shot)}
@@ -4727,7 +4709,7 @@ export function CastingShotListPanel({
                                         <EditIcon sx={{ fontSize: 16 }} />
                                       </IconButton>
                                     </Tooltip>
-                                    <Tooltip title="Slett">
+                                    <Tooltip title={t('shot.tooltip.delete')}>
                                       <IconButton
                                         size="small"
                                         onClick={() => handleDeleteShot(shotList.id, shot.id)}
@@ -4760,9 +4742,9 @@ export function CastingShotListPanel({
                                         '& .MuiSelect-select': { py: 0.5, px: 1 },
                                       }}
                                     >
-                                      <MenuItem value="not_started">Venter</MenuItem>
-                                      <MenuItem value="in_progress">Pågår</MenuItem>
-                                      <MenuItem value="completed">Fullført</MenuItem>
+                                      <MenuItem value="not_started">{t('shot.status.notStarted')}</MenuItem>
+                                      <MenuItem value="in_progress">{t('shot.status.inProgress')}</MenuItem>
+                                      <MenuItem value="completed">{t('shot.status.completed')}</MenuItem>
                                     </Select>
                                   </FormControl>
                                   
@@ -4786,8 +4768,8 @@ export function CastingShotListPanel({
                                         '& .MuiSelect-select': { py: 0.5, px: 1 },
                                       }}
                                     >
-                                      <MenuItem value="critical">Kritisk</MenuItem>
-                                      <MenuItem value="important">Viktig</MenuItem>
+                                      <MenuItem value="critical">{t('shot.priority.critical')}</MenuItem>
+                                      <MenuItem value="important">{t('shot.priority.important')}</MenuItem>
                                       <MenuItem value="nice_to_have">Bonus</MenuItem>
                                     </Select>
                                   </FormControl>
@@ -4809,7 +4791,7 @@ export function CastingShotListPanel({
 
                                   {/* Quick assign */}
                                   {crewMembers.length > 0 && (
-                                    <Tooltip title={shot.assigneeId ? `Tilordnet: ${getAssigneeLabel(shot.assigneeId)}` : 'Tilordne'}>
+                                    <Tooltip title={shot.assigneeId ? t('shot.tooltip.assignedTo', { name: getAssigneeLabel(shot.assigneeId) }) : t('shot.tooltip.assign')}>
                                       <FormControl size="small">
                                         <Select
                                           value={shot.assigneeId || ''}
@@ -4834,7 +4816,7 @@ export function CastingShotListPanel({
                                           }}
                                         >
                                           <MenuItem value="">
-                                            <em>Ingen</em>
+                                            <em>{t('shot.none')}</em>
                                           </MenuItem>
                                           {crewMembers.map((member) => (
                                             <MenuItem key={member.id} value={member.id}>
@@ -4900,7 +4882,7 @@ export function CastingShotListPanel({
                                   {shot.reservedBy && shot.reservedBy !== user?.id && (
                                     <Chip
                                       icon={<ReserveIcon sx={{ fontSize: '12px !important' }} />}
-                                      label={shot.reservedByName || 'Reservert'}
+                                      label={shot.reservedByName || t('shot.reserved')}
                                       size="small"
                                       sx={{
                                         bgcolor: 'rgba(147,51,234,0.15)',
@@ -4948,12 +4930,12 @@ export function CastingShotListPanel({
                                     icon={<StoryboardIcon sx={{ fontSize: '13px !important' }} />}
                                     label={
                                       storyboardLink.status === 'linked'
-                                        ? storyboardLink.label || 'Storyboard koblet'
+                                        ? storyboardLink.label || t('shot.sb.linked')
                                         : storyboardLink.status === 'missing'
-                                          ? 'Storyboard mangler'
+                                          ? t('shot.sb.missing')
                                           : storyboardScene
-                                            ? 'Ikke koblet til storyboard'
-                                            : 'Ingen scene-storyboard'
+                                            ? t('shot.sb.notLinked')
+                                            : t('shot.sb.noneScene')
                                     }
                                     size="small"
                                     sx={{
@@ -4973,7 +4955,7 @@ export function CastingShotListPanel({
                                       onClick={() => handleOpenShotStoryboardLinkDialog(shotList, shot)}
                                       sx={{ color: '#93c5fd', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
                                     >
-                                      {storyboardCandidates.length > 0 ? 'Relink' : 'Koble'}
+                                      {storyboardCandidates.length > 0 ? t('shot.btn.relink') : t('shot.btn.link')}
                                     </Button>
                                   )}
 
@@ -4985,18 +4967,14 @@ export function CastingShotListPanel({
                                         onClick={() => handleOpenShotStoryboardFrame(shotList, shot)}
                                         data-testid={`legacy-shot-open-frame-${shot.id}`}
                                         sx={{ color: '#34d399', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
-                                      >
-                                        Åpne frame
-                                      </Button>
+                                      >{t('shot.btn.openFrame')}</Button>
                                       <Button
                                         size="small"
                                         variant="text"
                                         onClick={() => handleResyncShotStoryboard(shotList, shot)}
                                         data-testid={`legacy-shot-resync-${shot.id}`}
                                         sx={{ color: '#facc15', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
-                                      >
-                                        Synk
-                                      </Button>
+                                      >{t('shot.btn.sync')}</Button>
                                       <Button
                                         size="small"
                                         variant="text"
@@ -5015,9 +4993,7 @@ export function CastingShotListPanel({
                                       variant="text"
                                       onClick={() => handleCreateStoryboardFrameFromShot(shotList, shot)}
                                       sx={{ color: '#f9a8d4', fontSize: '0.66rem', minWidth: 0, px: 0.75 }}
-                                    >
-                                      Ny frame fra shot
-                                    </Button>
+                                    >{t('shot.btn.newFrameFromShot')}</Button>
                                   )}
                                 </Box>
                                 
@@ -5094,9 +5070,7 @@ export function CastingShotListPanel({
                                     ) : (
                                       <AutoAwesomeIcon sx={{ fontSize: 14 }} />
                                     )}
-                                    <Typography variant="caption" sx={{ color: 'inherit' }}>
-                                      Generer bilde
-                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: 'inherit' }}>{t('shot.btn.generateImage')}</Typography>
                                   </Box>
                                 )}
                               </Box>
@@ -5124,9 +5098,7 @@ export function CastingShotListPanel({
                                   }}
                                 >
                                   <AddIcon sx={{ fontSize: 16 }} />
-                                  <Typography variant="caption" sx={{ color: 'inherit' }}>
-                                    Sett inn shot her
-                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: 'inherit' }}>{t('shot.card.insertHere')}</Typography>
                                 </Box>
                               </Box>
                             </Fragment>
@@ -5141,7 +5113,7 @@ export function CastingShotListPanel({
                         </Typography>
                         <Stack spacing={1}>
                           <TextField
-                            placeholder="Beskrivelse (valgfritt)"
+                            placeholder={t('shot.ph.descriptionOptional')}
                             value={quickShotDrafts[shotList.id]?.description || ''}
                             onChange={(e) => handleQuickShotChange(shotList.id, { description: e.target.value })}
                             size="small"
@@ -5193,16 +5165,12 @@ export function CastingShotListPanel({
                               onClick={() => handleQuickAddShot(shotList)}
                               sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: '11px', borderColor: 'rgba(0,212,255,0.4)' }}
                               variant="outlined"
-                            >
-                              Legg til shot
-                            </Button>
+                            >{t('shot.btn.addShot')}</Button>
                             <Button
                               size="small"
                               onClick={() => handleOpenShotDialog(shotList.id)}
                               sx={{ color: '#e91e63', fontSize: '11px' }}
-                            >
-                              Avansert
-                            </Button>
+                            >{t('shot.btn.advanced')}</Button>
                           </Box>
                         </Stack>
                       </Box>
@@ -5220,9 +5188,7 @@ export function CastingShotListPanel({
                         border: '1px solid rgba(233,30,99,0.15)',
                       }}
                     >
-                      <Typography variant="caption" sx={{ color: '#e91e63', fontWeight: 600, mb: 0.5, display: 'block' }}>
-                        Neste opp:
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: '#e91e63', fontWeight: 600, mb: 0.5, display: 'block' }}>{t('shot.card.nextUp')}</Typography>
                       <Stack spacing={0.5}>
                         {getNextUpShots(shotList).map((s) => (
                           <Box key={s.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -5342,7 +5308,7 @@ export function CastingShotListPanel({
                         ...focusVisibleStyles 
                       }}
                     >
-                      {expandedCards.has(shotList.id) ? 'Skjul shots' : `Vis ${shotList.shots.length} shots`}
+                      {expandedCards.has(shotList.id) ? t('shot.btn.hideShots') : t('shot.btn.showShots', { n: shotList.shots.length })}
                     </Button>
                   )}
                 </CardContent>
@@ -5358,11 +5324,9 @@ export function CastingShotListPanel({
         open={undoSnackbarOpen}
         autoHideDuration={6000}
         onClose={() => setUndoSnackbarOpen(false)}
-        message="Shot list slettet"
+        message={t('shot.snackbar.deleted')}
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#e91e63' }}>
-            Angre
-          </Button>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#e91e63' }}>{t('shot.btn.undo')}</Button>
         }
         sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#333' } }}
       />
@@ -5401,10 +5365,10 @@ export function CastingShotListPanel({
       >
         <DialogTitle id={dialogTitleId} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" component="span">
-            {editingShotList ? 'Rediger shot list' : 'Opprett shot list'}
+            {editingShotList ? t('shot.dialog.editShotList') : t('shot.dialog.createShotList')}
           </Typography>
           {isMobile && (
-            <IconButton onClick={handleCloseDialog} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={handleCloseDialog} aria-label={t('shot.aria.close')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           )}
@@ -5413,11 +5377,11 @@ export function CastingShotListPanel({
           <Stack spacing={2} sx={{ mt: 1 }}>
             {availableScenes.length > 0 ? (
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Scene (fra Role Room)</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.sceneFromRoleRoom')}</InputLabel>
                 <Select
                   value={formData.sceneId || ''}
                   onChange={(e) => setFormData({ ...formData, sceneId: e.target.value, sceneName: '' })}
-                  label="Scene (fra Role Room)"
+                  label={t('shot.field.sceneFromRoleRoom')}
                   sx={{
                     color: '#fff',
                     minHeight: TOUCH_TARGET_SIZE,
@@ -5427,7 +5391,7 @@ export function CastingShotListPanel({
                   }}
                 >
                   <MenuItem value="">
-                    <em>Ingen scene (bruk manuelt navn)</em>
+                    <em>{t('shot.field.noSceneManual')}</em>
                   </MenuItem>
                   {availableScenes.map((scene) => (
                     <MenuItem key={scene.id} value={scene.id}>
@@ -5441,11 +5405,11 @@ export function CastingShotListPanel({
             {(!formData.sceneId || availableScenes.length === 0) && (
               <TextField
                 fullWidth
-                label="Scenenavn"
+                label={t('shot.field.sceneNameLabel')}
                 value={formData.sceneName || ''}
                 onChange={(e) => setFormData({ ...formData, sceneName: e.target.value })}
-                placeholder="F.eks. Åpningsscene, Interiør kjøkken..."
-                helperText={availableScenes.length === 0 ? "Skriv inn et navn for scenen manuelt" : "Brukes når ingen scene er valgt fra Role Room-scener"}
+                placeholder={t('shot.ph.sceneExample')}
+                helperText={availableScenes.length === 0 ? t('shot.help.enterSceneManual') : t('shot.help.usedWhenNoScene')}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -5461,11 +5425,11 @@ export function CastingShotListPanel({
             )}
 
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Produksjonskontekst</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.productionContext')}</InputLabel>
               <Select
                 value={formData.productionContext || 'custom'}
                 onChange={(e) => setFormData({ ...formData, productionContext: e.target.value as ProductionContext })}
-                label="Produksjonskontekst"
+                label={t('shot.field.productionContext')}
                 sx={{
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
@@ -5523,14 +5487,12 @@ export function CastingShotListPanel({
                     }}
                   />
                 </Box>
-                <Typography sx={{ color: '#ffb800', fontWeight: 700, fontSize: isMobile ? '0.875rem' : '1rem' }}>
-                  Notater
-                </Typography>
+                <Typography sx={{ color: '#ffb800', fontWeight: 700, fontSize: isMobile ? '0.875rem' : '1rem' }}>{t('shot.field.notes')}</Typography>
               </Box>
               <RichTextEditor
                 value={formData.notes || ''}
                 onChange={(value) => setFormData({ ...formData, notes: value })}
-                placeholder="Skriv notater her..."
+                placeholder={t('shot.ph.notes')}
                 minHeight={120}
                 accentColor="#ffb800"
               />
@@ -5541,15 +5503,13 @@ export function CastingShotListPanel({
           <Button
             onClick={handleCloseDialog}
             sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
-          >
-            Avbryt
-          </Button>
+          >{t('shot.btn.cancel')}</Button>
           <Button
             onClick={handleSaveShotList}
             variant="contained"
             sx={{ bgcolor: '#e91e63', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles, '&:hover': { bgcolor: '#c2185b' } }}
           >
-            {editingShotList ? 'Lagre' : 'Opprett'}
+            {editingShotList ? t('shot.btn.save') : t('shot.btn.create')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -5574,10 +5534,10 @@ export function CastingShotListPanel({
       >
         <DialogTitle id={shotDialogTitleId} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" component="span">
-            {editingShot ? 'Rediger shot' : 'Legg til shot'}
+            {editingShot ? t('shot.dialog.editShot') : t('shot.dialog.addShot')}
           </Typography>
           {isMobile && (
-            <IconButton onClick={handleCloseShotDialog} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={handleCloseShotDialog} aria-label={t('shot.aria.close')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           )}
@@ -5594,16 +5554,12 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Visuell shot-brief
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Overblikk før du dykker ned i detaljer
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.visualBrief')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.overviewBeforeDetails')}</Typography>
               </Box>
               <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1 }}>
                 <Chip
-                  label={`Scene: ${sceneLabel}`}
+                  label={t('shot.label.sceneName', { name: sceneLabel })}
                   icon={<MovieIcon sx={{ fontSize: 16 }} />}
                   sx={{
                     bgcolor: 'rgba(255,255,255,0.1)',
@@ -5623,7 +5579,7 @@ export function CastingShotListPanel({
                   }}
                 />
                 <Chip
-                  label={`Prioritet: ${selectedPriorityInfo.label}`}
+                  label={t('shot.label.priorityValue', { value: selectedPriorityInfo.label })}
                   sx={{
                     bgcolor: selectedPriorityInfo.bgColor,
                     color: selectedPriorityInfo.color,
@@ -5632,7 +5588,7 @@ export function CastingShotListPanel({
                   }}
                 />
                 <Chip
-                  label={`Estimat: ${estimatedMinutes} min`}
+                  label={t('shot.label.estimateMin', { n: estimatedMinutes })}
                   icon={<ScheduleIcon sx={{ fontSize: 16 }} />}
                   sx={{
                     bgcolor: 'rgba(0,212,255,0.12)',
@@ -5653,12 +5609,8 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Kjerneinfo
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Start med de viktigste valgene
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.coreInfo')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.startWithChoices')}</Typography>
               </Box>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
                 {shotTypes.map((type) => (
@@ -5715,7 +5667,7 @@ export function CastingShotListPanel({
                         '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#e91e63' },
                       }}
                     >
-                      <MenuItem value="photo">Foto</MenuItem>
+                      <MenuItem value="photo">{t('shot.media.photo')}</MenuItem>
                       <MenuItem value="video">Video</MenuItem>
                       <MenuItem value="hybrid">Hybrid</MenuItem>
                     </Select>
@@ -5723,11 +5675,11 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kameravinkel</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.cameraAngle')}</InputLabel>
                     <Select
                       value={shotFormData.cameraAngle || 'Eye Level'}
                       onChange={(e) => setShotFormData({ ...shotFormData, cameraAngle: e.target.value as CameraAngle })}
-                      label="Kameravinkel"
+                      label={t('shot.field.cameraAngle')}
                       sx={{
                         color: '#fff',
                         minHeight: TOUCH_TARGET_SIZE,
@@ -5743,11 +5695,11 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kamerabevegelse</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.cameraMovement')}</InputLabel>
                     <Select
                       value={shotFormData.cameraMovement || 'Static'}
                       onChange={(e) => setShotFormData({ ...shotFormData, cameraMovement: e.target.value as CameraMovement })}
-                      label="Kamerabevegelse"
+                      label={t('shot.field.cameraMovement')}
                       sx={{
                         color: '#fff',
                         minHeight: TOUCH_TARGET_SIZE,
@@ -5763,11 +5715,11 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Prioritet</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.priority')}</InputLabel>
                     <Select
                       value={shotFormData.priority || 'important'}
                       onChange={(e) => setShotFormData({ ...shotFormData, priority: e.target.value as ShotPriority })}
-                      label="Prioritet"
+                      label={t('shot.field.priority')}
                       sx={{
                         color: '#fff',
                         minHeight: TOUCH_TARGET_SIZE,
@@ -5775,15 +5727,15 @@ export function CastingShotListPanel({
                         '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#e91e63' },
                       }}
                     >
-                      <MenuItem value="critical">Kritisk</MenuItem>
-                      <MenuItem value="important">Viktig</MenuItem>
+                      <MenuItem value="critical">{t('shot.priority.critical')}</MenuItem>
+                      <MenuItem value="important">{t('shot.priority.important')}</MenuItem>
                       <MenuItem value="nice_to_have">Bonus</MenuItem>
                     </Select>
                   </FormControl>
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <TextField
-                    label="Estimert tid (min)"
+                    label={t('shot.field.estimatedTime')}
                     type="number"
                     value={shotFormData.estimatedTime || ''}
                     onChange={(e) => setShotFormData({ ...shotFormData, estimatedTime: e.target.value ? Number(e.target.value) : undefined })}
@@ -5800,19 +5752,17 @@ export function CastingShotListPanel({
                   />
                 </Box>
                 <Box sx={{ width: '100%' }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-                    Fargekode
-                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>{t('shot.field.colorCode')}</Typography>
                   <Stack direction="row" spacing={1}>
                     {[
-                      { value: undefined, label: 'Ingen', color: 'rgba(255,255,255,0.2)' },
-                      { value: 'red', label: 'Rød', color: '#f44336' },
-                      { value: 'orange', label: 'Oransje', color: '#9333ea' },
-                      { value: 'yellow', label: 'Gul', color: '#ffeb3b' },
-                      { value: 'green', label: 'Grønn', color: '#4caf50' },
-                      { value: 'blue', label: 'Blå', color: '#2196f3' },
-                      { value: 'purple', label: 'Lilla', color: '#9c27b0' },
-                      { value: 'gray', label: 'Grå', color: '#9e9e9e' },
+                      { value: undefined, label: t('shot.color.none'), color: 'rgba(255,255,255,0.2)' },
+                      { value: 'red', label: t('shot.color.red'), color: '#f44336' },
+                      { value: 'orange', label: t('shot.color.orange'), color: '#9333ea' },
+                      { value: 'yellow', label: t('shot.color.yellow'), color: '#ffeb3b' },
+                      { value: 'green', label: t('shot.color.green'), color: '#4caf50' },
+                      { value: 'blue', label: t('shot.color.blue'), color: '#2196f3' },
+                      { value: 'purple', label: t('shot.color.purple'), color: '#9c27b0' },
+                      { value: 'gray', label: t('shot.color.gray'), color: '#9e9e9e' },
                     ].map((tag) => (
                       <Tooltip key={tag.label} title={tag.label}>
                         <Box
@@ -5849,12 +5799,8 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Scene og ansvar
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Knytt shot-et til riktig kontekst og person
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.sceneAndResponsibility')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.linkContextPerson')}</Typography>
               </Box>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
@@ -5879,11 +5825,11 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Rolle</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.role')}</InputLabel>
                     <Select
                       value={shotFormData.roleId || ''}
                       onChange={(e) => setShotFormData({ ...shotFormData, roleId: e.target.value })}
-                      label="Rolle"
+                      label={t('shot.field.role')}
                       sx={{
                         color: '#fff',
                         minHeight: TOUCH_TARGET_SIZE,
@@ -5899,11 +5845,11 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Ansvarlig</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.assignee')}</InputLabel>
                     <Select
                       value={shotFormData.assigneeId || ''}
                       onChange={(e) => setShotFormData({ ...shotFormData, assigneeId: e.target.value })}
-                      label="Ansvarlig"
+                      label={t('shot.field.assignee')}
                       sx={{
                         color: '#fff',
                         minHeight: TOUCH_TARGET_SIZE,
@@ -5912,7 +5858,7 @@ export function CastingShotListPanel({
                       }}
                     >
                       <MenuItem value="">
-                        <em>Ingen valgt</em>
+                        <em>{t('shot.noneSelected')}</em>
                       </MenuItem>
                       {user && (
                         <MenuItem value={user.id}>
@@ -5937,11 +5883,9 @@ export function CastingShotListPanel({
                 onClick={() => setShowAdvancedCamera(!showAdvancedCamera)}
                 sx={{ color: 'var(--role-cyan, #00d4ff)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
               >
-                {showAdvancedCamera ? 'Skjul teknisk blokk' : 'Vis teknisk blokk'}
+                {showAdvancedCamera ? t('shot.btn.hideTech') : t('shot.btn.showTech')}
               </Button>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
-                Forenkle dialogen ved å åpne kun når du trenger detaljer
-              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>{t('shot.dialog.simplifyHint')}</Typography>
             </Box>
 
             <Collapse in={showAdvancedCamera}>
@@ -5954,11 +5898,9 @@ export function CastingShotListPanel({
                 }}
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                    Teknisk oppsett
-                  </Typography>
+                  <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.technicalSetup')}</Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Tilpasset {profession === 'photographer' ? 'foto' : profession === 'videographer' ? 'video' : 'shot'}-profilen din
+                    {t('shot.dialog.tailored', { kind: profession === 'photographer' ? t('shot.dialog.kindPhoto') : profession === 'videographer' ? t('shot.dialog.kindVideo') : t('shot.dialog.kindShot') })}
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -5966,7 +5908,7 @@ export function CastingShotListPanel({
                     <>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Brennvidde (mm)"
+                          label={t('shot.field.focalLength')}
                           type="number"
                           value={shotFormData.focalLength || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, focalLength: e.target.value ? Number(e.target.value) : undefined })}
@@ -5984,7 +5926,7 @@ export function CastingShotListPanel({
                       </Box>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Blenderåpning (f/)"
+                          label={t('shot.field.aperture')}
                           type="number"
                           value={shotFormData.aperture || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, aperture: e.target.value ? Number(e.target.value) : undefined })}
@@ -6002,7 +5944,7 @@ export function CastingShotListPanel({
                       </Box>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Lukkerhastighet (1/s)"
+                          label={t('shot.field.shutter')}
                           type="number"
                           value={shotFormData.shutter || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, shutter: e.target.value ? Number(e.target.value) : undefined })}
@@ -6059,7 +6001,7 @@ export function CastingShotListPanel({
                       </Box>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Oppløsning"
+                          label={t('shot.field.resolution')}
                           value={shotFormData.resolution || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, resolution: e.target.value })}
                           placeholder="1920x1080"
@@ -6095,7 +6037,7 @@ export function CastingShotListPanel({
                       </Box>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Lydkanaler"
+                          label={t('shot.field.audioChannels')}
                           type="number"
                           value={shotFormData.audioChannels || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, audioChannels: e.target.value ? Number(e.target.value) : undefined })}
@@ -6116,7 +6058,7 @@ export function CastingShotListPanel({
                     <>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Brennvidde (mm)"
+                          label={t('shot.field.focalLength')}
                           type="number"
                           value={shotFormData.focalLength || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, focalLength: e.target.value ? Number(e.target.value) : undefined })}
@@ -6134,7 +6076,7 @@ export function CastingShotListPanel({
                       </Box>
                       <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
-                          label="Varighet (sek)"
+                          label={t('shot.field.duration')}
                           type="number"
                           value={shotFormData.duration || ''}
                           onChange={(e) => setShotFormData({ ...shotFormData, duration: e.target.value ? Number(e.target.value) : undefined })}
@@ -6165,17 +6107,13 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Beskrivelse og notater
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Gi teamet rask kontekst
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.descAndNotes')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.quickContext')}</Typography>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Box sx={{ width: '100%' }}>
                   <TextField
-                    label="Beskrivelse"
+                    label={t('shot.field.description')}
                     value={shotFormData.description || ''}
                     onChange={(e) => setShotFormData({ ...shotFormData, description: e.target.value })}
                     multiline
@@ -6193,7 +6131,7 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: '100%' }}>
                   <TextField
-                    label="Notater"
+                    label={t('shot.field.notes')}
                     value={shotFormData.notes || ''}
                     onChange={(e) => setShotFormData({ ...shotFormData, notes: e.target.value })}
                     multiline
@@ -6217,8 +6155,8 @@ export function CastingShotListPanel({
                         notes: applyMentionSuggestion(prev.notes, name),
                       }))
                     }
-                    autoTagTitle="Auto-tagget i notater"
-                    suggestionTitle="Mener du?"
+                    autoTagTitle={t('shot.mention.autoTagNotes')}
+                    suggestionTitle={t('shot.mention.didYouMean')}
                   />
                 </Box>
               </Box>
@@ -6233,17 +6171,13 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Anbefalinger
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Presets fra produksjon eller egne valg
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.recommendations')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.presetsHint')}</Typography>
               </Box>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <TextField
-                    label="Objektiv-anbefaling"
+                    label={t('shot.field.lensRec')}
                     value={shotFormData.lensRecommendation || ''}
                     onChange={(e) => setShotFormData({ ...shotFormData, lensRecommendation: e.target.value })}
                     fullWidth
@@ -6259,7 +6193,7 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <TextField
-                    label="Lys-anbefaling"
+                    label={t('shot.field.lightRec')}
                     value={shotFormData.lightingSetup || ''}
                     onChange={(e) => setShotFormData({ ...shotFormData, lightingSetup: e.target.value })}
                     fullWidth
@@ -6275,7 +6209,7 @@ export function CastingShotListPanel({
                 </Box>
                 <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <TextField
-                    label="Bakgrunn-anbefaling"
+                    label={t('shot.field.bgRec')}
                     value={shotFormData.backgroundRecommendation || ''}
                     onChange={(e) => setShotFormData({ ...shotFormData, backgroundRecommendation: e.target.value })}
                     fullWidth
@@ -6301,18 +6235,12 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Team-samtale
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Historikk med hvem, rolle og klokkeslett
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.teamConversation')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.historyHint')}</Typography>
               </Box>
               <Stack spacing={1.5} sx={{ mb: 1 }}>
                 {(shotFormData.comments || []).length === 0 ? (
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Ingen kommentarer ennå
-                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.comments.none')}</Typography>
                 ) : (
                   (shotFormData.comments || []).map((comment) => (
                     <Box
@@ -6384,13 +6312,13 @@ export function CastingShotListPanel({
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                           {new Date(comment.createdAt).toLocaleDateString('nb-NO')} •{' '}
                           {new Date(comment.createdAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
-                          {comment.updatedAt ? ' (redigert)' : ''}
+                          {comment.updatedAt ? t('shot.comments.edited') : ''}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <IconButton
                             size="small"
                             onClick={() => handleToggleCommentResolved(comment.id)}
-                            aria-label={comment.resolved ? 'Marker som uløst' : 'Marker som løst'}
+                            aria-label={comment.resolved ? t('shot.aria.markUnresolved') : t('shot.aria.markResolved')}
                             sx={{ color: comment.resolved ? '#4caf50' : 'rgba(255,255,255,0.6)' }}
                           >
                             {comment.resolved ? <ResolvedIcon fontSize="small" /> : <UnresolvedIcon fontSize="small" />}
@@ -6398,7 +6326,7 @@ export function CastingShotListPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleStartEditComment(comment)}
-                            aria-label="Rediger kommentar"
+                            aria-label={t('shot.aria.editComment')}
                             sx={{ color: 'rgba(255,255,255,0.87)' }}
                           >
                             <EditIcon fontSize="small" />
@@ -6406,7 +6334,7 @@ export function CastingShotListPanel({
                           <IconButton
                             size="small"
                             onClick={() => handleDeleteComment(comment.id)}
-                            aria-label="Slett kommentar"
+                            aria-label={t('shot.aria.deleteComment')}
                             sx={{ color: '#ff4444' }}
                           >
                             <DeleteIcon fontSize="small" />
@@ -6432,7 +6360,7 @@ export function CastingShotListPanel({
                             size="small"
                             onClick={handleSaveEditedComment}
                             disabled={!editingCommentDraft.trim()}
-                            aria-label="Lagre kommentar"
+                            aria-label={t('shot.aria.saveComment')}
                             sx={{ color: '#4caf50' }}
                           >
                             <CheckIcon fontSize="small" />
@@ -6443,7 +6371,7 @@ export function CastingShotListPanel({
                               setEditingCommentId(null);
                               setEditingCommentDraft('');
                             }}
-                            aria-label="Avbryt"
+                            aria-label={t('shot.btn.cancel')}
                             sx={{ color: 'rgba(255,255,255,0.87)' }}
                           >
                             <CloseIcon fontSize="small" />
@@ -6467,7 +6395,7 @@ export function CastingShotListPanel({
               <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 1 }}>
                 <Box sx={{ flex: 1 }}>
                   <TextField
-                    label="Ny kommentar"
+                    label={t('shot.field.newComment')}
                     value={commentDraft}
                     onChange={(e) => setCommentDraft(e.target.value)}
                     fullWidth
@@ -6484,8 +6412,8 @@ export function CastingShotListPanel({
                     text={commentDraft}
                     localCandidates={mentionCandidates}
                     onApplySuggestion={(name) => setCommentDraft((prev) => applyMentionSuggestion(prev, name))}
-                    autoTagTitle="Auto-tagget i kommentar"
-                    suggestionTitle="Mener du?"
+                    autoTagTitle={t('shot.mention.autoTagComment')}
+                    suggestionTitle={t('shot.mention.didYouMean')}
                   />
                 </Box>
                 <Button
@@ -6498,9 +6426,7 @@ export function CastingShotListPanel({
                     color: '#fff',
                     '&:hover': { borderColor: '#e91e63', bgcolor: 'rgba(233,30,99,0.1)' },
                   }}
-                >
-                  Legg til
-                </Button>
+                >{t('shot.btn.add')}</Button>
               </Box>
             </Box>
 
@@ -6513,19 +6439,13 @@ export function CastingShotListPanel({
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-                  Visuell referanse
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Generer storyboard-bilde basert på beskrivelse
-                </Typography>
+                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>{t('shot.dialog.visualReference')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.genFromDesc')}</Typography>
               </Box>
 
               {shotFormData.imageUrl && (
                 <Box sx={{ mb: 2 }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-                    Generert bilde
-                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>{t('shot.dialog.generatedImage')}</Typography>
                   <Box
                     component="img"
                     src={shotFormData.imageUrl}
@@ -6544,18 +6464,18 @@ export function CastingShotListPanel({
               {shotFormData.description ? (
                 <Stack spacing={1.25}>
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Visuell stil</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.field.visualStyle')}</InputLabel>
                     <Select
                       value={selectedTemplate}
                       onChange={(e) => setSelectedTemplate(e.target.value)}
-                      label="Visuell stil"
+                      label={t('shot.field.visualStyle')}
                       sx={{
                         color: '#fff',
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                         '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.87)' },
                       }}
                     >
-                      {STORYBOARD_TEMPLATE_OPTIONS.map((option) => (
+                      {storyboardTemplateOptions.map((option) => (
                         <MenuItem key={option.value} value={option.value}>
                           {option.label}
                         </MenuItem>
@@ -6583,13 +6503,11 @@ export function CastingShotListPanel({
                       ...focusVisibleStyles,
                     }}
                   >
-                    {generatingImage ? 'Genererer bilde...' : 'Generer storyboard-bilde'}
+                    {generatingImage ? t('shot.btn.generatingImage') : t('shot.btn.generateStoryboardImage')}
                   </Button>
                 </Stack>
               ) : (
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Legg til en kort beskrivelse for å generere storyboard-bilde
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.addDescToGen')}</Typography>
               )}
             </Box>
           </Stack>
@@ -6598,15 +6516,13 @@ export function CastingShotListPanel({
           <Button
             onClick={handleCloseShotDialog}
             sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
-          >
-            Avbryt
-          </Button>
+          >{t('shot.btn.cancel')}</Button>
           <Button
             onClick={handleSaveShot}
             variant="contained"
             sx={{ bgcolor: '#e91e63', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles, '&:hover': { bgcolor: '#c2185b' } }}
           >
-            {editingShot ? 'Lagre' : 'Legg til'}
+            {editingShot ? t('shot.btn.save') : t('shot.btn.add')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -6635,11 +6551,9 @@ export function CastingShotListPanel({
         }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6" component="span">
-            Opprett storyboard fra shot list
-          </Typography>
+          <Typography variant="h6" component="span">{t('shot.dialog.createFromShotList')}</Typography>
           {isMobile && (
-            <IconButton onClick={handleCloseStoryboardDialog} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <IconButton onClick={handleCloseStoryboardDialog} aria-label={t('shot.aria.close')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
               <CloseIcon />
             </IconButton>
           )}
@@ -6649,11 +6563,9 @@ export function CastingShotListPanel({
             <Stack spacing={3} sx={{ mt: 1 }}>
               <Box>
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                  Scene: {getSceneName(selectedShotListForStoryboard.sceneId, selectedShotListForStoryboard.sceneName)}
+                  {t('shot.label.sceneName', { name: getSceneName(selectedShotListForStoryboard.sceneId, selectedShotListForStoryboard.sceneName) })}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Velg shots som skal inkluderes i storyboardet
-                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.dialog.selectShotsInclude')}</Typography>
               </Box>
 
               <Box
@@ -6748,7 +6660,7 @@ export function CastingShotListPanel({
                           </Typography>
                           {roleName && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                              Rolle: {roleName}
+                              {t('shot.label.roleName', { name: roleName })}
                             </Typography>
                           )}
                           {shot.description && (
@@ -6774,7 +6686,7 @@ export function CastingShotListPanel({
 
               <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.3)' }}>
                 <Typography variant="body2">
-                  {selectedShotsForConversion.size} av {selectedShotListForStoryboard.shots.length} shots valgt
+                  {t('shot.storyboard.selectedCount', { n: selectedShotsForConversion.size, total: selectedShotListForStoryboard.shots.length })}
                 </Typography>
               </Alert>
             </Stack>
@@ -6784,9 +6696,7 @@ export function CastingShotListPanel({
           <Button
             onClick={handleCloseStoryboardDialog}
             sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
-          >
-            Avbryt
-          </Button>
+          >{t('shot.btn.cancel')}</Button>
           {selectedShotListForStoryboard && (
             <Button
               onClick={() => {
@@ -6804,9 +6714,7 @@ export function CastingShotListPanel({
                 '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
                 '&:disabled': { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' },
               }}
-            >
-              Eksporter PDF
-            </Button>
+            >{t('shot.btn.exportPdf')}</Button>
           )}
           <Button
             onClick={handleConvertToStoryboard}
@@ -6821,9 +6729,7 @@ export function CastingShotListPanel({
               '&:hover': { bgcolor: '#00b8e6' },
               '&:disabled': { bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' },
             }}
-          >
-            Opprett storyboard
-          </Button>
+          >{t('shot.btn.createStoryboard')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -6859,7 +6765,7 @@ export function CastingShotListPanel({
               Storyboard Viewer
             </Typography>
           </Box>
-          <IconButton onClick={handleCloseStoryboardPanel} aria-label="Lukk storyboard-viewer" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={handleCloseStoryboardPanel} aria-label={t('shot.aria.closeStoryboardViewer')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -6874,12 +6780,8 @@ export function CastingShotListPanel({
                 textAlign: 'center',
               }}
             >
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-                Ingen storyboards funnet
-              </Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Opprett et storyboard fra shot list for å se frames her.
-              </Typography>
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>{t('shot.sbv.noneFound')}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.sbv.createHint')}</Typography>
             </Box>
           ) : (
             <>
@@ -6897,11 +6799,11 @@ export function CastingShotListPanel({
                 }}
               >
                 <FormControl size="small" sx={{ minWidth: 260 }}>
-                  <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Velg storyboard</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.sbv.select')}</InputLabel>
                   <Select
                     value={currentStoryboard?.id || ''}
                     onChange={(e) => e.target.value && loadStoryboard(e.target.value)}
-                    label="Velg storyboard"
+                    label={t('shot.sbv.select')}
                     sx={{
                       color: '#fff',
                       '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
@@ -6994,12 +6896,8 @@ export function CastingShotListPanel({
                     textAlign: 'center',
                   }}
                 >
-                  <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-                    Velg et storyboard
-                  </Typography>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Velg et storyboard for å se frames og metadata.
-                  </Typography>
+                  <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>{t('shot.sbv.selectOne')}</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('shot.sbv.selectHint')}</Typography>
                 </Box>
               )}
             </>
@@ -7027,8 +6925,7 @@ export function CastingShotListPanel({
       >
         <DialogTitle sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <PdfIcon sx={{ color: '#9333ea' }} />
-          Eksporter til PDF
-        </DialogTitle>
+          {t('shot.dialog.exportToPdf')}</DialogTitle>
         <DialogContent>
           {exportSceneId && (
             <Box
@@ -7040,9 +6937,7 @@ export function CastingShotListPanel({
                 bgcolor: 'rgba(15,23,42,0.5)',
               }}
             >
-              <Typography sx={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, mb: 0.5 }}>
-                Valgt scene
-              </Typography>
+              <Typography sx={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, mb: 0.5 }}>{t('shot.export.selectedScene')}</Typography>
               <Typography sx={{ color: '#fff', fontWeight: 600 }}>
                 {getSceneName(
                   shotLists.find((sl) => sl.id === exportSceneId)?.sceneId || '',
@@ -7054,8 +6949,8 @@ export function CastingShotListPanel({
 
           <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
             {exportSceneId 
-              ? 'Velg eksportformat for denne scenen:'
-              : 'Velg hva du vil eksportere:'}
+              ? t('shot.export.chooseFormatScene')
+              : t('shot.export.chooseWhat')}
           </Typography>
           <Stack spacing={2}>
             {exportSceneId && (() => {
@@ -7069,7 +6964,7 @@ export function CastingShotListPanel({
                     data-testid="legacy-shotlist-export-board-scene"
                     startIcon={<PdfIcon />}
                     onClick={() => {
-                      void handleExportBoardPDF([selectedScene], 'Board PDF eksportert');
+                      void handleExportBoardPDF([selectedScene], t('shot.toast.boardExported'));
                       setShowExportDialog(false);
                       setExportSceneId(null);
                     }}
@@ -7085,7 +6980,7 @@ export function CastingShotListPanel({
                     <Box>
                       <Typography sx={{ fontWeight: 600 }}>Board PDF</Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                        Ren board-layout for {selectedScene.shots.length} shots
+                        {t('shot.export.cleanBoardLayout', { n: selectedScene.shots.length })}
                       </Typography>
                     </Box>
                   </Button>
@@ -7095,7 +6990,7 @@ export function CastingShotListPanel({
                     data-testid="legacy-shotlist-export-contact-scene"
                     startIcon={<PdfIcon />}
                     onClick={() => {
-                      void handleExportContactSheetPDF([selectedScene], 'Contact sheet eksportert');
+                      void handleExportContactSheetPDF([selectedScene], t('shot.toast.contactExported'));
                       setShowExportDialog(false);
                       setExportSceneId(null);
                     }}
@@ -7110,9 +7005,7 @@ export function CastingShotListPanel({
                   >
                     <Box>
                       <Typography sx={{ fontWeight: 600 }}>Contact Sheet</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                        Rutenett med thumbnails og shot-metadata
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>{t('shot.export.contactDesc')}</Typography>
                     </Box>
                   </Button>
                   <Button
@@ -7121,7 +7014,7 @@ export function CastingShotListPanel({
                     data-testid="legacy-shotlist-export-deck-scene"
                     startIcon={<PdfIcon />}
                     onClick={() => {
-                      void handleExportShotDeckPDF([selectedScene], 'Shot deck eksportert');
+                      void handleExportShotDeckPDF([selectedScene], t('shot.toast.deckExported'));
                       setShowExportDialog(false);
                       setExportSceneId(null);
                     }}
@@ -7136,9 +7029,7 @@ export function CastingShotListPanel({
                   >
                     <Box>
                       <Typography sx={{ fontWeight: 600 }}>Shot Deck</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                        Ett shot per side med bilde og metadata
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>{t('shot.export.deckDescScene')}</Typography>
                     </Box>
                   </Button>
                   <Button
@@ -7147,7 +7038,7 @@ export function CastingShotListPanel({
                     data-testid="legacy-shotlist-export-stills-scene"
                     startIcon={<ExportIcon />}
                     onClick={() => {
-                      void handleExportCleanStills([selectedScene], 'Clean stills eksportert');
+                      void handleExportCleanStills([selectedScene], t('shot.toast.stillsExported'));
                       setShowExportDialog(false);
                       setExportSceneId(null);
                     }}
@@ -7162,9 +7053,7 @@ export function CastingShotListPanel({
                   >
                     <Box>
                       <Typography sx={{ fontWeight: 600 }}>Clean Stills (.zip)</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                        PNG-stills uten editor-chrome for review og deck-bruk
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>{t('shot.export.stillsDescScene')}</Typography>
                     </Box>
                   </Button>
                   <Button
@@ -7172,9 +7061,7 @@ export function CastingShotListPanel({
                     fullWidth
                     onClick={() => setExportSceneId(null)}
                     sx={{ color: 'rgba(255,255,255,0.62)' }}
-                  >
-                    Velg annen scene
-                  </Button>
+                  >{t('shot.export.chooseOther')}</Button>
                   <MuiDivider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
                 </>
               );
@@ -7186,7 +7073,7 @@ export function CastingShotListPanel({
               data-testid="legacy-shotlist-export-board-all"
               startIcon={<ExportIcon />}
               onClick={() => {
-                void handleExportBoardPDF(shotLists, `Board PDF eksportert for ${shotLists.length} scener`);
+                void handleExportBoardPDF(shotLists, t('shot.toast.boardExportedN', { n: shotLists.length }));
                 setShowExportDialog(false);
                 setExportSceneId(null);
               }}
@@ -7200,9 +7087,9 @@ export function CastingShotListPanel({
               }}
             >
               <Box>
-                <Typography sx={{ fontWeight: 600 }}>Alle scener · Board PDF</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{t('shot.export.allBoard')}</Typography>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Eksporter alle {shotLists.length} scener med board-layout
+                  {t('shot.export.allBoardDesc', { n: shotLists.length })}
                 </Typography>
               </Box>
             </Button>
@@ -7212,7 +7099,7 @@ export function CastingShotListPanel({
               data-testid="legacy-shotlist-export-contact-all"
               startIcon={<ExportIcon />}
               onClick={() => {
-                void handleExportContactSheetPDF(shotLists, `Contact sheet eksportert for ${shotLists.length} scener`);
+                void handleExportContactSheetPDF(shotLists, t('shot.toast.contactExportedN', { n: shotLists.length }));
                 setShowExportDialog(false);
                 setExportSceneId(null);
               }}
@@ -7226,10 +7113,8 @@ export function CastingShotListPanel({
               }}
             >
               <Box>
-                <Typography sx={{ fontWeight: 600 }}>Alle scener · Contact Sheet</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                  Thumbnail-ark for rask scene- og coverage-review
-                </Typography>
+                <Typography sx={{ fontWeight: 600 }}>{t('shot.export.allContact')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>{t('shot.export.allContactDesc')}</Typography>
               </Box>
             </Button>
             <Button
@@ -7238,7 +7123,7 @@ export function CastingShotListPanel({
               data-testid="legacy-shotlist-export-deck-all"
               startIcon={<ExportIcon />}
               onClick={() => {
-                void handleExportShotDeckPDF(shotLists, `Shot deck eksportert for ${shotLists.length} scener`);
+                void handleExportShotDeckPDF(shotLists, t('shot.toast.deckExportedN', { n: shotLists.length }));
                 setShowExportDialog(false);
                 setExportSceneId(null);
               }}
@@ -7252,10 +7137,8 @@ export function CastingShotListPanel({
               }}
             >
               <Box>
-                <Typography sx={{ fontWeight: 600 }}>Alle scener · Shot Deck</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                  Ett shot per side for review, kunde eller opptaksbrief
-                </Typography>
+                <Typography sx={{ fontWeight: 600 }}>{t('shot.export.allDeck')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>{t('shot.export.allDeckDesc')}</Typography>
               </Box>
             </Button>
             <Button
@@ -7264,7 +7147,7 @@ export function CastingShotListPanel({
               data-testid="legacy-shotlist-export-stills-all"
               startIcon={<ExportIcon />}
               onClick={() => {
-                void handleExportCleanStills(shotLists, `Clean stills eksportert for ${shotLists.length} scener`);
+                void handleExportCleanStills(shotLists, t('shot.toast.stillsExportedN', { n: shotLists.length }));
                 setShowExportDialog(false);
                 setExportSceneId(null);
               }}
@@ -7278,18 +7161,14 @@ export function CastingShotListPanel({
               }}
             >
               <Box>
-                <Typography sx={{ fontWeight: 600 }}>Alle scener · Clean Stills</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>
-                  ZIP med rene PNG-stills for alle koblede storyboard-frames
-                </Typography>
+                <Typography sx={{ fontWeight: 600 }}>{t('shot.export.allStills')}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)' }}>{t('shot.export.allStillsDesc')}</Typography>
               </Box>
             </Button>
 
             {!exportSceneId && (
               <>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', textAlign: 'center' }}>
-                  — eller velg en spesifikk scene —
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', textAlign: 'center' }}>{t('shot.export.orChoose')}</Typography>
                 {shotLists.map((sl) => (
                   <Button
                     key={sl.id}
@@ -7329,9 +7208,7 @@ export function CastingShotListPanel({
               setExportSceneId(null);
             }}
             sx={{ color: 'rgba(255,255,255,0.87)' }}
-          >
-            Avbryt
-          </Button>
+          >{t('shot.btn.cancel')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -7356,14 +7233,12 @@ export function CastingShotListPanel({
             <StoryboardIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
             Storyboard Manager
           </Box>
-          <IconButton onClick={() => setShowStoryboardManager(false)} aria-label="Lukk Storyboard Manager" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={() => setShowStoryboardManager(false)} aria-label={t('shot.aria.closeStoryboardManager')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
-            Administrer storyboards for dine scener. Du kan generere AI-storyboards for hver scene eller individuelle shots.
-          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>{t('shot.sm.intro')}</Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             {shotLists.map((sl) => {
               const relatedStoryboard = findRelatedStoryboard(sl);
@@ -7448,7 +7323,7 @@ export function CastingShotListPanel({
                             '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         >
-                          {STORYBOARD_TEMPLATE_OPTIONS.map((option) => (
+                          {storyboardTemplateOptions.map((option) => (
                             <MenuItem key={option.value} value={option.value}>
                               {option.label}
                             </MenuItem>
@@ -7490,9 +7365,7 @@ export function CastingShotListPanel({
                               setShowStoryboardManager(false);
                               handleOpenStoryboardDialog(sl);
                             }}
-                          >
-                            Vis storyboard
-                          </Button>
+                          >{t('shot.sm.showStoryboard')}</Button>
                         ) : (
                           <Button
                             size="small"
@@ -7510,7 +7383,7 @@ export function CastingShotListPanel({
                             }}
                             startIcon={generatingStoryboardImages[sl.id] ? <MUICircularProgress size={14} /> : <AutoAwesomeIcon />}
                           >
-                            {generatingStoryboardImages[sl.id] ? 'Genererer...' : 'Generer AI'}
+                            {generatingStoryboardImages[sl.id] ? t('shot.btn.generatingShort') : t('shot.btn.generateAI')}
                           </Button>
                         )}
                       </Stack>
@@ -7560,7 +7433,7 @@ export function CastingShotListPanel({
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
               Team Dashboard
             </Typography>
-            <IconButton onClick={() => setShowTeamDashboard(false)} aria-label="Lukk Team Dashboard" sx={{ color: '#fff' }}>
+            <IconButton onClick={() => setShowTeamDashboard(false)} aria-label={t('shot.aria.closeTeamDashboard')} sx={{ color: '#fff' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -7603,7 +7476,7 @@ export function CastingShotListPanel({
                   if (onUpdate) onUpdate();
                 } catch (error) {
                   console.error('Error saving shot update:', error);
-                  toast.showWarning('Lagring feilet. Endringen ble rullet tilbake.');
+                  toast.showWarning(t('shot.err.saveRolledBack'));
                   // Revert optimistic update on error
                   const lists = await castingService.getShotLists(projectId);
                   setShotLists(Array.isArray(lists) ? lists : []);
@@ -7644,13 +7517,10 @@ export function CastingShotListPanel({
         }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          Koble shot til scene-storyboard
-        </DialogTitle>
+          {t('shot.link.title')}</DialogTitle>
         <DialogContent sx={{ pt: 2.5 }}>
           <Stack spacing={2}>
-            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
-              Velg et storyboard-frame fra scenen for å holde shot-et på linje med storyboardet.
-            </Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>{t('shot.link.hint')}</Typography>
             {shotStoryboardDialogScene && (
               <Chip
                 size="small"
@@ -7667,9 +7537,7 @@ export function CastingShotListPanel({
                   bgcolor: 'rgba(255,255,255,0.03)',
                 }}
               >
-                <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>
-                  Scenen har ingen storyboard-frames eller scene-matchede library-elementer ennå.
-                </Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13 }}>{t('shot.link.noCandidates')}</Typography>
               </Box>
             ) : (
               <Box
@@ -7719,9 +7587,7 @@ export function CastingShotListPanel({
                             bgcolor: 'rgba(0,0,0,0.22)',
                           }}
                         >
-                          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>
-                            Ingen preview
-                          </Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{t('shot.link.noPreview')}</Typography>
                         </Box>
                       )}
                       <Stack spacing={0.75} sx={{ p: 1.25 }}>
@@ -7746,17 +7612,13 @@ export function CastingShotListPanel({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setShotStoryboardDialog(null)} sx={{ color: 'rgba(255,255,255,0.65)' }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setShotStoryboardDialog(null)} sx={{ color: 'rgba(255,255,255,0.65)' }}>{t('shot.btn.cancel')}</Button>
           <Button
             onClick={handleConfirmShotStoryboardLink}
             variant="contained"
             disabled={!shotStoryboardDialog?.selectedCandidateId}
             sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}
-          >
-            Koble til frame
-          </Button>
+          >{t('shot.link.confirm')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -7813,17 +7675,17 @@ export function CastingShotListPanel({
         </DialogTitle>
         <DialogContent>
           <Typography sx={{ color: 'rgba(255,255,255,0.85)' }}>
-            {`Er du sikker på at du vil slette ${selectedIds.size} shot list(er)?`}
+            {t('shot.confirm.bulkDelete', { n: selectedIds.size })}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
           <Button onClick={() => setConfirmBulkDeleteOpen(false)} variant="outlined"
             sx={{ color: 'rgba(255,255,255,0.8)', borderColor: 'rgba(255,255,255,0.2)', textTransform: 'none' }}>
-            {branding.tokens.labels.cancelLabel || 'Avbryt'}
+            {branding.tokens.labels.cancelLabel || t('shot.btn.cancel')}
           </Button>
           <Button onClick={executeBulkDelete} variant="contained" startIcon={<DeleteIcon />}
             sx={{ bgcolor: '#ff4444', color: '#fff', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#ff3333' } }}>
-            {branding.tokens.labels.deleteProjectLabel || 'Slett'}
+            {branding.tokens.labels.deleteProjectLabel || t('shot.btn.delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -7848,9 +7710,7 @@ export function CastingShotListPanel({
         <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <HistoryIcon sx={{ color: '#e91e63', fontSize: 18 }} />
-            <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
-              Aktivitetslogg
-            </Typography>
+            <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{t('shot.audit.title')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             {/* Live connection dot */}
@@ -7859,9 +7719,9 @@ export function CastingShotListPanel({
               bgcolor: rt.connectionStatus === 'connected' ? '#4caf50' : rt.connectionStatus === 'offline' ? '#ef5350' : '#9333ea',
             }} />
             <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
-              {rt.connectionStatus === 'connected' ? 'Live' : rt.connectionStatus === 'offline' ? 'Offline' : 'Kobler til…'}
+              {rt.connectionStatus === 'connected' ? 'Live' : rt.connectionStatus === 'offline' ? 'Offline' : t('shot.presence.connecting')}
             </Typography>
-            <IconButton size="small" onClick={() => setShowAuditLog(false)} aria-label="Lukk aktivitetslogg" sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}>
+            <IconButton size="small" onClick={() => setShowAuditLog(false)} aria-label={t('shot.aria.closeAuditLog')} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}>
               <CloseIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
@@ -7870,7 +7730,7 @@ export function CastingShotListPanel({
         {/* Presence row */}
         {rt.presence.size > 0 && (
           <Box sx={{ px: 2, py: 1, bgcolor: 'rgba(76,175,80,0.07)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>Også aktiv:</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>{t('shot.audit.alsoActive')}</Typography>
             {[...rt.presence.values()].map(p => (
               <Chip
                 key={p.userId}
@@ -7886,9 +7746,7 @@ export function CastingShotListPanel({
         <Box sx={{ maxHeight: 340, overflowY: 'auto' }}>
           {rt.auditLog.length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem' }}>
-                Ingen aktivitet registrert ennå
-              </Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem' }}>{t('shot.audit.noActivity')}</Typography>
             </Box>
           ) : (
             <List dense disablePadding>
