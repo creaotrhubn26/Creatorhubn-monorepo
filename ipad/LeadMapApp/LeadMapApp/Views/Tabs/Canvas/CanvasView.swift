@@ -28,22 +28,38 @@ private enum CvBrand {
     static let textTertiary = Color.white.opacity(0.4)
 }
 
-/// Kategoriene fra design-mocken — farge + etikett per chip.
+/// Notat-TYPENE (Daniels struktur 2026-08-05): Møte / Lead / Befaring /
+/// Salgsplan / Prosjekt / Rute — hver med sitt eget cover. Gamle
+/// kategorier beholdes som legacy så eksisterende notater dekoder.
 enum CanvasKategori: String, CaseIterable, Identifiable {
+    // Strukturen
     case mote = "mote"
-    case oppfolging = "oppfolging"
+    case lead = "lead"
+    case befaring = "befaring"
+    case salgsplan = "salgsplan"
+    case prosjekt = "prosjekt"
     case rute = "rute"
+    // Legacy (vises kun på gamle notater)
+    case oppfolging = "oppfolging"
     case ide = "ide"
     case kunde = "kunde"
     case internt = "internt"
 
     var id: String { rawValue }
 
+    /// Typene som tilbys i velger/filter — legacy holdes utenfor.
+    static let hovedTyper: [CanvasKategori] =
+        [.mote, .lead, .befaring, .salgsplan, .prosjekt, .rute]
+
     var etikett: String {
         switch self {
         case .mote: return "Møte"
-        case .oppfolging: return "Oppfølging"
+        case .lead: return "Lead"
+        case .befaring: return "Befaring"
+        case .salgsplan: return "Salgsplan"
+        case .prosjekt: return "Prosjekt"
         case .rute: return "Rute"
+        case .oppfolging: return "Oppfølging"
         case .ide: return "Idé"
         case .kunde: return "Kunde"
         case .internt: return "Internt"
@@ -53,12 +69,37 @@ enum CanvasKategori: String, CaseIterable, Identifiable {
     var farge: Color {
         switch self {
         case .mote: return CvBrand.purpleLight
+        case .lead: return CvBrand.orange
+        case .befaring: return CvBrand.green
+        case .salgsplan: return CvBrand.yellow
+        case .prosjekt: return CvBrand.blue
+        case .rute: return Color(red: 0.35, green: 0.85, blue: 0.85)
         case .oppfolging: return CvBrand.blue
-        case .rute: return CvBrand.green
         case .ide: return CvBrand.yellow
         case .kunde: return CvBrand.orange
         case .internt: return CvBrand.textSecondary
         }
+    }
+
+    var ikon: String {
+        switch self {
+        case .mote: return "person.2.wave.2.fill"
+        case .lead: return "person.crop.rectangle.stack.fill"
+        case .befaring: return "binoculars.fill"
+        case .salgsplan: return "chart.line.uptrend.xyaxis"
+        case .prosjekt: return "hammer.fill"
+        case .rute: return "point.topleft.down.curvedto.point.bottomright.up.fill"
+        case .oppfolging: return "bell.fill"
+        case .ide: return "lightbulb.fill"
+        case .kunde: return "building.2.fill"
+        case .internt: return "lock.fill"
+        }
+    }
+
+    /// Cover-gradienten — notatets «bokforside» i lista og velgeren.
+    var coverGradient: LinearGradient {
+        LinearGradient(colors: [farge.opacity(0.55), farge.opacity(0.18)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -131,6 +172,8 @@ struct CanvasView: View {
     @State private var visStempelPalett = false
     @State private var visFormPalett = false
     @State private var redigererTekstboks: CanvasTekstboks?
+    @State private var visTypeVelger = false
+    @State private var formFarge: UIColor = .white
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
 
@@ -208,7 +251,7 @@ struct CanvasView: View {
                     .font(.appScaled(size: 19, weight: .black))
                     .foregroundStyle(.white)
                 Spacer()
-                Button { nyttNotat() } label: {
+                Button { visTypeVelger = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus")
                             .font(.appScaled(size: 11, weight: .black))
@@ -253,7 +296,7 @@ struct CanvasView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     filterChip(nil, etikett: "Alle")
-                    ForEach(CanvasKategori.allCases) { k in
+                    ForEach(CanvasKategori.hovedTyper) { k in
                         filterChip(k, etikett: k.etikett)
                     }
                 }
@@ -312,9 +355,13 @@ struct CanvasView: View {
                     Image(uiImage: img)
                         .resizable().scaledToFill()
                 } else {
-                    Image(systemName: "scribble.variable")
-                        .font(.appScaled(size: 14))
-                        .foregroundStyle(CvBrand.textTertiary)
+                    // Typens cover — notatets «bokforside» før første strøk.
+                    ZStack {
+                        Rectangle().fill(n.kategori.coverGradient)
+                        Image(systemName: n.kategori.ikon)
+                            .font(.appScaled(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
                 }
             }
             .frame(width: 46, height: 46)
@@ -478,7 +525,7 @@ struct CanvasView: View {
                     // Kategori-velger
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(CanvasKategori.allCases) { k in
+                            ForEach(CanvasKategori.hovedTyper) { k in
                                 Button {
                                     kategori = k
                                 } label: {
@@ -604,13 +651,28 @@ struct CanvasView: View {
                         ForEach(CanvasForm.allCases, id: \.self) { form in
                             Button {
                                 drawing.strokes.append(form.somStroke(
-                                    senter: CGPoint(x: 340, y: 260)))
+                                    senter: CGPoint(x: 340, y: 260),
+                                    farge: formFarge))
                             } label: {
                                 Image(systemName: form.ikon)
                                     .font(.appScaled(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color(formFarge))
                                     .frame(width: 30, height: 30)
                                     .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        // Fargevalg for formene
+                        ForEach(Array(CanvasForm.fargePalett.enumerated()), id: \.offset) { _, f in
+                            Button {
+                                formFarge = f
+                            } label: {
+                                Circle()
+                                    .fill(Color(f))
+                                    .frame(width: 20, height: 20)
+                                    .overlay(Circle().stroke(
+                                        formFarge == f ? Color.white : CvBrand.stroke,
+                                        lineWidth: formFarge == f ? 2 : 1))
                             }
                             .buttonStyle(.plain)
                         }
@@ -694,6 +756,13 @@ struct CanvasView: View {
                                selskap: kobletSelskap ?? tittel,
                                leadId: kobletLeadId)
         }
+        .sheet(isPresented: $visTypeVelger) {
+            CanvasTypeVelger { valgt in
+                visTypeVelger = false
+                nyttNotat(type: valgt)
+            }
+            .presentationDetents([.medium])
+        }
     }
 
     /// Lead-kobling: chip når koblet, meny for å velge/fjerne.
@@ -739,14 +808,14 @@ struct CanvasView: View {
 
     // MARK: Handlinger
 
-    private func nyttNotat() {
+    private func nyttNotat(type: CanvasKategori = .mote) {
         // Lagre det som står i editoren først (best effort, uten å vente).
         if valgtId != nil { Task { await lagre(stille: true) } }
         let pos = KartLocationManager.shared.currentCoordinate
         let n = CanvasNotat(
             id: UUID().uuidString.lowercased(),
             tittel: "",
-            kategori: kategoriFilter ?? .mote,
+            kategori: type,
             selskap: nil, leadId: nil,
             drawingData: Data(),
             oppdatert: Date(),
@@ -1358,7 +1427,19 @@ enum CanvasForm: CaseIterable {
         }
     }
 
-    func somStroke(senter: CGPoint) -> PKStroke {
+    /// Farger for formene — konverteres m/ PKInkingTool.convertColor slik
+    /// at de IKKE inverteres av PencilKits mørk-modus-rendring (Daniels
+    /// funn: hvite former ble mørke).
+    static let fargePalett: [UIColor] = [
+        .white,
+        UIColor(red: 0.75, green: 0.45, blue: 1.0, alpha: 1),
+        UIColor(red: 0.20, green: 0.85, blue: 0.60, alpha: 1),
+        UIColor(red: 0.98, green: 0.75, blue: 0.14, alpha: 1),
+        UIColor(red: 0.98, green: 0.45, blue: 0.30, alpha: 1),
+        UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1),
+    ]
+
+    func somStroke(senter: CGPoint, farge: UIColor = .white) -> PKStroke {
         let punkter: [CGPoint]
         switch self {
         case .rektangel:
@@ -1394,7 +1475,9 @@ enum CanvasForm: CaseIterable {
                           size: CGSize(width: 4, height: 4),
                           opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
         }
-        return PKStroke(ink: PKInk(.pen, color: .white),
+        // Lagres i lys-modus-referanse så mørk rendring viser valgt farge.
+        let lagretFarge = PKInkingTool.convertColor(farge, from: .dark, to: .light)
+        return PKStroke(ink: PKInk(.pen, color: lagretFarge),
                         path: PKStrokePath(controlPoints: kontroll,
                                            creationDate: Date()))
     }
@@ -1450,5 +1533,60 @@ private struct TekstboksView: View {
             .onLongPressGesture(minimumDuration: 0.5) {
                 if redigerbar { onSlett() }
             }
+    }
+}
+
+
+// MARK: - CanvasTypeVelger (fase 6: strukturen — velg cover)
+
+/// «Nytt notat» åpner denne: seks covers (Møte/Lead/Befaring/Salgsplan/
+/// Prosjekt/Rute) — strukturen styrer kategorien fra første strøk.
+struct CanvasTypeVelger: View {
+    let onVelg: (CanvasKategori) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private let kolonner = [GridItem(.flexible()), GridItem(.flexible()),
+                            GridItem(.flexible())]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                CvBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    LazyVGrid(columns: kolonner, spacing: 12) {
+                        ForEach(CanvasKategori.hovedTyper) { type in
+                            Button { onVelg(type) } label: {
+                                VStack(spacing: 10) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .fill(type.coverGradient)
+                                        Image(systemName: type.ikon)
+                                            .font(.appScaled(size: 28, weight: .semibold))
+                                            .foregroundStyle(.white.opacity(0.95))
+                                    }
+                                    .frame(height: 96)
+                                    .overlay(RoundedRectangle(cornerRadius: 14)
+                                        .stroke(type.farge.opacity(0.5), lineWidth: 1))
+                                    Text(type.etikett)
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("Nytt Canvas")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }
+                        .tint(CvBrand.textSecondary)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }

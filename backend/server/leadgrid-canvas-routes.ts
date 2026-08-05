@@ -12,7 +12,12 @@ import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 
-const GYLDIGE_KATEGORIER = new Set(["mote", "oppfolging", "rute", "ide", "kunde", "internt"]);
+// Strukturen (Daniel 2026-08-05): Møte/Lead/Befaring/Salgsplan/Prosjekt/
+// Rute — gamle verdier beholdes så eksisterende notater dekoder.
+const GYLDIGE_KATEGORIER = new Set([
+  "mote", "lead", "befaring", "salgsplan", "prosjekt", "rute",
+  "oppfolging", "ide", "kunde", "internt",
+]);
 /** PKDrawing-base64 cap — 5 MB holder til svært detaljerte tegninger. */
 const MAKS_DRAWING_TEGN = 5 * 1024 * 1024;
 
