@@ -160,6 +160,9 @@ struct CanvasFigur: Codable, Identifiable, Hashable {
     var fargeHex: String = "#FFFFFF"
     /// Rotasjon i grader (to-finger-vri).
     var rotasjon: Double = 0
+    /// Fra shape recognition: eksakt størrelse (ellers 200×160 × skala).
+    var bredde: Double? = nil
+    var hoyde: Double? = nil
 }
 
 /// Flyttbar tekstboks oppå flata (fase 5) — «Skriv»-modusen fra mocken.
@@ -196,6 +199,8 @@ struct CanvasNotat: Identifiable, Hashable {
     var noder: [CanvasNode] = []
     var sider: Int = 1
     var objekter: [CanvasObjekt] = []
+    /// Universalsøk: OCR av blekk + PDF-tekst + bilde-OCR + tekster.
+    var sokbarTekst: String = ""
 }
 
 struct CanvasView: View {
@@ -252,6 +257,7 @@ struct CanvasView: View {
             liste = liste.filter {
                 $0.tittel.localizedCaseInsensitiveContains(q)
                     || ($0.selskap ?? "").localizedCaseInsensitiveContains(q)
+                    || $0.sokbarTekst.localizedCaseInsensitiveContains(q)
             }
         }
         return liste.sorted { $0.oppdatert > $1.oppdatert }
@@ -340,7 +346,7 @@ struct CanvasView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(CvBrand.textTertiary)
-                TextField("Søk i notater …", text: $sok)
+                TextField("Søk — også i håndskrift, PDF og bilder …", text: $sok)
                     .font(.appScaled(size: 12))
                     .foregroundStyle(.white)
                     .textFieldStyle(.plain)
@@ -965,7 +971,10 @@ struct CanvasView: View {
                 }
                 PencilCanvas(drawing: $drawing,
                              redigerbar: valgtErMin && !objektModus,
-                             kunPencil: kunPencil)
+                             kunPencil: kunPencil,
+                             onFormGjenkjent: { figur in
+                                 figurer.append(figur)
+                             })
                 ForEach(stempler) { st in
                     StempelView(stempel: st, redigerbar: valgtErMin,
                                 onFlytt: { ny in
@@ -1223,6 +1232,7 @@ struct CanvasView: View {
         n.objekter = objekter
         n.lat = notatLat
         n.lon = notatLon
+        n.sokbarTekst = await byggSokbarTekst()
         n.drawingData = drawing.dataRepresentation()
         n.oppdatert = Date()
         oppdaterThumb(n)
@@ -1255,7 +1265,8 @@ struct CanvasView: View {
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
-                    noder: noderJSON, sider: n.sider, objekter: objekterJSON)
+                    noder: noderJSON, sider: n.sider, objekter: objekterJSON,
+                    sokbarTekst: n.sokbarTekst)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -1267,7 +1278,8 @@ struct CanvasView: View {
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
-                    noder: noderJSON, sider: n.sider, objekter: objekterJSON)
+                    noder: noderJSON, sider: n.sider, objekter: objekterJSON,
+                    sokbarTekst: n.sokbarTekst)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -1317,7 +1329,8 @@ struct CanvasView: View {
                     .flatMap { try? JSONDecoder().decode([CanvasNode].self, from: $0) } ?? [],
                 sider: max(1, dto.sider ?? 1),
                 objekter: (dto.objekter?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [])
+                    .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [],
+                sokbarTekst: dto.sokbarTekst ?? "")
         }
         genererThumbs()
         if let api = appState.api {
@@ -1425,8 +1438,9 @@ struct CanvasView: View {
                                      y: (fig.y - bounds.minY) * 2.0)
                 ctx.translateBy(x: senter.x, y: senter.y)
                 ctx.rotate(by: CGFloat(fig.rotasjon) * .pi / 180)
+                let dimSkala = (fig.bredde ?? 200) / 200
                 CanvasForm.fra(fig.form)?
-                    .banePath(senter: .zero, skala: fig.skala * 2.0)
+                    .banePath(senter: .zero, skala: fig.skala * dimSkala * 2.0)
                     .forEach { ctx.addPath($0); ctx.strokePath() }
                 ctx.restoreGState()
             }
@@ -1509,6 +1523,36 @@ struct CanvasView: View {
     }
     @State private var oppgaverCache: [MoteOppgaveDTO] = []
 
+    /// Universalsøk-indeksen: alt tekstlig i notatet + rask OCR av blekket.
+    /// Kjøres ved lagring (.fast-nivå — indeksering, ikke presisjon).
+    private func byggSokbarTekst() async -> String {
+        var deler: [String] = []
+        deler.append(contentsOf: tekstbokser.map(\.tekst))
+        deler.append(contentsOf: noder.map(\.tekst))
+        deler.append(contentsOf: objekter.compactMap(\.tittel))
+        deler.append(contentsOf: objekter.compactMap(\.detalj))
+        if !drawing.bounds.isEmpty, let cg = drawing
+            .image(from: drawing.bounds, scale: 1.5).cgImage {
+            let tekst: String = await withCheckedContinuation { cont in
+                let req = VNRecognizeTextRequest { r, _ in
+                    let linjer = (r.results as? [VNRecognizedTextObservation] ?? [])
+                        .compactMap { $0.topCandidates(1).first?.string }
+                    cont.resume(returning: linjer.joined(separator: " "))
+                }
+                req.recognitionLevel = .fast
+                req.recognitionLanguages = ["nb-NO", "en-US"]
+                DispatchQueue.global(qos: .utility).async {
+                    let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+                    do { try handler.perform([req]) }
+                    catch { cont.resume(returning: "") }
+                }
+            }
+            deler.append(tekst)
+        }
+        return deler.filter { !$0.isEmpty }.joined(separator: " ").prefix(18_000)
+            .description
+    }
+
     /// PDF-annotering: tilbud/kontrakter/ordreskjema/plantegninger inn som
     /// side-objekter under blekket — marker med tusjen, skriv med tekst-
     /// bokser/Scribble, signer og tegn med pennen. Del som PDF etterpå.
@@ -1533,7 +1577,8 @@ struct CanvasView: View {
                 bildeBase64: jpeg.base64EncodedString(),
                 tittel: antall > 1
                     ? "\(url.deletingPathExtension().lastPathComponent) · s. \(i + 1)"
-                    : url.deletingPathExtension().lastPathComponent))
+                    : url.deletingPathExtension().lastPathComponent,
+                detalj: String((side.string ?? "").prefix(2000))))
             y += Double(hoyde) / 2 + 40
         }
         // Flata må være høy nok for alle sidene (nominell sidehøyde ~900pt).
@@ -1557,12 +1602,33 @@ struct CanvasView: View {
             }
         }
         guard let jpeg = bilde.jpegData(compressionQuality: 0.7) else { return }
+        let objektId = UUID().uuidString
         objekter.append(CanvasObjekt(
+            id: objektId,
             type: "bilde",
             x: punkt.map(\.x).map(Double.init) ?? 420,
             y: punkt.map(\.y).map(Double.init) ?? 320,
             bildeBase64: jpeg.base64EncodedString()))
         objektModus = true
+        // Bilde-OCR i bakgrunnen → teksten blir søkbar.
+        if let cg = bilde.cgImage {
+            Task.detached(priority: .utility) {
+                let req = VNRecognizeTextRequest()
+                req.recognitionLevel = .fast
+                req.recognitionLanguages = ["nb-NO", "en-US"]
+                let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+                try? handler.perform([req])
+                let tekst = (req.results ?? [])
+                    .compactMap { $0.topCandidates(1).first?.string }
+                    .joined(separator: " ")
+                guard !tekst.isEmpty else { return }
+                await MainActor.run {
+                    if let i = objekter.firstIndex(where: { $0.id == objektId }) {
+                        objekter[i].detalj = String(tekst.prefix(2000))
+                    }
+                }
+            }
+        }
     }
 
     private func settInnLeadKort(_ lead: LeadModel) {
@@ -1654,6 +1720,9 @@ private struct PencilCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var redigerbar: Bool = true
     var kunPencil: Bool = false
+    /// Shape recognition: hold pennen stille på slutten av strøket →
+    /// strøket byttes ut med perfekt form (Apple Notes-oppførselen).
+    var onFormGjenkjent: ((CanvasFigur) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -1729,8 +1798,23 @@ private struct PencilCanvas: UIViewRepresentable {
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) { tegner = true }
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) { tegner = false }
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            // Form-snap: sjekk siste strøk for «hold på slutten» + kjent form.
+            if let onForm = parent.onFormGjenkjent,
+               canvasView.drawing.strokes.count > forrigeAntallStrok,
+               let siste = canvasView.drawing.strokes.last,
+               let figur = FormGjenkjenner.gjenkjenn(siste) {
+                var uten = canvasView.drawing
+                uten.strokes.removeLast()
+                canvasView.drawing = uten
+                parent.drawing = uten
+                forrigeAntallStrok = uten.strokes.count
+                onForm(figur)
+                return
+            }
+            forrigeAntallStrok = canvasView.drawing.strokes.count
             parent.drawing = canvasView.drawing
         }
+        var forrigeAntallStrok = 0
     }
 }
 
@@ -2253,7 +2337,8 @@ private struct FigurView: View {
         FigurShape(form: form)
             .stroke(Color(UIColor(hex: figur.fargeHex)),
                     style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-            .frame(width: 200 * visSkala, height: 160 * visSkala)
+            .frame(width: (figur.bredde ?? 200) * visSkala,
+                   height: (figur.hoyde ?? 160) * visSkala)
             .contentShape(Rectangle())
             .rotationEffect(.degrees(figur.rotasjon) + vriVinkel)
             .position(x: figur.x + dragOffset.width,
@@ -2782,5 +2867,102 @@ private struct ObjektView: View {
         case "oppgave": return CvBrand.green
         default: return CvBrand.purpleLight
         }
+    }
+}
+
+
+// MARK: - FormGjenkjenner (shape recognition — hold på slutten → perfekt form)
+
+/// Apple Notes-oppførselen: tegn en sirkel/rektangel/linje/pil og HOLD
+/// pennen stille (≥0,45 s) før du løfter → strøket byttes ut med en
+/// perfekt CanvasFigur i strøkets farge. Formen er et objekt: dra
+/// flytter, klyp skalerer, to-finger-vri roterer, hold fjerner.
+enum FormGjenkjenner {
+
+    static func gjenkjenn(_ strok: PKStroke) -> CanvasFigur? {
+        let punkter = strok.path.map { $0 }
+        guard punkter.count >= 8 else { return nil }
+
+        // 1) Hold-deteksjon: siste 0,45 s innenfor 14 pt.
+        guard let sisteTid = punkter.last?.timeOffset else { return nil }
+        let hale = punkter.filter { $0.timeOffset > sisteTid - 0.45 }
+        guard hale.count >= 3, let sistePkt = punkter.last?.location else { return nil }
+        let haleSpredning = hale.map { hypot($0.location.x - sistePkt.x,
+                                             $0.location.y - sistePkt.y) }.max() ?? 0
+        guard haleSpredning < 14 else { return nil }
+
+        // Halen (holdet) skal ikke forstyrre geometrien.
+        let aktive = punkter.filter { $0.timeOffset <= sisteTid - 0.45 }
+            .map(\.location)
+        guard aktive.count >= 6 else { return nil }
+
+        let xs = aktive.map(\.x), ys = aktive.map(\.y)
+        let boks = CGRect(x: xs.min()!, y: ys.min()!,
+                          width: xs.max()! - xs.min()!,
+                          height: ys.max()! - ys.min()!)
+        guard boks.width > 24 || boks.height > 24 else { return nil }
+        let farge = PKInkingTool.convertColor(strok.ink.color,
+                                              from: .light, to: .dark).somHex
+        let senter = CGPoint(x: boks.midX, y: boks.midY)
+        let diagonal = hypot(boks.width, boks.height)
+        let lukket = hypot(aktive.first!.x - aktive.last!.x,
+                           aktive.first!.y - aktive.last!.y) < diagonal * 0.22
+
+        if lukket {
+            // SIRKEL: jevn avstand til senter.
+            let radier = aktive.map { hypot($0.x - senter.x, $0.y - senter.y) }
+            let snitt = radier.reduce(0, +) / CGFloat(radier.count)
+            let avvik = radier.map { abs($0 - snitt) }.reduce(0, +) / CGFloat(radier.count)
+            if snitt > 12, avvik / snitt < 0.16 {
+                return CanvasFigur(form: "sirkel",
+                                   x: senter.x, y: senter.y,
+                                   fargeHex: farge,
+                                   bredde: snitt * 2 / 0.45, hoyde: snitt * 2 / 0.45)
+                // (FigurShape-sirkelen fyller 90 % av min(b,h) — 2r/0.9 ≈ /0.45 av halv)
+            }
+            // REKTANGEL: punktene klemmer seg til boks-kantene.
+            let kantavvik = aktive.map { p -> CGFloat in
+                min(abs(p.x - boks.minX), abs(p.x - boks.maxX),
+                    abs(p.y - boks.minY), abs(p.y - boks.maxY))
+            }.reduce(0, +) / CGFloat(aktive.count)
+            if kantavvik < diagonal * 0.055 {
+                return CanvasFigur(form: "rektangel",
+                                   x: senter.x, y: senter.y,
+                                   fargeHex: farge,
+                                   bredde: boks.width / 0.9,
+                                   hoyde: boks.height / 0.76)
+            }
+            return nil
+        }
+
+        // ÅPEN form: LINJE eller PIL — avvik fra korden.
+        let a = aktive.first!, b = aktive.last!
+        let korde = hypot(b.x - a.x, b.y - a.y)
+        guard korde > 40 else { return nil }
+        let maksAvvik = aktive.map { p -> CGFloat in
+            abs((b.y - a.y) * p.x - (b.x - a.x) * p.y + b.x * a.y - b.y * a.x) / korde
+        }.max() ?? 0
+        let vinkel = atan2(b.y - a.y, b.x - a.x) * 180 / .pi
+
+        if maksAvvik < korde * 0.06 {
+            return CanvasFigur(form: "linje",
+                               x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                               fargeHex: farge, rotasjon: Double(vinkel),
+                               bredde: korde, hoyde: 40)
+        }
+        // PIL: rett hoveddel + skarp retur nær enden (spissen tegnet i ett).
+        if maksAvvik < korde * 0.30 {
+            let sisteFjerdedel = aktive.suffix(max(4, aktive.count / 4))
+            let vendinger = zip(sisteFjerdedel, sisteFjerdedel.dropFirst())
+                .map { hypot($1.x - $0.x, $1.y - $0.y) }
+            let haleLengde = vendinger.reduce(0, +)
+            if haleLengde > korde * 0.25, haleLengde < korde * 0.9 {
+                return CanvasFigur(form: "pil",
+                                   x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                                   fargeHex: farge, rotasjon: Double(vinkel),
+                                   bredde: korde / 0.9, hoyde: korde * 0.35)
+            }
+        }
+        return nil
     }
 }
