@@ -895,6 +895,7 @@ import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
 import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
 import { registerLeadgridDoffinRoutes } from "./leadgrid-doffin-routes";
 import { registerLeadgridRuteRoutes } from "./leadgrid-rute-routes";
+import { registerLeadgridOversiktRoutes } from "./leadgrid-oversikt-routes";
 import { registerLeadgridMotebriefRoutes } from "./leadgrid-motebrief-routes";
 import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
@@ -66763,6 +66764,7 @@ registerLeadgridQualityRoutes({ app, pool, requireUserSession });
 registerLeadgridDoffinRoutes({ app, pool, requireUserSession });
 // Fler-stopp besøksruter — salgssjef tildeler rute til selger (push → Kart).
 registerLeadgridRuteRoutes({ app, pool, requireUserSession });
+registerLeadgridOversiktRoutes({ app, pool, requireUserSession });
 // AI-møtebrief — «aldri uforberedt til møte» (Brreg+regnskap+Doffin+case).
 registerLeadgridMotebriefRoutes({ app, pool, requireUserSession });
 

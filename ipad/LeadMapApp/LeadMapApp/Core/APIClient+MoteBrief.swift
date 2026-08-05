@@ -85,6 +85,12 @@ struct MoteMaalDTO: Decodable, Hashable {
     let behov: [String]
 }
 
+/// Hvilke Oversikt-kort er skjult per målgruppe (leadgrid_oversikt_policy).
+struct OversiktPolicyDTO: Decodable, Hashable {
+    var selger: [String] = []
+    var leder: [String] = []
+}
+
 /// Persistert oppgave fra møtelogging (leadgrid_oppgaver) — ekte, avhukbar.
 struct MoteOppgaveDTO: Decodable, Hashable, Identifiable {
     let id: String
@@ -126,6 +132,24 @@ extension APIClient {
         struct Resp: Decodable { let oppgaver: [MoteOppgaveDTO] }
         let r: Resp = try await _get("/api/leadgrid/oppgaver")
         return r.oppgaver
+    }
+
+    /// Oversikt-policy: hvilke kort er skjult for selgere/ledere (org-styrt).
+    func hentOversiktPolicy() async throws -> OversiktPolicyDTO {
+        try await _get("/api/leadgrid/oversikt-policy")
+    }
+
+    /// Sett skjulte kort for en målgruppe ("selger" krever leder-rolle,
+    /// "leder" krever admin).
+    func lagreOversiktPolicy(malgruppe: String, skjulteKort: [String]) async throws {
+        struct Body: Encodable {
+            let malgruppe: String
+            let skjulteKort: [String]
+        }
+        struct Resp: Decodable { let ok: Bool }
+        let _: Resp = try await _put(
+            "/api/leadgrid/oversikt-policy",
+            body: Body(malgruppe: malgruppe, skjulteKort: skjulteKort))
     }
 
     /// Huk av / gjenåpne en oppgave.

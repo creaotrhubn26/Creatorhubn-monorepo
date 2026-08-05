@@ -112,6 +112,123 @@ struct OversiktView: View {
             )) { _ in
                 appState.selectedSidebarItem = .leads
             }
+            .task {
+                guard !DemoModeManager.isActiveNonisolated,
+                      let api = appState.api else { return }
+                if let p = try? await api.hentOversiktPolicy() { oversiktPolicy = p }
+            }
+    }
+
+    // ── Tilpassbar Oversikt (2026-08-05): hvert kort kan kollapses og
+    //    velges bort. Hierarki: admin styrer salgsleders kort («leder»-
+    //    policy), salgsleder styrer selgernes («selger»-policy), og alle
+    //    tilpasser personlig utvalg INNENFOR policyen (lokalt lagret).
+    enum OversiktKort: String, CaseIterable {
+        case kpi
+        case dorsalg
+        case nesteHandling = "neste_handling"
+        case oppgaver
+        case leads
+
+        var tittel: String {
+            switch self {
+            case .kpi: return "Nøkkeltall"
+            case .dorsalg: return "Dørsalg"
+            case .nesteHandling: return "Neste handling"
+            case .oppgaver: return "Oppgaver fra møtene"
+            case .leads: return "Leads i området"
+            }
+        }
+    }
+    @AppStorage("oversikt.skjul.kpi") private var skjulKpi = false
+    @AppStorage("oversikt.skjul.dorsalg") private var skjulDorsalg = false
+    @AppStorage("oversikt.skjul.neste_handling") private var skjulNeste = false
+    @AppStorage("oversikt.skjul.oppgaver") private var skjulOppgaver = false
+    @AppStorage("oversikt.skjul.leads") private var skjulLeads = false
+    @State private var oversiktPolicy = OversiktPolicyDTO()
+
+    private var erAdminRolle: Bool {
+        appState.isSuperAdmin || ["admin", "owner"].contains(appState.roleInOrg ?? "")
+    }
+    private var erLederRolle: Bool {
+        erAdminRolle || ["markedssjef", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+    }
+    /// Kort nivået OVER meg har skjult for mitt nivå (admin styres ikke).
+    private var policySkjultForMeg: Set<String> {
+        if erAdminRolle { return [] }
+        return Set(erLederRolle ? oversiktPolicy.leder : oversiktPolicy.selger)
+    }
+    private func personligSkjult(_ k: OversiktKort) -> Binding<Bool> {
+        switch k {
+        case .kpi: return Binding(get: { skjulKpi }, set: { skjulKpi = $0 })
+        case .dorsalg: return Binding(get: { skjulDorsalg }, set: { skjulDorsalg = $0 })
+        case .nesteHandling: return Binding(get: { skjulNeste }, set: { skjulNeste = $0 })
+        case .oppgaver: return Binding(get: { skjulOppgaver }, set: { skjulOppgaver = $0 })
+        case .leads: return Binding(get: { skjulLeads }, set: { skjulLeads = $0 })
+        }
+    }
+    private func kortSynlig(_ k: OversiktKort) -> Bool {
+        !policySkjultForMeg.contains(k.rawValue) && !personligSkjult(k).wrappedValue
+    }
+    /// Leder-/admin-toggle: skriver policy for målgruppen (PUT, best effort).
+    private func policyBinding(_ k: OversiktKort, gruppe: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                let liste = gruppe == "selger" ? oversiktPolicy.selger : oversiktPolicy.leder
+                return !liste.contains(k.rawValue)
+            },
+            set: { synlig in
+                var liste = gruppe == "selger" ? oversiktPolicy.selger : oversiktPolicy.leder
+                if synlig {
+                    liste.removeAll { $0 == k.rawValue }
+                } else if !liste.contains(k.rawValue) {
+                    liste.append(k.rawValue)
+                }
+                if gruppe == "selger" { oversiktPolicy.selger = liste }
+                else { oversiktPolicy.leder = liste }
+                guard !DemoModeManager.isActiveNonisolated,
+                      let api = appState.api else { return }
+                Task { try? await api.lagreOversiktPolicy(malgruppe: gruppe, skjulteKort: liste) }
+            })
+    }
+
+    private var tilpassMeny: some View {
+        Menu {
+            Section("Min oversikt") {
+                ForEach(OversiktKort.allCases, id: \.self) { k in
+                    if !policySkjultForMeg.contains(k.rawValue) {
+                        Toggle(k.tittel, isOn: Binding(
+                            get: { !personligSkjult(k).wrappedValue },
+                            set: { personligSkjult(k).wrappedValue = !$0 }))
+                    }
+                }
+            }
+            if erLederRolle {
+                Section("Selgernes oversikt") {
+                    ForEach(OversiktKort.allCases, id: \.self) { k in
+                        Toggle(k.tittel, isOn: policyBinding(k, gruppe: "selger"))
+                    }
+                }
+            }
+            if erAdminRolle {
+                Section("Salgsledernes oversikt") {
+                    ForEach(OversiktKort.allCases, id: \.self) { k in
+                        Toggle(k.tittel, isOn: policyBinding(k, gruppe: "leder"))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.appScaled(size: 11, weight: .bold))
+                Text("Tilpass")
+                    .font(.appScaled(size: 12, weight: .bold))
+            }
+            .foregroundStyle(Brand.textSecondary)
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .background(Brand.card, in: Capsule())
+            .overlay(Capsule().stroke(Brand.stroke, lineWidth: 1))
+        }
     }
 
     private var contentBody: some View {
@@ -140,15 +257,18 @@ struct OversiktView: View {
                             // fanen gjelder.
                             ProjectContextPill()
                         }
+                    HStack { Spacer(); tilpassMeny }
                     if erRenDorsalgOrg {
                         // Ren dørsalg-org: HELE oversikten er dørsalg-tall.
                         AnyView(DorsalgOversiktSection(stats: dorsalgStats))
                     } else {
-                    KPICardRow(leads: effectiveLeads, momentum: momentum, forecast: forecast,
-                               compact: isCompact || isPortrait)
+                    if kortSynlig(.kpi) {
+                        KPICardRow(leads: effectiveLeads, momentum: momentum, forecast: forecast,
+                                   compact: isCompact || isPortrait)
+                    }
                     // Hybrid-org (dørsalg + bedrifter): dørsalg-tallene som
                     // egen seksjon oppå bedrifts-dashbordet.
-                    if dorsalgAktivert {
+                    if dorsalgAktivert && kortSynlig(.dorsalg) {
                         AnyView(DorsalgOversiktSection(stats: dorsalgStats))
                     }
                     // Oversikt = beslutningsskjermen (Daniel 2026-08-04):
@@ -156,9 +276,15 @@ struct OversiktView: View {
                     // fjernet. Rekkefølgen er «hva gjør jeg nå?»-prioritert:
                     // neste møte/forfalte → oppgaver → kompakt leads-liste
                     // med hopp til Kart for alt kart-arbeid.
-                    NextActionCard(leads: effectiveLeads)
-                    MoteOppgaverCard()
-                    LeadsOversiktCard(leads: effectiveLeads)
+                    if kortSynlig(.nesteHandling) {
+                        NextActionCard(leads: effectiveLeads)
+                    }
+                    if kortSynlig(.oppgaver) {
+                        MoteOppgaverCard()
+                    }
+                    if kortSynlig(.leads) {
+                        LeadsOversiktCard(leads: effectiveLeads)
+                    }
                     }   // slutt ikke-dørsalg-gren
                     Spacer(minLength: 12)
                 }
@@ -281,6 +407,7 @@ struct OversiktView: View {
 /// seksjon oppå bedrifts-dashbordet.
 private struct DorsalgOversiktSection: View {
     let stats: KartverketService.DorsalgStats?
+    @AppStorage("oversikt.kollaps.dorsalg") private var kollapset = false
 
     private var hitRate: Int? {
         guard let s = stats, s.vunnet + s.avslatt > 0 else { return nil }
@@ -296,7 +423,19 @@ private struct DorsalgOversiktSection: View {
                 Spacer()
                 Text("Fra utfallene på kartet")
                     .font(.appScaled(size: 9)).foregroundStyle(Brand.textTertiary)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { kollapset.toggle() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(Brand.textSecondary)
+                        .rotationEffect(.degrees(kollapset ? -90 : 0))
+                        .frame(width: 26, height: 26)
+                        .background(Brand.cardHi, in: Circle())
+                }
+                .buttonStyle(.plain)
             }
+            if !kollapset {
             if let s = stats, s.vunnet + s.avslatt + s.iDag > 0 {
                 HStack(spacing: 10) {
                     tile("\(s.vunnet)", "Vunnet", Brand.green)
@@ -380,6 +519,7 @@ private struct DorsalgOversiktSection: View {
             } else {
                 Text("Ingen dører registrert enda. Utfall du setter i dørsalg-modus på kartet (Vunnet kunde / Avslått) lander her.")
                     .font(.appScaled(size: 11)).foregroundStyle(Brand.textSecondary)
+            }
             }
         }
         .padding(14)
@@ -3164,6 +3304,7 @@ private struct BounceKeyframe {
 private struct NextActionCard: View {
     @Environment(AppState.self) private var appState
     let leads: [LeadModel]
+    @AppStorage("oversikt.kollaps.neste_handling") private var kollapset = false
 
     private var nextMeeting: CalendarEvent? {
         appState.calendar
@@ -3185,10 +3326,25 @@ private struct NextActionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Neste handling")
-                .font(.headline)
-                .foregroundStyle(.white)
+            HStack {
+                Text("Neste handling")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { kollapset.toggle() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(Brand.textSecondary)
+                        .rotationEffect(.degrees(kollapset ? -90 : 0))
+                        .frame(width: 26, height: 26)
+                        .background(Brand.cardHi, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
 
+            if !kollapset {
             if nextMeeting == nil && overdueFollowups.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle.fill")
@@ -3217,6 +3373,7 @@ private struct NextActionCard: View {
                         subtitle: overdueFollowups.first.map { "Eldst: \($0.name)" } ?? ""
                     )
                 }
+            }
             }
         }
         .padding(16)
@@ -3401,6 +3558,7 @@ private struct FilterChip: View {
 private struct LeadsOversiktCard: View {
     let leads: [LeadModel]
     @Environment(AppState.self) private var appState
+    @AppStorage("oversikt.kollaps.leads") private var kollapset = false
     @State private var activeTier: LeadTemperatureTier = .all
     @State private var openLead: LeadModel?
 
@@ -3434,7 +3592,19 @@ private struct LeadsOversiktCard: View {
                         .stroke(Brand.purple.opacity(0.5), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { kollapset.toggle() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(Brand.textSecondary)
+                        .rotationEffect(.degrees(kollapset ? -90 : 0))
+                        .frame(width: 26, height: 26)
+                        .background(Brand.cardHi, in: Circle())
+                }
+                .buttonStyle(.plain)
             }
+            if !kollapset {
             LeadScoreFilterStrip(leads: leads, activeTier: $activeTier)
             ForEach(filtrerte.prefix(8), id: \.id) { lead in
                 leadRad(lead)
@@ -3450,6 +3620,7 @@ private struct LeadsOversiktCard: View {
                     .font(.caption).foregroundStyle(Brand.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 10)
+            }
             }
         }
         .padding(16)
@@ -3522,6 +3693,7 @@ private struct LeadsOversiktCard: View {
 private struct MoteOppgaverCard: View {
     @Environment(AppState.self) private var appState
     @State private var oppgaver: [MoteOppgaveDTO] = []
+    @AppStorage("oversikt.kollaps.oppgaver") private var kollapset = false
 
     var body: some View {
         // .task på en tom Group fyrer ikke (EmptyView-fella) — Color.clear
@@ -3544,7 +3716,19 @@ private struct MoteOppgaverCard: View {
                             .foregroundStyle(Brand.purpleLight)
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(Brand.purpleLight.opacity(0.14), in: Capsule())
+                        Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { kollapset.toggle() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundStyle(Brand.textSecondary)
+                        .rotationEffect(.degrees(kollapset ? -90 : 0))
+                        .frame(width: 26, height: 26)
+                        .background(Brand.cardHi, in: Circle())
+                }
+                .buttonStyle(.plain)
                     }
+                    if !kollapset {
                     ForEach(oppgaver.prefix(5)) { o in
                         Button { hukAv(o) } label: {
                             HStack(spacing: 9) {
@@ -3575,6 +3759,7 @@ private struct MoteOppgaverCard: View {
                         }
                         .buttonStyle(.plain)
                         .help("Huk av: \(o.tittel)")
+                    }
                     }
                 }
                 .padding(16)
