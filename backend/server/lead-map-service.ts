@@ -72,6 +72,7 @@ export type LeadStatus =
 export type VisitType = 'physical' | 'phone' | 'email' | 'online_meeting' | 'research';
 
 export interface MapLead {
+  cpvKoder: string[];
   id: string;
   name: string;
   company: string | null;
@@ -142,6 +143,12 @@ export interface ActivityRow {
 
 function rowToLead(row: any): MapLead {
   return {
+    cpvKoder: (() => {
+      try {
+        const arr = JSON.parse(String(row.cpv_koder ?? "[]"));
+        return Array.isArray(arr) ? arr.map(String) : [];
+      } catch { return []; }
+    })(),
     id: row.id,
     name: row.name,
     company: row.company,
@@ -229,7 +236,8 @@ export async function listLeadsInBounds(
             c.created_at, c.updated_at,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id,
-            c.industry_id::text AS industry_id
+            c.industry_id::text AS industry_id,
+            c.cpv_koder
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE ${conditions.join(' AND ')}
@@ -254,7 +262,8 @@ export async function getLeadById(
             c.created_at, c.updated_at,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id,
-            c.industry_id::text AS industry_id
+            c.industry_id::text AS industry_id,
+            c.cpv_koder
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE c.id = $1::uuid AND ${tenantConds.join(' AND ')}`,
