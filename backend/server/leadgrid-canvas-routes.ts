@@ -77,6 +77,20 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE leadgrid_canvas_notater
       ADD COLUMN IF NOT EXISTS sokbar_tekst TEXT NOT NULL DEFAULT ''`);
+  // Time Travel: versjonshistorikk per notat (skrives ved PUT når
+  // tegningen faktisk endres, cap 40 per notat).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_canvas_versjoner (
+      id UUID PRIMARY KEY,
+      notat_id UUID NOT NULL,
+      kategori TEXT NOT NULL DEFAULT 'mote',
+      drawing_base64 TEXT NOT NULL DEFAULT '',
+      objekter TEXT NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_canvas_versjoner_notat
+      ON leadgrid_canvas_versjoner (notat_id, created_at DESC)`);
   schemaReady = true;
 }
 
@@ -211,7 +225,8 @@ export function registerLeadgridCanvasRoutes(deps: {
     }
   });
 
-  /** Oppdater notat (bruker-scopet). */
+  /** Oppdater notat (bruker-scopet). Time Travel: gammel tegning
+   *  versjoneres FØR oppdatering når den faktisk er endret. */
   app.put("/api/leadgrid/canvas/:id", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
@@ -220,6 +235,30 @@ export function registerLeadgridCanvasRoutes(deps: {
       const felter = parseFelter((req.body ?? {}) as Record<string, unknown>);
       if (!felter) { res.status(413).json({ error: "tegning_for_stor" }); return; }
       await ensureSchema(pool);
+      // Versjonér forrige tilstand (best effort — velter aldri lagringen).
+      try {
+        const forrige = await pool.query<{ drawing_base64: string; kategori: string; objekter: string }>(
+          `SELECT drawing_base64, kategori, objekter FROM leadgrid_canvas_notater
+            WHERE id = $1 AND user_id = $2`,
+          [req.params.id, session.userId]);
+        const rad = forrige.rows[0];
+        if (rad && rad.drawing_base64 !== felter.drawing && rad.drawing_base64.length > 0) {
+          await pool.query(
+            `INSERT INTO leadgrid_canvas_versjoner
+               (id, notat_id, kategori, drawing_base64, objekter)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [randomUUID(), req.params.id, rad.kategori, rad.drawing_base64,
+             rad.objekter ?? "[]"]);
+          await pool.query(
+            `DELETE FROM leadgrid_canvas_versjoner
+              WHERE notat_id = $1 AND id NOT IN (
+                SELECT id FROM leadgrid_canvas_versjoner
+                 WHERE notat_id = $1 ORDER BY created_at DESC LIMIT 40)`,
+            [req.params.id]);
+        }
+      } catch (e) {
+        console.warn("[canvas] versjonering feilet:", String(e).slice(0, 120));
+      }
       const r = await pool.query(
         `UPDATE leadgrid_canvas_notater
             SET tittel = $1, kategori = $2, selskap = $3, lead_id = $4,
@@ -237,6 +276,40 @@ export function registerLeadgridCanvasRoutes(deps: {
       res.json({ ok: true });
     } catch (e) {
       console.error("[canvas] PUT failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Time Travel: versjonene til et notat (eldst → nyest, maks 30). */
+  app.get("/api/leadgrid/canvas/:id/versjoner", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.json({ versjoner: [] }); return; }
+      await ensureSchema(pool);
+      // Tilgang: eier ELLER delt i org-en.
+      const eier = await pool.query(
+        `SELECT 1 FROM leadgrid_canvas_notater
+          WHERE id = $1 AND organization_id = $2 AND (user_id = $3 OR delt)`,
+        [req.params.id, orgId, session.userId]);
+      if (eier.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const r = await pool.query(
+        `SELECT id, kategori, drawing_base64, created_at
+           FROM leadgrid_canvas_versjoner
+          WHERE notat_id = $1 ORDER BY created_at ASC LIMIT 30`,
+        [req.params.id]);
+      res.json({
+        versjoner: r.rows.map((row) => ({
+          id: row.id,
+          kategori: row.kategori,
+          drawing_base64: row.drawing_base64,
+          opprettet: row.created_at instanceof Date
+            ? row.created_at.toISOString() : String(row.created_at),
+        })),
+      });
+    } catch (e) {
+      console.error("[canvas] versjoner failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });

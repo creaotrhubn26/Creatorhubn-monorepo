@@ -39,6 +39,13 @@ struct CanvasAnalyseDTO: Decodable, Hashable {
     var lofter: [String]? = nil
 }
 
+struct CanvasVersjonDTO: Decodable, Hashable {
+    let id: String
+    let kategori: String
+    var drawingBase64: String? = nil
+    var opprettet: String? = nil
+}
+
 extension APIClient {
 
     func hentCanvasNotater() async throws -> [CanvasNotatDTO] {
@@ -178,6 +185,13 @@ extension APIClient {
             "/api/leadgrid/canvas/analyse",
             body: Body(selskap: selskap, leadId: leadId, tekst: "",
                        ferdigResultat: ferdig))
+    }
+
+    /// Time Travel: notatets versjoner (eldst → nyest).
+    func hentCanvasVersjoner(notatId: String) async throws -> [CanvasVersjonDTO] {
+        struct Resp: Decodable { let versjoner: [CanvasVersjonDTO] }
+        let r: Resp = try await _get("/api/leadgrid/canvas/\(notatId)/versjoner")
+        return r.versjoner
     }
 
     func slettCanvasNotat(id: String) async throws {
