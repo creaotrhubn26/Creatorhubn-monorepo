@@ -207,6 +207,21 @@ struct LeadDetailFullSheet: View {
                     metaPill(icon: "norwegiankronesign.circle", label: "10-20 mill.")
                     metaPill(icon: "globe", label: "nordicelektro.no")
                 }
+                // CPV-organisering: bedriftens auto-satte anbudskoder.
+                if let koder = lead.cpvKoder, !koder.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tag.fill")
+                            .font(.appScaled(size: 9, weight: .bold))
+                            .foregroundStyle(LdBrand.textSecondary)
+                        ForEach(koder.prefix(4), id: \.self) { kode in
+                            Text("CPV \(kode)")
+                                .font(.appScaled(size: 10, weight: .bold))
+                                .foregroundStyle(LdBrand.blue)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(LdBrand.blue.opacity(0.14), in: Capsule())
+                        }
+                    }
+                }
             }
             Spacer()
 

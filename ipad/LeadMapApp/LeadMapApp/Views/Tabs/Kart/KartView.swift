@@ -91,6 +91,8 @@ struct MapLeadMock: Identifiable, Hashable {
     /// Neste avtalte handling på leaden (LeadModel.nextAction) — peek-kortet
     /// leder med denne så kortet svarer «hva gjør jeg nå», ikke bare «hvem».
     var nextAction: String? = nil
+    /// CPV-koder (auto-satt fra bransjen) — vises på lead-kortet.
+    var cpvKoder: [String]? = nil
 
     /// Kontakt m/ demo-fallback: ekte lead-data vinner; demo-modus får
     /// visningsverdier så flyten kan demonstreres; ekte modus uten data → nil
@@ -386,7 +388,8 @@ enum KartPreviewData {
             email: lm.email,
             estimatedValue: lm.estimatedValue,
             aiScore: lm.aiOpportunityScore,
-            nextAction: lm.nextAction
+            nextAction: lm.nextAction,
+            cpvKoder: lm.cpvKoder
         )
     }
 
