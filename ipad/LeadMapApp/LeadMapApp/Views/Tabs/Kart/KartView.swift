@@ -5678,6 +5678,24 @@ struct KartView: View {
                 if let r = reachability, r.score != nil {
                     reachabilitySection(r)
                 }
+                // Bil vs. kollektiv: parkeringen ligger et stykke unna
+                // OG kollektivdekningen er god → foreslå å la bilen stå.
+                if let p = parking, let area = p.areas.first,
+                   area.distanceM > 400,
+                   let r = reachability, (r.score ?? 0) >= 70 {
+                    HStack(spacing: 7) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.yellow)
+                        Text("Vurder kollektivt hit: nærmeste parkering er \(area.distanceM) m unna (\(area.walkMin) min å gå), og kollektivdekningen er god.")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(KrBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(KrBrand.yellow.opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: 10))
+                }
                 // Bilparkering nær kunden (Statens vegvesen)
                 if let p = parking, let area = p.areas.first {
                     parkingSection(area, apps: p.apps)
