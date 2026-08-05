@@ -92,6 +92,8 @@ struct CanvasView: View {
     @State private var papirkurvNotater: [CanvasNotat] = []
     // Verktøyraden jobber i moduser: Tegn / Sett inn / Ordne.
     @State private var verktoyModus: VerktoyModus = .tegn
+    // Auto-tittel: OCR av øverste håndskrift-linje mens man skriver.
+    @State private var autoTittelTask: Task<Void, Never>?
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
@@ -811,6 +813,18 @@ struct CanvasView: View {
             }
             // Topp: tittel + kategori + lead-kobling + lagre (ekstrahert).
             editorTopp
+                .onChange(of: drawing.strokes.count) {
+                    // Tittelen skriver seg selv: 1,2 s etter siste strøk
+                    // leses øverste linja med Vision — kun når feltet er tomt.
+                    guard valgtErMin,
+                          tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    autoTittelTask?.cancel()
+                    autoTittelTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        guard !Task.isCancelled else { return }
+                        await foreslaTittelFraBlekk()
+                    }
+                }
 
             Divider().overlay(CvBrand.stroke)
 
@@ -1848,6 +1862,33 @@ struct CanvasView: View {
                 .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [],
             sokbarTekst: dto.sokbarTekst ?? "",
             slettetAt: Self.isoDato(dto.slettetAt))
+    }
+
+    /// Auto-tittel: øverste gjenkjente håndskrift-linje blir tittelen.
+    @MainActor
+    private func foreslaTittelFraBlekk() async {
+        guard tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let kopi = drawing
+        guard !kopi.strokes.isEmpty, !kopi.bounds.isEmpty else { return }
+        // Mørk modus: strøkene er lagret i lys-referanse — render på hvitt.
+        let bilde = kopi.image(from: kopi.bounds, scale: 2)
+        let kandidat: String? = await Task.detached(priority: .utility) { () -> String? in
+            guard let cg = bilde.cgImage else { return nil }
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["nb-NO", "en-US"]
+            let handler = VNImageRequestHandler(cgImage: cg)
+            try? handler.perform([request])
+            // Vision har origo nede til venstre → størst midY = øverste linja.
+            let topp = request.results?.max { $0.boundingBox.midY < $1.boundingBox.midY }
+            return topp?.topCandidates(1).first?.string
+        }.value
+        guard let ren = kandidat?.trimmingCharacters(in: .whitespacesAndNewlines),
+              ren.count >= 3 else { return }
+        // Ikke overskriv noe brukeren har rukket å skrive selv.
+        if tittel.trimmingCharacters(in: .whitespaces).isEmpty {
+            tittel = String(ren.prefix(60))
+        }
     }
 
     /// Miniatyrer: PKDrawing → 92pt-bilde (2× av 46pt-ruta), av-main.
