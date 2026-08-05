@@ -562,6 +562,10 @@ struct KartView: View {
     /// Grunn til forsinkelse fra DATEX (f.eks. «en ulykke på E6») — fylles når
     /// trafikk-API-et er koblet på; brukes i «meld forsinkelse»-meldingen.
     @State private var navDelayReason: String? = nil
+    // Spor A: periodisk trafikk-ETA-resjekk (bil) — «X min raskere»-banner.
+    @State private var navTrafikkAnchor: CLLocationCoordinate2D? = nil
+    @State private var navTrafikkForslag: Int? = nil          // spart, minutter
+    @State private var navTrafikkAvvist = false
     /// Posisjonen ruta sist ble beregnet fra — re-ruter når du har beveget deg.
     @State private var navRerouteAnchor: CLLocationCoordinate2D? = nil
     /// Cooldown: aldri re-rut oftere enn hvert 12. sekund — reroute-stormer
@@ -2479,7 +2483,10 @@ struct KartView: View {
             // muted gjorde veiene nesten usynlige i det mørke temaet. Flatt kart
             // så figuren/ruta ligger på bakkeplanet. Pitch gir road-ahead-view.
             .mapStyle(navModeActive
-                ? .standard(elevation: .flat, emphasis: .automatic, pointsOfInterest: .excludingAll)
+                // Spor A: trafikk-fläten (rød/gul vei) PÅ i navigasjon —
+                // du ser køen før du står i den.
+                ? .standard(elevation: .flat, emphasis: .automatic,
+                            pointsOfInterest: .excludingAll, showsTraffic: true)
                 : mapStyle.mapKitStyle)
             // Skjul Apple Maps default-kontroller (zoom-pille + kompass +
             // "Maps Legal" overlay) — vi har vår egen FAB-stack bunn-høyre.
@@ -2600,6 +2607,9 @@ struct KartView: View {
                     if !navAltDismissed, let alt = navAlternatives.first,
                        (alt.savedMin ?? 1) >= 1 {
                         navAlternativeBanner(alt)
+                    }
+                    if let spart = navTrafikkForslag {
+                        navTrafikkBanner(spartMin: spart)
                     }
                 }
                 .padding(14)
@@ -4610,6 +4620,9 @@ struct KartView: View {
         navAlternatives = []
         navAltAnchor = nil
         navAltDismissed = false
+        navTrafikkAnchor = nil
+        navTrafikkForslag = nil
+        navTrafikkAvvist = false
         navRoutePOIs = []
         // «Min bil» styrer hvilke POI som vises fra start (el→lading, fossil→bensin).
         navPOIActiveKinds = appState.vehicleProfile.defaultPOIKinds
@@ -5039,9 +5052,74 @@ struct KartView: View {
         navHeadingSmoothed = heading
         let aheadM = p.ahead * 111_000
         guard let senter = pointAlongRoute(navSDisplay + aheadM) else { return }
-        let cam = MapCamera(centerCoordinate: senter.coord, distance: p.dist,
-                            heading: heading, pitch: p.pitch)
+        // Spor A: fartsadaptivt kamera — høy fart løfter kameraet (mer
+        // oversikt), rolig fart går tett på. 8 m/s (~30 km/t) er nøytral.
+        let fartsFaktor = 1.0 + min(0.6, max(0, (navFollowSpeed - 8) / 14) * 0.6)
+        var dist = p.dist * fartsFaktor
+        var pitch = p.pitch
+        // Spor A: kryss-zoom — de siste 300 m før neste manøver glir
+        // kameraet inn og mer ovenfra så krysset fyller bildet; etter
+        // manøveren glir det ut igjen (t faller til 0 av seg selv).
+        if navStepIndex < navStepS.count {
+            let tilManover = navStepS[navStepIndex] - navSDisplay
+            if tilManover > 0, tilManover < 300 {
+                let t = 1.0 - (tilManover / 300)
+                dist *= (1.0 - 0.45 * t)
+                pitch *= (1.0 - 0.35 * t)
+            }
+        }
+        let cam = MapCamera(centerCoordinate: senter.coord, distance: dist,
+                            heading: heading, pitch: pitch)
         withAnimation(.linear(duration: dt * 1.1)) { camera = .camera(cam) }
+    }
+
+    /// Spor A: trafikk-forslaget — ny beregning er raskere enn ruta du er på.
+    private func navTrafikkBanner(spartMin: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "car.rear.road.lane.dashed")
+                .font(.appScaled(size: 15, weight: .semibold))
+                .foregroundStyle(KrBrand.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Raskere rute funnet")
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Trafikken har endret seg — ny rute sparer ~\(spartMin) min")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(KrBrand.textSecondary)
+            }
+            Spacer()
+            Button {
+                navTrafikkForslag = nil
+                if let dest = navDestination,
+                   let me = KartLocationManager.shared.currentCoordinate {
+                    recomputeNavRoute(
+                        from: me,
+                        to: CLLocationCoordinate2D(latitude: dest.lat, longitude: dest.lon))
+                    showToast("Ruta er oppdatert")
+                }
+            } label: {
+                Text("Bytt rute")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11).padding(.vertical, 6)
+                    .background(KrBrand.orange, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Button {
+                navTrafikkAvvist = true
+                withAnimation(.easeOut(duration: 0.2)) { navTrafikkForslag = nil }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.appScaled(size: 15))
+                    .foregroundStyle(KrBrand.textTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(KrBrand.card.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .stroke(KrBrand.orange.opacity(0.55), lineWidth: 1.2))
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
     }
 
     /// Tale/manøvrer drevet av s (monoton) — kan ikke loope.
@@ -5240,6 +5318,23 @@ struct KartView: View {
             Task {
                 let s = await NvdbService.shared.speedLimit(lat: me.latitude, lon: me.longitude, using: appState.api)
                 if navModeActive { navSpeedLimit = s }
+            }
+        }
+        // Spor A: bil-trafikk-resjekk hver ~500 m — MKDirections tar hensyn
+        // til trafikk; er en ny beregning ≥3 min raskere enn gjenværende
+        // ETA, foreslås ruteskifte (banneret under manøver-kortet).
+        if navTransport == .driving, !navTrafikkAvvist, navETAMinutes > 8 {
+            if navTrafikkAnchor == nil || metersBetween(navTrafikkAnchor!, me) > 500 {
+                navTrafikkAnchor = me
+                let naaETA = navETAMinutes
+                Task {
+                    if let friskETA = await drivingEtaMinutes(from: me, to: destC),
+                       naaETA - friskETA >= 3, navModeActive {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            navTrafikkForslag = naaETA - friskETA
+                        }
+                    }
+                }
             }
         }
         // «Raskere alternativ»: sjekk kollektiv/sparkesykkel når du GÅR (ikke
