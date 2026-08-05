@@ -825,6 +825,8 @@ struct KartView: View {
 
     // Pass-2 overlays
     @State private var activeOverlays: Set<MapOverlay> = []
+    /// Canvas-lagets pins (lastes når laget slås på).
+    @State private var canvasKartNotater: [CanvasKartNotat] = []
 
     enum MapOverlay: String, CaseIterable, Hashable {
         case heatmap = "Heatmap"
@@ -833,6 +835,7 @@ struct KartView: View {
         case territories = "Territorier"
         case dataOverlay = "Bedrifts-data"
         case teamMembers = "Team på kartet"
+        case canvasNotater = "Canvas-notater"
         var icon: String {
             switch self {
             case .heatmap:        return "flame.circle.fill"
@@ -841,6 +844,7 @@ struct KartView: View {
             case .territories:    return "rectangle.3.group.fill"
             case .dataOverlay:    return "chart.pie.fill"
             case .teamMembers:    return "person.2.circle.fill"
+            case .canvasNotater:  return "pencil.and.outline"
             }
         }
         var subtitle: String {
@@ -851,6 +855,7 @@ struct KartView: View {
             case .territories:   return "Polygon-soner: din vs kollegas region"
             case .dataOverlay:   return "Pin-radius reflekterer omsetning (Brønnøysund)"
             case .teamMembers:   return "Live-avatar for selgere og promotører m/ destinasjon"
+            case .canvasNotater: return "Stedfestede Canvas-notater — der skissene ble til"
             }
         }
         var color: Color {
@@ -861,8 +866,17 @@ struct KartView: View {
             case .territories:   return Color(red: 0.20, green: 0.85, blue: 0.60)
             case .dataOverlay:   return Color(red: 0.34, green: 0.60, blue: 0.98)
             case .teamMembers:   return Color(red: 0.66, green: 0.32, blue: 0.99)
+            case .canvasNotater: return Color(red: 0.75, green: 0.45, blue: 1.0)
             }
         }
+    }
+
+    /// Stedfestet Canvas-notat på kartet (fase 5).
+    struct CanvasKartNotat: Identifiable, Hashable {
+        let id: String
+        let tittel: String
+        let lat: Double
+        let lon: Double
     }
 
     // Long-press → drop pin
@@ -1057,6 +1071,30 @@ struct KartView: View {
                 }
             }
         }
+        // Canvas-notater: der skissene ble til — tap hopper til Canvas-fanen.
+        if activeOverlays.contains(.canvasNotater) {
+            ForEach(canvasKartNotater) { n in
+                Annotation(n.tittel.isEmpty ? "Canvas-notat" : n.tittel,
+                           coordinate: CLLocationCoordinate2D(latitude: n.lat, longitude: n.lon)) {
+                    Button {
+                        appState.selectedSidebarItem = .canvas
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(red: 0.10, green: 0.09, blue: 0.16))
+                                .overlay(RoundedRectangle(cornerRadius: 8)
+                                    .stroke(KrBrand.purpleLight.opacity(0.7), lineWidth: 1.5))
+                            Image(systemName: "pencil.and.outline")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(KrBrand.purpleLight)
+                        }
+                        .frame(width: 30, height: 30)
+                        .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     /// Solid «casing»-rute på kartet (ekstrahert for å hjelpe type-sjekkeren).
@@ -1226,6 +1264,25 @@ struct KartView: View {
         // Mac Catalyst Cmd+F → fokuser søkefelt.
         .onReceive(NotificationCenter.default.publisher(for: .leadgridFocusSearch)) { _ in
             searchFieldFocused = true
+        }
+        // Canvas-laget: hent stedfestede notater når laget slås på.
+        .task(id: activeOverlays.contains(.canvasNotater)) {
+            guard activeOverlays.contains(.canvasNotater) else { return }
+            if DemoModeManager.isActiveNonisolated {
+                canvasKartNotater = [
+                    CanvasKartNotat(id: "demo-c1", tittel: "Møte med Nordic Elektro AS",
+                                    lat: 59.943, lon: 10.778),
+                    CanvasKartNotat(id: "demo-c3", tittel: "Ruteplan — Grünerløkka",
+                                    lat: 59.923, lon: 10.758),
+                ]
+                return
+            }
+            guard let api = appState.api else { return }
+            let notater = (try? await api.hentCanvasNotater()) ?? []
+            canvasKartNotater = notater.compactMap { d in
+                guard let lat = d.lat, let lon = d.lon else { return nil }
+                return CanvasKartNotat(id: d.id, tittel: d.tittel, lat: lat, lon: lon)
+            }
         }
         // Live navigasjon: følg posisjonen kontinuerlig (heading-up + re-rute).
         .onChange(of: KartLocationManager.shared.currentCoordinate?.latitude) { _, _ in

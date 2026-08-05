@@ -28,22 +28,38 @@ private enum CvBrand {
     static let textTertiary = Color.white.opacity(0.4)
 }
 
-/// Kategoriene fra design-mocken — farge + etikett per chip.
+/// Notat-TYPENE (Daniels struktur 2026-08-05): Møte / Lead / Befaring /
+/// Salgsplan / Prosjekt / Rute — hver med sitt eget cover. Gamle
+/// kategorier beholdes som legacy så eksisterende notater dekoder.
 enum CanvasKategori: String, CaseIterable, Identifiable {
+    // Strukturen
     case mote = "mote"
-    case oppfolging = "oppfolging"
+    case lead = "lead"
+    case befaring = "befaring"
+    case salgsplan = "salgsplan"
+    case prosjekt = "prosjekt"
     case rute = "rute"
+    // Legacy (vises kun på gamle notater)
+    case oppfolging = "oppfolging"
     case ide = "ide"
     case kunde = "kunde"
     case internt = "internt"
 
     var id: String { rawValue }
 
+    /// Typene som tilbys i velger/filter — legacy holdes utenfor.
+    static let hovedTyper: [CanvasKategori] =
+        [.mote, .lead, .befaring, .salgsplan, .prosjekt, .rute]
+
     var etikett: String {
         switch self {
         case .mote: return "Møte"
-        case .oppfolging: return "Oppfølging"
+        case .lead: return "Lead"
+        case .befaring: return "Befaring"
+        case .salgsplan: return "Salgsplan"
+        case .prosjekt: return "Prosjekt"
         case .rute: return "Rute"
+        case .oppfolging: return "Oppfølging"
         case .ide: return "Idé"
         case .kunde: return "Kunde"
         case .internt: return "Internt"
@@ -53,12 +69,37 @@ enum CanvasKategori: String, CaseIterable, Identifiable {
     var farge: Color {
         switch self {
         case .mote: return CvBrand.purpleLight
+        case .lead: return CvBrand.orange
+        case .befaring: return CvBrand.green
+        case .salgsplan: return CvBrand.yellow
+        case .prosjekt: return CvBrand.blue
+        case .rute: return Color(red: 0.35, green: 0.85, blue: 0.85)
         case .oppfolging: return CvBrand.blue
-        case .rute: return CvBrand.green
         case .ide: return CvBrand.yellow
         case .kunde: return CvBrand.orange
         case .internt: return CvBrand.textSecondary
         }
+    }
+
+    var ikon: String {
+        switch self {
+        case .mote: return "person.2.wave.2.fill"
+        case .lead: return "person.crop.rectangle.stack.fill"
+        case .befaring: return "binoculars.fill"
+        case .salgsplan: return "chart.line.uptrend.xyaxis"
+        case .prosjekt: return "hammer.fill"
+        case .rute: return "point.topleft.down.curvedto.point.bottomright.up.fill"
+        case .oppfolging: return "bell.fill"
+        case .ide: return "lightbulb.fill"
+        case .kunde: return "building.2.fill"
+        case .internt: return "lock.fill"
+        }
+    }
+
+    /// Cover-gradienten — notatets «bokforside» i lista og velgeren.
+    var coverGradient: LinearGradient {
+        LinearGradient(colors: [farge.opacity(0.55), farge.opacity(0.18)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -73,6 +114,26 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
+
+/// Flyttbar OG skalerbar figur oppå flata (fase 6) — «Former» som ekte
+/// objekter: dra flytter, klyp skalerer, hold fjerner. Tegnes i SwiftUI
+/// (utenfor PencilKit) så fargene aldri inverteres i mørk modus.
+struct CanvasFigur: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var form: String       // rektangel/sirkel/pil/linje
+    var x: Double
+    var y: Double
+    var skala: Double = 1.0
+    var fargeHex: String = "#FFFFFF"
+}
+
+/// Flyttbar tekstboks oppå flata (fase 5) — «Skriv»-modusen fra mocken.
+struct CanvasTekstboks: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var tekst: String
+    var x: Double
+    var y: Double
+}
 
 /// Lokal notat-modell (speiler CanvasNotatDTO; drawing som rå PKDrawing-data).
 struct CanvasNotat: Identifiable, Hashable {
@@ -94,6 +155,8 @@ struct CanvasNotat: Identifiable, Hashable {
     var lat: Double? = nil
     var lon: Double? = nil
     var stempler: [CanvasStempel] = []
+    var tekstbokser: [CanvasTekstboks] = []
+    var figurer: [CanvasFigur] = []
 }
 
 struct CanvasView: View {
@@ -116,9 +179,15 @@ struct CanvasView: View {
     @State private var sok = ""
     @State private var visAnalyse = false
     @State private var stempler: [CanvasStempel] = []
+    @State private var tekstbokser: [CanvasTekstboks] = []
+    @State private var figurer: [CanvasFigur] = []
     @State private var notatLat: Double?
     @State private var notatLon: Double?
     @State private var visStempelPalett = false
+    @State private var visFormPalett = false
+    @State private var redigererTekstboks: CanvasTekstboks?
+    @State private var visTypeVelger = false
+    @State private var formFarge: UIColor = .white
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
 
@@ -196,7 +265,7 @@ struct CanvasView: View {
                     .font(.appScaled(size: 19, weight: .black))
                     .foregroundStyle(.white)
                 Spacer()
-                Button { nyttNotat() } label: {
+                Button { visTypeVelger = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus")
                             .font(.appScaled(size: 11, weight: .black))
@@ -241,7 +310,7 @@ struct CanvasView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     filterChip(nil, etikett: "Alle")
-                    ForEach(CanvasKategori.allCases) { k in
+                    ForEach(CanvasKategori.hovedTyper) { k in
                         filterChip(k, etikett: k.etikett)
                     }
                 }
@@ -300,9 +369,13 @@ struct CanvasView: View {
                     Image(uiImage: img)
                         .resizable().scaledToFill()
                 } else {
-                    Image(systemName: "scribble.variable")
-                        .font(.appScaled(size: 14))
-                        .foregroundStyle(CvBrand.textTertiary)
+                    // Typens cover — notatets «bokforside» før første strøk.
+                    ZStack {
+                        Rectangle().fill(n.kategori.coverGradient)
+                        Image(systemName: n.kategori.ikon)
+                            .font(.appScaled(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
                 }
             }
             .frame(width: 46, height: 46)
@@ -466,7 +539,7 @@ struct CanvasView: View {
                     // Kategori-velger
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(CanvasKategori.allCases) { k in
+                            ForEach(CanvasKategori.hovedTyper) { k in
                                 Button {
                                     kategori = k
                                 } label: {
@@ -500,14 +573,23 @@ struct CanvasView: View {
                         .buttonStyle(.plain)
                         .help("Notatet ble til her — vis på kartet")
                     }
-                    // Del tegningen som bilde (m/ stempler komponert inn).
+                    // Del tegningen som bilde eller PDF (stempler+tekst inn).
                     if !drawing.bounds.isEmpty {
-                        ShareLink(
-                            item: Image(uiImage: komponertBilde()),
-                            preview: SharePreview(
-                                tittel.isEmpty ? "Canvas-notat" : tittel,
-                                image: Image(uiImage: komponertBilde()))
-                        ) {
+                        Menu {
+                            ShareLink(
+                                item: Image(uiImage: komponertBilde()),
+                                preview: SharePreview(
+                                    tittel.isEmpty ? "Canvas-notat" : tittel,
+                                    image: Image(uiImage: komponertBilde()))
+                            ) {
+                                Label("Del som bilde", systemImage: "photo")
+                            }
+                            if let pdfURL = pdfFil() {
+                                ShareLink(item: pdfURL) {
+                                    Label("Del som PDF", systemImage: "doc.richtext")
+                                }
+                            }
+                        } label: {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(CvBrand.textSecondary)
@@ -559,6 +641,79 @@ struct CanvasView: View {
                             .font(.appScaled(size: 9))
                             .foregroundStyle(CvBrand.textTertiary)
                     }
+                    // «Former» fra mocken: legges inn som ekte penn-strøk
+                    // (kan viskes/lassoes som alt annet).
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            visFormPalett.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.on.circle")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Former")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(visFormPalett ? .white : CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(visFormPalett
+                                    ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
+                                    in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    if visFormPalett {
+                        ForEach(CanvasForm.allCases, id: \.self) { form in
+                            Button {
+                                figurer.append(CanvasFigur(
+                                    form: form.nokkel,
+                                    x: 340 + Double(figurer.count % 4) * 40,
+                                    y: 260 + Double(figurer.count / 4) * 40,
+                                    fargeHex: formFarge.somHex))
+                            } label: {
+                                Image(systemName: form.ikon)
+                                    .font(.appScaled(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color(formFarge))
+                                    .frame(width: 30, height: 30)
+                                    .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Text("Dra · klyp for størrelse · hold for å fjerne")
+                            .font(.appScaled(size: 9))
+                            .foregroundStyle(CvBrand.textTertiary)
+                        // Fargevalg for formene
+                        ForEach(Array(CanvasForm.fargePalett.enumerated()), id: \.offset) { _, f in
+                            Button {
+                                formFarge = f
+                            } label: {
+                                Circle()
+                                    .fill(Color(f))
+                                    .frame(width: 20, height: 20)
+                                    .overlay(Circle().stroke(
+                                        formFarge == f ? Color.white : CvBrand.stroke,
+                                        lineWidth: formFarge == f ? 2 : 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    // «Skriv»: flyttbar tekstboks.
+                    Button {
+                        let ny = CanvasTekstboks(
+                            tekst: "", x: 340, y: 180 + Double(tekstbokser.count % 6) * 44)
+                        tekstbokser.append(ny)
+                        redigererTekstboks = ny
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "textformat")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Tekst")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(CvBrand.cardHi, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                     Spacer()
                 }
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -580,12 +735,63 @@ struct CanvasView: View {
                                     stempler.removeAll { $0.id == st.id }
                                 })
                 }
+                ForEach(figurer) { fig in
+                    FigurView(figur: fig, redigerbar: valgtErMin,
+                              onEndre: { ny in
+                                  if let i = figurer.firstIndex(where: { $0.id == fig.id }) {
+                                      figurer[i] = ny
+                                  }
+                              },
+                              onSlett: {
+                                  figurer.removeAll { $0.id == fig.id }
+                              })
+                }
+                ForEach(tekstbokser) { tb in
+                    TekstboksView(boks: tb, redigerbar: valgtErMin,
+                                  onFlytt: { ny in
+                                      if let i = tekstbokser.firstIndex(where: { $0.id == tb.id }) {
+                                          tekstbokser[i] = ny
+                                      }
+                                  },
+                                  onRediger: { redigererTekstboks = tb },
+                                  onSlett: {
+                                      tekstbokser.removeAll { $0.id == tb.id }
+                                  })
+                }
+            }
+            .alert("Tekstboks", isPresented: Binding(
+                get: { redigererTekstboks != nil },
+                set: { if !$0 { redigererTekstboks = nil } })) {
+                TextField("Tekst", text: Binding(
+                    get: { redigererTekstboks?.tekst ?? "" },
+                    set: { ny in
+                        redigererTekstboks?.tekst = ny
+                        if let rb = redigererTekstboks,
+                           let i = tekstbokser.firstIndex(where: { $0.id == rb.id }) {
+                            tekstbokser[i].tekst = ny
+                        }
+                    }))
+                Button("Ferdig") {
+                    // Tom boks ved lukking = angret opprettelse.
+                    if let rb = redigererTekstboks,
+                       rb.tekst.trimmingCharacters(in: .whitespaces).isEmpty {
+                        tekstbokser.removeAll { $0.id == rb.id }
+                    }
+                    redigererTekstboks = nil
+                }
             }
         }
         .sheet(isPresented: $visAnalyse) {
             CanvasAnalyseSheet(drawing: drawing,
                                selskap: kobletSelskap ?? tittel,
                                leadId: kobletLeadId)
+        }
+        .sheet(isPresented: $visTypeVelger) {
+            CanvasTypeVelger { valgt in
+                visTypeVelger = false
+                nyttNotat(type: valgt)
+            }
+            .presentationDetents([.medium])
         }
     }
 
@@ -632,14 +838,14 @@ struct CanvasView: View {
 
     // MARK: Handlinger
 
-    private func nyttNotat() {
+    private func nyttNotat(type: CanvasKategori = .mote) {
         // Lagre det som står i editoren først (best effort, uten å vente).
         if valgtId != nil { Task { await lagre(stille: true) } }
         let pos = KartLocationManager.shared.currentCoordinate
         let n = CanvasNotat(
             id: UUID().uuidString.lowercased(),
             tittel: "",
-            kategori: kategoriFilter ?? .mote,
+            kategori: type,
             selskap: nil, leadId: nil,
             drawingData: Data(),
             oppdatert: Date(),
@@ -661,6 +867,8 @@ struct CanvasView: View {
         kobletSelskap = n.selskap
         deltMedTeam = n.delt
         stempler = n.stempler
+        tekstbokser = n.tekstbokser
+        figurer = n.figurer
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -686,6 +894,8 @@ struct CanvasView: View {
         n.selskap = kobletSelskap
         n.delt = deltMedTeam
         n.stempler = stempler
+        n.tekstbokser = tekstbokser
+        n.figurer = figurer
         n.lat = notatLat
         n.lon = notatLon
         n.drawingData = drawing.dataRepresentation()
@@ -704,13 +914,18 @@ struct CanvasView: View {
         do {
             let stemplerJSON = (try? JSONEncoder().encode(n.stempler))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let tekstbokserJSON = (try? JSONEncoder().encode(n.tekstbokser))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let figurerJSON = (try? JSONEncoder().encode(n.figurer))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
-                    stempler: stemplerJSON)
+                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
+                    figurer: figurerJSON)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -720,7 +935,8 @@ struct CanvasView: View {
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
-                    stempler: stemplerJSON)
+                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
+                    figurer: figurerJSON)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -760,7 +976,11 @@ struct CanvasView: View {
                 eierNavn: dto.eierNavn,
                 lat: dto.lat, lon: dto.lon,
                 stempler: (dto.stempler?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [])
+                    .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [],
+                tekstbokser: (dto.tekstbokser?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [],
+                figurer: (dto.figurer?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasFigur].self, from: $0) } ?? [])
         }
         genererThumbs()
     }
@@ -800,7 +1020,43 @@ struct CanvasView: View {
                     at: punkt,
                     withAttributes: [.font: UIFont.systemFont(ofSize: 64)])
             }
+            for fig in figurer {
+                let ctx = UIGraphicsGetCurrentContext()
+                ctx?.setStrokeColor(UIColor(hex: fig.fargeHex).cgColor)
+                ctx?.setLineWidth(8 * fig.skala)
+                let senter = CGPoint(x: (fig.x - bounds.minX) * 2.0,
+                                     y: (fig.y - bounds.minY) * 2.0)
+                CanvasForm.fra(fig.form)?
+                    .banePath(senter: senter, skala: fig.skala * 2.0)
+                    .forEach { ctx?.addPath($0); ctx?.strokePath() }
+            }
+            for tb in tekstbokser where !tb.tekst.isEmpty {
+                let punkt = CGPoint(x: (tb.x - bounds.minX) * 2.0,
+                                    y: (tb.y - bounds.minY) * 2.0)
+                (tb.tekst as NSString).draw(
+                    at: punkt,
+                    withAttributes: [
+                        .font: UIFont.boldSystemFont(ofSize: 34),
+                        .foregroundColor: UIColor.white,
+                    ])
+            }
         }
+    }
+
+    /// PDF til temp-fil for ShareLink (én side = komposittbildet).
+    private func pdfFil() -> URL? {
+        let bilde = komponertBilde()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(tittel.isEmpty ? "canvas-notat" : tittel.replacingOccurrences(of: "/", with: "-")).pdf")
+        let pdfRenderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(origin: .zero, size: bilde.size))
+        do {
+            try pdfRenderer.writePDF(to: url) { ctx in
+                ctx.beginPage()
+                bilde.draw(at: .zero)
+            }
+            return url
+        } catch { return nil }
     }
 
     private func oppdaterThumb(_ n: CanvasNotat) {
@@ -1199,5 +1455,252 @@ private struct StempelView: View {
             .onLongPressGesture(minimumDuration: 0.5) {
                 if redigerbar { onSlett() }
             }
+    }
+}
+
+
+// MARK: - CanvasForm (fase 5: «Former» som ekte penn-strøk)
+
+/// Formene legges inn som PKStroke — de kan viskes, lassoes og flyttes
+/// med PencilKits egne verktøy, akkurat som håndtegnede strøk.
+enum CanvasForm: CaseIterable {
+    case rektangel, sirkel, pil, linje
+
+    var ikon: String {
+        switch self {
+        case .rektangel: return "rectangle"
+        case .sirkel: return "circle"
+        case .pil: return "arrow.right"
+        case .linje: return "minus"
+        }
+    }
+
+    /// Farger for formene — konverteres m/ PKInkingTool.convertColor slik
+    /// at de IKKE inverteres av PencilKits mørk-modus-rendring (Daniels
+    /// funn: hvite former ble mørke).
+    static let fargePalett: [UIColor] = [
+        .white,
+        UIColor(red: 0.75, green: 0.45, blue: 1.0, alpha: 1),
+        UIColor(red: 0.20, green: 0.85, blue: 0.60, alpha: 1),
+        UIColor(red: 0.98, green: 0.75, blue: 0.14, alpha: 1),
+        UIColor(red: 0.98, green: 0.45, blue: 0.30, alpha: 1),
+        UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1),
+    ]
+
+    var nokkel: String {
+        switch self {
+        case .rektangel: return "rektangel"
+        case .sirkel: return "sirkel"
+        case .pil: return "pil"
+        case .linje: return "linje"
+        }
+    }
+
+    static func fra(_ nokkel: String) -> CanvasForm? {
+        allCases.first { $0.nokkel == nokkel }
+    }
+
+    /// CGPath-er for kompositt-rendring (deling/PDF) — speiler FigurView.
+    func banePath(senter: CGPoint, skala: Double) -> [CGPath] {
+        let s = skala
+        switch self {
+        case .rektangel:
+            return [CGPath(rect: CGRect(x: senter.x - 90 * s, y: senter.y - 60 * s,
+                                        width: 180 * s, height: 120 * s), transform: nil)]
+        case .sirkel:
+            return [CGPath(ellipseIn: CGRect(x: senter.x - 75 * s, y: senter.y - 75 * s,
+                                             width: 150 * s, height: 150 * s), transform: nil)]
+        case .pil:
+            let p1 = CGMutablePath()
+            p1.move(to: CGPoint(x: senter.x - 90 * s, y: senter.y))
+            p1.addLine(to: CGPoint(x: senter.x + 90 * s, y: senter.y))
+            p1.move(to: CGPoint(x: senter.x + 55 * s, y: senter.y - 28 * s))
+            p1.addLine(to: CGPoint(x: senter.x + 90 * s, y: senter.y))
+            p1.addLine(to: CGPoint(x: senter.x + 55 * s, y: senter.y + 28 * s))
+            return [p1]
+        case .linje:
+            let p = CGMutablePath()
+            p.move(to: CGPoint(x: senter.x - 100 * s, y: senter.y))
+            p.addLine(to: CGPoint(x: senter.x + 100 * s, y: senter.y))
+            return [p]
+        }
+    }
+}
+
+// MARK: - TekstboksView (fase 5: flyttbar tekst)
+
+private struct TekstboksView: View {
+    let boks: CanvasTekstboks
+    let redigerbar: Bool
+    let onFlytt: (CanvasTekstboks) -> Void
+    let onRediger: () -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+
+    var body: some View {
+        Text(boks.tekst.isEmpty ? "Tekst …" : boks.tekst)
+            .font(.appScaled(size: 17, weight: .bold))
+            .foregroundStyle(boks.tekst.isEmpty ? CvBrand.textTertiary : .white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(CvBrand.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .stroke(CvBrand.purple.opacity(0.35), lineWidth: 1))
+            .position(x: boks.x + dragOffset.width,
+                      y: boks.y + dragOffset.height)
+            .onTapGesture { if redigerbar { onRediger() } }
+            .gesture(redigerbar ? DragGesture()
+                .onChanged { dragOffset = $0.translation }
+                .onEnded { v in
+                    var ny = boks
+                    ny.x += v.translation.width
+                    ny.y += v.translation.height
+                    dragOffset = .zero
+                    onFlytt(ny)
+                } : nil)
+            .onLongPressGesture(minimumDuration: 0.5) {
+                if redigerbar { onSlett() }
+            }
+    }
+}
+
+
+// MARK: - CanvasTypeVelger (fase 6: strukturen — velg cover)
+
+/// «Nytt notat» åpner denne: seks covers (Møte/Lead/Befaring/Salgsplan/
+/// Prosjekt/Rute) — strukturen styrer kategorien fra første strøk.
+struct CanvasTypeVelger: View {
+    let onVelg: (CanvasKategori) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private let kolonner = [GridItem(.flexible()), GridItem(.flexible()),
+                            GridItem(.flexible())]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                CvBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    LazyVGrid(columns: kolonner, spacing: 12) {
+                        ForEach(CanvasKategori.hovedTyper) { type in
+                            Button { onVelg(type) } label: {
+                                VStack(spacing: 10) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .fill(type.coverGradient)
+                                        Image(systemName: type.ikon)
+                                            .font(.appScaled(size: 28, weight: .semibold))
+                                            .foregroundStyle(.white.opacity(0.95))
+                                    }
+                                    .frame(height: 96)
+                                    .overlay(RoundedRectangle(cornerRadius: 14)
+                                        .stroke(type.farge.opacity(0.5), lineWidth: 1))
+                                    Text(type.etikett)
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("Nytt Canvas")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }
+                        .tint(CvBrand.textSecondary)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+
+// MARK: - FigurView (fase 6: flyttbar + skalerbar form)
+
+/// Dra flytter, klyp skalerer (0.3–4×), hold fjerner.
+private struct FigurView: View {
+    let figur: CanvasFigur
+    let redigerbar: Bool
+    let onEndre: (CanvasFigur) -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+    @State private var pinchSkala: CGFloat = 1.0
+
+    var body: some View {
+        let form = CanvasForm.fra(figur.form) ?? .rektangel
+        let visSkala = figur.skala * pinchSkala
+        FigurShape(form: form)
+            .stroke(Color(UIColor(hex: figur.fargeHex)),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            .frame(width: 200 * visSkala, height: 160 * visSkala)
+            .contentShape(Rectangle())
+            .position(x: figur.x + dragOffset.width,
+                      y: figur.y + dragOffset.height)
+            .gesture(redigerbar ? DragGesture()
+                .onChanged { dragOffset = $0.translation }
+                .onEnded { v in
+                    var ny = figur
+                    ny.x += v.translation.width
+                    ny.y += v.translation.height
+                    dragOffset = .zero
+                    onEndre(ny)
+                } : nil)
+            .simultaneousGesture(redigerbar ? MagnificationGesture()
+                .onChanged { pinchSkala = $0 }
+                .onEnded { v in
+                    var ny = figur
+                    ny.skala = min(4.0, max(0.3, ny.skala * v))
+                    pinchSkala = 1.0
+                    onEndre(ny)
+                } : nil)
+            .onLongPressGesture(minimumDuration: 0.6) {
+                if redigerbar { onSlett() }
+            }
+    }
+}
+
+/// SwiftUI-Shape som speiler CanvasForm.banePath — normalisert til ramma.
+private struct FigurShape: Shape {
+    let form: CanvasForm
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let midY = rect.midY
+        switch form {
+        case .rektangel:
+            p.addRect(rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.12))
+        case .sirkel:
+            let side = min(rect.width, rect.height) * 0.9
+            p.addEllipse(in: CGRect(x: rect.midX - side / 2,
+                                    y: rect.midY - side / 2,
+                                    width: side, height: side))
+        case .pil:
+            p.move(to: CGPoint(x: rect.minX + rect.width * 0.05, y: midY))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.05, y: midY))
+            p.move(to: CGPoint(x: rect.maxX - rect.width * 0.24, y: midY - rect.height * 0.17))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.05, y: midY))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.24, y: midY + rect.height * 0.17))
+        case .linje:
+            p.move(to: CGPoint(x: rect.minX, y: midY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: midY))
+        }
+        return p
+    }
+}
+
+// MARK: - UIColor ↔ hex (figur-farger)
+
+extension UIColor {
+    var somHex: String {
+        var r: CGFloat = 1, g: CGFloat = 1, b: CGFloat = 1, a: CGFloat = 1
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X",
+                      Int(r * 255), Int(g * 255), Int(b * 255))
     }
 }

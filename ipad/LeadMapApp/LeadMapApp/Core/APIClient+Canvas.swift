@@ -19,6 +19,8 @@ struct CanvasNotatDTO: Decodable, Hashable {
     var lat: Double? = nil
     var lon: Double? = nil
     var stempler: String? = nil
+    var tekstbokser: String? = nil
+    var figurer: String? = nil
 }
 
 struct CanvasAnalyseOppgaveDTO: Decodable, Hashable {
@@ -46,7 +48,9 @@ extension APIClient {
                             drawingBase64: String,
                             delt: Bool = false,
                             lat: Double? = nil, lon: Double? = nil,
-                            stempler: String = "[]") async throws -> String {
+                            stempler: String = "[]",
+                            tekstbokser: String = "[]",
+                            figurer: String = "[]") async throws -> String {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -57,13 +61,16 @@ extension APIClient {
             let lat: Double?
             let lon: Double?
             let stempler: String
+            let tekstbokser: String
+            let figurer: String
         }
         struct Resp: Decodable { let id: String }
         let r: Resp = try await _post(
             "/api/leadgrid/canvas",
             body: Body(tittel: tittel, kategori: kategori, selskap: selskap,
                        leadId: leadId, drawingBase64: drawingBase64, delt: delt,
-                       lat: lat, lon: lon, stempler: stempler))
+                       lat: lat, lon: lon, stempler: stempler,
+                       tekstbokser: tekstbokser, figurer: figurer))
         return r.id
     }
 
@@ -72,7 +79,9 @@ extension APIClient {
                              drawingBase64: String,
                              delt: Bool = false,
                              lat: Double? = nil, lon: Double? = nil,
-                             stempler: String = "[]") async throws {
+                             stempler: String = "[]",
+                             tekstbokser: String = "[]",
+                             figurer: String = "[]") async throws {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -83,11 +92,14 @@ extension APIClient {
             let lat: Double?
             let lon: Double?
             let stempler: String
+            let tekstbokser: String
+            let figurer: String
         }
         let data = try JSONEncoder().encode(
             Body(tittel: tittel, kategori: kategori, selskap: selskap,
                  leadId: leadId, drawingBase64: drawingBase64, delt: delt,
-                 lat: lat, lon: lon, stempler: stempler))
+                 lat: lat, lon: lon, stempler: stempler,
+                 tekstbokser: tekstbokser, figurer: figurer))
         // _request tar rå JSON — feltene her er allerede snake-frie
         // bortsett fra leadId/drawingBase64; backend godtar begge former.
         _ = try await _request("/api/leadgrid/canvas/\(id)",
