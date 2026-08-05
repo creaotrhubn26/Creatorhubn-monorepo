@@ -115,6 +115,19 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
 
+/// Levende tankekart/brainstorm-node (fase 7): boblene er OBJEKTER —
+/// «+» føder koblet barn, dra flytter (streken følger), tap redigerer
+/// teksten (Scribble: skriv i boblen med Pencil). Brainstorm = noder
+/// uten forelder (frittstående lapper).
+struct CanvasNode: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var parentId: String? = nil
+    var tekst: String = ""
+    var x: Double
+    var y: Double
+    var fargeHex: String = "#B973FF"
+}
+
 /// Flyttbar OG skalerbar figur oppå flata (fase 6) — «Former» som ekte
 /// objekter: dra flytter, klyp skalerer, hold fjerner. Tegnes i SwiftUI
 /// (utenfor PencilKit) så fargene aldri inverteres i mørk modus.
@@ -160,6 +173,8 @@ struct CanvasNotat: Identifiable, Hashable {
     var tekstbokser: [CanvasTekstboks] = []
     var figurer: [CanvasFigur] = []
     var papir: CanvasPapir = .blank
+    var noder: [CanvasNode] = []
+    var sider: Int = 1
 }
 
 struct CanvasView: View {
@@ -185,6 +200,9 @@ struct CanvasView: View {
     @State private var tekstbokser: [CanvasTekstboks] = []
     @State private var figurer: [CanvasFigur] = []
     @State private var papir: CanvasPapir = .blank
+    @State private var noder: [CanvasNode] = []
+    @State private var sider: Int = 1
+    @State private var redigererNode: CanvasNode?
     @State private var notatLat: Double?
     @State private var notatLon: Double?
     @State private var visStempelPalett = false
@@ -734,6 +752,50 @@ struct CanvasView: View {
                     }
                     .buttonStyle(.plain)
                     .help(kunPencil ? "Kun Pencil tegner" : "Finger og Pencil tegner")
+                    // Levende tankekart/brainstorm: noder som bygges videre på.
+                    if papir == .tankekart || papir == .brainstorm {
+                        Button {
+                            let ny = CanvasNode(
+                                parentId: nil,
+                                tekst: "",
+                                x: 360 + Double(noder.count % 4) * 60,
+                                y: 240 + Double(noder.count / 4) * 60)
+                            noder.append(ny)
+                            redigererNode = ny
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus.bubble")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                Text("Node")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(CvBrand.purpleLight)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(CvBrand.purple.opacity(0.25), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    // Flersidig flate: gått tom for plass? Utvid nedover.
+                    Button {
+                        sider = min(20, sider + 1)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus.rectangle.on.rectangle")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Side")
+                                .font(.appScaled(size: 11, weight: .bold))
+                            if sider > 1 {
+                                Text("\(sider)")
+                                    .font(.appScaled(size: 10, weight: .black))
+                                    .foregroundStyle(CvBrand.purpleLight)
+                            }
+                        }
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(CvBrand.cardHi, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Mer plass — malen gjentas på neste side")
                     // Papir-maler (Daniels liste): SWOT/Kanban/Pipeline/…
                     Menu {
                         ForEach(CanvasPapir.allCases) { pv in
@@ -765,9 +827,21 @@ struct CanvasView: View {
 
             // Selve tegneflata — PKToolPicker docker seg til bunnen.
             // Andres delte notater: kun visning (PUT er uansett eier-scopet).
+            GeometryReader { geo in
+            ScrollView(.vertical, showsIndicators: true) {
             ZStack(alignment: .topLeading) {
                 CvBrand.bg
-                PapirView(papir: papir)
+                // Malen gjentas per side («+ Side» = aldri tom for plass).
+                VStack(spacing: 0) {
+                    ForEach(0..<sider, id: \.self) { _ in
+                        PapirView(papir: papir)
+                            .frame(height: geo.size.height)
+                    }
+                }
+                // Tankekart: koblingslinjene tegnes under nodene.
+                if !noder.isEmpty {
+                    NodeKoblinger(noder: noder)
+                }
                 PencilCanvas(drawing: $drawing, redigerbar: valgtErMin,
                              kunPencil: kunPencil)
                 ForEach(stempler) { st in
@@ -792,6 +866,31 @@ struct CanvasView: View {
                                   figurer.removeAll { $0.id == fig.id }
                               })
                 }
+                ForEach(noder) { node in
+                    NodeView(node: node, redigerbar: valgtErMin,
+                             onEndre: { ny in
+                                 if let i = noder.firstIndex(where: { $0.id == node.id }) {
+                                     noder[i] = ny
+                                 }
+                             },
+                             onNyttBarn: {
+                                 let barn = CanvasNode(
+                                     parentId: node.id,
+                                     tekst: "",
+                                     x: node.x + Double.random(in: 120...190),
+                                     y: node.y + Double.random(in: -80...110))
+                                 noder.append(barn)
+                                 redigererNode = barn
+                             },
+                             onRediger: { redigererNode = node },
+                             onSlett: {
+                                 // Barn beholdes som frittstående lapper.
+                                 for i in noder.indices where noder[i].parentId == node.id {
+                                     noder[i].parentId = nil
+                                 }
+                                 noder.removeAll { $0.id == node.id }
+                             })
+                }
                 ForEach(tekstbokser) { tb in
                     TekstboksView(boks: tb, redigerbar: valgtErMin,
                                   onFlytt: { ny in
@@ -804,6 +903,23 @@ struct CanvasView: View {
                                       tekstbokser.removeAll { $0.id == tb.id }
                                   })
                 }
+            }
+            .frame(height: geo.size.height * CGFloat(sider))
+            }
+            }
+            .alert("Node", isPresented: Binding(
+                get: { redigererNode != nil },
+                set: { if !$0 { redigererNode = nil } })) {
+                TextField("Tekst i noden", text: Binding(
+                    get: { redigererNode?.tekst ?? "" },
+                    set: { ny in
+                        redigererNode?.tekst = ny
+                        if let rn = redigererNode,
+                           let i = noder.firstIndex(where: { $0.id == rn.id }) {
+                            noder[i].tekst = ny
+                        }
+                    }))
+                Button("Ferdig") { redigererNode = nil }
             }
             .alert("Tekstboks", isPresented: Binding(
                 get: { redigererTekstboks != nil },
@@ -918,6 +1034,8 @@ struct CanvasView: View {
         tekstbokser = n.tekstbokser
         figurer = n.figurer
         papir = n.papir
+        noder = n.noder
+        sider = max(1, n.sider)
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -946,6 +1064,8 @@ struct CanvasView: View {
         n.tekstbokser = tekstbokser
         n.figurer = figurer
         n.papir = papir
+        n.noder = noder
+        n.sider = sider
         n.lat = notatLat
         n.lon = notatLon
         n.drawingData = drawing.dataRepresentation()
@@ -968,6 +1088,8 @@ struct CanvasView: View {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let figurerJSON = (try? JSONEncoder().encode(n.figurer))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let noderJSON = (try? JSONEncoder().encode(n.noder))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
@@ -975,7 +1097,8 @@ struct CanvasView: View {
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
-                    figurer: figurerJSON, papir: n.papir.rawValue)
+                    figurer: figurerJSON, papir: n.papir.rawValue,
+                    noder: noderJSON, sider: n.sider)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -986,7 +1109,8 @@ struct CanvasView: View {
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
-                    figurer: figurerJSON, papir: n.papir.rawValue)
+                    figurer: figurerJSON, papir: n.papir.rawValue,
+                    noder: noderJSON, sider: n.sider)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -1031,7 +1155,10 @@ struct CanvasView: View {
                     .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [],
                 figurer: (dto.figurer?.data(using: .utf8))
                     .flatMap { try? JSONDecoder().decode([CanvasFigur].self, from: $0) } ?? [],
-                papir: CanvasPapir(rawValue: dto.papir ?? "blank") ?? .blank)
+                papir: CanvasPapir(rawValue: dto.papir ?? "blank") ?? .blank,
+                noder: (dto.noder?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasNode].self, from: $0) } ?? [],
+                sider: max(1, dto.sider ?? 1))
         }
         genererThumbs()
     }
@@ -1087,6 +1214,36 @@ struct CanvasView: View {
                     .banePath(senter: .zero, skala: fig.skala * 2.0)
                     .forEach { ctx.addPath($0); ctx.strokePath() }
                 ctx.restoreGState()
+            }
+            if let ctx = UIGraphicsGetCurrentContext() {
+                // Koblingslinjer + noder (tankekart/brainstorm) i eksporten.
+                ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.3).cgColor)
+                ctx.setLineWidth(4)
+                let pos = Dictionary(uniqueKeysWithValues: noder.map {
+                    ($0.id, CGPoint(x: ($0.x - bounds.minX) * 2.0,
+                                    y: ($0.y - bounds.minY) * 2.0)) })
+                for node in noder {
+                    guard let pid = node.parentId, let fra = pos[pid],
+                          let til = pos[node.id] else { continue }
+                    ctx.move(to: fra)
+                    ctx.addLine(to: til)
+                    ctx.strokePath()
+                }
+                for node in noder {
+                    guard let punkt = pos[node.id] else { continue }
+                    let bredde: CGFloat = 220
+                    let rekt = CGRect(x: punkt.x - bredde / 2, y: punkt.y - 40,
+                                      width: bredde, height: 80)
+                    ctx.setStrokeColor(UIColor(hex: node.fargeHex).cgColor)
+                    ctx.setLineWidth(4)
+                    ctx.strokeEllipse(in: rekt)
+                    (node.tekst as NSString).draw(
+                        at: CGPoint(x: rekt.minX + 24, y: punkt.y - 16),
+                        withAttributes: [
+                            .font: UIFont.boldSystemFont(ofSize: 26),
+                            .foregroundColor: UIColor.white,
+                        ])
+                }
             }
             for tb in tekstbokser where !tb.tekst.isEmpty {
                 let punkt = CGPoint(x: (tb.x - bounds.minX) * 2.0,
@@ -2093,5 +2250,90 @@ struct PapirView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - NodeView + NodeKoblinger (fase 7: levende tankekart/brainstorm)
+
+/// Koblingslinjene forelder→barn, tegnet under nodene. Følger med når
+/// noder dras (posisjonene leses live fra node-arrayet).
+private struct NodeKoblinger: View {
+    let noder: [CanvasNode]
+
+    var body: some View {
+        Canvas { ctx, _ in
+            let posisjoner = Dictionary(uniqueKeysWithValues: noder.map { ($0.id, CGPoint(x: $0.x, y: $0.y)) })
+            for node in noder {
+                guard let pid = node.parentId, let fra = posisjoner[pid] else { continue }
+                var p = Path()
+                p.move(to: fra)
+                let til = CGPoint(x: node.x, y: node.y)
+                let midt = CGPoint(x: (fra.x + til.x) / 2, y: (fra.y + til.y) / 2)
+                p.addQuadCurve(to: til,
+                               control: CGPoint(x: midt.x, y: midt.y - 24))
+                ctx.stroke(p, with: .color(Color.white.opacity(0.30)),
+                           style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Selve boblen: dra flytter (streken følger), tap redigerer teksten
+/// (Scribble: skriv rett i feltet med Pencil), «+» føder koblet barn,
+/// hold fjerner (barna blir frittstående).
+private struct NodeView: View {
+    let node: CanvasNode
+    let redigerbar: Bool
+    let onEndre: (CanvasNode) -> Void
+    let onNyttBarn: () -> Void
+    let onRediger: () -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+
+    private var farge: Color { Color(UIColor(hex: node.fargeHex)) }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(node.tekst.isEmpty ? "…" : node.tekst)
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(3)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .frame(minWidth: 90, maxWidth: 220)
+        .background(farge.opacity(0.22), in: Capsule())
+        .overlay(Capsule().stroke(farge.opacity(0.75), lineWidth: 2))
+        .overlay(alignment: .bottomTrailing) {
+            if redigerbar {
+                Button(action: onNyttBarn) {
+                    Image(systemName: "plus")
+                        .font(.appScaled(size: 10, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(farge, in: Circle())
+                        .shadow(color: .black.opacity(0.4), radius: 3)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 8, y: 8)
+            }
+        }
+        .position(x: node.x + dragOffset.width,
+                  y: node.y + dragOffset.height)
+        .onTapGesture { if redigerbar { onRediger() } }
+        .gesture(redigerbar ? DragGesture()
+            .onChanged { dragOffset = $0.translation }
+            .onEnded { v in
+                var ny = node
+                ny.x += v.translation.width
+                ny.y += v.translation.height
+                dragOffset = .zero
+                onEndre(ny)
+            } : nil)
+        .onLongPressGesture(minimumDuration: 0.6) {
+            if redigerbar { onSlett() }
+        }
     }
 }
