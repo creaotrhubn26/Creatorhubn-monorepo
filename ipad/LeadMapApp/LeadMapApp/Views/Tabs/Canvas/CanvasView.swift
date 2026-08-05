@@ -120,6 +120,27 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
 
+/// Smart Layers: lagene som kan slås av/på i editoren.
+enum CanvasLag: String, CaseIterable, Identifiable {
+    case bilder, pdf, kart, crm, oppgaver, former, stempler, tekst, noder
+
+    var id: String { rawValue }
+
+    var etikett: String {
+        switch self {
+        case .bilder: return "Bilder"
+        case .pdf: return "PDF-dokumenter"
+        case .kart: return "Kart-utsnitt"
+        case .crm: return "CRM-kort (lead/KPI/kalender)"
+        case .oppgaver: return "Oppgaver"
+        case .former: return "Former"
+        case .stempler: return "Stempler"
+        case .tekst: return "Tekstbokser"
+        case .noder: return "Tankekart-noder"
+        }
+    }
+}
+
 /// Penn-galleriet: seks penner for feltselgeren. Pen/Marker er PencilKits
 /// egne; Map Marker og Planning Pen er presets; Laser og Arrow er MODUSER
 /// (strøk som toner bort / strøk som blir perfekte piler).
@@ -315,6 +336,13 @@ struct CanvasView: View {
     @State private var lagrerElementNavn = false
     @State private var elementNavn = ""
     @State private var visTidsreise = false
+    /// Spatial Search: søk i notatet → flata scroller til treffet.
+    @State private var visEditorSok = false
+    @State private var editorSok = ""
+    @State private var sokTreff: [CGPoint] = []
+    @State private var sokTreffIndeks = 0
+    /// Smart Layers: lag som er slått AV (rendring + eksport).
+    @State private var skjulteLag: Set<String> = []
     /// Live collab v1: delt notat oppdatert av kollega → puls-banner.
     @State private var kollegaOppdatering: String?
     /// Undo-HISTORIKK (ikke bare angre): snapshots per notat m/ tidspunkt —
@@ -950,6 +978,53 @@ struct CanvasView: View {
                                     ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
                                     in: Capsule())
                     }
+                    // Spatial Search: søk «Pris» → flata flyr dit.
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            visEditorSok.toggle()
+                            if !visEditorSok { sokTreff = []; editorSok = "" }
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass.circle\(visEditorSok ? ".fill" : "")")
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(visEditorSok ? CvBrand.purpleLight : CvBrand.textSecondary)
+                            .frame(width: 28, height: 26)
+                            .background(CvBrand.cardHi, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    // Smart Layers: slå lag av og på.
+                    Menu {
+                        ForEach(CanvasLag.allCases) { lag in
+                            Button {
+                                if skjulteLag.contains(lag.rawValue) {
+                                    skjulteLag.remove(lag.rawValue)
+                                } else {
+                                    skjulteLag.insert(lag.rawValue)
+                                }
+                            } label: {
+                                Label(lag.etikett,
+                                      systemImage: skjulteLag.contains(lag.rawValue)
+                                          ? "eye.slash" : "eye")
+                            }
+                        }
+                        if !skjulteLag.isEmpty {
+                            Divider()
+                            Button("Vis alle lag") { skjulteLag.removeAll() }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.3.layers.3d")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text(skjulteLag.isEmpty ? "Lag" : "Lag (\(skjulteLag.count) av)")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(skjulteLag.isEmpty
+                                         ? CvBrand.textSecondary : CvBrand.orange)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(skjulteLag.isEmpty
+                                    ? CvBrand.cardHi : CvBrand.orange.opacity(0.2),
+                                    in: Capsule())
+                    }
                     // Time Travel: se hvordan idéene utviklet seg over dager.
                     if valgtId != nil, !isDemo {
                         Button {
@@ -1079,12 +1154,61 @@ struct CanvasView: View {
                 .background(CvBrand.card.opacity(0.6))
             }
 
+            if visEditorSok {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(CvBrand.textTertiary)
+                    TextField("Søk i notatet — også håndskrift …", text: $editorSok)
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(.white)
+                        .textFieldStyle(.plain)
+                        .onSubmit { Task { await finnTreffIEditor() } }
+                    if !sokTreff.isEmpty {
+                        Text("\(sokTreffIndeks + 1)/\(sokTreff.count)")
+                            .font(.appScaled(size: 10, weight: .bold))
+                            .foregroundStyle(CvBrand.purpleLight)
+                        Button {
+                            sokTreffIndeks = (sokTreffIndeks + 1) % sokTreff.count
+                        } label: {
+                            Image(systemName: "chevron.down.circle.fill")
+                                .font(.appScaled(size: 14))
+                                .foregroundStyle(CvBrand.purpleLight)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Button {
+                        Task { await finnTreffIEditor() }
+                    } label: {
+                        Text("Finn")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(CvBrand.purple, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(CvBrand.card.opacity(0.8))
+            }
             // Selve tegneflata — PKToolPicker docker seg til bunnen.
             // Andres delte notater: kun visning (PUT er uansett eier-scopet).
             GeometryReader { geo in
+            ScrollViewReader { scrollProxy in
             ScrollView(.vertical, showsIndicators: true) {
             ZStack(alignment: .topLeading) {
                 CvBrand.bg
+                // Spatial Search: usynlig anker + pulserende markering.
+                if sokTreffIndeks < sokTreff.count {
+                    let treff = sokTreff[sokTreffIndeks]
+                    Circle()
+                        .stroke(CvBrand.yellow, lineWidth: 3)
+                        .frame(width: 90, height: 90)
+                        .position(treff)
+                        .id("sokTreffAnker")
+                        .allowsHitTesting(false)
+                        .shadow(color: CvBrand.yellow.opacity(0.7), radius: 10)
+                }
                 // Malen gjentas per side («+ Side» = aldri tom for plass).
                 VStack(spacing: 0) {
                     ForEach(0..<sider, id: \.self) { _ in
@@ -1094,7 +1218,7 @@ struct CanvasView: View {
                 }
                 // Objekt-laget: bilder/kort UNDER blekket — tegn oppå for å
                 // annotere. I objekt-modus rutes touch hit (canvas er av).
-                ForEach(objekter) { obj in
+                ForEach(objekter.filter { !erLagSkjult($0.type) }) { obj in
                     ObjektView(objekt: obj,
                                redigerbar: valgtErMin && objektModus,
                                liveInnhold: liveInnhold(obj),
@@ -1114,7 +1238,7 @@ struct CanvasView: View {
                                })
                 }
                 // Tankekart: koblingslinjene tegnes under nodene.
-                if !noder.isEmpty {
+                if !noder.isEmpty && !skjulteLag.contains(CanvasLag.noder.rawValue) {
                     NodeKoblinger(noder: noder)
                 }
                 PencilCanvas(drawing: $drawing,
@@ -1124,7 +1248,7 @@ struct CanvasView: View {
                                  figurer.append(figur)
                              },
                              pennValg: pennValg)
-                ForEach(stempler) { st in
+                ForEach(skjulteLag.contains(CanvasLag.stempler.rawValue) ? [] : stempler) { st in
                     StempelView(stempel: st, redigerbar: valgtErMin,
                                 onFlytt: { ny in
                                     if let i = stempler.firstIndex(where: { $0.id == st.id }) {
@@ -1135,7 +1259,7 @@ struct CanvasView: View {
                                     stempler.removeAll { $0.id == st.id }
                                 })
                 }
-                ForEach(figurer) { fig in
+                ForEach(skjulteLag.contains(CanvasLag.former.rawValue) ? [] : figurer) { fig in
                     FigurView(figur: fig, redigerbar: valgtErMin,
                               onEndre: { ny in
                                   if let i = figurer.firstIndex(where: { $0.id == fig.id }) {
@@ -1146,7 +1270,7 @@ struct CanvasView: View {
                                   figurer.removeAll { $0.id == fig.id }
                               })
                 }
-                ForEach(noder) { node in
+                ForEach(skjulteLag.contains(CanvasLag.noder.rawValue) ? [] : noder) { node in
                     NodeView(node: node, redigerbar: valgtErMin,
                              onEndre: { ny in
                                  if let i = noder.firstIndex(where: { $0.id == node.id }) {
@@ -1171,7 +1295,7 @@ struct CanvasView: View {
                                  noder.removeAll { $0.id == node.id }
                              })
                 }
-                ForEach(tekstbokser) { tb in
+                ForEach(skjulteLag.contains(CanvasLag.tekst.rawValue) ? [] : tekstbokser) { tb in
                     TekstboksView(boks: tb, redigerbar: valgtErMin,
                                   onFlytt: { ny in
                                       if let i = tekstbokser.firstIndex(where: { $0.id == tb.id }) {
@@ -1190,6 +1314,18 @@ struct CanvasView: View {
                       UIImage(data: data) != nil else { return false }
                 leggTilBilde(data, ved: plassering)
                 return true
+            }
+            }
+            .onChange(of: sokTreffIndeks) { _, _ in
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    scrollProxy.scrollTo("sokTreffAnker", anchor: .center)
+                }
+            }
+            .onChange(of: sokTreff) { _, ny in
+                guard !ny.isEmpty else { return }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    scrollProxy.scrollTo("sokTreffAnker", anchor: .center)
+                }
             }
             }
             }
@@ -2151,6 +2287,77 @@ struct CanvasView: View {
             }
         }
         return linjer.isEmpty ? "" : linjer.joined(separator: "; ")
+    }
+
+    // MARK: Spatial Search + Smart Layers
+
+    private func erLagSkjult(_ objektType: String) -> Bool {
+        switch objektType {
+        case "bilde": return skjulteLag.contains(CanvasLag.bilder.rawValue)
+        case "pdf": return skjulteLag.contains(CanvasLag.pdf.rawValue)
+        case "kart": return skjulteLag.contains(CanvasLag.kart.rawValue)
+        case "lead", "kpi", "kalender":
+            return skjulteLag.contains(CanvasLag.crm.rawValue)
+        case "oppgave": return skjulteLag.contains(CanvasLag.oppgaver.rawValue)
+        default: return false
+        }
+    }
+
+    /// Spatial Search: finn treff i tekstbokser/noder/objekter — og i
+    /// HÅNDSKRIFTEN (on-demand OCR m/ posisjon) → flata scroller dit.
+    @MainActor
+    private func finnTreffIEditor() async {
+        let q = editorSok.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        var treff: [CGPoint] = []
+        for tb in tekstbokser where tb.tekst.localizedCaseInsensitiveContains(q) {
+            treff.append(CGPoint(x: tb.x, y: tb.y))
+        }
+        for node in noder where node.tekst.localizedCaseInsensitiveContains(q) {
+            treff.append(CGPoint(x: node.x, y: node.y))
+        }
+        for obj in objekter {
+            let tittel = liveInnhold(obj)?.0 ?? obj.tittel ?? ""
+            let detalj = liveInnhold(obj)?.1 ?? obj.detalj ?? ""
+            if tittel.localizedCaseInsensitiveContains(q)
+                || detalj.localizedCaseInsensitiveContains(q) {
+                treff.append(CGPoint(x: obj.x, y: obj.y))
+            }
+        }
+        // Håndskriften: OCR med bounding boxes → canvas-koordinater.
+        if !drawing.bounds.isEmpty {
+            let ramme = drawing.bounds
+            let bilde = drawing.image(from: ramme, scale: 1.5)
+            if let cg = bilde.cgImage {
+                let bokser: [CGRect] = await withCheckedContinuation { cont in
+                    let req = VNRecognizeTextRequest { r, _ in
+                        let obs = r.results as? [VNRecognizedTextObservation] ?? []
+                        let funn = obs.compactMap { o -> CGRect? in
+                            guard let tekst = o.topCandidates(1).first?.string,
+                                  tekst.localizedCaseInsensitiveContains(q)
+                            else { return nil }
+                            return o.boundingBox
+                        }
+                        cont.resume(returning: funn)
+                    }
+                    req.recognitionLevel = .accurate
+                    req.recognitionLanguages = ["nb-NO", "en-US"]
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+                        do { try handler.perform([req]) }
+                        catch { cont.resume(returning: []) }
+                    }
+                }
+                for boks in bokser {
+                    // Vision: 0-1, origo nede-venstre → canvas-punkter.
+                    treff.append(CGPoint(
+                        x: ramme.minX + boks.midX * ramme.width,
+                        y: ramme.minY + (1 - boks.midY) * ramme.height))
+                }
+            }
+        }
+        sokTreffIndeks = 0
+        sokTreff = treff
     }
 
     // MARK: Context Awareness
