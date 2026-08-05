@@ -314,6 +314,9 @@ struct CanvasView: View {
     @State private var bibliotek: [BibliotekElement] = BibliotekElement.lastAlle()
     @State private var lagrerElementNavn = false
     @State private var elementNavn = ""
+    @State private var visTidsreise = false
+    /// Live collab v1: delt notat oppdatert av kollega → puls-banner.
+    @State private var kollegaOppdatering: String?
     /// Undo-HISTORIKK (ikke bare angre): snapshots per notat m/ tidspunkt —
     /// hopp tilbake til et hvilket som helst punkt.
     @State private var historikk: [String: [CanvasSnapshot]] = [:]
@@ -626,6 +629,33 @@ struct CanvasView: View {
         VStack(spacing: 0) {
             // Faner: flere dokumenter åpne samtidig — bytt med ett tap.
             if aapneFaner.count > 1 { faneRad }
+            // Live collab: kollega har endret det delte notatet.
+            if let hvem = kollegaOppdatering {
+                Button {
+                    kollegaOppdatering = nil
+                    Task {
+                        await lastInn()
+                        if let id = valgtId,
+                           let n = notater.first(where: { $0.id == id }) {
+                            velg(n)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 7) {
+                        Circle().fill(CvBrand.green).frame(width: 7, height: 7)
+                        Text("\(hvem) oppdaterte notatet — trykk for å laste inn")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .font(.appScaled(size: 14))
+                            .foregroundStyle(CvBrand.green)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(CvBrand.green.opacity(0.16))
+                }
+                .buttonStyle(.plain)
+            }
             // Topp: tittel + kategori + lead-kobling + lagre (ekstrahert).
             editorTopp
 
@@ -919,6 +949,23 @@ struct CanvasView: View {
                         .background(pennValg == .pen
                                     ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
                                     in: Capsule())
+                    }
+                    // Time Travel: se hvordan idéene utviklet seg over dager.
+                    if valgtId != nil, !isDemo {
+                        Button {
+                            visTidsreise = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "clock.arrow.2.circlepath")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                Text("Tidsreise")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(CvBrand.textSecondary)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(CvBrand.cardHi, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                     // Undo-HISTORIKK: hopp til et hvilket som helst punkt.
                     if let id = valgtId, let liste = historikk[id], liste.count > 1 {
@@ -1217,6 +1264,34 @@ struct CanvasView: View {
                     leggTilBilde(data)
                 }
                 bildeValg = nil
+            }
+        }
+        .sheet(isPresented: $visTidsreise) {
+            if let id = valgtId {
+                TidsreiseSheet(notatId: id, naavaerende: drawing) { gjenopprettet in
+                    taSnapshot()
+                    drawing = gjenopprettet
+                    visTidsreise = false
+                }
+            }
+        }
+        // Live collab v1: delte notater poller etter kollega-endringer.
+        .task(id: valgtId) {
+            guard let id = valgtId,
+                  let notat = notater.first(where: { $0.id == id }),
+                  !notat.erMin || notat.delt,
+                  !isDemo else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                guard valgtId == id, let api = appState.api,
+                      let ferske = try? await api.hentCanvasNotater(),
+                      let fersk = ferske.first(where: { $0.id == id }) else { continue }
+                let lokalOppdatert = notater.first(where: { $0.id == id })?.oppdatert
+                let fjernTid = ISO8601DateFormatter().date(from: fersk.oppdatert ?? "")
+                if let ft = fjernTid, let lt = lokalOppdatert,
+                   ft > lt.addingTimeInterval(2) {
+                    kollegaOppdatering = fersk.eierNavn ?? "En kollega"
+                }
             }
         }
         .sheet(isPresented: $visTypeVelger) {
@@ -3665,5 +3740,178 @@ struct BibliotekElement: Codable, Identifiable {
         guard let data = try? JSONEncoder().encode(elementer),
               data.count < 2_000_000 else { return }
         UserDefaults.standard.set(data, forKey: nokkel)
+    }
+}
+
+// MARK: - TidsreiseSheet (Time Travel — se idéene utvikle seg)
+
+/// Slider over notatets versjoner (mandag → fredag): tegningen OG typen
+/// per tidspunkt (Idé → Prosjekt → Lead-utviklingen synlig som badges).
+struct TidsreiseSheet: View {
+    let notatId: String
+    let naavaerende: PKDrawing
+    let onGjenopprett: (PKDrawing) -> Void
+
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var versjoner: [CanvasVersjonDTO] = []
+    @State private var posisjon: Double = 0
+    @State private var lastet = false
+
+    private var valgtIndeks: Int {
+        min(Int(posisjon.rounded()), maxIndeks)
+    }
+    /// Siste posisjon = nåværende tilstand.
+    private var maxIndeks: Int { versjoner.count }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                CvBrand.bg.ignoresSafeArea()
+                VStack(spacing: 14) {
+                    if !lastet {
+                        ProgressView().tint(CvBrand.purpleLight)
+                            .frame(maxHeight: .infinity)
+                    } else if versjoner.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "clock.arrow.2.circlepath")
+                                .font(.appScaled(size: 30))
+                                .foregroundStyle(CvBrand.textTertiary)
+                            Text("Ingen versjoner enda — historikken bygges hver gang du lagrer med endringer.")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(CvBrand.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: 320)
+                        }
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        // Tidslinje-badges: typens utvikling (Idé → Prosjekt …)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Array(versjoner.enumerated()), id: \.offset) { i, v in
+                                    let k = CanvasKategori(rawValue: v.kategori) ?? .mote
+                                    VStack(spacing: 3) {
+                                        Text(Self.dagLabel(v.opprettet))
+                                            .font(.appScaled(size: 9, weight: .bold))
+                                            .foregroundStyle(i == valgtIndeks
+                                                             ? .white : CvBrand.textTertiary)
+                                        Text(k.etikett)
+                                            .font(.appScaled(size: 9, weight: .black))
+                                            .foregroundStyle(k.farge)
+                                            .padding(.horizontal, 7).padding(.vertical, 2)
+                                            .background(k.farge.opacity(0.15), in: Capsule())
+                                    }
+                                    .padding(.horizontal, 6).padding(.vertical, 5)
+                                    .background(i == valgtIndeks
+                                                ? CvBrand.cardHi : Color.clear,
+                                                in: RoundedRectangle(cornerRadius: 8))
+                                    .onTapGesture { posisjon = Double(i) }
+                                }
+                                VStack(spacing: 3) {
+                                    Text("Nå")
+                                        .font(.appScaled(size: 9, weight: .bold))
+                                        .foregroundStyle(valgtIndeks == maxIndeks
+                                                         ? .white : CvBrand.textTertiary)
+                                    Image(systemName: "sparkle")
+                                        .font(.appScaled(size: 9))
+                                        .foregroundStyle(CvBrand.purpleLight)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(valgtIndeks == maxIndeks
+                                            ? CvBrand.cardHi : Color.clear,
+                                            in: RoundedRectangle(cornerRadius: 8))
+                                .onTapGesture { posisjon = Double(maxIndeks) }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+
+                        // Forhåndsvisningen av valgt tidspunkt
+                        Group {
+                            if let bilde = bildeForValgt() {
+                                Image(uiImage: bilde)
+                                    .resizable()
+                                    .scaledToFit()
+                            } else {
+                                Text("Tom tegning på dette tidspunktet")
+                                    .font(.appScaled(size: 12))
+                                    .foregroundStyle(CvBrand.textTertiary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.35),
+                                    in: RoundedRectangle(cornerRadius: 14))
+                        .padding(.horizontal, 16)
+
+                        // Slideren: mandag → fredag → nå.
+                        Slider(value: $posisjon, in: 0...Double(maxIndeks), step: 1)
+                            .tint(CvBrand.purple)
+                            .padding(.horizontal, 20)
+
+                        if valgtIndeks < maxIndeks {
+                            Button {
+                                if let tegning = tegningForValgt() {
+                                    onGjenopprett(tegning)
+                                }
+                            } label: {
+                                Text("Gjenopprett dette tidspunktet")
+                                    .font(.appScaled(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
+                                                       startPoint: .leading, endPoint: .trailing),
+                                        in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                }
+                .padding(.vertical, 14)
+            }
+            .navigationTitle("Tidsreise")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }
+                        .tint(CvBrand.textSecondary)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .task {
+            defer { lastet = true }
+            guard let api = appState.api else { return }
+            versjoner = (try? await api.hentCanvasVersjoner(notatId: notatId)) ?? []
+            posisjon = Double(versjoner.count)   // start på «Nå»
+        }
+    }
+
+    private func tegningForValgt() -> PKDrawing? {
+        guard valgtIndeks < versjoner.count,
+              let b64 = versjoner[valgtIndeks].drawingBase64,
+              let data = Data(base64Encoded: b64) else { return nil }
+        return try? PKDrawing(data: data)
+    }
+
+    private func bildeForValgt() -> UIImage? {
+        let tegning: PKDrawing?
+        if valgtIndeks == maxIndeks {
+            tegning = naavaerende
+        } else {
+            tegning = tegningForValgt()
+        }
+        guard let t = tegning, !t.bounds.isEmpty else { return nil }
+        return t.image(from: t.bounds.insetBy(dx: -30, dy: -30), scale: 1.5)
+    }
+
+    private static func dagLabel(_ iso: String?) -> String {
+        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return "–" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "EEE d.M"
+        return f.string(from: d)
     }
 }
