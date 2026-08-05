@@ -108,6 +108,8 @@ struct CanvasView: View {
     // Leser-modus + «Send til kontakten».
     @State private var lesDokument: CanvasDokument?
     @State private var sendDokument: CanvasDokument?
+    // Ekte multi-penn: WebSocket-relay for delte notater.
+    @State private var realtime = CanvasRealtime()
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
@@ -847,6 +849,18 @@ struct CanvasView: View {
         VStack(spacing: 0) {
             // Faner: flere dokumenter åpne samtidig — bytt med ett tap.
             if aapneFaner.count > 1 { faneRad }
+            // Multi-penn: hvem tegner i notatet akkurat nå.
+            if !realtime.deltakere.isEmpty {
+                HStack(spacing: 7) {
+                    Circle().fill(CvBrand.green).frame(width: 7, height: 7)
+                    Text("Tegner sammen med deg: \(realtime.deltakere.joined(separator: ", "))")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(CvBrand.green.opacity(0.14))
+            }
             // Live collab: kollega har endret det delte notatet.
             if let hvem = kollegaOppdatering {
                 Button {
@@ -876,6 +890,19 @@ struct CanvasView: View {
             }
             // Topp: tittel + kategori + lead-kobling + lagre (ekstrahert).
             editorTopp
+                .task {
+                    // Multi-penn: kollegaens strøk legges rett i tegningen.
+                    realtime.onNyeStrok = { delta, _ in
+                        realtime.registrerMottatte(antall: delta.strokes.count)
+                        var ny = drawing
+                        ny.append(delta)
+                        drawing = ny
+                    }
+                }
+                .onChange(of: drawing.strokes.count) { _, _ in
+                    // Multi-penn: send mine nye strøk til rommet.
+                    realtime.sendNyeStrok(fra: drawing)
+                }
                 .onChange(of: drawing.strokes.count) { gammelt, nytt in
                     // Markering → møtepunkt: tusj-strøk over en PDF-side
                     // slår opp teksten under strøket og foreslår den som
@@ -1563,17 +1590,32 @@ struct CanvasView: View {
         if !bibliotek.isEmpty && kan(.canvasBibliotek) {
             Menu {
                 ForEach(bibliotek) { el in
-                    Menu(el.navn) {
+                    Menu(el.eierNavn.flatMap { $0.isEmpty ? nil : "\(el.navn) · \($0)" }
+                         ?? (el.delt == true ? "\(el.navn) · delt" : el.navn)) {
                         Button {
                             settInnElement(el)
                         } label: {
                             Label("Sett inn", systemImage: "plus.square.on.square")
                         }
-                        Button(role: .destructive) {
-                            bibliotek.removeAll { $0.id == el.id }
-                            BibliotekElement.lagreAlle(bibliotek)
-                        } label: {
-                            Label("Slett fra biblioteket", systemImage: "trash")
+                        if el.erMin ?? true {
+                            Button {
+                                settElementDeling(el, delt: el.delt != true)
+                            } label: {
+                                Label(el.delt == true
+                                      ? "Slutt å dele med teamet"
+                                      : "Del med teamet",
+                                      systemImage: el.delt == true
+                                      ? "person.2.slash" : "person.2.fill")
+                            }
+                            Button(role: .destructive) {
+                                bibliotek.removeAll { $0.id == el.id }
+                                BibliotekElement.lagreAlle(bibliotek)
+                                if !isDemo, let api = appState.api {
+                                    Task { try? await api.slettCanvasBibliotekElement(id: el.id) }
+                                }
+                            } label: {
+                                Label("Slett fra biblioteket", systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -1846,6 +1888,13 @@ struct CanvasView: View {
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
+        // Multi-penn: delte notater kobles til live-rommet — resten ikke.
+        if n.delt, !n.erNy, !isDemo, let token = appState.authToken {
+            realtime.koble(notatId: n.id, token: token,
+                           strokAntall: drawing.strokes.count)
+        } else {
+            realtime.koblFra()
+        }
         lagretToast = false
         valgte.removeAll()
         taSnapshot()
@@ -1988,6 +2037,25 @@ struct CanvasView: View {
         if let api = appState.api {
             oppgaverCache = (try? await api.hentMoteOppgaver()) ?? []
             if let p = try? await api.hentCanvasRollePolicy() { rollePolicy = p }
+            // Org-delt bibliotek: backend er sannheten — lokale elementer
+            // som ikke finnes der lastes opp én gang (migrering fra
+            // UserDefaults-æraen).
+            if let dtos = try? await api.hentCanvasBibliotek() {
+                var synket = dtos.compactMap { BibliotekElement.fraDTO($0) }
+                let lokale = bibliotek.filter { l in
+                    (l.erMin ?? true) && !synket.contains { $0.id == l.id }
+                }
+                for var l in lokale {
+                    l.erMin = true
+                    if (try? await api.lagreCanvasBibliotekElement(
+                        id: l.id, navn: l.navn,
+                        innhold: l.innholdJSON, delt: false)) != nil {
+                        synket.append(l)
+                    }
+                }
+                bibliotek = synket
+                BibliotekElement.lagreAlle(bibliotek)
+            }
         }
     }
 
@@ -3322,9 +3390,29 @@ struct CanvasView: View {
         for i in el.stempler.indices { el.stempler[i].x -= cx; el.stempler[i].y -= cy }
         for i in el.tekstbokser.indices { el.tekstbokser[i].x -= cx; el.tekstbokser[i].y -= cy }
         for i in el.objekter.indices { el.objekter[i].x -= cx; el.objekter[i].y -= cy }
+        el.erMin = true
         bibliotek.append(el)
         if bibliotek.count > 30 { bibliotek.removeFirst() }
         BibliotekElement.lagreAlle(bibliotek)
+        // Synk til org-biblioteket (privat til man deler det).
+        if !isDemo, let api = appState.api {
+            let kopi = el
+            Task { try? await api.lagreCanvasBibliotekElement(
+                id: kopi.id, navn: kopi.navn,
+                innhold: kopi.innholdJSON, delt: false) }
+        }
+    }
+
+    /// Del/av-del et av mine elementer med hele teamet.
+    private func settElementDeling(_ el: BibliotekElement, delt: Bool) {
+        guard let i = bibliotek.firstIndex(where: { $0.id == el.id }) else { return }
+        bibliotek[i].delt = delt
+        BibliotekElement.lagreAlle(bibliotek)
+        guard !isDemo, let api = appState.api else { return }
+        let kopi = bibliotek[i]
+        Task { try? await api.lagreCanvasBibliotekElement(
+            id: kopi.id, navn: kopi.navn,
+            innhold: kopi.innholdJSON, delt: delt) }
     }
 
     /// Sett inn et bibliotek-element (nye id-er, sentrert på flata).

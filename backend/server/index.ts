@@ -1076,6 +1076,7 @@ import {
 } from "./notebooklm-workspace.js";
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
 import { createDanceRealtimeServer } from "./dance-realtime-server.js";
+import { createCanvasRealtimeServer } from "./leadgrid-canvas-realtime.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter, buildAuthorizedYoutubeClient, buildAuthorizedGoogleCalendar } from "./youtube-routes.js";
 import {
@@ -75365,6 +75366,8 @@ const httpServer = createServer(app);
 createWebSocketServer(httpServer, db, pool, activeSessions);
 // G25/J1: dance realtime presence + cursor sync på /ws/dance/realtime
 createDanceRealtimeServer(httpServer);
+// Leadgrid Canvas multi-penn: strøk-relay for delte notater.
+createCanvasRealtimeServer(httpServer, pool, activeSessions);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
 // Skalering nivå 3a: real-time WebSocket-push til iPad (Leadgrid).
