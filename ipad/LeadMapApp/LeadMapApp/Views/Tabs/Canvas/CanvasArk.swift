@@ -348,6 +348,231 @@ struct CanvasAnalyseSheet: View {
 }
 
 
+// MARK: - PdfAnalyseSheet — PDF-en dukker opp, AI leser den med en gang
+
+/// Importert PDF analyseres automatisk: viktig oppsummering + punkter du
+/// huker av og sender rett til møtesløyfa («ta opp på møtet»). Dokumentet
+/// ligger som side-objekter på flata — marker og annotér videre imens.
+struct PdfAnalyseSheet: View {
+    let tekst: String
+    let dokumentNavn: String
+    let selskap: String
+    let leadId: String?
+    var onFestPaaFlata: ((String) -> Void)? = nil
+    var onLagPunktObjekter: (([CanvasAnalyseOppgaveDTO]) -> Void)? = nil
+
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @State private var analyserer = true
+    @State private var resultat: CanvasAnalyseDTO?
+    @State private var feil: String?
+    @State private var onDeviceKilde = false
+    @State private var valgte: Set<Int> = []
+    @State private var festet = false
+
+    /// Oppgaver + løfter samlet som avhukbare punkter.
+    private var punkter: [CanvasAnalyseOppgaveDTO] {
+        var alle = resultat?.oppgaver ?? []
+        for l in resultat?.lofter ?? [] {
+            alle.append(CanvasAnalyseOppgaveDTO(tittel: l, frist: nil))
+        }
+        return alle
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.appScaled(size: 22))
+                            .foregroundStyle(CvBrand.purpleLight)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(dokumentNavn)
+                                .font(.appScaled(size: 15, weight: .black))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            if !selskap.isEmpty {
+                                Text(selskap)
+                                    .font(.appScaled(size: 11))
+                                    .foregroundStyle(CvBrand.textSecondary)
+                            }
+                        }
+                        Spacer()
+                        if onDeviceKilde {
+                            Label("På enheten", systemImage: "iphone")
+                                .font(.appScaled(size: 9, weight: .bold))
+                                .foregroundStyle(CvBrand.green)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(CvBrand.green.opacity(0.15), in: Capsule())
+                        }
+                    }
+
+                    if analyserer {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("AI leser dokumentet …")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(CvBrand.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 30)
+                    }
+                    if let feil {
+                        Text(feil)
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(CvBrand.orange)
+                    }
+
+                    if let res = resultat {
+                        Text("VIKTIG OPPSUMMERING")
+                            .font(.appScaled(size: 10, weight: .black))
+                            .foregroundStyle(CvBrand.textTertiary)
+                            .kerning(0.8)
+                        Text(res.oppsummering)
+                            .font(.appScaled(size: 13))
+                            .foregroundStyle(.white)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(CvBrand.card, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12)
+                                .stroke(CvBrand.stroke, lineWidth: 1))
+                        Button {
+                            onFestPaaFlata?(res.oppsummering)
+                            festet = true
+                        } label: {
+                            Label(festet ? "Festet på flata ✓" : "Fest oppsummeringen på flata",
+                                  systemImage: festet ? "checkmark.circle.fill" : "pin.fill")
+                                .font(.appScaled(size: 11, weight: .bold))
+                                .foregroundStyle(festet ? CvBrand.green : CvBrand.purpleLight)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(festet)
+
+                        if !punkter.isEmpty {
+                            Text("VIKTIG Å TA OPP PÅ MØTET")
+                                .font(.appScaled(size: 10, weight: .black))
+                                .foregroundStyle(CvBrand.textTertiary)
+                                .kerning(0.8)
+                                .padding(.top, 6)
+                            ForEach(Array(punkter.enumerated()), id: \.offset) { i, p in
+                                Button {
+                                    if valgte.contains(i) { valgte.remove(i) }
+                                    else { valgte.insert(i) }
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: valgte.contains(i)
+                                              ? "checkmark.circle.fill" : "circle")
+                                            .font(.appScaled(size: 16))
+                                            .foregroundStyle(valgte.contains(i)
+                                                             ? CvBrand.green : CvBrand.textTertiary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(p.tittel)
+                                                .font(.appScaled(size: 12, weight: .semibold))
+                                                .foregroundStyle(.white)
+                                                .multilineTextAlignment(.leading)
+                                            if let frist = p.frist, !frist.isEmpty {
+                                                Text(frist)
+                                                    .font(.appScaled(size: 10))
+                                                    .foregroundStyle(CvBrand.textSecondary)
+                                            }
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(10)
+                                    .background(CvBrand.card.opacity(0.7),
+                                                in: RoundedRectangle(cornerRadius: 10))
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(CvBrand.bg)
+            .navigationTitle("PDF-analyse")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await taOppPaaMotet() }
+                    } label: {
+                        Text("Ta opp på møtet (\(valgte.count))")
+                            .font(.appScaled(size: 12, weight: .bold))
+                    }
+                    .disabled(valgte.isEmpty)
+                }
+            }
+        }
+        .task { await analyser() }
+    }
+
+    @MainActor
+    private func analyser() async {
+        defer { analyserer = false }
+        if DemoModeManager.isActiveNonisolated {
+            resultat = CanvasAnalyseDTO(
+                oppsummering: "Tilbudet dekker 42 punkter til kr 480 000 eks. mva. Leveranse 6 uker fra signering; 10 % forskudd. Forbehold om befaring før endelig pris på føringsveier.",
+                oppgaver: [
+                    CanvasAnalyseOppgaveDTO(tittel: "Avklar forbeholdet om befaring", frist: "før signering"),
+                    CanvasAnalyseOppgaveDTO(tittel: "Forhandle forskuddet ned fra 10 %", frist: nil),
+                    CanvasAnalyseOppgaveDTO(tittel: "Bekreft leveransetid 6 uker", frist: "på møtet"),
+                ],
+                lofter: ["Sende revidert fremdriftsplan"])
+            valgte = Set(0..<((resultat?.oppgaver?.count ?? 0) + (resultat?.lofter?.count ?? 0)))
+            return
+        }
+        let dokTekst = "DOKUMENT (PDF «\(dokumentNavn)»): \(tekst)"
+        // Apple Intelligence først — gratis, privat, offline.
+        if let lokal = await CanvasIntelligence.analyserOnDevice(
+            tekst: dokTekst, selskap: selskap) {
+            onDeviceKilde = true
+            resultat = lokal
+            valgte = Set(punkter.indices)
+            return
+        }
+        guard let api = appState.api else {
+            feil = "Krever innlogget modus."
+            return
+        }
+        do {
+            resultat = try await api.analyserCanvasNotat(
+                selskap: selskap.isEmpty ? nil : selskap,
+                tekst: dokTekst, leadId: leadId)
+            valgte = Set(punkter.indices)
+        } catch {
+            feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert."
+        }
+    }
+
+    /// Valgte punkter → møtesløyfa (leadgrid_oppgaver + møtelogg → briefen)
+    /// + kort på flata der du annoterer.
+    @MainActor
+    private func taOppPaaMotet() async {
+        let valgtePunkter = punkter.enumerated()
+            .filter { valgte.contains($0.offset) }
+            .map(\.element)
+        guard !valgtePunkter.isEmpty, let res = resultat else { return }
+        onLagPunktObjekter?(valgtePunkter)
+        if !DemoModeManager.isActiveNonisolated, let api = appState.api {
+            let dto = CanvasAnalyseDTO(
+                oppsummering: "Fra PDF «\(dokumentNavn)»: \(res.oppsummering)",
+                oppgaver: valgtePunkter,
+                lofter: [])
+            try? await api.persisterCanvasAnalyse(
+                selskap: selskap.isEmpty ? nil : selskap,
+                leadId: leadId, resultat: dto)
+        }
+        dismiss()
+    }
+}
+
+
 // MARK: - StempelView (fase 4: klistremerke oppå flata)
 
 /// Dra for å flytte, hold for å fjerne. Posisjon i canvas-punkter.

@@ -94,6 +94,10 @@ struct CanvasView: View {
     @State private var verktoyModus: VerktoyModus = .tegn
     // Auto-tittel: OCR av øverste håndskrift-linje mens man skriver.
     @State private var autoTittelTask: Task<Void, Never>?
+    // PDF-analyse: importert PDF leses av AI med en gang.
+    @State private var pdfAnalyseTekst: String?
+    @State private var pdfAnalyseNavn = ""
+    @State private var visPdfAnalyse = false
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
@@ -180,6 +184,16 @@ struct CanvasView: View {
         }
         .background(CvBrand.bg)
         .task { await lastInn() }
+        // QA-hook (mockups/verifisering): åpne PDF-analyse-arket i demo.
+        .task {
+            guard isDemo,
+                  ProcessInfo.processInfo.environment["QA_PDF"] == "1",
+                  !visPdfAnalyse else { return }
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if let n = notater.first { velg(n) }
+            pdfAnalyseNavn = "Tilbud-Nordic-Elektro"
+            visPdfAnalyse = true
+        }
         // Møter «Tegn i Canvas» → åpne/opprett notat koblet til selskapet.
         .task(id: appState.pendingCanvasRequestedAt) {
             guard let at = appState.pendingCanvasRequestedAt,
@@ -1060,6 +1074,29 @@ struct CanvasView: View {
                                               selskap: kobletSelskap ?? tittel,
                                               leadId: kobletLeadId)
                                } : nil)
+        }
+        .sheet(isPresented: $visPdfAnalyse) {
+            PdfAnalyseSheet(
+                tekst: pdfAnalyseTekst ?? "",
+                dokumentNavn: pdfAnalyseNavn,
+                selskap: kobletSelskap ?? tittel,
+                leadId: kobletLeadId,
+                onFestPaaFlata: { oppsummering in
+                    // Oppsummeringen som tekstboks ved siden av dokumentet.
+                    tekstbokser.append(CanvasTekstboks(
+                        tekst: "📄 " + oppsummering, x: 60, y: 140))
+                },
+                onLagPunktObjekter: { punkter in
+                    // Punktene som kort på flata — synlige der du annoterer.
+                    var y: Double = 160
+                    for p in punkter {
+                        objekter.append(CanvasObjekt(
+                            type: "oppgave", x: 1010, y: y,
+                            tittel: "📌 " + p.tittel,
+                            detalj: p.frist ?? "Ta opp på møtet"))
+                        y += 84
+                    }
+                })
         }
         .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
                       matching: .images)
@@ -2115,6 +2152,7 @@ struct CanvasView: View {
         guard let dok = PDFDocument(url: url) else { return }
         let antall = min(dok.pageCount, 12)
         var y: Double = 60
+        var fullTekst = ""
         for i in 0..<antall {
             guard let side = dok.page(at: i) else { continue }
             let ramme = side.bounds(for: .mediaBox)
@@ -2132,7 +2170,16 @@ struct CanvasView: View {
                     ? "\(url.deletingPathExtension().lastPathComponent) · s. \(i + 1)"
                     : url.deletingPathExtension().lastPathComponent,
                 detalj: String((side.string ?? "").prefix(2000))))
+            fullTekst += (side.string ?? "") + "\n"
             y += Double(hoyde) / 2 + 40
+        }
+        // AI leser dokumentet med en gang: viktig oppsummering + punkter
+        // du kan sende rett til møtesløyfa — annotér videre imens.
+        let renTekst = fullTekst.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kan(.canvasAnalyse), renTekst.count > 40 {
+            pdfAnalyseTekst = String(renTekst.prefix(15_000))
+            pdfAnalyseNavn = url.deletingPathExtension().lastPathComponent
+            visPdfAnalyse = true
         }
         // Flata må være høy nok for alle sidene (nominell sidehøyde ~900pt).
         sider = min(20, max(sider, Int(ceil(y / 900)) + 1))

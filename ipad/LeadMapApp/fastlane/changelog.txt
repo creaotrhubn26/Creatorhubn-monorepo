@@ -6,6 +6,7 @@ NYTT I DETTE BYGGET — CANVAS ORGANISERT
 • Papirkurv: slettede notater kan angres i 30 dager — gjenopprett eller slett for godt
 • Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯-meny — én ting om gangen
 • Auto-tittel: øverste håndskrift-linje blir notatets tittel mens du skriver
+• PDF-analyse: importert tilbud/kontrakt leses av AI med en gang — viktig oppsummering + punkter du huker av og tar opp på møtet (havner i møtesløyfa og som kort på flata)
 
 NYTT: LEADGRID CANVAS
 • Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso
