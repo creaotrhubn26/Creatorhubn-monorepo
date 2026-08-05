@@ -1,0 +1,38 @@
+name: Leadgrid CPV backfill
+
+# Daglig: alle bedrifter uten CPV-koder får egnede koder fra bransje/
+# kategori-teksten — dekker alle opprettelses-stier for nye leads.
+
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-cpv-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/leadgrid/cpv/backfill
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN mangler."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            --max-time 180 \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/cpv/backfill")
+          CODE=$(echo "$RES" | tail -1)
+          echo "HTTP $CODE — $(echo "$RES" | sed '$d')"
+          [ "$CODE" -ge 400 ] && exit 1
+          echo "::notice::CPV-backfill ferdig"

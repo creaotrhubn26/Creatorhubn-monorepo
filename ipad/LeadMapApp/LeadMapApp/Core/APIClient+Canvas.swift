@@ -43,6 +43,15 @@ struct CanvasAnalyseDTO: Decodable, Hashable {
     var lofter: [String]? = nil
 }
 
+struct CanvasBibliotekElementDTO: Decodable, Hashable {
+    let id: String
+    let navn: String
+    var innhold: String? = nil
+    var delt: Bool? = nil
+    var erMin: Bool? = nil
+    var eierNavn: String? = nil
+}
+
 struct CanvasVersjonDTO: Decodable, Hashable {
     let id: String
     let kategori: String
@@ -246,6 +255,30 @@ extension APIClient {
 
     func slettCanvasDokument(dokId: String) async throws {
         _ = try await _request("/api/leadgrid/canvas/dokumenter/\(dokId)",
+                               method: "DELETE", body: nil)
+    }
+
+    /// Org-delt element-bibliotek: mine + delte elementer.
+    func hentCanvasBibliotek() async throws -> [CanvasBibliotekElementDTO] {
+        struct Resp: Decodable { let elementer: [CanvasBibliotekElementDTO] }
+        let r: Resp = try await _get("/api/leadgrid/canvas/bibliotek")
+        return r.elementer
+    }
+
+    func lagreCanvasBibliotekElement(id: String, navn: String,
+                                     innhold: String, delt: Bool) async throws {
+        struct Body: Encodable {
+            let id: String; let navn: String
+            let innhold: String; let delt: Bool
+        }
+        struct Resp: Decodable { let ok: Bool }
+        let _: Resp = try await _post("/api/leadgrid/canvas/bibliotek",
+                                      body: Body(id: id, navn: navn,
+                                                 innhold: innhold, delt: delt))
+    }
+
+    func slettCanvasBibliotekElement(id: String) async throws {
+        _ = try await _request("/api/leadgrid/canvas/bibliotek/\(id)",
                                method: "DELETE", body: nil)
     }
 

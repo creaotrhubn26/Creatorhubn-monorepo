@@ -111,6 +111,22 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_canvas_dokumenter_notat
       ON leadgrid_canvas_dokumenter (notat_id)`);
+  // Org-delt element-bibliotek (Daniel 2026-08-05): gjenbrukbare
+  // elementer synkes til backend — «delt» gjør dem synlige for hele
+  // org-en (salgssjefen deler standard-elementer med teamet).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_canvas_bibliotek (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      navn TEXT NOT NULL DEFAULT '',
+      innhold TEXT NOT NULL DEFAULT '{}',
+      delt BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_canvas_bibliotek_org
+      ON leadgrid_canvas_bibliotek (organization_id)`);
   // Papirkurv (Daniel 2026-08-05): soft delete — notatet ligger 30 dager
   // i papirkurven før det tømmes for godt (lat opprydding i GET).
   await pool.query(`
@@ -488,6 +504,91 @@ export function registerLeadgridCanvasRoutes(deps: {
       res.json({ ok: true });
     } catch (e) {
       console.error("[canvas] dokument-sletting failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Element-biblioteket: mine + org-delte elementer. */
+  app.get("/api/leadgrid/canvas/bibliotek", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.json({ elementer: [] }); return; }
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `SELECT b.id, b.navn, b.innhold, b.delt, b.user_id,
+                COALESCE(u.name, u.email, '') AS eier_navn
+           FROM leadgrid_canvas_bibliotek b
+           LEFT JOIN users u ON u.id::text = b.user_id
+          WHERE b.organization_id = $1 AND (b.user_id = $2 OR b.delt)
+          ORDER BY b.created_at DESC LIMIT 100`,
+        [orgId, session.userId]);
+      res.json({
+        elementer: r.rows.map((row) => ({
+          id: row.id,
+          navn: row.navn,
+          innhold: row.innhold,
+          delt: row.delt === true,
+          er_min: row.user_id === session.userId,
+          eier_navn: row.user_id === session.userId ? null : row.eier_navn,
+        })),
+      });
+    } catch (e) {
+      console.error("[canvas] bibliotek GET failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Lagre/oppdater element (klient-generert id). Cap 500 kB per element. */
+  app.post("/api/leadgrid/canvas/bibliotek", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
+      await ensureSchema(pool);
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const id = String(b.id ?? "").slice(0, 64);
+      const navn = String(b.navn ?? "").slice(0, 120);
+      const innhold = String(b.innhold ?? "{}");
+      if (!id || !navn) { res.status(400).json({ error: "bad_request" }); return; }
+      if (innhold.length > 500_000) {
+        res.status(413).json({ error: "element_for_stort" });
+        return;
+      }
+      await pool.query(
+        `INSERT INTO leadgrid_canvas_bibliotek
+           (id, organization_id, user_id, navn, innhold, delt)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET navn = EXCLUDED.navn,
+                                        innhold = EXCLUDED.innhold,
+                                        delt = EXCLUDED.delt
+         WHERE leadgrid_canvas_bibliotek.user_id = $3`,
+        [id, orgId, session.userId, navn, innhold, b.delt === true]);
+      res.json({ ok: true, id });
+    } catch (e) {
+      console.error("[canvas] bibliotek POST failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Slett element (eier). */
+  app.delete("/api/leadgrid/canvas/bibliotek/:id", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `DELETE FROM leadgrid_canvas_bibliotek
+          WHERE id = $1 AND user_id = $2`,
+        [req.params.id, session.userId]);
+      if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("[canvas] bibliotek DELETE failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });

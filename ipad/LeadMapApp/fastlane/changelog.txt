@@ -1,5 +1,10 @@
 Leadgrid 2.0 — Canvas, kundeminnet og en smartere hverdag
 
+NYTT I DETTE BYGGET — SAMARBEID I SANNTID
+• Ekte multi-penn: delte notater tegnes SAMMEN — kollegaens strøk dukker opp i det de tegnes (WebSocket, ikke polling)
+• «Tegner sammen med deg»-banner viser hvem som er i notatet akkurat nå
+• Org-delt element-bibliotek: «Del med teamet» på dine elementer — salgssjefen deler standard-oppsett med alle
+
 NYTT I DETTE BYGGET — CANVAS ORGANISERT
 • Canvas-oversikt: notatene ligger i mapper per kunde (utledet automatisk av lead-koblingen) + «Uten kunde»
 • Mappe-visning: kundeminnet festet øverst + «Nytt i mappa» pre-koblet til kunden

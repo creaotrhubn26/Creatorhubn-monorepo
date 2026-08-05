@@ -596,6 +596,28 @@ struct BibliotekElement: Codable, Identifiable {
     var stempler: [CanvasStempel] = []
     var tekstbokser: [CanvasTekstboks] = []
     var objekter: [CanvasObjekt] = []
+    /// Org-delt bibliotek: delt med teamet + eierskap (fra backend).
+    var delt: Bool? = nil
+    var erMin: Bool? = nil
+    var eierNavn: String? = nil
+
+    /// Backend-payloaden: elementet selv som JSON.
+    var innholdJSON: String {
+        (try? JSONEncoder().encode(self))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+
+    static func fraDTO(_ dto: CanvasBibliotekElementDTO) -> BibliotekElement? {
+        guard let data = dto.innhold?.data(using: .utf8),
+              var el = try? JSONDecoder().decode(BibliotekElement.self, from: data)
+        else { return nil }
+        el.id = dto.id
+        el.navn = dto.navn
+        el.delt = dto.delt
+        el.erMin = dto.erMin
+        el.eierNavn = dto.eierNavn
+        return el
+    }
 
     private static let nokkel = "canvas.bibliotek"
 
