@@ -39,8 +39,13 @@ struct ProjectContextPill: View {
         appState.activeProjectId != nil
     }
 
+    @State private var nyttProsjektAapen = false
+    @State private var nyttProsjektNavn = ""
+
     var body: some View {
-        if !appState.projects.isEmpty && !EntitlementStore.shared.erRenDorsalgOrg {
+        // Vis også når lista er TOM: Leadgrid oppretter nå egne prosjekter
+        // (før var man avhengig av Role Room for å ha noen i det hele tatt).
+        if !EntitlementStore.shared.erRenDorsalgOrg {
             Menu {
                 Button {
                     appState.activeProjectId = nil
@@ -63,8 +68,31 @@ struct ProjectContextPill: View {
                         }
                     }
                 }
+                Divider()
+                Button {
+                    nyttProsjektNavn = ""
+                    nyttProsjektAapen = true
+                } label: {
+                    Label("Nytt prosjekt …", systemImage: "folder.badge.plus")
+                }
             } label: {
                 pill
+            }
+            .alert("Nytt prosjekt", isPresented: $nyttProsjektAapen) {
+                TextField("Prosjektnavn", text: $nyttProsjektNavn)
+                Button("Opprett") {
+                    let navn = nyttProsjektNavn.trimmingCharacters(in: .whitespaces)
+                    guard navn.count >= 2, let api = appState.api else { return }
+                    Task { @MainActor in
+                        if let prosjekt = try? await api.createLeadMapProject(name: navn) {
+                            appState.projects.insert(prosjekt, at: 0)
+                            appState.activeProjectId = prosjekt.id
+                        }
+                    }
+                }
+                Button("Avbryt", role: .cancel) {}
+            } message: {
+                Text("Prosjektet grupperer leads, brand-kit og markedsscan — helt uavhengig av The Role Room.")
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
