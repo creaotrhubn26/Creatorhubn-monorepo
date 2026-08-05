@@ -638,9 +638,10 @@ struct KartView: View {
     /// Live kamera-kalibrering (kun DEBUG): dra gliderne til det føles riktig,
     /// les av verdiene, så bakes de inn som defaults. Reverteres med #59.
     @State private var navCalibOpen: Bool = false
-    @State private var navCalibPitch: Double = 55
-    @State private var navCalibDist: Double = 300
-    @State private var navCalibAhead: Double = 0.0008
+    // #73: preseten persisteres — kalibrerte verdier overlever relaunch.
+    @AppStorage("nav.kamera.pitch") private var navCalibPitch: Double = 55
+    @AppStorage("nav.kamera.dist") private var navCalibDist: Double = 300
+    @AppStorage("nav.kamera.ahead") private var navCalibAhead: Double = 0.0008
     #endif
     /// Entur kollektiv-tilgjengelighet for valgt lead (lead-kortet).
     @State private var reachability: EnturService.Reachability? = nil
@@ -1319,8 +1320,21 @@ struct KartView: View {
                 realTollPerTrip: navTollPerTrip,
                 realTollCount: navTollCount,
                 onLog: { amount in
+                    // Kostnad→besøk (#73): kravet persisteres i godkjennings-
+                    // flyten, attribuert til kunden det gjaldt.
+                    let navn = navDestination?.name ?? "Reise"
+                    let adresse = navDestination?.address ?? ""
+                    let km = max(1, Int(navRouteKm.rounded()))
+                    if let api = appState.api,
+                       !DemoModeManager.isActiveNonisolated {
+                        Task {
+                            try? await api.submitLeadgridMileageClaim(
+                                km: km, amountNok: Int(amount),
+                                routeText: "Besøk: \(navn) — \(adresse)",
+                                note: "Logget fra nav-motoren")
+                        }
+                    }
                     showToast("Kjøregodtgjørelse logget: \(Int(amount)) kr")
-                    // TODO (#73): persister til kostnad→besøk-attribusjon.
                 })
         }
         // «Min bil»-profil (drivstoff/type + regnr-oppslag).
@@ -5677,6 +5691,24 @@ struct KartView: View {
                 // Entur: kollektiv-tilgjengelighet (vises når backend svarer)
                 if let r = reachability, r.score != nil {
                     reachabilitySection(r)
+                }
+                // Bil vs. kollektiv: parkeringen ligger et stykke unna
+                // OG kollektivdekningen er god → foreslå å la bilen stå.
+                if let p = parking, let area = p.areas.first,
+                   area.distanceM > 400,
+                   let r = reachability, (r.score ?? 0) >= 70 {
+                    HStack(spacing: 7) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.yellow)
+                        Text("Vurder kollektivt hit: nærmeste parkering er \(area.distanceM) m unna (\(area.walkMin) min å gå), og kollektivdekningen er god.")
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(KrBrand.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(KrBrand.yellow.opacity(0.10),
+                                in: RoundedRectangle(cornerRadius: 10))
                 }
                 // Bilparkering nær kunden (Statens vegvesen)
                 if let p = parking, let area = p.areas.first {
