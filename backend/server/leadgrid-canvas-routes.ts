@@ -35,6 +35,10 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_leadgrid_canvas_bruker
       ON leadgrid_canvas_notater (organization_id, user_id, updated_at DESC)`);
+  // Fase 2 (deling i org): lat selvheler — ingen manuell migrasjon.
+  await pool.query(`
+    ALTER TABLE leadgrid_canvas_notater
+      ADD COLUMN IF NOT EXISTS delt BOOLEAN NOT NULL DEFAULT false`);
   schemaReady = true;
 }
 
@@ -44,6 +48,7 @@ type NotatFelter = {
   selskap: string | null;
   leadId: string | null;
   drawing: string;
+  delt: boolean;
 };
 
 function parseFelter(b: Record<string, unknown>): NotatFelter | null {
@@ -56,6 +61,7 @@ function parseFelter(b: Record<string, unknown>): NotatFelter | null {
     selskap: b.selskap ? String(b.selskap).slice(0, 200) : null,
     leadId: (b.lead_id ?? b.leadId) ? String(b.lead_id ?? b.leadId).slice(0, 64) : null,
     drawing,
+    delt: b.delt === true,
   };
 }
 
@@ -76,10 +82,13 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!orgId) { res.json({ notater: [] }); return; }
       await ensureSchema(pool);
       const r = await pool.query(
-        `SELECT id, tittel, kategori, selskap, lead_id, drawing_base64, updated_at
-           FROM leadgrid_canvas_notater
-          WHERE organization_id = $1 AND user_id = $2
-          ORDER BY updated_at DESC LIMIT 100`,
+        `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
+                n.drawing_base64, n.updated_at, n.delt, n.user_id,
+                COALESCE(u.name, u.email, '') AS eier_navn
+           FROM leadgrid_canvas_notater n
+           LEFT JOIN users u ON u.id::text = n.user_id
+          WHERE n.organization_id = $1 AND (n.user_id = $2 OR n.delt)
+          ORDER BY n.updated_at DESC LIMIT 100`,
         [orgId, session.userId]);
       res.json({
         notater: r.rows.map((row) => ({
@@ -89,6 +98,9 @@ export function registerLeadgridCanvasRoutes(deps: {
           selskap: row.selskap,
           lead_id: row.lead_id,
           drawing_base64: row.drawing_base64,
+          delt: row.delt === true,
+          er_min: row.user_id === session.userId,
+          eier_navn: row.user_id === session.userId ? null : row.eier_navn,
           oppdatert: row.updated_at instanceof Date
             ? row.updated_at.toISOString() : String(row.updated_at),
         })),
@@ -113,10 +125,10 @@ export function registerLeadgridCanvasRoutes(deps: {
       const id = randomUUID();
       await pool.query(
         `INSERT INTO leadgrid_canvas_notater
-           (id, organization_id, user_id, tittel, kategori, selskap, lead_id, drawing_base64)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+           (id, organization_id, user_id, tittel, kategori, selskap, lead_id, drawing_base64, delt)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [id, orgId, session.userId, felter.tittel, felter.kategori,
-         felter.selskap, felter.leadId, felter.drawing]);
+         felter.selskap, felter.leadId, felter.drawing, felter.delt]);
       res.json({ id });
     } catch (e) {
       console.error("[canvas] POST failed:", e);
@@ -136,10 +148,10 @@ export function registerLeadgridCanvasRoutes(deps: {
       const r = await pool.query(
         `UPDATE leadgrid_canvas_notater
             SET tittel = $1, kategori = $2, selskap = $3, lead_id = $4,
-                drawing_base64 = $5, updated_at = now()
-          WHERE id = $6 AND user_id = $7`,
+                drawing_base64 = $5, delt = $6, updated_at = now()
+          WHERE id = $7 AND user_id = $8`,
         [felter.tittel, felter.kategori, felter.selskap, felter.leadId,
-         felter.drawing, req.params.id, session.userId]);
+         felter.drawing, felter.delt, req.params.id, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {
