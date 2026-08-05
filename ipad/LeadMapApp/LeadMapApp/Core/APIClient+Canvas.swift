@@ -128,6 +128,34 @@ extension APIClient {
         return r.resultat
     }
 
+    /// Apple Intelligence: analysen ble gjort ON-DEVICE — backend skal
+    /// bare persistere (oppgaver + møtelogg). Ingen AI-kost, ingen gate.
+    func persisterCanvasAnalyse(selskap: String?, leadId: String?,
+                                resultat: CanvasAnalyseDTO) async throws {
+        struct Ferdig: Encodable {
+            let oppsummering: String
+            let oppgaver: [[String: String?]]
+            let lofter: [String]
+        }
+        struct Body: Encodable {
+            let selskap: String?
+            let leadId: String?
+            let tekst: String
+            let ferdigResultat: Ferdig
+        }
+        struct Resp: Decodable { let resultat: CanvasAnalyseDTO }
+        let ferdig = Ferdig(
+            oppsummering: resultat.oppsummering,
+            oppgaver: (resultat.oppgaver ?? []).map {
+                ["tittel": $0.tittel, "frist": $0.frist]
+            },
+            lofter: resultat.lofter ?? [])
+        let _: Resp = try await _post(
+            "/api/leadgrid/canvas/analyse",
+            body: Body(selskap: selskap, leadId: leadId, tekst: "",
+                       ferdigResultat: ferdig))
+    }
+
     func slettCanvasNotat(id: String) async throws {
         _ = try await _request("/api/leadgrid/canvas/\(id)",
                                method: "DELETE", body: nil)

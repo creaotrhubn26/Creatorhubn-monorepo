@@ -192,6 +192,8 @@ struct CanvasView: View {
     @State private var redigererTekstboks: CanvasTekstboks?
     @State private var visTypeVelger = false
     @State private var formFarge: UIColor = .white
+    /// Pencil-first: kun Pencil tegner (håndflata kan hvile på skjermen).
+    @AppStorage("canvas.kunPencil") private var kunPencil = false
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
 
@@ -718,6 +720,20 @@ struct CanvasView: View {
                         .background(CvBrand.cardHi, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    // Pencil-first: håndflata hviler trygt når kun Pencil tegner.
+                    Button {
+                        kunPencil.toggle()
+                    } label: {
+                        Image(systemName: kunPencil ? "applepencil.tip" : "hand.draw")
+                            .font(.appScaled(size: 11, weight: .bold))
+                            .foregroundStyle(kunPencil ? CvBrand.purpleLight : CvBrand.textSecondary)
+                            .frame(width: 28, height: 26)
+                            .background(kunPencil
+                                        ? CvBrand.purple.opacity(0.25) : CvBrand.cardHi,
+                                        in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(kunPencil ? "Kun Pencil tegner" : "Finger og Pencil tegner")
                     // Papir-maler (Daniels liste): SWOT/Kanban/Pipeline/…
                     Menu {
                         ForEach(CanvasPapir.allCases) { pv in
@@ -752,7 +768,8 @@ struct CanvasView: View {
             ZStack(alignment: .topLeading) {
                 CvBrand.bg
                 PapirView(papir: papir)
-                PencilCanvas(drawing: $drawing, redigerbar: valgtErMin)
+                PencilCanvas(drawing: $drawing, redigerbar: valgtErMin,
+                             kunPencil: kunPencil)
                 ForEach(stempler) { st in
                     StempelView(stempel: st, redigerbar: valgtErMin,
                                 onFlytt: { ny in
@@ -1150,13 +1167,14 @@ struct CanvasView: View {
 private struct PencilCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var redigerbar: Bool = true
+    var kunPencil: Bool = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
         canvas.drawing = drawing
-        canvas.drawingPolicy = .anyInput   // finger OG pencil (fase 1)
+        canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
         // Gjennomsiktig — papir-malen (SWOT/Kanban/…) ligger i laget bak.
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
@@ -1168,6 +1186,13 @@ private struct PencilCanvas: UIViewRepresentable {
         context.coordinator.toolPicker = picker
         picker.setVisible(true, forFirstResponder: canvas)
         picker.addObserver(canvas)
+        // Apple Pencil: dobbelt-tap bytter penn↔viskelær, squeeze (Pencil
+        // Pro) viser/skjuler verktøylinja. Pressure/tilt/prediction/lav
+        // latency er native i PencilKit — dette er «papirfølelsen»-pluss.
+        let pencil = UIPencilInteraction()
+        pencil.delegate = context.coordinator
+        canvas.addInteraction(pencil)
+        context.coordinator.canvas = canvas
         DispatchQueue.main.async { canvas.becomeFirstResponder() }
         return canvas
     }
@@ -1178,14 +1203,42 @@ private struct PencilCanvas: UIViewRepresentable {
             canvas.drawing = drawing
         }
         canvas.isUserInteractionEnabled = redigerbar
+        canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
     }
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate {
+    final class Coordinator: NSObject, PKCanvasViewDelegate,
+                             UIPencilInteractionDelegate {
         var parent: PencilCanvas
         var toolPicker: PKToolPicker?
+        weak var canvas: PKCanvasView?
         var tegner = false
+        /// Verktøyet før dobbelt-tap byttet til viskelær.
+        private var forrigeVerktoy: PKTool?
 
         init(_ parent: PencilCanvas) { self.parent = parent }
+
+        /// Dobbelt-tap på Pencil: penn ↔ viskelær (systeminnstillingen
+        /// «bytt til forrige verktøy» respekteres implisitt — vi husker).
+        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+            guard let picker = toolPicker else { return }
+            if picker.selectedTool is PKEraserTool, let forrige = forrigeVerktoy {
+                picker.selectedTool = forrige
+                forrigeVerktoy = nil
+            } else {
+                forrigeVerktoy = picker.selectedTool
+                picker.selectedTool = PKEraserTool(.vector)
+            }
+        }
+
+        /// Pencil Pro squeeze: vis/skjul verktøylinja (mer flate å tegne på).
+        @available(iOS 17.5, *)
+        func pencilInteraction(_ interaction: UIPencilInteraction,
+                               didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+            guard squeeze.phase == .ended,
+                  let picker = toolPicker, let canvas else { return }
+            picker.setVisible(!picker.isVisible, forFirstResponder: canvas)
+            canvas.becomeFirstResponder()
+        }
 
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) { tegner = true }
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) { tegner = false }
@@ -1213,6 +1266,8 @@ struct CanvasAnalyseSheet: View {
     @State private var analyserer = false
     @State private var resultat: CanvasAnalyseDTO?
     @State private var feil: String?
+    /// true = analysert on-device m/ Apple Intelligence (gratis/privat).
+    @State private var onDeviceKilde = false
 
     var body: some View {
         NavigationStack {
@@ -1367,6 +1422,15 @@ struct CanvasAnalyseSheet: View {
                         }
                     }
                 }
+                HStack(spacing: 5) {
+                    Image(systemName: onDeviceKilde ? "iphone" : "cloud")
+                        .font(.appScaled(size: 9, weight: .bold))
+                    Text(onDeviceKilde
+                         ? "Analysert på enheten — Apple Intelligence (privat, uten kostnad)"
+                         : "Analysert i skyen")
+                        .font(.appScaled(size: 10))
+                }
+                .foregroundStyle(CvBrand.textTertiary)
                 Text("Notatet er logget — neste møtebrief for \(selskap) åpner med dette.")
                     .font(.appScaled(size: 10))
                     .foregroundStyle(CvBrand.textTertiary)
@@ -1443,6 +1507,25 @@ struct CanvasAnalyseSheet: View {
     @MainActor
     private func analyser() async {
         feil = nil
+        // Apple Intelligence: prøv on-device Foundation Models først
+        // (iOS 26+, norsk-gate) — gratis, privat, offline. Backend
+        // persisterer resultatet (oppgaver + møtelogg) uten AI-kost.
+        if !DemoModeManager.isActiveNonisolated {
+            analyserer = true
+            if let lokal = await CanvasIntelligence.analyserOnDevice(
+                tekst: ocrTekst, selskap: selskap) {
+                analyserer = false
+                onDeviceKilde = true
+                resultat = lokal
+                if let api = appState.api {
+                    Task { try? await api.persisterCanvasAnalyse(
+                        selskap: selskap.isEmpty ? nil : selskap,
+                        leadId: leadId, resultat: lokal) }
+                }
+                return
+            }
+            analyserer = false
+        }
         if DemoModeManager.isActiveNonisolated {
             resultat = CanvasAnalyseDTO(
                 oppsummering: "Godt møte hos \(selskap): interesse for løsning og bedre oversikt over ruter. Neste steg er å sende forslag til opplegg og avtale demo.",

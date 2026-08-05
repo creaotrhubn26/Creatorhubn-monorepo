@@ -13,6 +13,7 @@
 
 import SwiftUI
 import AVFoundation
+import PencilKit
 
 private enum BfBrand {
     static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -39,6 +40,9 @@ struct MoteBriefSheet: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    /// «Skissa fra sist»: siste Canvas-notat for selskapet (fase 6 —
+    /// sirkelen blir rund visuelt: brief åpner med tegningen din).
+    @State private var sisteSkisse: UIImage?
 
     @State private var brief: MoteBriefDTO?
     @State private var laster = false
@@ -92,6 +96,20 @@ struct MoteBriefSheet: View {
         }
         .preferredColorScheme(.dark)
         .task { await hent() }
+        // «Skissa fra sist»: siste Canvas-notat m/ tegning for selskapet.
+        .task {
+            guard !DemoModeManager.isActiveNonisolated,
+                  let api = appState.api,
+                  let notater = try? await api.hentCanvasNotater() else { return }
+            guard let match = notater.first(where: {
+                ($0.selskap ?? "").caseInsensitiveCompare(selskap) == .orderedSame
+                    && !($0.drawingBase64 ?? "").isEmpty
+            }), let data = Data(base64Encoded: match.drawingBase64 ?? ""),
+               let tegning = try? PKDrawing(data: data),
+               !tegning.bounds.isEmpty else { return }
+            sisteSkisse = tegning.image(from: tegning.bounds.insetBy(dx: -20, dy: -20),
+                                        scale: 1.5)
+        }
         .onDisappear { stoppTale() }
     }
 
@@ -129,6 +147,35 @@ struct MoteBriefSheet: View {
                         Text("Selskapet har aktive utlysninger på Doffin — de er i kjøpsmodus.")
                             .font(.appScaled(size: 10))
                             .foregroundStyle(BfBrand.textTertiary)
+                    }
+                }
+
+                // Skissa fra sist: Canvas-notatet for selskapet, rett i briefen.
+                if let skisse = sisteSkisse {
+                    seksjon("Skissa fra sist", ikon: "pencil.and.outline",
+                            tint: BfBrand.purpleLight) {
+                        Image(uiImage: skisse)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 190)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.black.opacity(0.35))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10)
+                                .stroke(BfBrand.stroke, lineWidth: 1))
+                        Button {
+                            appState.requestCanvasNotat(selskap: selskap, leadId: nil)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                Text("Åpne i Canvas")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(BfBrand.purpleLight)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
 
