@@ -10,9 +10,11 @@
 
 import CoreLocation
 import MapKit
+import PDFKit
 import PencilKit
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 import Vision
 
 private enum CvBrand {
@@ -228,6 +230,7 @@ struct CanvasView: View {
     @State private var objektModus = false
     @State private var bildeValg: PhotosPickerItem?
     @State private var bildeVelgerAapen = false
+    @State private var pdfVelgerAapen = false
     @State private var notatLat: Double?
     @State private var notatLon: Double?
     @State private var visStempelPalett = false
@@ -623,7 +626,7 @@ struct CanvasView: View {
                         .help("Notatet ble til her — vis på kartet")
                     }
                     // Del tegningen som bilde eller PDF (stempler+tekst inn).
-                    if !drawing.bounds.isEmpty {
+                    if !drawing.bounds.isEmpty || !objekter.isEmpty {
                         Menu {
                             ShareLink(
                                 item: Image(uiImage: komponertBilde()),
@@ -684,6 +687,12 @@ struct CanvasView: View {
                             bildeVelgerAapen = true
                         } label: {
                             Label("Bilde fra Bilder", systemImage: "photo")
+                        }
+                        Button {
+                            pdfVelgerAapen = true
+                        } label: {
+                            Label("PDF — tilbud/kontrakt/plantegning",
+                                  systemImage: "doc.fill")
                         }
                         Menu {
                             ForEach(appState.leads.sorted {
@@ -1069,6 +1078,19 @@ struct CanvasView: View {
         }
         .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
                       matching: .images)
+        .fileImporter(isPresented: $pdfVelgerAapen,
+                      allowedContentTypes: [.pdf]) { resultat in
+            if case .success(let url) = resultat {
+                importerPDF(fra: url)
+            }
+        }
+        .alert("PDF-import", isPresented: Binding(
+            get: { feilVedImport != nil },
+            set: { if !$0 { feilVedImport = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(feilVedImport ?? "")
+        }
         .onChange(of: bildeValg) { _, valg in
             guard let valg else { return }
             Task {
@@ -1322,10 +1344,32 @@ struct CanvasView: View {
 
     /// Tegning + stempler → ett bilde (deling). Stemplene tegnes på
     /// samme koordinater som overlayet.
-    private func komponertBilde() -> UIImage {
-        let bounds = drawing.bounds.isEmpty
+    /// Alt innhold skal med i eksporten: blekk + objekter + noder — en
+    /// signert kontrakt beskjæres aldri til bare signaturen.
+    private func eksportBounds() -> CGRect {
+        var samlet = drawing.bounds.isEmpty ? CGRect.null : drawing.bounds
+        for obj in objekter {
+            var stor = CGSize(width: 380 * obj.skala, height: 110)
+            if let b64 = obj.bildeBase64, let data = Data(base64Encoded: b64),
+               let img = UIImage(data: data) {
+                stor = CGSize(width: img.size.width * obj.skala,
+                              height: img.size.height * obj.skala)
+            }
+            samlet = samlet.union(CGRect(x: obj.x - stor.width / 2,
+                                         y: obj.y - stor.height / 2,
+                                         width: stor.width, height: stor.height))
+        }
+        for node in noder {
+            samlet = samlet.union(CGRect(x: node.x - 110, y: node.y - 40,
+                                         width: 220, height: 80))
+        }
+        return samlet.isNull
             ? CGRect(x: 0, y: 0, width: 800, height: 600)
-            : drawing.bounds.insetBy(dx: -40, dy: -40)
+            : samlet.insetBy(dx: -40, dy: -40)
+    }
+
+    private func komponertBilde() -> UIImage {
+        let bounds = eksportBounds()
         let base = drawing.image(from: bounds, scale: 2.0)
         let renderer = UIGraphicsImageRenderer(size: base.size)
         return renderer.image { rctx in
@@ -1464,6 +1508,41 @@ struct CanvasView: View {
         return oppgaverCache
     }
     @State private var oppgaverCache: [MoteOppgaveDTO] = []
+
+    /// PDF-annotering: tilbud/kontrakter/ordreskjema/plantegninger inn som
+    /// side-objekter under blekket — marker med tusjen, skriv med tekst-
+    /// bokser/Scribble, signer og tegn med pennen. Del som PDF etterpå.
+    private func importerPDF(fra url: URL) {
+        let tilgang = url.startAccessingSecurityScopedResource()
+        defer { if tilgang { url.stopAccessingSecurityScopedResource() } }
+        guard let dok = PDFDocument(url: url) else { return }
+        let antall = min(dok.pageCount, 12)
+        var y: Double = 60
+        for i in 0..<antall {
+            guard let side = dok.page(at: i) else { continue }
+            let ramme = side.bounds(for: .mediaBox)
+            let bredde: CGFloat = 760
+            let hoyde = ramme.height / max(ramme.width, 1) * bredde
+            let bilde = side.thumbnail(of: CGSize(width: bredde * 2,
+                                                  height: hoyde * 2),
+                                       for: .mediaBox)
+            guard let jpeg = bilde.jpegData(compressionQuality: 0.7) else { continue }
+            y += Double(hoyde) / 2
+            objekter.append(CanvasObjekt(
+                type: "pdf", x: 430, y: y, skala: 0.5,
+                bildeBase64: jpeg.base64EncodedString(),
+                tittel: antall > 1
+                    ? "\(url.deletingPathExtension().lastPathComponent) · s. \(i + 1)"
+                    : url.deletingPathExtension().lastPathComponent))
+            y += Double(hoyde) / 2 + 40
+        }
+        // Flata må være høy nok for alle sidene (nominell sidehøyde ~900pt).
+        sider = min(20, max(sider, Int(ceil(y / 900)) + 1))
+        if dok.pageCount > antall {
+            feilVedImport = "PDF-en har \(dok.pageCount) sider — de første \(antall) ble lagt inn."
+        }
+    }
+    @State private var feilVedImport: String?
 
     /// Bilde inn: nedskaler til maks 1200px + JPEG 0.7 (holder JSON-capen).
     private func leggTilBilde(_ data: Data, ved punkt: CGPoint? = nil) {
