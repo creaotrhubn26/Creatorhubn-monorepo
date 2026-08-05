@@ -897,6 +897,7 @@ import { registerLeadgridDoffinRoutes } from "./leadgrid-doffin-routes";
 import { registerLeadgridRuteRoutes } from "./leadgrid-rute-routes";
 import { registerLeadgridOversiktRoutes } from "./leadgrid-oversikt-routes";
 import { registerLeadgridCanvasRoutes } from "./leadgrid-canvas-routes";
+import { registerLeadgridCpvRoutes } from "./leadgrid-cpv-routes";
 import { registerLeadgridMotebriefRoutes } from "./leadgrid-motebrief-routes";
 import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
@@ -66768,6 +66769,7 @@ registerLeadgridDoffinRoutes({ app, pool, requireUserSession });
 registerLeadgridRuteRoutes({ app, pool, requireUserSession });
 registerLeadgridOversiktRoutes({ app, pool, requireUserSession });
 registerLeadgridCanvasRoutes({ app, pool, requireUserSession });
+registerLeadgridCpvRoutes({ app, pool, requireUserSession });
 // AI-møtebrief — «aldri uforberedt til møte» (Brreg+regnskap+Doffin+case).
 registerLeadgridMotebriefRoutes({ app, pool, requireUserSession });
 
