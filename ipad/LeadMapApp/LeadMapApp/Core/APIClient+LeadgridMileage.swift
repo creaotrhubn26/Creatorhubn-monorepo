@@ -35,6 +35,22 @@ extension APIClient {
     private static let _lgMileageDecoder = JSONDecoder()
 
     /// Leder: org-ens ventende krav.
+    /// Kostnad→besøk (#73): logg kjøregodtgjørelsen som krav i
+    /// godkjennings-flyten, attribuert til leaden via routeText/note.
+    func submitLeadgridMileageClaim(km: Int, amountNok: Int,
+                                    routeText: String, note: String?) async throws {
+        struct Body: Encodable {
+            let km: Int
+            let amountNok: Int
+            let routeText: String
+            let note: String?
+        }
+        let data = try JSONEncoder().encode(Body(
+            km: km, amountNok: amountNok, routeText: routeText, note: note))
+        _ = try await _request("/api/leadgrid/mileage/claims",
+                               method: "POST", body: data)
+    }
+
     func fetchLeadgridMileagePending() async throws -> [LeadgridMileageClaim] {
         let data = try await _request("/api/leadgrid/mileage/pending", method: "GET")
         return try Self._lgMileageDecoder.decode(LeadgridMileageListResponse.self, from: data).claims
