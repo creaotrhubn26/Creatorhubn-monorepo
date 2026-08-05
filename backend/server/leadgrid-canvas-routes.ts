@@ -58,6 +58,10 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE leadgrid_canvas_notater
       ADD COLUMN IF NOT EXISTS figurer TEXT NOT NULL DEFAULT '[]'`);
+  // Papir-maler (Daniel 2026-08-05): SWOT/Kanban/Pipeline/… under flata.
+  await pool.query(`
+    ALTER TABLE leadgrid_canvas_notater
+      ADD COLUMN IF NOT EXISTS papir TEXT NOT NULL DEFAULT 'blank'`);
   schemaReady = true;
 }
 
@@ -73,6 +77,7 @@ type NotatFelter = {
   stempler: string;
   tekstbokser: string;
   figurer: string;
+  papir: string;
 };
 
 function parseFelter(b: Record<string, unknown>): NotatFelter | null {
@@ -91,6 +96,7 @@ function parseFelter(b: Record<string, unknown>): NotatFelter | null {
     stempler: String(b.stempler ?? "[]").slice(0, 20_000),
     tekstbokser: String(b.tekstbokser ?? "[]").slice(0, 40_000),
     figurer: String(b.figurer ?? "[]").slice(0, 40_000),
+    papir: String(b.papir ?? "blank").slice(0, 40),
   };
 }
 
@@ -113,7 +119,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       const r = await pool.query(
         `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
                 n.drawing_base64, n.updated_at, n.delt, n.user_id,
-                n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer,
+                n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
                 COALESCE(u.name, u.email, '') AS eier_navn
            FROM leadgrid_canvas_notater n
            LEFT JOIN users u ON u.id::text = n.user_id
@@ -134,6 +140,7 @@ export function registerLeadgridCanvasRoutes(deps: {
           stempler: row.stempler ?? "[]",
           tekstbokser: row.tekstbokser ?? "[]",
           figurer: row.figurer ?? "[]",
+          papir: row.papir ?? "blank",
           er_min: row.user_id === session.userId,
           eier_navn: row.user_id === session.userId ? null : row.eier_navn,
           oppdatert: row.updated_at instanceof Date
@@ -161,12 +168,12 @@ export function registerLeadgridCanvasRoutes(deps: {
       await pool.query(
         `INSERT INTO leadgrid_canvas_notater
            (id, organization_id, user_id, tittel, kategori, selskap, lead_id,
-            drawing_base64, delt, lat, lon, stempler, tekstbokser, figurer)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            drawing_base64, delt, lat, lon, stempler, tekstbokser, figurer, papir)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [id, orgId, session.userId, felter.tittel, felter.kategori,
          felter.selskap, felter.leadId, felter.drawing, felter.delt,
          felter.lat, felter.lon, felter.stempler, felter.tekstbokser,
-         felter.figurer]);
+         felter.figurer, felter.papir]);
       res.json({ id });
     } catch (e) {
       console.error("[canvas] POST failed:", e);
@@ -188,12 +195,12 @@ export function registerLeadgridCanvasRoutes(deps: {
             SET tittel = $1, kategori = $2, selskap = $3, lead_id = $4,
                 drawing_base64 = $5, delt = $6, lat = $7, lon = $8,
                 stempler = $9, tekstbokser = $10, figurer = $11,
-                updated_at = now()
-          WHERE id = $12 AND user_id = $13`,
+                papir = $12, updated_at = now()
+          WHERE id = $13 AND user_id = $14`,
         [felter.tittel, felter.kategori, felter.selskap, felter.leadId,
          felter.drawing, felter.delt, felter.lat, felter.lon,
          felter.stempler, felter.tekstbokser, felter.figurer,
-         req.params.id, session.userId]);
+         felter.papir, req.params.id, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {
