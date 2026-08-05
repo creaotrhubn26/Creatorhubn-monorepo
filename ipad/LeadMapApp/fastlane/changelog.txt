@@ -1,9 +1,34 @@
-Salgssjef-verktøy på ekte: Godkjenn kjøregodtgjørelse (én og én eller alle på én gang, med eksport til lønn), godkjenn/avslå deals og rabatter i godkjenningskøen, og planlegg 1-til-1 coaching-samtaler. Alt lagres nå mot serveren i stedet for bare å vises.
+Leadgrid 2.0 — Canvas, kundeminnet og en smartere hverdag
 
-Ny rute-planlegger: I «Team-ruter i dag» → «Planlegg ny rute» velger du flere stopp, så foreslår appen den korteste besøksrekkefølgen med total distanse og kjøretid. «Start rute» tar deg rett ut i navigasjon til første stopp.
+NYTT: LEADGRID CANVAS
+• Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso
+• 6 notattyper med egne covers: Møte, Lead, Befaring, Salgsplan, Prosjekt, Rute
+• 10 papir-maler: SWOT, Kanban, Pipeline, Tankekart, Møte, Rute, Salgsstrategi, Brainstorm, Territorium
+• Levende tankekart: bobler med «+»-håndtak, koblinger som følger, skriv i dem med Scribble
+• Former som objekter: dra, klyp for størrelse, vri for rotasjon, hold for å fjerne — og shape recognition: tegn + hold pennen stille → perfekt sirkel/rektangel/pil
+• Penn-galleri: Kart-markør, Laser (toner bort), Pil-penn, Plan-penn
+• Bilder: dra inn fra Bilder/Filer, flytt, skaler, tegn oppå
+• PDF-annotering: importer tilbud/kontrakter/plantegninger — marker, skriv, signer, del som PDF
+• Levende kort: lead-kort, KPI-er, kart-utsnitt og oppgaver som oppdateres live fra CRM
+• Håndskrift → tekst (Vision) + AI-analyse → oppgaver og møtelogg — også on-device med Apple Intelligence
+• Universalsøk: finn tekst i håndskrift, PDF-er og bilder
+• Spatial Search: søk i notatet → flata flyr til treffet
+• Faner (flere notater åpne), undo-historikk, Tidsreise-slider (se idéene utvikle seg dag for dag)
+• Multi-select, element-bibliotek, Smart Layers (slå lag av/på)
+• Deling i teamet + varsel når en kollega oppdaterer
+• KUNDEMINNET: hele kundeforholdet på ett visuelt lerret — AI-oppsummeringer festes kronologisk
 
-Manuell faktura (super-admin): Send faktura til organisasjoner uten Stripe direkte fra org-oversikten — e-post + PDF med fakturanummer.
+MØTER
+• Reisetids-vakt: «kjøreturen tar 32 min — du har 25» + anbefalt ny tid
+• Dra-og-slipp møter i dag/uke + «Varsle kontakten»-utkast
+• Møtesløyfa lukket: AI-oppgaver til Oversikt + én-klikks statusendring
+• «Skissa fra sist» i møtebriefen
 
-Knapper som nå virker: Mange steder som så klikkbare ut, men ikke gjorde noe, er koblet — «Neste handlinger» (Ring / E-post / åpne lead), selger-kortet (Send melding, Sett mål, del rapport, sammenlign mot team og hele laget), «Se alle»-lenkene i Oversikt, og møte-forberedelse (opprett oppgave, snooze, filtrer historikk, eksporter).
+OVERSIKT
+• Ny beslutningsskjerm uten kart-duplikat — kompakt leads-liste med intern navigasjon
+• Alle kort kan kollapses og velges bort — og salgsleder/organisasjon styrer hva teamet ser
+• «Oppgaver fra møtene»-kortet med avhuking
 
-Finpuss: Sidemenyen viser riktige valg med en gang (ingen «hopp» etter innlasting), og visnings-bryteren i Møter (Agenda / Dag / Uke / Måned) er ryddet opp så teksten ikke lenger klippes.
+ANNET
+• Alle Naviger-knapper bruker nå Leadgrids egen turn-by-turn (ikke Apple Maps)
+• Canvas-notater som kart-lag på Kart-fanen
