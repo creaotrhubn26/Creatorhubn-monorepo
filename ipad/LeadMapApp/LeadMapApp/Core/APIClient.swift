@@ -775,15 +775,44 @@ actor APIClient {
         }
     }
 
+    struct AIUsageFeatureDTO: Codable, Identifiable {
+        let feature: String
+        let calls: Int
+        let costUsd: Double
+
+        var id: String { feature }
+
+        enum CodingKeys: String, CodingKey {
+            case feature, calls
+            case costUsd = "cost_usd"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            feature = try c.decode(String.self, forKey: .feature)
+            calls = try c.decode(Int.self, forKey: .calls)
+            if let d = try? c.decode(Double.self, forKey: .costUsd) {
+                costUsd = d
+            } else if let s = try? c.decode(String.self, forKey: .costUsd) {
+                costUsd = Double(s) ?? 0
+            } else {
+                costUsd = 0
+            }
+        }
+    }
+
     struct AIUsageResponse: Codable {
         let total: AIUsageBucketDTO
         let thisMonth: AIUsageBucketDTO
         let byUser: [AIUsageUserDTO]
+        /// Per FUNKSJON: hva betaler kunden faktisk for?
+        var byFeature: [AIUsageFeatureDTO]? = nil
 
         enum CodingKeys: String, CodingKey {
             case total
             case thisMonth = "this_month"
             case byUser = "by_user"
+            case byFeature = "by_feature"
         }
     }
 

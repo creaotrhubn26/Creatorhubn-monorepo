@@ -31,7 +31,7 @@ import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
-import { assertAnyEntitled, MOTE_BRIEF_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { assertAnyEntitled, MOTE_BRIEF_FEATURE_KEYS, CANVAS_ANALYSE_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -641,7 +641,7 @@ ${tekst}`;
         ? b.ferdig_resultat as { oppsummering?: unknown; oppgaver?: unknown; lofter?: unknown }
         : null;
       if (!ferdig) {
-        if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+        if (!(await assertAnyEntitled(pool, session.userId, CANVAS_ANALYSE_FEATURE_KEYS, res))) return;
         if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
         if (tekst.length < 10) {
           res.status(400).json({ error: "bad_request", message: "For lite gjenkjent tekst å analysere." });

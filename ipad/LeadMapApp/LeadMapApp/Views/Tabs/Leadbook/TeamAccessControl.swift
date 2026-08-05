@@ -122,6 +122,16 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // Leadgrid Canvas (2026-08-05): Pencil-first notater koblet til leads
     // (PencilKit-tegneflate + kategorier + lead-kobling). Default PÅ.
     case leadgridCanvas = "Leadgrid Canvas · Pencil-notater"
+    // Canvas granulært (2026-08-05): hver funksjon styrbar per org —
+    // ALLE default PÅ (canUse-mønsteret), superadmin kan låse.
+    case canvasDeling = "Canvas · Deling i teamet"
+    case canvasPdf = "Canvas · PDF-annotering"
+    case canvasBilder = "Canvas · Bilder"
+    case canvasLiveKort = "Canvas · Levende kort (CRM/KPI/kart)"
+    case canvasTidsreise = "Canvas · Tidsreise"
+    case canvasKundeminne = "Canvas · Kundeminnet"
+    case canvasBibliotek = "Canvas · Element-bibliotek"
+    case canvasAnalyse = "Canvas · AI-analyse (håndskrift)"
 
     var id: String { rawValue }
 
@@ -179,6 +189,14 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .leadgridAnbud: return "doc.text.magnifyingglass"
         case .leadgridRuteplanlegger: return "point.topleft.down.curvedto.point.bottomright.up.fill"
         case .leadgridCanvas: return "pencil.and.outline"
+        case .canvasDeling: return "person.2.fill"
+        case .canvasPdf: return "doc.fill"
+        case .canvasBilder: return "photo.fill"
+        case .canvasLiveKort: return "chart.bar.doc.horizontal.fill"
+        case .canvasTidsreise: return "clock.arrow.2.circlepath"
+        case .canvasKundeminne: return "brain.head.profile"
+        case .canvasBibliotek: return "books.vertical.fill"
+        case .canvasAnalyse: return "sparkles.rectangle.stack.fill"
         case .moteBrief: return "brain.head.profile"
         // Områder
         case .omradeTildeling: return "map.circle.fill"
@@ -204,10 +222,13 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .teamExportCSV, .teamExportPDF, .teamImportExcel, .teamShareReport,
              .teamMarkAllRead, .teamCustomDashboard: return .rapportExport
         case .teamCompareToPrevious, .teamForecast30d, .teamPipelineHealth,
-             .teamAIFormulaSuggest, .moteBrief: return .analyseAI
+             .teamAIFormulaSuggest, .moteBrief,
+             .canvasAnalyse: return .analyseAI
         case .routeTracking, .routeAdherenceReports, .teamNearbyView,
              .createLeadAtPosition, .leadgridRuteplanlegger,
-             .leadgridCanvas: return .kjerne
+             .leadgridCanvas, .canvasDeling, .canvasPdf, .canvasBilder,
+             .canvasLiveKort, .canvasTidsreise, .canvasKundeminne,
+             .canvasBibliotek: return .kjerne
         case .leadgridGoKjorebok, .leadgridGoAuto, .leadgridGoDashboard: return .leadgridGo
         case .leadgridKvalitet: return .kvalitet
         case .leadgridAnbud: return .anbud
