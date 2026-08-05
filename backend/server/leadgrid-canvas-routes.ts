@@ -91,7 +91,29 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_canvas_versjoner_notat
       ON leadgrid_canvas_versjoner (notat_id, created_at DESC)`);
+  // Papirkurv (Daniel 2026-08-05): soft delete — notatet ligger 30 dager
+  // i papirkurven før det tømmes for godt (lat opprydding i GET).
+  await pool.query(`
+    ALTER TABLE leadgrid_canvas_notater
+      ADD COLUMN IF NOT EXISTS slettet_at TIMESTAMPTZ`);
   schemaReady = true;
+}
+
+/** Tøm notater som har ligget >30 dager i papirkurven (best effort). */
+async function tomGamleFraPapirkurv(pool: Pool): Promise<void> {
+  try {
+    const r = await pool.query<{ id: string }>(
+      `DELETE FROM leadgrid_canvas_notater
+        WHERE slettet_at IS NOT NULL AND slettet_at < now() - interval '30 days'
+        RETURNING id`);
+    if (r.rows.length > 0) {
+      await pool.query(
+        `DELETE FROM leadgrid_canvas_versjoner WHERE notat_id = ANY($1::uuid[])`,
+        [r.rows.map((row) => row.id)]);
+    }
+  } catch (e) {
+    console.warn("[canvas] papirkurv-opprydding feilet:", String(e).slice(0, 120));
+  }
 }
 
 type NotatFelter = {
@@ -144,7 +166,8 @@ export function registerLeadgridCanvasRoutes(deps: {
 }): void {
   const { app, pool, requireUserSession } = deps;
 
-  /** Alle notatene mine (org+bruker), nyeste først. */
+  /** Alle notatene mine (org+bruker), nyeste først.
+   *  ?papirkurv=1 → mine slettede notater i stedet (siste 30 dager). */
   app.get("/api/leadgrid/canvas", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
@@ -153,17 +176,32 @@ export function registerLeadgridCanvasRoutes(deps: {
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.json({ notater: [] }); return; }
       await ensureSchema(pool);
-      const r = await pool.query(
-        `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
-                n.drawing_base64, n.updated_at, n.delt, n.user_id,
-                n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
-                n.noder, n.sider, n.objekter, n.sokbar_tekst,
-                COALESCE(u.name, u.email, '') AS eier_navn
-           FROM leadgrid_canvas_notater n
-           LEFT JOIN users u ON u.id::text = n.user_id
-          WHERE n.organization_id = $1 AND (n.user_id = $2 OR n.delt)
-          ORDER BY n.updated_at DESC LIMIT 100`,
-        [orgId, session.userId]);
+      await tomGamleFraPapirkurv(pool);
+      const visPapirkurv = req.query.papirkurv === "1";
+      const r = visPapirkurv
+        ? await pool.query(
+            `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
+                    n.drawing_base64, n.updated_at, n.delt, n.user_id,
+                    n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
+                    n.noder, n.sider, n.objekter, n.sokbar_tekst, n.slettet_at,
+                    '' AS eier_navn
+               FROM leadgrid_canvas_notater n
+              WHERE n.organization_id = $1 AND n.user_id = $2
+                AND n.slettet_at IS NOT NULL
+              ORDER BY n.slettet_at DESC LIMIT 100`,
+            [orgId, session.userId])
+        : await pool.query(
+            `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
+                    n.drawing_base64, n.updated_at, n.delt, n.user_id,
+                    n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
+                    n.noder, n.sider, n.objekter, n.sokbar_tekst, n.slettet_at,
+                    COALESCE(u.name, u.email, '') AS eier_navn
+               FROM leadgrid_canvas_notater n
+               LEFT JOIN users u ON u.id::text = n.user_id
+              WHERE n.organization_id = $1 AND (n.user_id = $2 OR n.delt)
+                AND n.slettet_at IS NULL
+              ORDER BY n.updated_at DESC LIMIT 100`,
+            [orgId, session.userId]);
       res.json({
         notater: r.rows.map((row) => ({
           id: row.id,
@@ -183,6 +221,9 @@ export function registerLeadgridCanvasRoutes(deps: {
           sider: row.sider ?? 1,
           objekter: row.objekter ?? "[]",
           sokbar_tekst: row.sokbar_tekst ?? "",
+          slettet_at: row.slettet_at instanceof Date
+            ? row.slettet_at.toISOString()
+            : (row.slettet_at ? String(row.slettet_at) : null),
           er_min: row.user_id === session.userId,
           eier_navn: row.user_id === session.userId ? null : row.eier_navn,
           oppdatert: row.updated_at instanceof Date
@@ -266,7 +307,7 @@ export function registerLeadgridCanvasRoutes(deps: {
                 stempler = $9, tekstbokser = $10, figurer = $11,
                 papir = $12, noder = $13, sider = $14, objekter = $15,
                 sokbar_tekst = $16, updated_at = now()
-          WHERE id = $17 AND user_id = $18`,
+          WHERE id = $17 AND user_id = $18 AND slettet_at IS NULL`,
         [felter.tittel, felter.kategori, felter.selskap, felter.leadId,
          felter.drawing, felter.delt, felter.lat, felter.lon,
          felter.stempler, felter.tekstbokser, felter.figurer,
@@ -315,19 +356,52 @@ export function registerLeadgridCanvasRoutes(deps: {
     }
   });
 
-  /** Slett notat (bruker-scopet). */
+  /** Slett notat (bruker-scopet) → papirkurven i 30 dager.
+   *  ?permanent=1 fra papirkurven → borte for godt (inkl. versjoner). */
   app.delete("/api/leadgrid/canvas/:id", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
       await ensureSchema(pool);
+      if (req.query.permanent === "1") {
+        const r = await pool.query(
+          `DELETE FROM leadgrid_canvas_notater WHERE id = $1 AND user_id = $2`,
+          [req.params.id, session.userId]);
+        if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+        await pool.query(
+          `DELETE FROM leadgrid_canvas_versjoner WHERE notat_id = $1`,
+          [req.params.id]).catch(() => undefined);
+        res.json({ ok: true, permanent: true });
+        return;
+      }
       const r = await pool.query(
-        `DELETE FROM leadgrid_canvas_notater WHERE id = $1 AND user_id = $2`,
+        `UPDATE leadgrid_canvas_notater SET slettet_at = now()
+          WHERE id = $1 AND user_id = $2 AND slettet_at IS NULL`,
         [req.params.id, session.userId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true });
     } catch (e) {
       console.error("[canvas] DELETE failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Gjenopprett notat fra papirkurven. */
+  app.post("/api/leadgrid/canvas/:id/gjenopprett", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `UPDATE leadgrid_canvas_notater
+            SET slettet_at = NULL, updated_at = now()
+          WHERE id = $1 AND user_id = $2 AND slettet_at IS NOT NULL`,
+        [req.params.id, session.userId]);
+      if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("[canvas] gjenopprett failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });

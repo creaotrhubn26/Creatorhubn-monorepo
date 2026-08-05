@@ -26,6 +26,8 @@ struct CanvasNotatDTO: Decodable, Hashable {
     var sider: Int? = nil
     var objekter: String? = nil
     var sokbarTekst: String? = nil
+    /// Papirkurven: når notatet ble slettet (soft delete, 30 dager).
+    var slettetAt: String? = nil
 }
 
 struct CanvasAnalyseOppgaveDTO: Decodable, Hashable {
@@ -48,9 +50,10 @@ struct CanvasVersjonDTO: Decodable, Hashable {
 
 extension APIClient {
 
-    func hentCanvasNotater() async throws -> [CanvasNotatDTO] {
+    func hentCanvasNotater(papirkurv: Bool = false) async throws -> [CanvasNotatDTO] {
         struct Resp: Decodable { let notater: [CanvasNotatDTO] }
-        let r: Resp = try await _get("/api/leadgrid/canvas")
+        let r: Resp = try await _get(
+            "/api/leadgrid/canvas" + (papirkurv ? "?papirkurv=1" : ""))
         return r.notater
     }
 
@@ -211,8 +214,16 @@ extension APIClient {
             body: Body(malgruppe: malgruppe, skjulteFunksjoner: skjulteFunksjoner))
     }
 
-    func slettCanvasNotat(id: String) async throws {
-        _ = try await _request("/api/leadgrid/canvas/\(id)",
-                               method: "DELETE", body: nil)
+    /// Slett → papirkurven (30 dager); permanent = borte for godt.
+    func slettCanvasNotat(id: String, permanent: Bool = false) async throws {
+        _ = try await _request(
+            "/api/leadgrid/canvas/\(id)" + (permanent ? "?permanent=1" : ""),
+            method: "DELETE", body: nil)
+    }
+
+    /// Hent notatet tilbake fra papirkurven.
+    func gjenopprettCanvasNotat(id: String) async throws {
+        _ = try await _request("/api/leadgrid/canvas/\(id)/gjenopprett",
+                               method: "POST", body: nil)
     }
 }

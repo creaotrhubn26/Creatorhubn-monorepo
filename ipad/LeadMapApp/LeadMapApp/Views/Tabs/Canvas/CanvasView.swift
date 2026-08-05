@@ -17,282 +17,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Vision
 
-private enum CvBrand {
-    static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
-    static let card = Color(red: 0.10, green: 0.09, blue: 0.16)
-    static let cardHi = Color(red: 0.13, green: 0.11, blue: 0.20)
-    static let stroke = Color.white.opacity(0.08)
-    static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
-    static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
-    static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
-    static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-    static let orange = Color(red: 0.98, green: 0.55, blue: 0.20)
-    static let red = Color(red: 0.95, green: 0.30, blue: 0.30)
-    static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.65)
-    static let textTertiary = Color.white.opacity(0.4)
-}
-
-/// Notat-TYPENE (Daniels struktur 2026-08-05): Møte / Lead / Befaring /
-/// Salgsplan / Prosjekt / Rute — hver med sitt eget cover. Gamle
-/// kategorier beholdes som legacy så eksisterende notater dekoder.
-enum CanvasKategori: String, CaseIterable, Identifiable {
-    // Strukturen
-    case mote = "mote"
-    case lead = "lead"
-    case befaring = "befaring"
-    case salgsplan = "salgsplan"
-    case prosjekt = "prosjekt"
-    case rute = "rute"
-    // Legacy (vises kun på gamle notater)
-    case oppfolging = "oppfolging"
-    case ide = "ide"
-    case kunde = "kunde"
-    case internt = "internt"
-
-    var id: String { rawValue }
-
-    /// Typene som tilbys i velger/filter — legacy holdes utenfor.
-    static let hovedTyper: [CanvasKategori] =
-        [.mote, .lead, .befaring, .salgsplan, .prosjekt, .rute]
-
-    var etikett: String {
-        switch self {
-        case .mote: return "Møte"
-        case .lead: return "Lead"
-        case .befaring: return "Befaring"
-        case .salgsplan: return "Salgsplan"
-        case .prosjekt: return "Prosjekt"
-        case .rute: return "Rute"
-        case .oppfolging: return "Oppfølging"
-        case .ide: return "Idé"
-        case .kunde: return "Kunde"
-        case .internt: return "Internt"
-        }
-    }
-
-    var farge: Color {
-        switch self {
-        case .mote: return CvBrand.purpleLight
-        case .lead: return CvBrand.orange
-        case .befaring: return CvBrand.green
-        case .salgsplan: return CvBrand.yellow
-        case .prosjekt: return CvBrand.blue
-        case .rute: return Color(red: 0.35, green: 0.85, blue: 0.85)
-        case .oppfolging: return CvBrand.blue
-        case .ide: return CvBrand.yellow
-        case .kunde: return CvBrand.orange
-        case .internt: return CvBrand.textSecondary
-        }
-    }
-
-    var ikon: String {
-        switch self {
-        case .mote: return "person.2.wave.2.fill"
-        case .lead: return "person.crop.rectangle.stack.fill"
-        case .befaring: return "binoculars.fill"
-        case .salgsplan: return "chart.line.uptrend.xyaxis"
-        case .prosjekt: return "hammer.fill"
-        case .rute: return "point.topleft.down.curvedto.point.bottomright.up.fill"
-        case .oppfolging: return "bell.fill"
-        case .ide: return "lightbulb.fill"
-        case .kunde: return "building.2.fill"
-        case .internt: return "lock.fill"
-        }
-    }
-
-    /// Cover-gradienten — notatets «bokforside» i lista og velgeren.
-    var coverGradient: LinearGradient {
-        LinearGradient(colors: [farge.opacity(0.55), farge.opacity(0.18)],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-}
-
-/// Klistremerke/stempel oppå tegneflata (fase 4) — posisjon i canvas-
-/// punkter, persistert som JSON ved siden av tegningen.
-struct CanvasStempel: Codable, Identifiable, Hashable {
-    var id: String = UUID().uuidString
-    var tegn: String       // emoji
-    var x: Double
-    var y: Double
-}
-
-/// Paletten fra design-mocken («Klistremerker»).
-let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
-
-/// Smart Layers: lagene som kan slås av/på i editoren.
-enum CanvasLag: String, CaseIterable, Identifiable {
-    case bilder, pdf, kart, crm, oppgaver, former, stempler, tekst, noder
-
-    var id: String { rawValue }
-
-    var etikett: String {
-        switch self {
-        case .bilder: return "Bilder"
-        case .pdf: return "PDF-dokumenter"
-        case .kart: return "Kart-utsnitt"
-        case .crm: return "CRM-kort (lead/KPI/kalender)"
-        case .oppgaver: return "Oppgaver"
-        case .former: return "Former"
-        case .stempler: return "Stempler"
-        case .tekst: return "Tekstbokser"
-        case .noder: return "Tankekart-noder"
-        }
-    }
-}
-
-/// Penn-galleriet: seks penner for feltselgeren. Pen/Marker er PencilKits
-/// egne; Map Marker og Planning Pen er presets; Laser og Arrow er MODUSER
-/// (strøk som toner bort / strøk som blir perfekte piler).
-enum PennValg: String, CaseIterable, Identifiable {
-    case pen, marker, kartMarkor, laser, pil, planlegging
-
-    var id: String { rawValue }
-
-    var etikett: String {
-        switch self {
-        case .pen: return "Penn"
-        case .marker: return "Marker"
-        case .kartMarkor: return "Kart-markør"
-        case .laser: return "Laser"
-        case .pil: return "Pil-penn"
-        case .planlegging: return "Plan-penn"
-        }
-    }
-
-    var ikon: String {
-        switch self {
-        case .pen: return "pencil.tip"
-        case .marker: return "highlighter"
-        case .kartMarkor: return "mappin.and.ellipse"
-        case .laser: return "rays"
-        case .pil: return "arrow.up.right"
-        case .planlegging: return "pencil.and.ruler"
-        }
-    }
-
-    /// PKInkingTool-preset (farger konverteres til lys-referanse så de
-    /// vises riktig i mørk rendring).
-    var verktoy: PKInkingTool {
-        func farge(_ c: UIColor) -> UIColor {
-            PKInkingTool.convertColor(c, from: .dark, to: .light)
-        }
-        switch self {
-        case .pen:
-            return PKInkingTool(.pen, color: farge(.white), width: 4)
-        case .marker:
-            return PKInkingTool(.marker,
-                                color: farge(UIColor(red: 0.98, green: 0.75, blue: 0.14, alpha: 1)),
-                                width: 18)
-        case .kartMarkor:
-            return PKInkingTool(.marker,
-                                color: farge(UIColor(red: 0.98, green: 0.45, blue: 0.20, alpha: 1)),
-                                width: 8)
-        case .laser:
-            return PKInkingTool(.pen,
-                                color: farge(UIColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1)),
-                                width: 5)
-        case .pil:
-            return PKInkingTool(.pen, color: farge(.white), width: 4)
-        case .planlegging:
-            return PKInkingTool(.pen,
-                                color: farge(UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1)),
-                                width: 2)
-        }
-    }
-}
-
-/// Undo-historikk: tidsstemplet snapshot av tegningen.
-struct CanvasSnapshot: Hashable {
-    let tid: Date
-    let data: Data
-    let strokAntall: Int
-}
-
-/// Objekt-laget (fase 8): bilder + lead-/KPI-/kart-/oppgave-kort som
-/// ligger UNDER blekket (tegn oppå = annoter). Lasso/objekt-modusen
-/// gjør dem flyttbare/skalerbare; ellers går all touch til Pencil.
-struct CanvasObjekt: Codable, Identifiable, Hashable {
-    var id: String = UUID().uuidString
-    var type: String        // bilde / lead / kpi / kart / oppgave
-    var x: Double
-    var y: Double
-    var skala: Double = 1.0
-    /// JPEG-base64 for bilde- og kart-objekter.
-    var bildeBase64: String? = nil
-    var tittel: String? = nil
-    var detalj: String? = nil
-    var refId: String? = nil
-}
-
-/// Levende tankekart/brainstorm-node (fase 7): boblene er OBJEKTER —
-/// «+» føder koblet barn, dra flytter (streken følger), tap redigerer
-/// teksten (Scribble: skriv i boblen med Pencil). Brainstorm = noder
-/// uten forelder (frittstående lapper).
-struct CanvasNode: Codable, Identifiable, Hashable {
-    var id: String = UUID().uuidString
-    var parentId: String? = nil
-    var tekst: String = ""
-    var x: Double
-    var y: Double
-    var fargeHex: String = "#B973FF"
-}
-
-/// Flyttbar OG skalerbar figur oppå flata (fase 6) — «Former» som ekte
-/// objekter: dra flytter, klyp skalerer, hold fjerner. Tegnes i SwiftUI
-/// (utenfor PencilKit) så fargene aldri inverteres i mørk modus.
-struct CanvasFigur: Codable, Identifiable, Hashable {
-    var id: String = UUID().uuidString
-    var form: String       // rektangel/sirkel/pil/linje
-    var x: Double
-    var y: Double
-    var skala: Double = 1.0
-    var fargeHex: String = "#FFFFFF"
-    /// Rotasjon i grader (to-finger-vri).
-    var rotasjon: Double = 0
-    /// Fra shape recognition: eksakt størrelse (ellers 200×160 × skala).
-    var bredde: Double? = nil
-    var hoyde: Double? = nil
-}
-
-/// Flyttbar tekstboks oppå flata (fase 5) — «Skriv»-modusen fra mocken.
-struct CanvasTekstboks: Codable, Identifiable, Hashable {
-    var id: String = UUID().uuidString
-    var tekst: String
-    var x: Double
-    var y: Double
-}
-
-/// Lokal notat-modell (speiler CanvasNotatDTO; drawing som rå PKDrawing-data).
-struct CanvasNotat: Identifiable, Hashable {
-    var id: String
-    var tittel: String
-    var kategori: CanvasKategori
-    var selskap: String?
-    var leadId: String?
-    var drawingData: Data
-    var oppdatert: Date
-    /// Opprettet lokalt, ikke lagret i backend enda.
-    var erNy: Bool = false
-    /// Fase 2 (deling): synlig for hele org-en. Andres delte notater er
-    /// read-only (backend-PUT er bruker-scopet uansett).
-    var delt: Bool = false
-    var erMin: Bool = true
-    var eierNavn: String? = nil
-    /// Fase 4: hvor notatet ble til + stempel-overlay.
-    var lat: Double? = nil
-    var lon: Double? = nil
-    var stempler: [CanvasStempel] = []
-    var tekstbokser: [CanvasTekstboks] = []
-    var figurer: [CanvasFigur] = []
-    var papir: CanvasPapir = .blank
-    var noder: [CanvasNode] = []
-    var sider: Int = 1
-    var objekter: [CanvasObjekt] = []
-    /// Universalsøk: OCR av blekk + PDF-tekst + bilde-OCR + tekster.
-    var sokbarTekst: String = ""
-}
-
 struct CanvasView: View {
     @Environment(AppState.self) private var appState
 
@@ -361,6 +85,15 @@ struct CanvasView: View {
     @AppStorage("canvas.kunPencil") private var kunPencil = false
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
+    // Mapper per kunde (Daniel 2026-08-05): mappe = selskapet notatet er
+    // koblet til — utledes automatisk, ingen manuell mappe-styring.
+    @State private var valgtMappe: String?
+    @State private var visPapirkurv = false
+    @State private var papirkurvNotater: [CanvasNotat] = []
+    // Verktøyraden jobber i moduser: Tegn / Sett inn / Ordne.
+    @State private var verktoyModus: VerktoyModus = .tegn
+    // Auto-tittel: OCR av øverste håndskrift-linje mens man skriver.
+    @State private var autoTittelTask: Task<Void, Never>?
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
@@ -565,39 +298,373 @@ struct CanvasView: View {
             .padding(.horizontal, 16).padding(.bottom, 10)
 
             // Kategori-filter
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    filterChip(nil, etikett: "Alle")
-                    ForEach(CanvasKategori.hovedTyper) { k in
-                        filterChip(k, etikett: k.etikett)
+            if !visPapirkurv {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        filterChip(nil, etikett: "Alle")
+                        ForEach(CanvasKategori.hovedTyper) { k in
+                            filterChip(k, etikett: k.etikett)
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
             }
-            .padding(.bottom, 10)
 
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(filtrerte) { n in
-                        notatRad(n)
-                    }
-                    if filtrerte.isEmpty && lastet {
-                        VStack(spacing: 8) {
-                            Image(systemName: "pencil.tip.crop.circle")
-                                .font(.appScaled(size: 28))
-                                .foregroundStyle(CvBrand.textTertiary)
-                            Text("Ingen notater enda — trykk «Nytt» og tegn i vei.")
+            if visPapirkurv {
+                papirkurvListe
+            } else if !sok.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Søk går alltid på tvers av alle mapper.
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(filtrerte) { n in
+                            notatRad(n)
+                        }
+                        if filtrerte.isEmpty && lastet {
+                            Text("Ingen treff.")
                                 .font(.appScaled(size: 12))
                                 .foregroundStyle(CvBrand.textSecondary)
-                                .multilineTextAlignment(.center)
+                                .padding(.top, 40)
                         }
-                        .padding(.top, 40).padding(.horizontal, 20)
                     }
+                    .padding(.horizontal, 12).padding(.bottom, 16)
                 }
-                .padding(.horizontal, 12).padding(.bottom, 16)
+            } else if let mappe = valgtMappe {
+                mappeInnhold(mappe)
+            } else {
+                mappeOversikt
             }
         }
         .background(CvBrand.bg)
+    }
+
+    // MARK: Canvas-oversikten — mapper per kunde + papirkurv
+
+    private struct KundeMappe: Identifiable {
+        let navn: String
+        let antall: Int
+        let harKundeminne: Bool
+        let siste: Date
+        var id: String { navn }
+    }
+
+    private var kategoriFiltrerte: [CanvasNotat] {
+        kategoriFilter.map { f in notater.filter { $0.kategori == f } } ?? notater
+    }
+
+    /// Mappene utledes av lead-koblingen: én mappe per selskap.
+    private var mapper: [KundeMappe] {
+        var grupper: [String: [CanvasNotat]] = [:]
+        for n in kategoriFiltrerte {
+            guard let navn = n.mappeNavn else { continue }
+            grupper[navn, default: []].append(n)
+        }
+        return grupper.map { navn, liste in
+            KundeMappe(navn: navn, antall: liste.count,
+                       harKundeminne: liste.contains { $0.erKundeminne },
+                       siste: liste.map(\.oppdatert).max() ?? .distantPast)
+        }
+        .sorted { $0.siste > $1.siste }
+    }
+
+    private var loseNotater: [CanvasNotat] {
+        kategoriFiltrerte.filter { $0.mappeNavn == nil }
+            .sorted { $0.oppdatert > $1.oppdatert }
+    }
+
+    /// Notatene i en mappe — kundeminnet ligger alltid festet øverst.
+    private func notaterIMappe(_ navn: String) -> [CanvasNotat] {
+        kategoriFiltrerte
+            .filter { $0.mappeNavn?.caseInsensitiveCompare(navn) == .orderedSame }
+            .sorted {
+                if $0.erKundeminne != $1.erKundeminne { return $0.erKundeminne }
+                return $0.oppdatert > $1.oppdatert
+            }
+    }
+
+    private var mappeOversikt: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                if !mapper.isEmpty {
+                    seksjonsTittel("Kunder", ikon: "folder.fill")
+                    ForEach(mapper) { m in mappeRad(m) }
+                }
+                if !loseNotater.isEmpty {
+                    seksjonsTittel("Uten kunde", ikon: "tray")
+                        .padding(.top, mapper.isEmpty ? 0 : 8)
+                    ForEach(loseNotater) { n in notatRad(n) }
+                }
+                if mapper.isEmpty && loseNotater.isEmpty && lastet {
+                    VStack(spacing: 8) {
+                        Image(systemName: "pencil.tip.crop.circle")
+                            .font(.appScaled(size: 28))
+                            .foregroundStyle(CvBrand.textTertiary)
+                        Text("Ingen notater enda — trykk «Nytt» og tegn i vei.")
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(CvBrand.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40).padding(.horizontal, 20)
+                }
+                papirkurvInngang
+                    .padding(.top, 12)
+            }
+            .padding(.horizontal, 12).padding(.bottom, 16)
+        }
+    }
+
+    private func seksjonsTittel(_ tekst: String, ikon: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: ikon)
+                .font(.appScaled(size: 10, weight: .bold))
+                .foregroundStyle(CvBrand.textTertiary)
+            Text(tekst.uppercased())
+                .font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(CvBrand.textTertiary)
+                .kerning(0.8)
+            Spacer()
+        }
+        .padding(.horizontal, 4).padding(.top, 2)
+    }
+
+    private func mappeRad(_ m: KundeMappe) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { valgtMappe = m.navn }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(CvBrand.purple.opacity(0.18))
+                    Image(systemName: "folder.fill")
+                        .font(.appScaled(size: 16, weight: .semibold))
+                        .foregroundStyle(CvBrand.purpleLight)
+                }
+                .frame(width: 46, height: 46)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(m.navn)
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text("\(m.antall) notat\(m.antall == 1 ? "" : "er")")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(CvBrand.textSecondary)
+                        if m.harKundeminne {
+                            Text("Kundeminne")
+                                .font(.appScaled(size: 9, weight: .bold))
+                                .foregroundStyle(CvBrand.green)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(CvBrand.green.opacity(0.15), in: Capsule())
+                        }
+                        Spacer(minLength: 4)
+                        Text(Self.kortDato(m.siste))
+                            .font(.appScaled(size: 9))
+                            .foregroundStyle(CvBrand.textTertiary)
+                    }
+                }
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(CvBrand.textTertiary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CvBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(CvBrand.stroke, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func mappeInnhold(_ navn: String) -> some View {
+        let liste = notaterIMappe(navn)
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                tilbakeRad(tittel: navn)
+                Button {
+                    nyttNotat(type: .lead)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.appScaled(size: 10, weight: .black))
+                        Text("Nytt i mappa")
+                            .font(.appScaled(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(CvBrand.purpleLight)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(CvBrand.purple.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10)
+                        .stroke(CvBrand.purple.opacity(0.4), lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                ForEach(liste) { n in
+                    if n.erKundeminne {
+                        kundeminneRad(n)
+                    } else {
+                        notatRad(n)
+                    }
+                }
+                if liste.isEmpty {
+                    Text("Ingen notater i denne mappa.")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 30)
+                }
+            }
+            .padding(.horizontal, 12).padding(.bottom, 16)
+        }
+    }
+
+    private func kundeminneRad(_ n: CanvasNotat) -> some View {
+        notatRad(n)
+            .overlay(alignment: .topTrailing) {
+                Text("KUNDEMINNE")
+                    .font(.appScaled(size: 8, weight: .black))
+                    .foregroundStyle(CvBrand.green)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(CvBrand.green.opacity(0.18), in: Capsule())
+                    .padding(6)
+            }
+    }
+
+    private func tilbakeRad(tittel: String) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                valgtMappe = nil
+                visPapirkurv = false
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .font(.appScaled(size: 11, weight: .black))
+                    .foregroundStyle(CvBrand.purpleLight)
+                Text(tittel)
+                    .font(.appScaled(size: 13, weight: .black))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+    }
+
+    private var papirkurvInngang: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { visPapirkurv = true }
+            Task { await lastPapirkurv() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                Text("Papirkurv")
+                    .font(.appScaled(size: 11, weight: .bold))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.appScaled(size: 10, weight: .bold))
+            }
+            .foregroundStyle(CvBrand.textSecondary)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(CvBrand.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var papirkurvListe: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                tilbakeRad(tittel: "Papirkurv")
+                Text("Slettede notater ligger her i 30 dager før de tømmes for godt.")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(CvBrand.textTertiary)
+                ForEach(papirkurvNotater) { n in papirkurvRad(n) }
+                if papirkurvNotater.isEmpty {
+                    Text("Papirkurven er tom.")
+                        .font(.appScaled(size: 12))
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 30)
+                }
+            }
+            .padding(.horizontal, 12).padding(.bottom, 16)
+        }
+    }
+
+    private func papirkurvRad(_ n: CanvasNotat) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Rectangle().fill(n.kategori.coverGradient)
+                Image(systemName: n.kategori.ikon)
+                    .font(.appScaled(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(0.6)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(n.tittel.isEmpty ? "Uten tittel" : n.tittel)
+                    .font(.appScaled(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if let slettet = n.slettetAt {
+                    Text("Slettet \(Self.kortDato(slettet))")
+                        .font(.appScaled(size: 9))
+                        .foregroundStyle(CvBrand.textTertiary)
+                }
+            }
+            Spacer(minLength: 6)
+            Button {
+                gjenopprettFraPapirkurv(n)
+            } label: {
+                Text("Gjenopprett")
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .foregroundStyle(CvBrand.green)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(CvBrand.green.opacity(0.15), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Button {
+                slettPermanent(n)
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .foregroundStyle(CvBrand.red)
+                    .frame(width: 24, height: 24)
+                    .background(CvBrand.red.opacity(0.15), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(CvBrand.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CvBrand.stroke, lineWidth: 1))
+    }
+
+    @MainActor
+    private func lastPapirkurv() async {
+        guard !isDemo, let api = appState.api else { return }
+        guard let dtoer = try? await api.hentCanvasNotater(papirkurv: true) else { return }
+        papirkurvNotater = dtoer.map { Self.fraDTO($0) }
+    }
+
+    private func gjenopprettFraPapirkurv(_ n: CanvasNotat) {
+        papirkurvNotater.removeAll { $0.id == n.id }
+        var tilbake = n
+        tilbake.slettetAt = nil
+        notater.insert(tilbake, at: 0)
+        guard !isDemo, let api = appState.api else { return }
+        Task { try? await api.gjenopprettCanvasNotat(id: n.id) }
+    }
+
+    private func slettPermanent(_ n: CanvasNotat) {
+        papirkurvNotater.removeAll { $0.id == n.id }
+        guard !isDemo, let api = appState.api else { return }
+        Task { try? await api.slettCanvasNotat(id: n.id, permanent: true) }
     }
 
     private func filterChip(_ k: CanvasKategori?, etikett: String) -> some View {
@@ -746,504 +813,23 @@ struct CanvasView: View {
             }
             // Topp: tittel + kategori + lead-kobling + lagre (ekstrahert).
             editorTopp
+                .onChange(of: drawing.strokes.count) {
+                    // Tittelen skriver seg selv: 1,2 s etter siste strøk
+                    // leses øverste linja med Vision — kun når feltet er tomt.
+                    guard valgtErMin,
+                          tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    autoTittelTask?.cancel()
+                    autoTittelTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        guard !Task.isCancelled else { return }
+                        await foreslaTittelFraBlekk()
+                    }
+                }
 
             Divider().overlay(CvBrand.stroke)
 
-            // Stempel-palett («Klistremerker» fra design-mocken).
-            if valgtErMin {
-                HStack(spacing: 8) {
-                    // Lasso/objekt-modus: flytt og skaler objektene under
-                    // blekket — av igjen for å tegne oppå (annotere).
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            objektModus.toggle()
-                            valgte.removeAll()
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "lasso")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text(objektModus ? "Flytter" : "Lasso")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(objektModus ? .white : CvBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(objektModus
-                                    ? CvBrand.orange.opacity(0.5) : CvBrand.cardHi,
-                                    in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Flytt/skaler bilder og kort — av for å tegne oppå")
-                    if objektModus && !valgte.isEmpty {
-                        Text("\(valgte.count) valgt")
-                            .font(.appScaled(size: 10, weight: .black))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(CvBrand.orange.opacity(0.5), in: Capsule())
-                        Button {
-                            slettValgte()
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.appScaled(size: 11, weight: .bold))
-                                .foregroundStyle(CvBrand.red)
-                                .frame(width: 26, height: 26)
-                                .background(CvBrand.red.opacity(0.15), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        if kan(.canvasBibliotek) {
-                        Button {
-                            elementNavn = ""
-                            lagrerElementNavn = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "square.and.arrow.down.on.square")
-                                    .font(.appScaled(size: 9, weight: .bold))
-                                Text("Lagre element")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                            }
-                            .foregroundStyle(CvBrand.green)
-                            .padding(.horizontal, 9).padding(.vertical, 5)
-                            .background(CvBrand.green.opacity(0.15), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        }
-                    }
-                    // Element-biblioteket: gjenbrukbare elementer.
-                    if !bibliotek.isEmpty && kan(.canvasBibliotek) {
-                        Menu {
-                            ForEach(bibliotek) { el in
-                                Menu(el.navn) {
-                                    Button {
-                                        settInnElement(el)
-                                    } label: {
-                                        Label("Sett inn", systemImage: "plus.square.on.square")
-                                    }
-                                    Button(role: .destructive) {
-                                        bibliotek.removeAll { $0.id == el.id }
-                                        BibliotekElement.lagreAlle(bibliotek)
-                                    } label: {
-                                        Label("Slett fra biblioteket", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "books.vertical.fill")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                                Text("Bibliotek")
-                                    .font(.appScaled(size: 11, weight: .bold))
-                            }
-                            .foregroundStyle(CvBrand.textSecondary)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(CvBrand.cardHi, in: Capsule())
-                        }
-                    }
-                    // «Sett inn»: bilder + levende kort fra resten av appen.
-                    Menu {
-                        if kan(.canvasBilder) {
-                            Button {
-                                bildeVelgerAapen = true
-                            } label: {
-                                Label("Bilde fra Bilder", systemImage: "photo")
-                            }
-                        }
-                        if kan(.canvasPdf) {
-                            Button {
-                                pdfVelgerAapen = true
-                            } label: {
-                                Label("PDF — tilbud/kontrakt/plantegning",
-                                      systemImage: "doc.fill")
-                            }
-                        }
-                        if kan(.canvasLiveKort) {
-                        Menu {
-                            ForEach(appState.leads.sorted {
-                                ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
-                            }.prefix(20), id: \.id) { lead in
-                                Button(lead.name) { settInnLeadKort(lead) }
-                            }
-                        } label: {
-                            Label("Lead-kort", systemImage: "person.crop.rectangle")
-                        }
-                        Menu {
-                            ForEach(appState.leads.sorted {
-                                ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
-                            }.prefix(20), id: \.id) { lead in
-                                Button(lead.name) { settInnStakeholderKart(lead) }
-                            }
-                        } label: {
-                            Label("Stakeholder-kart (Visual CRM)",
-                                  systemImage: "person.3.sequence.fill")
-                        }
-                        Menu {
-                            Button("Leads totalt") { settInnKPI(nokkel: "leads") }
-                            Button("Hot leads") { settInnKPI(nokkel: "hot") }
-                            Button("Pipeline-verdi") { settInnKPI(nokkel: "pipeline") }
-                        } label: {
-                            Label("KPI (live)", systemImage: "chart.bar.fill")
-                        }
-                        Button {
-                            objekter.append(CanvasObjekt(
-                                type: "kalender", x: 400, y: 260,
-                                tittel: "Neste møte", refId: "neste"))
-                            objektModus = true
-                        } label: {
-                            Label("Neste møte (live)", systemImage: "calendar")
-                        }
-                        Button {
-                            Task { await settInnKartUtsnitt() }
-                        } label: {
-                            Label("Kart-utsnitt", systemImage: "map")
-                        }
-                        Menu {
-                            ForEach(oppgaveKandidater, id: \.id) { o in
-                                Button(o.tittel) { settInnOppgave(o) }
-                            }
-                        } label: {
-                            Label("Oppgave", systemImage: "checklist")
-                        }
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus.square.on.square")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text("Sett inn")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(CvBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(CvBrand.cardHi, in: Capsule())
-                    }
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            visStempelPalett.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "seal.fill")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text("Stempler")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(visStempelPalett ? .white : CvBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(visStempelPalett
-                                    ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
-                                    in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    if visStempelPalett {
-                        ForEach(canvasStempelPalett, id: \.self) { tegn in
-                            Button {
-                                stempler.append(CanvasStempel(
-                                    tegn: tegn, x: 220 + Double(stempler.count % 5) * 56,
-                                    y: 160 + Double(stempler.count / 5) * 56))
-                            } label: {
-                                Text(tegn).font(.system(size: 22))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Text("Dra for å flytte · hold for å fjerne")
-                            .font(.appScaled(size: 9))
-                            .foregroundStyle(CvBrand.textTertiary)
-                    }
-                    // «Former» fra mocken: legges inn som ekte penn-strøk
-                    // (kan viskes/lassoes som alt annet).
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            visFormPalett.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.on.circle")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text("Former")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(visFormPalett ? .white : CvBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(visFormPalett
-                                    ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
-                                    in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    if visFormPalett {
-                        ForEach(CanvasForm.allCases, id: \.self) { form in
-                            Button {
-                                figurer.append(CanvasFigur(
-                                    form: form.nokkel,
-                                    x: 340 + Double(figurer.count % 4) * 40,
-                                    y: 260 + Double(figurer.count / 4) * 40,
-                                    fargeHex: formFarge.somHex))
-                            } label: {
-                                Image(systemName: form.ikon)
-                                    .font(.appScaled(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color(formFarge))
-                                    .frame(width: 30, height: 30)
-                                    .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Text("Dra · klyp for størrelse · hold for å fjerne")
-                            .font(.appScaled(size: 9))
-                            .foregroundStyle(CvBrand.textTertiary)
-                        // Fargevalg for formene
-                        ForEach(Array(CanvasForm.fargePalett.enumerated()), id: \.offset) { _, f in
-                            Button {
-                                formFarge = f
-                            } label: {
-                                Circle()
-                                    .fill(Color(f))
-                                    .frame(width: 20, height: 20)
-                                    .overlay(Circle().stroke(
-                                        formFarge == f ? Color.white : CvBrand.stroke,
-                                        lineWidth: formFarge == f ? 2 : 1))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    // «Skriv»: flyttbar tekstboks.
-                    Button {
-                        let ny = CanvasTekstboks(
-                            tekst: "", x: 340, y: 180 + Double(tekstbokser.count % 6) * 44)
-                        tekstbokser.append(ny)
-                        redigererTekstboks = ny
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "textformat")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text("Tekst")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(CvBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(CvBrand.cardHi, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    // Penn-galleriet: seks penner — laser og pil er moduser.
-                    Menu {
-                        ForEach(PennValg.allCases) { valg in
-                            Button {
-                                pennValg = valg
-                            } label: {
-                                Label(valg.etikett
-                                      + (valg == .laser ? " (toner bort)" : "")
-                                      + (valg == .pil ? " (strøk → pil)" : ""),
-                                      systemImage: valg.ikon)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: pennValg.ikon)
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text(pennValg.etikett)
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(pennValg == .pen
-                                         ? CvBrand.textSecondary : CvBrand.purpleLight)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(pennValg == .pen
-                                    ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
-                                    in: Capsule())
-                    }
-                    // Spatial Search: søk «Pris» → flata flyr dit.
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            visEditorSok.toggle()
-                            if !visEditorSok { sokTreff = []; editorSok = "" }
-                        }
-                    } label: {
-                        Image(systemName: "magnifyingglass.circle\(visEditorSok ? ".fill" : "")")
-                            .font(.appScaled(size: 13, weight: .bold))
-                            .foregroundStyle(visEditorSok ? CvBrand.purpleLight : CvBrand.textSecondary)
-                            .frame(width: 28, height: 26)
-                            .background(CvBrand.cardHi, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    // Smart Layers: slå lag av og på.
-                    Menu {
-                        ForEach(CanvasLag.allCases) { lag in
-                            Button {
-                                if skjulteLag.contains(lag.rawValue) {
-                                    skjulteLag.remove(lag.rawValue)
-                                } else {
-                                    skjulteLag.insert(lag.rawValue)
-                                }
-                            } label: {
-                                Label(lag.etikett,
-                                      systemImage: skjulteLag.contains(lag.rawValue)
-                                          ? "eye.slash" : "eye")
-                            }
-                        }
-                        if !skjulteLag.isEmpty {
-                            Divider()
-                            Button("Vis alle lag") { skjulteLag.removeAll() }
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.3.layers.3d")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text(skjulteLag.isEmpty ? "Lag" : "Lag (\(skjulteLag.count) av)")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(skjulteLag.isEmpty
-                                         ? CvBrand.textSecondary : CvBrand.orange)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(skjulteLag.isEmpty
-                                    ? CvBrand.cardHi : CvBrand.orange.opacity(0.2),
-                                    in: Capsule())
-                    }
-                    // RBAC: org/leder styrer teamets Canvas-funksjoner.
-                    if erLederRolle && !isDemo {
-                        Menu {
-                            Section("Selgernes Canvas") {
-                                ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
-                                    Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "selger"))
-                                }
-                            }
-                            if erAdminRolle {
-                                Section("Salgsledernes Canvas") {
-                                    ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
-                                        Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "leder"))
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "person.badge.key.fill")
-                                .font(.appScaled(size: 11, weight: .bold))
-                                .foregroundStyle(CvBrand.textSecondary)
-                                .frame(width: 28, height: 26)
-                                .background(CvBrand.cardHi, in: Capsule())
-                        }
-                    }
-                    // Time Travel: se hvordan idéene utviklet seg over dager.
-                    if valgtId != nil, !isDemo, kan(.canvasTidsreise) {
-                        Button {
-                            visTidsreise = true
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "clock.arrow.2.circlepath")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                                Text("Tidsreise")
-                                    .font(.appScaled(size: 11, weight: .bold))
-                            }
-                            .foregroundStyle(CvBrand.textSecondary)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(CvBrand.cardHi, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    // Undo-HISTORIKK: hopp til et hvilket som helst punkt.
-                    if let id = valgtId, let liste = historikk[id], liste.count > 1 {
-                        Menu {
-                            ForEach(Array(liste.reversed().enumerated()), id: \.offset) { i, snap in
-                                Button {
-                                    gjenopprett(snap)
-                                } label: {
-                                    Label("\(Self.klokkeslett(snap.tid)) · \(snap.strokAntall) strøk"
-                                          + (i == 0 ? " (nå)" : ""),
-                                          systemImage: i == 0 ? "checkmark.circle" : "arrow.uturn.backward.circle")
-                                }
-                                .disabled(i == 0)
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                                Text("Historikk")
-                                    .font(.appScaled(size: 11, weight: .bold))
-                            }
-                            .foregroundStyle(CvBrand.textSecondary)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(CvBrand.cardHi, in: Capsule())
-                        }
-                    }
-                    // Pencil-first: håndflata hviler trygt når kun Pencil tegner.
-                    Button {
-                        kunPencil.toggle()
-                    } label: {
-                        Image(systemName: kunPencil ? "applepencil.tip" : "hand.draw")
-                            .font(.appScaled(size: 11, weight: .bold))
-                            .foregroundStyle(kunPencil ? CvBrand.purpleLight : CvBrand.textSecondary)
-                            .frame(width: 28, height: 26)
-                            .background(kunPencil
-                                        ? CvBrand.purple.opacity(0.25) : CvBrand.cardHi,
-                                        in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help(kunPencil ? "Kun Pencil tegner" : "Finger og Pencil tegner")
-                    // Levende tankekart/brainstorm: noder som bygges videre på.
-                    if papir == .tankekart || papir == .brainstorm {
-                        Button {
-                            let ny = CanvasNode(
-                                parentId: nil,
-                                tekst: "",
-                                x: 360 + Double(noder.count % 4) * 60,
-                                y: 240 + Double(noder.count / 4) * 60)
-                            noder.append(ny)
-                            redigererNode = ny
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "plus.bubble")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                                Text("Node")
-                                    .font(.appScaled(size: 11, weight: .bold))
-                            }
-                            .foregroundStyle(CvBrand.purpleLight)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(CvBrand.purple.opacity(0.25), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    // Flersidig flate: gått tom for plass? Utvid nedover.
-                    Button {
-                        sider = min(20, sider + 1)
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus.rectangle.on.rectangle")
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text("Side")
-                                .font(.appScaled(size: 11, weight: .bold))
-                            if sider > 1 {
-                                Text("\(sider)")
-                                    .font(.appScaled(size: 10, weight: .black))
-                                    .foregroundStyle(CvBrand.purpleLight)
-                            }
-                        }
-                        .foregroundStyle(CvBrand.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(CvBrand.cardHi, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Mer plass — malen gjentas på neste side")
-                    // Papir-maler (Daniels liste): SWOT/Kanban/Pipeline/…
-                    Menu {
-                        ForEach(CanvasPapir.allCases) { pv in
-                            Button {
-                                papir = pv
-                            } label: {
-                                Label(pv.etikett, systemImage: pv.ikon)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: papir.ikon)
-                                .font(.appScaled(size: 10, weight: .bold))
-                            Text(papir == .blank ? "Papir" : papir.etikett)
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        .foregroundStyle(papir == .blank
-                                         ? CvBrand.textSecondary : CvBrand.purpleLight)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(papir == .blank
-                                    ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
-                                    in: Capsule())
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(CvBrand.card.opacity(0.6))
-            }
+            // Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯.
+            if valgtErMin { verktoyRad }
 
             if visEditorSok {
                 HStack(spacing: 8) {
@@ -1332,7 +918,7 @@ struct CanvasView: View {
                 if !noder.isEmpty && !skjulteLag.contains(CanvasLag.noder.rawValue) {
                     NodeKoblinger(noder: noder)
                 }
-                PencilCanvas(drawing: $drawing,
+                LeadgridPencilCanvas(drawing: $drawing,
                              redigerbar: valgtErMin && !objektModus,
                              kunPencil: kunPencil,
                              onFormGjenkjent: { figur in
@@ -1537,6 +1123,491 @@ struct CanvasView: View {
     }
 
     /// Lead-kobling: chip når koblet, meny for å velge/fjerne.
+    // MARK: Verktøyraden — moduser (Tegn / Sett inn / Ordne + ⋯)
+
+    private var verktoyRad: some View {
+        HStack(spacing: 8) {
+            modusVelger
+            Divider().frame(height: 20).overlay(CvBrand.stroke)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    switch verktoyModus {
+                    case .tegn: tegnVerktoy
+                    case .settInn: settInnVerktoy
+                    case .ordne: ordneVerktoy
+                    }
+                }
+            }
+            sokKnapp
+            mereMeny
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(CvBrand.card.opacity(0.6))
+    }
+
+    private var modusVelger: some View {
+        HStack(spacing: 3) {
+            ForEach(VerktoyModus.allCases) { m in
+                Button {
+                    byttModus(m)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: m.ikon)
+                            .font(.appScaled(size: 10, weight: .bold))
+                        Text(m.etikett)
+                            .font(.appScaled(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(verktoyModus == m ? .white : CvBrand.textSecondary)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(verktoyModus == m ? CvBrand.purple.opacity(0.5) : .clear,
+                                in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(CvBrand.cardHi, in: Capsule())
+    }
+
+    private func byttModus(_ m: VerktoyModus) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            verktoyModus = m
+            // Ordne = lasso-modusen: objektene under blekket blir flyttbare.
+            objektModus = (m == .ordne)
+            if m != .ordne { valgte.removeAll() }
+        }
+    }
+
+    /// Tegn: penn-galleriet, papir-malen og tankekart-noder.
+    @ViewBuilder private var tegnVerktoy: some View {
+        Menu {
+            ForEach(PennValg.allCases) { valg in
+                Button {
+                    pennValg = valg
+                } label: {
+                    Label(valg.etikett
+                          + (valg == .laser ? " (toner bort)" : "")
+                          + (valg == .pil ? " (strøk → pil)" : ""),
+                          systemImage: valg.ikon)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: pennValg.ikon)
+                    .font(.appScaled(size: 10, weight: .bold))
+                Text(pennValg.etikett)
+                    .font(.appScaled(size: 11, weight: .bold))
+            }
+            .foregroundStyle(pennValg == .pen
+                             ? CvBrand.textSecondary : CvBrand.purpleLight)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(pennValg == .pen
+                        ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
+                        in: Capsule())
+        }
+        Menu {
+            ForEach(CanvasPapir.allCases) { pv in
+                Button {
+                    papir = pv
+                } label: {
+                    Label(pv.etikett, systemImage: pv.ikon)
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: papir.ikon)
+                    .font(.appScaled(size: 10, weight: .bold))
+                Text(papir == .blank ? "Papir" : papir.etikett)
+                    .font(.appScaled(size: 11, weight: .bold))
+            }
+            .foregroundStyle(papir == .blank
+                             ? CvBrand.textSecondary : CvBrand.purpleLight)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(papir == .blank
+                        ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
+                        in: Capsule())
+        }
+        // Levende tankekart/brainstorm: noder som bygges videre på.
+        if papir == .tankekart || papir == .brainstorm {
+            Button {
+                let ny = CanvasNode(
+                    parentId: nil,
+                    tekst: "",
+                    x: 360 + Double(noder.count % 4) * 60,
+                    y: 240 + Double(noder.count / 4) * 60)
+                noder.append(ny)
+                redigererNode = ny
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus.bubble")
+                        .font(.appScaled(size: 10, weight: .bold))
+                    Text("Node")
+                        .font(.appScaled(size: 11, weight: .bold))
+                }
+                .foregroundStyle(CvBrand.purpleLight)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(CvBrand.purple.opacity(0.25), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Sett inn: objekter, stempler, former, tekst og biblioteket.
+    @ViewBuilder private var settInnVerktoy: some View {
+        Menu {
+            if kan(.canvasBilder) {
+                Button {
+                    bildeVelgerAapen = true
+                } label: {
+                    Label("Bilde fra Bilder", systemImage: "photo")
+                }
+            }
+            if kan(.canvasPdf) {
+                Button {
+                    pdfVelgerAapen = true
+                } label: {
+                    Label("PDF — tilbud/kontrakt/plantegning",
+                          systemImage: "doc.fill")
+                }
+            }
+            if kan(.canvasLiveKort) {
+            Menu {
+                ForEach(appState.leads.sorted {
+                    ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
+                }.prefix(20), id: \.id) { lead in
+                    Button(lead.name) { settInnLeadKort(lead) }
+                }
+            } label: {
+                Label("Lead-kort", systemImage: "person.crop.rectangle")
+            }
+            Menu {
+                ForEach(appState.leads.sorted {
+                    ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
+                }.prefix(20), id: \.id) { lead in
+                    Button(lead.name) { settInnStakeholderKart(lead) }
+                }
+            } label: {
+                Label("Stakeholder-kart (Visual CRM)",
+                      systemImage: "person.3.sequence.fill")
+            }
+            Menu {
+                Button("Leads totalt") { settInnKPI(nokkel: "leads") }
+                Button("Hot leads") { settInnKPI(nokkel: "hot") }
+                Button("Pipeline-verdi") { settInnKPI(nokkel: "pipeline") }
+            } label: {
+                Label("KPI (live)", systemImage: "chart.bar.fill")
+            }
+            Button {
+                objekter.append(CanvasObjekt(
+                    type: "kalender", x: 400, y: 260,
+                    tittel: "Neste møte", refId: "neste"))
+                objektModus = true
+            } label: {
+                Label("Neste møte (live)", systemImage: "calendar")
+            }
+            Button {
+                Task { await settInnKartUtsnitt() }
+            } label: {
+                Label("Kart-utsnitt", systemImage: "map")
+            }
+            Menu {
+                ForEach(oppgaveKandidater, id: \.id) { o in
+                    Button(o.tittel) { settInnOppgave(o) }
+                }
+            } label: {
+                Label("Oppgave", systemImage: "checklist")
+            }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "plus.square.on.square")
+                    .font(.appScaled(size: 10, weight: .bold))
+                Text("Objekt")
+                    .font(.appScaled(size: 11, weight: .bold))
+            }
+            .foregroundStyle(CvBrand.textSecondary)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(CvBrand.cardHi, in: Capsule())
+        }
+        // «Skriv»: flyttbar tekstboks.
+        Button {
+            let ny = CanvasTekstboks(
+                tekst: "", x: 340, y: 180 + Double(tekstbokser.count % 6) * 44)
+            tekstbokser.append(ny)
+            redigererTekstboks = ny
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "textformat")
+                    .font(.appScaled(size: 10, weight: .bold))
+                Text("Tekst")
+                    .font(.appScaled(size: 11, weight: .bold))
+            }
+            .foregroundStyle(CvBrand.textSecondary)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(CvBrand.cardHi, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                visStempelPalett.toggle()
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "seal.fill")
+                    .font(.appScaled(size: 10, weight: .bold))
+                Text("Stempler")
+                    .font(.appScaled(size: 11, weight: .bold))
+            }
+            .foregroundStyle(visStempelPalett ? .white : CvBrand.textSecondary)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(visStempelPalett
+                        ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
+                        in: Capsule())
+        }
+        .buttonStyle(.plain)
+        if visStempelPalett {
+            ForEach(canvasStempelPalett, id: \.self) { tegn in
+                Button {
+                    stempler.append(CanvasStempel(
+                        tegn: tegn, x: 220 + Double(stempler.count % 5) * 56,
+                        y: 160 + Double(stempler.count / 5) * 56))
+                } label: {
+                    Text(tegn).font(.system(size: 22))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        // Formene legges inn som objekter: dra/klyp/vri, hold for å fjerne.
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                visFormPalett.toggle()
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.on.circle")
+                    .font(.appScaled(size: 10, weight: .bold))
+                Text("Former")
+                    .font(.appScaled(size: 11, weight: .bold))
+            }
+            .foregroundStyle(visFormPalett ? .white : CvBrand.textSecondary)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(visFormPalett
+                        ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
+                        in: Capsule())
+        }
+        .buttonStyle(.plain)
+        if visFormPalett {
+            ForEach(CanvasForm.allCases, id: \.self) { form in
+                Button {
+                    figurer.append(CanvasFigur(
+                        form: form.nokkel,
+                        x: 340 + Double(figurer.count % 4) * 40,
+                        y: 260 + Double(figurer.count / 4) * 40,
+                        fargeHex: formFarge.somHex))
+                } label: {
+                    Image(systemName: form.ikon)
+                        .font(.appScaled(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(formFarge))
+                        .frame(width: 30, height: 30)
+                        .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+            }
+            ForEach(Array(CanvasForm.fargePalett.enumerated()), id: \.offset) { _, f in
+                Button {
+                    formFarge = f
+                } label: {
+                    Circle()
+                        .fill(Color(f))
+                        .frame(width: 20, height: 20)
+                        .overlay(Circle().stroke(
+                            formFarge == f ? Color.white : CvBrand.stroke,
+                            lineWidth: formFarge == f ? 2 : 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        // Element-biblioteket: gjenbrukbare elementer.
+        if !bibliotek.isEmpty && kan(.canvasBibliotek) {
+            Menu {
+                ForEach(bibliotek) { el in
+                    Menu(el.navn) {
+                        Button {
+                            settInnElement(el)
+                        } label: {
+                            Label("Sett inn", systemImage: "plus.square.on.square")
+                        }
+                        Button(role: .destructive) {
+                            bibliotek.removeAll { $0.id == el.id }
+                            BibliotekElement.lagreAlle(bibliotek)
+                        } label: {
+                            Label("Slett fra biblioteket", systemImage: "trash")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "books.vertical.fill")
+                        .font(.appScaled(size: 10, weight: .bold))
+                    Text("Bibliotek")
+                        .font(.appScaled(size: 11, weight: .bold))
+                }
+                .foregroundStyle(CvBrand.textSecondary)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(CvBrand.cardHi, in: Capsule())
+            }
+        }
+    }
+
+    /// Ordne: lasso-modusen — velg, flytt, slett og lagre elementer.
+    @ViewBuilder private var ordneVerktoy: some View {
+        if valgte.isEmpty {
+            Text("Trykk på objekter for å velge — dra for å flytte")
+                .font(.appScaled(size: 10))
+                .foregroundStyle(CvBrand.textTertiary)
+        } else {
+            Text("\(valgte.count) valgt")
+                .font(.appScaled(size: 10, weight: .black))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(CvBrand.orange.opacity(0.5), in: Capsule())
+            Button {
+                slettValgte()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(CvBrand.red)
+                    .frame(width: 26, height: 26)
+                    .background(CvBrand.red.opacity(0.15), in: Circle())
+            }
+            .buttonStyle(.plain)
+            if kan(.canvasBibliotek) {
+                Button {
+                    elementNavn = ""
+                    lagrerElementNavn = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.down.on.square")
+                            .font(.appScaled(size: 9, weight: .bold))
+                        Text("Lagre element")
+                            .font(.appScaled(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(CvBrand.green)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(CvBrand.green.opacity(0.15), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Spatial Search: søk «Pris» → flata flyr dit.
+    private var sokKnapp: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                visEditorSok.toggle()
+                if !visEditorSok { sokTreff = []; editorSok = "" }
+            }
+        } label: {
+            Image(systemName: "magnifyingglass.circle\(visEditorSok ? ".fill" : "")")
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(visEditorSok ? CvBrand.purpleLight : CvBrand.textSecondary)
+                .frame(width: 28, height: 26)
+                .background(CvBrand.cardHi, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// ⋯-menyen: alt som ikke hører hjemme i en modus.
+    private var mereMeny: some View {
+        Menu {
+            if valgtId != nil, !isDemo, kan(.canvasTidsreise) {
+                Button {
+                    visTidsreise = true
+                } label: {
+                    Label("Tidsreise", systemImage: "clock.arrow.2.circlepath")
+                }
+            }
+            if let id = valgtId, let liste = historikk[id], liste.count > 1 {
+                Menu {
+                    ForEach(Array(liste.reversed().enumerated()), id: \.offset) { i, snap in
+                        Button {
+                            gjenopprett(snap)
+                        } label: {
+                            Label("\(Self.klokkeslett(snap.tid)) · \(snap.strokAntall) strøk"
+                                  + (i == 0 ? " (nå)" : ""),
+                                  systemImage: i == 0 ? "checkmark.circle" : "arrow.uturn.backward.circle")
+                        }
+                        .disabled(i == 0)
+                    }
+                } label: {
+                    Label("Historikk", systemImage: "clock.arrow.circlepath")
+                }
+            }
+            // Smart Layers: slå lag av og på.
+            Menu {
+                ForEach(CanvasLag.allCases) { lag in
+                    Button {
+                        if skjulteLag.contains(lag.rawValue) {
+                            skjulteLag.remove(lag.rawValue)
+                        } else {
+                            skjulteLag.insert(lag.rawValue)
+                        }
+                    } label: {
+                        Label(lag.etikett,
+                              systemImage: skjulteLag.contains(lag.rawValue)
+                                  ? "eye.slash" : "eye")
+                    }
+                }
+                if !skjulteLag.isEmpty {
+                    Divider()
+                    Button("Vis alle lag") { skjulteLag.removeAll() }
+                }
+            } label: {
+                Label(skjulteLag.isEmpty ? "Lag" : "Lag (\(skjulteLag.count) av)",
+                      systemImage: "square.3.layers.3d")
+            }
+            // RBAC: org/leder styrer teamets Canvas-funksjoner.
+            if erLederRolle && !isDemo {
+                Menu {
+                    Section("Selgernes Canvas") {
+                        ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
+                            Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "selger"))
+                        }
+                    }
+                    if erAdminRolle {
+                        Section("Salgsledernes Canvas") {
+                            ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
+                                Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "leder"))
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Tilgang", systemImage: "person.badge.key.fill")
+                }
+            }
+            Divider()
+            Button {
+                sider = min(20, sider + 1)
+            } label: {
+                Label(sider > 1 ? "Ny side (nå \(sider))" : "Ny side",
+                      systemImage: "plus.rectangle.on.rectangle")
+            }
+            Button {
+                kunPencil.toggle()
+            } label: {
+                Label(kunPencil ? "Kun Pencil tegner ✓" : "Kun Pencil tegner",
+                      systemImage: kunPencil ? "applepencil.tip" : "hand.draw")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(CvBrand.textSecondary)
+                .frame(width: 28, height: 26)
+                .background(CvBrand.cardHi, in: Capsule())
+        }
+    }
+
     private var leadKobling: some View {
         Menu {
             if kobletLeadId != nil || kobletSelskap != nil {
@@ -1594,7 +1665,7 @@ struct CanvasView: View {
         // Lagre det som står i editoren først (best effort, uten å vente).
         if valgtId != nil { Task { await lagre(stille: true) } }
         let pos = KartLocationManager.shared.currentCoordinate
-        let n = CanvasNotat(
+        var n = CanvasNotat(
             id: UUID().uuidString.lowercased(),
             tittel: "",
             kategori: type,
@@ -1604,6 +1675,11 @@ struct CanvasView: View {
             erNy: true,
             lat: pos?.latitude, lon: pos?.longitude,
             papir: CanvasPapir.standardFor(type))
+        // Ny fra mappe-visningen → pre-koblet til kunden.
+        if !visPapirkurv, let mappe = valgtMappe {
+            n.selskap = mappe
+            n.leadId = notaterIMappe(mappe).compactMap(\.leadId).first
+        }
         notater.insert(n, at: 0)
         velg(n)
     }
@@ -1631,6 +1707,7 @@ struct CanvasView: View {
         sider = max(1, n.sider)
         objekter = n.objekter
         objektModus = false
+        verktoyModus = .tegn
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -1741,37 +1818,76 @@ struct CanvasView: View {
         }
         guard let api = appState.api else { return }
         guard let dtoer = try? await api.hentCanvasNotater() else { return }
-        notater = dtoer.compactMap { dto in
-            CanvasNotat(
-                id: dto.id,
-                tittel: dto.tittel,
-                kategori: CanvasKategori(rawValue: dto.kategori) ?? .mote,
-                selskap: dto.selskap,
-                leadId: dto.leadId,
-                drawingData: Data(base64Encoded: dto.drawingBase64 ?? "") ?? Data(),
-                oppdatert: ISO8601DateFormatter().date(from: dto.oppdatert ?? "") ?? Date(),
-                delt: dto.delt ?? false,
-                erMin: dto.erMin ?? true,
-                eierNavn: dto.eierNavn,
-                lat: dto.lat, lon: dto.lon,
-                stempler: (dto.stempler?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [],
-                tekstbokser: (dto.tekstbokser?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [],
-                figurer: (dto.figurer?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasFigur].self, from: $0) } ?? [],
-                papir: CanvasPapir(rawValue: dto.papir ?? "blank") ?? .blank,
-                noder: (dto.noder?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasNode].self, from: $0) } ?? [],
-                sider: max(1, dto.sider ?? 1),
-                objekter: (dto.objekter?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [],
-                sokbarTekst: dto.sokbarTekst ?? "")
-        }
+        notater = dtoer.map { Self.fraDTO($0) }
         genererThumbs()
         if let api = appState.api {
             oppgaverCache = (try? await api.hentMoteOppgaver()) ?? []
             if let p = try? await api.hentCanvasRollePolicy() { rollePolicy = p }
+        }
+    }
+
+    /// Backend-datoer kommer fra toISOString() og har millisekunder —
+    /// plain ISO8601DateFormatter avviser dem, så prøv begge variantene.
+    private static func isoDato(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        let medBrok = ISO8601DateFormatter()
+        medBrok.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return medBrok.date(from: s) ?? ISO8601DateFormatter().date(from: s)
+    }
+
+    private static func fraDTO(_ dto: CanvasNotatDTO) -> CanvasNotat {
+        CanvasNotat(
+            id: dto.id,
+            tittel: dto.tittel,
+            kategori: CanvasKategori(rawValue: dto.kategori) ?? .mote,
+            selskap: dto.selskap,
+            leadId: dto.leadId,
+            drawingData: Data(base64Encoded: dto.drawingBase64 ?? "") ?? Data(),
+            oppdatert: Self.isoDato(dto.oppdatert) ?? Date(),
+            delt: dto.delt ?? false,
+            erMin: dto.erMin ?? true,
+            eierNavn: dto.eierNavn,
+            lat: dto.lat, lon: dto.lon,
+            stempler: (dto.stempler?.data(using: .utf8))
+                .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [],
+            tekstbokser: (dto.tekstbokser?.data(using: .utf8))
+                .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [],
+            figurer: (dto.figurer?.data(using: .utf8))
+                .flatMap { try? JSONDecoder().decode([CanvasFigur].self, from: $0) } ?? [],
+            papir: CanvasPapir(rawValue: dto.papir ?? "blank") ?? .blank,
+            noder: (dto.noder?.data(using: .utf8))
+                .flatMap { try? JSONDecoder().decode([CanvasNode].self, from: $0) } ?? [],
+            sider: max(1, dto.sider ?? 1),
+            objekter: (dto.objekter?.data(using: .utf8))
+                .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [],
+            sokbarTekst: dto.sokbarTekst ?? "",
+            slettetAt: Self.isoDato(dto.slettetAt))
+    }
+
+    /// Auto-tittel: øverste gjenkjente håndskrift-linje blir tittelen.
+    @MainActor
+    private func foreslaTittelFraBlekk() async {
+        guard tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let kopi = drawing
+        guard !kopi.strokes.isEmpty, !kopi.bounds.isEmpty else { return }
+        // Mørk modus: strøkene er lagret i lys-referanse — render på hvitt.
+        let bilde = kopi.image(from: kopi.bounds, scale: 2)
+        let kandidat: String? = await Task.detached(priority: .utility) { () -> String? in
+            guard let cg = bilde.cgImage else { return nil }
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["nb-NO", "en-US"]
+            let handler = VNImageRequestHandler(cgImage: cg)
+            try? handler.perform([request])
+            // Vision har origo nede til venstre → størst midY = øverste linja.
+            let topp = request.results?.max { $0.boundingBox.midY < $1.boundingBox.midY }
+            return topp?.topCandidates(1).first?.string
+        }.value
+        guard let ren = kandidat?.trimmingCharacters(in: .whitespacesAndNewlines),
+              ren.count >= 3 else { return }
+        // Ikke overskriv noe brukeren har rukket å skrive selv.
+        if tittel.trimmingCharacters(in: .whitespaces).isEmpty {
+            tittel = String(ren.prefix(60))
         }
     }
 
@@ -2745,1567 +2861,3 @@ struct CanvasView: View {
 
 /// PKCanvasView + PKToolPicker i SwiftUI. Tegningen bindes ut ved hver
 /// endring (delegat) — «Lagre» serialiserer via dataRepresentation().
-private struct PencilCanvas: UIViewRepresentable {
-    @Binding var drawing: PKDrawing
-    var redigerbar: Bool = true
-    var kunPencil: Bool = false
-    /// Shape recognition: hold pennen stille på slutten av strøket →
-    /// strøket byttes ut med perfekt form (Apple Notes-oppførselen).
-    var onFormGjenkjent: ((CanvasFigur) -> Void)? = nil
-    /// Penn-galleriet: preset/modus fra velgeren.
-    var pennValg: PennValg = .pen
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
-        canvas.drawing = drawing
-        canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
-        // Gjennomsiktig — papir-malen (SWOT/Kanban/…) ligger i laget bak.
-        canvas.backgroundColor = .clear
-        canvas.isOpaque = false
-        canvas.overrideUserInterfaceStyle = .dark
-        canvas.alwaysBounceVertical = false
-        canvas.delegate = context.coordinator
-        // Verktøylinja (penn/marker/viskelær/farger) — systemets egen.
-        let picker = PKToolPicker()
-        context.coordinator.toolPicker = picker
-        picker.setVisible(true, forFirstResponder: canvas)
-        picker.addObserver(canvas)
-        // Apple Pencil: dobbelt-tap bytter penn↔viskelær, squeeze (Pencil
-        // Pro) viser/skjuler verktøylinja. Pressure/tilt/prediction/lav
-        // latency er native i PencilKit — dette er «papirfølelsen»-pluss.
-        let pencil = UIPencilInteraction()
-        pencil.delegate = context.coordinator
-        canvas.addInteraction(pencil)
-        context.coordinator.canvas = canvas
-        DispatchQueue.main.async { canvas.becomeFirstResponder() }
-        return canvas
-    }
-
-    func updateUIView(_ canvas: PKCanvasView, context: Context) {
-        // Ekstern endring (notat-bytte) → oppdater uten delegat-løkke.
-        if canvas.drawing != drawing && !context.coordinator.tegner {
-            canvas.drawing = drawing
-        }
-        canvas.isUserInteractionEnabled = redigerbar
-        canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
-        // Penn-galleriet: bytt verktøy når valget endres (ikke ellers —
-        // brukeren kan justere fritt i toolpickeren etterpå).
-        if context.coordinator.anvendtPenn != pennValg {
-            context.coordinator.anvendtPenn = pennValg
-            context.coordinator.toolPicker?.selectedTool = pennValg.verktoy
-            if pennValg == .laser {
-                context.coordinator.laserStartAntall = canvas.drawing.strokes.count
-            }
-        }
-        context.coordinator.parent = self
-    }
-
-    final class Coordinator: NSObject, PKCanvasViewDelegate,
-                             UIPencilInteractionDelegate {
-        var parent: PencilCanvas
-        var toolPicker: PKToolPicker?
-        weak var canvas: PKCanvasView?
-        var tegner = false
-        /// Verktøyet før dobbelt-tap byttet til viskelær.
-        private var forrigeVerktoy: PKTool?
-
-        init(_ parent: PencilCanvas) { self.parent = parent }
-
-        /// Dobbelt-tap på Pencil: penn ↔ viskelær (systeminnstillingen
-        /// «bytt til forrige verktøy» respekteres implisitt — vi husker).
-        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
-            guard let picker = toolPicker else { return }
-            if picker.selectedTool is PKEraserTool, let forrige = forrigeVerktoy {
-                picker.selectedTool = forrige
-                forrigeVerktoy = nil
-            } else {
-                forrigeVerktoy = picker.selectedTool
-                picker.selectedTool = PKEraserTool(.vector)
-            }
-        }
-
-        /// Pencil Pro squeeze: vis/skjul verktøylinja (mer flate å tegne på).
-        @available(iOS 17.5, *)
-        func pencilInteraction(_ interaction: UIPencilInteraction,
-                               didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
-            guard squeeze.phase == .ended,
-                  let picker = toolPicker, let canvas else { return }
-            picker.setVisible(!picker.isVisible, forFirstResponder: canvas)
-            canvas.becomeFirstResponder()
-        }
-
-        func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) { tegner = true }
-        func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) { tegner = false }
-        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            // Penn-moduser: laser toner bort, pil-pennen snapper hvert strøk.
-            if canvasView.drawing.strokes.count > forrigeAntallStrok,
-               let siste = canvasView.drawing.strokes.last {
-                if anvendtPenn == .laser {
-                    forrigeAntallStrok = canvasView.drawing.strokes.count
-                    parent.drawing = canvasView.drawing
-                    planleggLaserFjerning(canvasView)
-                    return
-                }
-                if anvendtPenn == .pil, let onForm = parent.onFormGjenkjent {
-                    let punkter = siste.path.map(\.location)
-                    if let a = punkter.first, let b = punkter.last,
-                       hypot(b.x - a.x, b.y - a.y) > 40 {
-                        let farge = PKInkingTool.convertColor(
-                            siste.ink.color, from: .light, to: .dark).somHex
-                        let vinkel = atan2(b.y - a.y, b.x - a.x) * 180 / .pi
-                        var uten = canvasView.drawing
-                        uten.strokes.removeLast()
-                        canvasView.drawing = uten
-                        parent.drawing = uten
-                        forrigeAntallStrok = uten.strokes.count
-                        onForm(CanvasFigur(
-                            form: "pil",
-                            x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
-                            fargeHex: farge, rotasjon: Double(vinkel),
-                            bredde: hypot(b.x - a.x, b.y - a.y) / 0.9,
-                            hoyde: hypot(b.x - a.x, b.y - a.y) * 0.35))
-                        return
-                    }
-                }
-            }
-            // Form-snap: sjekk siste strøk for «hold på slutten» + kjent form.
-            if let onForm = parent.onFormGjenkjent,
-               canvasView.drawing.strokes.count > forrigeAntallStrok,
-               let siste = canvasView.drawing.strokes.last,
-               let figur = FormGjenkjenner.gjenkjenn(siste) {
-                var uten = canvasView.drawing
-                uten.strokes.removeLast()
-                canvasView.drawing = uten
-                parent.drawing = uten
-                forrigeAntallStrok = uten.strokes.count
-                onForm(figur)
-                return
-            }
-            forrigeAntallStrok = canvasView.drawing.strokes.count
-            parent.drawing = canvasView.drawing
-        }
-        var forrigeAntallStrok = 0
-        var anvendtPenn: PennValg?
-        var laserStartAntall = 0
-
-        /// Laser: strøket toner bort etter 1,2 s (FIFO fra laser-start).
-        private func planleggLaserFjerning(_ canvasView: PKCanvasView) {
-            let posisjon = laserStartAntall
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self, weak canvasView] in
-                guard let self, let canvasView,
-                      canvasView.drawing.strokes.count > posisjon else { return }
-                var uten = canvasView.drawing
-                uten.strokes.remove(at: posisjon)
-                canvasView.drawing = uten
-                self.parent.drawing = uten
-                self.forrigeAntallStrok = uten.strokes.count
-            }
-        }
-    }
-}
-
-// MARK: - CanvasAnalyseSheet (fase 3: håndskrift → tekst → AI)
-
-/// To steg: (1) Vision-OCR på tegningen → redigerbar tekst, (2) Claude
-/// strukturerer → oppsummering + oppgaver + løfter. Backend lagrer
-/// oppgavene i oppgavelista og notatet i møteloggen (brief-sløyfa).
-struct CanvasAnalyseSheet: View {
-    let drawing: PKDrawing
-    let selskap: String
-    let leadId: String?
-    /// Spatial Memory: hvor objekter/noder/tekster ligger på flata.
-    var romligTillegg: String = ""
-    /// Spatial Sales Memory: fest analysen i kundens minne-lerret.
-    var onFestIMinne: ((CanvasAnalyseDTO) -> Void)? = nil
-
-    @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var ocrTekst = ""
-    @State private var ocrKjort = false
-    @State private var analyserer = false
-    @State private var resultat: CanvasAnalyseDTO?
-    @State private var feil: String?
-    /// true = analysert on-device m/ Apple Intelligence (gratis/privat).
-    @State private var onDeviceKilde = false
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                CvBrand.bg.ignoresSafeArea()
-                if let resultat {
-                    resultatVisning(resultat)
-                } else {
-                    tekstVisning
-                }
-            }
-            .navigationTitle(resultat == nil ? "Håndskrift → tekst" : "Analyse")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Lukk") { dismiss() }
-                        .tint(CvBrand.textSecondary)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .task { await kjorOCR() }
-    }
-
-    // Steg 1: gjenkjent tekst (redigerbar før AI-en får den)
-
-    private var tekstVisning: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if !ocrKjort {
-                    HStack(spacing: 10) {
-                        ProgressView().tint(CvBrand.purpleLight)
-                        Text("Leser håndskriften …")
-                            .font(.appScaled(size: 13, weight: .semibold))
-                            .foregroundStyle(CvBrand.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 30)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("GJENKJENT TEKST")
-                            .font(.appScaled(size: 10, weight: .black))
-                            .foregroundStyle(CvBrand.textSecondary)
-                            .tracking(0.7)
-                        TextEditor(text: $ocrTekst)
-                            .font(.appScaled(size: 13))
-                            .foregroundStyle(.white)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 180)
-                            .padding(8)
-                            .background(CvBrand.cardHi.opacity(0.6),
-                                        in: RoundedRectangle(cornerRadius: 9))
-                        Text("Rett gjerne OCR-feil før analysen — AI-en tolker velvillig, men dikter aldri.")
-                            .font(.appScaled(size: 10))
-                            .foregroundStyle(CvBrand.textTertiary)
-                    }
-                    .padding(14)
-                    .background(CvBrand.card, in: RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14)
-                        .stroke(CvBrand.stroke, lineWidth: 1))
-
-                    if let feil {
-                        Text(feil)
-                            .font(.appScaled(size: 11, weight: .semibold))
-                            .foregroundStyle(CvBrand.orange)
-                    }
-
-                    Button { Task { await analyser() } } label: {
-                        HStack(spacing: 7) {
-                            if analyserer {
-                                ProgressView().controlSize(.small).tint(.white)
-                            } else {
-                                Image(systemName: "sparkles")
-                                    .font(.appScaled(size: 13, weight: .bold))
-                            }
-                            Text(analyserer ? "Analyserer …" : "Analyser med AI")
-                                .font(.appScaled(size: 14, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(
-                            LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
-                                           startPoint: .leading, endPoint: .trailing),
-                            in: RoundedRectangle(cornerRadius: 12))
-                        .opacity(kanAnalysere ? 1 : 0.4)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!kanAnalysere || analyserer)
-
-                    Text("Oppgavene lander i «Oppgaver fra møtene» på Oversikt, og notatet huskes til neste møtebrief for \(selskap).")
-                        .font(.appScaled(size: 10))
-                        .foregroundStyle(CvBrand.textTertiary)
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    private var kanAnalysere: Bool {
-        ocrTekst.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10
-            || DemoModeManager.isActiveNonisolated
-    }
-
-    // Steg 2: strukturert resultat
-
-    private func resultatVisning(_ r: CanvasAnalyseDTO) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                seksjon("Oppsummering", ikon: "doc.text.fill", tint: CvBrand.blue) {
-                    Text(r.oppsummering)
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let oppgaver = r.oppgaver, !oppgaver.isEmpty {
-                    seksjon("Oppgaver", ikon: "checklist", tint: CvBrand.green) {
-                        ForEach(oppgaver, id: \.self) { o in
-                            HStack(spacing: 7) {
-                                Image(systemName: "circle")
-                                    .font(.appScaled(size: 10))
-                                    .foregroundStyle(CvBrand.green)
-                                Text(o.tittel)
-                                    .font(.appScaled(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                Spacer()
-                                if let f = o.frist, !f.isEmpty {
-                                    Text(f)
-                                        .font(.appScaled(size: 10, weight: .bold))
-                                        .foregroundStyle(CvBrand.green)
-                                        .padding(.horizontal, 7).padding(.vertical, 3)
-                                        .background(CvBrand.green.opacity(0.15), in: Capsule())
-                                }
-                            }
-                        }
-                        Text("Lagret i oppgavelista — huk av under «Oppgaver fra møtene» på Oversikt.")
-                            .font(.appScaled(size: 10))
-                            .foregroundStyle(CvBrand.textTertiary)
-                    }
-                }
-                if let lofter = r.lofter, !lofter.isEmpty {
-                    seksjon("Det vi lovte", ikon: "hand.raised.fill", tint: CvBrand.yellow) {
-                        ForEach(lofter, id: \.self) { l in
-                            HStack(alignment: .top, spacing: 7) {
-                                Image(systemName: "checkmark.seal")
-                                    .font(.appScaled(size: 11))
-                                    .foregroundStyle(CvBrand.yellow)
-                                Text(l)
-                                    .font(.appScaled(size: 12))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                    }
-                }
-                HStack(spacing: 5) {
-                    Image(systemName: onDeviceKilde ? "iphone" : "cloud")
-                        .font(.appScaled(size: 9, weight: .bold))
-                    Text(onDeviceKilde
-                         ? "Analysert på enheten — Apple Intelligence (privat, uten kostnad)"
-                         : "Analysert i skyen")
-                        .font(.appScaled(size: 10))
-                }
-                .foregroundStyle(CvBrand.textTertiary)
-                Text("Notatet er logget — neste møtebrief for \(selskap) åpner med dette.")
-                    .font(.appScaled(size: 10))
-                    .foregroundStyle(CvBrand.textTertiary)
-                if let fest = onFestIMinne {
-                    Button {
-                        fest(r)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "brain.head.profile")
-                                .font(.appScaled(size: 12, weight: .bold))
-                            Text("Fest i kundeminnet")
-                                .font(.appScaled(size: 13, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12)
-                            .stroke(CvBrand.purpleLight.opacity(0.5), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button { dismiss() } label: {
-                    Text("Ferdig")
-                        .font(.appScaled(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
-                                           startPoint: .leading, endPoint: .trailing),
-                            in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(16)
-        }
-    }
-
-    private func seksjon(_ tittel: String, ikon: String, tint: Color,
-                         @ViewBuilder inner: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 6) {
-                Image(systemName: ikon)
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(tint)
-                Text(tittel.uppercased())
-                    .font(.appScaled(size: 10, weight: .black))
-                    .foregroundStyle(CvBrand.textSecondary)
-                    .tracking(0.7)
-            }
-            inner()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(CvBrand.card, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CvBrand.stroke, lineWidth: 1))
-    }
-
-    // MARK: OCR + AI
-
-    /// PKDrawing → bilde (2×) → Vision-håndskriftgjenkjenning (nb + en).
-    @MainActor
-    private func kjorOCR() async {
-        defer { ocrKjort = true }
-        guard !drawing.bounds.isEmpty else {
-            ocrTekst = ""
-            return
-        }
-        let bilde = drawing.image(from: drawing.bounds, scale: 2.0)
-        guard let cg = bilde.cgImage else { return }
-        let tekst: String = await withCheckedContinuation { cont in
-            let request = VNRecognizeTextRequest { req, _ in
-                let obs = req.results as? [VNRecognizedTextObservation] ?? []
-                // Spatial Memory: håndskriftens PLASSERING følger med —
-                // Vision-boks (0-1, origo nede-venstre) → ni soner.
-                let linjer = obs.compactMap { o -> String? in
-                    guard let tekst = o.topCandidates(1).first?.string else { return nil }
-                    let midtX = o.boundingBox.midX
-                    let midtY = 1 - o.boundingBox.midY
-                    let rad = midtY < 0.34 ? "øvre" : (midtY < 0.67 ? "midtre" : "nedre")
-                    let kol = midtX < 0.34 ? "venstre" : (midtX < 0.67 ? "midt" : "høyre")
-                    return "\(tekst) [\(rad) \(kol)]"
-                }
-                cont.resume(returning: linjer.joined(separator: "\n"))
-            }
-            request.recognitionLevel = .accurate
-            request.recognitionLanguages = ["nb-NO", "en-US"]
-            request.usesLanguageCorrection = true
-            DispatchQueue.global(qos: .userInitiated).async {
-                let handler = VNImageRequestHandler(cgImage: cg, options: [:])
-                do { try handler.perform([request]) }
-                catch { cont.resume(returning: "") }
-            }
-        }
-        ocrTekst = tekst
-        if tekst.isEmpty {
-            feil = "Fant ingen tekst i tegningen — skriv/rediger teksten under manuelt, eller tegn tydeligere bokstaver."
-        }
-    }
-
-    @MainActor
-    private func analyser() async {
-        feil = nil
-        // Apple Intelligence: prøv on-device Foundation Models først
-        // (iOS 26+, norsk-gate) — gratis, privat, offline. Backend
-        // persisterer resultatet (oppgaver + møtelogg) uten AI-kost.
-        if !DemoModeManager.isActiveNonisolated {
-            analyserer = true
-            let fullTekst = romligTillegg.isEmpty
-                ? ocrTekst
-                : ocrTekst + "\n\nOBJEKTER PÅ FLATA (plassering): " + romligTillegg
-            if let lokal = await CanvasIntelligence.analyserOnDevice(
-                tekst: fullTekst, selskap: selskap) {
-                analyserer = false
-                onDeviceKilde = true
-                resultat = lokal
-                if let api = appState.api {
-                    Task { try? await api.persisterCanvasAnalyse(
-                        selskap: selskap.isEmpty ? nil : selskap,
-                        leadId: leadId, resultat: lokal) }
-                }
-                return
-            }
-            analyserer = false
-        }
-        if DemoModeManager.isActiveNonisolated {
-            resultat = CanvasAnalyseDTO(
-                oppsummering: "Godt møte hos \(selskap): interesse for løsning og bedre oversikt over ruter. Neste steg er å sende forslag til opplegg og avtale demo.",
-                oppgaver: [
-                    CanvasAnalyseOppgaveDTO(tittel: "Send tilbud", frist: "torsdag"),
-                    CanvasAnalyseOppgaveDTO(tittel: "Avtal demo", frist: "neste uke"),
-                    CanvasAnalyseOppgaveDTO(tittel: "Oppfølging", frist: "om 1 uke"),
-                ],
-                lofter: ["Sende forslag til opplegg"])
-            return
-        }
-        guard let api = appState.api else {
-            feil = "Krever innlogget modus."
-            return
-        }
-        analyserer = true
-        defer { analyserer = false }
-        do {
-            let full = romligTillegg.isEmpty
-                ? ocrTekst
-                : ocrTekst + "\n\nOBJEKTER PÅ FLATA (plassering): " + romligTillegg
-            resultat = try await api.analyserCanvasNotat(
-                selskap: selskap.isEmpty ? nil : selskap,
-                tekst: full, leadId: leadId)
-        } catch {
-            feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert (Canvas-analysen bruker samme AI-nøkkel)."
-        }
-    }
-}
-
-
-// MARK: - StempelView (fase 4: klistremerke oppå flata)
-
-/// Dra for å flytte, hold for å fjerne. Posisjon i canvas-punkter.
-private struct StempelView: View {
-    let stempel: CanvasStempel
-    let redigerbar: Bool
-    let onFlytt: (CanvasStempel) -> Void
-    let onSlett: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-
-    var body: some View {
-        Text(stempel.tegn)
-            .font(.system(size: 34))
-            .shadow(color: .black.opacity(0.5), radius: 3)
-            .position(x: stempel.x + dragOffset.width,
-                      y: stempel.y + dragOffset.height)
-            .gesture(redigerbar ? DragGesture()
-                .onChanged { dragOffset = $0.translation }
-                .onEnded { v in
-                    var ny = stempel
-                    ny.x += v.translation.width
-                    ny.y += v.translation.height
-                    dragOffset = .zero
-                    onFlytt(ny)
-                } : nil)
-            .onLongPressGesture(minimumDuration: 0.5) {
-                if redigerbar { onSlett() }
-            }
-    }
-}
-
-
-// MARK: - CanvasForm (fase 5: «Former» som ekte penn-strøk)
-
-/// Formene legges inn som PKStroke — de kan viskes, lassoes og flyttes
-/// med PencilKits egne verktøy, akkurat som håndtegnede strøk.
-enum CanvasForm: CaseIterable {
-    case rektangel, sirkel, pil, linje
-
-    var ikon: String {
-        switch self {
-        case .rektangel: return "rectangle"
-        case .sirkel: return "circle"
-        case .pil: return "arrow.right"
-        case .linje: return "minus"
-        }
-    }
-
-    /// Farger for formene — konverteres m/ PKInkingTool.convertColor slik
-    /// at de IKKE inverteres av PencilKits mørk-modus-rendring (Daniels
-    /// funn: hvite former ble mørke).
-    static let fargePalett: [UIColor] = [
-        .white,
-        UIColor(red: 0.75, green: 0.45, blue: 1.0, alpha: 1),
-        UIColor(red: 0.20, green: 0.85, blue: 0.60, alpha: 1),
-        UIColor(red: 0.98, green: 0.75, blue: 0.14, alpha: 1),
-        UIColor(red: 0.98, green: 0.45, blue: 0.30, alpha: 1),
-        UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1),
-    ]
-
-    var nokkel: String {
-        switch self {
-        case .rektangel: return "rektangel"
-        case .sirkel: return "sirkel"
-        case .pil: return "pil"
-        case .linje: return "linje"
-        }
-    }
-
-    static func fra(_ nokkel: String) -> CanvasForm? {
-        allCases.first { $0.nokkel == nokkel }
-    }
-
-    /// CGPath-er for kompositt-rendring (deling/PDF) — speiler FigurView.
-    func banePath(senter: CGPoint, skala: Double) -> [CGPath] {
-        let s = skala
-        switch self {
-        case .rektangel:
-            return [CGPath(rect: CGRect(x: senter.x - 90 * s, y: senter.y - 60 * s,
-                                        width: 180 * s, height: 120 * s), transform: nil)]
-        case .sirkel:
-            return [CGPath(ellipseIn: CGRect(x: senter.x - 75 * s, y: senter.y - 75 * s,
-                                             width: 150 * s, height: 150 * s), transform: nil)]
-        case .pil:
-            let p1 = CGMutablePath()
-            p1.move(to: CGPoint(x: senter.x - 90 * s, y: senter.y))
-            p1.addLine(to: CGPoint(x: senter.x + 90 * s, y: senter.y))
-            p1.move(to: CGPoint(x: senter.x + 55 * s, y: senter.y - 28 * s))
-            p1.addLine(to: CGPoint(x: senter.x + 90 * s, y: senter.y))
-            p1.addLine(to: CGPoint(x: senter.x + 55 * s, y: senter.y + 28 * s))
-            return [p1]
-        case .linje:
-            let p = CGMutablePath()
-            p.move(to: CGPoint(x: senter.x - 100 * s, y: senter.y))
-            p.addLine(to: CGPoint(x: senter.x + 100 * s, y: senter.y))
-            return [p]
-        }
-    }
-}
-
-// MARK: - TekstboksView (fase 5: flyttbar tekst)
-
-private struct TekstboksView: View {
-    let boks: CanvasTekstboks
-    let redigerbar: Bool
-    let onFlytt: (CanvasTekstboks) -> Void
-    let onRediger: () -> Void
-    let onSlett: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-
-    var body: some View {
-        Text(boks.tekst.isEmpty ? "Tekst …" : boks.tekst)
-            .font(.appScaled(size: 17, weight: .bold))
-            .foregroundStyle(boks.tekst.isEmpty ? CvBrand.textTertiary : .white)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(CvBrand.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8)
-                .stroke(CvBrand.purple.opacity(0.35), lineWidth: 1))
-            .position(x: boks.x + dragOffset.width,
-                      y: boks.y + dragOffset.height)
-            .onTapGesture { if redigerbar { onRediger() } }
-            .gesture(redigerbar ? DragGesture()
-                .onChanged { dragOffset = $0.translation }
-                .onEnded { v in
-                    var ny = boks
-                    ny.x += v.translation.width
-                    ny.y += v.translation.height
-                    dragOffset = .zero
-                    onFlytt(ny)
-                } : nil)
-            .onLongPressGesture(minimumDuration: 0.5) {
-                if redigerbar { onSlett() }
-            }
-    }
-}
-
-
-// MARK: - CanvasTypeVelger (fase 6: strukturen — velg cover)
-
-/// «Nytt notat» åpner denne: seks covers (Møte/Lead/Befaring/Salgsplan/
-/// Prosjekt/Rute) — strukturen styrer kategorien fra første strøk.
-struct CanvasTypeVelger: View {
-    let onVelg: (CanvasKategori) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    private let kolonner = [GridItem(.flexible()), GridItem(.flexible()),
-                            GridItem(.flexible())]
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                CvBrand.bg.ignoresSafeArea()
-                ScrollView {
-                    LazyVGrid(columns: kolonner, spacing: 12) {
-                        ForEach(CanvasKategori.hovedTyper) { type in
-                            Button { onVelg(type) } label: {
-                                VStack(spacing: 10) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .fill(type.coverGradient)
-                                        Image(systemName: type.ikon)
-                                            .font(.appScaled(size: 28, weight: .semibold))
-                                            .foregroundStyle(.white.opacity(0.95))
-                                    }
-                                    .frame(height: 96)
-                                    .overlay(RoundedRectangle(cornerRadius: 14)
-                                        .stroke(type.farge.opacity(0.5), lineWidth: 1))
-                                    Text(type.etikett)
-                                        .font(.appScaled(size: 13, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(16)
-                }
-            }
-            .navigationTitle("Nytt Canvas")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Avbryt") { dismiss() }
-                        .tint(CvBrand.textSecondary)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-}
-
-
-// MARK: - FigurView (fase 6: flyttbar + skalerbar form)
-
-/// Dra flytter, klyp skalerer (0.3–4×), hold fjerner.
-private struct FigurView: View {
-    let figur: CanvasFigur
-    let redigerbar: Bool
-    let onEndre: (CanvasFigur) -> Void
-    let onSlett: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-    @State private var pinchSkala: CGFloat = 1.0
-    @State private var vriVinkel: Angle = .zero
-
-    var body: some View {
-        let form = CanvasForm.fra(figur.form) ?? .rektangel
-        let visSkala = figur.skala * pinchSkala
-        FigurShape(form: form)
-            .stroke(Color(UIColor(hex: figur.fargeHex)),
-                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-            .frame(width: (figur.bredde ?? 200) * visSkala,
-                   height: (figur.hoyde ?? 160) * visSkala)
-            .contentShape(Rectangle())
-            .rotationEffect(.degrees(figur.rotasjon) + vriVinkel)
-            .position(x: figur.x + dragOffset.width,
-                      y: figur.y + dragOffset.height)
-            .gesture(redigerbar ? DragGesture()
-                .onChanged { dragOffset = $0.translation }
-                .onEnded { v in
-                    var ny = figur
-                    ny.x += v.translation.width
-                    ny.y += v.translation.height
-                    dragOffset = .zero
-                    onEndre(ny)
-                } : nil)
-            .simultaneousGesture(redigerbar ? MagnificationGesture()
-                .onChanged { pinchSkala = $0 }
-                .onEnded { v in
-                    var ny = figur
-                    ny.skala = min(4.0, max(0.3, ny.skala * v))
-                    pinchSkala = 1.0
-                    onEndre(ny)
-                } : nil)
-            .simultaneousGesture(redigerbar ? RotationGesture()
-                .onChanged { vriVinkel = $0 }
-                .onEnded { v in
-                    var ny = figur
-                    ny.rotasjon += v.degrees
-                    vriVinkel = .zero
-                    onEndre(ny)
-                } : nil)
-            .onLongPressGesture(minimumDuration: 0.6) {
-                if redigerbar { onSlett() }
-            }
-    }
-}
-
-/// SwiftUI-Shape som speiler CanvasForm.banePath — normalisert til ramma.
-private struct FigurShape: Shape {
-    let form: CanvasForm
-
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let midY = rect.midY
-        switch form {
-        case .rektangel:
-            p.addRect(rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.12))
-        case .sirkel:
-            let side = min(rect.width, rect.height) * 0.9
-            p.addEllipse(in: CGRect(x: rect.midX - side / 2,
-                                    y: rect.midY - side / 2,
-                                    width: side, height: side))
-        case .pil:
-            p.move(to: CGPoint(x: rect.minX + rect.width * 0.05, y: midY))
-            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.05, y: midY))
-            p.move(to: CGPoint(x: rect.maxX - rect.width * 0.24, y: midY - rect.height * 0.17))
-            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.05, y: midY))
-            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.24, y: midY + rect.height * 0.17))
-        case .linje:
-            p.move(to: CGPoint(x: rect.minX, y: midY))
-            p.addLine(to: CGPoint(x: rect.maxX, y: midY))
-        }
-        return p
-    }
-}
-
-// MARK: - UIColor ↔ hex (figur-farger)
-
-extension UIColor {
-    var somHex: String {
-        var r: CGFloat = 1, g: CGFloat = 1, b: CGFloat = 1, a: CGFloat = 1
-        getRed(&r, green: &g, blue: &b, alpha: &a)
-        return String(format: "#%02X%02X%02X",
-                      Int(r * 255), Int(g * 255), Int(b * 255))
-    }
-}
-
-// MARK: - CanvasPapir (papir-maler — Daniels liste 2026-08-05)
-
-/// Malen tegnes UNDER PencilKit-flata: strukturen (SWOT-rutenett, Kanban-
-/// kolonner, møteseksjoner …) ligger fast mens blekket lever oppå. Én
-/// delt spec driver både skjerm (SwiftUI Canvas) og eksport (CGContext).
-enum CanvasPapir: String, CaseIterable, Identifiable {
-    case blank
-    case brainstorm
-    case mote
-    case salgsstrategi
-    case rute
-    case tankekart
-    case swot
-    case kanban
-    case pipeline
-    case territorium
-
-    var id: String { rawValue }
-
-    var etikett: String {
-        switch self {
-        case .blank: return "Blank"
-        case .brainstorm: return "Brainstorm"
-        case .mote: return "Møte"
-        case .salgsstrategi: return "Salgsstrategi"
-        case .rute: return "Rute"
-        case .tankekart: return "Tankekart"
-        case .swot: return "SWOT"
-        case .kanban: return "Kanban"
-        case .pipeline: return "Pipeline"
-        case .territorium: return "Territorium"
-        }
-    }
-
-    var ikon: String {
-        switch self {
-        case .blank: return "square"
-        case .brainstorm: return "bubbles.and.sparkles"
-        case .mote: return "list.bullet.rectangle"
-        case .salgsstrategi: return "chart.line.uptrend.xyaxis"
-        case .rute: return "point.topleft.down.curvedto.point.bottomright.up.fill"
-        case .tankekart: return "brain.head.profile"
-        case .swot: return "square.grid.2x2"
-        case .kanban: return "rectangle.split.3x1"
-        case .pipeline: return "arrow.right.square"
-        case .territorium: return "map"
-        }
-    }
-
-    /// Fornuftig default per notattype.
-    static func standardFor(_ type: CanvasKategori) -> CanvasPapir {
-        switch type {
-        case .mote: return .mote
-        case .rute: return .rute
-        case .salgsplan: return .salgsstrategi
-        case .prosjekt: return .kanban
-        default: return .blank
-        }
-    }
-
-    /// Spec: linjer + ellipser + etiketter i 0–1-normaliserte koordinater.
-    struct Spec {
-        var linjer: [(CGPoint, CGPoint)] = []
-        var ellipser: [CGRect] = []
-        var etiketter: [(String, CGPoint)] = []
-        var rutenett: CGFloat = 0   // >0 = rutenett med denne avstanden (pt)
-        var prikker: Bool = false
-    }
-
-    var spec: Spec {
-        switch self {
-        case .blank:
-            return Spec()
-        case .brainstorm:
-            return Spec(
-                ellipser: [CGRect(x: 0.36, y: 0.30, width: 0.28, height: 0.13)],
-                etiketter: [("IDÉ", CGPoint(x: 0.475, y: 0.355))],
-                prikker: true)
-        case .mote:
-            return Spec(
-                linjer: [(CGPoint(x: 0.03, y: 0.30), CGPoint(x: 0.97, y: 0.30)),
-                         (CGPoint(x: 0.03, y: 0.74), CGPoint(x: 0.97, y: 0.74))],
-                etiketter: [("AGENDA", CGPoint(x: 0.04, y: 0.045)),
-                            ("NOTATER", CGPoint(x: 0.04, y: 0.315)),
-                            ("NESTE STEG", CGPoint(x: 0.04, y: 0.755))])
-        case .salgsstrategi:
-            return Spec(
-                linjer: [(CGPoint(x: 0.03, y: 0.26), CGPoint(x: 0.97, y: 0.26)),
-                         (CGPoint(x: 0.03, y: 0.50), CGPoint(x: 0.97, y: 0.50)),
-                         (CGPoint(x: 0.03, y: 0.74), CGPoint(x: 0.97, y: 0.74))],
-                etiketter: [("MÅL", CGPoint(x: 0.04, y: 0.045)),
-                            ("TILTAK", CGPoint(x: 0.04, y: 0.275)),
-                            ("ANSVARLIG", CGPoint(x: 0.04, y: 0.515)),
-                            ("FRIST", CGPoint(x: 0.04, y: 0.755))])
-        case .rute:
-            var s = Spec()
-            for i in 0..<8 {
-                let y = 0.09 + Double(i) * 0.115
-                s.ellipser.append(CGRect(x: 0.025, y: y - 0.022, width: 0.032, height: 0.044))
-                s.etiketter.append(("\(i + 1)", CGPoint(x: 0.036, y: y - 0.011)))
-                s.linjer.append((CGPoint(x: 0.08, y: y), CGPoint(x: 0.97, y: y)))
-            }
-            return s
-        case .tankekart:
-            return Spec(
-                linjer: [(CGPoint(x: 0.42, y: 0.42), CGPoint(x: 0.18, y: 0.18)),
-                         (CGPoint(x: 0.58, y: 0.42), CGPoint(x: 0.82, y: 0.18)),
-                         (CGPoint(x: 0.42, y: 0.55), CGPoint(x: 0.18, y: 0.78)),
-                         (CGPoint(x: 0.58, y: 0.55), CGPoint(x: 0.82, y: 0.78))],
-                ellipser: [CGRect(x: 0.37, y: 0.41, width: 0.26, height: 0.15),
-                           CGRect(x: 0.07, y: 0.10, width: 0.20, height: 0.11),
-                           CGRect(x: 0.73, y: 0.10, width: 0.20, height: 0.11),
-                           CGRect(x: 0.07, y: 0.76, width: 0.20, height: 0.11),
-                           CGRect(x: 0.73, y: 0.76, width: 0.20, height: 0.11)],
-                etiketter: [("TEMA", CGPoint(x: 0.47, y: 0.475))])
-        case .swot:
-            return Spec(
-                linjer: [(CGPoint(x: 0.50, y: 0.02), CGPoint(x: 0.50, y: 0.98)),
-                         (CGPoint(x: 0.02, y: 0.50), CGPoint(x: 0.98, y: 0.50))],
-                etiketter: [("STYRKER", CGPoint(x: 0.04, y: 0.04)),
-                            ("SVAKHETER", CGPoint(x: 0.54, y: 0.04)),
-                            ("MULIGHETER", CGPoint(x: 0.04, y: 0.53)),
-                            ("TRUSLER", CGPoint(x: 0.54, y: 0.53))])
-        case .kanban:
-            return Spec(
-                linjer: [(CGPoint(x: 1.0 / 3, y: 0.02), CGPoint(x: 1.0 / 3, y: 0.98)),
-                         (CGPoint(x: 2.0 / 3, y: 0.02), CGPoint(x: 2.0 / 3, y: 0.98))],
-                etiketter: [("Å GJØRE", CGPoint(x: 0.11, y: 0.04)),
-                            ("I GANG", CGPoint(x: 0.45, y: 0.04)),
-                            ("FERDIG", CGPoint(x: 0.78, y: 0.04))])
-        case .pipeline:
-            var s = Spec()
-            let navn = ["NY", "KONTAKTET", "MØTE", "TILBUD", "VUNNET"]
-            for i in 1..<5 {
-                let x = Double(i) / 5
-                s.linjer.append((CGPoint(x: x, y: 0.02), CGPoint(x: x, y: 0.98)))
-            }
-            for (i, n) in navn.enumerated() {
-                s.etiketter.append((n, CGPoint(x: Double(i) / 5 + 0.055, y: 0.04)))
-            }
-            return s
-        case .territorium:
-            var s = Spec(rutenett: 44)
-            s.etiketter.append(("N ↑", CGPoint(x: 0.93, y: 0.03)))
-            return s
-        }
-    }
-
-    /// Eksport: tegn malen inn i CGContext (samme spec som skjermen).
-    func tegn(i ctx: CGContext, storrelse: CGSize) {
-        let sp = spec
-        let strek = UIColor.white.withAlphaComponent(0.10)
-        ctx.setStrokeColor(strek.cgColor)
-        ctx.setLineWidth(2)
-        for (a, b) in sp.linjer {
-            ctx.move(to: CGPoint(x: a.x * storrelse.width, y: a.y * storrelse.height))
-            ctx.addLine(to: CGPoint(x: b.x * storrelse.width, y: b.y * storrelse.height))
-            ctx.strokePath()
-        }
-        for e in sp.ellipser {
-            ctx.strokeEllipse(in: CGRect(x: e.minX * storrelse.width,
-                                         y: e.minY * storrelse.height,
-                                         width: e.width * storrelse.width,
-                                         height: e.height * storrelse.height))
-        }
-        if sp.rutenett > 0 {
-            let steg = sp.rutenett * 2
-            var x: CGFloat = 0
-            while x < storrelse.width {
-                ctx.move(to: CGPoint(x: x, y: 0))
-                ctx.addLine(to: CGPoint(x: x, y: storrelse.height))
-                x += steg
-            }
-            var y: CGFloat = 0
-            while y < storrelse.height {
-                ctx.move(to: CGPoint(x: 0, y: y))
-                ctx.addLine(to: CGPoint(x: storrelse.width, y: y))
-                y += steg
-            }
-            ctx.strokePath()
-        }
-        for (tekst, punkt) in sp.etiketter {
-            (tekst as NSString).draw(
-                at: CGPoint(x: punkt.x * storrelse.width,
-                            y: punkt.y * storrelse.height),
-                withAttributes: [
-                    .font: UIFont.systemFont(ofSize: 22, weight: .black),
-                    .foregroundColor: UIColor.white.withAlphaComponent(0.25),
-                ])
-        }
-    }
-}
-
-/// Skjerm-rendring av papiret (SwiftUI Canvas — samme spec som eksport).
-struct PapirView: View {
-    let papir: CanvasPapir
-
-    var body: some View {
-        Canvas { ctx, size in
-            let sp = papir.spec
-            let strek = Color.white.opacity(0.10)
-            for (a, b) in sp.linjer {
-                var p = Path()
-                p.move(to: CGPoint(x: a.x * size.width, y: a.y * size.height))
-                p.addLine(to: CGPoint(x: b.x * size.width, y: b.y * size.height))
-                ctx.stroke(p, with: .color(strek), lineWidth: 1.5)
-            }
-            for e in sp.ellipser {
-                let rekt = CGRect(x: e.minX * size.width, y: e.minY * size.height,
-                                  width: e.width * size.width, height: e.height * size.height)
-                ctx.stroke(Path(ellipseIn: rekt), with: .color(strek), lineWidth: 1.5)
-            }
-            if sp.rutenett > 0 {
-                var p = Path()
-                var x: CGFloat = 0
-                while x < size.width {
-                    p.move(to: CGPoint(x: x, y: 0))
-                    p.addLine(to: CGPoint(x: x, y: size.height))
-                    x += sp.rutenett
-                }
-                var y: CGFloat = 0
-                while y < size.height {
-                    p.move(to: CGPoint(x: 0, y: y))
-                    p.addLine(to: CGPoint(x: size.width, y: y))
-                    y += sp.rutenett
-                }
-                ctx.stroke(p, with: .color(Color.white.opacity(0.05)), lineWidth: 1)
-            }
-            if sp.prikker {
-                var y: CGFloat = 20
-                while y < size.height {
-                    var x: CGFloat = 20
-                    while x < size.width {
-                        ctx.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)),
-                                 with: .color(Color.white.opacity(0.10)))
-                        x += 28
-                    }
-                    y += 28
-                }
-            }
-            for (tekst, punkt) in sp.etiketter {
-                ctx.draw(
-                    Text(tekst)
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(Color.white.opacity(0.28)),
-                    at: CGPoint(x: punkt.x * size.width, y: punkt.y * size.height),
-                    anchor: .topLeading)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-// MARK: - NodeView + NodeKoblinger (fase 7: levende tankekart/brainstorm)
-
-/// Koblingslinjene forelder→barn, tegnet under nodene. Følger med når
-/// noder dras (posisjonene leses live fra node-arrayet).
-private struct NodeKoblinger: View {
-    let noder: [CanvasNode]
-
-    var body: some View {
-        Canvas { ctx, _ in
-            let posisjoner = Dictionary(uniqueKeysWithValues: noder.map { ($0.id, CGPoint(x: $0.x, y: $0.y)) })
-            for node in noder {
-                guard let pid = node.parentId, let fra = posisjoner[pid] else { continue }
-                var p = Path()
-                p.move(to: fra)
-                let til = CGPoint(x: node.x, y: node.y)
-                let midt = CGPoint(x: (fra.x + til.x) / 2, y: (fra.y + til.y) / 2)
-                p.addQuadCurve(to: til,
-                               control: CGPoint(x: midt.x, y: midt.y - 24))
-                ctx.stroke(p, with: .color(Color.white.opacity(0.30)),
-                           style: StrokeStyle(lineWidth: 2, lineCap: .round))
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-/// Selve boblen: dra flytter (streken følger), tap redigerer teksten
-/// (Scribble: skriv rett i feltet med Pencil), «+» føder koblet barn,
-/// hold fjerner (barna blir frittstående).
-private struct NodeView: View {
-    let node: CanvasNode
-    let redigerbar: Bool
-    let onEndre: (CanvasNode) -> Void
-    let onNyttBarn: () -> Void
-    let onRediger: () -> Void
-    let onSlett: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-
-    private var farge: Color { Color(UIColor(hex: node.fargeHex)) }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Text(node.tekst.isEmpty ? "…" : node.tekst)
-                .font(.appScaled(size: 13, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(3)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-        }
-        .frame(minWidth: 90, maxWidth: 220)
-        .background(farge.opacity(0.22), in: Capsule())
-        .overlay(Capsule().stroke(farge.opacity(0.75), lineWidth: 2))
-        .overlay(alignment: .bottomTrailing) {
-            if redigerbar {
-                Button(action: onNyttBarn) {
-                    Image(systemName: "plus")
-                        .font(.appScaled(size: 10, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .background(farge, in: Circle())
-                        .shadow(color: .black.opacity(0.4), radius: 3)
-                }
-                .buttonStyle(.plain)
-                .offset(x: 8, y: 8)
-            }
-        }
-        .position(x: node.x + dragOffset.width,
-                  y: node.y + dragOffset.height)
-        .onTapGesture { if redigerbar { onRediger() } }
-        .gesture(redigerbar ? DragGesture()
-            .onChanged { dragOffset = $0.translation }
-            .onEnded { v in
-                var ny = node
-                ny.x += v.translation.width
-                ny.y += v.translation.height
-                dragOffset = .zero
-                onEndre(ny)
-            } : nil)
-        .onLongPressGesture(minimumDuration: 0.6) {
-            if redigerbar { onSlett() }
-        }
-    }
-}
-
-// MARK: - ObjektView (fase 8: bilder + levende kort under blekket)
-
-/// Bilde-, lead-, KPI-, kart- og oppgave-objekter. I objekt-modus:
-/// dra flytter, klyp skalerer, hold fjerner. Ellers er laget passivt
-/// og blekket tegnes oppå (annotering).
-private struct ObjektView: View {
-    let objekt: CanvasObjekt
-    let redigerbar: Bool
-    /// Living Canvas: ferskt (tittel, detalj) fra appState — overstyrer
-    /// snapshotet i objektet.
-    var liveInnhold: (String, String)? = nil
-    var erValgt: Bool = false
-    var onToggleValg: (() -> Void)? = nil
-    var onFlyttFelles: ((CGSize) -> Void)? = nil
-    let onEndre: (CanvasObjekt) -> Void
-    let onSlett: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-    @State private var pinchSkala: CGFloat = 1.0
-
-    var body: some View {
-        innhold
-            .scaleEffect(pinchSkala)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(erValgt ? CvBrand.blue
-                            : (redigerbar ? CvBrand.orange.opacity(0.8) : .clear),
-                            style: StrokeStyle(lineWidth: erValgt ? 3 : 2, dash: [6, 4]))
-            )
-            .position(x: objekt.x + dragOffset.width,
-                      y: objekt.y + dragOffset.height)
-            .onTapGesture { if redigerbar { onToggleValg?() } }
-            .gesture(redigerbar ? DragGesture()
-                .onChanged { dragOffset = $0.translation }
-                .onEnded { v in
-                    dragOffset = .zero
-                    if erValgt, let felles = onFlyttFelles {
-                        felles(v.translation)
-                    } else {
-                        var ny = objekt
-                        ny.x += v.translation.width
-                        ny.y += v.translation.height
-                        onEndre(ny)
-                    }
-                } : nil)
-            .simultaneousGesture(redigerbar ? MagnificationGesture()
-                .onChanged { pinchSkala = $0 }
-                .onEnded { v in
-                    var ny = objekt
-                    ny.skala = min(3.0, max(0.25, ny.skala * v))
-                    pinchSkala = 1.0
-                    onEndre(ny)
-                } : nil)
-            .onLongPressGesture(minimumDuration: 0.6) {
-                if redigerbar { onSlett() }
-            }
-            .allowsHitTesting(redigerbar)
-    }
-
-    @ViewBuilder
-    private var innhold: some View {
-        if let b64 = objekt.bildeBase64,
-           let data = Data(base64Encoded: b64),
-           let img = UIImage(data: data) {
-            // Bilde / kart-utsnitt
-            VStack(spacing: 0) {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: img.size.width * objekt.skala,
-                           height: img.size.height * objekt.skala)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                if objekt.type == "kart", let tittel = objekt.tittel, !tittel.isEmpty {
-                    Text(tittel)
-                        .font(.appScaled(size: 10, weight: .bold))
-                        .foregroundStyle(CvBrand.textSecondary)
-                        .padding(.top, 3)
-                }
-            }
-            .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
-        } else {
-            // Lead-/KPI-/oppgave-/kalender-kort — live når mulig.
-            HStack(spacing: 10) {
-                Image(systemName: kortIkon)
-                    .font(.appScaled(size: 15, weight: .semibold))
-                    .foregroundStyle(kortFarge)
-                    .frame(width: 34, height: 34)
-                    .background(kortFarge.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(liveInnhold?.0 ?? objekt.tittel ?? "")
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    let detalj = liveInnhold?.1 ?? objekt.detalj ?? ""
-                    if !detalj.isEmpty {
-                        Text(detalj)
-                            .font(.appScaled(size: 11))
-                            .foregroundStyle(CvBrand.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                if liveInnhold != nil {
-                    Circle().fill(CvBrand.green)
-                        .frame(width: 6, height: 6)
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .frame(minWidth: 170)
-            .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14)
-                .stroke(kortFarge.opacity(0.4), lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
-            .scaleEffect(objekt.skala)
-        }
-    }
-
-    private var kortIkon: String {
-        switch objekt.type {
-        case "lead": return "person.crop.rectangle.fill"
-        case "kpi": return "chart.bar.fill"
-        case "oppgave": return "checklist"
-        case "kalender": return "calendar"
-        default: return "square.dashed"
-        }
-    }
-
-    private var kortFarge: Color {
-        switch objekt.type {
-        case "lead": return CvBrand.orange
-        case "kpi": return CvBrand.blue
-        case "oppgave": return CvBrand.green
-        default: return CvBrand.purpleLight
-        }
-    }
-}
-
-
-// MARK: - FormGjenkjenner (shape recognition — hold på slutten → perfekt form)
-
-/// Apple Notes-oppførselen: tegn en sirkel/rektangel/linje/pil og HOLD
-/// pennen stille (≥0,45 s) før du løfter → strøket byttes ut med en
-/// perfekt CanvasFigur i strøkets farge. Formen er et objekt: dra
-/// flytter, klyp skalerer, to-finger-vri roterer, hold fjerner.
-enum FormGjenkjenner {
-
-    static func gjenkjenn(_ strok: PKStroke) -> CanvasFigur? {
-        let punkter = strok.path.map { $0 }
-        guard punkter.count >= 8 else { return nil }
-
-        // 1) Hold-deteksjon: siste 0,45 s innenfor 14 pt.
-        guard let sisteTid = punkter.last?.timeOffset else { return nil }
-        let hale = punkter.filter { $0.timeOffset > sisteTid - 0.45 }
-        guard hale.count >= 3, let sistePkt = punkter.last?.location else { return nil }
-        let haleSpredning = hale.map { hypot($0.location.x - sistePkt.x,
-                                             $0.location.y - sistePkt.y) }.max() ?? 0
-        guard haleSpredning < 14 else { return nil }
-
-        // Halen (holdet) skal ikke forstyrre geometrien.
-        let aktive = punkter.filter { $0.timeOffset <= sisteTid - 0.45 }
-            .map(\.location)
-        guard aktive.count >= 6 else { return nil }
-
-        let xs = aktive.map(\.x), ys = aktive.map(\.y)
-        let boks = CGRect(x: xs.min()!, y: ys.min()!,
-                          width: xs.max()! - xs.min()!,
-                          height: ys.max()! - ys.min()!)
-        guard boks.width > 24 || boks.height > 24 else { return nil }
-        let farge = PKInkingTool.convertColor(strok.ink.color,
-                                              from: .light, to: .dark).somHex
-        let senter = CGPoint(x: boks.midX, y: boks.midY)
-        let diagonal = hypot(boks.width, boks.height)
-        let lukket = hypot(aktive.first!.x - aktive.last!.x,
-                           aktive.first!.y - aktive.last!.y) < diagonal * 0.22
-
-        if lukket {
-            // SIRKEL: jevn avstand til senter.
-            let radier = aktive.map { hypot($0.x - senter.x, $0.y - senter.y) }
-            let snitt = radier.reduce(0, +) / CGFloat(radier.count)
-            let avvik = radier.map { abs($0 - snitt) }.reduce(0, +) / CGFloat(radier.count)
-            if snitt > 12, avvik / snitt < 0.16 {
-                return CanvasFigur(form: "sirkel",
-                                   x: senter.x, y: senter.y,
-                                   fargeHex: farge,
-                                   bredde: snitt * 2 / 0.45, hoyde: snitt * 2 / 0.45)
-                // (FigurShape-sirkelen fyller 90 % av min(b,h) — 2r/0.9 ≈ /0.45 av halv)
-            }
-            // REKTANGEL: punktene klemmer seg til boks-kantene.
-            let kantavvik = aktive.map { p -> CGFloat in
-                min(abs(p.x - boks.minX), abs(p.x - boks.maxX),
-                    abs(p.y - boks.minY), abs(p.y - boks.maxY))
-            }.reduce(0, +) / CGFloat(aktive.count)
-            if kantavvik < diagonal * 0.055 {
-                return CanvasFigur(form: "rektangel",
-                                   x: senter.x, y: senter.y,
-                                   fargeHex: farge,
-                                   bredde: boks.width / 0.9,
-                                   hoyde: boks.height / 0.76)
-            }
-            return nil
-        }
-
-        // ÅPEN form: LINJE eller PIL — avvik fra korden.
-        let a = aktive.first!, b = aktive.last!
-        let korde = hypot(b.x - a.x, b.y - a.y)
-        guard korde > 40 else { return nil }
-        let maksAvvik = aktive.map { p -> CGFloat in
-            abs((b.y - a.y) * p.x - (b.x - a.x) * p.y + b.x * a.y - b.y * a.x) / korde
-        }.max() ?? 0
-        let vinkel = atan2(b.y - a.y, b.x - a.x) * 180 / .pi
-
-        if maksAvvik < korde * 0.06 {
-            return CanvasFigur(form: "linje",
-                               x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
-                               fargeHex: farge, rotasjon: Double(vinkel),
-                               bredde: korde, hoyde: 40)
-        }
-        // PIL: rett hoveddel + skarp retur nær enden (spissen tegnet i ett).
-        if maksAvvik < korde * 0.30 {
-            let sisteFjerdedel = aktive.suffix(max(4, aktive.count / 4))
-            let vendinger = zip(sisteFjerdedel, sisteFjerdedel.dropFirst())
-                .map { hypot($1.x - $0.x, $1.y - $0.y) }
-            let haleLengde = vendinger.reduce(0, +)
-            if haleLengde > korde * 0.25, haleLengde < korde * 0.9 {
-                return CanvasFigur(form: "pil",
-                                   x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
-                                   fargeHex: farge, rotasjon: Double(vinkel),
-                                   bredde: korde / 0.9, hoyde: korde * 0.35)
-            }
-        }
-        return nil
-    }
-}
-
-// MARK: - BibliotekElement (element-biblioteket — brukeren lagrer ting)
-
-/// Gjenbrukbart element: en samling objekter normalisert rundt tyngde-
-/// punktet, lagret lokalt (UserDefaults, cap 30 / ~2 MB).
-struct BibliotekElement: Codable, Identifiable {
-    var id: String = UUID().uuidString
-    var navn: String
-    var figurer: [CanvasFigur] = []
-    var stempler: [CanvasStempel] = []
-    var tekstbokser: [CanvasTekstboks] = []
-    var objekter: [CanvasObjekt] = []
-
-    private static let nokkel = "canvas.bibliotek"
-
-    static func lastAlle() -> [BibliotekElement] {
-        guard let data = UserDefaults.standard.data(forKey: nokkel) else { return [] }
-        return (try? JSONDecoder().decode([BibliotekElement].self, from: data)) ?? []
-    }
-
-    static func lagreAlle(_ elementer: [BibliotekElement]) {
-        guard let data = try? JSONEncoder().encode(elementer),
-              data.count < 2_000_000 else { return }
-        UserDefaults.standard.set(data, forKey: nokkel)
-    }
-}
-
-// MARK: - TidsreiseSheet (Time Travel — se idéene utvikle seg)
-
-/// Slider over notatets versjoner (mandag → fredag): tegningen OG typen
-/// per tidspunkt (Idé → Prosjekt → Lead-utviklingen synlig som badges).
-struct TidsreiseSheet: View {
-    let notatId: String
-    let naavaerende: PKDrawing
-    let onGjenopprett: (PKDrawing) -> Void
-
-    @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var versjoner: [CanvasVersjonDTO] = []
-    @State private var posisjon: Double = 0
-    @State private var lastet = false
-
-    private var valgtIndeks: Int {
-        min(Int(posisjon.rounded()), maxIndeks)
-    }
-    /// Siste posisjon = nåværende tilstand.
-    private var maxIndeks: Int { versjoner.count }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                CvBrand.bg.ignoresSafeArea()
-                VStack(spacing: 14) {
-                    if !lastet {
-                        ProgressView().tint(CvBrand.purpleLight)
-                            .frame(maxHeight: .infinity)
-                    } else if versjoner.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "clock.arrow.2.circlepath")
-                                .font(.appScaled(size: 30))
-                                .foregroundStyle(CvBrand.textTertiary)
-                            Text("Ingen versjoner enda — historikken bygges hver gang du lagrer med endringer.")
-                                .font(.appScaled(size: 12))
-                                .foregroundStyle(CvBrand.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: 320)
-                        }
-                        .frame(maxHeight: .infinity)
-                    } else {
-                        // Tidslinje-badges: typens utvikling (Idé → Prosjekt …)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(Array(versjoner.enumerated()), id: \.offset) { i, v in
-                                    let k = CanvasKategori(rawValue: v.kategori) ?? .mote
-                                    VStack(spacing: 3) {
-                                        Text(Self.dagLabel(v.opprettet))
-                                            .font(.appScaled(size: 9, weight: .bold))
-                                            .foregroundStyle(i == valgtIndeks
-                                                             ? .white : CvBrand.textTertiary)
-                                        Text(k.etikett)
-                                            .font(.appScaled(size: 9, weight: .black))
-                                            .foregroundStyle(k.farge)
-                                            .padding(.horizontal, 7).padding(.vertical, 2)
-                                            .background(k.farge.opacity(0.15), in: Capsule())
-                                    }
-                                    .padding(.horizontal, 6).padding(.vertical, 5)
-                                    .background(i == valgtIndeks
-                                                ? CvBrand.cardHi : Color.clear,
-                                                in: RoundedRectangle(cornerRadius: 8))
-                                    .onTapGesture { posisjon = Double(i) }
-                                }
-                                VStack(spacing: 3) {
-                                    Text("Nå")
-                                        .font(.appScaled(size: 9, weight: .bold))
-                                        .foregroundStyle(valgtIndeks == maxIndeks
-                                                         ? .white : CvBrand.textTertiary)
-                                    Image(systemName: "sparkle")
-                                        .font(.appScaled(size: 9))
-                                        .foregroundStyle(CvBrand.purpleLight)
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background(valgtIndeks == maxIndeks
-                                            ? CvBrand.cardHi : Color.clear,
-                                            in: RoundedRectangle(cornerRadius: 8))
-                                .onTapGesture { posisjon = Double(maxIndeks) }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-
-                        // Forhåndsvisningen av valgt tidspunkt
-                        Group {
-                            if let bilde = bildeForValgt() {
-                                Image(uiImage: bilde)
-                                    .resizable()
-                                    .scaledToFit()
-                            } else {
-                                Text("Tom tegning på dette tidspunktet")
-                                    .font(.appScaled(size: 12))
-                                    .foregroundStyle(CvBrand.textTertiary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.35),
-                                    in: RoundedRectangle(cornerRadius: 14))
-                        .padding(.horizontal, 16)
-
-                        // Slideren: mandag → fredag → nå.
-                        Slider(value: $posisjon, in: 0...Double(maxIndeks), step: 1)
-                            .tint(CvBrand.purple)
-                            .padding(.horizontal, 20)
-
-                        if valgtIndeks < maxIndeks {
-                            Button {
-                                if let tegning = tegningForValgt() {
-                                    onGjenopprett(tegning)
-                                }
-                            } label: {
-                                Text("Gjenopprett dette tidspunktet")
-                                    .font(.appScaled(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
-                                                       startPoint: .leading, endPoint: .trailing),
-                                        in: RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                }
-                .padding(.vertical, 14)
-            }
-            .navigationTitle("Tidsreise")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Lukk") { dismiss() }
-                        .tint(CvBrand.textSecondary)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .task {
-            defer { lastet = true }
-            guard let api = appState.api else { return }
-            versjoner = (try? await api.hentCanvasVersjoner(notatId: notatId)) ?? []
-            posisjon = Double(versjoner.count)   // start på «Nå»
-        }
-    }
-
-    private func tegningForValgt() -> PKDrawing? {
-        guard valgtIndeks < versjoner.count,
-              let b64 = versjoner[valgtIndeks].drawingBase64,
-              let data = Data(base64Encoded: b64) else { return nil }
-        return try? PKDrawing(data: data)
-    }
-
-    private func bildeForValgt() -> UIImage? {
-        let tegning: PKDrawing?
-        if valgtIndeks == maxIndeks {
-            tegning = naavaerende
-        } else {
-            tegning = tegningForValgt()
-        }
-        guard let t = tegning, !t.bounds.isEmpty else { return nil }
-        return t.image(from: t.bounds.insetBy(dx: -30, dy: -30), scale: 1.5)
-    }
-
-    private static func dagLabel(_ iso: String?) -> String {
-        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return "–" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "EEE d.M"
-        return f.string(from: d)
-    }
-}
