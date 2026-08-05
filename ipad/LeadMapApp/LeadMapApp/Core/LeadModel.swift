@@ -63,6 +63,8 @@ struct LeadModel: Identifiable, Codable, Hashable {
     /// Bedrifts-logo (mig 288). Vises som sirkulær pin på kartet.
     let logoUrl: String?
     let aiOpportunityScore: Int?
+    /// CPV-koder (anbuds-språket) — settes automatisk fra bransjen.
+    var cpvKoder: [String]? = nil
     let estimatedValue: Double?
     let leadSource: String?
     let assignedUserId: String?

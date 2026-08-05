@@ -69,6 +69,10 @@ export function registerLeadgridCpvRoutes(deps: {
 }): void {
   const { app, pool, requireUserSession } = deps;
 
+  // Kolonnen må finnes FØR lead-listene SELECT-er den — selvhel ved boot.
+  void ensureSchema(pool).catch((e) =>
+    console.warn("[cpv] ensureSchema ved boot feilet:", String(e).slice(0, 120)));
+
   /** Forslag for én tekst (bransje/kategori/navn) — brukes av klientene. */
   app.get("/api/leadgrid/cpv-forslag", async (req, res) => {
     try {

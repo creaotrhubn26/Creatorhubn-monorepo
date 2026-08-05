@@ -19,6 +19,8 @@ struct AnbudView: View {
     @State private var searchText = ""
     @State private var selectedFylke: Fylke? = nil
     @State private var selectedBransje: Bransje? = nil
+    /// CPV-organisering: søk med KUNDENES koder (auto-satt per bedrift).
+    @State private var brukKundeCpv = false
     @State private var status: String = "ACTIVE"
     @State private var results: [DoffinKunngjoringDTO] = []
     @State private var total = 0
@@ -123,6 +125,21 @@ struct AnbudView: View {
             case .maler: return "45440000"
             }
         }
+    }
+
+    /// CPV-strengen søket bruker: kundenes koder (distinct, maks 6) i
+    /// kunde-modus, ellers valgt bransje.
+    private var effektivCpv: String? {
+        if brukKundeCpv {
+            var koder: [String] = []
+            for lead in appState.leads {
+                for k in lead.cpvKoder ?? [] where !koder.contains(k) {
+                    koder.append(k)
+                }
+            }
+            return koder.isEmpty ? nil : koder.prefix(6).joined(separator: ",")
+        }
+        return selectedBransje?.cpv
     }
 
     var body: some View {
@@ -248,14 +265,23 @@ struct AnbudView: View {
                 // CPV-forslag fra bransje (2026-08-03): selgeren velger
                 // bransje, vi oversetter til CPV-hovedgruppe mot Doffin.
                 Menu {
-                    Button("Alle bransjer") { selectedBransje = nil; Task { await search() } }
+                    Button {
+                        brukKundeCpv = true
+                        selectedBransje = nil
+                        Task { await search() }
+                    } label: {
+                        Label("Mine kunders CPV", systemImage: "person.2.crop.square.stack")
+                    }
+                    Divider()
+                    Button("Alle bransjer") { brukKundeCpv = false; selectedBransje = nil; Task { await search() } }
                     ForEach(Bransje.allCases) { b in
-                        Button(b.navn) { selectedBransje = b; Task { await search() } }
+                        Button(b.navn) { brukKundeCpv = false; selectedBransje = b; Task { await search() } }
                     }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "wrench.and.screwdriver.fill").font(.appScaled(size: 10))
-                        Text(selectedBransje?.navn ?? "Alle bransjer")
+                        Text(brukKundeCpv ? "Mine kunders CPV"
+                             : (selectedBransje?.navn ?? "Alle bransjer"))
                             .font(.appScaled(size: 12, weight: .semibold))
                         Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .bold))
                     }
@@ -1321,7 +1347,7 @@ struct AnbudView: View {
         guard let api = appState.api, !tildelingerLaster else { return }
         tildelingerLaster = true
         tildelinger = try? await api.fetchDoffinTildelinger(
-            cpv: selectedBransje?.cpv, location: selectedFylke?.rawValue)
+            cpv: effektivCpv, location: selectedFylke?.rawValue)
         tildelingerLaster = false
     }
 
@@ -1578,7 +1604,7 @@ struct AnbudView: View {
             let r = try await api.searchDoffin(
                 q: searchText.isEmpty ? nil : searchText,
                 location: selectedFylke?.rawValue,
-                cpv: selectedBransje?.cpv,
+                cpv: effektivCpv,
                 status: status
             )
             results = r.kunngjoringer
