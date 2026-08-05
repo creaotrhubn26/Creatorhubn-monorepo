@@ -1,5 +1,11 @@
 Leadgrid 2.0 — Canvas, kundeminnet og en smartere hverdag
 
+NYTT I DETTE BYGGET — CANVAS ORGANISERT
+• Canvas-oversikt: notatene ligger i mapper per kunde (utledet automatisk av lead-koblingen) + «Uten kunde»
+• Mappe-visning: kundeminnet festet øverst + «Nytt i mappa» pre-koblet til kunden
+• Papirkurv: slettede notater kan angres i 30 dager — gjenopprett eller slett for godt
+• Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯-meny — én ting om gangen
+
 NYTT: LEADGRID CANVAS
 • Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso
 • 6 notattyper med egne covers: Møte, Lead, Befaring, Salgsplan, Prosjekt, Rute
