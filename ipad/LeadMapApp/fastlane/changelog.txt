@@ -5,6 +5,7 @@ NYTT I DETTE BYGGET — CANVAS ORGANISERT
 • Mappe-visning: kundeminnet festet øverst + «Nytt i mappa» pre-koblet til kunden
 • Papirkurv: slettede notater kan angres i 30 dager — gjenopprett eller slett for godt
 • Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯-meny — én ting om gangen
+• Auto-tittel: øverste håndskrift-linje blir notatets tittel mens du skriver
 
 NYTT: LEADGRID CANVAS
 • Pencil-first tegneflate med Apples verktøylinje — penn, marker, viskelær, linjal, lasso
