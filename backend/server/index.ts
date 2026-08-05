@@ -539,6 +539,7 @@ import { setupEvendiBridgesRoutes } from "./evendi-bridges-routes";
 import { setupEvendiMiscRoutes } from "./evendi-misc-routes";
 import { setupRoleRoomMarketingPlanRoutes } from "./role-room-marketing-plan-routes";
 import { setupRoleRoomAgentCoreRoutes } from "./role-room-agent-core-routes";
+import { setupRoleRoomPublishProviderRoutes } from "./role-room-publish-providers";
 import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes";
 import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
@@ -25148,6 +25149,8 @@ setupRoleRoomAgentCoreRoutes({
   isCompatAdminFeatureEnabled,
   getCompatAdminFeature,
 });
+// Publiseringsflater utover Meta/LinkedIn (TikTok/YouTube/Pinterest).
+setupRoleRoomPublishProviderRoutes({ app, pool, requireAdminSession });
 // ── Role Room agent feed-plan — flyttet til ./role-room-agent-feed-plan-routes.ts
 //   10 endpoints: templates CRUD, strategy/refresh, recommend (Claude),
 //   drive (images/import), feed-plan CRUD, approval.
