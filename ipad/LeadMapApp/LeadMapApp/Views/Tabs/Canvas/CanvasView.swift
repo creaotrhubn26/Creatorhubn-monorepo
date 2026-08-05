@@ -1376,7 +1376,13 @@ struct CanvasView: View {
             CanvasAnalyseSheet(drawing: drawing,
                                selskap: kobletSelskap ?? tittel,
                                leadId: kobletLeadId,
-                               romligTillegg: romligBeskrivelse())
+                               romligTillegg: romligBeskrivelse(),
+                               onFestIMinne: { resultat in
+                                   visAnalyse = false
+                                   festIMinne(resultat,
+                                              selskap: kobletSelskap ?? tittel,
+                                              leadId: kobletLeadId)
+                               })
         }
         .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
                       matching: .images)
@@ -1442,7 +1448,15 @@ struct CanvasView: View {
     /// Lead-kobling: chip når koblet, meny for å velge/fjerne.
     private var leadKobling: some View {
         Menu {
-            if kobletLeadId != nil {
+            if kobletLeadId != nil || kobletSelskap != nil {
+                // Spatial Sales Memory: hele kundeforholdet på ETT lerret.
+                Button {
+                    if let selskap = kobletSelskap {
+                        aapneKundeminne(selskap: selskap, leadId: kobletLeadId)
+                    }
+                } label: {
+                    Label("Åpne kundeminnet", systemImage: "brain.head.profile")
+                }
                 Button(role: .destructive) {
                     kobletLeadId = nil
                     kobletSelskap = nil
@@ -2289,6 +2303,62 @@ struct CanvasView: View {
         return linjer.isEmpty ? "" : linjer.joined(separator: "; ")
     }
 
+    // MARK: Spatial Sales Memory (kundeminnet — hele forholdet på ett lerret)
+
+    /// ETT org-delt lerret per kunde: første notat, befarings-bilder,
+    /// tilbud, AI-oppsummeringer, kontrakter — alt der brukeren la det.
+    private func aapneKundeminne(selskap: String, leadId: String?) {
+        if let minne = notater.first(where: {
+            $0.tittel.hasPrefix("Kundeminne")
+                && ($0.selskap ?? "").caseInsensitiveCompare(selskap) == .orderedSame
+        }) {
+            velg(minne)
+            return
+        }
+        nyttNotat(type: .lead)
+        tittel = "Kundeminne — \(selskap)"
+        kobletSelskap = selskap
+        kobletLeadId = leadId
+        deltMedTeam = true   // minnet tilhører hele teamet
+        papir = .blank
+        Task { await lagre(stille: true) }
+    }
+
+    /// Nederste kant av alt innhold — nye minner limes under.
+    private func innholdMaxY() -> Double {
+        var maks: Double = 120
+        if !drawing.bounds.isEmpty { maks = max(maks, drawing.bounds.maxY) }
+        maks = max(maks, tekstbokser.map(\.y).max() ?? 0)
+        maks = max(maks, noder.map(\.y).max() ?? 0)
+        maks = max(maks, objekter.map(\.y).max() ?? 0)
+        maks = max(maks, figurer.map(\.y).max() ?? 0)
+        return maks
+    }
+
+    /// «Fest i kundeminnet»: datert AI-oppsummering + oppgaver limes inn
+    /// som tekstbokser under eksisterende innhold — minnet vokser
+    /// kronologisk nedover, år for år.
+    private func festIMinne(_ resultat: CanvasAnalyseDTO,
+                            selskap: String, leadId: String?) {
+        aapneKundeminne(selskap: selskap, leadId: leadId)
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "nb_NO")
+        df.dateFormat = "d. MMM yyyy"
+        var y = innholdMaxY() + 90
+        tekstbokser.append(CanvasTekstboks(
+            tekst: "📌 \(df.string(from: Date())) — \(String(resultat.oppsummering.prefix(220)))",
+            x: 430, y: y))
+        for oppgave in (resultat.oppgaver ?? []).prefix(4) {
+            y += 52
+            tekstbokser.append(CanvasTekstboks(
+                tekst: "☐ \(oppgave.tittel)"
+                    + (oppgave.frist.map { " (\($0))" } ?? ""),
+                x: 430, y: y))
+        }
+        sider = min(20, max(sider, Int(ceil((y + 200) / 900))))
+        Task { await lagre(stille: true) }
+    }
+
     // MARK: Spatial Search + Smart Layers
 
     private func erLagSkjult(_ objektType: String) -> Bool {
@@ -2751,6 +2821,8 @@ struct CanvasAnalyseSheet: View {
     let leadId: String?
     /// Spatial Memory: hvor objekter/noder/tekster ligger på flata.
     var romligTillegg: String = ""
+    /// Spatial Sales Memory: fest analysen i kundens minne-lerret.
+    var onFestIMinne: ((CanvasAnalyseDTO) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -2928,6 +3000,25 @@ struct CanvasAnalyseSheet: View {
                 Text("Notatet er logget — neste møtebrief for \(selskap) åpner med dette.")
                     .font(.appScaled(size: 10))
                     .foregroundStyle(CvBrand.textTertiary)
+                if let fest = onFestIMinne {
+                    Button {
+                        fest(r)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.appScaled(size: 12, weight: .bold))
+                            Text("Fest i kundeminnet")
+                                .font(.appScaled(size: 13, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .stroke(CvBrand.purpleLight.opacity(0.5), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button { dismiss() } label: {
                     Text("Ferdig")
                         .font(.appScaled(size: 14, weight: .bold))
