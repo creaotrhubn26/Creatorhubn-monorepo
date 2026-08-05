@@ -659,8 +659,13 @@ ${tekst}`;
       } else {
       const prompt = `Du er notat-assistenten til en norsk B2B-feltselger. Under er TEKST GJENKJENT FRA HÅNDSKRIFT (Vision-OCR) fra et tegnet møtenotat${selskap ? ` om «${selskap}»` : ""}. OCR-en kan ha feil — tolk velvillig, men ikke dikt opp innhold.
 
+Tekstlinjene kan ha PLASSERING i klammer («[øvre høyre]») og en egen
+OBJEKTER PÅ FLATA-seksjon — bruk rommet: ting som ligger nær hverandre
+hører ofte sammen. Nevn slike koblinger i oppsummeringen når de gir
+mening (f.eks. «prisdiskusjonen står ved innvendingene — heng sammen»).
+
 Lag på norsk:
-- oppsummering: 2-4 setninger som fanger essensen (situasjon, behov, neste steg).
+- oppsummering: 2-4 setninger som fanger essensen (situasjon, behov, neste steg). Bruk gjerne plasseringen til å koble temaer.
 - oppgaver: konkrete gjøremål fra notatet, med frist-hint når nevnt («torsdag», «neste uke»). Kun det som faktisk står der.
 - lofter: ting selgeren lovte kunden (kan være tom liste).
 

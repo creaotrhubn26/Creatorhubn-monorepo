@@ -74,7 +74,10 @@ struct FoundationModelsCanvasAnalyzer {
         let instructions = """
         Du er notat-assistenten til en norsk B2B-feltselger. Teksten er \
         gjenkjent fra håndskrift (OCR) og kan ha feil — tolk velvillig, \
-        men ikke dikt opp innhold. Svar alltid på norsk.
+        men ikke dikt opp innhold. Linjene kan ha plassering i klammer \
+        («[øvre høyre]») og en OBJEKTER PÅ FLATA-seksjon: ting som ligger \
+        nær hverandre hører ofte sammen — nevn slike koblinger i \
+        oppsummeringen når de gir mening. Svar alltid på norsk.
         """
         let session = LanguageModelSession(instructions: instructions)
         let prompt = """
