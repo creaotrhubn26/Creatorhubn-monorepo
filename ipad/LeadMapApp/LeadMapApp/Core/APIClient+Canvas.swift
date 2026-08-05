@@ -21,6 +21,7 @@ struct CanvasNotatDTO: Decodable, Hashable {
     var stempler: String? = nil
     var tekstbokser: String? = nil
     var figurer: String? = nil
+    var papir: String? = nil
 }
 
 struct CanvasAnalyseOppgaveDTO: Decodable, Hashable {
@@ -50,7 +51,8 @@ extension APIClient {
                             lat: Double? = nil, lon: Double? = nil,
                             stempler: String = "[]",
                             tekstbokser: String = "[]",
-                            figurer: String = "[]") async throws -> String {
+                            figurer: String = "[]",
+                            papir: String = "blank") async throws -> String {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -63,6 +65,7 @@ extension APIClient {
             let stempler: String
             let tekstbokser: String
             let figurer: String
+            let papir: String
         }
         struct Resp: Decodable { let id: String }
         let r: Resp = try await _post(
@@ -70,7 +73,7 @@ extension APIClient {
             body: Body(tittel: tittel, kategori: kategori, selskap: selskap,
                        leadId: leadId, drawingBase64: drawingBase64, delt: delt,
                        lat: lat, lon: lon, stempler: stempler,
-                       tekstbokser: tekstbokser, figurer: figurer))
+                       tekstbokser: tekstbokser, figurer: figurer, papir: papir))
         return r.id
     }
 
@@ -81,7 +84,8 @@ extension APIClient {
                              lat: Double? = nil, lon: Double? = nil,
                              stempler: String = "[]",
                              tekstbokser: String = "[]",
-                             figurer: String = "[]") async throws {
+                             figurer: String = "[]",
+                             papir: String = "blank") async throws {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -94,12 +98,13 @@ extension APIClient {
             let stempler: String
             let tekstbokser: String
             let figurer: String
+            let papir: String
         }
         let data = try JSONEncoder().encode(
             Body(tittel: tittel, kategori: kategori, selskap: selskap,
                  leadId: leadId, drawingBase64: drawingBase64, delt: delt,
                  lat: lat, lon: lon, stempler: stempler,
-                 tekstbokser: tekstbokser, figurer: figurer))
+                 tekstbokser: tekstbokser, figurer: figurer, papir: papir))
         // _request tar rå JSON — feltene her er allerede snake-frie
         // bortsett fra leadId/drawingBase64; backend godtar begge former.
         _ = try await _request("/api/leadgrid/canvas/\(id)",
@@ -121,6 +126,34 @@ extension APIClient {
             "/api/leadgrid/canvas/analyse",
             body: Body(selskap: selskap, tekst: tekst, leadId: leadId))
         return r.resultat
+    }
+
+    /// Apple Intelligence: analysen ble gjort ON-DEVICE — backend skal
+    /// bare persistere (oppgaver + møtelogg). Ingen AI-kost, ingen gate.
+    func persisterCanvasAnalyse(selskap: String?, leadId: String?,
+                                resultat: CanvasAnalyseDTO) async throws {
+        struct Ferdig: Encodable {
+            let oppsummering: String
+            let oppgaver: [[String: String?]]
+            let lofter: [String]
+        }
+        struct Body: Encodable {
+            let selskap: String?
+            let leadId: String?
+            let tekst: String
+            let ferdigResultat: Ferdig
+        }
+        struct Resp: Decodable { let resultat: CanvasAnalyseDTO }
+        let ferdig = Ferdig(
+            oppsummering: resultat.oppsummering,
+            oppgaver: (resultat.oppgaver ?? []).map {
+                ["tittel": $0.tittel, "frist": $0.frist]
+            },
+            lofter: resultat.lofter ?? [])
+        let _: Resp = try await _post(
+            "/api/leadgrid/canvas/analyse",
+            body: Body(selskap: selskap, leadId: leadId, tekst: "",
+                       ferdigResultat: ferdig))
     }
 
     func slettCanvasNotat(id: String) async throws {

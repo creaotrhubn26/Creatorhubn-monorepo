@@ -630,18 +630,33 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
-      if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 10_000);
       const leadId = typeof b.lead_id === "string" ? b.lead_id.slice(0, 64) : null;
-      if (tekst.length < 10) {
-        res.status(400).json({ error: "bad_request", message: "For lite gjenkjent tekst å analysere." });
-        return;
+      // Apple Intelligence-modus: analysen er alt gjort ON-DEVICE (gratis,
+      // privat) — vi bare persisterer. Ingen AI-gate (koster ingenting).
+      const ferdig = b.ferdig_resultat && typeof b.ferdig_resultat === "object"
+        ? b.ferdig_resultat as { oppsummering?: unknown; oppgaver?: unknown; lofter?: unknown }
+        : null;
+      if (!ferdig) {
+        if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+        if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
+        if (tekst.length < 10) {
+          res.status(400).json({ error: "bad_request", message: "For lite gjenkjent tekst å analysere." });
+          return;
+        }
       }
 
+      let resultat: { oppsummering?: string; oppgaver?: unknown; lofter?: unknown };
+      if (ferdig) {
+        resultat = {
+          oppsummering: String(ferdig.oppsummering ?? "").slice(0, 2000),
+          oppgaver: Array.isArray(ferdig.oppgaver) ? ferdig.oppgaver : [],
+          lofter: Array.isArray(ferdig.lofter) ? ferdig.lofter : [],
+        };
+      } else {
       const prompt = `Du er notat-assistenten til en norsk B2B-feltselger. Under er TEKST GJENKJENT FRA HÅNDSKRIFT (Vision-OCR) fra et tegnet møtenotat${selskap ? ` om «${selskap}»` : ""}. OCR-en kan ha feil — tolk velvillig, men ikke dikt opp innhold.
 
 Lag på norsk:
@@ -682,9 +697,10 @@ ${tekst}`;
 
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) { res.status(502).json({ error: "ai_svar_uparsbart" }); return; }
-      const resultat = JSON.parse(match[0]) as {
+      resultat = JSON.parse(match[0]) as {
         oppsummering?: string; oppgaver?: unknown; lofter?: unknown;
       };
+      }
       const oppgaveListe = (Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])
         .slice(0, 10) as Array<{ tittel?: unknown; frist?: unknown }>;
 
@@ -727,7 +743,7 @@ ${tekst}`;
         }
       }
 
-      res.json({ resultat: JSON.parse(match[0]) });
+      res.json({ resultat });
     } catch (e) {
       console.error("[canvas-analyse] failed:", e);
       res.status(500).json({ error: "internal_error" });
