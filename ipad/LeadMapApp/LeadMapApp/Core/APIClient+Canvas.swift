@@ -20,6 +20,7 @@ struct CanvasNotatDTO: Decodable, Hashable {
     var lon: Double? = nil
     var stempler: String? = nil
     var tekstbokser: String? = nil
+    var figurer: String? = nil
 }
 
 struct CanvasAnalyseOppgaveDTO: Decodable, Hashable {
@@ -48,7 +49,8 @@ extension APIClient {
                             delt: Bool = false,
                             lat: Double? = nil, lon: Double? = nil,
                             stempler: String = "[]",
-                            tekstbokser: String = "[]") async throws -> String {
+                            tekstbokser: String = "[]",
+                            figurer: String = "[]") async throws -> String {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -60,6 +62,7 @@ extension APIClient {
             let lon: Double?
             let stempler: String
             let tekstbokser: String
+            let figurer: String
         }
         struct Resp: Decodable { let id: String }
         let r: Resp = try await _post(
@@ -67,7 +70,7 @@ extension APIClient {
             body: Body(tittel: tittel, kategori: kategori, selskap: selskap,
                        leadId: leadId, drawingBase64: drawingBase64, delt: delt,
                        lat: lat, lon: lon, stempler: stempler,
-                       tekstbokser: tekstbokser))
+                       tekstbokser: tekstbokser, figurer: figurer))
         return r.id
     }
 
@@ -77,7 +80,8 @@ extension APIClient {
                              delt: Bool = false,
                              lat: Double? = nil, lon: Double? = nil,
                              stempler: String = "[]",
-                             tekstbokser: String = "[]") async throws {
+                             tekstbokser: String = "[]",
+                             figurer: String = "[]") async throws {
         struct Body: Encodable {
             let tittel: String
             let kategori: String
@@ -89,12 +93,13 @@ extension APIClient {
             let lon: Double?
             let stempler: String
             let tekstbokser: String
+            let figurer: String
         }
         let data = try JSONEncoder().encode(
             Body(tittel: tittel, kategori: kategori, selskap: selskap,
                  leadId: leadId, drawingBase64: drawingBase64, delt: delt,
                  lat: lat, lon: lon, stempler: stempler,
-                 tekstbokser: tekstbokser))
+                 tekstbokser: tekstbokser, figurer: figurer))
         // _request tar rå JSON — feltene her er allerede snake-frie
         // bortsett fra leadId/drawingBase64; backend godtar begge former.
         _ = try await _request("/api/leadgrid/canvas/\(id)",

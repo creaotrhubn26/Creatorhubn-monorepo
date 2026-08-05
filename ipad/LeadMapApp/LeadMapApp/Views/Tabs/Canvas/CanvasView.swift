@@ -115,6 +115,18 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
 
+/// Flyttbar OG skalerbar figur oppå flata (fase 6) — «Former» som ekte
+/// objekter: dra flytter, klyp skalerer, hold fjerner. Tegnes i SwiftUI
+/// (utenfor PencilKit) så fargene aldri inverteres i mørk modus.
+struct CanvasFigur: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var form: String       // rektangel/sirkel/pil/linje
+    var x: Double
+    var y: Double
+    var skala: Double = 1.0
+    var fargeHex: String = "#FFFFFF"
+}
+
 /// Flyttbar tekstboks oppå flata (fase 5) — «Skriv»-modusen fra mocken.
 struct CanvasTekstboks: Codable, Identifiable, Hashable {
     var id: String = UUID().uuidString
@@ -144,6 +156,7 @@ struct CanvasNotat: Identifiable, Hashable {
     var lon: Double? = nil
     var stempler: [CanvasStempel] = []
     var tekstbokser: [CanvasTekstboks] = []
+    var figurer: [CanvasFigur] = []
 }
 
 struct CanvasView: View {
@@ -167,6 +180,7 @@ struct CanvasView: View {
     @State private var visAnalyse = false
     @State private var stempler: [CanvasStempel] = []
     @State private var tekstbokser: [CanvasTekstboks] = []
+    @State private var figurer: [CanvasFigur] = []
     @State private var notatLat: Double?
     @State private var notatLon: Double?
     @State private var visStempelPalett = false
@@ -650,9 +664,11 @@ struct CanvasView: View {
                     if visFormPalett {
                         ForEach(CanvasForm.allCases, id: \.self) { form in
                             Button {
-                                drawing.strokes.append(form.somStroke(
-                                    senter: CGPoint(x: 340, y: 260),
-                                    farge: formFarge))
+                                figurer.append(CanvasFigur(
+                                    form: form.nokkel,
+                                    x: 340 + Double(figurer.count % 4) * 40,
+                                    y: 260 + Double(figurer.count / 4) * 40,
+                                    fargeHex: formFarge.somHex))
                             } label: {
                                 Image(systemName: form.ikon)
                                     .font(.appScaled(size: 15, weight: .semibold))
@@ -662,6 +678,9 @@ struct CanvasView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        Text("Dra · klyp for størrelse · hold for å fjerne")
+                            .font(.appScaled(size: 9))
+                            .foregroundStyle(CvBrand.textTertiary)
                         // Fargevalg for formene
                         ForEach(Array(CanvasForm.fargePalett.enumerated()), id: \.offset) { _, f in
                             Button {
@@ -715,6 +734,17 @@ struct CanvasView: View {
                                 onSlett: {
                                     stempler.removeAll { $0.id == st.id }
                                 })
+                }
+                ForEach(figurer) { fig in
+                    FigurView(figur: fig, redigerbar: valgtErMin,
+                              onEndre: { ny in
+                                  if let i = figurer.firstIndex(where: { $0.id == fig.id }) {
+                                      figurer[i] = ny
+                                  }
+                              },
+                              onSlett: {
+                                  figurer.removeAll { $0.id == fig.id }
+                              })
                 }
                 ForEach(tekstbokser) { tb in
                     TekstboksView(boks: tb, redigerbar: valgtErMin,
@@ -838,6 +868,7 @@ struct CanvasView: View {
         deltMedTeam = n.delt
         stempler = n.stempler
         tekstbokser = n.tekstbokser
+        figurer = n.figurer
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -864,6 +895,7 @@ struct CanvasView: View {
         n.delt = deltMedTeam
         n.stempler = stempler
         n.tekstbokser = tekstbokser
+        n.figurer = figurer
         n.lat = notatLat
         n.lon = notatLon
         n.drawingData = drawing.dataRepresentation()
@@ -884,13 +916,16 @@ struct CanvasView: View {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let tekstbokserJSON = (try? JSONEncoder().encode(n.tekstbokser))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let figurerJSON = (try? JSONEncoder().encode(n.figurer))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
-                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON)
+                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
+                    figurer: figurerJSON)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -900,7 +935,8 @@ struct CanvasView: View {
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
-                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON)
+                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
+                    figurer: figurerJSON)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -942,7 +978,9 @@ struct CanvasView: View {
                 stempler: (dto.stempler?.data(using: .utf8))
                     .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [],
                 tekstbokser: (dto.tekstbokser?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [])
+                    .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [],
+                figurer: (dto.figurer?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasFigur].self, from: $0) } ?? [])
         }
         genererThumbs()
     }
@@ -981,6 +1019,16 @@ struct CanvasView: View {
                 (st.tegn as NSString).draw(
                     at: punkt,
                     withAttributes: [.font: UIFont.systemFont(ofSize: 64)])
+            }
+            for fig in figurer {
+                let ctx = UIGraphicsGetCurrentContext()
+                ctx?.setStrokeColor(UIColor(hex: fig.fargeHex).cgColor)
+                ctx?.setLineWidth(8 * fig.skala)
+                let senter = CGPoint(x: (fig.x - bounds.minX) * 2.0,
+                                     y: (fig.y - bounds.minY) * 2.0)
+                CanvasForm.fra(fig.form)?
+                    .banePath(senter: senter, skala: fig.skala * 2.0)
+                    .forEach { ctx?.addPath($0); ctx?.strokePath() }
             }
             for tb in tekstbokser where !tb.tekst.isEmpty {
                 let punkt = CGPoint(x: (tb.x - bounds.minX) * 2.0,
@@ -1439,63 +1487,43 @@ enum CanvasForm: CaseIterable {
         UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1),
     ]
 
-    func somStroke(senter: CGPoint, farge: UIColor = .white) -> PKStroke {
-        let punkter: [CGPoint]
+    var nokkel: String {
         switch self {
-        case .rektangel:
-            punkter = Self.polylinje([
-                CGPoint(x: senter.x - 90, y: senter.y - 60),
-                CGPoint(x: senter.x + 90, y: senter.y - 60),
-                CGPoint(x: senter.x + 90, y: senter.y + 60),
-                CGPoint(x: senter.x - 90, y: senter.y + 60),
-                CGPoint(x: senter.x - 90, y: senter.y - 60),
-            ])
-        case .sirkel:
-            punkter = (0...72).map { i in
-                let v = Double(i) / 72 * 2 * .pi
-                return CGPoint(x: senter.x + 75 * cos(v), y: senter.y + 75 * sin(v))
-            }
-        case .pil:
-            punkter = Self.polylinje([
-                CGPoint(x: senter.x - 90, y: senter.y),
-                CGPoint(x: senter.x + 90, y: senter.y),
-            ]) + Self.polylinje([
-                CGPoint(x: senter.x + 55, y: senter.y - 28),
-                CGPoint(x: senter.x + 90, y: senter.y),
-                CGPoint(x: senter.x + 55, y: senter.y + 28),
-            ])
-        case .linje:
-            punkter = Self.polylinje([
-                CGPoint(x: senter.x - 100, y: senter.y),
-                CGPoint(x: senter.x + 100, y: senter.y),
-            ])
+        case .rektangel: return "rektangel"
+        case .sirkel: return "sirkel"
+        case .pil: return "pil"
+        case .linje: return "linje"
         }
-        let kontroll = punkter.map {
-            PKStrokePoint(location: $0, timeOffset: 0,
-                          size: CGSize(width: 4, height: 4),
-                          opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
-        }
-        // Lagres i lys-modus-referanse så mørk rendring viser valgt farge.
-        let lagretFarge = PKInkingTool.convertColor(farge, from: .dark, to: .light)
-        return PKStroke(ink: PKInk(.pen, color: lagretFarge),
-                        path: PKStrokePath(controlPoints: kontroll,
-                                           creationDate: Date()))
     }
 
-    /// Tette mellompunkter langs hjørnene → jevn strek.
-    private static func polylinje(_ hjorner: [CGPoint]) -> [CGPoint] {
-        guard hjorner.count > 1 else { return hjorner }
-        var ut: [CGPoint] = []
-        for i in 0..<(hjorner.count - 1) {
-            let a = hjorner[i], b = hjorner[i + 1]
-            let steg = max(2, Int(hypot(b.x - a.x, b.y - a.y) / 8))
-            for t in 0...steg {
-                let f = CGFloat(t) / CGFloat(steg)
-                ut.append(CGPoint(x: a.x + (b.x - a.x) * f,
-                                  y: a.y + (b.y - a.y) * f))
-            }
+    static func fra(_ nokkel: String) -> CanvasForm? {
+        allCases.first { $0.nokkel == nokkel }
+    }
+
+    /// CGPath-er for kompositt-rendring (deling/PDF) — speiler FigurView.
+    func banePath(senter: CGPoint, skala: Double) -> [CGPath] {
+        let s = skala
+        switch self {
+        case .rektangel:
+            return [CGPath(rect: CGRect(x: senter.x - 90 * s, y: senter.y - 60 * s,
+                                        width: 180 * s, height: 120 * s), transform: nil)]
+        case .sirkel:
+            return [CGPath(ellipseIn: CGRect(x: senter.x - 75 * s, y: senter.y - 75 * s,
+                                             width: 150 * s, height: 150 * s), transform: nil)]
+        case .pil:
+            let p1 = CGMutablePath()
+            p1.move(to: CGPoint(x: senter.x - 90 * s, y: senter.y))
+            p1.addLine(to: CGPoint(x: senter.x + 90 * s, y: senter.y))
+            p1.move(to: CGPoint(x: senter.x + 55 * s, y: senter.y - 28 * s))
+            p1.addLine(to: CGPoint(x: senter.x + 90 * s, y: senter.y))
+            p1.addLine(to: CGPoint(x: senter.x + 55 * s, y: senter.y + 28 * s))
+            return [p1]
+        case .linje:
+            let p = CGMutablePath()
+            p.move(to: CGPoint(x: senter.x - 100 * s, y: senter.y))
+            p.addLine(to: CGPoint(x: senter.x + 100 * s, y: senter.y))
+            return [p]
         }
-        return ut
     }
 }
 
@@ -1588,5 +1616,91 @@ struct CanvasTypeVelger: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+
+// MARK: - FigurView (fase 6: flyttbar + skalerbar form)
+
+/// Dra flytter, klyp skalerer (0.3–4×), hold fjerner.
+private struct FigurView: View {
+    let figur: CanvasFigur
+    let redigerbar: Bool
+    let onEndre: (CanvasFigur) -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+    @State private var pinchSkala: CGFloat = 1.0
+
+    var body: some View {
+        let form = CanvasForm.fra(figur.form) ?? .rektangel
+        let visSkala = figur.skala * pinchSkala
+        FigurShape(form: form)
+            .stroke(Color(UIColor(hex: figur.fargeHex)),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            .frame(width: 200 * visSkala, height: 160 * visSkala)
+            .contentShape(Rectangle())
+            .position(x: figur.x + dragOffset.width,
+                      y: figur.y + dragOffset.height)
+            .gesture(redigerbar ? DragGesture()
+                .onChanged { dragOffset = $0.translation }
+                .onEnded { v in
+                    var ny = figur
+                    ny.x += v.translation.width
+                    ny.y += v.translation.height
+                    dragOffset = .zero
+                    onEndre(ny)
+                } : nil)
+            .simultaneousGesture(redigerbar ? MagnificationGesture()
+                .onChanged { pinchSkala = $0 }
+                .onEnded { v in
+                    var ny = figur
+                    ny.skala = min(4.0, max(0.3, ny.skala * v))
+                    pinchSkala = 1.0
+                    onEndre(ny)
+                } : nil)
+            .onLongPressGesture(minimumDuration: 0.6) {
+                if redigerbar { onSlett() }
+            }
+    }
+}
+
+/// SwiftUI-Shape som speiler CanvasForm.banePath — normalisert til ramma.
+private struct FigurShape: Shape {
+    let form: CanvasForm
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let midY = rect.midY
+        switch form {
+        case .rektangel:
+            p.addRect(rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.12))
+        case .sirkel:
+            let side = min(rect.width, rect.height) * 0.9
+            p.addEllipse(in: CGRect(x: rect.midX - side / 2,
+                                    y: rect.midY - side / 2,
+                                    width: side, height: side))
+        case .pil:
+            p.move(to: CGPoint(x: rect.minX + rect.width * 0.05, y: midY))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.05, y: midY))
+            p.move(to: CGPoint(x: rect.maxX - rect.width * 0.24, y: midY - rect.height * 0.17))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.05, y: midY))
+            p.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.24, y: midY + rect.height * 0.17))
+        case .linje:
+            p.move(to: CGPoint(x: rect.minX, y: midY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: midY))
+        }
+        return p
+    }
+}
+
+// MARK: - UIColor ↔ hex (figur-farger)
+
+extension UIColor {
+    var somHex: String {
+        var r: CGFloat = 1, g: CGFloat = 1, b: CGFloat = 1, a: CGFloat = 1
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X",
+                      Int(r * 255), Int(g * 255), Int(b * 255))
     }
 }
