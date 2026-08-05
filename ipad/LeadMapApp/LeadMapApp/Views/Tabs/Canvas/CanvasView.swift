@@ -74,6 +74,14 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
 
+/// Flyttbar tekstboks oppå flata (fase 5) — «Skriv»-modusen fra mocken.
+struct CanvasTekstboks: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var tekst: String
+    var x: Double
+    var y: Double
+}
+
 /// Lokal notat-modell (speiler CanvasNotatDTO; drawing som rå PKDrawing-data).
 struct CanvasNotat: Identifiable, Hashable {
     var id: String
@@ -94,6 +102,7 @@ struct CanvasNotat: Identifiable, Hashable {
     var lat: Double? = nil
     var lon: Double? = nil
     var stempler: [CanvasStempel] = []
+    var tekstbokser: [CanvasTekstboks] = []
 }
 
 struct CanvasView: View {
@@ -116,9 +125,12 @@ struct CanvasView: View {
     @State private var sok = ""
     @State private var visAnalyse = false
     @State private var stempler: [CanvasStempel] = []
+    @State private var tekstbokser: [CanvasTekstboks] = []
     @State private var notatLat: Double?
     @State private var notatLon: Double?
     @State private var visStempelPalett = false
+    @State private var visFormPalett = false
+    @State private var redigererTekstboks: CanvasTekstboks?
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
 
@@ -500,14 +512,23 @@ struct CanvasView: View {
                         .buttonStyle(.plain)
                         .help("Notatet ble til her — vis på kartet")
                     }
-                    // Del tegningen som bilde (m/ stempler komponert inn).
+                    // Del tegningen som bilde eller PDF (stempler+tekst inn).
                     if !drawing.bounds.isEmpty {
-                        ShareLink(
-                            item: Image(uiImage: komponertBilde()),
-                            preview: SharePreview(
-                                tittel.isEmpty ? "Canvas-notat" : tittel,
-                                image: Image(uiImage: komponertBilde()))
-                        ) {
+                        Menu {
+                            ShareLink(
+                                item: Image(uiImage: komponertBilde()),
+                                preview: SharePreview(
+                                    tittel.isEmpty ? "Canvas-notat" : tittel,
+                                    image: Image(uiImage: komponertBilde()))
+                            ) {
+                                Label("Del som bilde", systemImage: "photo")
+                            }
+                            if let pdfURL = pdfFil() {
+                                ShareLink(item: pdfURL) {
+                                    Label("Del som PDF", systemImage: "doc.richtext")
+                                }
+                            }
+                        } label: {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(CvBrand.textSecondary)
@@ -559,6 +580,59 @@ struct CanvasView: View {
                             .font(.appScaled(size: 9))
                             .foregroundStyle(CvBrand.textTertiary)
                     }
+                    // «Former» fra mocken: legges inn som ekte penn-strøk
+                    // (kan viskes/lassoes som alt annet).
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            visFormPalett.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.on.circle")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Former")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(visFormPalett ? .white : CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(visFormPalett
+                                    ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
+                                    in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    if visFormPalett {
+                        ForEach(CanvasForm.allCases, id: \.self) { form in
+                            Button {
+                                drawing.strokes.append(form.somStroke(
+                                    senter: CGPoint(x: 340, y: 260)))
+                            } label: {
+                                Image(systemName: form.ikon)
+                                    .font(.appScaled(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 30, height: 30)
+                                    .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    // «Skriv»: flyttbar tekstboks.
+                    Button {
+                        let ny = CanvasTekstboks(
+                            tekst: "", x: 340, y: 180 + Double(tekstbokser.count % 6) * 44)
+                        tekstbokser.append(ny)
+                        redigererTekstboks = ny
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "textformat")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Tekst")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(CvBrand.cardHi, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                     Spacer()
                 }
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -579,6 +653,39 @@ struct CanvasView: View {
                                 onSlett: {
                                     stempler.removeAll { $0.id == st.id }
                                 })
+                }
+                ForEach(tekstbokser) { tb in
+                    TekstboksView(boks: tb, redigerbar: valgtErMin,
+                                  onFlytt: { ny in
+                                      if let i = tekstbokser.firstIndex(where: { $0.id == tb.id }) {
+                                          tekstbokser[i] = ny
+                                      }
+                                  },
+                                  onRediger: { redigererTekstboks = tb },
+                                  onSlett: {
+                                      tekstbokser.removeAll { $0.id == tb.id }
+                                  })
+                }
+            }
+            .alert("Tekstboks", isPresented: Binding(
+                get: { redigererTekstboks != nil },
+                set: { if !$0 { redigererTekstboks = nil } })) {
+                TextField("Tekst", text: Binding(
+                    get: { redigererTekstboks?.tekst ?? "" },
+                    set: { ny in
+                        redigererTekstboks?.tekst = ny
+                        if let rb = redigererTekstboks,
+                           let i = tekstbokser.firstIndex(where: { $0.id == rb.id }) {
+                            tekstbokser[i].tekst = ny
+                        }
+                    }))
+                Button("Ferdig") {
+                    // Tom boks ved lukking = angret opprettelse.
+                    if let rb = redigererTekstboks,
+                       rb.tekst.trimmingCharacters(in: .whitespaces).isEmpty {
+                        tekstbokser.removeAll { $0.id == rb.id }
+                    }
+                    redigererTekstboks = nil
                 }
             }
         }
@@ -661,6 +768,7 @@ struct CanvasView: View {
         kobletSelskap = n.selskap
         deltMedTeam = n.delt
         stempler = n.stempler
+        tekstbokser = n.tekstbokser
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -686,6 +794,7 @@ struct CanvasView: View {
         n.selskap = kobletSelskap
         n.delt = deltMedTeam
         n.stempler = stempler
+        n.tekstbokser = tekstbokser
         n.lat = notatLat
         n.lon = notatLon
         n.drawingData = drawing.dataRepresentation()
@@ -704,13 +813,15 @@ struct CanvasView: View {
         do {
             let stemplerJSON = (try? JSONEncoder().encode(n.stempler))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let tekstbokserJSON = (try? JSONEncoder().encode(n.tekstbokser))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
-                    stempler: stemplerJSON)
+                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -720,7 +831,7 @@ struct CanvasView: View {
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
-                    stempler: stemplerJSON)
+                    stempler: stemplerJSON, tekstbokser: tekstbokserJSON)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -760,7 +871,9 @@ struct CanvasView: View {
                 eierNavn: dto.eierNavn,
                 lat: dto.lat, lon: dto.lon,
                 stempler: (dto.stempler?.data(using: .utf8))
-                    .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [])
+                    .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [],
+                tekstbokser: (dto.tekstbokser?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasTekstboks].self, from: $0) } ?? [])
         }
         genererThumbs()
     }
@@ -800,7 +913,33 @@ struct CanvasView: View {
                     at: punkt,
                     withAttributes: [.font: UIFont.systemFont(ofSize: 64)])
             }
+            for tb in tekstbokser where !tb.tekst.isEmpty {
+                let punkt = CGPoint(x: (tb.x - bounds.minX) * 2.0,
+                                    y: (tb.y - bounds.minY) * 2.0)
+                (tb.tekst as NSString).draw(
+                    at: punkt,
+                    withAttributes: [
+                        .font: UIFont.boldSystemFont(ofSize: 34),
+                        .foregroundColor: UIColor.white,
+                    ])
+            }
         }
+    }
+
+    /// PDF til temp-fil for ShareLink (én side = komposittbildet).
+    private func pdfFil() -> URL? {
+        let bilde = komponertBilde()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(tittel.isEmpty ? "canvas-notat" : tittel.replacingOccurrences(of: "/", with: "-")).pdf")
+        let pdfRenderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(origin: .zero, size: bilde.size))
+        do {
+            try pdfRenderer.writePDF(to: url) { ctx in
+                ctx.beginPage()
+                bilde.draw(at: .zero)
+            }
+            return url
+        } catch { return nil }
     }
 
     private func oppdaterThumb(_ n: CanvasNotat) {
@@ -1191,6 +1330,118 @@ private struct StempelView: View {
                 .onChanged { dragOffset = $0.translation }
                 .onEnded { v in
                     var ny = stempel
+                    ny.x += v.translation.width
+                    ny.y += v.translation.height
+                    dragOffset = .zero
+                    onFlytt(ny)
+                } : nil)
+            .onLongPressGesture(minimumDuration: 0.5) {
+                if redigerbar { onSlett() }
+            }
+    }
+}
+
+
+// MARK: - CanvasForm (fase 5: «Former» som ekte penn-strøk)
+
+/// Formene legges inn som PKStroke — de kan viskes, lassoes og flyttes
+/// med PencilKits egne verktøy, akkurat som håndtegnede strøk.
+enum CanvasForm: CaseIterable {
+    case rektangel, sirkel, pil, linje
+
+    var ikon: String {
+        switch self {
+        case .rektangel: return "rectangle"
+        case .sirkel: return "circle"
+        case .pil: return "arrow.right"
+        case .linje: return "minus"
+        }
+    }
+
+    func somStroke(senter: CGPoint) -> PKStroke {
+        let punkter: [CGPoint]
+        switch self {
+        case .rektangel:
+            punkter = Self.polylinje([
+                CGPoint(x: senter.x - 90, y: senter.y - 60),
+                CGPoint(x: senter.x + 90, y: senter.y - 60),
+                CGPoint(x: senter.x + 90, y: senter.y + 60),
+                CGPoint(x: senter.x - 90, y: senter.y + 60),
+                CGPoint(x: senter.x - 90, y: senter.y - 60),
+            ])
+        case .sirkel:
+            punkter = (0...72).map { i in
+                let v = Double(i) / 72 * 2 * .pi
+                return CGPoint(x: senter.x + 75 * cos(v), y: senter.y + 75 * sin(v))
+            }
+        case .pil:
+            punkter = Self.polylinje([
+                CGPoint(x: senter.x - 90, y: senter.y),
+                CGPoint(x: senter.x + 90, y: senter.y),
+            ]) + Self.polylinje([
+                CGPoint(x: senter.x + 55, y: senter.y - 28),
+                CGPoint(x: senter.x + 90, y: senter.y),
+                CGPoint(x: senter.x + 55, y: senter.y + 28),
+            ])
+        case .linje:
+            punkter = Self.polylinje([
+                CGPoint(x: senter.x - 100, y: senter.y),
+                CGPoint(x: senter.x + 100, y: senter.y),
+            ])
+        }
+        let kontroll = punkter.map {
+            PKStrokePoint(location: $0, timeOffset: 0,
+                          size: CGSize(width: 4, height: 4),
+                          opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        return PKStroke(ink: PKInk(.pen, color: .white),
+                        path: PKStrokePath(controlPoints: kontroll,
+                                           creationDate: Date()))
+    }
+
+    /// Tette mellompunkter langs hjørnene → jevn strek.
+    private static func polylinje(_ hjorner: [CGPoint]) -> [CGPoint] {
+        guard hjorner.count > 1 else { return hjorner }
+        var ut: [CGPoint] = []
+        for i in 0..<(hjorner.count - 1) {
+            let a = hjorner[i], b = hjorner[i + 1]
+            let steg = max(2, Int(hypot(b.x - a.x, b.y - a.y) / 8))
+            for t in 0...steg {
+                let f = CGFloat(t) / CGFloat(steg)
+                ut.append(CGPoint(x: a.x + (b.x - a.x) * f,
+                                  y: a.y + (b.y - a.y) * f))
+            }
+        }
+        return ut
+    }
+}
+
+// MARK: - TekstboksView (fase 5: flyttbar tekst)
+
+private struct TekstboksView: View {
+    let boks: CanvasTekstboks
+    let redigerbar: Bool
+    let onFlytt: (CanvasTekstboks) -> Void
+    let onRediger: () -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+
+    var body: some View {
+        Text(boks.tekst.isEmpty ? "Tekst …" : boks.tekst)
+            .font(.appScaled(size: 17, weight: .bold))
+            .foregroundStyle(boks.tekst.isEmpty ? CvBrand.textTertiary : .white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(CvBrand.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .stroke(CvBrand.purple.opacity(0.35), lineWidth: 1))
+            .position(x: boks.x + dragOffset.width,
+                      y: boks.y + dragOffset.height)
+            .onTapGesture { if redigerbar { onRediger() } }
+            .gesture(redigerbar ? DragGesture()
+                .onChanged { dragOffset = $0.translation }
+                .onEnded { v in
+                    var ny = boks
                     ny.x += v.translation.width
                     ny.y += v.translation.height
                     dragOffset = .zero
