@@ -100,6 +100,14 @@ struct CanvasView: View {
     @State private var pdfAnalyseTekst: String?
     @State private var pdfAnalyseNavn = ""
     @State private var visPdfAnalyse = false
+    /// Tilbuds-diff: navnet på forrige versjon analysen sammenlignes med.
+    @State private var pdfAnalyseSammenlign: String?
+    // Markering → møtepunkt: tusj over en PDF-side foreslår teksten under.
+    @State private var markeringForslag: MarkeringForslag?
+    @State private var markeringsTask: Task<Void, Never>?
+    // Leser-modus + «Send til kontakten».
+    @State private var lesDokument: CanvasDokument?
+    @State private var sendDokument: CanvasDokument?
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
@@ -191,7 +199,7 @@ struct CanvasView: View {
         // QA_PDF=1 → med analyse-ark; QA_PDF=2 → kun sidene på flata.
         .task {
             let modus = ProcessInfo.processInfo.environment["QA_PDF"]
-            guard isDemo, modus == "1" || modus == "2",
+            guard isDemo, ["1", "2", "3", "4"].contains(modus ?? ""),
                   dokumenter.isEmpty else { return }
             try? await Task.sleep(nanoseconds: 800_000_000)
             if let n = notater.first { velg(n) }
@@ -219,7 +227,21 @@ struct CanvasView: View {
                     .draw(at: CGPoint(x: 48, y: 60), withAttributes: tittelAttr)
             }
             importerPDFData(data, navn: "Tilbud-Nordic-Elektro")
-            if modus == "2" { visPdfAnalyse = false }
+            if modus != "1" { visPdfAnalyse = false }
+        }
+        // QA_PDF=3 → leser-modus; QA_PDF=4 → markering-kortet.
+        .task {
+            let modus = ProcessInfo.processInfo.environment["QA_PDF"]
+            guard isDemo, modus == "3" || modus == "4" else { return }
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            if modus == "3" {
+                lesDokument = dokumenter.first
+            } else if let objekt = objekter.first(where: { $0.type == "pdf" }) {
+                markeringForslag = MarkeringForslag(
+                    tekst: "Forbehold: befaring av føringsveier før endelig pris",
+                    punkt: CGPoint(x: objekt.x, y: objekt.y - 80),
+                    dokNavn: "Tilbud-Nordic-Elektro")
+            }
         }
         // Møter «Tegn i Canvas» → åpne/opprett notat koblet til selskapet.
         .task(id: appState.pendingCanvasRequestedAt) {
@@ -854,6 +876,20 @@ struct CanvasView: View {
             }
             // Topp: tittel + kategori + lead-kobling + lagre (ekstrahert).
             editorTopp
+                .onChange(of: drawing.strokes.count) { gammelt, nytt in
+                    // Markering → møtepunkt: tusj-strøk over en PDF-side
+                    // slår opp teksten under strøket og foreslår den som
+                    // punkt å ta opp på møtet.
+                    guard nytt > gammelt, pennValg == .marker, valgtErMin,
+                          let siste = drawing.strokes.last else { return }
+                    let boks = siste.renderBounds
+                    markeringsTask?.cancel()
+                    markeringsTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 700_000_000)
+                        guard !Task.isCancelled else { return }
+                        foreslaaMarkering(boks: boks)
+                    }
+                }
                 .onChange(of: drawing.strokes.count) {
                     // Tittelen skriver seg selv: 1,2 s etter siste strøk
                     // leses øverste linja med Vision — kun når feltet er tomt.
@@ -917,6 +953,11 @@ struct CanvasView: View {
             ZStack(alignment: .topLeading) {
                 CvBrand.bg
                 // Spatial Search: usynlig anker + pulserende markering.
+                if let forslag = markeringForslag {
+                    markeringsKort(forslag)
+                        .position(forslag.punkt)
+                        .zIndex(60)
+                }
                 if sokTreffIndeks < sokTreff.count {
                     let treff = sokTreff[sokTreffIndeks]
                     Circle()
@@ -1109,6 +1150,7 @@ struct CanvasView: View {
             PdfAnalyseSheet(
                 tekst: pdfAnalyseTekst ?? "",
                 dokumentNavn: pdfAnalyseNavn,
+                sammenlignetMed: pdfAnalyseSammenlign,
                 selskap: kobletSelskap ?? tittel,
                 leadId: kobletLeadId,
                 onFestPaaFlata: { oppsummering in
@@ -1127,6 +1169,29 @@ struct CanvasView: View {
                         y += 84
                     }
                 })
+        }
+        .sheet(item: $lesDokument) { dok in
+            PdfLeserSheet(dokument: dok)
+        }
+        .sheet(item: $sendDokument) { dok in
+            if let url = eksporterDokument(dok),
+               let epost = kontaktEpost {
+                MailComposerView(
+                    til: epost,
+                    emne: "\(dok.navn) — \(kobletSelskap ?? "")",
+                    brodtekst: "Hei!\n\nVedlagt ligger «\(dok.navn)» med kommentarene fra møtet.\n\nMvh",
+                    vedleggURL: url,
+                    vedleggNavn: "\(dok.navn).pdf") { sendte in
+                    sendDokument = nil
+                    guard sendte, !isDemo, let api = appState.api else { return }
+                    let logg = CanvasAnalyseDTO(
+                        oppsummering: "Sendte annotert «\(dok.navn)» til \(epost)",
+                        oppgaver: [], lofter: [])
+                    Task { try? await api.persisterCanvasAnalyse(
+                        selskap: kobletSelskap, leadId: kobletLeadId,
+                        resultat: logg) }
+                }
+            }
         }
         .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
                       matching: .images)
@@ -1774,8 +1839,10 @@ struct CanvasView: View {
         sider = max(1, n.sider)
         objekter = n.objekter
         dokumenter = n.dokumenter
+        hentManglendeDokumenter()
         objektModus = false
         verktoyModus = .tegn
+        markeringForslag = nil
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -1811,9 +1878,33 @@ struct CanvasView: View {
         n.noder = noder
         n.sider = sider
         n.objekter = objekter
-        // Dokumenter uten gjenlevende side-objekter ryddes bort.
-        n.dokumenter = dokumenter.filter { d in
-            objekter.contains { $0.dokId == d.id }
+        // Dokumenter uten gjenlevende side-objekter ryddes bort (og
+        // slettes fra backend-tabellen, best effort).
+        let fjernede = dokumenter.filter { d in
+            !objekter.contains { $0.dokId == d.id }
+        }
+        dokumenter.removeAll { d in fjernede.contains { $0.id == d.id } }
+        if !isDemo, let api = appState.api {
+            for d in fjernede where d.opplastet == true {
+                Task { try? await api.slettCanvasDokument(dokId: d.id) }
+            }
+        }
+        // Lazy-arkitekturen: bytes bor i egen tabell — last opp nye
+        // dokumenter og lagre kun metadata i notatet (rask liste).
+        if !isDemo, !n.erNy, let api = appState.api {
+            for (i, d) in dokumenter.enumerated()
+            where d.opplastet != true && !d.base64.isEmpty {
+                if (try? await api.lastOppCanvasDokument(
+                    notatId: n.id, dokId: d.id,
+                    navn: d.navn, base64: d.base64)) != nil {
+                    dokumenter[i].opplastet = true
+                }
+            }
+        }
+        n.dokumenter = dokumenter.map { d in
+            var kopi = d
+            if kopi.opplastet == true { kopi.base64 = "" }
+            return kopi
         }
         n.lat = notatLat
         n.lon = notatLon
@@ -1897,6 +1988,204 @@ struct CanvasView: View {
         if let api = appState.api {
             oppgaverCache = (try? await api.hentMoteOppgaver()) ?? []
             if let p = try? await api.hentCanvasRollePolicy() { rollePolicy = p }
+        }
+    }
+
+    // MARK: Markering → møtepunkt
+
+    struct MarkeringForslag: Equatable {
+        let tekst: String
+        let punkt: CGPoint
+        let dokNavn: String
+    }
+
+    /// E-posten til den koblede lead-kontakten (for «Send til …»).
+    private var kontaktEpost: String? {
+        guard let id = kobletLeadId,
+              let lead = appState.leads.first(where: { $0.id == id }),
+              let epost = lead.email, !epost.isEmpty else { return nil }
+        return epost
+    }
+
+    /// Visningsrekten til en PDF-side på flata (samme matte som eksporten).
+    @MainActor
+    private func pdfVisningsRect(_ objekt: CanvasObjekt,
+                                 dok: CanvasDokument) -> CGRect? {
+        guard let pdfd = PdfDokumentCache.dokument(for: dok),
+              let side = pdfd.page(at: objekt.side ?? 0) else { return nil }
+        let sr = side.bounds(for: .mediaBox)
+        let bredde = 1520 * objekt.skala
+        let hoyde = sr.height / max(sr.width, 1) * bredde
+        return CGRect(x: objekt.x - bredde / 2, y: objekt.y - hoyde / 2,
+                      width: bredde, height: hoyde)
+    }
+
+    /// Tusj-strøket er ferdig: finn PDF-siden under, slå opp teksten i
+    /// dokumentet (ekte tekst, ikke OCR) og vis forslags-kortet.
+    @MainActor
+    private func foreslaaMarkering(boks: CGRect) {
+        let midt = CGPoint(x: boks.midX, y: boks.midY)
+        for objekt in objekter where objekt.type == "pdf" && objekt.dokId != nil {
+            guard let dok = dokumenter.first(where: { $0.id == objekt.dokId }),
+                  let flateRect = pdfVisningsRect(objekt, dok: dok),
+                  flateRect.contains(midt),
+                  let pdfd = PdfDokumentCache.dokument(for: dok),
+                  let side = pdfd.page(at: objekt.side ?? 0) else { continue }
+            let sr = side.bounds(for: .mediaBox)
+            let sx = (boks.minX - flateRect.minX) / flateRect.width * sr.width
+            let sw = boks.width / flateRect.width * sr.width
+            let syTopp = (boks.minY - flateRect.minY) / flateRect.height * sr.height
+            let sh = max(boks.height / flateRect.height * sr.height, 14)
+            let sideRect = CGRect(x: sx, y: sr.height - syTopp - sh,
+                                  width: sw, height: sh)
+            let tekst = side.selection(for: sideRect)?.string?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard tekst.count >= 3 else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                markeringForslag = MarkeringForslag(
+                    tekst: String(tekst.prefix(240)),
+                    punkt: CGPoint(x: boks.midX,
+                                   y: max(60, boks.minY - 52)),
+                    dokNavn: dok.navn)
+            }
+            return
+        }
+    }
+
+    private func markeringsKort(_ forslag: MarkeringForslag) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("«\(forslag.tekst)»")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(3)
+            HStack(spacing: 8) {
+                Button {
+                    taOppMarkering(forslag)
+                } label: {
+                    Label("Ta opp på møtet", systemImage: "pin.fill")
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(CvBrand.purple, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                if kan(.canvasKundeminne),
+                   let selskap = kobletSelskap, !selskap.isEmpty {
+                    Button {
+                        let dto = CanvasAnalyseDTO(
+                            oppsummering: "Fra «\(forslag.dokNavn)»: \(forslag.tekst)",
+                            oppgaver: [], lofter: [])
+                        markeringForslag = nil
+                        festIMinne(dto, selskap: selskap, leadId: kobletLeadId)
+                    } label: {
+                        Label("Kundeminnet", systemImage: "brain")
+                            .font(.appScaled(size: 10, weight: .bold))
+                            .foregroundStyle(CvBrand.green)
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(CvBrand.green.opacity(0.15), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        markeringForslag = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.appScaled(size: 14))
+                        .foregroundStyle(CvBrand.textTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: 380)
+        .background(CvBrand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .stroke(CvBrand.purple.opacity(0.6), lineWidth: 1.5))
+        .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
+    }
+
+    /// Markeringen → møtesløyfa (oppgave + møtelogg) + 📌-kort på flata.
+    private func taOppMarkering(_ forslag: MarkeringForslag) {
+        objekter.append(CanvasObjekt(
+            type: "oppgave",
+            x: forslag.punkt.x, y: forslag.punkt.y - 60,
+            tittel: "📌 \(String(forslag.tekst.prefix(60)))",
+            detalj: "Ta opp på møtet"))
+        withAnimation(.easeInOut(duration: 0.12)) { markeringForslag = nil }
+        guard !isDemo, let api = appState.api else { return }
+        let dto = CanvasAnalyseDTO(
+            oppsummering: "Markert i «\(forslag.dokNavn)»: \(forslag.tekst)",
+            oppgaver: [CanvasAnalyseOppgaveDTO(
+                tittel: String(forslag.tekst.prefix(80)), frist: nil)],
+            lofter: [])
+        Task { try? await api.persisterCanvasAnalyse(
+            selskap: kobletSelskap, leadId: kobletLeadId, resultat: dto) }
+    }
+
+    // MARK: Tilbuds-diff
+
+    /// Forrige dokument i samme kundemappe (eller notatet) → tekst til
+    /// sammenligning i AI-analysen. Lazy-henter bytes ved behov.
+    @MainActor
+    private func forrigeDokumentTekst(unntattDokId: String) async
+        -> (navn: String, tekst: String)? {
+        var kandidat = dokumenter.last { $0.id != unntattDokId }
+        if kandidat == nil, let selskap = kobletSelskap, !selskap.isEmpty {
+            for n in notater
+            where n.mappeNavn?.caseInsensitiveCompare(selskap) == .orderedSame {
+                if let d = n.dokumenter.last(where: { $0.id != unntattDokId }) {
+                    kandidat = d
+                    break
+                }
+            }
+        }
+        guard var dok = kandidat else { return nil }
+        if dok.base64.isEmpty {
+            if let cachet = Self.dokumentByteCache[dok.id] {
+                dok.base64 = cachet
+            } else if !isDemo, let api = appState.api,
+                      let hentet = try? await api.hentCanvasDokument(dokId: dok.id) {
+                dok.base64 = hentet.base64
+            }
+        }
+        guard let data = Data(base64Encoded: dok.base64),
+              let pdf = PDFDocument(data: data) else { return nil }
+        var tekst = ""
+        for i in 0..<min(pdf.pageCount, 10) {
+            tekst += (pdf.page(at: i)?.string ?? "") + "\n"
+        }
+        let ren = tekst.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ren.count > 40 else { return nil }
+        return (dok.navn, String(ren.prefix(6_000)))
+    }
+
+    /// Lazy-dokumenter: notat-lista bærer kun metadata — bytene hentes
+    /// først når notatet åpnes, og caches i minnet per dokId.
+    private static var dokumentByteCache: [String: String] = [:]
+
+    private func hentManglendeDokumenter() {
+        // Allerede hentet i denne økta? Fyll fra minnecachen.
+        for (i, d) in dokumenter.enumerated()
+        where d.base64.isEmpty {
+            if let cachet = Self.dokumentByteCache[d.id] {
+                dokumenter[i].base64 = cachet
+                dokumenter[i].opplastet = true
+            }
+        }
+        let manglende = dokumenter.filter { $0.base64.isEmpty }
+        guard !manglende.isEmpty, !isDemo, let api = appState.api else { return }
+        Task { @MainActor in
+            for d in manglende {
+                guard let hentet = try? await api.hentCanvasDokument(dokId: d.id)
+                else { continue }
+                Self.dokumentByteCache[d.id] = hentet.base64
+                if let i = dokumenter.firstIndex(where: { $0.id == d.id }) {
+                    dokumenter[i].base64 = hentet.base64
+                    dokumenter[i].opplastet = true
+                }
+            }
         }
     }
 
@@ -2158,6 +2447,49 @@ struct CanvasView: View {
                         let blekk = drawing.image(from: flateRect, scale: 2)
                         blekk.draw(in: CGRect(origin: .zero, size: sr.size))
                     }
+                    // Alle overlays over denne siden følger med i eksporten:
+                    // stempler, tekstbokser og figurer.
+                    let skalering = sr.width / max(visningBredde, 1)
+                    func tilSide(_ p: CGPoint) -> CGPoint {
+                        CGPoint(x: (p.x - flateRect.minX) * skalering,
+                                y: (p.y - flateRect.minY) * skalering)
+                    }
+                    for st in stempler
+                    where flateRect.contains(CGPoint(x: st.x, y: st.y)) {
+                        let p = tilSide(CGPoint(x: st.x, y: st.y))
+                        let str = 24 * skalering / max(objekt.skala, 0.01) * 0.5
+                        (st.tegn as NSString).draw(
+                            at: CGPoint(x: p.x - str / 2, y: p.y - str / 2),
+                            withAttributes: [.font: UIFont.systemFont(ofSize: str)])
+                    }
+                    for tb in tekstbokser
+                    where flateRect.contains(CGPoint(x: tb.x, y: tb.y))
+                        && !tb.tekst.isEmpty {
+                        let p = tilSide(CGPoint(x: tb.x, y: tb.y))
+                        (tb.tekst as NSString).draw(
+                            in: CGRect(x: p.x - 90 * skalering, y: p.y - 10 * skalering,
+                                       width: 220 * skalering, height: 120 * skalering),
+                            withAttributes: [
+                                .font: UIFont.boldSystemFont(ofSize: 12 * skalering / max(objekt.skala, 0.01) * 0.5),
+                                .foregroundColor: UIColor(red: 0.1, green: 0.1, blue: 0.35, alpha: 1)])
+                    }
+                    for fig in figurer
+                    where flateRect.contains(CGPoint(x: fig.x, y: fig.y)) {
+                        guard let form = CanvasForm.allCases
+                            .first(where: { $0.nokkel == fig.form }) else { continue }
+                        let b = (fig.bredde ?? 200) * fig.skala * skalering
+                        let h = (fig.hoyde ?? 160) * fig.skala * skalering
+                        let sentrum = tilSide(CGPoint(x: fig.x, y: fig.y))
+                        let rekt = CGRect(x: -b / 2, y: -h / 2, width: b, height: h)
+                        cg.saveGState()
+                        cg.translateBy(x: sentrum.x, y: sentrum.y)
+                        cg.rotate(by: fig.rotasjon * .pi / 180)
+                        cg.addPath(FigurShape(form: form).path(in: rekt).cgPath)
+                        cg.setStrokeColor(UIColor(hex: fig.fargeHex).cgColor)
+                        cg.setLineWidth(max(2, 3 * skalering))
+                        cg.strokePath()
+                        cg.restoreGState()
+                    }
                 }
             }
             return url
@@ -2251,6 +2583,7 @@ struct CanvasView: View {
         let antall = min(dok.pageCount, 20)
         let dokument = CanvasDokument(navn: navn, base64: data.base64EncodedString())
         dokumenter.append(dokument)
+        Self.dokumentByteCache[dokument.id] = dokument.base64
         var y: Double = 60
         var fullTekst = ""
         for i in 0..<antall {
@@ -2268,12 +2601,28 @@ struct CanvasView: View {
             y += Double(hoyde) / 2 + 40
         }
         // AI leser dokumentet med en gang: viktig oppsummering + punkter
-        // du kan sende rett til møtesløyfa — annotér videre imens.
+        // du kan sende rett til møtesløyfa — annotér videre imens. Finnes
+        // en tidligere versjon i samme kundemappe, sammenlignes de.
         let renTekst = fullTekst.trimmingCharacters(in: .whitespacesAndNewlines)
         if kan(.canvasAnalyse), renTekst.count > 40 {
-            pdfAnalyseTekst = String(renTekst.prefix(15_000))
-            pdfAnalyseNavn = navn
-            visPdfAnalyse = true
+            let nyTekst = String(renTekst.prefix(12_000))
+            let dokId = dokument.id
+            Task { @MainActor in
+                if let forrige = await forrigeDokumentTekst(unntattDokId: dokId) {
+                    pdfAnalyseTekst = "NY VERSJON:\n" + nyTekst
+                        + "\n\nFORRIGE VERSJON («\(forrige.navn)») — sammenlign "
+                        + "versjonene og fremhev endringer i pris, frister og "
+                        + "forbehold først i oppsummeringen:\n" + forrige.tekst
+                    pdfAnalyseSammenlign = forrige.navn
+                } else {
+                    pdfAnalyseTekst = nyTekst
+                    pdfAnalyseSammenlign = nil
+                }
+                pdfAnalyseNavn = navn
+                // QA-moduser 2-4 verifiserer andre flater — hold arket lukket.
+                let qa = ProcessInfo.processInfo.environment["QA_PDF"] ?? ""
+                visPdfAnalyse = !["2", "3", "4"].contains(qa)
+            }
         }
         // Flata må være høy nok for alle sidene (nominell sidehøyde ~900pt).
         sider = min(20, max(sider, Int(ceil(y / 900)) + 1))
@@ -2538,6 +2887,47 @@ struct CanvasView: View {
                         }
                         .buttonStyle(.plain)
                         .help("Notatet ble til her — vis på kartet")
+                    }
+                    // Dokumentene i notatet: leser-modus, sidehopp og send.
+                    if !dokumenter.isEmpty {
+                        Menu {
+                            ForEach(dokumenter) { dok in
+                                Menu(dok.navn) {
+                                    Button {
+                                        lesDokument = dok
+                                    } label: {
+                                        Label("Åpne i leser (søk + zoom)",
+                                              systemImage: "book")
+                                    }
+                                    if let epost = kontaktEpost {
+                                        Button {
+                                            sendDokument = dok
+                                        } label: {
+                                            Label("Send til \(epost)",
+                                                  systemImage: "paperplane")
+                                        }
+                                    }
+                                    let sideObjs = objekter
+                                        .filter { $0.dokId == dok.id }
+                                        .sorted { ($0.side ?? 0) < ($1.side ?? 0) }
+                                    if sideObjs.count > 1 {
+                                        Divider()
+                                        ForEach(sideObjs, id: \.id) { o in
+                                            Button("Gå til side \((o.side ?? 0) + 1)") {
+                                                sokTreff = [CGPoint(x: o.x, y: o.y)]
+                                                sokTreffIndeks = 0
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "doc.text")
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(CvBrand.purpleLight)
+                                .frame(width: 30, height: 30)
+                                .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                     // Del tegningen som bilde eller PDF (stempler+tekst inn).
                     if !drawing.bounds.isEmpty || !objekter.isEmpty {

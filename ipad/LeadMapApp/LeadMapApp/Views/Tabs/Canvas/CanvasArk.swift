@@ -2,6 +2,7 @@
 
 import CoreLocation
 import MapKit
+import MessageUI
 import PDFKit
 import PencilKit
 import PhotosUI
@@ -356,6 +357,8 @@ struct CanvasAnalyseSheet: View {
 struct PdfAnalyseSheet: View {
     let tekst: String
     let dokumentNavn: String
+    /// Tilbuds-diff: navnet på forrige versjon analysen sammenligner med.
+    var sammenlignetMed: String? = nil
     let selskap: String
     let leadId: String?
     var onFestPaaFlata: ((String) -> Void)? = nil
@@ -399,6 +402,15 @@ struct PdfAnalyseSheet: View {
                             }
                         }
                         Spacer()
+                        if let forrige = sammenlignetMed {
+                            Label("Sammenlignet med «\(forrige)»",
+                                  systemImage: "arrow.triangle.branch")
+                                .font(.appScaled(size: 9, weight: .bold))
+                                .foregroundStyle(CvBrand.orange)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(CvBrand.orange.opacity(0.15), in: Capsule())
+                                .lineLimit(1)
+                        }
                         if onDeviceKilde {
                             Label("På enheten", systemImage: "iphone")
                                 .font(.appScaled(size: 9, weight: .bold))
@@ -570,6 +582,145 @@ struct PdfAnalyseSheet: View {
         }
         dismiss()
     }
+}
+
+
+// MARK: - PdfLeserSheet — fullskjerm lesing med søk, zoom og navigator
+
+/// Flata er for annotering; leseren er for LESING: ekte PDFView med
+/// kontinuerlig scroll, klyp-zoom, tekstmarkering, søk i dokumentet og
+/// PDFKit-egen thumbnail-navigator i margen.
+struct PdfLeserSheet: View {
+    let dokument: CanvasDokument
+    var startSide: Int = 0
+    @Environment(\.dismiss) private var dismiss
+    @State private var visSok = false
+
+    var body: some View {
+        NavigationStack {
+            PdfLeserView(dok: dokument, startSide: startSide, visSok: $visSok)
+                .ignoresSafeArea(edges: .bottom)
+                .navigationTitle(dokument.navn)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            visSok = true
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                        }
+                    }
+                }
+        }
+    }
+}
+
+struct PdfLeserView: UIViewRepresentable {
+    let dok: CanvasDokument
+    let startSide: Int
+    @Binding var visSok: Bool
+
+    final class Coordinator {
+        var pdfView: PDFView?
+    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> UIView {
+        let beholder = UIView()
+        beholder.backgroundColor = .systemBackground
+        let pdfView = PDFView()
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.autoScales = true
+        pdfView.displaysPageBreaks = true
+        pdfView.isFindInteractionEnabled = true
+        pdfView.document = PdfDokumentCache.dokument(for: dok)
+        // Sidenavigatoren: PDFKit-egen thumbnail-stripe i margen.
+        let navigator = PDFThumbnailView()
+        navigator.pdfView = pdfView
+        navigator.layoutMode = .vertical
+        navigator.thumbnailSize = CGSize(width: 44, height: 58)
+        navigator.backgroundColor = .secondarySystemBackground
+        for v in [navigator, pdfView] as [UIView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            beholder.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            navigator.leadingAnchor.constraint(equalTo: beholder.leadingAnchor),
+            navigator.topAnchor.constraint(equalTo: beholder.topAnchor),
+            navigator.bottomAnchor.constraint(equalTo: beholder.bottomAnchor),
+            navigator.widthAnchor.constraint(equalToConstant: 62),
+            pdfView.leadingAnchor.constraint(equalTo: navigator.trailingAnchor),
+            pdfView.topAnchor.constraint(equalTo: beholder.topAnchor),
+            pdfView.bottomAnchor.constraint(equalTo: beholder.bottomAnchor),
+            pdfView.trailingAnchor.constraint(equalTo: beholder.trailingAnchor),
+        ])
+        if let side = pdfView.document?.page(at: startSide) {
+            DispatchQueue.main.async { pdfView.go(to: side) }
+        }
+        context.coordinator.pdfView = pdfView
+        return beholder
+    }
+
+    func updateUIView(_ v: UIView, context: Context) {
+        if visSok {
+            context.coordinator.pdfView?.findInteraction
+                .presentFindNavigator(showingReplace: false)
+            DispatchQueue.main.async { visSok = false }
+        }
+    }
+}
+
+
+// MARK: - MailComposerView — «Send til kontakten» med vedlagt annotert PDF
+
+struct MailComposerView: UIViewControllerRepresentable {
+    let til: String
+    let emne: String
+    let brodtekst: String
+    let vedleggURL: URL?
+    let vedleggNavn: String
+    /// true = e-posten ble sendt (logges i møteloggen).
+    let onFerdig: (Bool) -> Void
+
+    static var kanSende: Bool { MFMailComposeViewController.canSendMail() }
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let onFerdig: (Bool) -> Void
+        init(onFerdig: @escaping (Bool) -> Void) { self.onFerdig = onFerdig }
+        func mailComposeController(_ controller: MFMailComposeViewController,
+                                   didFinishWith result: MFMailComposeResult,
+                                   error: Error?) {
+            onFerdig(result == .sent)
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(onFerdig: onFerdig) }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        guard MFMailComposeViewController.canSendMail() else {
+            // Ingen Mail-konto: fall tilbake til delingsarket med vedlegget.
+            let items: [Any] = vedleggURL.map { [$0] } ?? []
+            let ark = UIActivityViewController(activityItems: items,
+                                               applicationActivities: nil)
+            ark.completionWithItemsHandler = { _, fullfort, _, _ in
+                onFerdig(fullfort)
+            }
+            return ark
+        }
+        let mc = MFMailComposeViewController()
+        mc.mailComposeDelegate = context.coordinator
+        mc.setToRecipients([til])
+        mc.setSubject(emne)
+        mc.setMessageBody(brodtekst, isHTML: false)
+        if let url = vedleggURL, let data = try? Data(contentsOf: url) {
+            mc.addAttachmentData(data, mimeType: "application/pdf",
+                                 fileName: vedleggNavn)
+        }
+        return mc
+    }
+    func updateUIViewController(_ vc: UIViewController, context: Context) {}
 }
 
 
