@@ -9,8 +9,12 @@
 // Demo-modus: in-memory (aldri backend).
 
 import CoreLocation
+import MapKit
+import PDFKit
 import PencilKit
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 import Vision
 
 private enum CvBrand {
@@ -115,6 +119,22 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
 
+/// Objekt-laget (fase 8): bilder + lead-/KPI-/kart-/oppgave-kort som
+/// ligger UNDER blekket (tegn oppå = annoter). Lasso/objekt-modusen
+/// gjør dem flyttbare/skalerbare; ellers går all touch til Pencil.
+struct CanvasObjekt: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var type: String        // bilde / lead / kpi / kart / oppgave
+    var x: Double
+    var y: Double
+    var skala: Double = 1.0
+    /// JPEG-base64 for bilde- og kart-objekter.
+    var bildeBase64: String? = nil
+    var tittel: String? = nil
+    var detalj: String? = nil
+    var refId: String? = nil
+}
+
 /// Levende tankekart/brainstorm-node (fase 7): boblene er OBJEKTER —
 /// «+» føder koblet barn, dra flytter (streken følger), tap redigerer
 /// teksten (Scribble: skriv i boblen med Pencil). Brainstorm = noder
@@ -175,6 +195,7 @@ struct CanvasNotat: Identifiable, Hashable {
     var papir: CanvasPapir = .blank
     var noder: [CanvasNode] = []
     var sider: Int = 1
+    var objekter: [CanvasObjekt] = []
 }
 
 struct CanvasView: View {
@@ -203,6 +224,13 @@ struct CanvasView: View {
     @State private var noder: [CanvasNode] = []
     @State private var sider: Int = 1
     @State private var redigererNode: CanvasNode?
+    @State private var objekter: [CanvasObjekt] = []
+    /// Lasso/objekt-modus: touch går til objektene (flytt/skaler) i
+    /// stedet for pennen. Av = tegn fritt OPPÅ objektene (annoter).
+    @State private var objektModus = false
+    @State private var bildeValg: PhotosPickerItem?
+    @State private var bildeVelgerAapen = false
+    @State private var pdfVelgerAapen = false
     @State private var notatLat: Double?
     @State private var notatLon: Double?
     @State private var visStempelPalett = false
@@ -598,7 +626,7 @@ struct CanvasView: View {
                         .help("Notatet ble til her — vis på kartet")
                     }
                     // Del tegningen som bilde eller PDF (stempler+tekst inn).
-                    if !drawing.bounds.isEmpty {
+                    if !drawing.bounds.isEmpty || !objekter.isEmpty {
                         Menu {
                             ShareLink(
                                 item: Image(uiImage: komponertBilde()),
@@ -632,6 +660,85 @@ struct CanvasView: View {
             // Stempel-palett («Klistremerker» fra design-mocken).
             if valgtErMin {
                 HStack(spacing: 8) {
+                    // Lasso/objekt-modus: flytt og skaler objektene under
+                    // blekket — av igjen for å tegne oppå (annotere).
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            objektModus.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "lasso")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text(objektModus ? "Flytter" : "Lasso")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(objektModus ? .white : CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(objektModus
+                                    ? CvBrand.orange.opacity(0.5) : CvBrand.cardHi,
+                                    in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Flytt/skaler bilder og kort — av for å tegne oppå")
+                    // «Sett inn»: bilder + levende kort fra resten av appen.
+                    Menu {
+                        Button {
+                            bildeVelgerAapen = true
+                        } label: {
+                            Label("Bilde fra Bilder", systemImage: "photo")
+                        }
+                        Button {
+                            pdfVelgerAapen = true
+                        } label: {
+                            Label("PDF — tilbud/kontrakt/plantegning",
+                                  systemImage: "doc.fill")
+                        }
+                        Menu {
+                            ForEach(appState.leads.sorted {
+                                ($0.leadScore ?? 0) > ($1.leadScore ?? 0)
+                            }.prefix(20), id: \.id) { lead in
+                                Button(lead.name) { settInnLeadKort(lead) }
+                            }
+                        } label: {
+                            Label("Lead-kort", systemImage: "person.crop.rectangle")
+                        }
+                        Menu {
+                            Button("Leads totalt") { settInnKPI(navn: "Leads", verdi: "\(appState.leads.count)") }
+                            Button("Hot leads") {
+                                let hot = appState.leads.filter { ($0.leadScore ?? 0) >= 70 }.count
+                                settInnKPI(navn: "Hot leads", verdi: "\(hot)")
+                            }
+                            Button("Pipeline-verdi") {
+                                let sum = appState.leads.compactMap(\.estimatedValue).reduce(0, +)
+                                settInnKPI(navn: "Pipeline", verdi: "kr \(Int(sum / 1000))k")
+                            }
+                        } label: {
+                            Label("KPI", systemImage: "chart.bar.fill")
+                        }
+                        Button {
+                            Task { await settInnKartUtsnitt() }
+                        } label: {
+                            Label("Kart-utsnitt", systemImage: "map")
+                        }
+                        Menu {
+                            ForEach(oppgaveKandidater, id: \.id) { o in
+                                Button(o.tittel) { settInnOppgave(o) }
+                            }
+                        } label: {
+                            Label("Oppgave", systemImage: "checklist")
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus.square.on.square")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Sett inn")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(CvBrand.cardHi, in: Capsule())
+                    }
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             visStempelPalett.toggle()
@@ -838,11 +945,26 @@ struct CanvasView: View {
                             .frame(height: geo.size.height)
                     }
                 }
+                // Objekt-laget: bilder/kort UNDER blekket — tegn oppå for å
+                // annotere. I objekt-modus rutes touch hit (canvas er av).
+                ForEach(objekter) { obj in
+                    ObjektView(objekt: obj,
+                               redigerbar: valgtErMin && objektModus,
+                               onEndre: { ny in
+                                   if let i = objekter.firstIndex(where: { $0.id == obj.id }) {
+                                       objekter[i] = ny
+                                   }
+                               },
+                               onSlett: {
+                                   objekter.removeAll { $0.id == obj.id }
+                               })
+                }
                 // Tankekart: koblingslinjene tegnes under nodene.
                 if !noder.isEmpty {
                     NodeKoblinger(noder: noder)
                 }
-                PencilCanvas(drawing: $drawing, redigerbar: valgtErMin,
+                PencilCanvas(drawing: $drawing,
+                             redigerbar: valgtErMin && !objektModus,
                              kunPencil: kunPencil)
                 ForEach(stempler) { st in
                     StempelView(stempel: st, redigerbar: valgtErMin,
@@ -905,6 +1027,12 @@ struct CanvasView: View {
                 }
             }
             .frame(height: geo.size.height * CGFloat(sider))
+            .dropDestination(for: Data.self) { biter, plassering in
+                guard valgtErMin, let data = biter.first,
+                      UIImage(data: data) != nil else { return false }
+                leggTilBilde(data, ved: plassering)
+                return true
+            }
             }
             }
             .alert("Node", isPresented: Binding(
@@ -947,6 +1075,30 @@ struct CanvasView: View {
             CanvasAnalyseSheet(drawing: drawing,
                                selskap: kobletSelskap ?? tittel,
                                leadId: kobletLeadId)
+        }
+        .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
+                      matching: .images)
+        .fileImporter(isPresented: $pdfVelgerAapen,
+                      allowedContentTypes: [.pdf]) { resultat in
+            if case .success(let url) = resultat {
+                importerPDF(fra: url)
+            }
+        }
+        .alert("PDF-import", isPresented: Binding(
+            get: { feilVedImport != nil },
+            set: { if !$0 { feilVedImport = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(feilVedImport ?? "")
+        }
+        .onChange(of: bildeValg) { _, valg in
+            guard let valg else { return }
+            Task {
+                if let data = try? await valg.loadTransferable(type: Data.self) {
+                    leggTilBilde(data)
+                }
+                bildeValg = nil
+            }
         }
         .sheet(isPresented: $visTypeVelger) {
             CanvasTypeVelger { valgt in
@@ -1036,6 +1188,8 @@ struct CanvasView: View {
         papir = n.papir
         noder = n.noder
         sider = max(1, n.sider)
+        objekter = n.objekter
+        objektModus = false
         notatLat = n.lat
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
@@ -1066,6 +1220,7 @@ struct CanvasView: View {
         n.papir = papir
         n.noder = noder
         n.sider = sider
+        n.objekter = objekter
         n.lat = notatLat
         n.lon = notatLon
         n.drawingData = drawing.dataRepresentation()
@@ -1090,6 +1245,8 @@ struct CanvasView: View {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let noderJSON = (try? JSONEncoder().encode(n.noder))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let objekterJSON = (try? JSONEncoder().encode(n.objekter))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
@@ -1098,7 +1255,7 @@ struct CanvasView: View {
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
-                    noder: noderJSON, sider: n.sider)
+                    noder: noderJSON, sider: n.sider, objekter: objekterJSON)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -1110,7 +1267,7 @@ struct CanvasView: View {
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
-                    noder: noderJSON, sider: n.sider)
+                    noder: noderJSON, sider: n.sider, objekter: objekterJSON)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -1158,9 +1315,14 @@ struct CanvasView: View {
                 papir: CanvasPapir(rawValue: dto.papir ?? "blank") ?? .blank,
                 noder: (dto.noder?.data(using: .utf8))
                     .flatMap { try? JSONDecoder().decode([CanvasNode].self, from: $0) } ?? [],
-                sider: max(1, dto.sider ?? 1))
+                sider: max(1, dto.sider ?? 1),
+                objekter: (dto.objekter?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasObjekt].self, from: $0) } ?? [])
         }
         genererThumbs()
+        if let api = appState.api {
+            oppgaverCache = (try? await api.hentMoteOppgaver()) ?? []
+        }
     }
 
     /// Miniatyrer: PKDrawing → 92pt-bilde (2× av 46pt-ruta), av-main.
@@ -1182,10 +1344,32 @@ struct CanvasView: View {
 
     /// Tegning + stempler → ett bilde (deling). Stemplene tegnes på
     /// samme koordinater som overlayet.
-    private func komponertBilde() -> UIImage {
-        let bounds = drawing.bounds.isEmpty
+    /// Alt innhold skal med i eksporten: blekk + objekter + noder — en
+    /// signert kontrakt beskjæres aldri til bare signaturen.
+    private func eksportBounds() -> CGRect {
+        var samlet = drawing.bounds.isEmpty ? CGRect.null : drawing.bounds
+        for obj in objekter {
+            var stor = CGSize(width: 380 * obj.skala, height: 110)
+            if let b64 = obj.bildeBase64, let data = Data(base64Encoded: b64),
+               let img = UIImage(data: data) {
+                stor = CGSize(width: img.size.width * obj.skala,
+                              height: img.size.height * obj.skala)
+            }
+            samlet = samlet.union(CGRect(x: obj.x - stor.width / 2,
+                                         y: obj.y - stor.height / 2,
+                                         width: stor.width, height: stor.height))
+        }
+        for node in noder {
+            samlet = samlet.union(CGRect(x: node.x - 110, y: node.y - 40,
+                                         width: 220, height: 80))
+        }
+        return samlet.isNull
             ? CGRect(x: 0, y: 0, width: 800, height: 600)
-            : drawing.bounds.insetBy(dx: -40, dy: -40)
+            : samlet.insetBy(dx: -40, dy: -40)
+    }
+
+    private func komponertBilde() -> UIImage {
+        let bounds = eksportBounds()
         let base = drawing.image(from: bounds, scale: 2.0)
         let renderer = UIGraphicsImageRenderer(size: base.size)
         return renderer.image { rctx in
@@ -1193,6 +1377,37 @@ struct CanvasView: View {
             UIColor(red: 0.05, green: 0.04, blue: 0.10, alpha: 1).setFill()
             rctx.fill(CGRect(origin: .zero, size: base.size))
             papir.tegn(i: rctx.cgContext, storrelse: base.size)
+            // Objekt-laget under blekket — som på skjermen.
+            for obj in objekter {
+                let punkt = CGPoint(x: (obj.x - bounds.minX) * 2.0,
+                                    y: (obj.y - bounds.minY) * 2.0)
+                if let b64 = obj.bildeBase64,
+                   let data = Data(base64Encoded: b64),
+                   let img = UIImage(data: data) {
+                    let b = CGSize(width: img.size.width * obj.skala,
+                                   height: img.size.height * obj.skala)
+                    img.draw(in: CGRect(x: punkt.x - b.width / 2,
+                                        y: punkt.y - b.height / 2,
+                                        width: b.width, height: b.height))
+                } else if let tittel = obj.tittel {
+                    let bredde: CGFloat = 380 * obj.skala
+                    let rekt = CGRect(x: punkt.x - bredde / 2, y: punkt.y - 55,
+                                      width: bredde, height: 110)
+                    let ctx = rctx.cgContext
+                    ctx.setFillColor(UIColor(red: 0.13, green: 0.11, blue: 0.20, alpha: 1).cgColor)
+                    let bane = UIBezierPath(roundedRect: rekt, cornerRadius: 18)
+                    ctx.addPath(bane.cgPath)
+                    ctx.fillPath()
+                    (tittel as NSString).draw(
+                        at: CGPoint(x: rekt.minX + 22, y: rekt.minY + 18),
+                        withAttributes: [.font: UIFont.boldSystemFont(ofSize: 30),
+                                         .foregroundColor: UIColor.white])
+                    ((obj.detalj ?? "") as NSString).draw(
+                        at: CGPoint(x: rekt.minX + 22, y: rekt.minY + 62),
+                        withAttributes: [.font: UIFont.systemFont(ofSize: 24),
+                                         .foregroundColor: UIColor.white.withAlphaComponent(0.6)])
+                }
+            }
             base.draw(at: .zero)
             for st in stempler {
                 let punkt = CGPoint(x: (st.x - bounds.minX) * 2.0,
@@ -1279,6 +1494,120 @@ struct CanvasView: View {
               let tegning = try? PKDrawing(data: n.drawingData),
               !tegning.bounds.isEmpty else { return }
         thumbs[n.id] = tegning.image(from: tegning.bounds, scale: 0.35)
+    }
+
+    private var oppgaveKandidater: [MoteOppgaveDTO] {
+        if isDemo {
+            return [MoteOppgaveDTO(id: "demo-o1", selskap: "Nordic Elektro AS",
+                                   tittel: "Prisforslag rammeavtale",
+                                   frist: "torsdag", status: "open"),
+                    MoteOppgaveDTO(id: "demo-o2", selskap: "Nordic Elektro AS",
+                                   tittel: "Book befaring", frist: "neste uke",
+                                   status: "open")]
+        }
+        return oppgaverCache
+    }
+    @State private var oppgaverCache: [MoteOppgaveDTO] = []
+
+    /// PDF-annotering: tilbud/kontrakter/ordreskjema/plantegninger inn som
+    /// side-objekter under blekket — marker med tusjen, skriv med tekst-
+    /// bokser/Scribble, signer og tegn med pennen. Del som PDF etterpå.
+    private func importerPDF(fra url: URL) {
+        let tilgang = url.startAccessingSecurityScopedResource()
+        defer { if tilgang { url.stopAccessingSecurityScopedResource() } }
+        guard let dok = PDFDocument(url: url) else { return }
+        let antall = min(dok.pageCount, 12)
+        var y: Double = 60
+        for i in 0..<antall {
+            guard let side = dok.page(at: i) else { continue }
+            let ramme = side.bounds(for: .mediaBox)
+            let bredde: CGFloat = 760
+            let hoyde = ramme.height / max(ramme.width, 1) * bredde
+            let bilde = side.thumbnail(of: CGSize(width: bredde * 2,
+                                                  height: hoyde * 2),
+                                       for: .mediaBox)
+            guard let jpeg = bilde.jpegData(compressionQuality: 0.7) else { continue }
+            y += Double(hoyde) / 2
+            objekter.append(CanvasObjekt(
+                type: "pdf", x: 430, y: y, skala: 0.5,
+                bildeBase64: jpeg.base64EncodedString(),
+                tittel: antall > 1
+                    ? "\(url.deletingPathExtension().lastPathComponent) · s. \(i + 1)"
+                    : url.deletingPathExtension().lastPathComponent))
+            y += Double(hoyde) / 2 + 40
+        }
+        // Flata må være høy nok for alle sidene (nominell sidehøyde ~900pt).
+        sider = min(20, max(sider, Int(ceil(y / 900)) + 1))
+        if dok.pageCount > antall {
+            feilVedImport = "PDF-en har \(dok.pageCount) sider — de første \(antall) ble lagt inn."
+        }
+    }
+    @State private var feilVedImport: String?
+
+    /// Bilde inn: nedskaler til maks 1200px + JPEG 0.7 (holder JSON-capen).
+    private func leggTilBilde(_ data: Data, ved punkt: CGPoint? = nil) {
+        guard var bilde = UIImage(data: data) else { return }
+        let maks: CGFloat = 1200
+        if max(bilde.size.width, bilde.size.height) > maks {
+            let faktor = maks / max(bilde.size.width, bilde.size.height)
+            let ny = CGSize(width: bilde.size.width * faktor,
+                            height: bilde.size.height * faktor)
+            bilde = UIGraphicsImageRenderer(size: ny).image { _ in
+                bilde.draw(in: CGRect(origin: .zero, size: ny))
+            }
+        }
+        guard let jpeg = bilde.jpegData(compressionQuality: 0.7) else { return }
+        objekter.append(CanvasObjekt(
+            type: "bilde",
+            x: punkt.map(\.x).map(Double.init) ?? 420,
+            y: punkt.map(\.y).map(Double.init) ?? 320,
+            bildeBase64: jpeg.base64EncodedString()))
+        objektModus = true
+    }
+
+    private func settInnLeadKort(_ lead: LeadModel) {
+        objekter.append(CanvasObjekt(
+            type: "lead", x: 400, y: 260,
+            tittel: lead.name,
+            detalj: "Score \(lead.leadScore ?? 0)"
+                + (lead.estimatedValue.map { " · kr \(Int($0 / 1000))k" } ?? ""),
+            refId: lead.id))
+        objektModus = true
+    }
+
+    private func settInnKPI(navn: String, verdi: String) {
+        objekter.append(CanvasObjekt(
+            type: "kpi", x: 400, y: 260, tittel: navn, detalj: verdi))
+        objektModus = true
+    }
+
+    private func settInnOppgave(_ o: MoteOppgaveDTO) {
+        objekter.append(CanvasObjekt(
+            type: "oppgave", x: 400, y: 260,
+            tittel: o.tittel,
+            detalj: [o.selskap, o.frist].compactMap { $0 }.joined(separator: " · "),
+            refId: o.id))
+        objektModus = true
+    }
+
+    /// Kart-utsnitt: MKMapSnapshotter av notatets posisjon (eller Oslo).
+    @MainActor
+    private func settInnKartUtsnitt() async {
+        let senter = CLLocationCoordinate2D(
+            latitude: notatLat ?? 59.913, longitude: notatLon ?? 10.753)
+        let opts = MKMapSnapshotter.Options()
+        opts.region = MKCoordinateRegion(
+            center: senter,
+            span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.03))
+        opts.size = CGSize(width: 440, height: 280)
+        opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
+        guard let snap = try? await MKMapSnapshotter(options: opts).start(),
+              let jpeg = snap.image.jpegData(compressionQuality: 0.75) else { return }
+        objekter.append(CanvasObjekt(
+            type: "kart", x: 430, y: 300,
+            bildeBase64: jpeg.base64EncodedString(),
+            tittel: kobletSelskap))
+        objektModus = true
     }
 
     private static func kortDato(_ d: Date) -> String {
@@ -2334,6 +2663,124 @@ private struct NodeView: View {
             } : nil)
         .onLongPressGesture(minimumDuration: 0.6) {
             if redigerbar { onSlett() }
+        }
+    }
+}
+
+// MARK: - ObjektView (fase 8: bilder + levende kort under blekket)
+
+/// Bilde-, lead-, KPI-, kart- og oppgave-objekter. I objekt-modus:
+/// dra flytter, klyp skalerer, hold fjerner. Ellers er laget passivt
+/// og blekket tegnes oppå (annotering).
+private struct ObjektView: View {
+    let objekt: CanvasObjekt
+    let redigerbar: Bool
+    let onEndre: (CanvasObjekt) -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+    @State private var pinchSkala: CGFloat = 1.0
+
+    var body: some View {
+        innhold
+            .scaleEffect(pinchSkala)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(redigerbar ? CvBrand.orange.opacity(0.8) : .clear,
+                            style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            )
+            .position(x: objekt.x + dragOffset.width,
+                      y: objekt.y + dragOffset.height)
+            .gesture(redigerbar ? DragGesture()
+                .onChanged { dragOffset = $0.translation }
+                .onEnded { v in
+                    var ny = objekt
+                    ny.x += v.translation.width
+                    ny.y += v.translation.height
+                    dragOffset = .zero
+                    onEndre(ny)
+                } : nil)
+            .simultaneousGesture(redigerbar ? MagnificationGesture()
+                .onChanged { pinchSkala = $0 }
+                .onEnded { v in
+                    var ny = objekt
+                    ny.skala = min(3.0, max(0.25, ny.skala * v))
+                    pinchSkala = 1.0
+                    onEndre(ny)
+                } : nil)
+            .onLongPressGesture(minimumDuration: 0.6) {
+                if redigerbar { onSlett() }
+            }
+            .allowsHitTesting(redigerbar)
+    }
+
+    @ViewBuilder
+    private var innhold: some View {
+        if let b64 = objekt.bildeBase64,
+           let data = Data(base64Encoded: b64),
+           let img = UIImage(data: data) {
+            // Bilde / kart-utsnitt
+            VStack(spacing: 0) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: img.size.width * objekt.skala,
+                           height: img.size.height * objekt.skala)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                if objekt.type == "kart", let tittel = objekt.tittel, !tittel.isEmpty {
+                    Text(tittel)
+                        .font(.appScaled(size: 10, weight: .bold))
+                        .foregroundStyle(CvBrand.textSecondary)
+                        .padding(.top, 3)
+                }
+            }
+            .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+        } else {
+            // Lead-/KPI-/oppgave-kort
+            HStack(spacing: 10) {
+                Image(systemName: kortIkon)
+                    .font(.appScaled(size: 15, weight: .semibold))
+                    .foregroundStyle(kortFarge)
+                    .frame(width: 34, height: 34)
+                    .background(kortFarge.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(objekt.tittel ?? "")
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    if let detalj = objekt.detalj, !detalj.isEmpty {
+                        Text(detalj)
+                            .font(.appScaled(size: 11))
+                            .foregroundStyle(CvBrand.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(minWidth: 170)
+            .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(kortFarge.opacity(0.4), lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+            .scaleEffect(objekt.skala)
+        }
+    }
+
+    private var kortIkon: String {
+        switch objekt.type {
+        case "lead": return "person.crop.rectangle.fill"
+        case "kpi": return "chart.bar.fill"
+        case "oppgave": return "checklist"
+        default: return "square.dashed"
+        }
+    }
+
+    private var kortFarge: Color {
+        switch objekt.type {
+        case "lead": return CvBrand.orange
+        case "kpi": return CvBrand.blue
+        case "oppgave": return CvBrand.green
+        default: return CvBrand.purpleLight
         }
     }
 }
