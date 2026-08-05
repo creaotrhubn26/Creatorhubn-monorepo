@@ -119,6 +119,67 @@ struct CanvasStempel: Codable, Identifiable, Hashable {
 /// Paletten fra design-mocken («Klistremerker»).
 let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
 
+/// Penn-galleriet: seks penner for feltselgeren. Pen/Marker er PencilKits
+/// egne; Map Marker og Planning Pen er presets; Laser og Arrow er MODUSER
+/// (strøk som toner bort / strøk som blir perfekte piler).
+enum PennValg: String, CaseIterable, Identifiable {
+    case pen, marker, kartMarkor, laser, pil, planlegging
+
+    var id: String { rawValue }
+
+    var etikett: String {
+        switch self {
+        case .pen: return "Penn"
+        case .marker: return "Marker"
+        case .kartMarkor: return "Kart-markør"
+        case .laser: return "Laser"
+        case .pil: return "Pil-penn"
+        case .planlegging: return "Plan-penn"
+        }
+    }
+
+    var ikon: String {
+        switch self {
+        case .pen: return "pencil.tip"
+        case .marker: return "highlighter"
+        case .kartMarkor: return "mappin.and.ellipse"
+        case .laser: return "rays"
+        case .pil: return "arrow.up.right"
+        case .planlegging: return "pencil.and.ruler"
+        }
+    }
+
+    /// PKInkingTool-preset (farger konverteres til lys-referanse så de
+    /// vises riktig i mørk rendring).
+    var verktoy: PKInkingTool {
+        func farge(_ c: UIColor) -> UIColor {
+            PKInkingTool.convertColor(c, from: .dark, to: .light)
+        }
+        switch self {
+        case .pen:
+            return PKInkingTool(.pen, color: farge(.white), width: 4)
+        case .marker:
+            return PKInkingTool(.marker,
+                                color: farge(UIColor(red: 0.98, green: 0.75, blue: 0.14, alpha: 1)),
+                                width: 18)
+        case .kartMarkor:
+            return PKInkingTool(.marker,
+                                color: farge(UIColor(red: 0.98, green: 0.45, blue: 0.20, alpha: 1)),
+                                width: 8)
+        case .laser:
+            return PKInkingTool(.pen,
+                                color: farge(UIColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1)),
+                                width: 5)
+        case .pil:
+            return PKInkingTool(.pen, color: farge(.white), width: 4)
+        case .planlegging:
+            return PKInkingTool(.pen,
+                                color: farge(UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1)),
+                                width: 2)
+        }
+    }
+}
+
 /// Undo-historikk: tidsstemplet snapshot av tegningen.
 struct CanvasSnapshot: Hashable {
     let tid: Date
@@ -246,6 +307,7 @@ struct CanvasView: View {
     /// Faner: flere notater åpne samtidig (session — bytt uten å miste noe;
     /// velg() auto-lagrer forrige notat stille).
     @State private var aapneFaner: [String] = []
+    @State private var pennValg: PennValg = .pen
     /// Undo-HISTORIKK (ikke bare angre): snapshots per notat m/ tidspunkt —
     /// hopp tilbake til et hvilket som helst punkt.
     @State private var historikk: [String: [CanvasSnapshot]] = [:]
@@ -921,6 +983,32 @@ struct CanvasView: View {
                         .background(CvBrand.cardHi, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    // Penn-galleriet: seks penner — laser og pil er moduser.
+                    Menu {
+                        ForEach(PennValg.allCases) { valg in
+                            Button {
+                                pennValg = valg
+                            } label: {
+                                Label(valg.etikett
+                                      + (valg == .laser ? " (toner bort)" : "")
+                                      + (valg == .pil ? " (strøk → pil)" : ""),
+                                      systemImage: valg.ikon)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: pennValg.ikon)
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text(pennValg.etikett)
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(pennValg == .pen
+                                         ? CvBrand.textSecondary : CvBrand.purpleLight)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(pennValg == .pen
+                                    ? CvBrand.cardHi : CvBrand.purple.opacity(0.25),
+                                    in: Capsule())
+                    }
                     // Undo-HISTORIKK: hopp til et hvilket som helst punkt.
                     if let id = valgtId, let liste = historikk[id], liste.count > 1 {
                         Menu {
@@ -1069,7 +1157,8 @@ struct CanvasView: View {
                              kunPencil: kunPencil,
                              onFormGjenkjent: { figur in
                                  figurer.append(figur)
-                             })
+                             },
+                             pennValg: pennValg)
                 ForEach(stempler) { st in
                     StempelView(stempel: st, redigerbar: valgtErMin,
                                 onFlytt: { ny in
@@ -1850,6 +1939,8 @@ private struct PencilCanvas: UIViewRepresentable {
     /// Shape recognition: hold pennen stille på slutten av strøket →
     /// strøket byttes ut med perfekt form (Apple Notes-oppførselen).
     var onFormGjenkjent: ((CanvasFigur) -> Void)? = nil
+    /// Penn-galleriet: preset/modus fra velgeren.
+    var pennValg: PennValg = .pen
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -1886,6 +1977,16 @@ private struct PencilCanvas: UIViewRepresentable {
         }
         canvas.isUserInteractionEnabled = redigerbar
         canvas.drawingPolicy = kunPencil ? .pencilOnly : .anyInput
+        // Penn-galleriet: bytt verktøy når valget endres (ikke ellers —
+        // brukeren kan justere fritt i toolpickeren etterpå).
+        if context.coordinator.anvendtPenn != pennValg {
+            context.coordinator.anvendtPenn = pennValg
+            context.coordinator.toolPicker?.selectedTool = pennValg.verktoy
+            if pennValg == .laser {
+                context.coordinator.laserStartAntall = canvas.drawing.strokes.count
+            }
+        }
+        context.coordinator.parent = self
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate,
@@ -1925,6 +2026,37 @@ private struct PencilCanvas: UIViewRepresentable {
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) { tegner = true }
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) { tegner = false }
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            // Penn-moduser: laser toner bort, pil-pennen snapper hvert strøk.
+            if canvasView.drawing.strokes.count > forrigeAntallStrok,
+               let siste = canvasView.drawing.strokes.last {
+                if anvendtPenn == .laser {
+                    forrigeAntallStrok = canvasView.drawing.strokes.count
+                    parent.drawing = canvasView.drawing
+                    planleggLaserFjerning(canvasView)
+                    return
+                }
+                if anvendtPenn == .pil, let onForm = parent.onFormGjenkjent {
+                    let punkter = siste.path.map(\.location)
+                    if let a = punkter.first, let b = punkter.last,
+                       hypot(b.x - a.x, b.y - a.y) > 40 {
+                        let farge = PKInkingTool.convertColor(
+                            siste.ink.color, from: .light, to: .dark).somHex
+                        let vinkel = atan2(b.y - a.y, b.x - a.x) * 180 / .pi
+                        var uten = canvasView.drawing
+                        uten.strokes.removeLast()
+                        canvasView.drawing = uten
+                        parent.drawing = uten
+                        forrigeAntallStrok = uten.strokes.count
+                        onForm(CanvasFigur(
+                            form: "pil",
+                            x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                            fargeHex: farge, rotasjon: Double(vinkel),
+                            bredde: hypot(b.x - a.x, b.y - a.y) / 0.9,
+                            hoyde: hypot(b.x - a.x, b.y - a.y) * 0.35))
+                        return
+                    }
+                }
+            }
             // Form-snap: sjekk siste strøk for «hold på slutten» + kjent form.
             if let onForm = parent.onFormGjenkjent,
                canvasView.drawing.strokes.count > forrigeAntallStrok,
@@ -1942,6 +2074,22 @@ private struct PencilCanvas: UIViewRepresentable {
             parent.drawing = canvasView.drawing
         }
         var forrigeAntallStrok = 0
+        var anvendtPenn: PennValg?
+        var laserStartAntall = 0
+
+        /// Laser: strøket toner bort etter 1,2 s (FIFO fra laser-start).
+        private func planleggLaserFjerning(_ canvasView: PKCanvasView) {
+            let posisjon = laserStartAntall
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self, weak canvasView] in
+                guard let self, let canvasView,
+                      canvasView.drawing.strokes.count > posisjon else { return }
+                var uten = canvasView.drawing
+                uten.strokes.remove(at: posisjon)
+                canvasView.drawing = uten
+                self.parent.drawing = uten
+                self.forrigeAntallStrok = uten.strokes.count
+            }
+        }
     }
 }
 
