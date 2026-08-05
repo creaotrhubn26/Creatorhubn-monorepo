@@ -159,6 +159,7 @@ export const LEADGRID_ANBUD_FEATURE_KEYS = ["leadgridAnbud"];
 /** Ruteplanlegger (2026-08-04): fler-stopp dagsruter m/ leder-tildeling.
  *  Nøkkelen matcher LeadgridFeature.leadgridRuteplanlegger. */
 export const LEADGRID_RUTEPLAN_FEATURE_KEYS = ["leadgridRuteplanlegger"];
+export const LEADGRID_CANVAS_FEATURE_KEYS = ["leadgridCanvas"];
 
 /** AI-møtebrief (2026-08-04): auto-generert brief per kundemøte (Brreg +
  *  regnskap + Doffin-signal + egne vunnede case + Claude-komposisjon).
