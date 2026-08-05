@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import EquipmentCatalogBrowser, { type CatalogEquipment } from "../../equipment/EquipmentCatalogBrowser";
 import FirmwareManagementInterface from "../../equipment/FirmwareManagementInterface";
 import { useAuth } from "../../../hooks/useAuth";
+import { useT } from "../../../i18n";
 import { apiRequest } from "../../../lib/queryClient";
 import { equipmentApi, equipmentBookingsApi, equipmentAvailabilityApi, equipmentConflictsApi, equipmentCheckoutApi, crewApi, locationsApi, equipmentTemplatesApi, vendorLinksApi, type Equipment, type EquipmentBooking, type EquipmentAvailability, type EquipmentConflict, type EquipmentCheckout, type CastingCrew, type CastingLocation, type EquipmentTemplate, type EquipmentTemplateItem, type VendorLink } from "../services/castingApiService";
 import { roleRoomAnalytics } from "../services/roleRoomAnalytics";
@@ -229,30 +230,7 @@ const getCameraReliabilityScore = (camera: CameraRecord): number => {
   return sourceScore + completenessScore + certificationScore;
 };
 
-const CAMERA_SPEC_WHITELIST: Record<string, string> = {
-  sensorSize: 'Sensor',
-  mount: 'Fatning',
-  releaseDate: 'Lansering',
-  priceRange: 'Prisnivå',
-  videoResolution: 'Oppløsning',
-  resolution: 'Oppløsning',
-  videoFrameRates: 'Bildefrekvens',
-  frameRates: 'Bildefrekvens',
-  videoCodecs: 'Kodek',
-  logFormats: 'Log-format',
-  features: 'Funksjoner',
-  dynamicRange: 'Dynamisk omfang',
-  internalRecording: 'Intern opptak',
-  recordingFormats: 'Opptaksformat',
-  rawRecording: 'RAW-opptak',
-  mediaTypes: 'Lagringsmedia',
-  bitDepth: 'Bitdybde',
-  chromaSubsampling: 'Chroma subsampling',
-  isoRange: 'ISO',
-  stabilization: 'Stabilisering',
-  autofocus: 'Autofokus',
-  maxRecordingTime: 'Maks opptakstid',
-};
+// cameraSpecWhitelist moved into the component as `cameraSpecWhitelist` (t()-mapped).
 
 interface MemoryCardTypeRecord {
   id: string;
@@ -366,12 +344,7 @@ const dedupeLabels = (values: string[]): string[] => {
   return unique;
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  available: 'Tilgjengelig',
-  in_use: 'I bruk',
-  maintenance: 'Service',
-  retired: 'Utfaset',
-};
+// statusLabels moved into the component as `statusLabels` (t()-mapped).
 
 const STATUS_COLORS: Record<string, string> = {
   available: '#4caf50',
@@ -380,13 +353,7 @@ const STATUS_COLORS: Record<string, string> = {
   retired: '#9e9e9e',
 };
 
-const CONDITION_LABELS: Record<string, string> = {
-  excellent: 'Utmerket',
-  good: 'Bra',
-  fair: 'Akseptabel',
-  poor: 'Dårlig',
-  needs_repair: 'Trenger reparasjon',
-};
+// conditionLabels moved into the component as `conditionLabels` (t()-mapped).
 
 const CONDITION_COLORS: Record<string, string> = {
   excellent: '#4caf50',
@@ -720,6 +687,44 @@ export function EquipmentManagementPanel({
   const containerPadding = isMobile ? 2 : isTablet ? 3 : 4;
 
   const { showSuccess, showError } = useToast();
+  const { t } = useT();
+  const statusLabels = useMemo<Record<string, string>>(() => ({
+    available: t('equip.status.available'),
+    in_use: t('equip.status.inUse'),
+    maintenance: t('equip.status.maintenance'),
+    retired: t('equip.status.retired'),
+  }), [t]);
+  const conditionLabels = useMemo<Record<string, string>>(() => ({
+    excellent: t('equip.cond.excellent'),
+    good: t('equip.cond.good'),
+    fair: t('equip.cond.fair'),
+    poor: t('equip.cond.poor'),
+    needs_repair: t('equip.cond.needsRepair'),
+  }), [t]);
+  const cameraSpecWhitelist = useMemo<Record<string, string>>(() => ({
+    sensorSize: t('equip.spec.sensor'),
+    mount: t('equip.spec.mount'),
+    releaseDate: t('equip.spec.release'),
+    priceRange: t('equip.spec.priceRange'),
+    videoResolution: t('equip.spec.resolution'),
+    resolution: t('equip.spec.resolution'),
+    videoFrameRates: t('equip.spec.frameRate'),
+    frameRates: t('equip.spec.frameRate'),
+    videoCodecs: t('equip.spec.codec'),
+    logFormats: t('equip.spec.logFormat'),
+    features: t('equip.spec.features'),
+    dynamicRange: t('equip.spec.dynamicRange'),
+    internalRecording: t('equip.spec.internalRecording'),
+    recordingFormats: t('equip.spec.recordingFormats'),
+    rawRecording: t('equip.spec.rawRecording'),
+    mediaTypes: t('equip.spec.mediaTypes'),
+    bitDepth: t('equip.spec.bitDepth'),
+    chromaSubsampling: t('equip.spec.chromaSubsampling'),
+    isoRange: t('equip.spec.iso'),
+    stabilization: t('equip.spec.stabilization'),
+    autofocus: t('equip.spec.autofocus'),
+    maxRecordingTime: t('equip.spec.maxRecordingTime'),
+  }), [t]);
 
   const baseId = useId();
   const dialogTitleId = `${baseId}-dialog-title`;
@@ -1007,8 +1012,8 @@ export function EquipmentManagementPanel({
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const noteActorLabel = useMemo(() => {
     const raw = user?.displayName ?? user?.name ?? user?.email;
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
-  }, [user]);
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : t('equip.unknownUser');
+  }, [user, t]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
   const hasProtectedRoleRoomAccess = Boolean(projectId) && isAuthenticated && !authLoading;
   const [roleRoomApiUnavailable, setRoleRoomApiUnavailable] = useState(false);
@@ -1575,21 +1580,21 @@ export function EquipmentManagementPanel({
   ]);
 
   const cameraSourceLabelForForm = useMemo(() => {
-    if (!selectedCameraForForm) return 'Ukjent kilde';
+    if (!selectedCameraForForm) return t('equip.src.unknown');
     const sourceKey = getCameraSourceKey(selectedCameraForForm);
     const labelMap: Record<string, string> = {
       database: 'Database',
       'database-sync': 'Database sync',
       release_registry: 'Release registry',
       'release-registry': 'Release registry',
-      manual: 'Manuell verifisering',
+      manual: t('equip.src.manual'),
       world: 'World camera database',
-      seed: 'Seed-data',
+      seed: t('equip.src.seed'),
       api: 'API',
       discovery: 'Discovery',
     };
-    return labelMap[sourceKey] ?? (sourceKey ? sourceKey : 'Ukjent kilde');
-  }, [selectedCameraForForm]);
+    return labelMap[sourceKey] ?? (sourceKey ? sourceKey : t('equip.src.unknown'));
+  }, [selectedCameraForForm, t]);
 
   const selectedCameraHasTrustedSpecs = useMemo(() => (
     selectedCameraForForm ? hasTrustedCameraSpecs(selectedCameraForForm) : false
@@ -1614,34 +1619,34 @@ export function EquipmentManagementPanel({
       details.push({ label, value });
     };
 
-    pushDetail('Kategori', selectedCameraForForm.category);
-    pushDetail('Sensor', selectedCameraForForm.sensorSize);
-    pushDetail('Fatning', selectedCameraForForm.mount);
-    pushDetail('Lansering', selectedCameraForForm.releaseDate);
-    pushDetail('Prisnivå', selectedCameraForForm.priceRange);
+    pushDetail(t('equip.spec.category'), selectedCameraForForm.category);
+    pushDetail(t('equip.spec.sensor'), selectedCameraForForm.sensorSize);
+    pushDetail(t('equip.spec.mount'), selectedCameraForForm.mount);
+    pushDetail(t('equip.spec.release'), selectedCameraForForm.releaseDate);
+    pushDetail(t('equip.spec.priceRange'), selectedCameraForForm.priceRange);
     pushDetail(
-      'Oppløsning',
+      t('equip.spec.resolution'),
       selectedCameraForForm.videoResolution?.join(', ') ||
         selectedCameraForForm.resolution?.join(', ')
     );
     pushDetail(
-      'Bildefrekvens',
+      t('equip.spec.frameRate'),
       selectedCameraForForm.videoFrameRates?.join(', ') ||
         selectedCameraForForm.frameRates?.join(', ')
     );
-    pushDetail('Kodek', selectedCameraForForm.videoCodecs?.join(', '));
-    pushDetail('Log-format', selectedCameraForForm.logFormats?.join(', '));
-    pushDetail('Funksjoner', selectedCameraForForm.features?.join(', '));
+    pushDetail(t('equip.spec.codec'), selectedCameraForForm.videoCodecs?.join(', '));
+    pushDetail(t('equip.spec.logFormat'), selectedCameraForForm.logFormats?.join(', '));
+    pushDetail(t('equip.spec.features'), selectedCameraForForm.features?.join(', '));
 
     Object.entries(selectedCameraForForm.specs ?? {})
-      .filter(([key]) => Boolean(CAMERA_SPEC_WHITELIST[key]))
+      .filter(([key]) => Boolean(cameraSpecWhitelist[key]))
       .slice(0, 12)
-      .forEach(([key, value]) => pushDetail(CAMERA_SPEC_WHITELIST[key], value));
+      .forEach(([key, value]) => pushDetail(cameraSpecWhitelist[key], value));
 
     return details;
-  }, [selectedCameraForForm, selectedCameraHasTrustedSpecs]);
+  }, [selectedCameraForForm, selectedCameraHasTrustedSpecs, t, cameraSpecWhitelist]);
 
-  const renderNetflixBadge = useCallback((label = 'Netflix-sertifisert', compact = false) => (
+  const renderNetflixBadge = useCallback((label: string = t('equip.netflixCertified'), compact = false) => (
     <Box
       sx={{
         display: 'inline-flex',
@@ -1667,7 +1672,7 @@ export function EquipmentManagementPanel({
         </Typography>
       )}
     </Box>
-  ), []);
+  ), [t]);
 
   const getCameraSpecChips = useCallback((camera: CameraRecord) => {
     const specs = new Map<string, string>();
@@ -1680,13 +1685,13 @@ export function EquipmentManagementPanel({
       specs.set(label, compactValue);
     };
 
-    addSpec('Sensor', camera.sensorSize);
-    addSpec('Fatning', camera.mount);
-    addSpec('Lansert', camera.releaseDate);
-    addSpec('Oppløsning', camera.videoResolution?.[0] ?? camera.resolution?.[0]);
-    addSpec('Bildefrekvens', camera.videoFrameRates?.[0] ?? camera.frameRates?.[0]);
-    addSpec('Log', camera.logFormats?.join(', '));
-    addSpec('Kodek', camera.videoCodecs?.join(', '));
+    addSpec(t('equip.spec.sensor'), camera.sensorSize);
+    addSpec(t('equip.spec.mount'), camera.mount);
+    addSpec(t('equip.spec.released'), camera.releaseDate);
+    addSpec(t('equip.spec.resolution'), camera.videoResolution?.[0] ?? camera.resolution?.[0]);
+    addSpec(t('equip.spec.frameRate'), camera.videoFrameRates?.[0] ?? camera.frameRates?.[0]);
+    addSpec(t('equip.spec.log'), camera.logFormats?.join(', '));
+    addSpec(t('equip.spec.codec'), camera.videoCodecs?.join(', '));
 
     Object.entries(camera.specs ?? {})
       .slice(0, 4)
@@ -1695,7 +1700,7 @@ export function EquipmentManagementPanel({
     return Array.from(specs.entries())
       .slice(0, 6)
       .map(([label, value]) => `${label}: ${value}`);
-  }, []);
+  }, [t]);
   
   // History/audit log
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -1810,7 +1815,7 @@ export function EquipmentManagementPanel({
       return;
     }
     if (allCategories.includes(trimmedName)) {
-      showError('Kategorien finnes allerede');
+      showError(t('equip.toast.catExists'));
       return;
     }
 
@@ -1819,14 +1824,14 @@ export function EquipmentManagementPanel({
     await equipmentCategoriesService.saveCustomCategories(projectId, updated);
     setNewCategoryName('');
     setNewCategoryDialogOpen(false);
-    showSuccess(`Kategori "${trimmedName}" lagt til`);
+    showSuccess(t('equip.toast.catAdded', { name: trimmedName }));
   };
 
   const handleRemoveCustomCategory = async (category: string) => {
     const updated = customCategories.filter(c => c !== category);
     setCustomCategories(updated);
     await equipmentCategoriesService.saveCustomCategories(projectId, updated);
-    showSuccess(`Kategori "${category}" fjernet`);
+    showSuccess(t('equip.toast.catRemoved', { name: category }));
   };
 
   const loadActiveCheckouts = async () => {
@@ -1941,11 +1946,11 @@ export function EquipmentManagementPanel({
         const now = Date.now();
         if (now - lastTransportErrorToastAtRef.current > 45_000) {
           lastTransportErrorToastAtRef.current = now;
-          showError('Server utilgjengelig. Prøver igjen automatisk.');
+          showError(t('equip.toast.serverDown'));
         }
       } else {
         console.error('Error loading equipment:', error);
-        showError('Kunne ikke laste utstyr');
+        showError(t('equip.toast.loadFailed'));
         setEquipment([]);
       }
     } finally {
@@ -2344,13 +2349,13 @@ export function EquipmentManagementPanel({
   const handleApplyTemplate = async (templateId: string) => {
     try {
       const result = await equipmentTemplatesApi.apply(templateId, projectId);
-      showSuccess(`${result.count} utstyr opprettet fra mal`);
+      showSuccess(t('equip.toast.tplApplied', { n: result.count }));
       loadEquipment();
       setTemplatesDialogOpen(false);
       onUpdate?.();
     } catch (error) {
       console.error('Error applying template:', error);
-      showError('Kunne ikke anvende mal');
+      showError(t('equip.toast.applyTplFailed'));
     }
   };
 
@@ -2358,10 +2363,10 @@ export function EquipmentManagementPanel({
     try {
       if (editingTemplate) {
         await equipmentTemplatesApi.update(editingTemplate.id, templateFormData as Partial<EquipmentTemplate>);
-        showSuccess('Mal oppdatert');
+        showSuccess(t('equip.toast.tplUpdated'));
       } else {
         await equipmentTemplatesApi.create(projectId, templateFormData as Partial<EquipmentTemplate>);
-        showSuccess('Mal opprettet');
+        showSuccess(t('equip.toast.tplCreated'));
       }
       loadTemplates();
       setTemplateFormOpen(false);
@@ -2369,18 +2374,18 @@ export function EquipmentManagementPanel({
       setTemplateFormData({ name: '', description: '', category: '', use_case: '', is_global: false, items: [] });
     } catch (error) {
       console.error('Error saving template:', error);
-      showError('Kunne ikke lagre mal');
+      showError(t('equip.toast.saveTplFailed'));
     }
   };
 
   const handleDeleteTemplate = async (templateId: string) => {
     try {
       await equipmentTemplatesApi.delete(templateId);
-      showSuccess('Mal slettet');
+      showSuccess(t('equip.toast.tplDeleted'));
       loadTemplates();
     } catch (error) {
       console.error('Error deleting template:', error);
-      showError('Kunne ikke slette mal');
+      showError(t('equip.toast.delTplFailed'));
     }
   };
 
@@ -2391,7 +2396,7 @@ export function EquipmentManagementPanel({
       : equipment;
     
     if (sourceEquipment.length === 0) {
-      showError('Ingen utstyr å lage mal fra');
+      showError(t('equip.toast.noEquipForTpl'));
       return;
     }
     
@@ -2407,11 +2412,11 @@ export function EquipmentManagementPanel({
     }));
     
     const templateName = selectedEquipmentIds.size > 0
-      ? `Utstyrsmal (${sourceEquipment.length} valgt)`
-      : 'Min utstyrsmal';
+      ? t('equip.tpl.nameSelected', { n: sourceEquipment.length })
+      : t('equip.tpl.myTemplate');
     const templateDesc = selectedEquipmentIds.size > 0
-      ? `Opprettet fra ${sourceEquipment.length} valgte utstyr`
-      : 'Opprettet fra alt eksisterende utstyr';
+      ? t('equip.tpl.fromSelected', { n: sourceEquipment.length })
+      : t('equip.tpl.fromAllExisting');
     
     setTemplateFormData({
       name: templateName,
@@ -2706,10 +2711,10 @@ export function EquipmentManagementPanel({
       if (selectedCameraId) {
         await refetchMemoryCards();
       }
-      showSuccess('Kamera-discovery synkronisert');
+      showSuccess(t('equip.toast.camSynced'));
     } catch (error) {
       console.error('Error syncing camera discovery:', error);
-      showError('Kunne ikke synkronisere kamera-discovery');
+      showError(t('equip.toast.camSyncFailed'));
     } finally {
       setCameraSyncing(false);
     }
@@ -2718,7 +2723,7 @@ export function EquipmentManagementPanel({
   const handleSave = async () => {
     // Use enhanced validation
     if (!validateForm()) {
-      showError('Vennligst rett opp feil i skjemaet');
+      showError(t('equip.toast.fixForm'));
       return;
     }
 
@@ -2766,10 +2771,10 @@ export function EquipmentManagementPanel({
       let createdEquipment: Equipment | null = null;
       if (editingEquipment) {
         await equipmentApi.update(editingEquipment.id, payload);
-        showSuccess('Utstyr oppdatert');
+        showSuccess(t('equip.toast.equipUpdated'));
       } else {
         createdEquipment = await equipmentApi.create(payload);
-        showSuccess('Utstyr opprettet');
+        showSuccess(t('equip.toast.equipCreated'));
         roleRoomAnalytics.equipmentAdded({
           project_id: projectId,
           equipment_id: createdEquipment?.id ?? formData.name,
@@ -2786,7 +2791,7 @@ export function EquipmentManagementPanel({
       onUpdate?.();
     } catch (error) {
       console.error('Error saving equipment:', error);
-      showError('Kunne ikke lagre utstyr');
+      showError(t('equip.toast.saveEquipFailed'));
     }
   };
 
@@ -2801,23 +2806,23 @@ export function EquipmentManagementPanel({
     
     try {
       await equipmentApi.assign(selectedEquipmentForAssign.id, selectedCrewId, 'responsible');
-      showSuccess('Utstyrsansvarlig tilordnet');
+      showSuccess(t('equip.toast.ownerAssigned'));
       setAssignDialogOpen(false);
       loadEquipment();
     } catch (error) {
       console.error('Error assigning equipment:', error);
-      showError('Kunne ikke tilordne ansvarlig');
+      showError(t('equip.toast.assignFailed'));
     }
   };
 
   const handleUnassign = async (equipmentId: string, crewId: string) => {
     try {
       await equipmentApi.unassign(equipmentId, crewId);
-      showSuccess('Tilordning fjernet');
+      showSuccess(t('equip.toast.assignRemoved'));
       loadEquipment();
     } catch (error) {
       console.error('Error unassigning equipment:', error);
-      showError('Kunne ikke fjerne tilordning');
+      showError(t('equip.toast.unassignFailed'));
     }
   };
 
@@ -2848,12 +2853,12 @@ export function EquipmentManagementPanel({
     if (!equipmentToDelete) return;
     try {
       await equipmentApi.delete(equipmentToDelete.id);
-      showSuccess(`"${equipmentToDelete.name}" ble slettet`);
+      showSuccess(t('equip.toast.deleted', { name: equipmentToDelete.name }));
       loadEquipment();
       onUpdate?.();
     } catch (error) {
       console.error('Error deleting equipment:', error);
-      showError('Kunne ikke slette utstyr');
+      showError(t('equip.toast.delEquipFailed'));
     } finally {
       setDeleteDialogOpen(false);
       setEquipmentToDelete(null);
@@ -2882,7 +2887,7 @@ export function EquipmentManagementPanel({
       isGlobal: eq.is_global || false, // Preserve global status
     });
     setDialogOpen(true);
-    showSuccess('Utstyr duplisert - rediger og lagre');
+    showSuccess(t('equip.toast.duplicated'));
   };
 
   // 3. Bulk operations
@@ -2906,7 +2911,7 @@ export function EquipmentManagementPanel({
 
   const handleBulkAction = (type: 'delete' | 'status' | 'assign') => {
     if (selectedEquipmentIds.size === 0) {
-      showError('Velg minst ett utstyr');
+      showError(t('equip.toast.selectOne'));
       return;
     }
     setBulkActionType(type);
@@ -2920,21 +2925,21 @@ export function EquipmentManagementPanel({
         const results = await Promise.allSettled(ids.map(id => equipmentApi.delete(id)));
         const failed = results.filter(r => r.status === 'rejected').length;
         const ok = ids.length - failed;
-        if (failed > 0) showError(`${ok} slettet, ${failed} feilet`);
-        else showSuccess(`${ok} utstyr slettet`);
+        if (failed > 0) showError(t('equip.toast.bulkDelPartial', { ok, failed }));
+        else showSuccess(t('equip.toast.bulkDeleted', { n: ok }));
       } else if (bulkActionType === 'status') {
         const results = await Promise.allSettled(ids.map(id => equipmentApi.update(id, { status: bulkNewStatus })));
         const failed = results.filter(r => r.status === 'rejected').length;
         const ok = ids.length - failed;
-        if (failed > 0) showError(`${ok} oppdatert, ${failed} feilet`);
-        else showSuccess(`Status oppdatert for ${ok} utstyr`);
+        if (failed > 0) showError(t('equip.toast.bulkStatusPartial', { ok, failed }));
+        else showSuccess(t('equip.toast.bulkStatus', { n: ok }));
       } else if (bulkActionType === 'assign') {
         if (bulkAssignCrewId) {
           const results = await Promise.allSettled(ids.map(id => equipmentApi.assign(id, bulkAssignCrewId, 'responsible')));
           const failed = results.filter(r => r.status === 'rejected').length;
           const ok = ids.length - failed;
-          if (failed > 0) showError(`${ok} tilordnet, ${failed} feilet`);
-          else showSuccess(`${ok} utstyr tilordnet`);
+          if (failed > 0) showError(t('equip.toast.bulkAssignPartial', { ok, failed }));
+          else showSuccess(t('equip.toast.bulkAssigned', { n: ok }));
         }
       }
       setSelectedEquipmentIds(new Set());
@@ -2943,7 +2948,7 @@ export function EquipmentManagementPanel({
       onUpdate?.();
     } catch (error) {
       console.error('Bulk action error:', error);
-      showError('En feil oppstod under masseoperasjonen');
+      showError(t('equip.toast.bulkError'));
     } finally {
       setBulkActionDialogOpen(false);
     }
@@ -2951,7 +2956,7 @@ export function EquipmentManagementPanel({
 
   // 4. Export/Import CSV
   const handleExportCSV = () => {
-    const headers = ['Navn', 'Kategori', 'Merke', 'Modell', 'Serienummer', 'Antall', 'Status', 'Tilstand', 'Beskrivelse', 'Notater'];
+    const headers = [t('equip.csv.name'), t('equip.csv.category'), t('equip.csv.brand'), t('equip.csv.model'), t('equip.csv.serial'), t('equip.csv.quantity'), t('equip.csv.status'), t('equip.csv.condition'), t('equip.csv.description'), t('equip.csv.notes')];
     const rows = equipment.map(eq => [
       eq.name || '',
       eq.category || '',
@@ -2959,8 +2964,8 @@ export function EquipmentManagementPanel({
       eq.model || '',
       eq.serial_number || '',
       String(eq.quantity || 1),
-      STATUS_LABELS[eq.status || 'available'] || eq.status,
-      CONDITION_LABELS[eq.condition || 'good'] || eq.condition,
+      statusLabels[eq.status || 'available'] || eq.status,
+      conditionLabels[eq.condition || 'good'] || eq.condition,
       eq.description || '',
       eq.notes || '',
     ]);
@@ -2975,7 +2980,7 @@ export function EquipmentManagementPanel({
     link.href = URL.createObjectURL(blob);
     link.download = `utstyrsliste-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
-    showSuccess('Utstyrsliste eksportert');
+    showSuccess(t('equip.toast.listExported'));
   };
 
   const handleImportCSV = (event: ChangeEvent<HTMLInputElement>) => {
@@ -3014,7 +3019,7 @@ export function EquipmentManagementPanel({
 
         const lines = text.split(/\r?\n/).filter(line => line.trim());
         if (lines.length < 2) {
-          showError('Filen er tom eller ugyldig');
+          showError(t('equip.toast.fileEmpty'));
           return;
         }
         
@@ -3052,12 +3057,12 @@ export function EquipmentManagementPanel({
           imported += results.filter(r => r.status === 'fulfilled').length;
         }
         
-        showSuccess(`${imported} av ${validRows.length} utstyr importert`);
+        showSuccess(t('equip.toast.imported', { done: imported, total: validRows.length }));
         loadEquipment();
         onUpdate?.();
       } catch (error) {
         console.error('Import error:', error);
-        showError('Kunne ikke importere fil');
+        showError(t('equip.toast.importFailed'));
       }
     };
     reader.readAsText(file);
@@ -3093,9 +3098,9 @@ export function EquipmentManagementPanel({
     const value = getEquipmentQrValue(eq);
     try {
       await navigator.clipboard.writeText(value);
-      showSuccess('QR-data kopiert');
+      showSuccess(t('equip.toast.qrCopied'));
     } catch {
-      showError('Kunne ikke kopiere QR-data');
+      showError(t('equip.toast.qrCopyFailed'));
     }
   };
 
@@ -3104,7 +3109,7 @@ export function EquipmentManagementPanel({
     const qrPayload = getEquipmentQrValue(eq);
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      showError('Kunne ikke åpne utskriftsvindu');
+      showError(t('equip.toast.printFailed'));
       return;
     }
 
@@ -3181,17 +3186,17 @@ export function EquipmentManagementPanel({
   const handleResolveScannedQr = (rawValue: string) => {
     const parsed = warehouseInventoryService.parseQrValue(rawValue);
     if (!parsed) {
-      setQrScanError('Ukjent QR-format. Bruk en Role Room lager-QR.');
+      setQrScanError(t('equip.toast.qrUnknown'));
       return;
     }
 
     if (parsed.itemType !== 'equipment') {
-      setQrScanError('Denne QR-koden peker ikke på utstyr.');
+      setQrScanError(t('equip.toast.qrNotEquip'));
       return;
     }
 
     if (parsed.projectId && parsed.projectId !== projectId) {
-      setQrScanError('QR-koden tilhører et annet prosjekt.');
+      setQrScanError(t('equip.toast.qrWrongProject'));
       return;
     }
 
@@ -3202,7 +3207,7 @@ export function EquipmentManagementPanel({
     );
 
     if (!match) {
-      setQrScanError('Fant ikke utstyrspost for denne QR-koden i prosjektet.');
+      setQrScanError(t('equip.toast.qrNoMatch'));
       return;
     }
 
@@ -3211,7 +3216,7 @@ export function EquipmentManagementPanel({
     setQrScanDialogOpen(false);
     setSearchQuery(match.name);
     handleOpenDialog(match);
-    showSuccess(`QR funnet: ${match.name}`);
+    showSuccess(t('equip.toast.qrFound', { name: match.name }));
   };
 
   const normalizeScannedSerialValue = (rawValue: string): string =>
@@ -3224,7 +3229,7 @@ export function EquipmentManagementPanel({
   const handleApplyScannedSerialNumber = (rawValue: string) => {
     const normalizedSerial = normalizeScannedSerialValue(rawValue);
     if (!normalizedSerial) {
-      setSerialScanError("Fant ingen gyldig serienummerkode i skannet verdi.");
+      setSerialScanError(t('equip.toast.serialNone'));
       return;
     }
 
@@ -3238,7 +3243,7 @@ export function EquipmentManagementPanel({
       delete next.serialNumber;
       return next;
     });
-    showSuccess(`Serienummer oppdatert: ${normalizedSerial}`);
+    showSuccess(t('equip.toast.serialUpdated', { serial: normalizedSerial }));
   };
 
   // 6. History/audit log — real API data
@@ -3248,10 +3253,10 @@ export function EquipmentManagementPanel({
     // Seed with a static creation entry immediately
     const creationEntry = {
       id: 'create-0',
-      action: 'Opprettet',
+      action: t('equip.hist.created'),
       user: 'System',
       timestamp: eq.created_at || new Date().toISOString(),
-      details: 'Utstyr lagt til i katalogen',
+      details: t('equip.hist.createdDetail'),
     };
     setEquipmentHistory([creationEntry]);
     try {
@@ -3260,19 +3265,19 @@ export function EquipmentManagementPanel({
         const entries = [
           {
             id: `checkout-${c.id}`,
-            action: 'Utlevert',
-            user: c.checked_out_by || 'Ukjent',
+            action: t('equip.hist.checkedOut'),
+            user: c.checked_out_by || t('equip.unknown'),
             timestamp: c.checked_out_at,
-            details: `Utlevert til ${c.checked_out_to}${c.purpose ? ' — ' + c.purpose : ''}`,
+            details: t('equip.hist.checkedOutTo', { to: c.checked_out_to, suffix: c.purpose ? ' — ' + c.purpose : '' }),
           },
         ];
         if (c.checked_in_at) {
           entries.push({
             id: `checkin-${c.id}`,
-            action: 'Innlevert',
-            user: c.checked_out_to || 'Ukjent',
+            action: t('equip.hist.checkedIn'),
+            user: c.checked_out_to || t('equip.unknown'),
             timestamp: c.checked_in_at,
-            details: `Innlevert${c.condition_on_return ? ', tilstand: ' + c.condition_on_return : ''}${c.notes ? ' — ' + c.notes : ''}`,
+            details: t('equip.hist.checkedInDetail', { cond: c.condition_on_return ? t('equip.hist.condReturn', { c: c.condition_on_return }) : '', note: c.notes ? ' — ' + c.notes : '' }),
           });
         }
         return entries;
@@ -3280,10 +3285,10 @@ export function EquipmentManagementPanel({
       // Add current assignee entries from equipment assignees array
       const assignEntries = (eq.assignees || []).map((a, i) => ({
         id: `assign-${i}`,
-        action: 'Tilordnet',
-        user: 'Bruker',
+        action: t('equip.hist.assigned'),
+        user: t('equip.role.user'),
         timestamp: eq.updated_at || new Date().toISOString(),
-        details: `Tilordnet til ${getCrewName(a.crew_id)}`,
+        details: t('equip.hist.assignedTo', { name: getCrewName(a.crew_id) }),
       }));
       // Sort all entries chronologically (oldest first)
       const allEntries = [creationEntry, ...checkoutEntries, ...assignEntries].sort(
@@ -3310,7 +3315,7 @@ export function EquipmentManagementPanel({
 
   const handleScheduleMaintenance = async () => {
     if (!selectedEquipmentMaintenance || !maintenanceForm.scheduledDate) {
-      showError('Velg en dato');
+      showError(t('equip.toast.pickDate'));
       return;
     }
     try {
@@ -3326,12 +3331,12 @@ export function EquipmentManagementPanel({
         await equipmentApi.update(selectedEquipmentMaintenance.id, { status: 'maintenance' });
       }
       seedGlobalMentions([maintenanceForm.notes], [selectedEquipmentMaintenance.name]);
-      showSuccess('Vedlikehold planlagt');
+      showSuccess(t('equip.toast.maintScheduled'));
       setMaintenanceDialogOpen(false);
       loadEquipment();
     } catch (error) {
       console.error('Maintenance scheduling error:', error);
-      showError('Kunne ikke planlegge vedlikehold');
+      showError(t('equip.toast.maintFailed'));
     }
   };
 
@@ -3349,13 +3354,13 @@ export function EquipmentManagementPanel({
 
   const handleCreateBooking = async () => {
     if (!selectedEquipmentBookings || !bookingForm.startDate || !bookingForm.endDate) {
-      showError('Fyll inn start- og sluttdato');
+      showError(t('equip.toast.fillDates'));
       return;
     }
     // Warn on conflicts but still allow creation (user-override flow)
     if (bookingConflicts.length > 0) {
       const ok = window.confirm(
-        `Det finnes ${bookingConflicts.length} konflikt(er) i denne perioden. Vil du opprette bookingen likevel?`
+        t('equip.confirm.bookingConflicts', { n: bookingConflicts.length })
       );
       if (!ok) return;
     }
@@ -3368,13 +3373,13 @@ export function EquipmentManagementPanel({
         status: 'pending',
       });
       seedGlobalMentions([bookingForm.notes, bookingForm.purpose], [selectedEquipmentBookings.name]);
-      showSuccess('Booking opprettet');
+      showSuccess(t('equip.toast.bookingCreated'));
       setBookingConflicts([]);
       setCreateBookingDialogOpen(false);
       handleOpenBookings(selectedEquipmentBookings);
     } catch (error) {
       console.error('Booking creation error:', error);
-      showError('Kunne ikke opprette booking');
+      showError(t('equip.toast.bookingFailed'));
     }
   };
 
@@ -3423,7 +3428,7 @@ export function EquipmentManagementPanel({
     if (!isOnline) {
       const entry: OfflineCheckoutEntry = { id: crypto.randomUUID(), type: 'checkout', payload, ts: new Date().toISOString() };
       persistOfflineQueue([...offlineQueue, entry]);
-      showSuccess('Lagret i offline-kø — synkroniseres når du er online');
+      showSuccess(t('equip.toast.offlineSaved'));
       setCheckoutDialogOpen(false);
       return;
     }
@@ -3437,7 +3442,7 @@ export function EquipmentManagementPanel({
       // If backend doesn't update status automatically, do it explicitly
       await equipmentApi.update(checkoutEquipment.id, { status: 'in_use' });
       setActiveCheckouts(prev => [...prev, checkout]);
-      showSuccess(`${checkoutEquipment.name} sjekket ut`);
+      showSuccess(t('equip.toast.checkedOut', { name: checkoutEquipment.name }));
       setCheckoutDialogOpen(false);
       loadEquipment();
     } catch {
@@ -3445,11 +3450,11 @@ export function EquipmentManagementPanel({
       try {
         await equipmentApi.update(checkoutEquipment.id, { status: 'in_use' });
         await equipmentApi.assign(checkoutEquipment.id, checkoutForm.crewId, 'responsible');
-        showSuccess(`${checkoutEquipment.name} sjekket ut (lokal status)`);
+        showSuccess(t('equip.toast.checkedOutLocal', { name: checkoutEquipment.name }));
         setCheckoutDialogOpen(false);
         loadEquipment();
       } catch {
-        showError('Kunne ikke sjekke ut utstyr');
+        showError(t('equip.toast.checkoutFailed'));
       }
     }
   };
@@ -3470,7 +3475,7 @@ export function EquipmentManagementPanel({
     if (!isOnline) {
       const entry: OfflineCheckinEntry = { id: crypto.randomUUID(), type: 'checkin', payload, ts: new Date().toISOString() };
       persistOfflineQueue([...offlineQueue, entry]);
-      showSuccess('Lagret i offline-kø — synkroniseres når du er online');
+      showSuccess(t('equip.toast.offlineSaved'));
       setCheckinDialogOpen(false);
       return;
     }
@@ -3492,11 +3497,11 @@ export function EquipmentManagementPanel({
         notes: checkinForm.notes || undefined,
       });
       seedGlobalMentions([checkinForm.notes], [checkinEquipment.name]);
-      showSuccess(`${checkinEquipment.name} levert inn`);
+      showSuccess(t('equip.toast.checkedIn', { name: checkinEquipment.name }));
       setCheckinDialogOpen(false);
       loadEquipment();
     } catch {
-      showError('Kunne ikke sjekke inn utstyr');
+      showError(t('equip.toast.checkinFailed'));
     }
   };
 
@@ -3534,7 +3539,7 @@ export function EquipmentManagementPanel({
       loadEquipment();
       loadActiveCheckouts();
     }
-    showSuccess(`Synkronisert ${ok} operasjon(er).${failed.length > 0 ? ` ${failed.length} feilet.` : ''}`);
+    showSuccess(t('equip.toast.synced', { n: ok }) + (failed.length > 0 ? t('equip.toast.syncedFailed', { n: failed.length }) : ''));
   };
 
   // ── Reports ──────────────────────────────────────────────
@@ -3548,11 +3553,11 @@ export function EquipmentManagementPanel({
   };
 
   const handleDownloadGearList = () => {
-    const header = ['Navn', 'Kategori', 'Merke', 'Modell', 'Status', 'Tilstand', 'Antall', 'Serienummer', 'Ansvarlig'];
+    const header = [t('equip.csv.name'), t('equip.csv.category'), t('equip.csv.brand'), t('equip.csv.model'), t('equip.csv.status'), t('equip.csv.condition'), t('equip.csv.quantity'), t('equip.csv.serial'), t('equip.csv.responsible')];
     const rows = equipment.map(eq => [
       eq.name, eq.category ?? '', eq.brand ?? '', eq.model ?? '',
-      STATUS_LABELS[eq.status] ?? eq.status,
-      CONDITION_LABELS[eq.condition] ?? eq.condition,
+      statusLabels[eq.status] ?? eq.status,
+      conditionLabels[eq.condition] ?? eq.condition,
       String(eq.quantity), eq.serial_number ?? '',
       getCrewName(eq.assignees?.[0]?.crew_id ?? ''),
     ]);
@@ -3575,19 +3580,19 @@ export function EquipmentManagementPanel({
     const errors: Record<string, string> = {};
     
     if (!formData.name.trim()) {
-      errors.name = 'Navn er påkrevd';
+      errors.name = t('equip.valid.nameReq');
     } else if (formData.name.length < 2) {
-      errors.name = 'Navn må være minst 2 tegn';
+      errors.name = t('equip.valid.nameShort');
     }
     
     if (formData.serialNumber && equipment.some(eq => 
       eq.serial_number === formData.serialNumber && eq.id !== editingEquipment?.id
     )) {
-      errors.serialNumber = 'Serienummeret finnes allerede';
+      errors.serialNumber = t('equip.valid.serialDup');
     }
     
     if (formData.quantity < 1) {
-      errors.quantity = 'Antall må være minst 1';
+      errors.quantity = t('equip.valid.qtyMin');
     }
     
     setFormErrors(errors);
@@ -3788,8 +3793,8 @@ export function EquipmentManagementPanel({
     if (equipmentProInsights.missingOwners > 0) {
       items.push({
         id: 'missing-owners',
-        title: 'Tildel ansvarlig utstyr',
-        detail: `${equipmentProInsights.missingOwners} utstyrselement(er) mangler ansvarlig`,
+        title: t('equip.pro.assignOwner'),
+        detail: t('equip.pro.assignOwnerDetail', { n: equipmentProInsights.missingOwners }),
         focus: 'risks',
         severity: 'high',
       });
@@ -3798,8 +3803,8 @@ export function EquipmentManagementPanel({
     if (equipmentProInsights.maintenance > 0) {
       items.push({
         id: 'maintenance',
-        title: 'Planlegg service-vindu',
-        detail: `${equipmentProInsights.maintenance} element(er) står i service / trenger reparasjon`,
+        title: t('equip.pro.serviceWindow'),
+        detail: t('equip.pro.serviceWindowDetail', { n: equipmentProInsights.maintenance }),
         focus: 'risks',
         severity: 'medium',
       });
@@ -3808,8 +3813,8 @@ export function EquipmentManagementPanel({
     if (equipmentProInsights.warehouseIssues > 0) {
       items.push({
         id: 'warehouse',
-        title: 'Følg opp lageravvik',
-        detail: `${equipmentProInsights.warehouseIssues} lageravvik trenger avklaring`,
+        title: t('equip.pro.warehouseIssues'),
+        detail: t('equip.pro.warehouseIssuesDetail', { n: equipmentProInsights.warehouseIssues }),
         focus: 'operations',
         severity: 'medium',
       });
@@ -3818,8 +3823,8 @@ export function EquipmentManagementPanel({
     if (equipmentProInsights.offlineQueue > 0) {
       items.push({
         id: 'offline-sync',
-        title: isOnline ? 'Synkroniser offline-kø' : 'Gjennomgå offline-kø',
-        detail: `${equipmentProInsights.offlineQueue} ventende operasjon(er)`,
+        title: isOnline ? t('equip.pro.syncQueue') : t('equip.pro.reviewQueue'),
+        detail: t('equip.pro.queueDetail', { n: equipmentProInsights.offlineQueue }),
         focus: 'operations',
         severity: isOnline ? 'medium' : 'high',
       });
@@ -3827,14 +3832,15 @@ export function EquipmentManagementPanel({
 
     items.push({
       id: 'catalog-sync',
-      title: 'Synk katalog og databaser',
-      detail: `Kamera-katalog: ${equipmentProInsights.catalogCameraCount} modeller`,
+      title: t('equip.pro.syncCatalog'),
+      detail: t('equip.pro.syncCatalogDetail', { n: equipmentProInsights.catalogCameraCount }),
       focus: 'catalog',
       severity: 'low',
     });
 
     return items.slice(0, 5);
   }, [
+    t,
     equipmentProInsights.missingOwners,
     equipmentProInsights.maintenance,
     equipmentProInsights.warehouseIssues,
@@ -3895,7 +3901,7 @@ export function EquipmentManagementPanel({
     [locations]
   );
 
-  const getCrewName = (crewId: string) => crewById.get(crewId)?.name ?? 'Ukjent';
+  const getCrewName = (crewId: string) => crewById.get(crewId)?.name ?? t('equip.unknown');
   const getLocationName = (locationId: string) => locationById.get(locationId)?.name ?? '';
 
   // Category icon colors for visual enhancement
@@ -3960,11 +3966,9 @@ export function EquipmentManagementPanel({
               fontWeight: 700, 
               color: '#fff',
               fontSize: isDesktop ? '1.5rem' : isTablet ? '1.25rem' : '1.1rem',
-            }}>
-              Utstyrskatalog
-            </Typography>
+            }}>{t('equip.h.catalog')}</Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-              {filteredEquipment.length} av {equipment.length} elementer
+              {t('equip.header.count', { shown: filteredEquipment.length, total: equipment.length })}
             </Typography>
           </Box>
         </Box>
@@ -4004,7 +4008,7 @@ export function EquipmentManagementPanel({
           >
             Pro view
           </Button>
-          <Tooltip title="Oppdater">
+          <Tooltip title={t('equip.tt.refresh')}>
             <IconButton
               onClick={loadEquipment}
               sx={{ 
@@ -4018,7 +4022,7 @@ export function EquipmentManagementPanel({
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Filtrer">
+          <Tooltip title={t('equip.tt.filter')}>
             <IconButton
               onClick={() => setFilterOpen(!filterOpen)}
               sx={{ 
@@ -4032,7 +4036,7 @@ export function EquipmentManagementPanel({
               <FilterIcon sx={{ color: filterOpen ? '#9333ea' : 'inherit' }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title={viewMode === 'grid' ? 'Tabellvisning' : 'Rutenettvisning'}>
+          <Tooltip title={viewMode === 'grid' ? t('equip.tt.tableView') : t('equip.tt.gridView')}>
             <IconButton
               onClick={() => setViewMode(viewMode === 'grid' ? 'table' : 'grid')}
               sx={{ 
@@ -4062,10 +4066,8 @@ export function EquipmentManagementPanel({
               },
               ...focusVisibleStyles,
             }}
-          >
-            Nytt utstyr
-          </Button>
-          <Tooltip title="Utstyrs-maler">
+          >{t('equip.btn.newEquip')}</Button>
+          <Tooltip title={t('equip.tt.templates')}>
             <Button
               variant="outlined"
               startIcon={<BookmarkIcon />}
@@ -4080,11 +4082,9 @@ export function EquipmentManagementPanel({
                 '&:hover': { borderColor: '#66bb6a', bgcolor: 'rgba(76,175,80,0.1)' },
                 ...focusVisibleStyles,
               }}
-            >
-              Maler
-            </Button>
+            >{t('equip.btn.templates')}</Button>
           </Tooltip>
-          <Tooltip title="Bla i produsent-katalog og importer utstyr til prosjektet">
+          <Tooltip title={t('equip.tt.catalog')}>
             <Button
               variant="outlined"
               startIcon={<SearchIcon />}
@@ -4104,11 +4104,9 @@ export function EquipmentManagementPanel({
                 '&:hover': { borderColor: '#c084fc', bgcolor: 'rgba(147,51,234,0.1)' },
                 ...focusVisibleStyles,
               }}
-            >
-              Katalog
-            </Button>
+            >{t('equip.btn.catalog')}</Button>
           </Tooltip>
-          <Tooltip title="Lagerstyring, reservasjoner og flyt mellom lagernoder">
+          <Tooltip title={t('equip.tt.warehouse')}>
             <Button
               variant="outlined"
               startIcon={<Inventory2Icon />}
@@ -4127,10 +4125,10 @@ export function EquipmentManagementPanel({
                 ...focusVisibleStyles,
               }}
             >
-              {warehouseIssueCount > 0 ? `Lager (${warehouseIssueCount})` : 'Lager'}
+              {warehouseIssueCount > 0 ? t('equip.btn.warehouseN', { n: warehouseIssueCount }) : t('equip.btn.warehouse')}
             </Button>
           </Tooltip>
-          <Tooltip title="Skann lager-QR og åpne utstyrspost">
+          <Tooltip title={t('equip.tt.scanQr')}>
             <Button
               variant="outlined"
               startIcon={<QrCodeScannerIcon />}
@@ -4147,11 +4145,9 @@ export function EquipmentManagementPanel({
                 '&:hover': { borderColor: '#90caf9', bgcolor: 'rgba(100,181,246,0.1)' },
                 ...focusVisibleStyles,
               }}
-            >
-              Skann QR
-            </Button>
+            >{t('equip.btn.scanQr')}</Button>
           </Tooltip>
-          <Tooltip title="Administrer fastvare-oppdateringer for prosjektets utstyr">
+          <Tooltip title={t('equip.tt.firmware')}>
             <Button
               variant="outlined"
               startIcon={<SyncIcon />}
@@ -4166,11 +4162,9 @@ export function EquipmentManagementPanel({
                 '&:hover': { borderColor: '#64b5f6', bgcolor: 'rgba(33,150,243,0.1)' },
                 ...focusVisibleStyles,
               }}
-            >
-              Fastvare
-            </Button>
+            >{t('equip.btn.firmware')}</Button>
           </Tooltip>
-          <Tooltip title="Rapporter">
+          <Tooltip title={t('equip.tt.reports')}>
             <Button
               variant="outlined"
               startIcon={<ReportIcon />}
@@ -4185,12 +4179,10 @@ export function EquipmentManagementPanel({
                 '&:hover': { borderColor: '#ba68c8', bgcolor: 'rgba(156,39,176,0.1)' },
                 ...focusVisibleStyles,
               }}
-            >
-              Rapporter
-            </Button>
+            >{t('equip.btn.reports')}</Button>
           </Tooltip>
           {offlineQueueCount > 0 && (
-            <Tooltip title={isOnline ? `${offlineQueueCount} ventende operasjoner — klikk for å synkronisere` : `Offline — ${offlineQueueCount} operasjoner i kø`}>
+            <Tooltip title={isOnline ? t('equip.tt.offlinePending', { n: offlineQueueCount }) : t('equip.tt.offlineQueued', { n: offlineQueueCount })}>
               <Button
                 variant="outlined"
                 startIcon={isOnline ? <SyncIcon /> : <OfflineIcon />}
@@ -4214,11 +4206,11 @@ export function EquipmentManagementPanel({
                   ...focusVisibleStyles,
                 }}
               >
-                {offlineQueueCount} i kø
+                {t('equip.btn.inQueue', { n: offlineQueueCount })}
               </Button>
             </Tooltip>
           )}
-          <Tooltip title="Kjøp utstyr via foto.no">
+          <Tooltip title={t('equip.tt.shop')}>
             <Button
               variant="outlined"
               startIcon={<ShoppingCartIcon />}
@@ -4230,12 +4222,10 @@ export function EquipmentManagementPanel({
                 '&:hover': { borderColor: '#c084fc', bgcolor: 'rgba(147,51,234,0.14)' },
                 ...focusVisibleStyles,
               }}
-            >
-              Kjøp
-            </Button>
+            >{t('equip.btn.buy')}</Button>
           </Tooltip>
           <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
-          <Tooltip title="Eksporter til CSV">
+          <Tooltip title={t('equip.tt.exportCsv')}>
             <IconButton
               onClick={handleExportCSV}
               sx={{ 
@@ -4249,7 +4239,7 @@ export function EquipmentManagementPanel({
               <DownloadIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Importer fra CSV">
+          <Tooltip title={t('equip.tt.importCsv')}>
             <IconButton
               component="label"
               sx={{ 
@@ -4286,7 +4276,7 @@ export function EquipmentManagementPanel({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CheckboxIcon sx={{ color: '#9333ea' }} />
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {selectedEquipmentIds.size} valgt
+                {t('equip.bulk.selected', { n: selectedEquipmentIds.size })}
               </Typography>
             </Box>
             <Button
@@ -4294,7 +4284,7 @@ export function EquipmentManagementPanel({
               onClick={toggleSelectAll}
               sx={{ color: 'rgba(255,255,255,0.87)' }}
             >
-              {selectedEquipmentIds.size === filteredEquipment.length ? 'Fjern alle' : 'Velg alle'}
+              {selectedEquipmentIds.size === filteredEquipment.length ? t('equip.btn.deselectAll') : t('equip.btn.selectAll')}
             </Button>
             <Box sx={{ flex: 1 }} />
             <Button
@@ -4302,37 +4292,29 @@ export function EquipmentManagementPanel({
               startIcon={<EditIcon />}
               onClick={() => handleBulkAction('status')}
               sx={{ color: '#9333ea', '&:hover': { bgcolor: 'rgba(147,51,234,0.15)' } }}
-            >
-              Endre status
-            </Button>
+            >{t('equip.btn.changeStatus')}</Button>
             <Button
               size="small"
               startIcon={<CalendarTodayIcon />}
               onClick={() => handleBulkAction('assign')}
               sx={{ color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.15)' } }}
-            >
-              Tilordne dag
-            </Button>
+            >{t('equip.btn.assignDay')}</Button>
             <Button
               size="small"
               startIcon={<PersonIcon />}
               onClick={() => handleBulkAction('assign')}
               sx={{ color: '#2196f3', '&:hover': { bgcolor: 'rgba(33,150,243,0.15)' } }}
-            >
-              Tilordne
-            </Button>
+            >{t('equip.btn.assign')}</Button>
             <Button
               size="small"
               startIcon={<DeleteIcon />}
               onClick={() => handleBulkAction('delete')}
               sx={{ color: '#f44336', '&:hover': { bgcolor: 'rgba(244,67,54,0.15)' } }}
-            >
-              Slett valgte
-            </Button>
+            >{t('equip.btn.delSelected')}</Button>
             <IconButton
               size="small"
               onClick={() => setSelectedEquipmentIds(new Set())}
-              aria-label="Fjern markering"
+              aria-label={t('equip.aria.removeSelection')}
               sx={{ color: 'rgba(255,255,255,0.87)' }}
             >
               <CloseIcon sx={{ fontSize: 18 }} />
@@ -4356,20 +4338,16 @@ export function EquipmentManagementPanel({
         >
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
             <Box>
-              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.98rem' }}>
-                Pro kontrollsenter
-              </Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem' }}>
-                Fokus: risiko, drift og katalog for raskere beslutninger i utstyrsflyten.
-              </Typography>
+              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.98rem' }}>{t('equip.h.proCenter')}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem' }}>{t('equip.pro.subtitle')}</Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
               {[
-                { value: 'all', label: 'Alle' },
-                { value: 'overview', label: 'Oversikt' },
-                { value: 'risks', label: 'Risiko' },
-                { value: 'operations', label: 'Drift' },
-                { value: 'catalog', label: 'Katalog' },
+                { value: 'all', label: t('equip.pro.focusAll') },
+                { value: 'overview', label: t('equip.pro.focusOverview') },
+                { value: 'risks', label: t('equip.pro.focusRisks') },
+                { value: 'operations', label: t('equip.pro.focusOps') },
+                { value: 'catalog', label: t('equip.pro.focusCatalog') },
               ].map((focusOption) => {
                 const active = proViewFocus === focusOption.value;
                 return (
@@ -4400,11 +4378,11 @@ export function EquipmentManagementPanel({
           {showProOverview && (
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               {[
-                { label: 'Tilgjengelig', value: equipmentProInsights.available, color: '#4caf50' },
-                { label: 'I bruk', value: equipmentProInsights.inUse, color: '#64b5f6' },
-                { label: 'Service', value: equipmentProInsights.service, color: '#ffb74d' },
-                { label: 'Synlig nå', value: `${equipmentProInsights.visibleRatio}%`, color: '#c084fc' },
-                { label: 'Kamera-kategorier', value: equipmentProInsights.cameraCategoryCount, color: '#a78bfa' },
+                { label: t('equip.pro.statAvailable'), value: equipmentProInsights.available, color: '#4caf50' },
+                { label: t('equip.pro.statInUse'), value: equipmentProInsights.inUse, color: '#64b5f6' },
+                { label: t('equip.pro.statService'), value: equipmentProInsights.service, color: '#ffb74d' },
+                { label: t('equip.pro.statVisible'), value: `${equipmentProInsights.visibleRatio}%`, color: '#c084fc' },
+                { label: t('equip.pro.statCamCats'), value: equipmentProInsights.cameraCategoryCount, color: '#a78bfa' },
               ].map((item) => (
                 <Box
                   key={item.label}
@@ -4439,7 +4417,7 @@ export function EquipmentManagementPanel({
                   bgcolor: equipmentProInsights.missingOwners > 0 ? 'rgba(244,67,54,0.12)' : 'rgba(148,163,184,0.08)',
                 }}
               >
-                <span>Mangler ansvarlig</span>
+                <span>{t('equip.pro.missing')}</span>
                 <strong>{equipmentProInsights.missingOwners}</strong>
               </Button>
               <Button
@@ -4455,7 +4433,7 @@ export function EquipmentManagementPanel({
                   bgcolor: equipmentProInsights.maintenance > 0 ? 'rgba(255,152,0,0.12)' : 'rgba(148,163,184,0.08)',
                 }}
               >
-                <span>Service / reparasjon</span>
+                <span>{t('equip.pro.serviceRep')}</span>
                 <strong>{equipmentProInsights.maintenance}</strong>
               </Button>
             </Box>
@@ -4476,7 +4454,7 @@ export function EquipmentManagementPanel({
                   bgcolor: equipmentProInsights.warehouseIssues > 0 ? 'rgba(244,67,54,0.12)' : 'rgba(148,163,184,0.08)',
                 }}
               >
-                <span>Lageravvik</span>
+                <span>{t('equip.pro.warehouseSpan')}</span>
                 <strong>{equipmentProInsights.warehouseIssues}</strong>
               </Button>
               <Button
@@ -4498,7 +4476,7 @@ export function EquipmentManagementPanel({
                   bgcolor: equipmentProInsights.offlineQueue > 0 ? 'rgba(147,51,234,0.12)' : 'rgba(148,163,184,0.08)',
                 }}
               >
-                <span>{isOnline ? 'Offline-kø (sync)' : 'Offline-kø'}</span>
+                <span>{isOnline ? t('equip.pro.offlineSync') : t('equip.pro.offline')}</span>
                 <strong>{equipmentProInsights.offlineQueue}</strong>
               </Button>
             </Box>
@@ -4522,7 +4500,7 @@ export function EquipmentManagementPanel({
                   bgcolor: 'rgba(33,150,243,0.12)',
                 }}
               >
-                <span>Kamera i katalog</span>
+                <span>{t('equip.pro.camsInCatalog')}</span>
                 <strong>{equipmentProInsights.catalogCameraCount}</strong>
               </Button>
             </Box>
@@ -4569,11 +4547,11 @@ export function EquipmentManagementPanel({
           <Box sx={{ mb: 2, px: 1 }}>
             <RoleStatPillRow
               pills={[
-                { icon: <Inventory2Icon />, count: totalItems, label: 'Totalt utstyr', color: '#a78bfa' },
-                { icon: <CheckCircleIcon />, count: availableCount, label: 'Tilgjengelig nå', color: '#10b981' },
-                { icon: <ScheduleIcon />, count: reservedCount, label: 'Reservert', color: '#f59e0b' },
-                { icon: <MaintenanceIcon />, count: maintenanceCount, label: 'På vedlikehold', color: '#ef4444' },
-                { icon: <WarehouseIcon />, count: inStockCount, label: 'På lager', color: '#60a5fa' },
+                { icon: <Inventory2Icon />, count: totalItems, label: t('equip.pill.total'), color: '#a78bfa' },
+                { icon: <CheckCircleIcon />, count: availableCount, label: t('equip.pill.available'), color: '#10b981' },
+                { icon: <ScheduleIcon />, count: reservedCount, label: t('equip.pill.reserved'), color: '#f59e0b' },
+                { icon: <MaintenanceIcon />, count: maintenanceCount, label: t('equip.pill.maintenance'), color: '#ef4444' },
+                { icon: <WarehouseIcon />, count: inStockCount, label: t('equip.pill.stock'), color: '#60a5fa' },
               ]}
             />
           </Box>
@@ -4591,17 +4569,17 @@ export function EquipmentManagementPanel({
           flexWrap: 'wrap',
         }}>
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 700, fontSize: '0.85rem' }}>
-            {equipment.reduce((s, e) => s + (e.quantity || 1), 0)} totalt
+            {t('equip.stats.total', { n: equipment.reduce((s, e) => s + (e.quantity || 1), 0) })}
           </Typography>
           <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
-            Viser {filteredEquipment.length}
+            {t('equip.stats.showing', { n: filteredEquipment.length })}
           </Typography>
           {assignedToday > 0 && (
             <>
               <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
               <Typography variant="body2" sx={{ color: '#4caf50', fontSize: '0.85rem', fontWeight: 600 }}>
-                {assignedToday} tildelt i dag
+                {t('equip.stats.assignedToday', { n: assignedToday })}
               </Typography>
             </>
           )}
@@ -4609,12 +4587,12 @@ export function EquipmentManagementPanel({
             <>
               <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem' }}>
-                Filtrert fra {equipment.length}
+                {t('equip.stats.filteredFrom', { n: equipment.length })}
               </Typography>
             </>
           )}
           <Box sx={{ flex: 1 }} />
-          <Tooltip title={sidebarOpen ? 'Skjul kategoriliste' : 'Vis kategoriliste'}>
+          <Tooltip title={sidebarOpen ? t('equip.tt.hideCats') : t('equip.tt.showCats')}>
             <IconButton
               size="small"
               onClick={() => setSidebarOpen(prev => !prev)}
@@ -4654,9 +4632,7 @@ export function EquipmentManagementPanel({
               px: 1,
               display: 'block',
               mb: 1,
-            }}>
-              Kategorier
-            </Typography>
+            }}>{t('equip.side.categories')}</Typography>
 
             {/* All equipment row */}
             <Box
@@ -4676,9 +4652,7 @@ export function EquipmentManagementPanel({
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <BuildIcon sx={{ fontSize: 15, color: categoryFilter === 'all' ? '#9333ea' : 'rgba(255,255,255,0.5)' }} />
-                <Typography variant="body2" sx={{ color: categoryFilter === 'all' ? '#c084fc' : 'rgba(255,255,255,0.8)', fontWeight: categoryFilter === 'all' ? 700 : 400, fontSize: '0.82rem' }}>
-                  Alle
-                </Typography>
+                <Typography variant="body2" sx={{ color: categoryFilter === 'all' ? '#c084fc' : 'rgba(255,255,255,0.8)', fontWeight: categoryFilter === 'all' ? 700 : 400, fontSize: '0.82rem' }}>{t('equip.side.all')}</Typography>
               </Box>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem' }}>
                 {equipment.length}
@@ -4761,7 +4735,7 @@ export function EquipmentManagementPanel({
                         ))}
                       {equipment.filter(e => e.category === cat).length > 5 && (
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', pl: 0.5 }}>
-                          +{equipment.filter(e => e.category === cat).length - 5} til
+                          {t('equip.side.more', { n: equipment.filter(e => e.category === cat).length - 5 })}
                         </Typography>
                       )}
                     </Box>
@@ -4789,9 +4763,7 @@ export function EquipmentManagementPanel({
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <WarningIcon sx={{ fontSize: 15, color: '#ff9800' }} />
-                <Typography variant="body2" sx={{ color: statusFilter === 'maintenance' ? '#ffb74d' : 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
-                  Vedlikehold
-                </Typography>
+                <Typography variant="body2" sx={{ color: statusFilter === 'maintenance' ? '#ffb74d' : 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>{t('equip.side.maintenance')}</Typography>
               </Box>
               <Typography variant="caption" sx={{ color: 'rgba(255,152,0,0.7)', fontSize: '0.72rem' }}>
                 {equipment.filter(e => e.status === 'maintenance').length}
@@ -4813,9 +4785,7 @@ export function EquipmentManagementPanel({
               }}
             >
               <BookmarkIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.82rem' }}>
-                Hjelp &amp; filter
-              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.82rem' }}>{t('equip.side.help')}</Typography>
             </Box>
           </Box>
         )}
@@ -4836,7 +4806,7 @@ export function EquipmentManagementPanel({
           backdropFilter: 'blur(10px)',
         }}>
           <TextField
-            placeholder="Søk etter navn, merke, modell..."
+            placeholder={t('equip.ph.search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             size="small"
@@ -4860,11 +4830,11 @@ export function EquipmentManagementPanel({
             }}
           />
           <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kategori</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.category')}</InputLabel>
             <Select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              label="Kategori"
+              label={t('equip.lbl.category')}
               sx={{ 
                 color: '#fff',
                 bgcolor: 'rgba(0,0,0,0.2)',
@@ -4878,7 +4848,7 @@ export function EquipmentManagementPanel({
                 }
               }}
             >
-              <MenuItem value="all">Alle kategorier</MenuItem>
+              <MenuItem value="all">{t('equip.filter.allCats')}</MenuItem>
               {categories.map(cat => (
                 <MenuItem key={cat} value={cat}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4890,11 +4860,11 @@ export function EquipmentManagementPanel({
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Status</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.status')}</InputLabel>
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              label="Status"
+              label={t('equip.lbl.status')}
               sx={{ 
                 color: '#fff',
                 bgcolor: 'rgba(0,0,0,0.2)',
@@ -4908,8 +4878,8 @@ export function EquipmentManagementPanel({
                 }
               }}
             >
-              <MenuItem value="all">Alle statuser</MenuItem>
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <MenuItem value="all">{t('equip.filter.allStatuses')}</MenuItem>
+              {Object.entries(statusLabels).map(([value, label]) => (
                 <MenuItem key={value} value={value}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: STATUS_COLORS[value] }} />
@@ -4920,11 +4890,11 @@ export function EquipmentManagementPanel({
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lokasjon</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.location')}</InputLabel>
             <Select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
-              label="Lokasjon"
+              label={t('equip.lbl.location')}
               sx={{
                 color: '#fff',
                 bgcolor: 'rgba(0,0,0,0.2)',
@@ -4938,7 +4908,7 @@ export function EquipmentManagementPanel({
                 },
               }}
             >
-              <MenuItem value="all">Alle lokasjoner</MenuItem>
+              <MenuItem value="all">{t('equip.filter.allLocs')}</MenuItem>
               {locations.map((loc) => (
                 <MenuItem key={loc.id} value={loc.id}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4950,7 +4920,7 @@ export function EquipmentManagementPanel({
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Sorter</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.sort')}</InputLabel>
             <Select
               value={`${sortField}:${sortDirection}`}
               onChange={(e) => {
@@ -4959,7 +4929,7 @@ export function EquipmentManagementPanel({
                 setSortField(field);
                 setSortDirection(dir);
               }}
-              label="Sorter"
+              label={t('equip.lbl.sort')}
               sx={{
                 color: '#fff',
                 bgcolor: 'rgba(0,0,0,0.2)',
@@ -4973,15 +4943,15 @@ export function EquipmentManagementPanel({
                 },
               }}
             >
-              <MenuItem value="updated_at:desc">Nyeste først</MenuItem>
-              <MenuItem value="updated_at:asc">Eldste først</MenuItem>
-              <MenuItem value="created_at:desc">Sist lagt til</MenuItem>
-              <MenuItem value="name:asc">Navn A→Å</MenuItem>
-              <MenuItem value="name:desc">Navn Å→A</MenuItem>
-              <MenuItem value="category:asc">Kategori A→Å</MenuItem>
+              <MenuItem value="updated_at:desc">{t('equip.sort.newest')}</MenuItem>
+              <MenuItem value="updated_at:asc">{t('equip.sort.oldest')}</MenuItem>
+              <MenuItem value="created_at:desc">{t('equip.sort.recent')}</MenuItem>
+              <MenuItem value="name:asc">{t('equip.sort.nameAsc')}</MenuItem>
+              <MenuItem value="name:desc">{t('equip.sort.nameDesc')}</MenuItem>
+              <MenuItem value="category:asc">{t('equip.sort.catAsc')}</MenuItem>
               <MenuItem value="status:asc">Status</MenuItem>
-              <MenuItem value="quantity:desc">Antall (flest først)</MenuItem>
-              <MenuItem value="quantity:asc">Antall (færrest først)</MenuItem>
+              <MenuItem value="quantity:desc">{t('equip.sort.qtyDesc')}</MenuItem>
+              <MenuItem value="quantity:asc">{t('equip.sort.qtyAsc')}</MenuItem>
             </Select>
           </FormControl>
           {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' || locationFilter !== 'all') && (
@@ -4998,9 +4968,7 @@ export function EquipmentManagementPanel({
                 color: 'rgba(255,255,255,0.87)',
                 '&:hover': { color: '#f44336' },
               }}
-            >
-              Nullstill
-            </Button>
+            >{t('equip.btn.reset')}</Button>
           )}
         </Box>
       </Collapse>
@@ -5010,7 +4978,7 @@ export function EquipmentManagementPanel({
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           {searchQuery && (
             <Chip
-              label={`Søk: "${searchQuery}"`}
+              label={t('equip.chip.search', { q: searchQuery })}
               size="small"
               onDelete={() => setSearchQuery('')}
               sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', borderColor: 'rgba(147,51,234,0.3)', border: '1px solid' }}
@@ -5018,7 +4986,7 @@ export function EquipmentManagementPanel({
           )}
           {categoryFilter !== 'all' && (
             <Chip
-              label={`Kategori: ${categoryFilter}`}
+              label={t('equip.chip.category', { cat: categoryFilter })}
               size="small"
               icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(categoryFilter), ml: '8px !important' }} />}
               onDelete={() => setCategoryFilter('all')}
@@ -5027,14 +4995,14 @@ export function EquipmentManagementPanel({
           )}
           {statusFilter !== 'all' && (
             <Chip
-              label={STATUS_LABELS[statusFilter as keyof typeof STATUS_LABELS] ?? statusFilter}
+              label={statusLabels[statusFilter as keyof typeof statusLabels] ?? statusFilter}
               size="small"
               onDelete={() => setStatusFilter('all')}
               sx={{ bgcolor: `${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9333ea'}20`, color: STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#c084fc', border: `1px solid ${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9333ea'}40` }}
             />
           )}
           <Chip
-            label="Nullstill"
+            label={t('equip.chip.reset')}
             size="small"
             onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); setLocationFilter('all'); }}
             sx={{ bgcolor: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)', border: '1px solid', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }, cursor: 'pointer' }}
@@ -5068,12 +5036,12 @@ export function EquipmentManagementPanel({
                 <Box sx={{ width: '100%', maxWidth: 760, mx: 'auto', display: 'flex', justifyContent: 'center' }}>
                   <RoleRoomEmptyState
                     iconSrc={equipPng}
-                    title="Ingen utstyr funnet"
+                    title={t('equip.empty.title')}
                     subtitle={searchQuery || categoryFilter !== 'all' || statusFilter !== 'all'
-                      ? 'Prøv å endre søkekriteriene'
-                      : 'Legg til ditt første utstyr for å komme i gang'}
+                      ? t('equip.empty.tryFilters')
+                      : t('equip.empty.addFirst')}
                     color="#9333ea"
-                    buttonLabel="Legg til utstyr"
+                    buttonLabel={t('equip.empty.addBtn')}
                     onAction={handleOpenCreateTypeDialog}
                   />
                 </Box>
@@ -5114,7 +5082,7 @@ export function EquipmentManagementPanel({
                   <IconButton
                     size="small"
                     onClick={(e) => { e.stopPropagation(); toggleSelectEquipment(eq.id); }}
-                    aria-label={selectedEquipmentIds.has(eq.id) ? `Fjern markering for ${eq.name}` : `Velg ${eq.name}`}
+                    aria-label={selectedEquipmentIds.has(eq.id) ? t('equip.aria.deselect', { name: eq.name }) : t('equip.aria.select', { name: eq.name })}
                     sx={{
                       bgcolor: selectedEquipmentIds.has(eq.id) ? '#9333ea' : 'rgba(0,0,0,0.5)',
                       backdropFilter: 'blur(4px)',
@@ -5137,7 +5105,7 @@ export function EquipmentManagementPanel({
                   }}
                 >
                   <Tooltip
-                    title={favorites.has(eq.id) ? `Fjern ${eq.name} fra favoritter` : `Marker ${eq.name} som favoritt`}
+                    title={favorites.has(eq.id) ? t('equip.fav.remove', { name: eq.name }) : t('equip.fav.add', { name: eq.name })}
                   >
                     <IconButton
                       size="small"
@@ -5145,7 +5113,7 @@ export function EquipmentManagementPanel({
                         e.stopPropagation();
                         toggleEquipmentFavorite(eq.id);
                       }}
-                      aria-label={favorites.has(eq.id) ? `Fjern ${eq.name} fra favoritter` : `Marker ${eq.name} som favoritt`}
+                      aria-label={favorites.has(eq.id) ? t('equip.fav.remove', { name: eq.name }) : t('equip.fav.add', { name: eq.name })}
                       sx={{
                         bgcolor: 'rgba(0,0,0,0.5)',
                         backdropFilter: 'blur(4px)',
@@ -5211,7 +5179,7 @@ export function EquipmentManagementPanel({
                   
                   {/* Status badge - positioned on image */}
                   <Chip
-                    label={STATUS_LABELS[eq.status] || eq.status}
+                    label={statusLabels[eq.status] || eq.status}
                     size="small"
                     sx={{
                       position: 'absolute',
@@ -5248,7 +5216,7 @@ export function EquipmentManagementPanel({
                   
                   {/* Global equipment indicator */}
                   {eq.is_global && (
-                    <Tooltip title="Globalt utstyr - tilgjengelig i alle prosjekter">
+                    <Tooltip title={t('equip.tt.globalEquip')}>
                       <Chip
                         icon={<PublicIcon sx={{ fontSize: '14px !important' }} />}
                         label="Global"
@@ -5310,7 +5278,7 @@ export function EquipmentManagementPanel({
                       />
                     )}
                     <Chip
-                      label={CONDITION_LABELS[eq.condition] || eq.condition}
+                      label={conditionLabels[eq.condition] || eq.condition}
                       size="small"
                       sx={{
                         bgcolor: `${CONDITION_COLORS[eq.condition]}20` || 'rgba(100,100,100,0.2)',
@@ -5324,7 +5292,7 @@ export function EquipmentManagementPanel({
                   {warehouseTotals && (
                     <Stack direction="row" spacing={0.75} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
                       <Chip
-                        label={`Tilgjengelig ${warehouseTotals.available}`}
+                        label={t('equip.wh.available', { n: warehouseTotals.available })}
                         size="small"
                         sx={{
                           bgcolor: 'rgba(76,175,80,0.15)',
@@ -5335,7 +5303,7 @@ export function EquipmentManagementPanel({
                         }}
                       />
                       <Chip
-                        label={`Reservert ${warehouseTotals.reserved}`}
+                        label={t('equip.wh.reserved', { n: warehouseTotals.reserved })}
                         size="small"
                         sx={{
                           bgcolor: 'rgba(255,183,77,0.15)',
@@ -5408,11 +5376,11 @@ export function EquipmentManagementPanel({
                   bgcolor: 'rgba(0,0,0,0.2)',
                 }}>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title="Bookinger">
+                    <Tooltip title={t('equip.tt.bookings')}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenBookings(eq)}
-                        aria-label={`Åpne bookinger for ${eq.name}`}
+                        aria-label={t('equip.aria.openBookings', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5423,11 +5391,11 @@ export function EquipmentManagementPanel({
                       </IconButton>
                     </Tooltip>
                     {eq.status === 'in_use' ? (
-                      <Tooltip title="Lever inn">
+                      <Tooltip title={t('equip.tt.checkin')}>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenCheckin(eq)}
-                          aria-label={`Lever inn ${eq.name}`}
+                          aria-label={t('equip.aria.checkinFor', { name: eq.name })}
                           sx={{
                             ...focusVisibleStyles,
                             color: '#4caf50',
@@ -5439,11 +5407,11 @@ export function EquipmentManagementPanel({
                         </IconButton>
                       </Tooltip>
                     ) : eq.status === 'available' ? (
-                      <Tooltip title="Sjekk ut">
+                      <Tooltip title={t('equip.tt.checkout')}>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenCheckout(eq)}
-                          aria-label={`Sjekk ut ${eq.name}`}
+                          aria-label={t('equip.aria.checkoutFor', { name: eq.name })}
                           sx={{
                             ...focusVisibleStyles,
                             color: '#2196f3',
@@ -5454,11 +5422,11 @@ export function EquipmentManagementPanel({
                         </IconButton>
                       </Tooltip>
                     ) : null}
-                    <Tooltip title="Tilordne ansvarlig">
+                    <Tooltip title={t('equip.tt.assignOwner')}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenAssign(eq)}
-                        aria-label={`Tilordne ansvarlig for ${eq.name}`}
+                        aria-label={t('equip.aria.assignFor', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5468,11 +5436,11 @@ export function EquipmentManagementPanel({
                         <PersonIcon sx={{ fontSize: 18 }} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="QR-kode">
+                    <Tooltip title={t('equip.tt.qrCode')}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenQrLabel(eq)}
-                        aria-label={`Vis QR-kode for ${eq.name}`}
+                        aria-label={t('equip.aria.showQr', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5482,11 +5450,11 @@ export function EquipmentManagementPanel({
                         <QrCodeIcon sx={{ fontSize: 18 }} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Historikk">
+                    <Tooltip title={t('equip.tt.history')}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenHistory(eq)}
-                        aria-label={`Åpne historikk for ${eq.name}`}
+                        aria-label={t('equip.aria.openHistory', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5498,11 +5466,11 @@ export function EquipmentManagementPanel({
                     </Tooltip>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title="Dupliser">
+                    <Tooltip title={t('equip.tt.duplicate')}>
                       <IconButton
                         size="small"
                         onClick={() => handleDuplicate(eq)}
-                        aria-label={`Dupliser ${eq.name}`}
+                        aria-label={t('equip.aria.duplicateFor', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5512,11 +5480,11 @@ export function EquipmentManagementPanel({
                         <DuplicateIcon sx={{ fontSize: 18 }} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Vedlikehold">
+                    <Tooltip title={t('equip.tt.maintenance')}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenMaintenance(eq)}
-                        aria-label={`Åpne vedlikehold for ${eq.name}`}
+                        aria-label={t('equip.aria.openMaint', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5526,11 +5494,11 @@ export function EquipmentManagementPanel({
                         <BuildIcon sx={{ fontSize: 18 }} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Rediger">
+                    <Tooltip title={t('equip.tt.edit')}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenDialog(eq)}
-                        aria-label={`Rediger ${eq.name}`}
+                        aria-label={t('equip.aria.editFor', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5540,11 +5508,11 @@ export function EquipmentManagementPanel({
                         <EditIcon sx={{ fontSize: 18 }} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Slett">
+                    <Tooltip title={t('equip.tt.delete')}>
                       <IconButton
                         size="small"
                         onClick={() => handleDeleteClick(eq)}
-                        aria-label={`Slett ${eq.name}`}
+                        aria-label={t('equip.aria.deleteFor', { name: eq.name })}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -5582,9 +5550,7 @@ export function EquipmentManagementPanel({
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', '&.Mui-active': { color: '#9333ea' }, '& .MuiTableSortLabel-icon': { color: '#9333ea !important' } }}
-                  >
-                    Navn
-                  </TableSortLabel>
+                  >{t('equip.th.name')}</TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>
                   <TableSortLabel
@@ -5592,26 +5558,22 @@ export function EquipmentManagementPanel({
                     direction={sortField === 'category' ? sortDirection : 'asc'}
                     onClick={() => handleSort('category')}
                     sx={{ color: '#fff', '&.Mui-active': { color: '#9333ea' }, '& .MuiTableSortLabel-icon': { color: '#9333ea !important' } }}
-                  >
-                    Kategori
-                  </TableSortLabel>
+                  >{t('equip.th.category')}</TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>Merke/Modell</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>{t('equip.th.brandModel')}</TableCell>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>
                   <TableSortLabel
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
                     sx={{ color: '#fff', '&.Mui-active': { color: '#9333ea' }, '& .MuiTableSortLabel-icon': { color: '#9333ea !important' } }}
-                  >
-                    Status
-                  </TableSortLabel>
+                  >{t('equip.th.status')}</TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>Tilstand</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="center">Antall</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="center">Lagerstatus</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>Lokasjon</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="right">Handlinger</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>{t('equip.th.condition')}</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="center">{t('equip.th.quantity')}</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="center">{t('equip.th.warehouse')}</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>{t('equip.th.location')}</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="right">{t('equip.th.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -5657,7 +5619,7 @@ export function EquipmentManagementPanel({
                         <Typography sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           {eq.name}
                           {eq.is_global && (
-                            <Tooltip title="Globalt utstyr - tilgjengelig i alle prosjekter">
+                            <Tooltip title={t('equip.tt.globalEquip')}>
                               <PublicIcon sx={{ fontSize: 16, color: '#2196f3' }} />
                             </Tooltip>
                           )}
@@ -5681,7 +5643,7 @@ export function EquipmentManagementPanel({
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <Chip
-                      label={STATUS_LABELS[eq.status] || eq.status}
+                      label={statusLabels[eq.status] || eq.status}
                       size="small"
                       sx={{ 
                         bgcolor: `${STATUS_COLORS[eq.status]}20`, 
@@ -5693,7 +5655,7 @@ export function EquipmentManagementPanel({
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <Chip
-                      label={CONDITION_LABELS[eq.condition] || eq.condition}
+                      label={conditionLabels[eq.condition] || eq.condition}
                       size="small"
                       sx={{ 
                         bgcolor: `${CONDITION_COLORS[eq.condition]}20`, 
@@ -5718,7 +5680,7 @@ export function EquipmentManagementPanel({
                     {warehouseTotals ? (
                       <Stack direction="row" spacing={0.5} justifyContent="center" flexWrap="wrap">
                         <Chip
-                          label={`Tilg ${warehouseTotals.available}`}
+                          label={t('equip.wh.availShort', { n: warehouseTotals.available })}
                           size="small"
                           sx={{
                             bgcolor: 'rgba(76,175,80,0.15)',
@@ -5729,7 +5691,7 @@ export function EquipmentManagementPanel({
                           }}
                         />
                         <Chip
-                          label={`Res ${warehouseTotals.reserved}`}
+                          label={t('equip.wh.resShort', { n: warehouseTotals.reserved })}
                           size="small"
                           sx={{
                             bgcolor: 'rgba(255,183,77,0.15)',
@@ -5756,11 +5718,11 @@ export function EquipmentManagementPanel({
                   </TableCell>
                   <TableCell align="right" sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                      <Tooltip title="Bookinger">
+                      <Tooltip title={t('equip.tt.bookings')}>
                         <IconButton 
                           size="small" 
                           onClick={() => handleOpenBookings(eq)} 
-                          aria-label={`Åpne bookinger for ${eq.name}`}
+                          aria-label={t('equip.aria.openBookings', { name: eq.name })}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5771,33 +5733,33 @@ export function EquipmentManagementPanel({
                         </IconButton>
                       </Tooltip>
                       {eq.status === 'in_use' ? (
-                        <Tooltip title="Lever inn">
+                        <Tooltip title={t('equip.tt.checkin')}>
                           <IconButton
                             size="small"
                             onClick={() => handleOpenCheckin(eq)}
-                            aria-label={`Lever inn ${eq.name}`}
+                            aria-label={t('equip.aria.checkinFor', { name: eq.name })}
                             sx={{ ...focusVisibleStyles, color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' } }}
                           >
                             <CheckInIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
                       ) : eq.status === 'available' ? (
-                        <Tooltip title="Sjekk ut">
+                        <Tooltip title={t('equip.tt.checkout')}>
                           <IconButton
                             size="small"
                             onClick={() => handleOpenCheckout(eq)}
-                            aria-label={`Sjekk ut ${eq.name}`}
+                            aria-label={t('equip.aria.checkoutFor', { name: eq.name })}
                             sx={{ ...focusVisibleStyles, color: '#2196f3', '&:hover': { bgcolor: 'rgba(33,150,243,0.1)' } }}
                           >
                             <CheckOutIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
                       ) : null}
-                      <Tooltip title="Tilordne">
+                      <Tooltip title={t('equip.tt.assign')}>
                         <IconButton 
                           size="small" 
                           onClick={() => handleOpenAssign(eq)} 
-                          aria-label={`Tilordne ansvarlig for ${eq.name}`}
+                          aria-label={t('equip.aria.assignFor', { name: eq.name })}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5807,11 +5769,11 @@ export function EquipmentManagementPanel({
                           <PersonIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="QR-kode">
+                      <Tooltip title={t('equip.tt.qrCode')}>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenQrLabel(eq)}
-                          aria-label={`Vis QR-kode for ${eq.name}`}
+                          aria-label={t('equip.aria.showQr', { name: eq.name })}
                           sx={{
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5821,11 +5783,11 @@ export function EquipmentManagementPanel({
                           <QrCodeIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger">
+                      <Tooltip title={t('equip.tt.edit')}>
                         <IconButton 
                           size="small" 
                           onClick={() => handleOpenDialog(eq)} 
-                          aria-label={`Rediger ${eq.name}`}
+                          aria-label={t('equip.aria.editFor', { name: eq.name })}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5835,11 +5797,11 @@ export function EquipmentManagementPanel({
                           <EditIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('equip.tt.delete')}>
                         <IconButton 
                           size="small" 
                           onClick={() => handleDeleteClick(eq)} 
-                          aria-label={`Slett ${eq.name}`}
+                          aria-label={t('equip.aria.deleteFor', { name: eq.name })}
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
@@ -5873,7 +5835,7 @@ export function EquipmentManagementPanel({
           }}
         >
           <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
-            Viser {filteredEquipment.length === 0 ? 0 : paginationStart + 1}–{paginationEnd} av {filteredEquipment.length} elementer
+            {t('equip.page.range', { from: filteredEquipment.length === 0 ? 0 : paginationStart + 1, to: paginationEnd, total: filteredEquipment.length })}
           </Typography>
 
           {totalPages > 1 && (
@@ -5882,7 +5844,7 @@ export function EquipmentManagementPanel({
                 size="small"
                 disabled={safePage <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                aria-label="Forrige side"
+                aria-label={t('equip.aria.prevPage')}
                 sx={{ color: safePage <= 1 ? 'rgba(255,255,255,0.25)' : '#fff' }}
               >
                 <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>‹</Box>
@@ -5927,7 +5889,7 @@ export function EquipmentManagementPanel({
                 size="small"
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                aria-label="Neste side"
+                aria-label={t('equip.aria.nextPage')}
                 sx={{ color: safePage >= totalPages ? 'rgba(255,255,255,0.25)' : '#fff' }}
               >
                 <Box component="span" sx={{ fontSize: '1.2rem', lineHeight: 1 }}>›</Box>
@@ -5953,9 +5915,9 @@ export function EquipmentManagementPanel({
                 },
               }}
             >
-              <MenuItem value={20}>20 per side</MenuItem>
-              <MenuItem value={40}>40 per side</MenuItem>
-              <MenuItem value={80}>80 per side</MenuItem>
+              <MenuItem value={20}>{t('equip.page.20')}</MenuItem>
+              <MenuItem value={40}>{t('equip.page.40')}</MenuItem>
+              <MenuItem value={80}>{t('equip.page.80')}</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -5985,21 +5947,17 @@ export function EquipmentManagementPanel({
             <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
               <AddIcon sx={{ color: '#fff', fontSize: 20 }} />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Ny post
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.h.newEntry')}</Typography>
           </Box>
           <IconButton
             onClick={() => setCreateTypeDialogOpen(false)}
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2.5, px: 3 }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            Velg hva du vil opprette:
-          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>{t('equip.newEntry.choose')}</Typography>
           <Box
             sx={{
               display: 'grid',
@@ -6040,12 +5998,8 @@ export function EquipmentManagementPanel({
                 >
                   <BuildIcon sx={{ color: '#c084fc', fontSize: 24 }} />
                 </Box>
-                <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
-                  Filmutstyr
-                </Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem', textAlign: 'left' }}>
-                  Åpner eksisterende nytt-utstyr modal for kamera, lys, lyd, strøm, sikkerhet og logistikk.
-                </Typography>
+                <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>{t('equip.newEntry.filmTitle')}</Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem', textAlign: 'left' }}>{t('equip.newEntry.filmDesc')}</Typography>
               </Box>
             </Button>
 
@@ -6082,12 +6036,8 @@ export function EquipmentManagementPanel({
                 >
                   <PropsIcon sx={{ color: '#c084fc', fontSize: 24 }} />
                 </Box>
-                <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
-                  Rekvisitter
-                </Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem', textAlign: 'left' }}>
-                  Åpner ny-post modalen i rekvisittseksjonen. Filmutstyr holdes i utstyrsmodulen.
-                </Typography>
+                <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>{t('equip.newEntry.propsTitle')}</Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem', textAlign: 'left' }}>{t('equip.newEntry.propsDesc')}</Typography>
               </Box>
             </Button>
           </Box>
@@ -6096,9 +6046,7 @@ export function EquipmentManagementPanel({
           <Button
             onClick={() => setCreateTypeDialogOpen(false)}
             sx={{ color: 'rgba(255,255,255,0.8)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -6126,16 +6074,16 @@ export function EquipmentManagementPanel({
             </Box>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                {editingEquipment ? 'Rediger utstyr' : 'Legg til nytt utstyr'}
+                {editingEquipment ? t('equip.form.editTitle') : t('equip.form.addTitle')}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                {editingEquipment ? 'Oppdater informasjon om utstyret' : 'Fyll inn detaljer for det nye utstyret'}
+                {editingEquipment ? t('equip.form.editSub') : t('equip.form.addSub')}
               </Typography>
             </Box>
           </Box>
           <IconButton 
             onClick={handleCloseMainDialog} 
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -6152,7 +6100,7 @@ export function EquipmentManagementPanel({
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
-                label="Navn *"
+                label={t('equip.lbl.nameReq')}
                 value={formData.name}
                 onChange={(e) => {
                   setFormData({ ...formData, name: e.target.value });
@@ -6176,7 +6124,7 @@ export function EquipmentManagementPanel({
             </Box>
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kategori</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.category')}</InputLabel>
                 <Select
                   value={formData.category}
                   onChange={(e) => {
@@ -6186,7 +6134,7 @@ export function EquipmentManagementPanel({
                       setFormData({ ...formData, category: e.target.value });
                     }
                   }}
-                  label="Kategori"
+                  label={t('equip.lbl.category')}
                   sx={{ 
                     color: '#fff', 
                     bgcolor: 'rgba(0,0,0,0.2)',
@@ -6212,7 +6160,7 @@ export function EquipmentManagementPanel({
                               e.stopPropagation();
                               handleRemoveCustomCategory(cat);
                             }}
-                            aria-label={`Fjern kategori ${cat}`}
+                            aria-label={t('equip.aria.removeCat', { cat })}
                             sx={{
                               p: 0.5,
                               color: 'rgba(255,255,255,0.87)',
@@ -6229,7 +6177,7 @@ export function EquipmentManagementPanel({
                   <MenuItem value="__add_new__" sx={{ color: '#4caf50' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <AddIcon sx={{ fontSize: 18 }} />
-                      Legg til ny kategori...
+                      {t('equip.form.addNewCat')}
                     </Box>
                   </MenuItem>
                 </Select>
@@ -6275,8 +6223,8 @@ export function EquipmentManagementPanel({
                   <TextField
                     {...params}
                     fullWidth
-                    label="Merke"
-                    helperText={uniqueManufacturerOptions.length > 0 ? 'Skriv for å få forslag fra produsentdatabasen' : 'Ingen produsentforslag tilgjengelig'}
+                    label={t('equip.lbl.brand')}
+                    helperText={uniqueManufacturerOptions.length > 0 ? t('equip.form.brandHint') : t('equip.form.brandHintNone')}
                     sx={{ 
                       '& .MuiOutlinedInput-root': { 
                         bgcolor: 'rgba(0,0,0,0.2)', 
@@ -6396,8 +6344,8 @@ export function EquipmentManagementPanel({
                   <TextField
                     {...params}
                     fullWidth
-                    label="Modell"
-                    helperText={uniqueModelOptions.length > 0 ? 'Velg eksisterende modell eller skriv inn ny' : 'Ingen modellforslag for valgt kategori/merke'}
+                    label={t('equip.lbl.model')}
+                    helperText={uniqueModelOptions.length > 0 ? t('equip.form.modelHint') : t('equip.form.modelHintNone')}
                     sx={{ 
                       '& .MuiOutlinedInput-root': { 
                         bgcolor: 'rgba(0,0,0,0.2)', 
@@ -6449,20 +6397,20 @@ export function EquipmentManagementPanel({
                   >
                     <Box>
                       <Typography variant="subtitle2" sx={{ color: '#f8fafc', fontWeight: 800 }}>
-                        Valgt kamera: {selectedCameraForForm.brand} {selectedCameraForForm.model}
+                        {t('equip.cam.selected', { brand: selectedCameraForForm.brand, model: selectedCameraForForm.model })}
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.8)' }}>
-                        Kategori: {selectedCameraForForm.category || 'Ukjent'} · Kilde: {cameraSourceLabelForForm}
+                        {t('equip.cam.catSource', { cat: selectedCameraForForm.category || t('equip.unknown'), src: cameraSourceLabelForForm })}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
                       <Chip
                         size="small"
-                        label={selectedCameraForForm.type === 'video' ? 'Cine/Video' : 'Foto'}
+                        label={selectedCameraForForm.type === 'video' ? 'Cine/Video' : t('equip.cam.photo')}
                         sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 700 }}
                       />
                       {selectedCameraForForm.isNetflixCertified &&
-                        renderNetflixBadge('Netflix-sertifisert', false)}
+                        renderNetflixBadge(t('equip.netflixCertified'), false)}
                     </Stack>
                   </Stack>
 
@@ -6481,8 +6429,8 @@ export function EquipmentManagementPanel({
                     }}
                   >
                     {selectedCameraHasTrustedSpecs
-                      ? `Verifiserte spesifikasjoner fra ${cameraSourceLabelForForm}.`
-                      : `Ingen verifisert spesifikasjonspakke funnet i ${cameraSourceLabelForForm}. Velg en modell fra verifisert database for 100% korrekt spesifikasjon.`}
+                      ? t('equip.cam.trustedSpecs', { src: cameraSourceLabelForForm })
+                      : t('equip.cam.noTrustedSpecs', { src: cameraSourceLabelForForm })}
                   </Alert>
 
                   {selectedCameraHasTrustedSpecs && (
@@ -6510,7 +6458,7 @@ export function EquipmentManagementPanel({
                           '&:hover': { bgcolor: 'transparent', color: '#dbeafe' },
                         }}
                       >
-                        {cameraSpecsExpanded ? 'Skjul spesifikasjoner' : 'Les mer om spesifikasjoner'}
+                        {cameraSpecsExpanded ? t('equip.cam.hideSpecs') : t('equip.cam.moreSpecs')}
                       </Button>
 
                       <Collapse in={cameraSpecsExpanded}>
@@ -6557,9 +6505,7 @@ export function EquipmentManagementPanel({
                     borderRadius: 2,
                   }}
                 >
-                  <Typography variant="subtitle2" sx={{ color: '#e9d5ff', fontWeight: 700, mb: 1 }}>
-                    Kamera-treff fra produsentdatabase
-                  </Typography>
+                  <Typography variant="subtitle2" sx={{ color: '#e9d5ff', fontWeight: 700, mb: 1 }}>{t('equip.cam.matches')}</Typography>
                   <Stack spacing={1}>
                     {cameraSuggestionMatches.map((camera) => (
                       <Box
@@ -6583,15 +6529,15 @@ export function EquipmentManagementPanel({
                           <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
                             <Chip
                               size="small"
-                              label={camera.type === 'video' ? 'Cine/Video' : 'Foto'}
+                              label={camera.type === 'video' ? 'Cine/Video' : t('equip.cam.photo')}
                               sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 600 }}
                             />
-                            {camera.isNetflixCertified && renderNetflixBadge('Netflix-sertifisert', false)}
+                            {camera.isNetflixCertified && renderNetflixBadge(t('equip.netflixCertified'), false)}
                           </Stack>
                         </Stack>
 
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', display: 'block', mt: 0.75 }}>
-                          Kategori: {camera.category || 'Ukjent'}
+                          {t('equip.cam.category', { cat: camera.category || t('equip.unknown') })}
                         </Typography>
 
                         <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 0.75 }}>
@@ -6613,7 +6559,7 @@ export function EquipmentManagementPanel({
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
-                label="Serienummer"
+                label={t('equip.lbl.serial')}
                 value={formData.serialNumber}
                 onChange={(e) => {
                   setFormData({ ...formData, serialNumber: e.target.value });
@@ -6628,12 +6574,12 @@ export function EquipmentManagementPanel({
                 error={Boolean(formErrors.serialNumber)}
                 helperText={
                   formErrors.serialNumber ||
-                  'Skriv inn manuelt eller skann strekkode/QR-kode'
+                  t('equip.form.serialHint')
                 }
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <Tooltip title="Skann serienummer">
+                      <Tooltip title={t('equip.tt.scanSerial')}>
                         <IconButton
                           size="small"
                           onClick={() => {
@@ -6672,7 +6618,7 @@ export function EquipmentManagementPanel({
               <TextField
                 fullWidth
                 type="number"
-                label="Antall"
+                label={t('equip.lbl.quantity')}
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
                 inputProps={{ min: 1 }}
@@ -6691,11 +6637,11 @@ export function EquipmentManagementPanel({
             </Box>
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Status</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.status')}</InputLabel>
                 <Select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as Equipment['status'] })}
-                  label="Status"
+                  label={t('equip.lbl.status')}
                   sx={{ 
                     color: '#fff', 
                     bgcolor: 'rgba(0,0,0,0.2)',
@@ -6707,7 +6653,7 @@ export function EquipmentManagementPanel({
                     PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
-                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                  {Object.entries(statusLabels).map(([value, label]) => (
                     <MenuItem key={value} value={value}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: STATUS_COLORS[value] }} />
@@ -6720,11 +6666,11 @@ export function EquipmentManagementPanel({
             </Box>
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilstand</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.condition')}</InputLabel>
                 <Select
                   value={formData.condition}
                   onChange={(e) => setFormData({ ...formData, condition: e.target.value as Equipment['condition'] })}
-                  label="Tilstand"
+                  label={t('equip.lbl.condition')}
                   sx={{ 
                     color: '#fff', 
                     bgcolor: 'rgba(0,0,0,0.2)',
@@ -6736,7 +6682,7 @@ export function EquipmentManagementPanel({
                     PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
-                  {Object.entries(CONDITION_LABELS).map(([value, label]) => (
+                  {Object.entries(conditionLabels).map(([value, label]) => (
                     <MenuItem key={value} value={value}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: CONDITION_COLORS[value] }} />
@@ -6749,11 +6695,11 @@ export function EquipmentManagementPanel({
             </Box>
             <Box sx={{ gridColumn: '1 / -1' }}>
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lagerlokasjon</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.warehouseLoc')}</InputLabel>
                 <Select
                   value={formData.primaryLocationId}
                   onChange={(e) => setFormData({ ...formData, primaryLocationId: e.target.value })}
-                  label="Lagerlokasjon"
+                  label={t('equip.lbl.warehouseLoc')}
                   sx={{ 
                     color: '#fff', 
                     bgcolor: 'rgba(0,0,0,0.2)',
@@ -6765,7 +6711,7 @@ export function EquipmentManagementPanel({
                     PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
-                  <MenuItem value="">Ingen</MenuItem>
+                  <MenuItem value="">{t('equip.opt.none')}</MenuItem>
                   {locations.map(loc => (
                     <MenuItem key={loc.id} value={loc.id}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -6780,7 +6726,7 @@ export function EquipmentManagementPanel({
             <Box sx={{ gridColumn: '1 / -1' }}>
               <TextField
                 fullWidth
-                label="Beskrivelse"
+                label={t('equip.lbl.description')}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 multiline
@@ -6801,7 +6747,7 @@ export function EquipmentManagementPanel({
             <Box sx={{ gridColumn: '1 / -1' }}>
               <TextField
                 fullWidth
-                label="Notater"
+                label={t('equip.lbl.notes')}
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 multiline
@@ -6837,7 +6783,7 @@ export function EquipmentManagementPanel({
                     color: 'rgba(255,255,255,0.65)',
                   }}
                 >
-                  Skrevet av: {formData.notesAuthorName || 'Ikke registrert'}
+                  {t('equip.form.writtenBy')} {formData.notesAuthorName || t('equip.form.notRegistered')}
                   {formatEquipmentNoteTimestamp(formData.notesUpdatedAt)
                     ? ` • ${formatEquipmentNoteTimestamp(formData.notesUpdatedAt)}`
                     : ''}
@@ -6858,13 +6804,11 @@ export function EquipmentManagementPanel({
                 transition: 'all 0.2s',
               }}>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>
-                    Globalt utstyr
-                  </Typography>
+                  <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>{t('equip.form.globalEquip')}</Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {formData.isGlobal 
-                      ? 'Tilgjengelig i alle prosjekter' 
-                      : 'Kun tilknyttet dette prosjektet'}
+                    {formData.isGlobal
+                      ? t('equip.form.availAll')
+                      : t('equip.form.thisOnly')}
                   </Typography>
                 </Box>
                 <Box 
@@ -6877,7 +6821,7 @@ export function EquipmentManagementPanel({
                   onClick={() => setFormData({ ...formData, isGlobal: !formData.isGlobal })}
                 >
                   <Typography variant="body2" sx={{ color: formData.isGlobal ? '#2196f3' : 'rgba(255,255,255,0.5)' }}>
-                    {formData.isGlobal ? 'Ja' : 'Nei'}
+                    {formData.isGlobal ? t('equip.yes') : t('equip.no')}
                   </Typography>
                   <Box sx={{
                     width: 48,
@@ -6921,8 +6865,8 @@ export function EquipmentManagementPanel({
                 }}
               >
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 1.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  Utstyrsbilde
-                  {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#9333ea', color: '#fff', fontSize: '0.7rem' }} />}
+                  {t('equip.form.equipImage')}
+                  {isDragging && <Chip label={t('equip.chip.dropImage')} size="small" sx={{ bgcolor: '#9333ea', color: '#fff', fontSize: '0.7rem' }} />}
                 </Typography>
                 <Box
                   sx={{
@@ -6988,9 +6932,7 @@ export function EquipmentManagementPanel({
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
                       }}
-                    >
-                      Søk bilder
-                    </Button>
+                    >{t('equip.btn.searchImages')}</Button>
                     <Button
                       variant="outlined"
                       size="small"
@@ -7005,9 +6947,7 @@ export function EquipmentManagementPanel({
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { borderColor: '#4caf50', bgcolor: 'rgba(76,175,80,0.1)' },
                       }}
-                    >
-                      Last opp fil
-                    </Button>
+                    >{t('equip.btn.uploadFile')}</Button>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -7017,7 +6957,7 @@ export function EquipmentManagementPanel({
                     />
                     <TextField
                       size="small"
-                      placeholder="Eller lim inn bilde-URL..."
+                      placeholder={t('equip.ph.imageUrl')}
                       value={formData.imageUrl}
                       onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                       InputProps={{
@@ -7031,7 +6971,7 @@ export function EquipmentManagementPanel({
                             <IconButton
                               size="small"
                               onClick={() => setFormData({ ...formData, imageUrl: '' })}
-                              aria-label="Fjern bilde-URL"
+                              aria-label={t('equip.aria.removeImgUrl')}
                               sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#f44336' } }}
                             >
                               <CloseIcon sx={{ fontSize: 16 }} />
@@ -7057,7 +6997,7 @@ export function EquipmentManagementPanel({
                   {!editingEquipment && (equipmentImageLoading || equipmentImageSuggestions.length > 0) ? (
                     <Box sx={{ mt: 1.25 }}>
                       <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', mb: 0.6 }}>
-                        {equipmentImageLoading ? 'Finner ekte produktbilder…' : 'Ekte produktbilder — klikk for å bytte'}
+                        {equipmentImageLoading ? t('equip.img.finding') : t('equip.img.realProducts')}
                       </Typography>
                       <Stack direction="row" spacing={0.6} sx={{ overflowX: 'auto', pb: 0.5 }}>
                         {equipmentImageSuggestions.slice(0, 6).map((img) => (
@@ -7106,9 +7046,7 @@ export function EquipmentManagementPanel({
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
               ...focusVisibleStyles,
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleSave}
             variant="contained"
@@ -7128,7 +7066,7 @@ export function EquipmentManagementPanel({
               ...focusVisibleStyles,
             }}
           >
-            {editingEquipment ? 'Oppdater' : 'Lagre'}
+            {editingEquipment ? t('equip.btn.update') : t('equip.btn.save')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -7156,17 +7094,13 @@ export function EquipmentManagementPanel({
               <PersonIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                Tilordne utstyrsansvarlig
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Velg hvem som skal ha ansvar for utstyret
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('equip.assign.title')}</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.assign.subtitle')}</Typography>
             </Box>
           </Box>
           <IconButton 
             onClick={() => setAssignDialogOpen(false)} 
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7180,15 +7114,15 @@ export function EquipmentManagementPanel({
             border: '1px solid rgba(33,150,243,0.2)',
           }}>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-              Valgt utstyr: <strong style={{ color: '#fff' }}>{selectedEquipmentForAssign?.name}</strong>
+              {t('equip.assign.selected')} <strong style={{ color: '#fff' }}>{selectedEquipmentForAssign?.name}</strong>
             </Typography>
           </Box>
           <FormControl fullWidth>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Velg teammedlem</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.pickCrew')}</InputLabel>
             <Select
               value={selectedCrewId}
               onChange={(e) => setSelectedCrewId(e.target.value)}
-              label="Velg teammedlem"
+              label={t('equip.lbl.pickCrew')}
               sx={{ 
                 color: '#fff', 
                 bgcolor: 'rgba(0,0,0,0.2)',
@@ -7240,9 +7174,7 @@ export function EquipmentManagementPanel({
               px: 3,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleAssign}
             variant="contained"
@@ -7264,9 +7196,7 @@ export function EquipmentManagementPanel({
                 color: 'rgba(255,255,255,0.87)',
               },
             }}
-          >
-            Tilordne
-          </Button>
+          >{t('equip.btn.assign')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -7293,9 +7223,7 @@ export function EquipmentManagementPanel({
               <ScheduleIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                Bookinger
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('equip.book.title')}</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                 {selectedEquipmentBookings?.name}
               </Typography>
@@ -7303,7 +7231,7 @@ export function EquipmentManagementPanel({
           </Box>
           <IconButton 
             onClick={() => setBookingsDialogOpen(false)} 
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7324,8 +7252,8 @@ export function EquipmentManagementPanel({
               }}>
                 <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50' }} />
               </Box>
-              <Typography sx={{ fontWeight: 500 }}>Ingen aktive bookinger eller blokkeringer</Typography>
-              <Typography variant="body2" sx={{ mt: 0.5 }}>Dette utstyret er tilgjengelig for booking</Typography>
+              <Typography sx={{ fontWeight: 500 }}>{t('equip.book.none')}</Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>{t('equip.book.available')}</Typography>
             </Box>
           ) : (
             <Stack spacing={2}>
@@ -7377,7 +7305,7 @@ export function EquipmentManagementPanel({
                         <BlockIcon sx={{ color: '#f44336' }} />
                       )}
                       <Typography sx={{ fontWeight: 600 }}>
-                        {avail.status === 'service' ? 'Service' : 'Utilgjengelig'}
+                        {avail.status === 'service' ? t('equip.book.service') : t('equip.book.unavailable')}
                       </Typography>
                     </Box>
                   </Box>
@@ -7386,7 +7314,7 @@ export function EquipmentManagementPanel({
                   </Typography>
                   {avail.reason && (
                     <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 0.5 }}>
-                      Grunn: {avail.reason}
+                      {t('equip.book.reason', { reason: avail.reason })}
                     </Typography>
                   )}
                 </Box>
@@ -7409,9 +7337,7 @@ export function EquipmentManagementPanel({
               borderRadius: 2,
               '&:hover': { bgcolor: 'rgba(33,150,243,0.1)' },
             }}
-          >
-            Ny booking
-          </Button>
+          >{t('equip.book.new')}</Button>
           <Button
             onClick={() => setBookingsDialogOpen(false)}
             sx={{ 
@@ -7421,9 +7347,7 @@ export function EquipmentManagementPanel({
               px: 3,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
             }}
-          >
-            Lukk
-          </Button>
+          >{t('equip.btn.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -7450,15 +7374,13 @@ export function EquipmentManagementPanel({
               <BookmarkIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Utstyrs-maler</Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Forhåndsdefinerte utstyrssett
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('equip.tpl.title')}</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.tpl.subtitle')}</Typography>
             </Box>
           </Box>
           <IconButton 
             onClick={() => setTemplatesDialogOpen(false)} 
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7479,11 +7401,11 @@ export function EquipmentManagementPanel({
               }}>
                 <BookmarkIcon sx={{ fontSize: 36, opacity: 0.5 }} />
               </Box>
-              <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 600 }}>Ingen maler ennå</Typography>
+              <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 600 }}>{t('equip.tpl.none')}</Typography>
               <Typography variant="body2" sx={{ mb: 3 }}>
-                {selectedEquipmentIds.size > 0 
-                  ? `${selectedEquipmentIds.size} utstyr valgt - klikk for å lage mal` 
-                  : 'Velg utstyr med checkboxer, eller lag mal fra alt'}
+                {selectedEquipmentIds.size > 0
+                  ? t('equip.tpl.selectedCount', { n: selectedEquipmentIds.size })
+                  : t('equip.tpl.pickOrAll')}
               </Typography>
               {equipment.length > 0 && (
                 <Button
@@ -7497,9 +7419,9 @@ export function EquipmentManagementPanel({
                     '&:hover': { borderColor: '#4caf50', bgcolor: 'rgba(76,175,80,0.1)' },
                   }}
                 >
-                  {selectedEquipmentIds.size > 0 
-                    ? `Lag mal fra ${selectedEquipmentIds.size} valgte` 
-                    : 'Lag mal fra alt utstyr'}
+                  {selectedEquipmentIds.size > 0
+                    ? t('equip.tpl.fromNSelected', { n: selectedEquipmentIds.size })
+                    : t('equip.tpl.fromAll')}
                 </Button>
               )}
             </Box>
@@ -7523,7 +7445,7 @@ export function EquipmentManagementPanel({
                       <Box>
                         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
                           {template.is_global && (
-                            <Tooltip title="Global mal - tilgjengelig i alle prosjekter">
+                            <Tooltip title={t('equip.tt.globalTpl')}>
                               <PublicIcon sx={{ color: '#2196f3', fontSize: 20 }} />
                             </Tooltip>
                           )}
@@ -7548,18 +7470,18 @@ export function EquipmentManagementPanel({
                           {template.is_global ? (
                             <>
                               <PublicIcon sx={{ fontSize: 12 }} />
-                              Tilgjengelig i alle prosjekter
+                              {t('equip.tpl.availAll')}
                             </>
                           ) : (
                             <>
                               <LockIcon sx={{ fontSize: 12 }} />
-                              Kun dette prosjektet
+                              {t('equip.tpl.thisOnly')}
                             </>
                           )}
                         </Typography>
                       </Box>
                       <Chip 
-                        label={`${template.item_count || 0} elementer`} 
+                        label={t('equip.tpl.itemCount', { n: template.item_count || 0 })} 
                         size="small" 
                         sx={{ 
                           bgcolor: 'rgba(76,175,80,0.15)', 
@@ -7603,13 +7525,11 @@ export function EquipmentManagementPanel({
                           fontWeight: 600,
                           '&:hover': { background: 'linear-gradient(135deg, #66bb6a 0%, #4caf50 100%)' },
                         }}
-                      >
-                        Bruk mal
-                      </Button>
+                      >{t('equip.tpl.use')}</Button>
                       <IconButton
                         size="small"
                         onClick={() => handleDeleteTemplate(template.id)}
-                        aria-label={`Slett mal ${template.name ?? ''}`.trim()}
+                        aria-label={t('equip.aria.delTpl', { name: template.name ?? '' }).trim()}
                         sx={{
                           color: 'rgba(244,67,54,0.7)',
                           '&:hover': { color: '#f44336', bgcolor: 'rgba(244,67,54,0.1)' },
@@ -7641,9 +7561,9 @@ export function EquipmentManagementPanel({
                 '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' },
               }}
             >
-              {selectedEquipmentIds.size > 0 
-                ? `Lag mal fra ${selectedEquipmentIds.size} valgte` 
-                : 'Lag mal fra alt utstyr'}
+              {selectedEquipmentIds.size > 0
+                ? t('equip.tpl.fromNSelected', { n: selectedEquipmentIds.size })
+                : t('equip.tpl.fromAll')}
             </Button>
           )}
           <Button
@@ -7655,9 +7575,7 @@ export function EquipmentManagementPanel({
               px: 3,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
             }}
-          >
-            Lukk
-          </Button>
+          >{t('equip.btn.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -7685,21 +7603,21 @@ export function EquipmentManagementPanel({
             </Box>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                {editingTemplate ? 'Rediger mal' : 'Opprett mal'}
+                {editingTemplate ? t('equip.tpl.editTitle') : t('equip.tpl.createTitle')}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                {templateFormData.items.length} elementer
+                {t('equip.tpl.formItems', { n: templateFormData.items.length })}
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setTemplateFormOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setTemplateFormOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <Stack spacing={2.5}>
             <TextField
-              label="Navn på mal"
+              label={t('equip.lbl.tplName')}
               value={templateFormData.name}
               onChange={e => setTemplateFormData(prev => ({ ...prev, name: e.target.value }))}
               fullWidth
@@ -7711,7 +7629,7 @@ export function EquipmentManagementPanel({
               }}
             />
             <TextField
-              label="Beskrivelse"
+              label={t('equip.lbl.description')}
               value={templateFormData.description}
               onChange={e => setTemplateFormData(prev => ({ ...prev, description: e.target.value }))}
               fullWidth
@@ -7726,7 +7644,7 @@ export function EquipmentManagementPanel({
             <Grid container spacing={2}>
               <Grid item xs={6}>
                 <TextField
-                  label="Kategori"
+                  label={t('equip.lbl.category')}
                   value={templateFormData.category}
                   onChange={e => setTemplateFormData(prev => ({ ...prev, category: e.target.value }))}
                   fullWidth
@@ -7739,7 +7657,7 @@ export function EquipmentManagementPanel({
               </Grid>
               <Grid item xs={6}>
                 <TextField
-                  label="Bruksområde"
+                  label={t('equip.lbl.useCase')}
                   value={templateFormData.use_case}
                   onChange={e => setTemplateFormData(prev => ({ ...prev, use_case: e.target.value }))}
                   fullWidth
@@ -7792,12 +7710,12 @@ export function EquipmentManagementPanel({
                 </Box>
                 <Box>
                   <Typography variant="body2" sx={{ fontWeight: 600, color: templateFormData.is_global ? '#2196f3' : '#fff' }}>
-                    {templateFormData.is_global ? 'Global mal' : 'Prosjekt-mal'}
+                    {templateFormData.is_global ? t('equip.tpl.globalMal') : t('equip.tpl.projectMal')}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {templateFormData.is_global 
-                      ? 'Tilgjengelig i alle prosjekter' 
-                      : 'Kun tilgjengelig i dette prosjektet'}
+                    {templateFormData.is_global
+                      ? t('equip.tpl.availAll2')
+                      : t('equip.tpl.thisOnly2')}
                   </Typography>
                 </Box>
               </Box>
@@ -7832,9 +7750,7 @@ export function EquipmentManagementPanel({
                 maxHeight: 200,
                 overflow: 'auto',
               }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-                  Inkluderte elementer:
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>{t('equip.tpl.included')}</Typography>
                 {templateFormData.items.map((item, idx) => (
                   <Chip
                     key={idx}
@@ -7864,9 +7780,7 @@ export function EquipmentManagementPanel({
               borderRadius: 2,
               px: 3,
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleSaveTemplate}
@@ -7878,7 +7792,7 @@ export function EquipmentManagementPanel({
               fontWeight: 600,
             }}
           >
-            {editingTemplate ? 'Oppdater mal' : 'Opprett mal'}
+            {editingTemplate ? t('equip.tpl.updateBtn') : t('equip.tpl.createBtn')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -7906,15 +7820,13 @@ export function EquipmentManagementPanel({
               <ShoppingCartIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Kjøp utstyr via foto.no</Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Norges ledende utstyrsleverandør
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('equip.shop.title')}</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.shop.subtitle')}</Typography>
             </Box>
           </Box>
           <IconButton 
             onClick={() => setShopDialogOpen(false)} 
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7940,13 +7852,8 @@ export function EquipmentManagementPanel({
             }}>
               <ShoppingCartIcon sx={{ fontSize: 40, color: '#9333ea' }} />
             </Box>
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-              Bygg nytt lager via foto.no
-            </Typography>
-            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 4, maxWidth: 500, mx: 'auto' }}>
-              Norges ledende leverandør av foto- og videoutstyr. 
-              Finn alt du trenger for profesjonell produksjon.
-            </Typography>
+            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>{t('equip.shop.build')}</Typography>
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 4, maxWidth: 500, mx: 'auto' }}>{t('equip.shop.blurb')}</Typography>
             <Stack spacing={1.5} sx={{ maxWidth: 320, mx: 'auto' }}>
               <Button
                 variant="contained"
@@ -7962,9 +7869,7 @@ export function EquipmentManagementPanel({
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
-              >
-                Kameraer
-              </Button>
+              >{t('equip.shop.cameras')}</Button>
               <Button
                 variant="contained"
                 size="large"
@@ -7979,9 +7884,7 @@ export function EquipmentManagementPanel({
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
-              >
-                Lys og belysning
-              </Button>
+              >{t('equip.shop.lighting')}</Button>
               <Button
                 variant="contained"
                 size="large"
@@ -7996,9 +7899,7 @@ export function EquipmentManagementPanel({
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
-              >
-                Videoutstyr
-              </Button>
+              >{t('equip.shop.video')}</Button>
               <Button
                 variant="contained"
                 size="large"
@@ -8013,9 +7914,7 @@ export function EquipmentManagementPanel({
                   '& .MuiButton-startIcon, & .MuiSvgIcon-root': { color: '#fff !important' },
                   '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
-              >
-                Lydopptak
-              </Button>
+              >{t('equip.shop.audio')}</Button>
               <Button
                 variant="outlined"
                 size="large"
@@ -8032,9 +7931,7 @@ export function EquipmentManagementPanel({
                   fontWeight: 600,
                   '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' } 
                 }}
-              >
-                Alle kategorier
-              </Button>
+              >{t('equip.shop.allCats')}</Button>
             </Stack>
           </Box>
 
@@ -8042,7 +7939,7 @@ export function EquipmentManagementPanel({
           {effectiveVendorCategories.length > 0 && (
             <Box sx={{ mt: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Chip
-                label="Alle"
+                label={t('equip.chip.all')}
                 size="small"
                 onClick={() => setSelectedVendorCategory('all')}
                 sx={{
@@ -8056,7 +7953,7 @@ export function EquipmentManagementPanel({
               {effectiveVendorCategories.map(vc => (
                 <Chip
                   key={vc.category}
-                  label={`${vc.category} (${vc.count})`}
+                  label={t('equip.shop.catCount', { cat: vc.category, n: vc.count })}
                   size="small"
                   onClick={() => setSelectedVendorCategory(vc.category)}
                   sx={{
@@ -8082,15 +7979,13 @@ export function EquipmentManagementPanel({
                 '& .MuiAlert-icon': { color: '#c084fc' },
               }}
             >
-              Viser kvalitetssikrede produktforslag mens leverandørfeed synkroniseres.
+              {t('equip.shop.fallbackInfo')}
             </Alert>
           )}
 
           {recommendedVendorLinks.length > 0 && (
             <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 2 }}>
-                Anbefalte produkter
-              </Typography>
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 2 }}>{t('equip.shop.recommended')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, md: 2 } }}>
                 {recommendedVendorLinks.map((link, index) => {
                   const showVerifiedPrice = isVendorPriceFresh(link);
@@ -8130,13 +8025,11 @@ export function EquipmentManagementPanel({
                               kr {verifiedPrice.toLocaleString('nb-NO')},-
                             </Typography>
                           ) : (
-                            <Typography variant="caption" sx={{ color: '#fbbf24', mt: 1, display: 'block' }}>
-                              Sjekk dagspris hos forhandler
-                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#fbbf24', mt: 1, display: 'block' }}>{t('equip.shop.checkPrice')}</Typography>
                           )}
                           {showVerifiedPrice && link.updated_at && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mt: 0.25, display: 'block' }}>
-                              Oppdatert {new Date(link.updated_at).toLocaleDateString('nb-NO')}
+                              {t('equip.shop.updated', { date: new Date(link.updated_at).toLocaleDateString('nb-NO') })}
                             </Typography>
                           )}
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
@@ -8170,9 +8063,7 @@ export function EquipmentManagementPanel({
               px: 3,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
             }}
-          >
-            Lukk
-          </Button>
+          >{t('equip.btn.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8201,24 +8092,20 @@ export function EquipmentManagementPanel({
             <Box sx={getRoleRoomDialogIconSx('success', 40)}>
               <AddIcon sx={{ color: '#fff', fontSize: 22 }} />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Ny kategori
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.h.newCat')}</Typography>
           </Box>
           <IconButton 
             onClick={() => setNewCategoryDialogOpen(false)}
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ mt: 2, px: 3 }}>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            Egendefinerte kategorier lagres lokalt og er tilgjengelige for dette prosjektet.
-          </Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>{t('equip.newCat.hint')}</Typography>
           <TextField
             fullWidth
-            label="Kategorinavn"
+            label={t('equip.lbl.catName')}
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
             onKeyDown={(e) => {
@@ -8227,7 +8114,7 @@ export function EquipmentManagementPanel({
               }
             }}
             autoFocus
-            placeholder="F.eks. Drone, Greenscreen..."
+            placeholder={t('equip.ph.newCat')}
             sx={{ 
               '& .MuiOutlinedInput-root': { 
                 bgcolor: 'rgba(0,0,0,0.2)', 
@@ -8242,9 +8129,7 @@ export function EquipmentManagementPanel({
           />
           {customCategories.length > 0 && (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-                Dine egendefinerte kategorier:
-              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>{t('equip.newCat.yours')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 {customCategories.map(cat => (
                   <Chip
@@ -8281,9 +8166,7 @@ export function EquipmentManagementPanel({
               px: 3,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleAddCustomCategory}
             variant="contained"
@@ -8303,9 +8186,7 @@ export function EquipmentManagementPanel({
                 color: 'rgba(255,255,255,0.87)',
               },
             }}
-          >
-            Legg til
-          </Button>
+          >{t('equip.btn.add')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8337,17 +8218,13 @@ export function EquipmentManagementPanel({
               <PhotoLibraryIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                Velg bilde for utstyr
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Søk i flere kilder eller last opp
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('equip.img.title')}</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.img.subtitle')}</Typography>
             </Box>
           </Box>
           <IconButton 
             onClick={() => setImagePickerOpen(false)}
-            aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
+            aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -8378,9 +8255,9 @@ export function EquipmentManagementPanel({
               '& .MuiTabs-indicator': { display: 'none' },
             }}
           >
-            <Tab icon={<SearchIcon />} label="Søk bilder" iconPosition="start" />
-            <Tab icon={<MovieIcon />} label="Filmreferanser" iconPosition="start" />
-            <Tab icon={<LinkIcon />} label="Lim inn URL" iconPosition="start" />
+            <Tab icon={<SearchIcon />} label={t('equip.tab.searchImages')} iconPosition="start" />
+            <Tab icon={<MovieIcon />} label={t('equip.tab.filmRefs')} iconPosition="start" />
+            <Tab icon={<LinkIcon />} label={t('equip.tab.pasteUrl')} iconPosition="start" />
           </Tabs>
           
           <Box sx={{ p: 2 }}>
@@ -8389,7 +8266,7 @@ export function EquipmentManagementPanel({
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
               <TextField
                 fullWidth
-                placeholder={imagePickerTab === 0 ? "Søk etter utstyr, props, rekvisitter..." : "Søk film for referansebilder..."}
+                placeholder={imagePickerTab === 0 ? t('equip.ph.searchEquip') : t('equip.ph.searchFilm')}
                 value={imageSearchQuery}
                 onChange={(e) => setImageSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && searchImages(imagePickerTab === 1 ? imageSearchQuery + ' cinema film' : imageSearchQuery)}
@@ -8418,7 +8295,7 @@ export function EquipmentManagementPanel({
                   '&:hover': { bgcolor: '#6d28d9' },
                 }}
               >
-                {imageSearchLoading ? <CircularProgress size={20} /> : 'Søk'}
+                {imageSearchLoading ? <CircularProgress size={20} /> : t('equip.img.searchBtn')}
               </Button>
             </Box>
             )}
@@ -8454,7 +8331,7 @@ export function EquipmentManagementPanel({
               <Stack spacing={2} sx={{ mt: 1 }}>
                 <TextField
                   fullWidth
-                  placeholder="Lim inn bilde-URL her, f.eks. https://example.com/bilde.jpg"
+                  placeholder={t('equip.ph.pasteUrl')}
                   value={tempImageUrl}
                   onChange={(e) => setTempImageUrl(e.target.value)}
                   InputProps={{
@@ -8473,13 +8350,11 @@ export function EquipmentManagementPanel({
                 />
                 {tempImageUrl && (
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mb: 1, display: 'block' }}>
-                      Forhåndsvisning
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mb: 1, display: 'block' }}>{t('equip.img.preview')}</Typography>
                     <Box
                       component="img"
                       src={tempImageUrl}
-                      alt="Forhåndsvisning"
+                      alt={t('equip.img.previewAlt')}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       sx={{
                         width: '100%',
@@ -8502,9 +8377,7 @@ export function EquipmentManagementPanel({
                     }
                   }}
                   sx={{ bgcolor: '#9333ea', color: '#fff', '&:hover': { bgcolor: '#6d28d9' }, alignSelf: 'flex-start' }}
-                >
-                  Bruk bilde
-                </Button>
+                >{t('equip.btn.useImage')}</Button>
               </Stack>
             )}
             
@@ -8512,15 +8385,13 @@ export function EquipmentManagementPanel({
             {imageSearchLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4, flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <CircularProgress sx={{ color: '#9333ea' }} />
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Søker i Pexels, Pixabay, Unsplash, Openverse, Wikimedia...
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.img.searching')}</Typography>
               </Box>
             ) : imageSearchResults.length > 0 ? (
               <Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {imageSearchResults.length} bilder funnet • Klikk for å velge
+                    {t('equip.img.foundCount', { n: imageSearchResults.length })}
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                     {[
@@ -8611,9 +8482,7 @@ export function EquipmentManagementPanel({
                     </ImageListItem>
                   ))}
                 </ImageList>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1, display: 'block', textAlign: 'center' }}>
-                  Bilder fra Unsplash & shot.cafe • Kun for intern referanse
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1, display: 'block', textAlign: 'center' }}>{t('equip.img.footer')}</Typography>
               </Box>
             ) : (
               <Box sx={{ 
@@ -8622,12 +8491,8 @@ export function EquipmentManagementPanel({
                 color: 'rgba(255,255,255,0.87)',
               }}>
                 <PhotoLibraryIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-                <Typography variant="body1">
-                  Søk etter bilder av utstyr og rekvisitter
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Resultater fra Unsplash og shot.cafe
-                </Typography>
+                <Typography variant="body1">{t('equip.img.emptyTitle')}</Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>{t('equip.img.emptyBody')}</Typography>
               </Box>
             )}
           </Box>
@@ -8639,9 +8504,7 @@ export function EquipmentManagementPanel({
               setImageSearchResults([]);
             }}
             sx={{ color: 'rgba(255,255,255,0.87)' }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8665,15 +8528,13 @@ export function EquipmentManagementPanel({
           <Box sx={getRoleRoomDialogIconSx('danger')}>
             <DeleteIcon sx={{ color: '#fff', fontSize: 24 }} />
           </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Bekreft sletting</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.del.title')}</Typography>
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Typography>
-            Er du sikker på at du vil slette <strong>"{equipmentToDelete?.name}"</strong>?
+            {t('equip.del.body', { name: `"${equipmentToDelete?.name}"` })}
           </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
-            Denne handlingen kan ikke angres.
-          </Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>{t('equip.del.warn')}</Typography>
         </DialogContent>
         <DialogActions sx={{ 
           borderTop: '1px solid rgba(148,163,184,0.22)', 
@@ -8688,9 +8549,7 @@ export function EquipmentManagementPanel({
               borderRadius: 2,
               px: 3,
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleConfirmDelete}
             variant="contained"
@@ -8701,9 +8560,7 @@ export function EquipmentManagementPanel({
               px: 3,
               '&:hover': { bgcolor: '#d32f2f' },
             }}
-          >
-            Slett
-          </Button>
+          >{t('equip.btn.delete')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8728,28 +8585,28 @@ export function EquipmentManagementPanel({
             {bulkActionType === 'delete' ? <DeleteIcon /> : <EditIcon />}
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {bulkActionType === 'delete' ? 'Slett valgt utstyr' : 
-             bulkActionType === 'status' ? 'Endre status' : 'Tilordne utstyr'}
+            {bulkActionType === 'delete' ? t('equip.bulk.delTitle') :
+             bulkActionType === 'status' ? t('equip.bulk.statusTitle') : t('equip.bulk.assignTitle')}
           </Typography>
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Typography sx={{ mb: 2 }}>
-            {selectedEquipmentIds.size} utstyr valgt
+            {t('equip.bulk.selectedCount', { n: selectedEquipmentIds.size })}
           </Typography>
           {bulkActionType === 'status' && (
             <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Ny status</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.newStatus')}</InputLabel>
               <Select
                 value={bulkNewStatus}
                 onChange={(e) => setBulkNewStatus(e.target.value as Equipment['status'])}
-                label="Ny status"
+                label={t('equip.lbl.newStatus')}
                 sx={{ 
                   bgcolor: 'rgba(255,255,255,0.05)',
                   borderRadius: 2,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                 }}
               >
-                {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                {Object.entries(statusLabels).map(([value, label]) => (
                   <MenuItem key={value} value={value}>{label}</MenuItem>
                 ))}
               </Select>
@@ -8757,11 +8614,11 @@ export function EquipmentManagementPanel({
           )}
           {bulkActionType === 'assign' && (
             <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilordne til</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.assignTo')}</InputLabel>
               <Select
                 value={bulkAssignCrewId}
                 onChange={(e) => setBulkAssignCrewId(e.target.value)}
-                label="Tilordne til"
+                label={t('equip.lbl.assignTo')}
                 sx={{ 
                   bgcolor: 'rgba(255,255,255,0.05)',
                   borderRadius: 2,
@@ -8775,15 +8632,11 @@ export function EquipmentManagementPanel({
             </FormControl>
           )}
           {bulkActionType === 'delete' && (
-            <Typography variant="body2" sx={{ color: 'rgba(255,77,77,0.8)' }}>
-              Denne handlingen kan ikke angres!
-            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(255,77,77,0.8)' }}>{t('equip.bulk.warn')}</Typography>
           )}
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setBulkActionDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setBulkActionDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleConfirmBulkAction}
             variant="contained"
@@ -8791,9 +8644,7 @@ export function EquipmentManagementPanel({
               bgcolor: bulkActionType === 'delete' ? '#f44336' : '#9333ea',
               '&:hover': { bgcolor: bulkActionType === 'delete' ? '#d32f2f' : '#6d28d9' },
             }}
-          >
-            Bekreft
-          </Button>
+          >{t('equip.btn.confirm')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8820,13 +8671,13 @@ export function EquipmentManagementPanel({
               <HistoryIcon sx={{ color: '#fff' }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>Historikk</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.hist.title')}</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                 {selectedEquipmentHistory?.name}
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setHistoryDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setHistoryDialogOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -8852,7 +8703,7 @@ export function EquipmentManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2 }}>
-          <Button onClick={() => setHistoryDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
+          <Button onClick={() => setHistoryDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8878,7 +8729,7 @@ export function EquipmentManagementPanel({
             <BuildIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Planlegg vedlikehold</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.maint.title')}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               {selectedEquipmentMaintenance?.name}
             </Typography>
@@ -8887,7 +8738,7 @@ export function EquipmentManagementPanel({
         <DialogContent sx={{ pt: 3 }}>
           <Stack spacing={3}>
             <TextField
-              label="Dato"
+              label={t('equip.lbl.date')}
               type="date"
               value={maintenanceForm.scheduledDate}
               onChange={(e) => setMaintenanceForm({ ...maintenanceForm, scheduledDate: e.target.value })}
@@ -8903,26 +8754,26 @@ export function EquipmentManagementPanel({
               }}
             />
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Type vedlikehold</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.maintType')}</InputLabel>
               <Select
                 value={maintenanceForm.type}
                 onChange={(e) => setMaintenanceForm({ ...maintenanceForm, type: e.target.value as typeof maintenanceForm.type })}
-                label="Type vedlikehold"
+                label={t('equip.lbl.maintType')}
                 sx={{ 
                   bgcolor: 'rgba(255,255,255,0.05)',
                   borderRadius: 2,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                 }}
               >
-                <MenuItem value="routine">Rutinemessig vedlikehold</MenuItem>
-                <MenuItem value="repair">Reparasjon</MenuItem>
-                <MenuItem value="inspection">Inspeksjon</MenuItem>
-                <MenuItem value="calibration">Kalibrering</MenuItem>
-                <MenuItem value="cleaning">Rengjøring</MenuItem>
+                <MenuItem value="routine">{t('equip.maint.routine')}</MenuItem>
+                <MenuItem value="repair">{t('equip.maint.repair')}</MenuItem>
+                <MenuItem value="inspection">{t('equip.maint.inspection')}</MenuItem>
+                <MenuItem value="calibration">{t('equip.maint.calibration')}</MenuItem>
+                <MenuItem value="cleaning">{t('equip.maint.cleaning')}</MenuItem>
               </Select>
             </FormControl>
             <TextField
-              label="Notater"
+              label={t('equip.lbl.notes')}
               value={maintenanceForm.notes}
               onChange={(e) => setMaintenanceForm({ ...maintenanceForm, notes: e.target.value })}
               multiline
@@ -8953,16 +8804,12 @@ export function EquipmentManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setMaintenanceDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setMaintenanceDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleScheduleMaintenance}
             variant="contained"
             sx={{ bgcolor: '#009688', '&:hover': { bgcolor: '#00897b' } }}
-          >
-            Planlegg
-          </Button>
+          >{t('equip.btn.schedule')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -8993,7 +8840,7 @@ export function EquipmentManagementPanel({
           <Stack spacing={3}>
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
-                label="Startdato"
+                label={t('equip.lbl.startDate')}
                 type="date"
                 value={bookingForm.startDate}
                 onChange={(e) => {
@@ -9013,7 +8860,7 @@ export function EquipmentManagementPanel({
                 }}
               />
               <TextField
-                label="Sluttdato"
+                label={t('equip.lbl.endDate')}
                 type="date"
                 value={bookingForm.endDate}
                 onChange={(e) => {
@@ -9036,7 +8883,7 @@ export function EquipmentManagementPanel({
             {conflictChecking && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'rgba(255,255,255,0.6)' }}>
                 <CircularProgress size={14} sx={{ color: 'inherit' }} />
-                <Typography variant="caption">Sjekker konflikter…</Typography>
+                <Typography variant="caption">{t('equip.book.checking')}</Typography>
               </Box>
             )}
             {!conflictChecking && bookingConflicts.length > 0 && (
@@ -9049,18 +8896,18 @@ export function EquipmentManagementPanel({
                 <WarningIcon sx={{ color: '#9333ea', mt: 0.25, flexShrink: 0 }} />
                 <Box>
                   <Typography variant="body2" sx={{ color: '#c084fc', fontWeight: 600 }}>
-                    {bookingConflicts.length} konflikt{bookingConflicts.length > 1 ? 'er' : ''} funnet
+                    {t('equip.book.conflictsFound', { n: bookingConflicts.length })}
                   </Typography>
                   {bookingConflicts.map(c => (
                     <Typography key={c.id} variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', display: 'block' }}>
-                      {c.type === 'booking' ? `Booking: ${c.purpose ?? ''}` : c.reason ?? c.type} ({c.start_date} – {c.end_date})
+                      {c.type === 'booking' ? t('equip.book.conflictBooking', { purpose: c.purpose ?? '' }) : c.reason ?? c.type} ({c.start_date} – {c.end_date})
                     </Typography>
                   ))}
                 </Box>
               </Box>
             )}
             <TextField
-              label="Formål"
+              label={t('equip.lbl.purpose')}
               value={bookingForm.purpose}
               onChange={(e) => setBookingForm({ ...bookingForm, purpose: e.target.value })}
               fullWidth
@@ -9074,7 +8921,7 @@ export function EquipmentManagementPanel({
               }}
             />
             <TextField
-              label="Notater"
+              label={t('equip.lbl.notes')}
               value={bookingForm.notes}
               onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
               multiline
@@ -9105,16 +8952,12 @@ export function EquipmentManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCreateBookingDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setCreateBookingDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.cancel')}</Button>
           <Button
             onClick={handleCreateBooking}
             variant="contained"
             sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}
-          >
-            Opprett booking
-          </Button>
+          >{t('equip.book.create')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -9126,42 +8969,42 @@ export function EquipmentManagementPanel({
             <CheckOutIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Sjekk ut utstyr</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>{t('equip.checkout.title')}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkoutEquipment?.name}</Typography>
           </Box>
-          <IconButton onClick={() => setCheckoutDialogOpen(false)} aria-label="Lukk" sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setCheckoutDialogOpen(false)} aria-label={t('equip.aria.close')} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2.5}>
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Sjekkes ut til *</InputLabel>
-              <Select value={checkoutForm.crewId} onChange={(e) => setCheckoutForm(f => ({ ...f, crewId: e.target.value }))} label="Sjekkes ut til *"
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.checkoutTo')}</InputLabel>
+              <Select value={checkoutForm.crewId} onChange={(e) => setCheckoutForm(f => ({ ...f, crewId: e.target.value }))} label={t('equip.lbl.checkoutTo')}
                 sx={{ bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}>
                 {crewMembers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </Select>
             </FormControl>
             <TextField
-              label="Antall" type="number" inputProps={{ min: 1, max: checkoutEquipment?.quantity ?? 99 }}
+              label={t('equip.lbl.quantity')} type="number" inputProps={{ min: 1, max: checkoutEquipment?.quantity ?? 99 }}
               value={checkoutForm.quantity}
               onChange={(e) => setCheckoutForm(f => ({ ...f, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
               fullWidth
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }}
             />
-            <TextField label="Formål" value={checkoutForm.purpose} onChange={(e) => setCheckoutForm(f => ({ ...f, purpose: e.target.value }))} fullWidth
+            <TextField label={t('equip.lbl.purpose')} value={checkoutForm.purpose} onChange={(e) => setCheckoutForm(f => ({ ...f, purpose: e.target.value }))} fullWidth
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
             {!isOnline && (
               <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(147,51,234,0.1)', border: '1px solid rgba(147,51,234,0.3)', display: 'flex', gap: 1, alignItems: 'center' }}>
                 <OfflineIcon sx={{ color: '#9333ea', fontSize: 18 }} />
-                <Typography variant="caption" sx={{ color: '#c084fc' }}>Du er offline — operasjonen lagres i kø og synkroniseres automatisk</Typography>
+                <Typography variant="caption" sx={{ color: '#c084fc' }}>{t('equip.checkout.offline')}</Typography>
               </Box>
             )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCheckoutDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
+          <Button onClick={() => setCheckoutDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.cancel')}</Button>
           <Button onClick={handleConfirmCheckout} variant="contained" disabled={!checkoutForm.crewId}
             sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
-            {isOnline ? 'Sjekk ut' : 'Legg i kø'}
+            {isOnline ? t('equip.checkout.confirm') : t('equip.checkout.queue')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -9174,21 +9017,21 @@ export function EquipmentManagementPanel({
             <CheckInIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Lever inn utstyr</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>{t('equip.checkin.title')}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkinEquipment?.name}</Typography>
           </Box>
-          <IconButton onClick={() => setCheckinDialogOpen(false)} aria-label="Lukk" sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setCheckinDialogOpen(false)} aria-label={t('equip.aria.close')} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2.5}>
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilstand ved retur</InputLabel>
-              <Select value={checkinForm.condition} onChange={(e) => setCheckinForm(f => ({ ...f, condition: e.target.value as Equipment['condition'] }))} label="Tilstand ved retur"
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.lbl.condReturn')}</InputLabel>
+              <Select value={checkinForm.condition} onChange={(e) => setCheckinForm(f => ({ ...f, condition: e.target.value as Equipment['condition'] }))} label={t('equip.lbl.condReturn')}
                 sx={{ bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}>
-                {Object.entries(CONDITION_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+                {Object.entries(conditionLabels).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
               </Select>
             </FormControl>
-            <TextField label="Merknader" multiline rows={2} value={checkinForm.notes} onChange={(e) => setCheckinForm(f => ({ ...f, notes: e.target.value }))} fullWidth
+            <TextField label={t('equip.lbl.remarks')} multiline rows={2} value={checkinForm.notes} onChange={(e) => setCheckinForm(f => ({ ...f, notes: e.target.value }))} fullWidth
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
             <GlobalMentionHelper
               text={typeof checkinForm.notes === 'string' ? checkinForm.notes : ''}
@@ -9206,8 +9049,8 @@ export function EquipmentManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCheckinDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
-          <Button onClick={handleConfirmCheckin} variant="contained" sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' } }}>Lever inn</Button>
+          <Button onClick={() => setCheckinDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.cancel')}</Button>
+          <Button onClick={handleConfirmCheckin} variant="contained" sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' } }}>{t('equip.btn.checkin')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -9248,19 +9091,15 @@ export function EquipmentManagementPanel({
             <ReportIcon sx={{ color: '#fff' }} />
           </Box>
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.1 }}>
-              Rapporter
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.74)' }}>
-              Role Room oversikt over utstyr, avvik og vedlikehold
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.1 }}>{t('equip.reports.title')}</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.74)' }}>{t('equip.reports.subtitle')}</Typography>
           </Box>
           <Stack direction="row" spacing={0.75} sx={{ ml: 'auto', mr: 1, display: { xs: 'none', md: 'flex' } }}>
-            <Chip size="small" label={`${equipment.length} totalt`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
-            <Chip size="small" label={`${missingItems.length} mangler ansvarlig`} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
-            <Chip size="small" label={`${maintenanceItems.length} vedlikehold`} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
+            <Chip size="small" label={t('equip.reports.total', { n: equipment.length })} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
+            <Chip size="small" label={t('equip.reports.missing', { n: missingItems.length })} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
+            <Chip size="small" label={t('equip.reports.maint', { n: maintenanceItems.length })} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
           </Stack>
-          <IconButton onClick={() => setReportsDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setReportsDialogOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}><CloseIcon /></IconButton>
         </DialogTitle>
 
         <Box
@@ -9298,9 +9137,9 @@ export function EquipmentManagementPanel({
               },
             }}
           >
-            <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} iconPosition="start" label="Utstyrsliste" />
-            <Tab icon={<MissingItemIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={`Manglende (${missingItems.length})`} />
-            <Tab icon={<WarningIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={`Vedlikehold / Rep. (${maintenanceItems.length})`} />
+            <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('equip.tab.equipList')} />
+            <Tab icon={<MissingItemIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('equip.reports.missingTab', { n: missingItems.length })} />
+            <Tab icon={<WarningIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('equip.reports.maintTab', { n: maintenanceItems.length })} />
           </Tabs>
         </Box>
 
@@ -9308,12 +9147,12 @@ export function EquipmentManagementPanel({
           {reportsTab === 0 && (
             <Box>
               <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.76)', mb: 1.5 }}>
-                Fullstendig utstyrsliste for prosjektet — {equipment.length} elementer
+                {t('equip.reports.fullList', { n: equipment.length })}
               </Typography>
               <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5, display: 'grid', gap: 1 }}>
                 {equipment.map(eq => (
                   <Box key={eq.id} sx={{ px: 1.25, py: 1, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.2)', background: 'linear-gradient(140deg, rgba(15,23,42,0.72) 0%, rgba(30,41,59,0.58) 100%)', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <Chip label={STATUS_LABELS[eq.status]} size="small" sx={{ bgcolor: `${STATUS_COLORS[eq.status]}20`, color: STATUS_COLORS[eq.status], border: `1px solid ${STATUS_COLORS[eq.status]}55`, fontSize: '0.65rem', minWidth: 90 }} />
+                    <Chip label={statusLabels[eq.status]} size="small" sx={{ bgcolor: `${STATUS_COLORS[eq.status]}20`, color: STATUS_COLORS[eq.status], border: `1px solid ${STATUS_COLORS[eq.status]}55`, fontSize: '0.65rem', minWidth: 90 }} />
                     <Typography variant="body2" sx={{ color: '#fff', flex: 1, minWidth: 180, fontWeight: 600 }}>{eq.name}</Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)', minWidth: 120 }}>{eq.brand} {eq.model}</Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)', minWidth: 54 }}>×{eq.quantity}</Typography>
@@ -9326,12 +9165,12 @@ export function EquipmentManagementPanel({
           {reportsTab === 1 && (
             <Box>
               <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.76)', mb: 1.5 }}>
-                Tilgjengelig utstyr uten tildelt ansvarlig — {missingItems.length} elementer
+                {t('equip.reports.missingList', { n: missingItems.length })}
               </Typography>
               {missingItems.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 4, borderRadius: 2, border: '1px solid rgba(76,175,80,0.34)', background: 'linear-gradient(145deg, rgba(22,101,52,0.22) 0%, rgba(15,23,42,0.62) 100%)' }}>
                   <CheckCircleIcon sx={{ fontSize: 40, color: '#4ade80', mb: 1 }} />
-                  <Typography sx={{ color: '#86efac', fontWeight: 600 }}>Alt utstyr er tilordnet</Typography>
+                  <Typography sx={{ color: '#86efac', fontWeight: 600 }}>{t('equip.reports.allAssigned')}</Typography>
                 </Box>
               ) : (
                 <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5, display: 'grid', gap: 1 }}>
@@ -9350,12 +9189,12 @@ export function EquipmentManagementPanel({
           {reportsTab === 2 && (
             <Box>
               <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.76)', mb: 1.5 }}>
-                Utstyr som trenger vedlikehold eller reparasjon — {maintenanceItems.length} elementer
+                {t('equip.reports.maintList', { n: maintenanceItems.length })}
               </Typography>
               {maintenanceItems.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 4, borderRadius: 2, border: '1px solid rgba(76,175,80,0.34)', background: 'linear-gradient(145deg, rgba(22,101,52,0.22) 0%, rgba(15,23,42,0.62) 100%)' }}>
                   <CheckCircleIcon sx={{ fontSize: 40, color: '#4ade80', mb: 1 }} />
-                  <Typography sx={{ color: '#86efac', fontWeight: 600 }}>Ingen vedlikeholdsoppgaver</Typography>
+                  <Typography sx={{ color: '#86efac', fontWeight: 600 }}>{t('equip.reports.noMaint')}</Typography>
                 </Box>
               ) : (
                 <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5, display: 'grid', gap: 1 }}>
@@ -9364,17 +9203,17 @@ export function EquipmentManagementPanel({
                       <WarningIcon sx={{ color: '#f87171', fontSize: 18, flexShrink: 0 }} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>{eq.name}</Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)' }}>{eq.notes ?? 'Ingen merknader'}</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)' }}>{eq.notes ?? t('equip.reports.noRemarks')}</Typography>
                         {eq.notes?.trim() && (
                           <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.88)', display: 'block', mt: 0.25 }}>
-                            Skrevet av: {eq.notes_author_name || eq.notesAuthorName || 'Ikke registrert'}
+                            {t('equip.reports.writtenBy', { name: eq.notes_author_name || eq.notesAuthorName || t('equip.form.notRegistered') })}
                             {formatEquipmentNoteTimestamp(eq.notes_updated_at || eq.notesUpdatedAt)
                               ? ` • ${formatEquipmentNoteTimestamp(eq.notes_updated_at || eq.notesUpdatedAt)}`
                               : ''}
                           </Typography>
                         )}
                       </Box>
-                      <Chip label={CONDITION_LABELS[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], border: `1px solid ${CONDITION_COLORS[eq.condition]}55`, fontSize: '0.65rem' }} />
+                      <Chip label={conditionLabels[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], border: `1px solid ${CONDITION_COLORS[eq.condition]}55`, fontSize: '0.65rem' }} />
                     </Box>
                   ))}
                 </Box>
@@ -9383,7 +9222,7 @@ export function EquipmentManagementPanel({
           )}
         </DialogContent>
         <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2.25, borderTop: '1px solid rgba(148,163,184,0.2)', gap: 1 }}>
-          <Button onClick={() => setReportsDialogOpen(false)} variant="outlined" sx={{ borderColor: 'rgba(148,163,184,0.46)', color: 'rgba(226,232,240,0.88)', '&:hover': { borderColor: 'rgba(192,132,252,0.62)', bgcolor: 'rgba(147,51,234,0.12)' } }}>Lukk</Button>
+          <Button onClick={() => setReportsDialogOpen(false)} variant="outlined" sx={{ borderColor: 'rgba(148,163,184,0.46)', color: 'rgba(226,232,240,0.88)', '&:hover': { borderColor: 'rgba(192,132,252,0.62)', bgcolor: 'rgba(147,51,234,0.12)' } }}>{t('equip.btn.close')}</Button>
           <Button
             onClick={handleDownloadGearList}
             variant="contained"
@@ -9396,9 +9235,7 @@ export function EquipmentManagementPanel({
               boxShadow: '0 12px 28px rgba(147,51,234,0.38)',
               '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 60%, #60a5fa 100%)' },
             }}
-          >
-            Last ned CSV
-          </Button>
+          >{t('equip.btn.downloadCsv')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -9410,16 +9247,16 @@ export function EquipmentManagementPanel({
             <OfflineIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Offline-kø</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{offlineQueueCount} operasjon(er) venter</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>{t('equip.offline.title')}</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.offline.waiting', { n: offlineQueueCount })}</Typography>
           </Box>
-          <IconButton onClick={() => setOfflineOutboxOpen(false)} aria-label="Lukk" sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setOfflineOutboxOpen(false)} aria-label={t('equip.aria.close')} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           {offlineQueue.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-              <Typography sx={{ color: '#4caf50' }}>Ingen ventende operasjoner</Typography>
+              <Typography sx={{ color: '#4caf50' }}>{t('equip.offline.none')}</Typography>
             </Box>
           ) : (
             <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
@@ -9428,25 +9265,23 @@ export function EquipmentManagementPanel({
                   {e.type === 'checkout' ? <CheckOutIcon sx={{ color: '#2196f3', fontSize: 20 }} /> : <CheckInIcon sx={{ color: '#4caf50', fontSize: 20 }} />}
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
-                      {e.type === 'checkout' ? 'Sjekk ut' : 'Lever inn'} — {e.payload.equipmentId.slice(0, 8)}…
+                      {e.type === 'checkout' ? t('equip.offline.checkout') : t('equip.offline.checkin')} — {e.payload.equipmentId.slice(0, 8)}…
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
                       {new Date(e.ts).toLocaleString('nb-NO')}
                     </Typography>
                   </Box>
-                  <Chip label="Venter" size="small" sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc' }} />
+                  <Chip label={t('equip.chip.waiting')} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc' }} />
                 </Box>
               ))}
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => { persistOfflineQueue([]); setOfflineOutboxOpen(false); }} sx={{ color: '#f44336' }}>Slett kø</Button>
-          <Button onClick={() => setOfflineOutboxOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
+          <Button onClick={() => { persistOfflineQueue([]); setOfflineOutboxOpen(false); }} sx={{ color: '#f44336' }}>{t('equip.btn.clearQueue')}</Button>
+          <Button onClick={() => setOfflineOutboxOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('equip.btn.close')}</Button>
           <Button onClick={handleSyncOfflineQueue} variant="contained" startIcon={<SyncIcon />} disabled={!isOnline}
-            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
-            Synkroniser nå
-          </Button>
+            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>{t('equip.btn.syncNow')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -9477,9 +9312,9 @@ export function EquipmentManagementPanel({
             <Box sx={getRoleRoomDialogIconSx('primary', 36)}>
               <SearchIcon sx={{ color: '#fff', fontSize: 20 }} />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Utstyr & Markeder</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.bridge.title')}</Typography>
             <Chip
-              label="Importer til prosjekt"
+              label={t('equip.chip.importInto')}
               size="small"
               sx={{
                 bgcolor: 'rgba(192,132,252,0.2)',
@@ -9488,7 +9323,7 @@ export function EquipmentManagementPanel({
               }}
             />
           </Box>
-          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9528,11 +9363,11 @@ export function EquipmentManagementPanel({
               },
             }}
           >
-            <Tab icon={<SearchIcon sx={{ fontSize: 16 }} />} label="Produkt-katalog" iconPosition="start" />
-            <Tab icon={<NewspaperIcon sx={{ fontSize: 16 }} />} label="Utstyrsnyheter" iconPosition="start" />
-            <Tab icon={<TrendingUpIcon sx={{ fontSize: 16 }} />} label="Markedspriser" iconPosition="start" />
-            <Tab icon={<PhotoLibraryIcon sx={{ fontSize: 16 }} />} label="Objektiver" iconPosition="start" />
-            <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} label="Kamera + Minnekort" iconPosition="start" />
+            <Tab icon={<SearchIcon sx={{ fontSize: 16 }} />} label={t('equip.tab.productCatalog')} iconPosition="start" />
+            <Tab icon={<NewspaperIcon sx={{ fontSize: 16 }} />} label={t('equip.tab.gearNews')} iconPosition="start" />
+            <Tab icon={<TrendingUpIcon sx={{ fontSize: 16 }} />} label={t('equip.tab.marketPrices')} iconPosition="start" />
+            <Tab icon={<PhotoLibraryIcon sx={{ fontSize: 16 }} />} label={t('equip.tab.lenses')} iconPosition="start" />
+            <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} label={t('equip.tab.camCards')} iconPosition="start" />
           </Tabs>
         </Box>
 
@@ -9554,18 +9389,16 @@ export function EquipmentManagementPanel({
           {catalogDialogTab === 1 && (
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <NewspaperIcon sx={{ color: '#9333ea' }} />
-                Utstyrsnyheter
-              </Typography>
+                <NewspaperIcon sx={{ color: '#9333ea' }} />{t('equip.news.title')}</Typography>
               {gearNewsLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
                   <CircularProgress sx={{ color: '#9333ea' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter nyheter...</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.news.loading')}</Typography>
                 </Box>
               ) : gearNewsArticles.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 6 }}>
                   <NewspaperIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen nyheter tilgjengelig akkurat nå.</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.news.none')}</Typography>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
@@ -9585,7 +9418,7 @@ export function EquipmentManagementPanel({
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
                             {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontSize: '0.7rem' }} />}
-                            {article.isNew && <Chip label="NY" size="small" color="error" sx={{ fontSize: '0.7rem' }} />}
+                            {article.isNew && <Chip label={t('equip.badge.new')} size="small" color="error" sx={{ fontSize: '0.7rem' }} />}
                             {article.isTrending && <Chip label="Trend" size="small" color="warning" sx={{ fontSize: '0.7rem' }} />}
                           </Box>
                           <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 1, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -9618,7 +9451,7 @@ export function EquipmentManagementPanel({
                         </CardContent>
                         <Box sx={{ p: 1.5, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
                           {article.url && (
-                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" aria-label={`Åpne artikkel ${article.title ?? article.url}`} sx={{ color: '#9333ea' }}>
+                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" aria-label={t('equip.aria.openArticle', { title: article.title ?? article.url })} sx={{ color: '#9333ea' }}>
                               <OpenInNewIcon fontSize="small" />
                             </IconButton>
                           )}
@@ -9635,18 +9468,16 @@ export function EquipmentManagementPanel({
           {catalogDialogTab === 2 && (
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUpIcon sx={{ color: '#4caf50' }} />
-                Markedspriser & Sammenligning
-              </Typography>
+                <TrendingUpIcon sx={{ color: '#4caf50' }} />{t('equip.market.title')}</Typography>
               {marketPricesLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
                   <CircularProgress sx={{ color: '#4caf50' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter markedspriser...</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.loading')}</Typography>
                 </Box>
               ) : marketItems.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 6 }}>
                   <AttachMoneyIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen markedsprisdata tilgjengelig.</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.none')}</Typography>
                 </Box>
               ) : (
                 <>
@@ -9658,17 +9489,17 @@ export function EquipmentManagementPanel({
                         <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
                           {marketItems.filter(i => i.availability === 'available').length}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Tilgjengelige produkter</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.availProducts')}</Typography>
                       </Paper>
                     </Box>
                     <Box sx={{ width: { xs: '100%', sm: 'calc(33.333% - 11px)' }, minWidth: 0 }}>
                       <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(147,51,234,0.35)' }}>
                         <AttachMoneyIcon sx={{ color: '#9333ea', mb: 1 }} />
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                          Fra: {marketItems.length > 0 ? Math.min(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
+                          {t('equip.market.priceFrom', { v: marketItems.length > 0 ? Math.min(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—' })}
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                          Til: {marketItems.length > 0 ? Math.max(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
+                          {t('equip.market.priceTo', { v: marketItems.length > 0 ? Math.max(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—' })}
                         </Typography>
                       </Paper>
                     </Box>
@@ -9678,7 +9509,7 @@ export function EquipmentManagementPanel({
                         <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
                           {(marketItems.reduce((acc, item) => acc + parseFloat(item.videographerRating || '0'), 0) / (marketItems.length || 1)).toFixed(1)}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Gj.snitt videograf-rating</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.avgRating')}</Typography>
                       </Paper>
                     </Box>
                   </Box>
@@ -9706,7 +9537,7 @@ export function EquipmentManagementPanel({
                             <Stack spacing={0.75}>
                               {item.currentPrice && (
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.priceLbl')}</Typography>
                                   <Typography variant="h6" sx={{ color: '#4caf50', fontWeight: 700, fontSize: '1rem' }}>
                                     {parseFloat(item.currentPrice).toLocaleString('nb-NO')} kr
                                   </Typography>
@@ -9715,20 +9546,20 @@ export function EquipmentManagementPanel({
                               {item.msrp && item.currentPrice && parseFloat(item.msrp) > parseFloat(item.currentPrice) && (
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
-                                    UVP: {parseFloat(item.msrp).toLocaleString('nb-NO')} kr
+                                    {t('equip.market.uvp', { v: parseFloat(item.msrp).toLocaleString('nb-NO') })}
                                   </Typography>
                                   <Chip label={`-${Math.round((1 - parseFloat(item.currentPrice) / parseFloat(item.msrp)) * 100)}%`} size="small" color="success" sx={{ fontSize: '0.7rem' }} />
                                 </Box>
                               )}
                               {item.videographerRating && (
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Rating:</Typography>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.ratingLbl')}</Typography>
                                   <Rating value={parseFloat(item.videographerRating)} size="small" readOnly precision={0.1} sx={{ '& .MuiRating-iconFilled': { color: '#2196f3' } }} />
                                 </Box>
                               )}
                               {item.availability && (
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Status:</Typography>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.market.statusLbl')}</Typography>
                                   <Chip label={item.availability} size="small" color={item.availability === 'available' ? 'success' : item.availability === 'limited' ? 'warning' : 'default'} sx={{ fontSize: '0.7rem' }} />
                                 </Box>
                               )}
@@ -9736,14 +9567,12 @@ export function EquipmentManagementPanel({
                           </CardContent>
                           <Box sx={{ p: 1.5, pt: 0, display: 'flex', gap: 1 }}>
                             {item.sourceUrl && (
-                              <IconButton size="small" href={item.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`Åpne kilde for ${item.brand} ${item.model}`} sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                              <IconButton size="small" href={item.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={t('equip.aria.openSource', { brand: item.brand, model: item.model })} sx={{ color: 'rgba(255,255,255,0.4)' }}>
                                 <OpenInNewIcon fontSize="small" />
                               </IconButton>
                             )}
                             <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromMarket(item)}
-                              sx={{ ml: 'auto', borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>
-                              Importer
-                            </Button>
+                              sx={{ ml: 'auto', borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>{t('equip.btn.import')}</Button>
                           </Box>
                         </Card>
                       </Box>
@@ -9758,18 +9587,16 @@ export function EquipmentManagementPanel({
           {catalogDialogTab === 3 && (
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <PhotoLibraryIcon sx={{ color: '#9333ea' }} />
-                Objektiv Database
-              </Typography>
+                <PhotoLibraryIcon sx={{ color: '#9333ea' }} />{t('equip.lens.title')}</Typography>
               {lensDbLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
                   <CircularProgress sx={{ color: '#9333ea' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter objektivdatabase...</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.lens.loading')}</Typography>
                 </Box>
               ) : lensItems.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 6 }}>
                   <PhotoLibraryIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen objektiver i databasen ennå.</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.lens.none')}</Typography>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
@@ -9800,22 +9627,22 @@ export function EquipmentManagementPanel({
                           <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
                           <Stack spacing={0.75}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Bildestabilisering:</Typography>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.lens.stabilization')}</Typography>
                               <CheckCircleIcon sx={{ fontSize: 16, color: lens.imageStabilization ? '#4caf50' : 'rgba(255,255,255,0.2)' }} />
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Værtetting:</Typography>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.lens.weather')}</Typography>
                               <CheckCircleIcon sx={{ fontSize: 16, color: lens.weatherSealing ? '#4caf50' : 'rgba(255,255,255,0.2)' }} />
                             </Box>
                             {lens.weight && (
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Vekt:</Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.lens.weight')}</Typography>
                                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>{lens.weight}</Typography>
                               </Box>
                             )}
                             {lens.currentPrice && (
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{t('equip.lens.price')}</Typography>
                                 <Typography variant="body2" sx={{ fontWeight: 700, color: '#9333ea' }}>
                                   {parseFloat(lens.currentPrice).toLocaleString('nb-NO')} kr
                                 </Typography>
@@ -9825,9 +9652,7 @@ export function EquipmentManagementPanel({
                         </CardContent>
                         <Box sx={{ p: 1.5, pt: 0 }}>
                           <Button size="small" fullWidth variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromLens(lens)}
-                            sx={{ borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>
-                            Legg til i prosjekt
-                          </Button>
+                            sx={{ borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>{t('equip.btn.addToProject')}</Button>
                         </Box>
                       </Card>
                     </Box>
@@ -9842,9 +9667,7 @@ export function EquipmentManagementPanel({
             <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Inventory2Icon sx={{ color: '#c084fc' }} />
-                  Kamera + Minnekort
-                </Typography>
+                  <Inventory2Icon sx={{ color: '#c084fc' }} />{t('equip.cards.title')}</Typography>
                 <Button
                   variant="outlined"
                   onClick={handleSyncCameraDiscovery}
@@ -9855,14 +9678,12 @@ export function EquipmentManagementPanel({
                     color: '#c084fc',
                     '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(216,180,254,0.08)' },
                   }}
-                >
-                  Kjør discovery sync
-                </Button>
+                >{t('equip.btn.discoverySync')}</Button>
               </Box>
 
               {cameraCatalogUnavailable && (
                 <Alert severity="warning" sx={{ mb: 2 }}>
-                  Kamera-endepunkt er utilgjengelig i dette miljøet.
+                  {t('equip.cards.endpointDown')}
                 </Alert>
               )}
 
@@ -9871,7 +9692,7 @@ export function EquipmentManagementPanel({
                   <TextField
                     fullWidth
                     size="small"
-                    label="Søk kamera"
+                    label={t('equip.lbl.searchCam')}
                     value={cameraCatalogSearch}
                     onChange={(event) => setCameraCatalogSearch(event.target.value)}
                     InputProps={{
@@ -9889,10 +9710,10 @@ export function EquipmentManagementPanel({
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Kameratype</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.lbl.camType')}</InputLabel>
                     <Select
                       value={cameraCatalogType}
-                      label="Kameratype"
+                      label={t('equip.lbl.camType')}
                       onChange={(event) => setCameraCatalogType(event.target.value as 'all' | CameraCatalogType)}
                       sx={{
                         bgcolor: 'rgba(255,255,255,0.04)',
@@ -9900,18 +9721,18 @@ export function EquipmentManagementPanel({
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                       }}
                     >
-                      <MenuItem value="all">Alle typer</MenuItem>
-                      <MenuItem value="photo">Foto</MenuItem>
+                      <MenuItem value="all">{t('equip.filter.allTypes')}</MenuItem>
+                      <MenuItem value="photo">{t('equip.cam.photo')}</MenuItem>
                       <MenuItem value="video">Video</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Merke</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.lbl.brand')}</InputLabel>
                     <Select
                       value={cameraBrandFilter}
-                      label="Merke"
+                      label={t('equip.lbl.brand')}
                       onChange={(event) => setCameraBrandFilter(String(event.target.value))}
                       sx={{
                         bgcolor: 'rgba(255,255,255,0.04)',
@@ -9919,7 +9740,7 @@ export function EquipmentManagementPanel({
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                       }}
                     >
-                      <MenuItem value="all">Alle merker</MenuItem>
+                      <MenuItem value="all">{t('equip.filter.allBrands')}</MenuItem>
                       {cameraBrandOptions.map((brand) => (
                         <MenuItem key={brand} value={brand}>
                           {brand}
@@ -9967,14 +9788,12 @@ export function EquipmentManagementPanel({
               {cameraCatalogLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1.5, py: 8 }}>
                   <CircularProgress sx={{ color: '#c084fc' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>Henter kameradata...</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.cards.loading')}</Typography>
                 </Box>
               ) : cameraCatalogItems.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 8 }}>
                   <Inventory2Icon sx={{ fontSize: 52, color: 'rgba(255,255,255,0.2)', mb: 1 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                    Ingen kamera funnet for valgt filter.
-                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.cards.none')}</Typography>
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
@@ -10024,7 +9843,7 @@ export function EquipmentManagementPanel({
                                 <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
                                   <Chip
                                     size="small"
-                                    label={camera.type === 'photo' ? 'Foto' : 'Video'}
+                                    label={camera.type === 'photo' ? t('equip.cam.photo') : t('equip.cam.video')}
                                     sx={{
                                       bgcolor: camera.type === 'photo' ? 'rgba(33,150,243,0.2)' : 'rgba(156,39,176,0.25)',
                                       color: camera.type === 'photo' ? '#90caf9' : '#d1a3ff',
@@ -10034,7 +9853,7 @@ export function EquipmentManagementPanel({
                                 </Stack>
                               </Box>
                               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', mb: 1.5 }}>
-                                {camera.description || 'Ingen beskrivelse tilgjengelig.'}
+                                {camera.description || t('equip.cam.noDesc')}
                               </Typography>
                               <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', mb: 1 }}>
                                 {camera.category && (
@@ -10057,9 +9876,7 @@ export function EquipmentManagementPanel({
                                   color: '#c084fc',
                                   '&:hover': { bgcolor: 'rgba(192,132,252,0.1)', borderColor: '#d8b4fe' },
                                 }}
-                              >
-                                Importer kamera
-                              </Button>
+                              >{t('equip.btn.importCamera')}</Button>
                             </CardContent>
                           </Card>
                         </Box>
@@ -10078,17 +9895,15 @@ export function EquipmentManagementPanel({
                         boxShadow: '0 14px 30px rgba(2,6,23,0.35)',
                       }}
                     >
-                      <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, mb: 1.5 }}>
-                        Minnekort-kompatibilitet
-                      </Typography>
+                      <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, mb: 1.5 }}>{t('equip.cards.compat')}</Typography>
                       {selectedCamera ? (
                         <>
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.72)', mb: 0.5 }}>
-                            Valgt kamera: {selectedCamera.brand} {selectedCamera.model}
+                            {t('equip.cards.selectedCam', { brand: selectedCamera.brand, model: selectedCamera.model })}
                           </Typography>
                           {selectedCamera.isNetflixCertified && (
                             <Box sx={{ mb: 1 }}>
-                              {renderNetflixBadge('Netflix-sertifisert cinekamera', false)}
+                              {renderNetflixBadge(t('equip.netflixCertifiedCine'), false)}
                             </Box>
                           )}
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
@@ -10101,18 +9916,14 @@ export function EquipmentManagementPanel({
                           <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
 
                           {memoryCardsUnavailable ? (
-                            <Alert severity="warning">Minnekort-endepunkt er utilgjengelig.</Alert>
+                            <Alert severity="warning">{t('equip.cards.memUnavailable')}</Alert>
                           ) : memoryCardsLoading ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
                               <CircularProgress size={18} sx={{ color: '#c084fc' }} />
-                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                                Henter minnekort...
-                              </Typography>
+                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.cards.loadingCards')}</Typography>
                             </Box>
                           ) : memoryCardItems.length === 0 ? (
-                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                              Ingen korttyper tilgjengelig for valgt kamera.
-                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.cards.noneForCam')}</Typography>
                           ) : (
                             <Stack spacing={1}>
                               {memoryCardItems.map((card) => (
@@ -10147,25 +9958,19 @@ export function EquipmentManagementPanel({
                                       minWidth: 98,
                                       '&:hover': { bgcolor: 'rgba(192,132,252,0.1)', borderColor: '#d8b4fe' },
                                     }}
-                                  >
-                                    Importer
-                                  </Button>
+                                  >{t('equip.btn.import')}</Button>
                                 </Paper>
                               ))}
                             </Stack>
                           )}
                         </>
                       ) : (
-                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                          Velg et kamera for å se anbefalte minnekort.
-                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('equip.cards.pickCam')}</Typography>
                       )}
                     </Paper>
 
                     {(cameraCatalogFetching || cameraSyncing) && (
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', mt: 1, display: 'block' }}>
-                        Oppdaterer katalogdata...
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', mt: 1, display: 'block' }}>{t('equip.cards.updating')}</Typography>
                     )}
                   </Box>
                 </Box>
@@ -10198,15 +10003,13 @@ export function EquipmentManagementPanel({
               <QrCodeIcon sx={{ color: '#fff' }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Lager-QR etikett
-              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.qr.title')}</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                {qrTargetEquipment?.name || 'Utstyr'}
+                {qrTargetEquipment?.name || t('equip.qr.equipFallback')}
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setQrLabelDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setQrLabelDialogOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -10226,7 +10029,7 @@ export function EquipmentManagementPanel({
                 <Box
                   component="img"
                   src={getEquipmentQrImageUrl(qrTargetEquipment)}
-                  alt={`QR for ${qrTargetEquipment.name}`}
+                  alt={t('equip.aria.qrFor', { name: qrTargetEquipment.name })}
                   sx={{
                     width: { xs: 220, sm: 260 },
                     height: { xs: 220, sm: 260 },
@@ -10243,11 +10046,11 @@ export function EquipmentManagementPanel({
                   sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', maxWidth: '100%' }}
                 />
                 <Chip
-                  label={`Serienr: ${qrTargetEquipment.serial_number || 'N/A'}`}
+                  label={t('equip.qr.serialChip', { serial: qrTargetEquipment.serial_number || 'N/A' })}
                   sx={{ bgcolor: 'rgba(33,150,243,0.15)', color: '#64b5f6' }}
                 />
                 <Chip
-                  label={`Antall: ${qrTargetEquipment.quantity}`}
+                  label={t('equip.qr.qtyChip', { n: qrTargetEquipment.quantity })}
                   sx={{ bgcolor: 'rgba(76,175,80,0.15)', color: '#81c784' }}
                 />
               </Stack>
@@ -10260,9 +10063,7 @@ export function EquipmentManagementPanel({
             startIcon={<CopyIcon />}
             onClick={() => qrTargetEquipment && handleCopyQrPayload(qrTargetEquipment)}
             sx={{ borderColor: '#64b5f6', color: '#64b5f6' }}
-          >
-            Kopier QR-data
-          </Button>
+          >{t('equip.btn.copyQr')}</Button>
           <Button
             variant="outlined"
             startIcon={<QrCodeScannerIcon />}
@@ -10273,9 +10074,7 @@ export function EquipmentManagementPanel({
               setQrScanDialogOpen(true);
             }}
             sx={{ borderColor: '#81c784', color: '#81c784' }}
-          >
-            Skann
-          </Button>
+          >{t('equip.btn.scan')}</Button>
           <Button
             variant="contained"
             startIcon={<DownloadIcon />}
@@ -10286,9 +10085,7 @@ export function EquipmentManagementPanel({
               fontWeight: 700,
               '&:hover': { bgcolor: '#a855f7' },
             }}
-          >
-            Skriv ut etikett
-          </Button>
+          >{t('equip.btn.printLabel')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -10313,21 +10110,17 @@ export function EquipmentManagementPanel({
             <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
               <QrCodeScannerIcon sx={{ color: '#fff' }} />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Skann lager-QR
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.qr.scanTitle')}</Typography>
           </Box>
-          <IconButton onClick={() => setQrScanDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setQrScanDialogOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2.5 }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>
-            Lim inn skannet QR-tekst fra scanner eller mobilkamera. Systemet åpner riktig utstyrspost automatisk.
-          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>{t('equip.qr.scanHint')}</Typography>
           <QrCameraScanner
             active={qrScanDialogOpen}
-            scanTargetLabel="lager-QR"
+            scanTargetLabel={t('equip.scan.warehouseQr')}
             onDetected={(value) => {
               setQrScanInput(value);
               setQrScanError(null);
@@ -10363,9 +10156,7 @@ export function EquipmentManagementPanel({
           )}
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2, gap: 1 }}>
-          <Button onClick={() => setQrScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setQrScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('equip.btn.cancel')}</Button>
           <Button
             variant="outlined"
             startIcon={<CopyIcon />}
@@ -10375,13 +10166,11 @@ export function EquipmentManagementPanel({
                 setQrScanInput(text);
                 setQrScanError(null);
               } catch {
-                setQrScanError('Kunne ikke lese fra utklippstavle.');
+                setQrScanError(t('equip.toast.clipboardFailed'));
               }
             }}
             sx={{ borderColor: '#c084fc', color: '#c084fc' }}
-          >
-            Lim inn
-          </Button>
+          >{t('equip.btn.paste')}</Button>
           <Button
             variant="contained"
             startIcon={<QrCodeScannerIcon />}
@@ -10392,9 +10181,7 @@ export function EquipmentManagementPanel({
               fontWeight: 700,
               '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' },
             }}
-          >
-            Tolk QR
-          </Button>
+          >{t('equip.btn.interpretQr')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -10419,22 +10206,18 @@ export function EquipmentManagementPanel({
             <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
               <QrCodeScannerIcon sx={{ color: '#fff' }} />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Skann serienummer
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('equip.serial.title')}</Typography>
           </Box>
-          <IconButton onClick={() => setSerialScanDialogOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setSerialScanDialogOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2.5 }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>
-            Skann strekkode eller QR-kode for å fylle serienummer automatisk.
-          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>{t('equip.serial.hint')}</Typography>
           <QrCameraScanner
             active={serialScanDialogOpen}
             formats={serialNumberScanFormats}
-            scanTargetLabel="strekkode/QR-kode"
+            scanTargetLabel={t('equip.scan.barcode')}
             onDetected={(value) => {
               setSerialScanInput(value);
               setSerialScanError(null);
@@ -10455,7 +10238,7 @@ export function EquipmentManagementPanel({
                 handleApplyScannedSerialNumber(serialScanInput);
               }
             }}
-            placeholder="Eks: A001-SN-240315"
+            placeholder={t('equip.ph.serialExample')}
             sx={{
               mt: 1.5,
               '& .MuiOutlinedInput-root': {
@@ -10475,9 +10258,7 @@ export function EquipmentManagementPanel({
           )}
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2, gap: 1 }}>
-          <Button onClick={() => setSerialScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setSerialScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('equip.btn.cancel')}</Button>
           <Button
             variant="outlined"
             startIcon={<CopyIcon />}
@@ -10487,13 +10268,11 @@ export function EquipmentManagementPanel({
                 setSerialScanInput(text);
                 setSerialScanError(null);
               } catch {
-                setSerialScanError('Kunne ikke lese fra utklippstavle.');
+                setSerialScanError(t('equip.toast.clipboardFailed'));
               }
             }}
             sx={{ borderColor: '#c084fc', color: '#c084fc' }}
-          >
-            Lim inn
-          </Button>
+          >{t('equip.btn.paste')}</Button>
           <Button
             variant="contained"
             startIcon={<QrCodeScannerIcon />}
@@ -10504,9 +10283,7 @@ export function EquipmentManagementPanel({
               fontWeight: 700,
               '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' },
             }}
-          >
-            Bruk kode
-          </Button>
+          >{t('equip.btn.useCode')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -10541,9 +10318,9 @@ export function EquipmentManagementPanel({
             <Box sx={getRoleRoomDialogIconSx('primary', 36)}>
               <SyncIcon sx={{ color: '#fff', fontSize: 20 }} />
             </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>{t('equip.firmware.title')}</Typography>
           </Box>
-          <IconButton onClick={() => setFirmwarePanelOpen(false)} aria-label="Lukk" sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+          <IconButton onClick={() => setFirmwarePanelOpen(false)} aria-label={t('equip.aria.close')} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -10562,7 +10339,7 @@ export function EquipmentManagementPanel({
           refreshWarehouseSummary();
         }}
         projectId={projectId}
-        title="Lagerstyring - Filmutstyr"
+        title={t('equip.warehouse.title')}
         items={warehouseDialogItems}
         locationSeeds={locations.map((location) => ({ id: location.id, name: location.name }))}
         onRequestEditItem={(item) => {
