@@ -8,6 +8,7 @@
 // Persistering: leadgrid_canvas_notater (org+bruker) via APIClient+Canvas.
 // Demo-modus: in-memory (aldri backend).
 
+import CoreLocation
 import PencilKit
 import SwiftUI
 import Vision
@@ -61,6 +62,18 @@ enum CanvasKategori: String, CaseIterable, Identifiable {
     }
 }
 
+/// Klistremerke/stempel oppå tegneflata (fase 4) — posisjon i canvas-
+/// punkter, persistert som JSON ved siden av tegningen.
+struct CanvasStempel: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var tegn: String       // emoji
+    var x: Double
+    var y: Double
+}
+
+/// Paletten fra design-mocken («Klistremerker»).
+let canvasStempelPalett = ["📍", "⭐️", "✅", "⚠️", "💡", "🔥"]
+
 /// Lokal notat-modell (speiler CanvasNotatDTO; drawing som rå PKDrawing-data).
 struct CanvasNotat: Identifiable, Hashable {
     var id: String
@@ -77,6 +90,10 @@ struct CanvasNotat: Identifiable, Hashable {
     var delt: Bool = false
     var erMin: Bool = true
     var eierNavn: String? = nil
+    /// Fase 4: hvor notatet ble til + stempel-overlay.
+    var lat: Double? = nil
+    var lon: Double? = nil
+    var stempler: [CanvasStempel] = []
 }
 
 struct CanvasView: View {
@@ -98,6 +115,10 @@ struct CanvasView: View {
     @State private var deltMedTeam = false
     @State private var sok = ""
     @State private var visAnalyse = false
+    @State private var stempler: [CanvasStempel] = []
+    @State private var notatLat: Double?
+    @State private var notatLon: Double?
+    @State private var visStempelPalett = false
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
 
@@ -463,6 +484,37 @@ struct CanvasView: View {
                         }
                     }
                     Spacer(minLength: 8)
+                    // Stedfestet: forhåndsvis posisjonen på Kart-fanen.
+                    if let lat = notatLat, let lon = notatLon {
+                        Button {
+                            appState.requestNavigation(
+                                lat: lat, lon: lon,
+                                name: tittel.isEmpty ? "Canvas-notat" : tittel,
+                                address: kobletSelskap ?? "",
+                                start: false)
+                        } label: {
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.appScaled(size: 15))
+                                .foregroundStyle(CvBrand.orange)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Notatet ble til her — vis på kartet")
+                    }
+                    // Del tegningen som bilde (m/ stempler komponert inn).
+                    if !drawing.bounds.isEmpty {
+                        ShareLink(
+                            item: Image(uiImage: komponertBilde()),
+                            preview: SharePreview(
+                                tittel.isEmpty ? "Canvas-notat" : tittel,
+                                image: Image(uiImage: komponertBilde()))
+                        ) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(CvBrand.textSecondary)
+                                .frame(width: 30, height: 30)
+                                .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
                     leadKobling
                 }
             }
@@ -471,9 +523,64 @@ struct CanvasView: View {
 
             Divider().overlay(CvBrand.stroke)
 
+            // Stempel-palett («Klistremerker» fra design-mocken).
+            if valgtErMin {
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            visStempelPalett.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "seal.fill")
+                                .font(.appScaled(size: 10, weight: .bold))
+                            Text("Stempler")
+                                .font(.appScaled(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(visStempelPalett ? .white : CvBrand.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(visStempelPalett
+                                    ? CvBrand.purple.opacity(0.4) : CvBrand.cardHi,
+                                    in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    if visStempelPalett {
+                        ForEach(canvasStempelPalett, id: \.self) { tegn in
+                            Button {
+                                stempler.append(CanvasStempel(
+                                    tegn: tegn, x: 220 + Double(stempler.count % 5) * 56,
+                                    y: 160 + Double(stempler.count / 5) * 56))
+                            } label: {
+                                Text(tegn).font(.system(size: 22))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Text("Dra for å flytte · hold for å fjerne")
+                            .font(.appScaled(size: 9))
+                            .foregroundStyle(CvBrand.textTertiary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(CvBrand.card.opacity(0.6))
+            }
+
             // Selve tegneflata — PKToolPicker docker seg til bunnen.
             // Andres delte notater: kun visning (PUT er uansett eier-scopet).
-            PencilCanvas(drawing: $drawing, redigerbar: valgtErMin)
+            ZStack(alignment: .topLeading) {
+                PencilCanvas(drawing: $drawing, redigerbar: valgtErMin)
+                ForEach(stempler) { st in
+                    StempelView(stempel: st, redigerbar: valgtErMin,
+                                onFlytt: { ny in
+                                    if let i = stempler.firstIndex(where: { $0.id == st.id }) {
+                                        stempler[i] = ny
+                                    }
+                                },
+                                onSlett: {
+                                    stempler.removeAll { $0.id == st.id }
+                                })
+                }
+            }
         }
         .sheet(isPresented: $visAnalyse) {
             CanvasAnalyseSheet(drawing: drawing,
@@ -528,6 +635,7 @@ struct CanvasView: View {
     private func nyttNotat() {
         // Lagre det som står i editoren først (best effort, uten å vente).
         if valgtId != nil { Task { await lagre(stille: true) } }
+        let pos = KartLocationManager.shared.currentCoordinate
         let n = CanvasNotat(
             id: UUID().uuidString.lowercased(),
             tittel: "",
@@ -535,7 +643,8 @@ struct CanvasView: View {
             selskap: nil, leadId: nil,
             drawingData: Data(),
             oppdatert: Date(),
-            erNy: true)
+            erNy: true,
+            lat: pos?.latitude, lon: pos?.longitude)
         notater.insert(n, at: 0)
         velg(n)
     }
@@ -551,6 +660,9 @@ struct CanvasView: View {
         kobletLeadId = n.leadId
         kobletSelskap = n.selskap
         deltMedTeam = n.delt
+        stempler = n.stempler
+        notatLat = n.lat
+        notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
         lagretToast = false
     }
@@ -573,6 +685,9 @@ struct CanvasView: View {
         n.leadId = kobletLeadId
         n.selskap = kobletSelskap
         n.delt = deltMedTeam
+        n.stempler = stempler
+        n.lat = notatLat
+        n.lon = notatLon
         n.drawingData = drawing.dataRepresentation()
         n.oppdatert = Date()
         oppdaterThumb(n)
@@ -587,12 +702,15 @@ struct CanvasView: View {
         if !stille { lagrer = true }
         defer { if !stille { lagrer = false } }
         do {
+            let stemplerJSON = (try? JSONEncoder().encode(n.stempler))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             if n.erNy {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
-                    delt: n.delt)
+                    delt: n.delt, lat: n.lat, lon: n.lon,
+                    stempler: stemplerJSON)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -601,7 +719,8 @@ struct CanvasView: View {
                     id: n.id, tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
-                    delt: n.delt)
+                    delt: n.delt, lat: n.lat, lon: n.lon,
+                    stempler: stemplerJSON)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -638,7 +757,10 @@ struct CanvasView: View {
                 oppdatert: ISO8601DateFormatter().date(from: dto.oppdatert ?? "") ?? Date(),
                 delt: dto.delt ?? false,
                 erMin: dto.erMin ?? true,
-                eierNavn: dto.eierNavn)
+                eierNavn: dto.eierNavn,
+                lat: dto.lat, lon: dto.lon,
+                stempler: (dto.stempler?.data(using: .utf8))
+                    .flatMap { try? JSONDecoder().decode([CanvasStempel].self, from: $0) } ?? [])
         }
         genererThumbs()
     }
@@ -657,6 +779,27 @@ struct CanvasView: View {
             }
             let resultat = nye
             await MainActor.run { thumbs.merge(resultat) { _, ny in ny } }
+        }
+    }
+
+    /// Tegning + stempler → ett bilde (deling). Stemplene tegnes på
+    /// samme koordinater som overlayet.
+    private func komponertBilde() -> UIImage {
+        let bounds = drawing.bounds.isEmpty
+            ? CGRect(x: 0, y: 0, width: 800, height: 600)
+            : drawing.bounds.insetBy(dx: -40, dy: -40)
+        let base = drawing.image(from: bounds, scale: 2.0)
+        guard !stempler.isEmpty else { return base }
+        let renderer = UIGraphicsImageRenderer(size: base.size)
+        return renderer.image { _ in
+            base.draw(at: .zero)
+            for st in stempler {
+                let punkt = CGPoint(x: (st.x - bounds.minX) * 2.0,
+                                    y: (st.y - bounds.minY) * 2.0)
+                (st.tegn as NSString).draw(
+                    at: punkt,
+                    withAttributes: [.font: UIFont.systemFont(ofSize: 64)])
+            }
         }
     }
 
@@ -1023,5 +1166,38 @@ struct CanvasAnalyseSheet: View {
         } catch {
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert (Canvas-analysen bruker samme AI-nøkkel)."
         }
+    }
+}
+
+
+// MARK: - StempelView (fase 4: klistremerke oppå flata)
+
+/// Dra for å flytte, hold for å fjerne. Posisjon i canvas-punkter.
+private struct StempelView: View {
+    let stempel: CanvasStempel
+    let redigerbar: Bool
+    let onFlytt: (CanvasStempel) -> Void
+    let onSlett: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+
+    var body: some View {
+        Text(stempel.tegn)
+            .font(.system(size: 34))
+            .shadow(color: .black.opacity(0.5), radius: 3)
+            .position(x: stempel.x + dragOffset.width,
+                      y: stempel.y + dragOffset.height)
+            .gesture(redigerbar ? DragGesture()
+                .onChanged { dragOffset = $0.translation }
+                .onEnded { v in
+                    var ny = stempel
+                    ny.x += v.translation.width
+                    ny.y += v.translation.height
+                    dragOffset = .zero
+                    onFlytt(ny)
+                } : nil)
+            .onLongPressGesture(minimumDuration: 0.5) {
+                if redigerbar { onSlett() }
+            }
     }
 }
