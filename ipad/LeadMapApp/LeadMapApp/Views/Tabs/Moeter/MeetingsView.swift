@@ -2226,6 +2226,18 @@ struct MeetingDetailSidebar: View {
                 Button { showStakeholders = true } label: {
                     Label("Stakeholders", systemImage: "person.3.fill")
                 }
+                // Leadgrid Canvas fase 2: tegn møtenotat pre-koblet til
+                // selskapet — hopper til Canvas-fanen.
+                if EntitlementStore.shared.canUse(.leadgridCanvas) {
+                    Button {
+                        appState.requestCanvasNotat(
+                            selskap: meeting.company,
+                            leadId: DemoModeManager.isActiveNonisolated
+                                ? nil : meeting.id.uuidString.lowercased())
+                    } label: {
+                        Label("Tegn i Canvas", systemImage: "pencil.and.outline")
+                    }
+                }
             }
             Section("Lead") {
                 Button { showOpenLead = true } label: {

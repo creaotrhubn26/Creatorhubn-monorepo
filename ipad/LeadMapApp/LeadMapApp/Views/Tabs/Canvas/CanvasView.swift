@@ -71,6 +71,11 @@ struct CanvasNotat: Identifiable, Hashable {
     var oppdatert: Date
     /// Opprettet lokalt, ikke lagret i backend enda.
     var erNy: Bool = false
+    /// Fase 2 (deling): synlig for hele org-en. Andres delte notater er
+    /// read-only (backend-PUT er bruker-scopet uansett).
+    var delt: Bool = false
+    var erMin: Bool = true
+    var eierNavn: String? = nil
 }
 
 struct CanvasView: View {
@@ -89,12 +94,29 @@ struct CanvasView: View {
     @State private var kobletLeadId: String?
     @State private var kobletSelskap: String?
     @State private var drawing = PKDrawing()
+    @State private var deltMedTeam = false
+    @State private var sok = ""
+    /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
+    @State private var thumbs: [String: UIImage] = [:]
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
     private var filtrerte: [CanvasNotat] {
-        let liste = kategoriFilter.map { f in notater.filter { $0.kategori == f } } ?? notater
+        var liste = kategoriFilter.map { f in notater.filter { $0.kategori == f } } ?? notater
+        let q = sok.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty {
+            liste = liste.filter {
+                $0.tittel.localizedCaseInsensitiveContains(q)
+                    || ($0.selskap ?? "").localizedCaseInsensitiveContains(q)
+            }
+        }
         return liste.sorted { $0.oppdatert > $1.oppdatert }
+    }
+
+    /// Er notatet i editoren mitt eget (redigerbart)?
+    private var valgtErMin: Bool {
+        guard let id = valgtId else { return true }
+        return notater.first(where: { $0.id == id })?.erMin ?? true
     }
 
     var body: some View {
@@ -103,6 +125,27 @@ struct CanvasView: View {
         }
         .background(CvBrand.bg)
         .task { await lastInn() }
+        // Møter «Tegn i Canvas» → åpne/opprett notat koblet til selskapet.
+        .task(id: appState.pendingCanvasRequestedAt) {
+            guard let at = appState.pendingCanvasRequestedAt,
+                  Date().timeIntervalSince(at) < 60,
+                  let selskap = appState.pendingCanvasSelskap else { return }
+            let leadId = appState.pendingCanvasLeadId
+            appState.clearCanvasDeepLink()
+            if !lastet { await lastInn() }
+            // Gjenbruk siste notat for selskapet — ellers nytt, pre-koblet.
+            if let eksisterende = notater.first(where: {
+                $0.erMin && ($0.selskap ?? "").caseInsensitiveCompare(selskap) == .orderedSame
+            }) {
+                velg(eksisterende)
+            } else {
+                nyttNotat()
+                tittel = "Møte med \(selskap)"
+                kategori = .mote
+                kobletSelskap = selskap
+                kobletLeadId = leadId
+            }
+        }
     }
 
     private var innhold: some View {
@@ -147,6 +190,29 @@ struct CanvasView: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
+
+            // Søk (tittel/selskap)
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(CvBrand.textTertiary)
+                TextField("Søk i notater …", text: $sok)
+                    .font(.appScaled(size: 12))
+                    .foregroundStyle(.white)
+                    .textFieldStyle(.plain)
+                if !sok.isEmpty {
+                    Button { sok = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(CvBrand.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(CvBrand.card, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(CvBrand.stroke, lineWidth: 1))
+            .padding(.horizontal, 16).padding(.bottom, 10)
 
             // Kategori-filter
             ScrollView(.horizontal, showsIndicators: false) {
@@ -204,6 +270,22 @@ struct CanvasView: View {
     private func notatRad(_ n: CanvasNotat) -> some View {
         let aktiv = n.id == valgtId
         return Button { velg(n) } label: {
+            HStack(spacing: 10) {
+            // Miniatyr av tegningen (genereres asynkront, caches).
+            Group {
+                if let img = thumbs[n.id] {
+                    Image(uiImage: img)
+                        .resizable().scaledToFill()
+                } else {
+                    Image(systemName: "scribble.variable")
+                        .font(.appScaled(size: 14))
+                        .foregroundStyle(CvBrand.textTertiary)
+                }
+            }
+            .frame(width: 46, height: 46)
+            .background(Color.black.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(CvBrand.stroke, lineWidth: 1))
             VStack(alignment: .leading, spacing: 6) {
                 Text(n.tittel.isEmpty ? "Uten tittel" : n.tittel)
                     .font(.appScaled(size: 13, weight: .bold))
@@ -215,6 +297,18 @@ struct CanvasView: View {
                         .foregroundStyle(n.kategori.farge)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(n.kategori.farge.opacity(0.15), in: Capsule())
+                    if !n.erMin, let eier = n.eierNavn, !eier.isEmpty {
+                        Text(eier)
+                            .font(.appScaled(size: 9, weight: .bold))
+                            .foregroundStyle(CvBrand.blue)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(CvBrand.blue.opacity(0.15), in: Capsule())
+                            .lineLimit(1)
+                    } else if n.delt {
+                        Image(systemName: "person.2.fill")
+                            .font(.appScaled(size: 9))
+                            .foregroundStyle(CvBrand.blue)
+                    }
                     if let selskap = n.selskap, !selskap.isEmpty {
                         Text(selskap)
                             .font(.appScaled(size: 10))
@@ -227,6 +321,7 @@ struct CanvasView: View {
                         .foregroundStyle(CvBrand.textTertiary)
                 }
             }
+            }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(aktiv ? CvBrand.purple.opacity(0.14) : CvBrand.card,
@@ -237,8 +332,10 @@ struct CanvasView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button(role: .destructive) { slett(n) } label: {
-                Label("Slett notat", systemImage: "trash")
+            if n.erMin {
+                Button(role: .destructive) { slett(n) } label: {
+                    Label("Slett notat", systemImage: "trash")
+                }
             }
         }
     }
@@ -294,7 +391,40 @@ struct CanvasView: View {
                     .buttonStyle(.plain)
                     .disabled(lagrer)
                 }
+                if !valgtErMin {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eye.fill")
+                            .font(.appScaled(size: 10, weight: .bold))
+                        Text("Delt av \(notater.first(where: { $0.id == valgtId })?.eierNavn ?? "kollega") — kun visning")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(CvBrand.blue)
+                }
                 HStack(spacing: 8) {
+                    // Del med teamet (kun egne notater)
+                    if valgtErMin {
+                        Button {
+                            deltMedTeam.toggle()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: deltMedTeam
+                                      ? "person.2.fill" : "person.2")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                Text(deltMedTeam ? "Delt" : "Del")
+                                    .font(.appScaled(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(deltMedTeam ? CvBrand.blue : CvBrand.textSecondary)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(deltMedTeam
+                                        ? CvBrand.blue.opacity(0.15) : CvBrand.cardHi,
+                                        in: Capsule())
+                            .overlay(Capsule().stroke(
+                                deltMedTeam ? CvBrand.blue.opacity(0.4) : CvBrand.stroke,
+                                lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Del notatet med hele teamet (kun visning for andre)")
+                    }
                     // Kategori-velger
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -325,7 +455,8 @@ struct CanvasView: View {
             Divider().overlay(CvBrand.stroke)
 
             // Selve tegneflata — PKToolPicker docker seg til bunnen.
-            PencilCanvas(drawing: $drawing)
+            // Andres delte notater: kun visning (PUT er uansett eier-scopet).
+            PencilCanvas(drawing: $drawing, redigerbar: valgtErMin)
         }
     }
 
@@ -397,6 +528,7 @@ struct CanvasView: View {
         kategori = n.kategori
         kobletLeadId = n.leadId
         kobletSelskap = n.selskap
+        deltMedTeam = n.delt
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
         lagretToast = false
     }
@@ -413,12 +545,15 @@ struct CanvasView: View {
         guard let id = valgtId,
               let idx = notater.firstIndex(where: { $0.id == id }) else { return }
         var n = notater[idx]
+        guard n.erMin else { return }   // andres delte notater lagres aldri
         n.tittel = tittel
         n.kategori = kategori
         n.leadId = kobletLeadId
         n.selskap = kobletSelskap
+        n.delt = deltMedTeam
         n.drawingData = drawing.dataRepresentation()
         n.oppdatert = Date()
+        oppdaterThumb(n)
 
         if isDemo {
             n.erNy = false
@@ -434,7 +569,8 @@ struct CanvasView: View {
                 let nyId = try await api.opprettCanvasNotat(
                     tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
-                    drawingBase64: n.drawingData.base64EncodedString())
+                    drawingBase64: n.drawingData.base64EncodedString(),
+                    delt: n.delt)
                 n.id = nyId
                 n.erNy = false
                 if valgtId == id { valgtId = nyId }
@@ -442,7 +578,8 @@ struct CanvasView: View {
                 try await api.oppdaterCanvasNotat(
                     id: n.id, tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
-                    drawingBase64: n.drawingData.base64EncodedString())
+                    drawingBase64: n.drawingData.base64EncodedString(),
+                    delt: n.delt)
             }
             notater[idx] = n
             if !stille { visLagret() }
@@ -476,8 +613,36 @@ struct CanvasView: View {
                 selskap: dto.selskap,
                 leadId: dto.leadId,
                 drawingData: Data(base64Encoded: dto.drawingBase64 ?? "") ?? Data(),
-                oppdatert: ISO8601DateFormatter().date(from: dto.oppdatert ?? "") ?? Date())
+                oppdatert: ISO8601DateFormatter().date(from: dto.oppdatert ?? "") ?? Date(),
+                delt: dto.delt ?? false,
+                erMin: dto.erMin ?? true,
+                eierNavn: dto.eierNavn)
         }
+        genererThumbs()
+    }
+
+    /// Miniatyrer: PKDrawing → 92pt-bilde (2× av 46pt-ruta), av-main.
+    private func genererThumbs() {
+        let kilder = notater.map { ($0.id, $0.drawingData) }
+        Task.detached(priority: .utility) {
+            var nye: [String: UIImage] = [:]
+            for (id, data) in kilder {
+                guard !data.isEmpty,
+                      let tegning = try? PKDrawing(data: data),
+                      !tegning.bounds.isEmpty else { continue }
+                let img = tegning.image(from: tegning.bounds, scale: 0.35)
+                nye[id] = img
+            }
+            let resultat = nye
+            await MainActor.run { thumbs.merge(resultat) { _, ny in ny } }
+        }
+    }
+
+    private func oppdaterThumb(_ n: CanvasNotat) {
+        guard !n.drawingData.isEmpty,
+              let tegning = try? PKDrawing(data: n.drawingData),
+              !tegning.bounds.isEmpty else { return }
+        thumbs[n.id] = tegning.image(from: tegning.bounds, scale: 0.35)
     }
 
     private static func kortDato(_ d: Date) -> String {
@@ -520,6 +685,7 @@ struct CanvasView: View {
 /// endring (delegat) — «Lagre» serialiserer via dataRepresentation().
 private struct PencilCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
+    var redigerbar: Bool = true
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -545,6 +711,7 @@ private struct PencilCanvas: UIViewRepresentable {
         if canvas.drawing != drawing && !context.coordinator.tegner {
             canvas.drawing = drawing
         }
+        canvas.isUserInteractionEnabled = redigerbar
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {

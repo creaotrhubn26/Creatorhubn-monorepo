@@ -254,6 +254,23 @@ final class AppState {
         pendingEtterMoteId = nil
     }
 
+    // ── Canvas-deep-link (Møter «Tegn i Canvas» → notat pre-koblet) ────
+    var pendingCanvasSelskap: String?
+    var pendingCanvasLeadId: String?
+    var pendingCanvasRequestedAt: Date?
+    /// Hopp til Canvas-fanen og åpne/opprett notat koblet til selskapet.
+    func requestCanvasNotat(selskap: String, leadId: String?) {
+        pendingCanvasSelskap = selskap
+        pendingCanvasLeadId = leadId
+        pendingCanvasRequestedAt = Date()
+        selectedSidebarItem = .canvas
+    }
+    func clearCanvasDeepLink() {
+        pendingCanvasSelskap = nil
+        pendingCanvasLeadId = nil
+        pendingCanvasRequestedAt = nil
+    }
+
     // Klienter (lazy-init når token er satt)
     private(set) var api: APIClient?
 
