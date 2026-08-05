@@ -621,6 +621,120 @@ ${tekst}`;
   });
 
   /**
+   * Leadgrid Canvas fase 3: håndskrevne møtenotater (Vision-OCR på iPad)
+   * → Claude strukturerer → oppsummering + oppgaver. Oppgavene lander i
+   * leadgrid_oppgaver (kilde canvas) og notatet i møteloggen slik at
+   * NESTE møtebrief åpner med skissa. Samme AI-nøkkel som møtebrief.
+   */
+  app.post("/api/leadgrid/canvas/analyse", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+      if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const selskap = String(b.selskap ?? "").trim().slice(0, 200);
+      const tekst = String(b.tekst ?? "").trim().slice(0, 10_000);
+      const leadId = typeof b.lead_id === "string" ? b.lead_id.slice(0, 64) : null;
+      if (tekst.length < 10) {
+        res.status(400).json({ error: "bad_request", message: "For lite gjenkjent tekst å analysere." });
+        return;
+      }
+
+      const prompt = `Du er notat-assistenten til en norsk B2B-feltselger. Under er TEKST GJENKJENT FRA HÅNDSKRIFT (Vision-OCR) fra et tegnet møtenotat${selskap ? ` om «${selskap}»` : ""}. OCR-en kan ha feil — tolk velvillig, men ikke dikt opp innhold.
+
+Lag på norsk:
+- oppsummering: 2-4 setninger som fanger essensen (situasjon, behov, neste steg).
+- oppgaver: konkrete gjøremål fra notatet, med frist-hint når nevnt («torsdag», «neste uke»). Kun det som faktisk står der.
+- lofter: ting selgeren lovte kunden (kan være tom liste).
+
+Returner KUN gyldig JSON:
+{"oppsummering":"<2-4 setninger>",
+ "oppgaver":[{"tittel":"<oppgave>","frist":"<frist-hint eller tom streng>"}],
+ "lofter":["<løfte>", "..."]}
+
+Gjenkjent tekst:
+${tekst}`;
+
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 900,
+          messages: [{ role: "user", content: prompt }],
+        }));
+      const text = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text).join("");
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null ? (inTok * 3 + outTok * 15) / 1_000_000 : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'canvas_analyse',$5,$6,$7,$8,$9)`,
+          [randomUUID(), orgId ?? "", session.userId, "", "claude-sonnet-4-6",
+           prompt.length, inTok, outTok, cost]);
+      } catch { /* logging velter aldri svaret */ }
+
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) { res.status(502).json({ error: "ai_svar_uparsbart" }); return; }
+      const resultat = JSON.parse(match[0]) as {
+        oppsummering?: string; oppgaver?: unknown; lofter?: unknown;
+      };
+      const oppgaveListe = (Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])
+        .slice(0, 10) as Array<{ tittel?: unknown; frist?: unknown }>;
+
+      // Oppgavene → leadgrid_oppgaver (Oversikt/Neste handlinger).
+      if (orgId) {
+        try {
+          await ensureOppgaveSchema(pool);
+          for (const o of oppgaveListe) {
+            const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
+            if (!tittel) continue;
+            await pool.query(
+              `INSERT INTO leadgrid_oppgaver
+                 (id, organization_id, user_id, selskap, lead_id, tittel, frist, kilde)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'canvas')`,
+              [randomUUID(), orgId, session.userId, selskap || "Canvas-notat",
+               leadId, tittel, String(o?.frist ?? "").slice(0, 80) || null]);
+          }
+        } catch (e) {
+          console.warn("[canvas-analyse] oppgave-lagring feilet:", String(e).slice(0, 120));
+        }
+      }
+
+      // Møtelogg-sløyfa: neste brief for selskapet åpner med notatet.
+      if (orgId && selskap) {
+        try {
+          await ensureLoggSchema(pool);
+          await pool.query(
+            `INSERT INTO leadgrid_mote_logg
+               (id, organization_id, user_id, selskap, orgnr, notat, lofter, oppgaver)
+             VALUES ($1,$2,$3,$4,NULL,$5,$6::jsonb,$7::jsonb)`,
+            [randomUUID(), orgId, session.userId, selskap,
+             `[Canvas-notat] ${String(resultat.oppsummering ?? "").slice(0, 1900)}`,
+             JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
+             JSON.stringify(oppgaveListe)]);
+          for (const key of briefCache.keys()) {
+            if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
+          }
+        } catch (e) {
+          console.warn("[canvas-analyse] logg-lagring feilet:", String(e).slice(0, 120));
+        }
+      }
+
+      res.json({ resultat: JSON.parse(match[0]) });
+    } catch (e) {
+      console.error("[canvas-analyse] failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /**
    * Oppgavelista (UGATED — kjernefunksjon, ingen AI): åpne oppgaver fra
    * møtelogging, bruker-scopet. Vises i Oversikt/Neste handlinger.
    */

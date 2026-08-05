@@ -17,6 +17,17 @@ struct CanvasNotatDTO: Decodable, Hashable {
     var eierNavn: String? = nil
 }
 
+struct CanvasAnalyseOppgaveDTO: Decodable, Hashable {
+    let tittel: String
+    var frist: String? = nil
+}
+
+struct CanvasAnalyseDTO: Decodable, Hashable {
+    let oppsummering: String
+    var oppgaver: [CanvasAnalyseOppgaveDTO]? = nil
+    var lofter: [String]? = nil
+}
+
 extension APIClient {
 
     func hentCanvasNotater() async throws -> [CanvasNotatDTO] {
@@ -65,6 +76,23 @@ extension APIClient {
         // bortsett fra leadId/drawingBase64; backend godtar begge former.
         _ = try await _request("/api/leadgrid/canvas/\(id)",
                                method: "PUT", body: data)
+    }
+
+    /// Fase 3: OCR-tekst fra tegningen → Claude → oppsummering + oppgaver.
+    /// Backend lagrer oppgavene (leadgrid_oppgaver, kilde canvas) og
+    /// møtelogg-innslag — neste brief åpner med notatet.
+    func analyserCanvasNotat(selskap: String?, tekst: String,
+                             leadId: String?) async throws -> CanvasAnalyseDTO {
+        struct Body: Encodable {
+            let selskap: String?
+            let tekst: String
+            let leadId: String?
+        }
+        struct Resp: Decodable { let resultat: CanvasAnalyseDTO }
+        let r: Resp = try await _post(
+            "/api/leadgrid/canvas/analyse",
+            body: Body(selskap: selskap, tekst: tekst, leadId: leadId))
+        return r.resultat
     }
 
     func slettCanvasNotat(id: String) async throws {
