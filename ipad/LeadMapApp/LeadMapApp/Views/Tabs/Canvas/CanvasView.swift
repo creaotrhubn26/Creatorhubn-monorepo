@@ -539,6 +539,7 @@ struct CanvasView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverEffect(.lift)
     }
 
     private func mappeInnhold(_ navn: String) -> some View {
@@ -817,6 +818,8 @@ struct CanvasView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Pencil Hover: kortet løfter seg når pennen svever over.
+        .hoverEffect(.lift)
         .contextMenu {
             if n.erMin {
                 Button(role: .destructive) { slett(n) } label: {

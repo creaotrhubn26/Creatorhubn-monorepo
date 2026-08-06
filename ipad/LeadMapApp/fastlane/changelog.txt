@@ -1,5 +1,10 @@
 Leadgrid 2.0 — Canvas, kundeminnet og en smartere hverdag
 
+NYTT I DETTE BYGGET — PENCIL HOVER (M2+ iPad Pro)
+• Lead-kort løfter seg når pennen svever over (Kart-panelet + Canvas-listene)
+• Svev over kartet → ghost-pin viser hvor pinnen lander før du trykker
+• Svev over et bilde i Canvas → 2×-forstørrelsesglass følger pennen
+
 NYTT I DETTE BYGGET — SAMARBEID I SANNTID
 • Ekte multi-penn: delte notater tegnes SAMMEN — kollegaens strøk dukker opp i det de tegnes (WebSocket, ikke polling)
 • «Tegner sammen med deg»-banner viser hvem som er i notatet akkurat nå

@@ -829,6 +829,8 @@ struct KartView: View {
 
     // Map-style toggle
     @State private var mapStyle: MapStyleChoice = .standardDark
+    /// Pencil Hover: pennen svever over kartet → ghost-pin-preview.
+    @State private var kartHoverPunkt: CGPoint? = nil
     @State private var mapStyleSheetOpen: Bool = false
 
     // Pass-2 overlays
@@ -2491,6 +2493,25 @@ struct KartView: View {
             // Skjul Apple Maps default-kontroller (zoom-pille + kompass +
             // "Maps Legal" overlay) — vi har vår egen FAB-stack bunn-høyre.
             .mapControls { }
+            // Pencil Hover: svever pennen over kartet vises en ghost-pin
+            // der den ville landet — kartet føles levende før du trykker.
+            .onContinuousHover(coordinateSpace: .local) { fase in
+                switch fase {
+                case .active(let punkt): kartHoverPunkt = punkt
+                case .ended: kartHoverPunkt = nil
+                }
+            }
+            .overlay {
+                if let punkt = kartHoverPunkt, !navModeActive, !measureMode {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(KrBrand.purpleLight.opacity(0.85))
+                        .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+                        .position(x: punkt.x, y: punkt.y - 22)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
             .onMapCameraChange(frequency: .continuous) { ctx in
                 currentRegion = ctx.region
                 // 2026-07-18 dørsalg: hent adresser når senteret har flyttet
@@ -4444,6 +4465,9 @@ struct KartView: View {
             )
         }
         .buttonStyle(.plain)
+        // Pencil Hover (M2+): kortet løfter seg når pennen svever over.
+        .hoverEffect(.lift)
+        
         // Hurtighandlinger uten å åpne kortet (long-press).
         .contextMenu {
             if let phone = lead.phoneOrDemo {
