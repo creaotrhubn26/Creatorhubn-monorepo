@@ -551,6 +551,8 @@ struct ObjektView: View {
     let redigerbar: Bool
     /// Ekte PDF: originaldokumentet siden hører til (vektor-rendering).
     var pdfDok: CanvasDokument? = nil
+    /// Pencil Hover: pennen svever over bildet → forstørrelsesglass.
+    @State private var hoverPunkt: CGPoint? = nil
     /// Living Canvas: ferskt (tittel, detalj) fra appState — overstyrer
     /// snapshotet i objektet.
     var liveInnhold: (String, String)? = nil
@@ -627,13 +629,38 @@ struct ObjektView: View {
            let data = Data(base64Encoded: b64),
            let img = UIImage(data: data) {
             // Bilde / kart-utsnitt
+            let visBredde = img.size.width * objekt.skala
+            let visHoyde = img.size.height * objekt.skala
             VStack(spacing: 0) {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: img.size.width * objekt.skala,
-                           height: img.size.height * objekt.skala)
+                    .frame(width: visBredde, height: visHoyde)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // Pencil Hover: 2×-lupe følger pennen over bildet.
+                    .onContinuousHover(coordinateSpace: .local) { fase in
+                        switch fase {
+                        case .active(let punkt): hoverPunkt = punkt
+                        case .ended: hoverPunkt = nil
+                        }
+                    }
+                    .overlay {
+                        if let punkt = hoverPunkt {
+                            let d: CGFloat = 110
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: visBredde * 2, height: visHoyde * 2)
+                                .offset(x: d / 2 - punkt.x * 2,
+                                        y: d / 2 - punkt.y * 2)
+                                .frame(width: d, height: d, alignment: .topLeading)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                                .shadow(color: .black.opacity(0.45), radius: 7, y: 3)
+                                .position(x: punkt.x, y: max(20, punkt.y - 75))
+                                .allowsHitTesting(false)
+                        }
+                    }
                 if objekt.type == "kart", let tittel = objekt.tittel, !tittel.isEmpty {
                     Text(tittel)
                         .font(.appScaled(size: 10, weight: .bold))
