@@ -28,6 +28,11 @@ struct RootView: View {
     init() {
         let data = (try? Self.store.load(id: Self.sceneId)) ?? DefaultScene.make()
         _document = State(initialValue: SceneDocument(data: data))
+        // QA-hook (samme mønster som Leadgrid): SIMCTL_CHILD_QA_MODE=lights|cameras|export
+        if let qa = ProcessInfo.processInfo.environment["QA_MODE"],
+           let m = AppMode.allCases.first(where: { $0.rawValue.lowercased() == qa.lowercased() }) {
+            _mode = State(initialValue: m)
+        }
     }
 
     var body: some View {
@@ -57,7 +62,19 @@ struct RootView: View {
                     .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        case .lights, .cameras, .export:
+        case .lights:
+            if let renderer {
+                LightsScreen(document: document, renderer: renderer)
+            } else {
+                StubScreen(mode: mode)
+            }
+        case .cameras:
+            if let renderer {
+                CamerasScreen(document: document, renderer: renderer)
+            } else {
+                StubScreen(mode: mode)
+            }
+        case .export:
             StubScreen(mode: mode)
         }
     }
