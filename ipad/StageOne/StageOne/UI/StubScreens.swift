@@ -35,23 +35,3 @@ struct StubScreen: View {
         }
     }
 }
-
-/// Plassholder til Task 10 leverer full inspector.
-struct InspectorPanel: View {
-    let document: SceneDocument
-
-    var body: some View {
-        VStack {
-            Text("Inspector")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.muted)
-                .textCase(.uppercase)
-                .kerning(0.5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-            Spacer()
-        }
-        .frame(width: 280)
-        .background(Theme.surface)
-    }
-}

@@ -32,6 +32,18 @@ final class SceneModelTests: XCTestCase {
         XCTAssertEqual(doc.data, before)
     }
 
+    @MainActor func testLightIntensityEdit() {
+        let doc = SceneDocument(data: DefaultScene.make())
+        doc.updateNode("fill-light") { n in
+            if case .light(var p) = n.params { p.intensity = 99; n.params = .light(p) }
+        }
+        guard case .light(let p)? = doc.data.node("fill-light")?.params else { return XCTFail() }
+        XCTAssertEqual(p.intensity, 99)
+        doc.undoManager.undo()
+        guard case .light(let p2)? = doc.data.node("fill-light")?.params else { return XCTFail() }
+        XCTAssertEqual(p2.intensity, 45)
+    }
+
     @MainActor func testTransientMutationSingleUndo() {
         let doc = SceneDocument(data: DefaultScene.make())
         let before = doc.data
