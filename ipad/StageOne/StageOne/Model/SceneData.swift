@@ -27,6 +27,7 @@ struct CameraParams: Codable, Equatable, Sendable {
     var iso: Int
     var shutter: String
     var dofEnabled: Bool       // lagres i v1, render-effekt kommer senere
+    var role: String? = nil    // optional → scener lagret før fase 2 dekoder fortsatt
 }
 
 struct TalentParams: Codable, Equatable, Sendable {

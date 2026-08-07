@@ -40,13 +40,13 @@ enum DefaultScene {
                 // Kameraer
                 Node(id: "camera-a", name: "Camera A", kind: .camera, enabled: true,
                      transform: Transform(position: [0.2, 1.4, 4.6], rotationEulerDeg: [-2, 2, 0], scale: .one),
-                     params: .camera(CameraParams(focalMm: 35, aperture: "f/2.8", iso: 800, shutter: "1/50", dofEnabled: true))),
+                     params: .camera(CameraParams(focalMm: 35, aperture: "f/2.8", iso: 800, shutter: "1/50", dofEnabled: true, role: "Wide master"))),
                 Node(id: "camera-b", name: "Camera B", kind: .camera, enabled: true,
                      transform: Transform(position: [-2.8, 1.5, 4.1], rotationEulerDeg: [-5, -33, 0], scale: .one),
-                     params: .camera(CameraParams(focalMm: 50, aperture: "f/2.0", iso: 640, shutter: "1/50", dofEnabled: true))),
+                     params: .camera(CameraParams(focalMm: 50, aperture: "f/2.0", iso: 640, shutter: "1/50", dofEnabled: true, role: "Cross on host"))),
                 Node(id: "camera-c", name: "Camera C", kind: .camera, enabled: true,
                      transform: Transform(position: [2.9, 1.5, 4.0], rotationEulerDeg: [-5, 35, 0], scale: .one),
-                     params: .camera(CameraParams(focalMm: 85, aperture: "f/1.8", iso: 800, shutter: "1/50", dofEnabled: true))),
+                     params: .camera(CameraParams(focalMm: 85, aperture: "f/1.8", iso: 800, shutter: "1/50", dofEnabled: true, role: "Cross on guest"))),
                 // Talent
                 Node(id: "host", name: "Host", kind: .talent, enabled: true,
                      transform: Transform(position: [-0.7, 0.85, 0.2], rotationEulerDeg: [0, 12, 0], scale: [0.45, 0.85, 0.45]),
