@@ -355,16 +355,21 @@ struct GlobalKeyboardShortcuts: View {
     var body: some View {
         #if targetEnvironment(macCatalyst)
         ZStack {
+            // KUN idx 0..8 → Cmd+1..9 (enkelt-siffer). idx≥9 ville gitt
+            // «10» = to grapheme clusters → `Character("10")` KRASJER hele
+            // Mac-appen ved oppstart. SidebarItem.allCases vokste forbi 9.
             ForEach(SidebarItem.allCases.indices, id: \.self) { idx in
-                let item = SidebarItem.allCases[idx]
-                let key = KeyEquivalent(Character("\(idx + 1)"))
-                Button {
-                    appState.selectedSidebarItem = item
-                } label: { EmptyView() }
-                    .keyboardShortcut(key, modifiers: .command)
-                    .frame(width: 0, height: 0)
-                    .opacity(0)
-                    .accessibilityHidden(true)
+                if idx < 9 {
+                    let item = SidebarItem.allCases[idx]
+                    let key = KeyEquivalent(Character("\(idx + 1)"))
+                    Button {
+                        appState.selectedSidebarItem = item
+                    } label: { EmptyView() }
+                        .keyboardShortcut(key, modifiers: .command)
+                        .frame(width: 0, height: 0)
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                }
             }
             // Cmd+, = Innstillinger (broadcast — fane-hostene kan lytte).
             Button {
