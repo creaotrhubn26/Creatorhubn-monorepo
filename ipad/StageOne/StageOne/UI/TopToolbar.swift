@@ -3,6 +3,8 @@ import SwiftUI
 struct TopToolbar: View {
     let document: SceneDocument
     @Binding var mode: AppMode
+    var accountSymbol: String = "person.crop.circle"
+    var onAccountTap: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 14) {
@@ -56,6 +58,16 @@ struct TopToolbar: View {
                     .background(Circle().fill(Theme.surface))
                     .overlay(Circle().stroke(Theme.border, lineWidth: Theme.hairline))
             }
+
+            Button(action: onAccountTap) {
+                Image(systemName: accountSymbol)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.fg)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Theme.surface))
+                    .overlay(Circle().stroke(Theme.border, lineWidth: Theme.hairline))
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
