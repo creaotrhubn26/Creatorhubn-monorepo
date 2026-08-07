@@ -75,6 +75,7 @@ scratch/
 docker/
 *.md
 !README.md
+!CLAUDE.md
 !ipad/CaptureApp/TESTFLIGHT.md
 !ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
 !backend/gfpgan-runner/GPU_DEPLOY.md
