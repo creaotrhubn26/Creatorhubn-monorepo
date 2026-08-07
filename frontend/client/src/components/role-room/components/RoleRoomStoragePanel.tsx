@@ -26,6 +26,8 @@ import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
 import LinkOffOutlinedIcon from '@mui/icons-material/LinkOffOutlined';
 import SwapHorizOutlinedIcon from '@mui/icons-material/SwapHorizOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { useT } from '../../../i18n';
+import type { TranslationKey, TVars } from '../../../i18n';
 
 const palette = {
   bg: '#150b2e',
@@ -97,17 +99,17 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
 }
 
-function formatRelative(iso: string): string {
+function formatRelative(iso: string, t: (key: TranslationKey, vars?: TVars) => string): string {
   const then = new Date(iso).getTime();
   const now = Date.now();
   const diff = Math.max(0, now - then);
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'akkurat nå';
-  if (mins < 60) return `${mins} min siden`;
+  if (mins < 1) return t('storage.time.justNow');
+  if (mins < 60) return t('storage.time.minAgo', { n: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} t siden`;
+  if (hrs < 24) return t('storage.time.hoursAgo', { n: hrs });
   const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days} d siden`;
+  if (days < 30) return t('storage.time.daysAgo', { n: days });
   return new Date(iso).toLocaleDateString('nb-NO');
 }
 
@@ -117,6 +119,7 @@ function authHeaders(): HeadersInit {
 }
 
 export default function RoleRoomStoragePanel() {
+  const { t } = useT();
   const [stats, setStats] = useState<Stats | null>(null);
   const [files, setFiles] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +153,7 @@ export default function RoleRoomStoragePanel() {
         const s = await statsRes.json();
         setStats(s);
       } else if (statsRes.status === 401) {
-        setError('Logg inn for å se lagringen.');
+        setError(t('storage.error.login'));
       }
       if (filesRes.ok) {
         const f = await filesRes.json();
@@ -204,18 +207,20 @@ export default function RoleRoomStoragePanel() {
   };
 
   const handleByoDisconnect = async () => {
-    if (!confirm('Koble fra din egen B2? Filene blir igjen på din egen B2 — du kan koble til igjen senere.')) return;
+    if (!confirm(t('storage.confirm.byoDisconnect'))) return;
     await fetch('/api/role-room/storage/byo', { method: 'DELETE', headers: authHeaders() });
     await refresh();
   };
 
   const [storyboardMigrating, setStoryboardMigrating] = useState(false);
   const [storyboardMigrateResult, setStoryboardMigrateResult] = useState<string | null>(null);
+  const [storyboardMigrateError, setStoryboardMigrateError] = useState(false);
 
   const handleStoryboardMigrate = async () => {
-    if (!confirm('Migrer alle dine storyboard-skisser fra Postgres-databasen til Backblaze B2? Dette frigjør plass i DB-en og knytter hver skisse til riktig prosjekt + scene.')) return;
+    if (!confirm(t('storage.confirm.storyboardMigrate'))) return;
     setStoryboardMigrating(true);
     setStoryboardMigrateResult(null);
+    setStoryboardMigrateError(false);
     try {
       const r = await fetch('/api/role-room/storage/storyboards/migrate-all', {
         method: 'POST',
@@ -224,11 +229,16 @@ export default function RoleRoomStoragePanel() {
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        setStoryboardMigrateResult(`Feil: ${body.error ?? r.status}`);
+        setStoryboardMigrateError(true);
+        setStoryboardMigrateResult(t('storage.storyboard.error', { error: body.error ?? r.status }));
       } else {
         const body = await r.json();
         setStoryboardMigrateResult(
-          `${body.succeeded} skisser flyttet til B2, ${body.alreadyMoved} allerede flyttet, ${body.failed} feilet.`,
+          t('storage.storyboard.result', {
+            ok: body.succeeded,
+            already: body.alreadyMoved,
+            failed: body.failed,
+          }),
         );
         await refresh();
       }
@@ -238,7 +248,7 @@ export default function RoleRoomStoragePanel() {
   };
 
   const handleByoMigrate = async () => {
-    if (!confirm('Starte migrasjon av alle filer fra admin-B2 til din egen B2?')) return;
+    if (!confirm(t('storage.confirm.byoMigrate'))) return;
     setMigrating(true);
     try {
       const r = await fetch('/api/role-room/storage/byo/migrate', {
@@ -247,7 +257,7 @@ export default function RoleRoomStoragePanel() {
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        setError(body.error ?? `Migrasjon kunne ikke startes (HTTP ${r.status})`);
+        setError(body.error ?? t('storage.error.migrateStart', { status: r.status }));
       } else {
         await refresh();
       }
@@ -273,12 +283,12 @@ export default function RoleRoomStoragePanel() {
         });
         if (r.status === 507) {
           const body = await r.json();
-          setError(body.detail ?? 'Kvoten er nådd.');
+          setError(body.detail ?? t('storage.error.quotaReached'));
           break;
         }
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
-          setError(body.detail ?? `Opplasting feilet (HTTP ${r.status})`);
+          setError(body.detail ?? t('storage.error.uploadFailed', { status: r.status }));
           break;
         }
       }
@@ -289,7 +299,7 @@ export default function RoleRoomStoragePanel() {
   };
 
   const handleDelete = async (fileId: string) => {
-    if (!confirm('Slette filen permanent?')) return;
+    if (!confirm(t('storage.confirm.deleteFile'))) return;
     try {
       const r = await fetch(`/api/role-room/storage/files/${fileId}`, {
         method: 'DELETE',
@@ -319,8 +329,8 @@ export default function RoleRoomStoragePanel() {
   }
 
   const quotaLabel = stats?.quotaBytes
-    ? `${formatBytes(stats.usedBytes)} av ${formatBytes(stats.quotaBytes)}`
-    : `${formatBytes(stats?.usedBytes ?? 0)} (ubegrenset — BYO)`;
+    ? t('storage.quota.of', { used: formatBytes(stats.usedBytes), total: formatBytes(stats.quotaBytes) })
+    : t('storage.quota.unlimited', { used: formatBytes(stats?.usedBytes ?? 0) });
   const pct = stats?.percentageUsed ?? 0;
   const barColor = pct >= 90 ? palette.danger : pct >= 75 ? palette.warning : palette.accent;
   const isFull = pct >= 100;
@@ -340,14 +350,14 @@ export default function RoleRoomStoragePanel() {
             </Box>
             <Stack>
               <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', color: palette.textPrimary }}>
-                Lagring
+                {t('storage.title')}
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-                Self-tapes, decks, postere og dokumenter du har lastet opp
+                {t('storage.subtitle')}
               </Typography>
             </Stack>
           </Stack>
-          <Tooltip title="Oppdater">
+          <Tooltip title={t('storage.action.refresh')}>
             <IconButton onClick={refresh} size="small" sx={{ color: palette.textSecondary }}>
               <RefreshOutlinedIcon fontSize="small" />
             </IconButton>
@@ -372,7 +382,7 @@ export default function RoleRoomStoragePanel() {
               {quotaLabel}
             </Typography>
             <Chip
-              label={stats?.tier === 'free' ? 'GRATIS · 1 GB' : stats?.tier === 'paid' ? 'BETALT' : 'BYO B2'}
+              label={stats?.tier === 'free' ? t('storage.tier.free') : stats?.tier === 'paid' ? t('storage.tier.paid') : 'BYO B2'}
               size="small"
               sx={{
                 bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent,
@@ -391,10 +401,10 @@ export default function RoleRoomStoragePanel() {
           />
           <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.8 }}>
             <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted }}>
-              {stats?.fileCount ?? 0} filer
+              {t('storage.stat.files', { n: stats?.fileCount ?? 0 })}
             </Typography>
             <Typography sx={{ fontSize: '0.76rem', color: barColor, fontWeight: 600 }}>
-              {pct}% brukt
+              {t('storage.stat.percentUsed', { n: pct })}
             </Typography>
           </Stack>
         </Box>
@@ -432,18 +442,18 @@ export default function RoleRoomStoragePanel() {
             <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.4}>
               <CircularProgress size={20} sx={{ color: palette.accent }} />
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-                Laster opp …
+                {t('storage.upload.uploading')}
               </Typography>
             </Stack>
           ) : (
             <Stack alignItems="center" spacing={1}>
               <CloudUploadOutlinedIcon sx={{ color: palette.accent, fontSize: 36 }} />
               <Typography sx={{ fontWeight: 700, color: palette.textPrimary, fontSize: '0.96rem' }}>
-                {isFull ? 'Kvoten er nådd' : 'Dra hit eller klikk for å laste opp'}
+                {isFull ? t('storage.upload.quotaReached') : t('storage.upload.dropOrClick')}
               </Typography>
               {!isFull && (
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                  Maks 500 MB per fil
+                  {t('storage.upload.maxSize')}
                 </Typography>
               )}
             </Stack>
@@ -464,15 +474,15 @@ export default function RoleRoomStoragePanel() {
             '& .MuiTabs-indicator': { bgcolor: palette.accent },
           }}
         >
-          <Tab label={`Alle filer (${files.length})`} value="all" />
-          <Tab label={`Per prosjekt (${perProject.length})`} value="per-project" />
+          <Tab label={t('storage.tab.allFiles', { n: files.length })} value="all" />
+          <Tab label={t('storage.tab.perProject', { n: perProject.length })} value="per-project" />
         </Tabs>
 
         {/* Fil-liste — Alle filer */}
         {viewMode === 'all' && (
           files.length === 0 ? (
             <Alert severity="info" sx={{ fontSize: '0.86rem' }}>
-              Ingen filer ennå. Last opp en self-tape, deck eller poster for å komme i gang.
+              {t('storage.empty.allFiles')}
             </Alert>
           ) : (
             <Stack spacing={0.8}>
@@ -493,7 +503,7 @@ export default function RoleRoomStoragePanel() {
                     </Typography>
                     <Stack direction="row" spacing={0.6} alignItems="center" sx={{ flexWrap: 'wrap' }}>
                       <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
-                        {formatBytes(f.sizeBytes)} · {formatRelative(f.uploadedAt)}
+                        {formatBytes(f.sizeBytes)} · {formatRelative(f.uploadedAt, t)}
                       </Typography>
                       {f.attachedToEntityType && (
                         <Chip
@@ -517,12 +527,12 @@ export default function RoleRoomStoragePanel() {
                       )}
                     </Stack>
                   </Stack>
-                  <Tooltip title="Last ned">
+                  <Tooltip title={t('storage.action.download')}>
                     <IconButton size="small" onClick={() => handleDownload(f.id)} sx={{ color: palette.textSecondary }}>
                       <DownloadOutlinedIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Slett">
+                  <Tooltip title={t('storage.action.delete')}>
                     <IconButton size="small" onClick={() => handleDelete(f.id)} sx={{ color: palette.danger }}>
                       <DeleteOutlineOutlinedIcon fontSize="small" />
                     </IconButton>
@@ -537,8 +547,7 @@ export default function RoleRoomStoragePanel() {
         {viewMode === 'per-project' && (
           perProject.length === 0 ? (
             <Alert severity="info" sx={{ fontSize: '0.86rem' }}>
-              Ingen filer er knyttet til prosjekter ennå. Når du laster opp fra en storyboard-,
-              role- eller research-view, blir filen automatisk koblet til riktig prosjekt.
+              {t('storage.empty.perProject')}
             </Alert>
           ) : (
             <Stack spacing={0.8}>
@@ -551,10 +560,10 @@ export default function RoleRoomStoragePanel() {
                 }}>
                   <Stack sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: palette.textPrimary }}>
-                      {p.projectName ?? (p.projectId ? '(slettet prosjekt)' : 'Ikke knyttet til prosjekt')}
+                      {p.projectName ?? (p.projectId ? t('storage.project.deleted') : t('storage.project.unlinked'))}
                     </Typography>
                     <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted }}>
-                      {p.fileCount} {p.fileCount === 1 ? 'fil' : 'filer'} · {formatBytes(p.totalBytes)}
+                      {p.fileCount} {p.fileCount === 1 ? t('storage.unit.file') : t('storage.unit.files')} · {formatBytes(p.totalBytes)}
                     </Typography>
                   </Stack>
                   <Chip
@@ -573,9 +582,7 @@ export default function RoleRoomStoragePanel() {
 
         {isFull && stats?.tier === 'free' && (
           <Alert severity="warning" sx={{ mt: 2, fontSize: '0.86rem' }}>
-            Du har brukt opp gratis-grensen på 1 GB. Slett filer for å frigjøre plass,
-            eller koble din egen Backblaze B2 (BYO) for ubegrenset plass på din egen
-            konto. Betalt 10 GB-tier kommer snart.
+            {t('storage.alert.quotaFull')}
           </Alert>
         )}
 
@@ -591,7 +598,7 @@ export default function RoleRoomStoragePanel() {
             <Stack direction="row" alignItems="center" spacing={1}>
               <InsertDriveFileOutlinedIcon sx={{ color: palette.accent, fontSize: 20 }} />
               <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: palette.textPrimary }}>
-                Storyboard-skisser
+                {t('storage.storyboard.title')}
               </Typography>
             </Stack>
             <Button
@@ -605,17 +612,15 @@ export default function RoleRoomStoragePanel() {
                 '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(168,85,247,0.06)' },
               }}
             >
-              Flytt til B2
+              {t('storage.storyboard.moveToB2')}
             </Button>
           </Stack>
           <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-            Dine storyboard-skisser ligger i dag som data-URL i Postgres-databasen. Klikk
-            for å flytte alle til B2 — hver fil blir koblet til riktig prosjekt + scene
-            automatisk og frigjør DB-plass.
+            {t('storage.storyboard.description')}
           </Typography>
           {storyboardMigrateResult && (
             <Alert
-              severity={storyboardMigrateResult.startsWith('Feil') ? 'error' : 'success'}
+              severity={storyboardMigrateError ? 'error' : 'success'}
               sx={{ mt: 1.2, fontSize: '0.78rem' }}
             >
               {storyboardMigrateResult}
@@ -635,12 +640,12 @@ export default function RoleRoomStoragePanel() {
             <Stack direction="row" alignItems="center" spacing={1.2}>
               <LinkOutlinedIcon sx={{ color: palette.accent, fontSize: 22 }} />
               <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', color: palette.textPrimary }}>
-                Din egen Backblaze B2
+                {t('storage.byo.title')}
               </Typography>
               {byo?.connected && (
                 <Chip
                   icon={<CheckCircleOutlineIcon sx={{ color: `${palette.success} !important`, fontSize: 14 }} />}
-                  label="TILKOBLET"
+                  label={t('storage.byo.connected')}
                   size="small"
                   sx={{
                     bgcolor: `${palette.success}33`, color: palette.success,
@@ -656,7 +661,7 @@ export default function RoleRoomStoragePanel() {
                 startIcon={<LinkOffOutlinedIcon sx={{ fontSize: 16 }} />}
                 sx={{ color: palette.textSecondary, fontSize: '0.78rem' }}
               >
-                Koble fra
+                {t('storage.byo.disconnect')}
               </Button>
             ) : (
               <Button
@@ -666,15 +671,15 @@ export default function RoleRoomStoragePanel() {
                 sx={{ bgcolor: palette.accentBright, fontWeight: 700, fontSize: '0.78rem',
                   '&:hover': { bgcolor: palette.accent } }}
               >
-                Koble til
+                {t('storage.byo.connect')}
               </Button>
             )}
           </Stack>
 
           <Typography sx={{ fontSize: '0.82rem', color: palette.textSecondary, mb: byo?.connected ? 1.4 : 0 }}>
             {byo?.connected
-              ? `Bucket: ${byo.bucketName} · ${byo.region}. Alle nye filer går til din egen B2 — du betaler Backblaze direkte.`
-              : 'Koble din egen Backblaze B2-konto for ubegrenset plass. Vi krypterer key-ID + key med din personlige nøkkel og lagrer aldri klartekst. Du betaler Backblaze direkte (≈ $6/TB/måned).'
+              ? t('storage.byo.connectedInfo', { bucket: byo.bucketName ?? '', region: byo.region ?? '' })
+              : t('storage.byo.pitch')
             }
           </Typography>
 
@@ -691,8 +696,8 @@ export default function RoleRoomStoragePanel() {
               }}
             >
               {stats?.fileCount === 0
-                ? 'Ingen filer å migrere'
-                : `Migrer ${stats?.fileCount ?? 0} filer (${formatBytes(stats?.usedBytes ?? 0)}) til din B2`
+                ? t('storage.byo.noFilesToMigrate')
+                : t('storage.byo.migrateFiles', { n: stats?.fileCount ?? 0, size: formatBytes(stats?.usedBytes ?? 0) })
               }
             </Button>
           )}
@@ -701,7 +706,7 @@ export default function RoleRoomStoragePanel() {
             <Box sx={{ mt: 1.4 }}>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.6 }}>
                 <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: palette.textPrimary }}>
-                  Migrasjon: {byo.migration.filesCompleted} / {byo.migration.totalFiles} filer
+                  {t('storage.migration.progress', { done: byo.migration.filesCompleted, total: byo.migration.totalFiles })}
                 </Typography>
                 <Chip
                   label={byo.migration.status.toUpperCase()}
@@ -738,7 +743,7 @@ export default function RoleRoomStoragePanel() {
               )}
               {byo.migration.filesFailed > 0 && (
                 <Typography sx={{ fontSize: '0.74rem', color: palette.danger, mt: 0.4 }}>
-                  {byo.migration.filesFailed} filer feilet — se /admin for detaljer
+                  {t('storage.migration.filesFailed', { n: byo.migration.filesFailed })}
                 </Typography>
               )}
             </Box>
@@ -748,16 +753,14 @@ export default function RoleRoomStoragePanel() {
 
       {/* BYO connect-dialog */}
       <Dialog open={byoDialogOpen} onClose={() => setByoDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>Koble til din egen Backblaze B2</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>{t('storage.byo.dialogTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Alert severity="info" sx={{ fontSize: '0.82rem' }}>
-              Opprett en application-key i Backblaze med tilgang KUN til den spesifikke bucket-en
-              du vil bruke. Vi krypterer nøklene med din personlige nøkkel og dekrypterer kun
-              ved opplastinger/nedlastinger.
+              {t('storage.byo.dialogInfo')}
             </Alert>
             <TextField
-              label="Bucket-navn"
+              label={t('storage.byo.bucketName')}
               value={byoForm.bucketName}
               onChange={(e) => setByoForm({ ...byoForm, bucketName: e.target.value })}
               size="small" fullWidth required
@@ -769,7 +772,7 @@ export default function RoleRoomStoragePanel() {
               size="small" fullWidth required
             />
             <TextField
-              label="Application Key (hemmelig)"
+              label={t('storage.byo.appKeySecret')}
               type="password"
               value={byoForm.applicationKey}
               onChange={(e) => setByoForm({ ...byoForm, applicationKey: e.target.value })}
@@ -780,18 +783,18 @@ export default function RoleRoomStoragePanel() {
               value={byoForm.region}
               onChange={(e) => setByoForm({ ...byoForm, region: e.target.value })}
               size="small" fullWidth
-              helperText="F.eks. us-west-001 (Sacramento), eu-central-003 (Amsterdam)"
+              helperText={t('storage.byo.regionHelp')}
             />
             {byoError && (
               <Alert severity="error" sx={{ fontSize: '0.82rem' }}>
-                Validering feilet: {byoError}
+                {t('storage.byo.validationFailed', { error: byoError })}
               </Alert>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setByoDialogOpen(false)} sx={{ color: palette.textSecondary }}>
-            Avbryt
+            {t('storage.action.cancel')}
           </Button>
           <Button
             onClick={handleByoConnect}
@@ -801,7 +804,7 @@ export default function RoleRoomStoragePanel() {
             sx={{ bgcolor: palette.accentBright, fontWeight: 700,
               '&:hover': { bgcolor: palette.accent } }}
           >
-            Test + lagre
+            {t('storage.byo.testAndSave')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -34,6 +34,7 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT } from '../../../i18n';
 
 interface ProductionControlPanelProps {
   selectedScene?: SceneBreakdown;
@@ -53,13 +54,14 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
   selectedShot,
   onClose,
 }) => {
+  const { t } = useT();
   const [activeTab, setActiveTab] = useState(0);
 
   if (!selectedScene && !selectedShot) {
     return (
       <Paper sx={{ p: 3, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Typography variant="body2" color="text.secondary" align="center">
-          Velg en scene eller shot for å se produksjonsdetaljer
+          {t('prodctrl.selectScenePrompt')}
         </Typography>
       </Paper>
     );
@@ -71,14 +73,14 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
           <Box>
-            <Typography variant="h6">Produksjonskontroll</Typography>
+            <Typography variant="h6">{t('prodctrl.title')}</Typography>
             {selectedScene && (
               <Typography variant="caption" color="text.secondary">
                 Scene {selectedScene.sceneNumber} {selectedShot ? `- ${selectedShot}` : ''}
               </Typography>
             )}
           </Box>
-          <IconButton size="small" onClick={onClose} aria-label="Lukk">
+          <IconButton size="small" onClick={onClose} aria-label={t('prodctrl.close')}>
             <CloseIcon />
           </IconButton>
         </Stack>
@@ -91,8 +93,8 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
             <Stack direction="row" spacing={2} alignItems="center">
               <LocationIcon color="primary" />
               <Box flex={1}>
-                <Typography variant="caption" color="text.secondary">Lokasjon</Typography>
-                <Typography variant="body2">{selectedScene.locationName || 'Ikke satt'}</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.location')}</Typography>
+                <Typography variant="body2">{selectedScene.locationName || t('prodctrl.notSet')}</Typography>
               </Box>
             </Stack>
             
@@ -106,7 +108,7 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
 
             {selectedScene.characters && selectedScene.characters.length > 0 && (
               <Box>
-                <Typography variant="caption" color="text.secondary">Karakterer i scenen</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.charactersInScene')}</Typography>
                 <Stack direction="row" spacing={0.5} mt={0.5} flexWrap="wrap">
                   {selectedScene.characters.map((char, i) => (
                     <Chip key={i} label={char} size="small" icon={<PersonIcon />} />
@@ -122,10 +124,10 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
       {selectedShot && (
         <>
           <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tab icon={<VideocamIcon />} label="Kamera" />
-            <Tab icon={<LightbulbIcon />} label="Lys" />
-            <Tab icon={<MicIcon />} label="Lyd" />
-            <Tab icon={<ImageIcon />} label="Referanser" />
+            <Tab icon={<VideocamIcon />} label={t('prodctrl.tabCamera')} />
+            <Tab icon={<LightbulbIcon />} label={t('prodctrl.tabLight')} />
+            <Tab icon={<MicIcon />} label={t('prodctrl.tabAudio')} />
+            <Tab icon={<ImageIcon />} label={t('prodctrl.tabReferences')} />
           </Tabs>
 
           <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
@@ -148,23 +150,24 @@ export const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({
 };
 
 const CameraControlPanel: React.FC = () => {
+  const { t } = useT();
   return (
     <Stack spacing={2}>
-      <Typography variant="subtitle2">Kamera Setup</Typography>
+      <Typography variant="subtitle2">{t('prodctrl.cameraSetup')}</Typography>
 
       <Card variant="outlined">
         <CardContent>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6 }}>
-              <Typography variant="caption" color="text.secondary">Brennvidde</Typography>
+              <Typography variant="caption" color="text.secondary">{t('prodctrl.focalLength')}</Typography>
               <Typography variant="h6">50mm</Typography>
             </Grid>
             <Grid size={{ xs: 6 }}>
-              <Typography variant="caption" color="text.secondary">Kameratype</Typography>
+              <Typography variant="caption" color="text.secondary">{t('prodctrl.cameraType')}</Typography>
               <Typography variant="body2">ARRI Alexa</Typography>
             </Grid>
             <Grid size={{ xs: 6 }}>
-              <Typography variant="caption" color="text.secondary">Bevegelse</Typography>
+              <Typography variant="caption" color="text.secondary">{t('prodctrl.movement')}</Typography>
               <Typography variant="body2">Dolly</Typography>
             </Grid>
             <Grid size={{ xs: 6 }}>
@@ -176,14 +179,14 @@ const CameraControlPanel: React.FC = () => {
       </Card>
 
       <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
-        Foreslåtte innstillinger:
+        {t('prodctrl.suggestedSettings')}
       </Typography>
       
       <List dense>
         <ListItem>
           <ListItemText
             primary="F-stop: f/2.8"
-            secondary="For god dybdeskarphet på denne brennvidden"
+            secondary={t('prodctrl.hintFstop')}
           />
         </ListItem>
         <ListItem>
@@ -195,7 +198,7 @@ const CameraControlPanel: React.FC = () => {
         <ListItem>
           <ListItemText
             primary="ISO: 800"
-            secondary="Optimal for innendørs med supplerende lys"
+            secondary={t('prodctrl.hintIso')}
           />
         </ListItem>
       </List>
@@ -204,9 +207,10 @@ const CameraControlPanel: React.FC = () => {
 };
 
 const LightingControlPanel: React.FC = () => {
+  const { t } = useT();
   return (
     <Stack spacing={2}>
-      <Typography variant="subtitle2">Lysoppsett</Typography>
+      <Typography variant="subtitle2">{t('prodctrl.lightingSetup')}</Typography>
 
       {/* Key Light */}
       <Card variant="outlined">
@@ -218,11 +222,11 @@ const LightingControlPanel: React.FC = () => {
             </Stack>
             <Grid container spacing={1}>
               <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">Retning</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.direction')}</Typography>
                 <Typography variant="body2">Front-left 45°</Typography>
               </Grid>
               <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">Intensitet</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.intensity')}</Typography>
                 <Typography variant="body2">80%</Typography>
               </Grid>
             </Grid>
@@ -240,11 +244,11 @@ const LightingControlPanel: React.FC = () => {
             </Stack>
             <Grid container spacing={1}>
               <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">Retning</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.direction')}</Typography>
                 <Typography variant="body2">Front-right</Typography>
               </Grid>
               <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">Intensitet</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.intensity')}</Typography>
                 <Typography variant="body2">40%</Typography>
               </Grid>
             </Grid>
@@ -262,11 +266,11 @@ const LightingControlPanel: React.FC = () => {
             </Stack>
             <Grid container spacing={1}>
               <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">Retning</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.direction')}</Typography>
                 <Typography variant="body2">Back</Typography>
               </Grid>
               <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary">Intensitet</Typography>
+                <Typography variant="caption" color="text.secondary">{t('prodctrl.intensity')}</Typography>
                 <Typography variant="body2">60%</Typography>
               </Grid>
             </Grid>
@@ -278,11 +282,11 @@ const LightingControlPanel: React.FC = () => {
 
       <Stack direction="row" spacing={2}>
         <Box flex={1}>
-          <Typography variant="caption" color="text.secondary">Fargetemperatur</Typography>
+          <Typography variant="caption" color="text.secondary">{t('prodctrl.colorTemp')}</Typography>
           <Typography variant="body2">5600K</Typography>
         </Box>
         <Box flex={1}>
-          <Typography variant="caption" color="text.secondary">Stil</Typography>
+          <Typography variant="caption" color="text.secondary">{t('prodctrl.style')}</Typography>
           <Typography variant="body2">Natural</Typography>
         </Box>
       </Stack>
@@ -291,9 +295,10 @@ const LightingControlPanel: React.FC = () => {
 };
 
 const AudioControlPanel: React.FC = () => {
+  const { t } = useT();
   return (
     <Stack spacing={2}>
-      <Typography variant="subtitle2">Lydoppsett</Typography>
+      <Typography variant="subtitle2">{t('prodctrl.audioSetup')}</Typography>
 
       <Card variant="outlined">
         <CardContent>
@@ -304,14 +309,14 @@ const AudioControlPanel: React.FC = () => {
             </Box>
             
             <Box>
-              <Typography variant="caption" color="text.secondary">Mikrofon Setup</Typography>
+              <Typography variant="caption" color="text.secondary">{t('prodctrl.micSetup')}</Typography>
               <Typography variant="body2">Boom + Lav</Typography>
             </Box>
           </Stack>
         </CardContent>
       </Card>
 
-      <Typography variant="caption" color="text.secondary">Atmosfære</Typography>
+      <Typography variant="caption" color="text.secondary">{t('prodctrl.atmosphere')}</Typography>
       <Stack direction="row" spacing={0.5} flexWrap="wrap">
         <Chip label="Traffic ambiance" size="small" />
         <Chip label="Birds" size="small" />
@@ -327,19 +332,20 @@ const AudioControlPanel: React.FC = () => {
 };
 
 const ReferencesPanel: React.FC = () => {
+  const { t } = useT();
   const [images, setImages] = useState<string[]>([]);
   const [visualNotes, setVisualNotes] = useState('');
 
   return (
     <Stack spacing={2}>
-      <Typography variant="subtitle2">Referansebilder & Mood</Typography>
+      <Typography variant="subtitle2">{t('prodctrl.referencesTitle')}</Typography>
 
       <Button
         variant="outlined"
         startIcon={<AddIcon />}
         fullWidth
       >
-        Last opp referanse
+        {t('prodctrl.uploadReference')}
       </Button>
 
       <Grid container spacing={1}>
@@ -356,7 +362,7 @@ const ReferencesPanel: React.FC = () => {
             >
               <ImageIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
               <Typography variant="body2" color="text.secondary">
-                Ingen referansebilder lagt til ennå
+                {t('prodctrl.noReferences')}
               </Typography>
             </Paper>
           </Grid>
@@ -391,10 +397,10 @@ const ReferencesPanel: React.FC = () => {
       </Box>
 
       <TextField
-        label="Visuelle notater"
+        label={t('prodctrl.visualNotes')}
         multiline
         rows={3}
-        placeholder="Beskrivelse av ønsket look, farge, stemning..."
+        placeholder={t('prodctrl.visualNotesPlaceholder')}
         value={visualNotes}
         onChange={(event) => setVisualNotes(event.target.value)}
         fullWidth
@@ -403,8 +409,8 @@ const ReferencesPanel: React.FC = () => {
         text={visualNotes}
         localCandidates={['Regi', 'Foto', 'Lys', 'Colorist', 'Moodboard']}
         onApplySuggestion={(name) => setVisualNotes((prev) => applyMentionSuggestion(prev, name))}
-        autoTagTitle="Auto-tagget i notater"
-        suggestionTitle="Mener du?"
+        autoTagTitle={t('prodctrl.autoTagged')}
+        suggestionTitle={t('prodctrl.didYouMean')}
       />
     </Stack>
   );

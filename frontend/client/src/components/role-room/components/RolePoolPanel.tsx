@@ -11,6 +11,7 @@ import { roleQueryKeys } from "../services/roleQueryKeys";
 import { createTemplateImportAuditEntry, type RoleTemplate } from "../config/roleDomain";
 import { Z_INDEX } from "../config/zIndex";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
+import { useT } from '../../../i18n';
 
 interface RolePoolPanelProps {
   projects: CastingProject[];
@@ -32,6 +33,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   currentProjectId,
   onImport,
 }) => {
+  const { t } = useT();
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -264,7 +266,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
           gap: 1,
         }}>
           <RoleIcon sx={{ color: roleTabAccent }} />
-          Rollepool
+          {t('rolepool.title')}
           <Chip 
             label={poolRoles.length} 
             size="small" 
@@ -277,7 +279,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
         </Typography>
 
         <TextField
-          placeholder="Søk i rollepool..."
+          placeholder={t('rolepool.searchPlaceholder')}
           size="small"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -303,8 +305,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
       </Box>
 
       <Typography variant="body2" sx={{ color: roleTextMuted, mb: 3 }}>
-        Global rollepool - gjenbruk rollebeskrivelser på tvers av prosjekter.
-        Lagre roller til poolen fra prosjekter, eller importer fra poolen til nye prosjekter.
+        {t('rolepool.intro')}
       </Typography>
 
       <Box
@@ -321,7 +322,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
         }}
       >
         <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
-          Visning:
+          {t('rolepool.viewLabel')}
         </Typography>
         <Button
           variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
@@ -337,7 +338,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             },
           }}
         >
-          Standard
+          {t('rolepool.standardView')}
         </Button>
         <Button
           variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
@@ -353,14 +354,14 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             },
           }}
         >
-          Pro-visning
+          {t('rolepool.proView')}
         </Button>
       </Box>
 
       {workspaceView === 'pro' && (
         loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <Typography sx={{ color: roleTextMuted }}>Laster roller...</Typography>
+            <Typography sx={{ color: roleTextMuted }}>{t('rolepool.loadingRoles')}</Typography>
           </Box>
         ) : filteredRoles.length === 0 ? (
           <Box
@@ -375,10 +376,10 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
           >
             <RoleIcon sx={{ fontSize: 48, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
             <Typography sx={{ color: roleText, mb: 1 }}>
-              {searchQuery ? 'Ingen roller matcher søket' : 'Ingen roller i poolen ennå'}
+              {searchQuery ? t('rolepool.noRolesMatch') : t('rolepool.noRolesYet')}
             </Typography>
             <Typography variant="body2" sx={{ color: roleTextMuted }}>
-              Lagre roller fra prosjekter for å fylle poolen
+              {t('rolepool.fillHint')}
             </Typography>
           </Box>
         ) : (
@@ -403,7 +404,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               }}
             >
               <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.1rem', px: 0.5, py: 0.25 }}>
-                Rollemaler
+                {t('rolepool.roleTemplates')}
               </Typography>
               <Box sx={{ overflowY: 'auto', maxHeight: { xs: 380, lg: 520 }, pr: 0.5 }}>
                 <Stack spacing={1}>
@@ -470,7 +471,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                                   event.stopPropagation();
                                   handleImportClick(role);
                                 }}
-                                aria-label="Importer rolle"
+                                aria-label={t('rolepool.ariaImportRole')}
                                 sx={{ color: roleTabAccent, minWidth: 30, minHeight: 30 }}
                               >
                                 <DownloadIcon fontSize="small" />
@@ -481,7 +482,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                                   event.stopPropagation();
                                   handleDeleteFromPool(role);
                                 }}
-                                aria-label="Slett fra pool"
+                                aria-label={t('rolepool.ariaDeleteFromPool')}
                                 sx={{ color: roleTextMuted, minWidth: 30, minHeight: 30 }}
                               >
                                 <DeleteIcon fontSize="small" />
@@ -529,7 +530,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                     />
                   </Box>
                   <Typography sx={{ color: roleTextMuted, fontSize: '0.92rem', minHeight: 48 }}>
-                    {selectedTemplate.description || 'Ingen beskrivelse lagt inn.'}
+                    {selectedTemplate.description || t('rolepool.noDescription')}
                   </Typography>
                   <Box>
                     <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.75 }}>
@@ -544,18 +545,18 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                           sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent }}
                         />
                       )) : (
-                        <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>Ingen tags satt</Typography>
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>{t('rolepool.noTagsSet')}</Typography>
                       )}
                     </Box>
                   </Box>
                   <Divider sx={{ borderColor: roleBorder }} />
                   <Stack spacing={1}>
                     <FormControl fullWidth size="small">
-                      <InputLabel sx={{ color: roleTextMuted }}>Prosjekt</InputLabel>
+                      <InputLabel sx={{ color: roleTextMuted }}>{t('rolepool.project')}</InputLabel>
                       <Select
                         value={targetProjectId}
                         onChange={(event) => setTargetProjectId(event.target.value)}
-                        label="Prosjekt"
+                        label={t('rolepool.project')}
                         MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
                         sx={{
                           color: roleText,
@@ -604,7 +605,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                           '&:hover': { bgcolor: roleTabAccentHover },
                         }}
                       >
-                        Importer
+                        {t('rolepool.import')}
                       </Button>
                       <Button
                         fullWidth
@@ -612,13 +613,13 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                         onClick={() => handleDeleteFromPool(selectedTemplate)}
                         sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
                       >
-                        Slett
+                        {t('rolepool.delete')}
                       </Button>
                     </Box>
                   </Stack>
                 </>
               ) : (
-                <Typography sx={{ color: roleTextMuted }}>Velg en mal for detaljer.</Typography>
+                <Typography sx={{ color: roleTextMuted }}>{t('rolepool.selectTemplateHint')}</Typography>
               )}
             </Box>
           </Box>
@@ -627,7 +628,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
 
       {workspaceView === 'standard' && (loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <Typography sx={{ color: roleTextMuted }}>Laster roller...</Typography>
+          <Typography sx={{ color: roleTextMuted }}>{t('rolepool.loadingRoles')}</Typography>
         </Box>
       ) : filteredRoles.length === 0 ? (
         <Box sx={{ 
@@ -639,10 +640,10 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
         }}>
           <RoleIcon sx={{ fontSize: 48, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
           <Typography sx={{ color: roleText, mb: 1 }}>
-            {searchQuery ? 'Ingen roller matcher søket' : 'Ingen roller i poolen ennå'}
+            {searchQuery ? t('rolepool.noRolesMatch') : t('rolepool.noRolesYet')}
           </Typography>
           <Typography variant="body2" sx={{ color: roleTextMuted }}>
-            Lagre roller fra prosjekter for å fylle poolen
+            {t('rolepool.fillHint')}
           </Typography>
         </Box>
       ) : (
@@ -771,13 +772,13 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                       '&:hover': { bgcolor: roleTabAccentSoft },
                     }}
                   >
-                    Importer
+                    {t('rolepool.import')}
                   </Button>
                   
                   <IconButton
                     size="small"
                     onClick={() => handleDeleteFromPool(role)}
-                    aria-label="Slett fra pool"
+                    aria-label={t('rolepool.ariaDeleteFromPool')}
                     sx={{
                       color: roleTextMuted,
                       minWidth: TOUCH_TARGET,
@@ -812,7 +813,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
         }}
       >
         <DialogTitle sx={{ color: roleText, borderBottom: `1px solid ${roleBorder}` }}>
-          Importer rolle til prosjekt
+          {t('rolepool.dialogImportTitle')}
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           {selectedRole && (
@@ -845,11 +846,11 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
 
           <Stack spacing={2}>
             <FormControl fullWidth>
-              <InputLabel sx={{ color: roleTextMuted }}>Velg prosjekt</InputLabel>
+              <InputLabel sx={{ color: roleTextMuted }}>{t('rolepool.selectProject')}</InputLabel>
               <Select
                 value={targetProjectId}
                 onChange={(e) => setTargetProjectId(e.target.value)}
-                label="Velg prosjekt"
+                label={t('rolepool.selectProject')}
                 MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
                 sx={{
                   color: roleText,
@@ -867,11 +868,11 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel sx={{ color: roleTextMuted }}>Workflow-status</InputLabel>
+              <InputLabel sx={{ color: roleTextMuted }}>{t('rolepool.workflowStatus')}</InputLabel>
               <Select
                 value={importStatus}
                 onChange={(e) => setImportStatus(e.target.value as RoleWorkflowStatus)}
-                label="Workflow-status"
+                label={t('rolepool.workflowStatus')}
                 MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
                 sx={{
                   color: roleText,
@@ -890,7 +891,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
               <TextField
-                label="Casting fra"
+                label={t('rolepool.castingFrom')}
                 type="date"
                 value={castingWindowStart}
                 onChange={(e) => setCastingWindowStart(e.target.value)}
@@ -907,7 +908,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                 }}
               />
               <TextField
-                label="Casting til"
+                label={t('rolepool.castingTo')}
                 type="date"
                 value={castingWindowEnd}
                 onChange={(e) => setCastingWindowEnd(e.target.value)}
@@ -926,10 +927,10 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             </Box>
 
             <TextField
-              label="Audit-notat (valgfritt)"
+              label={t('rolepool.auditNote')}
               value={importAuditNote}
               onChange={(e) => setImportAuditNote(e.target.value)}
-              placeholder="f.eks. Importert fra Sci-Fi-mal for audition-sprint"
+              placeholder={t('rolepool.auditNotePlaceholder')}
               multiline
               minRows={2}
               sx={{
@@ -946,8 +947,8 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               text={importAuditNote}
               localCandidates={mentionCandidates}
               onApplySuggestion={(name) => setImportAuditNote((prev) => applyMentionSuggestion(prev, name))}
-              autoTagTitle="Auto-tagget i notat"
-              suggestionTitle="Mener du?"
+              autoTagTitle={t('rolepool.autoTagged')}
+              suggestionTitle={t('rolepool.didYouMean')}
             />
           </Stack>
         </DialogContent>
@@ -956,7 +957,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             onClick={() => setImportDialogOpen(false)}
             sx={{ color: roleTextMuted }}
           >
-            Avbryt
+            {t('rolepool.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -970,7 +971,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               '&.Mui-disabled': { bgcolor: 'rgba(184,107,255,0.34)', color: 'rgba(255,255,255,0.87)' },
             }}
           >
-            Importer
+            {t('rolepool.import')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -993,15 +994,15 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
         }}
       >
         <DialogTitle sx={{ color: roleText, borderBottom: `1px solid ${roleBorder}` }}>
-          Fjern rolle fra pool
+          {t('rolepool.dialogRemoveTitle')}
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Typography sx={{ color: roleTextMuted }}>
-            Er du sikker på at du vil fjerne{' '}
+            {t('rolepool.confirmRemovePrefix')}{' '}
             <Box component="span" sx={{ color: roleTabAccent, fontWeight: 700 }}>
-              {rolePendingDelete?.name || 'denne rollen'}
+              {rolePendingDelete?.name || t('rolepool.thisRole')}
             </Box>{' '}
-            fra rollepoolen?
+            {t('rolepool.confirmRemoveSuffix')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ borderTop: `1px solid ${roleBorder}`, p: 2 }}>
@@ -1012,7 +1013,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             }}
             sx={{ color: roleTextMuted }}
           >
-            Avbryt
+            {t('rolepool.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -1024,7 +1025,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               '&:hover': { bgcolor: '#dc2626' },
             }}
           >
-            Fjern
+            {t('rolepool.remove')}
           </Button>
         </DialogActions>
       </Dialog>

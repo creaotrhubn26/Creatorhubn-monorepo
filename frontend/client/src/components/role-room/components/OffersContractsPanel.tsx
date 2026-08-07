@@ -46,6 +46,7 @@ import {
 import settingsService from '../services/settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT } from '../../../i18n';
 
 interface Candidate {
   id: string;
@@ -121,6 +122,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
   readOnly = false,
 }) => {
   const { enqueueSnackbar } = useSnackbar();
+  const { t } = useT();
   const [tabValue, setTabValue] = useState(0);
   const [offers, setOffers] = useState<CastingOffer[]>([]);
   const [contracts, setContracts] = useState<CastingContract[]>([]);
@@ -159,15 +161,15 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const hydrateOffer = useCallback((offer: CastingOffer): CastingOffer => ({
     ...offer,
-    candidate_name: candidateNameById.get(offer.candidate_id) ?? offer.candidate_name ?? 'Ukjent kandidat',
+    candidate_name: candidateNameById.get(offer.candidate_id) ?? offer.candidate_name ?? t('offers.unknownCandidate'),
     role_name: offer.role_id ? (roleNameById.get(offer.role_id) ?? offer.role_name) : offer.role_name,
-  }), [candidateNameById, roleNameById]);
+  }), [candidateNameById, roleNameById, t]);
 
   const hydrateContract = useCallback((contract: CastingContract): CastingContract => ({
     ...contract,
-    candidate_name: candidateNameById.get(contract.candidate_id) ?? contract.candidate_name ?? 'Ukjent kandidat',
+    candidate_name: candidateNameById.get(contract.candidate_id) ?? contract.candidate_name ?? t('offers.unknownCandidate'),
     role_name: contract.role_id ? (roleNameById.get(contract.role_id) ?? contract.role_name) : contract.role_name,
-  }), [candidateNameById, roleNameById]);
+  }), [candidateNameById, roleNameById, t]);
 
   const readLocalOffers = useCallback(async (): Promise<CastingOffer[]> => {
     const stored = await settingsService.getSetting<CastingOffer[]>(LOCAL_OFFERS_NAMESPACE, { projectId });
@@ -204,7 +206,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       setContracts(contractsData);
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke laste tilbud og kontrakter',
+        error instanceof Error ? error.message : t('offers.loadError'),
         { variant: 'error' },
       );
     } finally {
@@ -247,7 +249,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const handleCreateOffer = async () => {
     if (!selectedCandidate) {
-      enqueueSnackbar('Velg en kandidat', { variant: 'warning' });
+      enqueueSnackbar(t('offers.selectCandidate'), { variant: 'warning' });
       return;
     }
 
@@ -280,7 +282,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
           responseDeadline: responseDeadline || undefined,
         });
       }
-      enqueueSnackbar('Tilbud sendt!', { variant: 'success' });
+      enqueueSnackbar(t('offers.offerSent'), { variant: 'success' });
       setOfferDialogOpen(false);
       resetOfferForm();
       if (!useLocalFallback) {
@@ -291,7 +293,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       }
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke sende tilbud',
+        error instanceof Error ? error.message : t('offers.sendError'),
         { variant: 'error' },
       );
     } finally {
@@ -320,7 +322,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       }
       const offer = offers.find(o => o.id === offerId);
       enqueueSnackbar(
-        status === 'accepted' ? 'Tilbud akseptert!' : 'Tilbud avslått',
+        status === 'accepted' ? t('offers.offerAccepted') : t('offers.offerDeclined'),
         { variant: status === 'accepted' ? 'success' : 'info' }
       );
       if (!useLocalFallback) {
@@ -332,7 +334,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       }
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke oppdatere tilbud',
+        error instanceof Error ? error.message : t('offers.updateError'),
         { variant: 'error' },
       );
     }
@@ -340,7 +342,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const handleCreateContract = async () => {
     if (!selectedCandidate) {
-      enqueueSnackbar('Velg en kandidat', { variant: 'warning' });
+      enqueueSnackbar(t('offers.selectCandidate'), { variant: 'warning' });
       return;
     }
 
@@ -377,7 +379,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
           terms,
         });
       }
-      enqueueSnackbar('Kontrakt opprettet!', { variant: 'success' });
+      enqueueSnackbar(t('offers.contractCreated'), { variant: 'success' });
       setContractDialogOpen(false);
       resetContractForm();
       if (!useLocalFallback) {
@@ -385,7 +387,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       }
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke opprette kontrakt',
+        error instanceof Error ? error.message : t('offers.createError'),
         { variant: 'error' },
       );
     } finally {
@@ -412,7 +414,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       } else {
         await contractsApi.sign(contractId);
       }
-      enqueueSnackbar('Kontrakt signert!', { variant: 'success' });
+      enqueueSnackbar(t('offers.contractSignedToast'), { variant: 'success' });
       if (!useLocalFallback) {
         void loadData();
       }
@@ -423,7 +425,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       }
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke signere kontrakt',
+        error instanceof Error ? error.message : t('offers.signError'),
         { variant: 'error' },
       );
     }
@@ -451,9 +453,9 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const getOfferStatusChip = (status: string) => {
     const configs: Record<string, { color: string; label: string; icon: ReactNode }> = {
-      pending: { color: '#f59e0b', label: 'Venter', icon: <AccessTimeIcon sx={{ fontSize: 14 }} /> },
-      accepted: { color: '#10b981', label: 'Akseptert', icon: <CheckCircleIcon sx={{ fontSize: 14 }} /> },
-      declined: { color: '#ef4444', label: 'Avslått', icon: <CancelIcon sx={{ fontSize: 14 }} /> },
+      pending: { color: '#f59e0b', label: t('offers.statusPending'), icon: <AccessTimeIcon sx={{ fontSize: 14 }} /> },
+      accepted: { color: '#10b981', label: t('offers.statusAccepted'), icon: <CheckCircleIcon sx={{ fontSize: 14 }} /> },
+      declined: { color: '#ef4444', label: t('offers.statusDeclined'), icon: <CancelIcon sx={{ fontSize: 14 }} /> },
     };
     const config = configs[status] || configs.pending;
     return (
@@ -473,9 +475,9 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   const getContractStatusChip = (status: string) => {
     const configs: Record<string, { color: string; label: string }> = {
-      draft: { color: '#9ca3af', label: 'Utkast' },
-      pending: { color: '#f59e0b', label: 'Venter signatur' },
-      signed: { color: '#10b981', label: 'Signert' },
+      draft: { color: '#9ca3af', label: t('offers.contractDraft') },
+      pending: { color: '#f59e0b', label: t('offers.contractPending') },
+      signed: { color: '#10b981', label: t('offers.contractSigned') },
     };
     const config = configs[status] || configs.draft;
     return (
@@ -505,9 +507,9 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
             <LocalOfferIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
-            Tilbud og Kontrakter
+            {t('offers.title')}
           </Typography>
-          <Tooltip title="Oppdater tilbud og kontrakter">
+          <Tooltip title={t('offers.refreshTooltip')}>
             <IconButton
               size="small"
               onClick={() => { void loadData(); }}
@@ -525,7 +527,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
               onClick={() => setOfferDialogOpen(true)}
               sx={{ borderColor: 'var(--role-violet, #8b5cf6)', color: 'var(--role-violet, #8b5cf6)' }}
             >
-              Nytt tilbud
+              {t('offers.newOffer')}
             </Button>
             <Button
               variant="contained"
@@ -533,7 +535,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
               onClick={() => setContractDialogOpen(true)}
               sx={{ bgcolor: 'var(--role-violet, #8b5cf6)' }}
             >
-              Ny kontrakt
+              {t('offers.newContract')}
             </Button>
           </Box>
         ) : null}
@@ -549,8 +551,8 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
           '& .MuiTabs-indicator': { bgcolor: 'var(--role-violet, #8b5cf6)' },
         }}
       >
-        <Tab label={`Tilbud (${offers.length})`} icon={<LocalOfferIcon />} iconPosition="start" />
-        <Tab label={`Kontrakter (${contracts.length})`} icon={<DescriptionIcon />} iconPosition="start" />
+        <Tab label={t('offers.tabOffers', { n: offers.length })} icon={<LocalOfferIcon />} iconPosition="start" />
+        <Tab label={t('offers.tabContracts', { n: contracts.length })} icon={<DescriptionIcon />} iconPosition="start" />
       </Tabs>
 
       <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
@@ -559,7 +561,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         <Box>
           {offers.length === 0 ? (
             <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
-              Ingen tilbud sendt ennå. Klikk "Nytt tilbud" for å sende et tilbud til en kandidat.
+              {t('offers.emptyOffers')}
             </Alert>
           ) : (
             <Grid container spacing={2}>
@@ -574,7 +576,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                           </Avatar>
                           <Box>
                             <Typography sx={{ color: '#fff', fontWeight: 600 }}>
-                              {offer.candidate_name || 'Ukjent kandidat'}
+                              {offer.candidate_name || t('offers.unknownCandidate')}
                             </Typography>
                             {offer.role_name && (
                               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -599,7 +601,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                           <AccessTimeIcon sx={{ fontSize: 16, color: '#f59e0b' }} />
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                            Frist: {new Date(offer.response_deadline).toLocaleDateString('nb-NO')}
+                            {t('offers.deadline', { date: new Date(offer.response_deadline).toLocaleDateString('nb-NO') })}
                           </Typography>
                         </Box>
                       )}
@@ -619,7 +621,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                             onClick={() => handleRespondToOffer(offer.id, 'accepted')}
                             sx={{ bgcolor: '#10b981', flex: 1 }}
                           >
-                            Aksepter
+                            {t('offers.accept')}
                           </Button>
                           <Button
                             size="small"
@@ -628,7 +630,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                             onClick={() => handleRespondToOffer(offer.id, 'declined')}
                             sx={{ borderColor: '#ef4444', color: '#ef4444', flex: 1 }}
                           >
-                            Avslå
+                            {t('offers.decline')}
                           </Button>
                         </Box>
                       )}
@@ -645,7 +647,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
         <Box>
           {contracts.length === 0 ? (
             <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
-              Ingen kontrakter opprettet ennå. Klikk "Ny kontrakt" for å opprette en kontrakt.
+              {t('offers.emptyContracts')}
             </Alert>
           ) : (
             <Grid container spacing={2}>
@@ -660,7 +662,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                           </Avatar>
                           <Box>
                             <Typography sx={{ color: '#fff', fontWeight: 600 }}>
-                              {contract.candidate_name || 'Ukjent kandidat'}
+                              {contract.candidate_name || t('offers.unknownCandidate')}
                             </Typography>
                             {contract.contract_type && (
                               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -674,7 +676,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
                       {contract.role_name && (
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                          Rolle: {contract.role_name}
+                          {t('offers.rolePrefix', { role: contract.role_name })}
                         </Typography>
                       )}
 
@@ -703,7 +705,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                           onClick={() => handleSignContract(contract.id)}
                           sx={{ mt: 2, bgcolor: '#06b6d4' }}
                         >
-                          Marker som signert
+                          {t('offers.markSigned')}
                         </Button>
                       )}
                     </CardContent>
@@ -718,16 +720,16 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       <Dialog open={!readOnly && offerDialogOpen} onClose={() => setOfferDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <LocalOfferIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
-          Send tilbud
+          {t('offers.sendOffer')}
         </DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <FormControl fullWidth>
-              <InputLabel>Kandidat *</InputLabel>
+              <InputLabel>{t('offers.candidate')}</InputLabel>
               <Select
                 value={selectedCandidate}
                 onChange={(e) => setSelectedCandidate(e.target.value)}
-                label="Kandidat *"
+                label={t('offers.candidate')}
               >
                 {candidates.map((c) => (
                   <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
@@ -736,13 +738,13 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel>Rolle</InputLabel>
+              <InputLabel>{t('offers.role')}</InputLabel>
               <Select
                 value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
-                label="Rolle"
+                label={t('offers.role')}
               >
-                <MenuItem value="">Ingen spesifikk rolle</MenuItem>
+                <MenuItem value="">{t('offers.noSpecificRole')}</MenuItem>
                 {roles.map((r) => (
                   <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
                 ))}
@@ -750,15 +752,15 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             </FormControl>
 
             <TextField
-              label="Kompensasjon"
+              label={t('offers.compensation')}
               value={compensation}
               onChange={(e) => setCompensation(e.target.value)}
-              placeholder="F.eks. NOK 5000 per dag"
+              placeholder={t('offers.compensationPlaceholder')}
               fullWidth
             />
 
             <TextField
-              label="Svarfrist"
+              label={t('offers.responseDeadline')}
               type="date"
               value={responseDeadline}
               onChange={(e) => setResponseDeadline(e.target.value)}
@@ -767,7 +769,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             />
 
             <TextField
-              label="Vilkår"
+              label={t('offers.terms')}
               value={terms}
               onChange={(e) => setTerms(e.target.value)}
               multiline
@@ -776,7 +778,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             />
 
             <TextField
-              label="Notater"
+              label={t('offers.notes')}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               multiline
@@ -801,7 +803,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOfferDialogOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setOfferDialogOpen(false)}>{t('offers.cancel')}</Button>
           <Button
             onClick={handleCreateOffer}
             variant="contained"
@@ -809,7 +811,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             disabled={submitting || !selectedCandidate}
             sx={{ bgcolor: 'var(--role-violet, #8b5cf6)' }}
           >
-            Send tilbud
+            {t('offers.sendOffer')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -817,32 +819,32 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
       <Dialog open={!readOnly && contractDialogOpen} onClose={() => setContractDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <DescriptionIcon sx={{ color: '#06b6d4' }} />
-          Opprett kontrakt
+          {t('offers.createContract')}
         </DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <FormControl fullWidth>
-              <InputLabel>Basert på tilbud</InputLabel>
+              <InputLabel>{t('offers.basedOnOffer')}</InputLabel>
               <Select
                 value={selectedOfferId}
                 onChange={(e) => setSelectedOfferId(e.target.value)}
-                label="Basert på tilbud"
+                label={t('offers.basedOnOffer')}
               >
-                <MenuItem value="">Opprett uten tilbud</MenuItem>
+                <MenuItem value="">{t('offers.createWithoutOffer')}</MenuItem>
                 {selectableOffers.map((offer) => (
                   <MenuItem key={offer.id} value={offer.id}>
-                    {`${offer.candidate_name || 'Ukjent kandidat'}${offer.role_name ? ` · ${offer.role_name}` : ''}`}
+                    {`${offer.candidate_name || t('offers.unknownCandidate')}${offer.role_name ? ` · ${offer.role_name}` : ''}`}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel>Kandidat *</InputLabel>
+              <InputLabel>{t('offers.candidate')}</InputLabel>
               <Select
                 value={selectedCandidate}
                 onChange={(e) => setSelectedCandidate(e.target.value)}
-                label="Kandidat *"
+                label={t('offers.candidate')}
               >
                 {candidates.map((c) => (
                   <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
@@ -851,13 +853,13 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel>Rolle</InputLabel>
+              <InputLabel>{t('offers.role')}</InputLabel>
               <Select
                 value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
-                label="Rolle"
+                label={t('offers.role')}
               >
-                <MenuItem value="">Ingen spesifikk rolle</MenuItem>
+                <MenuItem value="">{t('offers.noSpecificRole')}</MenuItem>
                 {roles.map((r) => (
                   <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
                 ))}
@@ -865,16 +867,16 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             </FormControl>
 
             <TextField
-              label="Kontrakttype"
+              label={t('offers.contractType')}
               value={contractType}
               onChange={(e) => setContractType(e.target.value)}
-              placeholder="F.eks. Dagengasjement, Prosjektkontrakt"
+              placeholder={t('offers.contractTypePlaceholder')}
               fullWidth
             />
 
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
-                label="Startdato"
+                label={t('offers.startDate')}
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -882,7 +884,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
                 fullWidth
               />
               <TextField
-                label="Sluttdato"
+                label={t('offers.endDate')}
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
@@ -892,15 +894,15 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             </Box>
 
             <TextField
-              label="Kompensasjon"
+              label={t('offers.compensation')}
               value={compensation}
               onChange={(e) => setCompensation(e.target.value)}
-              placeholder="F.eks. NOK 5000 per dag"
+              placeholder={t('offers.compensationPlaceholder')}
               fullWidth
             />
 
             <TextField
-              label="Vilkår"
+              label={t('offers.terms')}
               value={terms}
               onChange={(e) => setTerms(e.target.value)}
               multiline
@@ -910,7 +912,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContractDialogOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setContractDialogOpen(false)}>{t('offers.cancel')}</Button>
           <Button
             onClick={handleCreateContract}
             variant="contained"
@@ -918,7 +920,7 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
             disabled={submitting || !selectedCandidate}
             sx={{ bgcolor: '#06b6d4' }}
           >
-            Opprett kontrakt
+            {t('offers.createContract')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -44,6 +44,7 @@ import { consentService } from '../services/consentService';
 import { castingService } from '../services/castingService';
 import { Z_INDEX } from '../config/zIndex';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT } from '../../../i18n';
 
 interface ConsentManagementPanelProps {
   projectId: string;
@@ -59,6 +60,7 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
 };
 
 export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: ConsentManagementPanelProps) {
+  const { t } = useT();
   const consentModalZIndex = Z_INDEX.dialog + 50;
   const consentModalBackdropZIndex = consentModalZIndex - 1;
   const consentDialogAccentColor = 'var(--role-accent, #b86bff)';
@@ -150,12 +152,12 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
 
   const getTypeLabel = (type: ConsentType): string => {
     const labels: Record<ConsentType, string> = {
-      photo_release: 'Foto-samtykke',
-      video_release: 'Video-samtykke',
-      audio_release: 'Lyd-samtykke',
-      location_release: 'Lokasjon-samtykke',
-      minor_consent: 'Mindreårig-samtykke',
-      other: 'Annet',
+      photo_release: t('consent.type.photo_release'),
+      video_release: t('consent.type.video_release'),
+      audio_release: t('consent.type.audio_release'),
+      location_release: t('consent.type.location_release'),
+      minor_consent: t('consent.type.minor_consent'),
+      other: t('consent.type.other'),
     };
     return labels[type] || type;
   };
@@ -213,7 +215,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
   };
 
   const handleDelete = async (consentId: string) => {
-    if (window.confirm('Er du sikker på at du vil slette dette samtykket?')) {
+    if (window.confirm(t('consent.confirm.delete'))) {
       try {
         await consentService.deleteConsent(projectId, candidateId, consentId);
         const [loadedConsents, loadedStatus] = await Promise.all([
@@ -308,13 +310,13 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
 
   const getInvitationStatusLabel = (status?: ConsentInvitationStatus): string => {
     const labels: Record<ConsentInvitationStatus, string> = {
-      'not_sent': 'Ikke sendt',
-      'sent': 'Sendt',
-      'viewed': 'Sett',
-      'signed': 'Signert',
-      'declined': 'Avslått',
+      'not_sent': t('consent.invite.status.not_sent'),
+      'sent': t('consent.invite.status.sent'),
+      'viewed': t('consent.invite.status.viewed'),
+      'signed': t('consent.invite.status.signed'),
+      'declined': t('consent.invite.status.declined'),
     };
-    return status ? labels[status] || status : 'Ikke sendt';
+    return status ? labels[status] || status : t('consent.invite.status.not_sent');
   };
 
   const getInvitationStatusColor = (status?: ConsentInvitationStatus): string => {
@@ -333,11 +335,11 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
       {candidate && (
         <Box sx={{ mb: 3 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
-            Samtykker for {candidate.name}
+            {t('consent.header.for', { name: candidate.name })}
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <Chip
-              label={`Totalt: ${status.total}`}
+              label={t('consent.stat.total', { n: status.total })}
               size="small"
               sx={{
                 bgcolor: 'rgba(255,255,255,0.1)',
@@ -345,7 +347,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               }}
             />
             <Chip
-              label={`Signert: ${status.signed}`}
+              label={t('consent.stat.signed', { n: status.signed })}
               size="small"
               sx={{
                 bgcolor: '#10b981',
@@ -354,7 +356,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               }}
             />
             <Chip
-              label={`Venter: ${status.pending}`}
+              label={t('consent.stat.pending', { n: status.pending })}
               size="small"
               sx={{
                 bgcolor: '#ffb800',
@@ -368,7 +370,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600 }}>
-          Samtykker ({consents.length})
+          {t('consent.list.title', { n: consents.length })}
         </Typography>
         <Button
           variant="contained"
@@ -381,7 +383,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
             '&:hover': { bgcolor: '#00b8e6' },
           }}
         >
-          Legg til samtykke
+          {t('consent.action.add')}
         </Button>
       </Box>
 
@@ -394,9 +396,9 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           }}
         >
           <DescriptionIcon sx={{ fontSize: 64, mb: 2, opacity: 0.3 }} />
-          <Typography variant="body1">Ingen samtykker ennå</Typography>
+          <Typography variant="body1">{t('consent.empty.title')}</Typography>
           <Typography variant="body2" sx={{ mt: 1 }}>
-            Legg til samtykker for å spore dokumentasjon
+            {t('consent.empty.subtitle')}
           </Typography>
         </Box>
       ) : (
@@ -418,7 +420,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       </Typography>
                       <Chip
                         icon={consent.signed ? <CheckCircleIcon /> : <CancelIcon />}
-                        label={consent.signed ? 'Signert' : 'Ikke signert'}
+                        label={consent.signed ? t('consent.badge.signed') : t('consent.badge.notSigned')}
                         size="small"
                         sx={{
                           bgcolor: consent.signed ? '#10b981' : '#ffb800',
@@ -430,7 +432,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                     <Box>
                       {!consent.signed && (
                         <>
-                          <Tooltip title="Send signeringsinvitasjon">
+                          <Tooltip title={t('consent.action.sendInvite')}>
                             <IconButton
                               size="small"
                               onClick={() => handleOpenInviteDialog(consent)}
@@ -439,7 +441,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                               <SendIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Merk som signert">
+                          <Tooltip title={t('consent.action.markSigned')}>
                             <IconButton
                               size="small"
                               onClick={() => handleSign(consent.id)}
@@ -453,7 +455,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       <IconButton
                         size="small"
                         onClick={() => handleOpenDialog(consent)}
-                        aria-label="Rediger samtykke"
+                        aria-label={t('consent.action.edit')}
                         sx={{ color: 'var(--role-cyan, #00d4ff)' }}
                       >
                         <EditIcon fontSize="small" />
@@ -461,7 +463,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       <IconButton
                         size="small"
                         onClick={() => handleDelete(consent.id)}
-                        aria-label="Slett samtykke"
+                        aria-label={t('consent.action.delete')}
                         sx={{ color: '#ff4444' }}
                       >
                         <DeleteIcon fontSize="small" />
@@ -487,13 +489,13 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
 
                   {consent.accessCode && !consent.signed && (
                     <Typography variant="caption" sx={{ color: '#9c27b0', display: 'block', mb: 1 }}>
-                      Kode: {consent.accessCode}
+                      {t('consent.label.code', { code: consent.accessCode })}
                     </Typography>
                   )}
 
                   {consent.date && (
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: 1 }}>
-                      Signert: {new Date(consent.date).toLocaleDateString('no-NO')}
+                      {t('consent.label.signedOn', { date: new Date(consent.date).toLocaleDateString('no-NO') })}
                     </Typography>
                   )}
 
@@ -541,12 +543,12 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <DescriptionIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: 24 }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {editingConsent ? 'Rediger samtykke' : 'Nytt samtykke'}
+              {editingConsent ? t('consent.dialog.editTitle') : t('consent.dialog.newTitle')}
             </Typography>
           </Stack>
           <IconButton
             onClick={handleCloseDialog}
-            aria-label="Lukk"
+            aria-label={t('consent.action.close')}
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
@@ -599,13 +601,13 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   }}
                 />
               }
-              label="Signert"
+              label={t('consent.badge.signed')}
               sx={{ color: 'rgba(255,255,255,0.87)' }}
             />
 
             {formData.signed && !editingConsent?.date && (
               <TextField
-                label="Signeringsdato"
+                label={t('consent.field.signingDate')}
                 fullWidth
                 type="date"
                 value={formData.date ? formData.date.split('T')[0] : new Date().toISOString().split('T')[0]}
@@ -622,11 +624,11 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
             )}
 
             <TextField
-              label="Dokument URL (valgfritt)"
+              label={t('consent.field.documentUrl')}
               fullWidth
               value={formData.document || ''}
               onChange={(e) => setFormData({ ...formData, document: e.target.value })}
-              placeholder="URL til signert dokument"
+              placeholder={t('consent.field.documentUrlPlaceholder')}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
@@ -637,7 +639,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
             />
 
             <TextField
-              label="Notater"
+              label={t('consent.field.notes')}
               fullWidth
               multiline
               rows={3}
@@ -660,8 +662,8 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   notes: applyMentionSuggestion(prev.notes, name),
                 }))
               }
-              autoTagTitle="Auto-tagget i notater"
-              suggestionTitle="Mener du?"
+              autoTagTitle={t('consent.mention.autoTag')}
+              suggestionTitle={t('consent.mention.suggestion')}
             />
           </Stack>
           </Box>
@@ -685,7 +687,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
             }}
           >
-            Avbryt
+            {t('consent.action.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -700,7 +702,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               '&:hover': { bgcolor: 'var(--dialog-accent-color)', filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
             }}
           >
-            Lagre
+            {t('consent.action.save')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -737,12 +739,12 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <SendIcon sx={{ color: 'var(--dialog-accent-color)' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Send signeringsinvitasjon
+              {t('consent.action.sendInvite')}
             </Typography>
           </Stack>
           <IconButton
             onClick={handleCloseInviteDialog}
-            aria-label="Lukk"
+            aria-label={t('consent.action.close')}
             sx={{
               color: 'var(--dialog-text)',
               border: '1px solid var(--dialog-border-color)',
@@ -773,15 +775,15 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   '& .MuiAlert-icon': { color: '#ce93d8' },
                 }}
               >
-                Generer en unik tilgangskode som kandidaten kan bruke for å signere {getTypeLabel(invitingConsent.type)} digitalt.
+                {t('consent.invite.info', { type: getTypeLabel(invitingConsent.type) })}
               </Alert>
 
               <TextField
-                label="PIN-kode (valgfritt)"
+                label={t('consent.field.pin')}
                 value={invitePin}
                 onChange={(e) => setInvitePin(e.target.value)}
-                placeholder="F.eks. 1234"
-                helperText="Ekstra sikkerhet - kandidaten må oppgi PIN"
+                placeholder={t('consent.field.pinPlaceholder')}
+                helperText={t('consent.field.pinHelp')}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -794,11 +796,11 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               />
 
               <TextField
-                label="Passord (valgfritt)"
+                label={t('consent.field.password')}
                 value={invitePassword}
                 onChange={(e) => setInvitePassword(e.target.value)}
                 type="password"
-                helperText="Ekstra sikkerhet - kandidaten må oppgi passord"
+                helperText={t('consent.field.passwordHelp')}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -811,11 +813,11 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               />
 
               <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Utløper etter</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consent.field.expiresAfter')}</InputLabel>
                 <Select
                   value={inviteExpiresDays}
                   onChange={(e) => setInviteExpiresDays(Number(e.target.value))}
-                  label="Utløper etter"
+                  label={t('consent.field.expiresAfter')}
                   MenuProps={consentMenuProps}
                   sx={{
                     color: '#fff',
@@ -823,11 +825,11 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                     '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ce93d8' },
                   }}
                 >
-                  <MenuItem value={7}>7 dager</MenuItem>
-                  <MenuItem value={14}>14 dager</MenuItem>
-                  <MenuItem value={30}>30 dager</MenuItem>
-                  <MenuItem value={60}>60 dager</MenuItem>
-                  <MenuItem value={90}>90 dager</MenuItem>
+                  <MenuItem value={7}>{t('consent.expires.days', { n: 7 })}</MenuItem>
+                  <MenuItem value={14}>{t('consent.expires.days', { n: 14 })}</MenuItem>
+                  <MenuItem value={30}>{t('consent.expires.days', { n: 30 })}</MenuItem>
+                  <MenuItem value={60}>{t('consent.expires.days', { n: 60 })}</MenuItem>
+                  <MenuItem value={90}>{t('consent.expires.days', { n: 90 })}</MenuItem>
                 </Select>
               </FormControl>
 
@@ -839,7 +841,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   border: '1px solid rgba(156, 39, 176, 0.3)',
                 }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Tilgangskode:
+                    {t('consent.label.accessCode')}
                   </Typography>
                   <Typography 
                     variant="h4" 
@@ -864,7 +866,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                         borderColor: copySuccess ? '#10b981' : '#ce93d8',
                       }}
                     >
-                      {copySuccess ? 'Kopiert!' : 'Kopier lenke'}
+                      {copySuccess ? t('consent.action.copied') : t('consent.action.copyLink')}
                     </Button>
                     <Button
                       variant="outlined"
@@ -875,7 +877,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                       }}
                       sx={{ color: '#ce93d8', borderColor: '#ce93d8' }}
                     >
-                      Åpne portal
+                      {t('consent.action.openPortal')}
                     </Button>
                   </Stack>
                 </Box>
@@ -902,7 +904,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
             }}
           >
-            Lukk
+            {t('consent.action.close')}
           </Button>
           {!generatedAccessCode && (
             <Button
@@ -918,7 +920,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 '&:hover': { bgcolor: 'var(--dialog-accent-color)', filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
               }}
             >
-              {generatingCode ? 'Genererer...' : 'Generer tilgangskode'}
+              {generatingCode ? t('consent.action.generating') : t('consent.action.generateCode')}
             </Button>
           )}
         </DialogActions>
