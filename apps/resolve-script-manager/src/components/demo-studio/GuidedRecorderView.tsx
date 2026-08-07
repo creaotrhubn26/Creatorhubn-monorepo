@@ -105,6 +105,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     shotsTried.current = url;
     void playwrightCaptureShots(url).then((r) => {
       if (r?.shots?.length) setProjectField('scanShots', r.shots);
+      if (r?.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile);
     }).catch(() => { /* Playwright ikke satt opp — miniatyrer forblir tomme */ });
   }, [project?.url, project?.scanShots, setProjectField]);
 

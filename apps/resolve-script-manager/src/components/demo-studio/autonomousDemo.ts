@@ -129,9 +129,17 @@ export async function runAutonomousDemo(
       if (!frame) { qa.push(null); continue; }
       qa.push(await gradeSceneFrame({ screenshot: frame, narration: scenes[i].narration, action: scenes[i].requiredAction, title: scenes[i].title }).catch(() => null));
     }
-    const failed = qa.filter((g) => g && !g.ok).length;
-    if (failed === 0) break;
-    if (attempt < MAX_ATTEMPTS) onProgress(`${failed} scene(r) ikke bra nok — tar opp på nytt…`, 72);
+    const failedIdx = qa.map((g, i) => (g && !g.ok ? i : -1)).filter((i) => i >= 0);
+    if (failedIdx.length === 0) break;
+    if (attempt < MAX_ATTEMPTS) {
+      // KORRIGERENDE RETAKE: et blindt re-opptak av samme script gir samme
+      // resultat. Den vanligste årsaken til en svak scene er at handlingen ikke
+      // rakk å fullføre (navigasjon/animasjon) før frame-graderingen — så vi gir
+      // nettopp de svake scenene mer dvel-tid før neste opptak. Da BLIR
+      // re-opptaket faktisk annerledes, og har en reell sjanse til å bestå.
+      for (const i of failedIdx) dwellsMs[i] = Math.round(dwellsMs[i] * 1.5) + 800;
+      onProgress(`${failedIdx.length} scene(r) ikke bra nok — gir dem mer tid og tar opp på nytt…`, 72);
+    }
   }
 
   // 4) Synk voiceover til videoen + mux

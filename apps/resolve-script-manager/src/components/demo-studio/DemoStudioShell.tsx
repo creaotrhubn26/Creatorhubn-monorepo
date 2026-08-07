@@ -50,7 +50,7 @@ import {
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
-  clearLearnedTargets, detectLearnedDrift, pickShot, listStoredProjects, deleteStoredProject, type LearnedTarget,
+  clearLearnedTargets, detectLearnedDrift, pickShot, pickShotForDevice, listStoredProjects, deleteStoredProject, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -321,6 +321,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setUnderstanding(null);
     setGenerated(false);
     if (useDemoStudio.getState().project?.scanShots?.length) setProjectField('scanShots', undefined);
+    if (useDemoStudio.getState().project?.scanShotsMobile?.length) setProjectField('scanShotsMobile', undefined);
   };
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
@@ -396,6 +397,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         if (!st.playwrightInstalled) return;
         const r = await playwrightCaptureShots(url);
         if (r?.shots?.length) setProjectField('scanShots', r.shots);
+        if (r?.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile);
       } catch { /* best-effort */ }
     })();
   };
@@ -454,7 +456,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     setShotFetchBusy(true);
     try {
       const r = await playwrightCaptureShots(project.url).catch(() => null);
-      if (r?.shots?.length) { setProjectField('scanShots', r.shots); return; }
+      if (r?.shots?.length) { setProjectField('scanShots', r.shots); if (r.shotsMobile?.length) setProjectField('scanShotsMobile', r.shotsMobile); return; }
       const scan = await scanDom(project.url).catch(() => null);
       if (scan?.shots?.length) setProjectField('scanShots', scan.shots);
       else window.alert('Klarte ikke å hente skjermbilder — sett opp Playwright (Export → Sett opp Playwright) eller kjør «Analyser side».');
@@ -1398,7 +1400,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   width: `${baseWPct * previewZoom}%`, maxWidth: baseMaxW * previewZoom,
                 }}>
                   <FramedDevice variant={previewVariant} url={project.url} width="100%"
-                    screenshot={pickShot(project.scanShots, (selected?.startScrollPct ?? 0) / 100) ?? undefined}
+                    scrollPct={(selected?.startScrollPct ?? 0) / 100}
+                    screenshot={pickShotForDevice(project, previewDevice, (selected?.startScrollPct ?? 0) / 100) ?? undefined}
                     overlay={<SceneInteractionOverlay hotspot={selected?.hotspot} render={render} device={previewDevice} actionType={selected?.actionType} animate={!placingHotspot} />}
                     focusZoom={render.autoZoom && selected?.hotspot && !placingHotspot ? { cx: selected.hotspot.x + selected.hotspot.w / 2, cy: selected.hotspot.y + selected.hotspot.h / 2, scale: 1.5 } : undefined}
                     onScreenClick={placingHotspot ? placeHotspot : undefined}
@@ -2160,7 +2163,8 @@ function DevicePreviewView() {
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '18px 24px', display: 'grid', placeItems: 'center' }}>
         <div style={{ width: '100%', maxWidth: variant === 'macbook' ? 820 : variant === 'ipad_landscape' ? 720 : variant === 'ipad' ? 460 : 300, margin: '0 auto' }}>
           <FramedDevice variant={variant} url={project.url} width="100%"
-            screenshot={pickShot(project.scanShots, (scene.startScrollPct ?? 0) / 100) ?? undefined}
+            scrollPct={(scene.startScrollPct ?? 0) / 100}
+            screenshot={pickShotForDevice(project, device, (scene.startScrollPct ?? 0) / 100) ?? undefined}
             overlay={<SceneInteractionOverlay hotspot={scene.hotspot} render={render} device={device} />} />
         </div>
       </div>

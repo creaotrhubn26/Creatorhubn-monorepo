@@ -11,8 +11,9 @@
  * Delt mellom Guided Recorder og Flow Builder / Device Preview (shell).
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DEVICE_FRAMES, type FrameVariant } from './deviceFrames';
+import { checkUrlEmbeddable } from '../../api';
 
 /** Logisk viewport-bredde (CSS-px) per enhet, så nettsiden rendrer riktig
  *  responsiv layout (mobil/tablet/desktop) — ikke desktop-layout overalt. */
@@ -20,12 +21,17 @@ export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
 };
 
-export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, editRect, onEditRect, focusZoom, screenshot }: {
+export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, editRect, onEditRect, focusZoom, screenshot, scrollPct }: {
   variant: FrameVariant; url: string; width: string | number;
   shadow?: string; iframeRef?: React.Ref<HTMLIFrameElement>;
   /** Fase 1b: vis et scan-screenshot i stedet for live-iframe (presis + funker
    *  på sider iframe ikke kan vise). Når satt brukes ikke url/iframe. */
   screenshot?: string;
+  /** Scenens start-scroll (0..1). En cross-origin iframe kan ikke scrolles
+   *  utenfra, så for scener lenger nede på siden viser vi det EKSAKTE scan-
+   *  båndet (screenshot) i stedet for live-iframe (som ellers står på toppen).
+   *  Topp-scener (≈0) får fortsatt den live, interaktive iframe-en. */
+  scrollPct?: number;
   /** Innhold rendret OVER skjermen (hotspot/cursor/touch-overlay). */
   overlay?: React.ReactNode;
   /** Klikk på skjermflaten → koordinater i viewport-prosent (0–1). Når satt,
@@ -57,6 +63,32 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
   const screenPxAspect = (s.w / s.h) * f.aspect;
   const vh = vw / screenPxAspect;
 
+  // Embeddbarhet: en LIVE, responsiv iframe er alltid å foretrekke i preview —
+  // den rendrer nettsidens ekte layout for AKKURAT denne enheten (mobil/tablet/
+  // desktop) og er interaktiv. Vi faller kun tilbake til et scan-screenshot når
+  // siden faktisk blokkerer innbygging (X-Frame-Options/CSP). Fail-open: ukjent
+  // (mens sjekken kjører, eller uten capture-backend) → vis live-iframe.
+  const [embeddable, setEmbeddable] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!url) { setEmbeddable(null); return; }
+    let cancelled = false;
+    setEmbeddable(null);
+    checkUrlEmbeddable(url)
+      .then((r) => { if (!cancelled) setEmbeddable(r.embeddable); })
+      .catch(() => { if (!cancelled) setEmbeddable(true); }); // fail-open → live
+    return () => { cancelled = true; };
+  }, [url]);
+  // Vis screenshot når (a) siden er blokkert, (b) vi mangler url, ELLER (c)
+  // scenen starter et stykke ned på siden — da kan ikke den cross-origin live-
+  // iframe-en scrolles utenfra, så det eksakte scan-båndet er mer korrekt enn
+  // en live-iframe låst til toppen. Topp-scener beholder den live iframe-en.
+  const isTopScene = !scrollPct || scrollPct < 0.02;
+  const useShot = !!screenshot && (!url || embeddable === false || !isTopScene);
+  // Portrett-rammer (iPhone/iPad stående) + et desktop-bredt screenshot ville
+  // blitt sidebeskåret av objectFit:cover → vis i stedet full bredde, toppforankret
+  // (hele sidens topp, ubeskåret). Landskaps-rammer matcher desktop-bildet → cover.
+  const portrait = f.aspect < 1;
+
   useLayoutEffect(() => {
     const el = screenRef.current;
     if (!el) return;
@@ -82,13 +114,17 @@ export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, 
           transformOrigin: focusZoom ? `${focusZoom.cx * 100}% ${focusZoom.cy * 100}%` : '50% 50%',
           transition: 'transform 700ms cubic-bezier(.2,.7,.3,1)',
         }}>
-        {screenshot ? (
-          // Fase 1b: vis ekte scan-screenshot (riktig scroll-bånd) i stedet for
-          // live-iframe. Bilde + hotspot kommer fra samme scan → perfekt align,
-          // og funker for sider iframe ikke kan vise (auth/lagrings-tunge SPA-er).
+        {useShot ? (
+          // Fallback (kun blokkerte sider): vis ekte scan-screenshot. Portrett-
+          // rammer får toppforankret full-bredde (ubeskåret topp); landskap får
+          // cover (desktop-bildet matcher). Hotspot ligger i viewport-% → align.
           <img src={screenshot} alt="" draggable={false}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
+            style={portrait
+              ? { position: 'absolute', top: 0, left: 0, width: '100%', height: 'auto', display: 'block' }
+              : { width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
         ) : (
+          // Foretrukket: LIVE, responsiv iframe rendret ved enhetens logiske
+          // viewport (390/834/1440) og skalert til å fylle skjerm-hullet.
           <iframe ref={iframeRef} title={variant} src={url} scrolling="no"
             style={{
               width: vw, height: vh, border: 0, display: 'block',

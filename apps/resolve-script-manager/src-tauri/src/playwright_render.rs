@@ -251,24 +251,37 @@ const SHOTS_MJS: &str = r#"import { chromium } from 'playwright';
 import { writeFileSync } from 'node:fs';
 const url = process.argv[2];
 let browser; try { browser = await chromium.launch({ headless: true, channel: 'chrome' }); } catch { browser = await chromium.launch({ headless: true }); }
-const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
-await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
-await page.waitForTimeout(2000);
-for (const t of ['Godta alle','Godta','Aksepter alle','Aksepter','Tillat alle','Jeg forstår','Greit','OK','Accept all','Accept','Allow all','I agree','Got it']) {
-  try { const b = page.getByRole('button', { name: t, exact: false }).first(); if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); break; } } catch {}
+const COOKIE = ['Godta alle','Godta','Aksepter alle','Aksepter','Tillat alle','Jeg forstår','Greit','OK','Accept all','Accept','Allow all','I agree','Got it'];
+// Fang scroll-bånd ved en gitt viewport-bredde. Mobil-bredden gir nettsidens
+// EKTE responsive layout (så iPhone/iPad-preview og fallback ikke viser en
+// nedskalert desktop-side). isMobile=true → touch/mobil user-agent-hint.
+async function grab(width, height, isMobile) {
+  const ctx = await browser.newContext({ viewport: { width, height }, isMobile, deviceScaleFactor: 2 });
+  const page = await ctx.newPage();
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  for (const t of COOKIE) {
+    try { const b = page.getByRole('button', { name: t, exact: false }).first(); if ((await b.count()) && (await b.isVisible().catch(() => false))) { await b.click({ timeout: 1500 }).catch(() => {}); await page.waitForTimeout(400); break; } } catch {}
+  }
+  const ih = height, max = await page.evaluate(() => Math.max(0, document.body.scrollHeight - innerHeight));
+  const bands = Math.max(1, Math.min(6, Math.ceil((max + ih) / ih)));
+  const out = [];
+  for (let i = 0; i < bands; i++) {
+    const y = bands === 1 ? 0 : Math.round(max * i / (bands - 1));
+    const pct = max > 0 ? y / max : 0;
+    await page.evaluate(yy => window.scrollTo(0, yy), y);
+    await page.waitForTimeout(500);
+    const buf = await page.screenshot({ type: 'jpeg', quality: 72 });
+    out.push({ scrollPct: pct, dataUrl: 'data:image/jpeg;base64,' + buf.toString('base64') });
+  }
+  await ctx.close();
+  return out;
 }
-const ih = 800, max = await page.evaluate(() => Math.max(0, document.body.scrollHeight - innerHeight));
-const bands = Math.max(1, Math.min(6, Math.ceil((max + ih) / ih)));
-const shots = [];
-for (let i = 0; i < bands; i++) {
-  const y = bands === 1 ? 0 : Math.round(max * i / (bands - 1));
-  const pct = max > 0 ? y / max : 0;
-  await page.evaluate(yy => window.scrollTo(0, yy), y);
-  await page.waitForTimeout(500);
-  const buf = await page.screenshot({ type: 'jpeg', quality: 72 });
-  shots.push({ scrollPct: pct, dataUrl: 'data:image/jpeg;base64,' + buf.toString('base64') });
-}
-writeFileSync('shots.json', JSON.stringify({ shots }));
+const shots = await grab(1280, 800, false);
+// Mobil er best-effort: en feil her skal ikke velte desktop-fangsten.
+let shotsMobile = [];
+try { shotsMobile = await grab(390, 844, true); } catch {}
+writeFileSync('shots.json', JSON.stringify({ shots, shotsMobile }));
 await browser.close();
 "#;
 
