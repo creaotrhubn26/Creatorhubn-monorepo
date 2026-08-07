@@ -46,5 +46,8 @@ targets:
     platform: iOS
     sources:
       - path: StageOneTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: StageOne
