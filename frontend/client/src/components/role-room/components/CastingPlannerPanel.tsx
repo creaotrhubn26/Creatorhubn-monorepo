@@ -9972,7 +9972,7 @@ type RoleRoomProjectWorkspaceState = {
                             boxShadow: '0 0 10px rgba(255,184,0,0.6)',
                           }}
                         />
-                        Casting
+                        {t('shell.phaseCasting')}
                       </Box>
                     )}
                     {showTabMeta && isPreProductionTab && !isContentProducerMode && (
@@ -10001,7 +10001,7 @@ type RoleRoomProjectWorkspaceState = {
                             boxShadow: '0 0 10px rgba(236,72,153,0.56)',
                           }}
                         />
-                        Pre-produksjon
+                        {t('shell.phasePreProd')}
                       </Box>
                     )}
                     {showTabMeta && isProductionPlanCoreTab && (
@@ -10030,7 +10030,7 @@ type RoleRoomProjectWorkspaceState = {
                             boxShadow: '0 0 10px rgba(56,189,248,0.56)',
                           }}
                         />
-                        Produksjonsplan
+                        {t('shell.phaseProdPlan')}
                       </Box>
                     )}
                     {showTabMeta && isResourcesCoreTab && (
@@ -10059,7 +10059,7 @@ type RoleRoomProjectWorkspaceState = {
                             boxShadow: '0 0 10px rgba(168,85,247,0.56)',
                           }}
                         />
-                        Ressurser
+                        {t('shell.phaseResources')}
                       </Box>
                     )}
                     {showTabMeta && isLiveSetTab && (
@@ -10088,7 +10088,7 @@ type RoleRoomProjectWorkspaceState = {
                             boxShadow: '0 0 10px rgba(239,68,68,0.56)',
                           }}
                         />
-                        Produksjon
+                        {t('shell.phaseProduction')}
                       </Box>
                     )}
                     {showTabMeta && isProducerCoreTab && (

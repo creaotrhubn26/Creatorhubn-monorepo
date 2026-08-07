@@ -3906,4 +3906,19 @@ export const no = {
   'storystruct.copyLink': 'Kopier lenke',
   'storystruct.close': 'Lukk',
   'storystruct.createShareLink': 'Opprett delingslenke',
+
+  // Nav fase-piller (topp-nav)
+  'shell.phaseCasting': 'Casting',
+  'shell.phasePreProd': 'Pre-produksjon',
+  'shell.phaseProdPlan': 'Produksjonsplan',
+  'shell.phaseResources': 'Ressurser',
+  'shell.phaseProduction': 'Produksjon',
+
+  // Workspace-modus-chip
+  'mode.prefix': 'Modus:',
+  'mode.content_producer': 'Innholdsprodusent',
+  'mode.production_team': 'Produksjonsteam',
+  'mode.client_reviewer': 'Klient',
+  'mode.dance': 'Dansestudio',
+  'mode.admin': 'Administrator',
 } as const;

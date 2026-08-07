@@ -3907,5 +3907,20 @@ export const en: Record<keyof typeof no, string> = {
   'storystruct.copyLink': 'Copy link',
   'storystruct.close': 'Close',
   'storystruct.createShareLink': 'Create share link',
+
+  // Nav phase pills (top nav)
+  'shell.phaseCasting': 'Casting',
+  'shell.phasePreProd': 'Pre-production',
+  'shell.phaseProdPlan': 'Production plan',
+  'shell.phaseResources': 'Resources',
+  'shell.phaseProduction': 'Production',
+
+  // Workspace mode chip
+  'mode.prefix': 'Mode:',
+  'mode.content_producer': 'Content producer',
+  'mode.production_team': 'Production team',
+  'mode.client_reviewer': 'Client',
+  'mode.dance': 'Dance studio',
+  'mode.admin': 'Administrator',
 };
 
