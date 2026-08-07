@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useT } from '../../i18n';
 import RoleRoomChatBubble from './components/client-workspace/RoleRoomChatBubble';
 import '../../styles/role-room-mobile.css';
 import { useAuth } from '../../hooks/useAuth';
@@ -303,6 +304,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 }) => {
   // Auto-provision API key on first load
   useRoleRoomBootstrap(userId);
+  const { t } = useT();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<SubTab>('roles');
@@ -358,20 +360,20 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   // Sentralt tab-katalog. Brukes av top-Tabs, side-rail og bottom-nav slik
   // at admin-konfigen virker likt på tvers av viewports.
   const TAB_DEFS: Record<SubTabValue, { label: string; Icon: any; highlight?: boolean }> = {
-    'roles': { label: 'Roller', Icon: TheaterIcon },
-    'candidates': { label: 'Kandidater', Icon: PersonIcon },
+    'roles': { label: t('rrdash.tabRoles'), Icon: TheaterIcon },
+    'candidates': { label: t('rrdash.tabCandidates'), Icon: PersonIcon },
     'crew': { label: 'Crew', Icon: GroupIcon },
-    'schedule': { label: 'Tidsplan', Icon: CalendarIcon },
-    'publishing': { label: 'Publisering', Icon: YouTubeIcon },
-    'carousel': { label: 'Ukescontent', Icon: EditIcon },
-    'approval': { label: 'Godkjenning', Icon: CheckCircleIcon },
+    'schedule': { label: t('rrdash.tabSchedule'), Icon: CalendarIcon },
+    'publishing': { label: t('rrdash.tabPublishing'), Icon: YouTubeIcon },
+    'carousel': { label: t('rrdash.tabCarousel'), Icon: EditIcon },
+    'approval': { label: t('rrdash.tabApproval'), Icon: CheckCircleIcon },
     'brief': { label: 'Brief', Icon: EditIcon },
     'planner': { label: 'Planner', Icon: ScheduleIcon },
-    'shooting': { label: 'Skyting', Icon: MovieIcon },
-    'shotlist': { label: 'Shotliste', Icon: TheaterIcon },
-    'mannskap': { label: 'Mannskap', Icon: GroupIcon },
+    'shooting': { label: t('rrdash.tabShooting'), Icon: MovieIcon },
+    'shotlist': { label: t('rrdash.tabShotlist'), Icon: TheaterIcon },
+    'mannskap': { label: t('rrdash.tabMannskap'), Icon: GroupIcon },
     'agent': { label: 'Agent', Icon: AutoFixHighIcon },
-    'economy': { label: 'Økonomi', Icon: PaidIcon },
+    'economy': { label: t('rrdash.tabEconomy'), Icon: PaidIcon },
     'admin-room': { label: 'Admin Room', Icon: AutoFixHighIcon, highlight: true },
   };
   const isAdminUser = auth.user?.role === 'admin' || auth.user?.role === 'super_admin';
@@ -483,12 +485,12 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     const candidateCount = candidates?.length ?? 0;
     const crewCount = crew?.length ?? 0;
     return [
-      { label: 'Prosjekter', value: projectCount, icon: <FolderIcon />, color: '#6366f1' },
-      { label: 'Roller', value: roleCount, icon: <TheaterIcon />, color: '#f59e0b' },
-      { label: 'Kandidater', value: candidateCount, icon: <PersonIcon />, color: '#10b981' },
+      { label: t('rrdash.projects'), value: projectCount, icon: <FolderIcon />, color: '#6366f1' },
+      { label: t('rrdash.tabRoles'), value: roleCount, icon: <TheaterIcon />, color: '#f59e0b' },
+      { label: t('rrdash.tabCandidates'), value: candidateCount, icon: <PersonIcon />, color: '#10b981' },
       { label: 'Crew', value: crewCount, icon: <GroupIcon />, color: '#ec4899' },
     ];
-  }, [projects, castingRoles, candidates, crew]);
+  }, [projects, castingRoles, candidates, crew, t]);
 
   const currentUserProjectRoles = useMemo(
     () => (userRoles ?? []).filter((entry) => entry.userId === userId),
@@ -507,7 +509,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     (v: SubTabValue): string => navRoomOv[v]?.label || TAB_DEFS[v]?.label || v,
     // TAB_DEFS er stabil (definert i render); navRoomOv endres kun ved token-hent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [navRoomOv],
+    [navRoomOv, t],
   );
 
   // Project-spesifikk overstyring: team-leder kan styre hvilke tabs viewer
@@ -571,10 +573,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
     selectedProjectId
       ? [{
           id: publishingProjectId ?? selectedProjectId,
-          name: selectedProject?.name ?? 'Prosjekt',
+          name: selectedProject?.name ?? t('rrdash.projectFallback'),
         }]
       : []
-  ), [publishingProjectId, selectedProject?.name, selectedProjectId]);
+  ), [publishingProjectId, selectedProject?.name, selectedProjectId, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -780,10 +782,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       <Box className="role-room-route role-room-route--dance" sx={{ position: 'relative', minHeight: '100vh' }}>
         <DanceWorkspace projectId={selectedProjectId ?? undefined} />
         <Box sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1200 }}>
-          <Tooltip title="Profil">
+          <Tooltip title={t('rrdash.profile')}>
             <IconButton
               onClick={(event) => handleOpenProfile(event.currentTarget)}
-              aria-label="Åpne profil"
+              aria-label={t('rrdash.openProfile')}
               sx={{
                 bgcolor: 'rgba(139,92,246,0.95)',
                 color: '#fff',
@@ -890,7 +892,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             <RoleRoomBrandMark appearance="header" showLabel={false} />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Casting, crew & produksjonsplanlegging
+            {t('rrdash.subtitle')}
           </Typography>
           {(workspaceSummary?.planName || workspaceSummary?.companyName || workspaceSummary?.statusLabel) ? (
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.1 }}>
@@ -955,7 +957,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               activeOrgName={(auth.user as any).activeOrgName ?? undefined}
             />
           )}
-          <Tooltip title="Oppdater">
+          <Tooltip title={t('rrdash.refresh')}>
             <IconButton onClick={() => refetchProjects()}>
               <RefreshIcon />
             </IconButton>
@@ -966,17 +968,17 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             onClick={() => setNewProjectOpen(true)}
             sx={{ borderRadius: 2 }}
           >
-            Nytt prosjekt
+            {t('rrdash.newProject')}
           </Button>
           {/* Leadgrid-varsler (tildelinger, status, vunnet/tapt) */}
           <LeadgridNotificationBell
             onOpenPrefs={() => setLeadgridPrefsOpen(true)}
           />
-          <Tooltip title="Profil">
+          <Tooltip title={t('rrdash.profile')}>
             <IconButton
               onClick={(event) => handleOpenProfile(event.currentTarget)}
               sx={{ ml: 0.5 }}
-              aria-label="Åpne profil"
+              aria-label={t('rrdash.openProfile')}
             >
               {memberProfileImageUrl ? (
                 <Avatar src={memberProfileImageUrl} sx={{ width: 32, height: 32 }}
@@ -998,7 +1000,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         onClose={() => setLeadgridPrefsOpen(false)}
       />
 
-      <PostAgentErrorBoundary label="Velkomst-banner">
+      <PostAgentErrorBoundary label={t('rrdash.welcomeBanner')}>
         <PostAgentCrewWelcomeBanner />
       </PostAgentErrorBoundary>
 
@@ -1033,7 +1035,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         <Grid size={{ xs: 12, md: 4 }}>
           <Card variant="outlined" sx={{ borderRadius: 2 }}>
             <CardHeader
-              title="Prosjekter"
+              title={t('rrdash.projects')}
               titleTypographyProps={{ variant: 'subtitle1', fontWeight: 600 }}
               avatar={<MovieIcon fontSize="small" sx={{ color: '#6366f1' }} />}
             />
@@ -1041,7 +1043,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             {!projects?.length ? (
               <Box sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Ingen prosjekter ennå
+                  {t('rrdash.noProjects')}
                 </Typography>
               </Box>
             ) : (
@@ -1081,7 +1083,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                       }
                     />
                     <ListItemSecondaryAction>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('rrdash.delete')}>
                         <IconButton
                           edge="end"
                           size="small"
@@ -1116,7 +1118,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             >
               <Box sx={{ textAlign: 'center' }}>
                 <TheaterIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-                <Typography color="text.secondary">Velg et prosjekt fra listen</Typography>
+                <Typography color="text.secondary">{t('rrdash.selectProject')}</Typography>
               </Box>
             </Card>
           ) : (
@@ -1139,7 +1141,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                     });
                     setSubTab(next as SubTab);
                   }}
-                  ariaLabel="Prosjekt-seksjoner"
+                  ariaLabel={t('rrdash.projectSections')}
                   items={effectiveTabs
                     .filter((v) => {
                       // Skjul faner som krever en gate som ikke er åpen
@@ -1170,7 +1172,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 subheader={selectedProject?.description}
                 action={
                   creatorhubProjectId ? (
-                    <Tooltip title="Synkroniser med Creatorhub">
+                    <Tooltip title={t('rrdash.syncWithCreatorhub')}>
                       <Button
                         size="small"
                         variant="outlined"
@@ -1194,7 +1196,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
               {isProductionMode(activeProfessionMode) && selectedProjectId && (
                 <Box sx={{ px: 2 }}>
-                  <PostAgentErrorBoundary label="Post Agent-status">
+                  <PostAgentErrorBoundary label={t('rrdash.postAgentStatus')}>
                     <PostAgentReadyCard projectId={selectedProjectId} />
                   </PostAgentErrorBoundary>
                 </Box>
@@ -1203,7 +1205,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               {syncProjectMut.isPending && <LinearProgress />}
               {syncProjectMut.isSuccess && (
                 <Alert severity="success" sx={{ mx: 2 }}>
-                  Prosjektet ble synkronisert
+                  {t('rrdash.projectSynced')}
                 </Alert>
               )}
 
@@ -1308,14 +1310,13 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                         onClick={() => setShowIgInbox(true)}
                         data-testid="role-room-ig-inbox-open"
                       >
-                        Instagram-innboks
+                        {t('rrdash.instagramInbox')}
                       </Button>
                     </Box>
                     <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#8b5cf6" />
                     {!publishingProjectId && (
                       <Alert severity="info" variant="outlined">
-                        YouTube-publisering virker nå i The Role Room, men dette prosjektet er ikke koblet til et CreatorHub-prosjekt ennå.
-                        Du kan fortsatt laste opp og redigere videoer, men showcase-sync aktiveres først når prosjektet er synket.
+                        {t('rrdash.youtubeNotLinked')}
                       </Alert>
                     )}
                     <YouTubeIntegration
@@ -1395,17 +1396,17 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
       {/* ── New project dialog ─────────────────────────── */}
       <Dialog open={newProjectOpen} onClose={() => setNewProjectOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nytt casting-prosjekt</DialogTitle>
+        <DialogTitle>{t('rrdash.newCastingProject')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
           <TextField
-            label="Prosjektnavn"
+            label={t('rrdash.projectName')}
             value={newProjectName}
             onChange={(e) => setNewProjectName(e.target.value)}
             fullWidth
             autoFocus
           />
           <TextField
-            label="Beskrivelse"
+            label={t('rrdash.description')}
             value={newProjectDesc}
             onChange={(e) => setNewProjectDesc(e.target.value)}
             multiline
@@ -1434,24 +1435,23 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
               />
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Aktiver Post Agent for prosjektet
+                  {t('rrdash.enablePostAgent')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  AI-drevet post-produksjon i DaVinci Resolve. Du velger crew + bekrefter betaling
-                  på neste skjerm. 299 NOK/seat/mnd.
+                  {t('rrdash.postAgentDesc')}
                 </Typography>
               </Box>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setNewProjectOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setNewProjectOpen(false)}>{t('rrdash.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleCreateProject}
             disabled={!newProjectName.trim() || createProjectMut.isPending}
           >
-            Opprett
+            {t('rrdash.create')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1536,6 +1536,7 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
   candidates,
   crew,
 }) => {
+  const { t } = useT();
   const context = useRoleRoomAgentContext({ projectId, candidates, crew });
   const { createReview } = useProducerReviews(projectId ?? undefined);
   const { createItem } = useProducerTimeline(projectId ?? undefined);
@@ -1549,7 +1550,7 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
       // endpoints don't re-validate, so we'd silently persist garbage.
       const validation = validateAgentToolInput(tool.name, tool.input ?? {});
       if (!validation.ok) {
-        const message = `Agentens forslag har ugyldig input:\n${validation.errors.join('\n')}`;
+        const message = t('rrdash.agentInvalidInput', { errors: validation.errors.join('\n') });
         void logAgentToolResult({
           projectId,
           toolName: tool.name,
@@ -1603,7 +1604,7 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
               toolUseId: tool.id,
               status: 'ok',
             });
-            return `Opprettet review «${input.title}» (${input.review_type}).`;
+            return t('rrdash.agentReviewCreated', { title: input.title, type: input.review_type });
           }
           case 'propose_timeline_item': {
             const input = validation.data as {
@@ -1634,7 +1635,7 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
               toolUseId: tool.id,
               status: 'ok',
             });
-            return `La til timeline-oppgave «${input.title}» i ${input.phase}.`;
+            return t('rrdash.agentTimelineAdded', { title: input.title, phase: input.phase });
           }
           default:
             // summarize_brief_gaps / flag_scope_impact / suggest_next_decision are
@@ -1659,7 +1660,7 @@ const AgentChatMount: React.FC<AgentChatMountProps> = ({
         throw err;
       }
     },
-    [projectId, createReview, createItem],
+    [projectId, createReview, createItem, t],
   );
 
   return (
@@ -1685,6 +1686,7 @@ function RolesSubPanel({
   loading: boolean;
   onCreate: ReturnType<typeof useCreateCastingRole>;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
 
@@ -1694,16 +1696,16 @@ function RolesSubPanel({
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="subtitle2" fontWeight={600}>
-          Casting-roller ({roles.length})
+          {t('rrdash.castingRoles', { n: roles.length })}
         </Typography>
         <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
-          Legg til
+          {t('rrdash.add')}
         </Button>
       </Box>
 
       {roles.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          Ingen roller definert ennå
+          {t('rrdash.noRolesDefined')}
         </Typography>
       ) : (
         <List dense>
@@ -1723,10 +1725,10 @@ function RolesSubPanel({
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Ny rolle</DialogTitle>
+        <DialogTitle>{t('rrdash.newRole')}</DialogTitle>
         <DialogContent>
           <TextField
-            label="Rollenavn"
+            label={t('rrdash.roleName')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             fullWidth
@@ -1735,7 +1737,7 @@ function RolesSubPanel({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setOpen(false)}>{t('rrdash.cancel')}</Button>
           <Button
             variant="contained"
             disabled={!name.trim() || onCreate.isPending}
@@ -1749,7 +1751,7 @@ function RolesSubPanel({
               setOpen(false);
             }}
           >
-            Opprett
+            {t('rrdash.create')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1768,6 +1770,7 @@ function CandidatesSubPanel({
   loading: boolean;
   onAdd: ReturnType<typeof useAddCandidate>;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1778,16 +1781,16 @@ function CandidatesSubPanel({
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="subtitle2" fontWeight={600}>
-          Kandidater ({candidates.length})
+          {t('rrdash.candidatesCount', { n: candidates.length })}
         </Typography>
         <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
-          Legg til
+          {t('rrdash.add')}
         </Button>
       </Box>
 
       {candidates.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          Ingen kandidater lagt til ennå
+          {t('rrdash.noCandidates')}
         </Typography>
       ) : (
         <List dense>
@@ -1808,13 +1811,13 @@ function CandidatesSubPanel({
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Ny kandidat</DialogTitle>
+        <DialogTitle>{t('rrdash.newCandidate')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <TextField label="Navn" value={name} onChange={(e) => setName(e.target.value)} fullWidth autoFocus />
-          <TextField label="E-post" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
+          <TextField label={t('rrdash.name')} value={name} onChange={(e) => setName(e.target.value)} fullWidth autoFocus />
+          <TextField label={t('rrdash.email')} value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setOpen(false)}>{t('rrdash.cancel')}</Button>
           <Button
             variant="contained"
             disabled={!name.trim() || onAdd.isPending}
@@ -1830,7 +1833,7 @@ function CandidatesSubPanel({
               setOpen(false);
             }}
           >
-            Legg til
+            {t('rrdash.add')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1851,6 +1854,7 @@ function CrewSubPanel({
   onAdd: ReturnType<typeof useAddCrewMember>;
   isProjectLeader?: boolean;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -1955,15 +1959,15 @@ function CrewSubPanel({
         if (result?.error === 'owner_subscription_required') {
           setRowError({
             rowId: c.id,
-            msg: 'Du må ha et aktivt Role Room-abonnement eller kjøpe Post Agent standalone.',
-            cta: { label: 'Sett opp billing', url: `/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}` },
+            msg: t('rrdash.subRequired'),
+            cta: { label: t('rrdash.setupBilling'), url: `/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}` },
           });
         } else if (result?.error) {
           setRowError({ rowId: c.id, msg: result.detail || result.error });
         }
       }
     } catch (e: any) {
-      setRowError({ rowId: c.id, msg: e?.message || 'Noe gikk galt' });
+      setRowError({ rowId: c.id, msg: e?.message || t('rrdash.somethingWrong') });
     } finally {
       setBusyRow(null);
     }
@@ -1975,19 +1979,19 @@ function CrewSubPanel({
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="subtitle2" fontWeight={600}>
-          Crew ({crew.length})
+          {t('rrdash.crewCount', { n: crew.length })}
         </Typography>
         <Stack direction="row" spacing={1}>
           {isProjectLeader && (
             <Button size="small" startIcon={<GroupIcon />} onClick={() => setMembersOpen(true)}
                     sx={{ color: '#6d28d9' }}>
-              Medlemmer
+              {t('rrdash.members')}
             </Button>
           )}
           {isProjectLeader && (
             <Button size="small" startIcon={<TuneIcon />} onClick={() => setTabAccessOpen(true)}
                     sx={{ color: '#6d28d9' }}>
-              Tab-tilganger
+              {t('rrdash.tabAccess')}
             </Button>
           )}
           <Button size="small" startIcon={<AddIcon />}
@@ -2010,7 +2014,7 @@ function CrewSubPanel({
                       setOpen(true);
                     }
                   }}>
-            Legg til
+            {t('rrdash.add')}
           </Button>
         </Stack>
       </Box>
@@ -2023,7 +2027,7 @@ function CrewSubPanel({
         && seatStatus.subscriptionHealth.status !== 'none' && (
         <Alert severity="error" variant="filled" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            Abonnementet trenger oppmerksomhet
+            {t('rrdash.subNeedsAttention')}
           </Typography>
           <Typography variant="caption" sx={{ display: 'block' }}>
             {seatStatus.subscriptionHealth.message}
@@ -2040,15 +2044,15 @@ function CrewSubPanel({
           sx={{ mb: 2 }}
         >
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {seatStatus.usedSeats} av {seatStatus.includedSeats} seats brukt
-            {seatStatus.extraSeats > 0 && ` (+${seatStatus.extraSeats} ekstra)`}
+            {t('rrdash.seatsUsed', { used: seatStatus.usedSeats, included: seatStatus.includedSeats })}
+            {seatStatus.extraSeats > 0 && t('rrdash.seatsExtra', { n: seatStatus.extraSeats })}
           </Typography>
           <Typography variant="caption" sx={{ display: 'block' }}>
             {seatStatus.extraSeats > 0
-              ? `Du betaler ${seatStatus.extraCostPerMonth} kr/mnd ekstra for seats utover de ${seatStatus.includedSeats} inkluderte.`
+              ? t('rrdash.seatsPayingExtra', { cost: seatStatus.extraCostPerMonth, included: seatStatus.includedSeats })
               : seatStatus.nextSeatNeedsBilling
-                ? `Neste seat koster ${seatStatus.nextSeatCost} kr/mnd ekstra.`
-                : `Du har ${seatStatus.includedSeats - seatStatus.usedSeats} ledige seats igjen på abonnementet.`}
+                ? t('rrdash.seatsNextCost', { cost: seatStatus.nextSeatCost })
+                : t('rrdash.seatsFree', { n: seatStatus.includedSeats - seatStatus.usedSeats })}
           </Typography>
         </Alert>
       )}
@@ -2074,17 +2078,14 @@ function CrewSubPanel({
 
       {isProjectLeader && seatConfirmOpen && seatStatus && (
         <Dialog open={seatConfirmOpen} onClose={() => !seatUpgrading && setSeatConfirmOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>Ekstra seat — bekreft</DialogTitle>
+          <DialogTitle>{t('rrdash.extraSeatConfirm')}</DialogTitle>
           <DialogContent>
             <Typography variant="body2" sx={{ mb: 1.5 }}>
-              Du har brukt {seatStatus.usedSeats} av {seatStatus.includedSeats} seats inkludert i
-              abonnementet ditt. Hvis du legger til en til vil det koste{' '}
-              <strong>{seatStatus.nextSeatCost} kr/mnd</strong> ekstra (ex. mva.).
+              {t('rrdash.seatConfirmBody', { used: seatStatus.usedSeats, included: seatStatus.includedSeats })}{' '}
+              <strong>{seatStatus.nextSeatCost} kr/mnd</strong> {t('rrdash.seatConfirmTail')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Når du bekrefter blir Stripe-abonnementet oppdatert til ny seat-count
-              og beløpet legges proporsjonalt på neste faktura. Du kan fjerne
-              seats senere ved å fjerne medlemmer.
+              {t('rrdash.seatConfirmNote')}
             </Typography>
             {seatUpgradeError && (
               <Alert severity="error" sx={{ mt: 2 }} onClose={() => setSeatUpgradeError(null)}>
@@ -2093,7 +2094,7 @@ function CrewSubPanel({
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setSeatConfirmOpen(false)} disabled={seatUpgrading}>Avbryt</Button>
+            <Button onClick={() => setSeatConfirmOpen(false)} disabled={seatUpgrading}>{t('rrdash.cancel')}</Button>
             <Button variant="contained"
                     disabled={seatUpgrading}
                     onClick={async () => {
@@ -2111,7 +2112,7 @@ function CrewSubPanel({
                         setSeatUpgrading(false);
                       }
                     }}>
-              {seatUpgrading ? 'Oppgraderer…' : 'Bekreft + kjøp seat'}
+              {seatUpgrading ? t('rrdash.upgrading') : t('rrdash.confirmBuySeat')}
             </Button>
           </DialogActions>
         </Dialog>
@@ -2137,16 +2138,15 @@ function CrewSubPanel({
               href={`/marketplace/post-agent?productionId=${encodeURIComponent(projectId)}`}
               sx={{ bgcolor: '#a030c0', '&:hover': { bgcolor: '#b94dd6' } }}
             >
-              Aktiver i marketplace
+              {t('rrdash.activateInMarketplace')}
             </Button>
           }
         >
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            Post Agent ikke aktivert for dette prosjektet
+            {t('rrdash.postAgentNotActive')}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Aktiver i marketplace (299 NOK/seat/mnd, du ser pris-preview + bekrefter) — så
-            kan du tildele crew-seats herfra med ett klikk.
+            {t('rrdash.postAgentActivateHint')}
           </Typography>
         </Alert>
       )}
@@ -2173,8 +2173,8 @@ function CrewSubPanel({
               }}
             >
               {bulkProgress
-                ? `Tildeler… (${bulkProgress.done}/${bulkProgress.total})`
-                : `Tildel alle med epost (${unseatedWithEmail.length})`}
+                ? t('rrdash.assigningProgress', { done: bulkProgress.done, total: bulkProgress.total })
+                : t('rrdash.assignAllWithEmail', { n: unseatedWithEmail.length })}
             </Button>
           </Box>
         );
@@ -2182,7 +2182,7 @@ function CrewSubPanel({
 
       {crew.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          Ingen crew-medlemmer ennå
+          {t('rrdash.noCrewMembers')}
         </Typography>
       ) : (
         <List dense>
@@ -2209,7 +2209,7 @@ function CrewSubPanel({
                     </Typography>
                   </Box>
                   {!projectActivated ? null : !c.email ? (
-                    <Chip size="small" label="Trenger e-post" sx={{ opacity: 0.6 }} />
+                    <Chip size="small" label={t('rrdash.needsEmail')} sx={{ opacity: 0.6 }} />
                   ) : seat ? (
                     <Chip
                       size="small"
@@ -2234,7 +2234,7 @@ function CrewSubPanel({
                         '&:hover': { borderColor: '#b94dd6', bgcolor: 'rgba(160,48,192,0.05)' },
                       }}
                     >
-                      {isBusy ? '...' : 'Tildel seat'}
+                      {isBusy ? '...' : t('rrdash.assignSeat')}
                     </Button>
                   )}
                 </Box>
@@ -2258,13 +2258,13 @@ function CrewSubPanel({
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Nytt crew-medlem</DialogTitle>
+        <DialogTitle>{t('rrdash.newCrewMember')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <TextField label="Navn" value={name} onChange={(e) => setName(e.target.value)} fullWidth autoFocus />
-          <TextField label="Rolle" value={role} onChange={(e) => setRole(e.target.value)} fullWidth />
+          <TextField label={t('rrdash.name')} value={name} onChange={(e) => setName(e.target.value)} fullWidth autoFocus />
+          <TextField label={t('rrdash.role')} value={role} onChange={(e) => setRole(e.target.value)} fullWidth />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setOpen(false)}>{t('rrdash.cancel')}</Button>
           <Button
             variant="contained"
             disabled={!name.trim() || !role.trim() || onAdd.isPending}
@@ -2275,7 +2275,7 @@ function CrewSubPanel({
               setOpen(false);
             }}
           >
-            Legg til
+            {t('rrdash.add')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2290,6 +2290,7 @@ function ScheduleSubPanel({
   schedules: Array<Record<string, unknown>>;
   loading: boolean;
 }) {
+  const { t } = useT();
   if (loading) return <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 1 }} />;
 
   if (schedules.length === 0) {
@@ -2297,7 +2298,7 @@ function ScheduleSubPanel({
       <Box sx={{ textAlign: 'center', py: 4 }}>
         <CalendarIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
         <Typography variant="body2" color="text.secondary">
-          Ingen tidspunkter planlagt ennå
+          {t('rrdash.noSchedule')}
         </Typography>
       </Box>
     );
@@ -2311,14 +2312,14 @@ function ScheduleSubPanel({
             <ScheduleIcon fontSize="small" />
           </Avatar>
           <ListItemText
-            primary={String(s.title ?? s.event_type ?? `Hendelse ${i + 1}`)}
+            primary={String(s.title ?? s.event_type ?? t('rrdash.eventFallback', { n: i + 1 }))}
             secondary={
               s.start_time
                 ? `${formatDate(String(s.start_time))} – ${formatDate(String(s.end_time ?? ''))}`
                 : undefined
             }
           />
-          <Chip label={String(s.status ?? 'planlagt')} size="small" />
+          <Chip label={String(s.status ?? t('rrdash.statusPlanned'))} size="small" />
         </ListItem>
       ))}
     </List>
