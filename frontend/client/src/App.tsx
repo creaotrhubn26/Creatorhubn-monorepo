@@ -222,7 +222,6 @@ const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
-const GoogleWorkspaceToolsPanel = React.lazy(() => import('@/components/google-workspace/GoogleWorkspaceToolsPanel'));
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
@@ -853,15 +852,6 @@ function App() {
                     );
                   }} />
                   <Route path="/about" component={About as React.ComponentType<any>} />
-                  <Route path="/verktoy/google-workspace">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <GoogleWorkspaceToolsPanel />
-                    </React.Suspense>
-                  </Route>
                   <Route path="/creatorhub-innovasjon" component={CreatorhubInnovationPage as React.ComponentType<any>} />
                   <Route path="/google-verification-demo" component={GoogleVerificationDemoPage as React.ComponentType<any>} />
                   <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />

@@ -20,8 +20,12 @@ import {
   Description,
   DriveFolderUpload,
   Email,
+  History,
+  Insights,
+  Paid,
   PlayCircleOutline,
   Refresh,
+  TableChart,
   TaskAlt,
   VideoLibrary,
 } from '@mui/icons-material';
@@ -50,7 +54,11 @@ type ActionKey =
   | 'create-youtube-playlist'
   | 'upload-youtube-video'
   | 'update-youtube-video'
-  | 'upload-youtube-thumbnail';
+  | 'upload-youtube-thumbnail'
+  | 'load-youtube-analytics'
+  | 'load-youtube-revenue'
+  | 'load-drive-activity'
+  | 'export-sheets';
 
 type ActionState = {
   status: ActionStatus;
@@ -66,6 +74,7 @@ type DemoArtifacts = {
   youtubePlaylistId: string | null;
   youtubeVideoId: string | null;
   youtubeVideoUrl: string | null;
+  spreadsheetUrl: string | null;
 };
 
 type OverviewState = {
@@ -111,6 +120,10 @@ const ACTION_KEYS: ActionKey[] = [
   'upload-youtube-video',
   'update-youtube-video',
   'upload-youtube-thumbnail',
+  'load-youtube-analytics',
+  'load-youtube-revenue',
+  'load-drive-activity',
+  'export-sheets',
 ];
 
 const initialActionStates = ACTION_KEYS.reduce<Record<ActionKey, ActionState>>((acc, key) => {
@@ -533,6 +546,7 @@ export default function GoogleVerificationDemoPage() {
     youtubePlaylistId: null,
     youtubeVideoId: null,
     youtubeVideoUrl: null,
+    spreadsheetUrl: null,
   });
 
   const setActionState = React.useCallback((key: ActionKey, next: ActionState) => {
@@ -1057,6 +1071,73 @@ export default function GoogleVerificationDemoPage() {
     );
   }, [artifacts.youtubeVideoId, runAction]);
 
+  const handleLoadYouTubeAnalytics = React.useCallback(async () => {
+    await runAction(
+      'load-youtube-analytics',
+      async () => apiRequest('/api/youtube/analytics'),
+      (value) => {
+        const count = Array.isArray((value as { rows?: unknown[] }).rows)
+          ? (value as { rows: unknown[] }).rows.length
+          : 0;
+        return `YouTube Analytics hentet. ${count} dager med statistikk ble lest (yt-analytics.readonly).`;
+      },
+    );
+  }, [runAction]);
+
+  const handleLoadYouTubeRevenue = React.useCallback(async () => {
+    await runAction(
+      'load-youtube-revenue',
+      async () => apiRequest('/api/youtube/analytics/revenue'),
+      (value) => {
+        const count = Array.isArray((value as { rows?: unknown[] }).rows)
+          ? (value as { rows: unknown[] }).rows.length
+          : 0;
+        return `YouTube-inntekter hentet. ${count} dager med inntektsdata ble lest (yt-analytics-monetary.readonly).`;
+      },
+    );
+  }, [runAction]);
+
+  const handleLoadDriveActivity = React.useCallback(async () => {
+    await runAction(
+      'load-drive-activity',
+      async () => apiRequest('/api/google-workspace/drive-activity'),
+      (value) => {
+        const count = Array.isArray((value as { activities?: unknown[] }).activities)
+          ? (value as { activities: unknown[] }).activities.length
+          : 0;
+        return `Drive-aktivitet hentet. ${count} hendelser i endringsloggen ble lest (drive.activity.readonly).`;
+      },
+    );
+  }, [runAction]);
+
+  const handleExportSheets = React.useCallback(async () => {
+    await runAction(
+      'export-sheets',
+      async () => {
+        const response = await apiRequest('/api/google-workspace/sheets/export', {
+          method: 'POST',
+          body: {
+            title: `CreatorHub Verification ${createTimestampLabel()}`,
+            rows: [
+              ['Prosjekt', 'Status', 'Frist'],
+              ['Kampanje vår', 'Aktiv', '2026-09-01'],
+              ['Produktfilm', 'Planlagt', '2026-10-15'],
+            ],
+          },
+        });
+
+        const url = typeof (response as { spreadsheetUrl?: unknown }).spreadsheetUrl === 'string'
+          ? (response as { spreadsheetUrl: string }).spreadsheetUrl
+          : null;
+        if (url) {
+          setArtifacts((current) => ({ ...current, spreadsheetUrl: url }));
+        }
+        return response;
+      },
+      () => 'Nytt Google Sheet ble opprettet i brukerens Drive med prosjektdata (spreadsheets).',
+    );
+  }, [runAction]);
+
   const sessionEmail = typeof (overview.publicSession as { body?: { email?: unknown } } | null)?.body?.email === 'string'
     ? (overview.publicSession as { body: { email: string } }).body.email
     : resolvedEmail;
@@ -1247,6 +1328,47 @@ export default function GoogleVerificationDemoPage() {
         },
       ],
     },
+    {
+      id: 'analytics',
+      eyebrow: 'Stage 4',
+      title: 'Analytics and export',
+      description: 'Read-only innsikt + Sheets-eksport. Disse dekker de nyeste scope-ene: YouTube Analytics, Drive Activity og Google Sheets.',
+      accent: '#8b5cf6',
+      actions: [
+        {
+          key: 'load-youtube-analytics',
+          title: 'YouTube Analytics',
+          description: 'Hent kanal-/videostatistikk (visninger, seertid, abonnenter) for de siste 28 dagene.',
+          buttonLabel: 'Load YouTube Analytics',
+          icon: <Insights />,
+          onRun: () => { void handleLoadYouTubeAnalytics(); },
+        },
+        {
+          key: 'load-youtube-revenue',
+          title: 'YouTube Revenue',
+          description: 'Hent inntekter per dag (krever monetisert kanal — scopet yt-analytics-monetary.readonly).',
+          buttonLabel: 'Load YouTube Revenue',
+          icon: <Paid />,
+          onRun: () => { void handleLoadYouTubeRevenue(); },
+        },
+        {
+          key: 'load-drive-activity',
+          title: 'Drive Activity',
+          description: 'Les endringsloggen for Drive-filer (hvem endret hva når).',
+          buttonLabel: 'Load Drive Activity',
+          icon: <History />,
+          onRun: () => { void handleLoadDriveActivity(); },
+        },
+        {
+          key: 'export-sheets',
+          title: 'Google Sheets Export',
+          description: 'Opprett et nytt regneark i brukerens Drive og skriv inn prosjektdata.',
+          buttonLabel: 'Export to Sheets',
+          icon: <TableChart />,
+          onRun: () => { void handleExportSheets(); },
+        },
+      ],
+    },
   ];
   const overallActionKeys = verificationSections.flatMap((section) => section.actions.map((action) => action.key));
   const overallProgress = getStageProgress(actions, overallActionKeys);
@@ -1401,6 +1523,14 @@ export default function GoogleVerificationDemoPage() {
                         Demo-video er tilgjengelig her:{' '}
                         <Link href={artifacts.youtubeVideoUrl} target="_blank" rel="noreferrer" underline="hover">
                           {artifacts.youtubeVideoUrl}
+                        </Link>
+                      </Alert>
+                    )}
+                    {section.id === 'analytics' && artifacts.spreadsheetUrl && (
+                      <Alert severity="success" variant="outlined" sx={{ borderRadius: 3 }}>
+                        Regnearket er klart i Google Sheets:{' '}
+                        <Link href={artifacts.spreadsheetUrl} target="_blank" rel="noreferrer" underline="hover">
+                          Åpne regneark
                         </Link>
                       </Alert>
                     )}
