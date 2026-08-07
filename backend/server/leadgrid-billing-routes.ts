@@ -225,6 +225,116 @@ export function registerLeadgridBillingRoutes({
   app, pool, activeSessions, stripe,
 }: Deps): void {
 
+  // ---------- Provisjonér org → Stripe-kunde + faktura-abonnement ----------
+  // (2026-07-17, Daniel: «dette skal fungere som faktura til bedrifter og
+  // være koblet til organisasjonen».) Superadmin kobler en org til Stripe:
+  // customer m/ org-metadata + subscription med collection_method=
+  // send_invoice (ekte B2B-faktura på e-post m/ forfall, ikke kortbelastning).
+  // Plan-prisene bærer product_family=leadgrid + plan_key i metadata —
+  // webhooken (isLeadgridInvoice) gjenkjenner dem og oppdaterer org-plan.
+  // AI-tillegget (5 kr/kall-meteret) legges på når include_ai=true.
+  // Priser kan overstyres via env (default = live-prisene per 2026-07-17).
+  const PLAN_PRICES: Record<string, Record<string, string>> = {
+    solo_pro: {
+      month: process.env.LEADGRID_PRICE_SOLO_MONTH ?? "price_1TjcdoApjenweKvPYAngQd59",
+      year: process.env.LEADGRID_PRICE_SOLO_YEAR ?? "price_1TjcdpApjenweKvPQa3SL4lq",
+    },
+    agency: {
+      month: process.env.LEADGRID_PRICE_AGENCY_MONTH ?? "price_1TjcdqApjenweKvPvLZZ220h",
+      year: process.env.LEADGRID_PRICE_AGENCY_YEAR ?? "price_1TjcdqApjenweKvPJeskBX00",
+    },
+  };
+  const AI_PRICE = process.env.LEADGRID_PRICE_AI_STRUCTURE
+    ?? "price_1TuGibApjenweKvPiMk8meKH";
+
+  app.post("/api/leadgrid/billing/provision", async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    if (!stripe) return res.status(500).json({ error: "Stripe ikke konfigurert" });
+
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const orgId = typeof b.organization_id === "string" ? b.organization_id : "";
+    const plan = typeof b.plan === "string" ? b.plan : "";
+    const interval = b.interval === "year" ? "year" : "month";
+    const includeAI = b.include_ai === true;
+    const daysUntilDue = Number.isFinite(Number(b.days_until_due))
+      ? Math.max(1, Math.min(90, Math.trunc(Number(b.days_until_due)))) : 14;
+    const billingEmail = typeof b.billing_email === "string" ? b.billing_email.trim() : "";
+    if (!orgId) return res.status(400).json({ error: "organization_id påkrevd" });
+    const planPrice = PLAN_PRICES[plan]?.[interval];
+    if (!planPrice) return res.status(400).json({ error: "ugyldig_plan", valid: Object.keys(PLAN_PRICES) });
+
+    try {
+      const orgR = await pool.query<{
+        id: string; name: string; contact_email: string | null;
+        stripe_customer_id: string | null; stripe_subscription_id: string | null;
+      }>(
+        `SELECT id, name, contact_email, stripe_customer_id, stripe_subscription_id
+           FROM organizations WHERE id = $1`,
+        [orgId],
+      );
+      const org = orgR.rows[0];
+      if (!org) return res.status(404).json({ error: "org_ikke_funnet" });
+      if (org.stripe_subscription_id) {
+        return res.status(409).json({
+          error: "org_har_abonnement",
+          stripe_subscription_id: org.stripe_subscription_id,
+        });
+      }
+
+      const email = billingEmail || org.contact_email || "";
+      if (!email) {
+        return res.status(400).json({
+          error: "mangler_billing_email",
+          message: "Org-en mangler contact_email — oppgi billing_email i kallet.",
+        });
+      }
+
+      // 1. Kunde (gjenbruk hvis satt fra før)
+      let customerId = org.stripe_customer_id;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          name: org.name,
+          email,
+          metadata: { organization_id: org.id, product_family: "leadgrid" },
+        });
+        customerId = customer.id;
+      }
+
+      // 2. Faktura-abonnement (B2B: send_invoice m/ forfall)
+      const items: Stripe.SubscriptionCreateParams.Item[] = [{ price: planPrice }];
+      if (includeAI) items.push({ price: AI_PRICE });
+      const sub = await stripe.subscriptions.create({
+        customer: customerId,
+        items,
+        collection_method: "send_invoice",
+        days_until_due: daysUntilDue,
+        metadata: { organization_id: org.id, product_family: "leadgrid", plan_key: plan },
+      });
+
+      // 3. Koble til org-en — nå har meter-events en mottaker
+      await pool.query(
+        `UPDATE organizations
+            SET stripe_customer_id = $1, stripe_subscription_id = $2, plan = $3
+          WHERE id = $4`,
+        [customerId, sub.id, plan, org.id],
+      );
+
+      return res.status(201).json({
+        ok: true,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: sub.id,
+        plan, interval,
+        collection_method: "send_invoice",
+        days_until_due: daysUntilDue,
+        ai_addon: includeAI,
+      });
+    } catch (e) {
+      console.error("[leadgrid-billing] provision failed", e);
+      return res.status(500).json({ error: "provision_failed" });
+    }
+  });
+
   // ---------- Customer Portal session (én engangs-link) ----------
   app.post("/api/leadgrid/billing/portal-session", async (req, res) => {
     const session = getSession(req, activeSessions);
@@ -258,7 +368,7 @@ export function registerLeadgridBillingRoutes({
       res.json({ url: portalSession.url });
     } catch (e: any) {
       console.error("[billing] portal session failed", e);
-      res.status(500).json({ error: e.message ?? "Stripe-feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
