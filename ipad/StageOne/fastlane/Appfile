@@ -1,0 +1,5 @@
+# Settes via env — tomme verdier i committet fil (ingen team/Apple-ID i git).
+app_identifier("com.creatorhubn.StageOne")
+apple_id(ENV["FASTLANE_USER"] || "")
+team_id(ENV["APP_STORE_TEAM_ID"] || "")
+itc_team_id(ENV["APP_STORE_CONNECT_TEAM_ID"] || "")
