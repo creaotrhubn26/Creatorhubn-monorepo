@@ -16,7 +16,10 @@ final class ShotPlayer {
 
     var totalDuration: Double { shots.reduce(0) { $0 + $1.durationSec } }
 
-    var currentShotIndex: Int? {
+    var currentShotIndex: Int? { Self.shotIndex(at: elapsed, in: shots) }
+
+    /// Delt med ExportEngine: hvilket shot gjelder ved gitt tidspunkt.
+    static func shotIndex(at elapsed: Double, in shots: [Shot]) -> Int? {
         guard !shots.isEmpty else { return nil }
         var t = 0.0
         for (i, shot) in shots.enumerated() {
