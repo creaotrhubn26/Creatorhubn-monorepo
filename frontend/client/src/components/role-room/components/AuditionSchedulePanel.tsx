@@ -17,7 +17,7 @@ import { ScheduleDetailsDrawer } from "./ScheduleDetailsDrawer";
 import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
 import { RoleStatPillRow } from "./primitives";
 import { roleRoomAnalytics } from "../services/roleRoomAnalytics";
-import { useT } from '../../../i18n';
+import { useT, type TranslationKey } from '../../../i18n';
 
 /** Escape a string for safe embedding in an HTML template literal. */
 const escapeHtml = (s: string): string =>
@@ -38,26 +38,26 @@ const focusVisibleStyles = {
 
 const AUDITION_SHORTCUTS: Array<{
   keys: string;
-  action: string;
-  scope: 'Alle visninger' | 'Pro view';
+  actionKey: TranslationKey;
+  scope: 'all' | 'pro';
 }> = [
-  { keys: 'G', action: 'Åpne guide', scope: 'Alle visninger' },
-  { keys: '/', action: 'Fokuser søkefeltet', scope: 'Alle visninger' },
-  { keys: 'Ctrl/Cmd + N', action: 'Ny audition', scope: 'Alle visninger' },
-  { keys: 'Ctrl/Cmd + E', action: 'Eksporter filtrert CSV', scope: 'Alle visninger' },
-  { keys: 'Ctrl/Cmd + D', action: 'Dupliser fokusert rad', scope: 'Alle visninger' },
-  { keys: '↑ / ↓', action: 'Naviger mellom rader', scope: 'Alle visninger' },
-  { keys: 'Enter', action: 'Åpne detaljer for fokusert rad', scope: 'Alle visninger' },
-  { keys: 'Esc', action: 'Lukk drawer / fjern valg', scope: 'Alle visninger' },
-  { keys: '?', action: 'Åpne denne snarvei-dialogen', scope: 'Alle visninger' },
-  { keys: 'J / K', action: 'Naviger mellom auditions', scope: 'Pro view' },
-  { keys: 'E', action: 'Rediger valgt audition', scope: 'Pro view' },
-  { keys: 'F', action: 'Favoritt på/av for valgt audition', scope: 'Pro view' },
-  { keys: 'B', action: 'Sett status til Bekreftet', scope: 'Pro view' },
-  { keys: 'V', action: 'Sett status til Callback', scope: 'Pro view' },
-  { keys: 'A', action: 'Sett status til Planlagt', scope: 'Pro view' },
-  { keys: 'X', action: 'Sett status til Avbryt', scope: 'Pro view' },
-  { keys: 'Cmd/Ctrl + Enter', action: 'Sett status til Fullført', scope: 'Pro view' },
+  { keys: 'G', actionKey: 'aud.scGuide', scope: 'all' },
+  { keys: '/', actionKey: 'aud.scFocusSearch', scope: 'all' },
+  { keys: 'Ctrl/Cmd + N', actionKey: 'aud.scNewAudition', scope: 'all' },
+  { keys: 'Ctrl/Cmd + E', actionKey: 'aud.scExportCsv', scope: 'all' },
+  { keys: 'Ctrl/Cmd + D', actionKey: 'aud.scDuplicateRow', scope: 'all' },
+  { keys: '↑ / ↓', actionKey: 'aud.scNavigateRows', scope: 'all' },
+  { keys: 'Enter', actionKey: 'aud.scOpenDetails', scope: 'all' },
+  { keys: 'Esc', actionKey: 'aud.scCloseDrawer', scope: 'all' },
+  { keys: '?', actionKey: 'aud.scOpenShortcuts', scope: 'all' },
+  { keys: 'J / K', actionKey: 'aud.scNavigateAuditions', scope: 'pro' },
+  { keys: 'E', actionKey: 'aud.scEditAudition', scope: 'pro' },
+  { keys: 'F', actionKey: 'aud.scToggleFavorite', scope: 'pro' },
+  { keys: 'B', actionKey: 'aud.scStatusConfirmed', scope: 'pro' },
+  { keys: 'V', actionKey: 'aud.scStatusCallback', scope: 'pro' },
+  { keys: 'A', actionKey: 'aud.scStatusScheduled', scope: 'pro' },
+  { keys: 'X', actionKey: 'aud.scStatusCancel', scope: 'pro' },
+  { keys: 'Cmd/Ctrl + Enter', actionKey: 'aud.scStatusCompleted', scope: 'pro' },
 ];
 
 type SortField = ReducerSortField;
@@ -78,14 +78,14 @@ type NormalizedSchedule = Schedule & {
 
 const PRO_STATUS_COLUMNS: Array<{
   status: ScheduleStatus;
-  label: string;
+  labelKey: TranslationKey;
 }> = [
-  { status: 'scheduled', label: 'Planlagt' },
-  { status: 'confirmed', label: 'Bekreftet' },
-  { status: 'awaiting_callback', label: 'Callback' },
-  { status: 'completed', label: 'Fullført' },
-  { status: 'cancelled', label: 'Kansellert' },
-  { status: 'pool', label: 'Pool' },
+  { status: 'scheduled', labelKey: 'aud.colScheduled' },
+  { status: 'confirmed', labelKey: 'aud.colConfirmed' },
+  { status: 'awaiting_callback', labelKey: 'aud.colCallback' },
+  { status: 'completed', labelKey: 'aud.colCompleted' },
+  { status: 'cancelled', labelKey: 'aud.colCancelled' },
+  { status: 'pool', labelKey: 'aud.colPool' },
 ];
 
 type ProViewMode = 'pipeline' | 'timeline';
@@ -2281,7 +2281,7 @@ function AuditionSchedulePanelInner({
                 >
                   <Box sx={{ position: 'sticky', top: 0, zIndex: 2, py: 0.25, bgcolor: roleSurfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
                     <Typography sx={{ color: column.color, fontWeight: 700, fontSize: '0.85rem' }}>
-                      {column.label}
+                      {t(column.labelKey)}
                     </Typography>
                     <Chip
                       size="small"
@@ -4354,15 +4354,15 @@ function AuditionSchedulePanelInner({
                   }}
                 />
                 <Typography sx={{ color: roleText, fontSize: '0.84rem' }}>
-                  {shortcut.action}
+                  {t(shortcut.actionKey)}
                 </Typography>
                 <Chip
                   size="small"
-                  label={shortcut.scope}
+                  label={shortcut.scope === 'pro' ? t('aud.scopePro') : t('aud.scopeAll')}
                   sx={{
                     justifySelf: { xs: 'start', md: 'end' },
-                    color: shortcut.scope === 'Pro view' ? roleTabAccent : roleTextMuted,
-                    bgcolor: shortcut.scope === 'Pro view' ? roleTabAccentSoft : 'rgba(255,255,255,0.06)',
+                    color: shortcut.scope === 'pro' ? roleTabAccent : roleTextMuted,
+                    bgcolor: shortcut.scope === 'pro' ? roleTabAccentSoft : 'rgba(255,255,255,0.06)',
                     border: `1px solid ${roleBorder}`,
                     fontWeight: 600,
                   }}
