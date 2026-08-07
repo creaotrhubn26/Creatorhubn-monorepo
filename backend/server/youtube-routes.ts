@@ -559,6 +559,23 @@ function sendYoutubeError(res: Response, error: unknown) {
   res.status(getYoutubeErrorStatus(error)).json({ error: normalizeYoutubeError(error) });
 }
 
+function toIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// YouTube Analytics-rapportene krever et [startDate, endDate]-vindu (YYYY-MM-DD).
+// Default = siste 28 dager; kan overstyres via ?startDate/?endDate.
+function analyticsDateRange(req: Request): { startDate: string; endDate: string } {
+  const end = readStringValue(req.query.endDate) ?? toIsoDate(new Date());
+  const explicitStart = readStringValue(req.query.startDate);
+  if (explicitStart) {
+    return { startDate: explicitStart, endDate: end };
+  }
+  const start = new Date(end);
+  start.setDate(start.getDate() - 27);
+  return { startDate: toIsoDate(start), endDate: end };
+}
+
 export function createYouTubeRouter(pool: Pool) {
   const router = express.Router();
 
@@ -991,6 +1008,75 @@ export function createYouTubeRouter(pool: Pool) {
       sendYoutubeError(res, error);
     } finally {
       await cleanupTempFile(filePath);
+    }
+  });
+
+  // YouTube Analytics — kanal-/videostatistikk (visninger, seertid, abonnenter).
+  // Bruker scopet auth/yt-analytics.readonly (allerede i ROLE_ROOM_GOOGLE_SCOPES).
+  router.get("/analytics", async (req: Request, res: Response) => {
+    const userId = await resolveUserId(pool, req);
+    if (!userId) {
+      res.status(400).json({ error: "userId er påkrevd." });
+      return;
+    }
+
+    try {
+      const { authorized } = await buildAuthorizedYoutubeClient(pool, userId, req);
+      const analytics = google.youtubeAnalytics({ version: "v2", auth: authorized.oauthClient });
+      const { startDate, endDate } = analyticsDateRange(req);
+
+      const report = await analytics.reports.query({
+        ids: "channel==MINE",
+        startDate,
+        endDate,
+        metrics: "views,estimatedMinutesWatched,averageViewDuration,subscribersGained,likes,comments,shares",
+        dimensions: "day",
+        sort: "day",
+      });
+
+      res.json({
+        startDate,
+        endDate,
+        columnHeaders: report.data.columnHeaders ?? [],
+        rows: report.data.rows ?? [],
+      });
+    } catch (error) {
+      sendYoutubeError(res, error);
+    }
+  });
+
+  // YouTube Analytics — inntekter per dag. Bruker scopet
+  // auth/yt-analytics-monetary.readonly. Krever monetisert kanal; hvis ikke
+  // monetisert svarer Google 403 → normaliseres til en tydelig melding.
+  router.get("/analytics/revenue", async (req: Request, res: Response) => {
+    const userId = await resolveUserId(pool, req);
+    if (!userId) {
+      res.status(400).json({ error: "userId er påkrevd." });
+      return;
+    }
+
+    try {
+      const { authorized } = await buildAuthorizedYoutubeClient(pool, userId, req);
+      const analytics = google.youtubeAnalytics({ version: "v2", auth: authorized.oauthClient });
+      const { startDate, endDate } = analyticsDateRange(req);
+
+      const report = await analytics.reports.query({
+        ids: "channel==MINE",
+        startDate,
+        endDate,
+        metrics: "estimatedRevenue,estimatedAdRevenue,grossRevenue,cpm,adImpressions",
+        dimensions: "day",
+        sort: "day",
+      });
+
+      res.json({
+        startDate,
+        endDate,
+        columnHeaders: report.data.columnHeaders ?? [],
+        rows: report.data.rows ?? [],
+      });
+    } catch (error) {
+      sendYoutubeError(res, error);
     }
   });
 

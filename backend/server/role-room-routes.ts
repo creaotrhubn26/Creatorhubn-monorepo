@@ -911,6 +911,7 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/drive.activity.readonly',
   'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/spreadsheets',
   // Full Calendar access is required when Role Room creates dedicated
   // secondary project calendars in addition to event sync / Meet sessions.
   'https://www.googleapis.com/auth/calendar',
