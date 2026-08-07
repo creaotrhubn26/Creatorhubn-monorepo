@@ -21,9 +21,17 @@ struct RootView: View {
     @State private var mode: AppMode = .studio
     @State private var renderer: StageRenderer?
     @State private var autosaveTask: Task<Void, Never>?
+    @State private var sync = CloudSync()
+    @State private var showAccount = false
 
     private static let store = DocumentStore()
     private static let sceneId = "default"
+
+    /// Mtime på lokal scenefil — sammenlignes mot sky-updatedAt (last-write-wins).
+    static func localSceneSavedAt() -> Date? {
+        let url = store.directory.appendingPathComponent("\(sceneId).stageone.json")
+        return (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
 
     init() {
         let data = (try? Self.store.load(id: Self.sceneId)) ?? DefaultScene.make()
@@ -37,14 +45,26 @@ struct RootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TopToolbar(document: document, mode: $mode)
+            TopToolbar(document: document, mode: $mode,
+                       accountSymbol: sync.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle",
+                       onAccountTap: { showAccount = true })
             Rectangle().fill(Theme.border).frame(height: Theme.hairline)
             content
         }
         .background(Theme.bg)
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showAccount) {
+            AccountSheet(document: document, sync: sync)
+        }
         .onAppear {
             if renderer == nil { renderer = try? StageRenderer() }
+        }
+        .task {
+            // ved oppstart: hent sky-scenen om den er nyere enn lokal fil
+            if let remote = await sync.pullIfNewer(localSavedAt: Self.localSceneSavedAt()) {
+                document.mutate { $0 = remote }
+                document.undoManager.removeAllActions()
+            }
         }
         .onChange(of: document.data) {
             scheduleAutosave()
@@ -90,6 +110,7 @@ struct RootView: View {
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
             try? Self.store.save(data, id: Self.sceneId)
+            await sync.push(scene: data) // no-op når utlogget
         }
     }
 }
