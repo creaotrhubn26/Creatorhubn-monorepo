@@ -35,6 +35,7 @@ targets:
         CFBundleDisplayName: StageOne
         CFBundleName: StageOne
         UILaunchScreen: {}
+        NSCameraUsageDescription: "Kamera brukes til AR-forhåndsvisning av studioet og til rom-skanning (RoomPlan)."
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationLandscapeLeft

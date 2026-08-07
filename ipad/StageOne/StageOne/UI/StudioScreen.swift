@@ -6,6 +6,8 @@ struct StudioScreen: View {
     let sync: CloudSync
 
     @State private var aiOpen = false
+    @State private var arOpen = false
+    @State private var scanOpen = false
 
     @State private var orbit: OrbitCamera = .default
     @State private var tool: EditorTool = .select
@@ -14,7 +16,7 @@ struct StudioScreen: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            HierarchyPanel(document: document)
+            HierarchyPanel(document: document, onScanRoom: { scanOpen = true })
             divider
             VStack(spacing: 0) {
                 ViewportView(document: document, renderer: renderer,
@@ -67,7 +69,28 @@ struct StudioScreen: View {
                 .overlay(Capsule().stroke(aiOpen ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: Theme.hairline))
             }
             .buttonStyle(.plain)
-            comingChip(icon: "arkit", label: "AR Preview")
+            Button {
+                arOpen = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arkit")
+                        .font(.system(size: 11))
+                    Text("AR Preview")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(Theme.muted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Theme.surface.opacity(0.85)))
+                .overlay(Capsule().stroke(Theme.border, lineWidth: Theme.hairline))
+            }
+            .buttonStyle(.plain)
+        }
+        .fullScreenCover(isPresented: $arOpen) {
+            ARPreviewSheet(document: document)
+        }
+        .fullScreenCover(isPresented: $scanOpen) {
+            RoomScanSheet(document: document)
         }
     }
 

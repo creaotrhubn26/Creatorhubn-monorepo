@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HierarchyPanel: View {
     let document: SceneDocument
+    var onScanRoom: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -93,7 +94,31 @@ struct HierarchyPanel: View {
 
     private var comingSoonCards: some View {
         VStack(spacing: 8) {
-            comingCard(icon: "viewfinder", title: "Scan Room", subtitle: "LiDAR")
+            Button {
+                onScanRoom?()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "viewfinder")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Scan Room")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.fg)
+                        Text("LiDAR")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.muted)
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg.opacity(0.5)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border, lineWidth: Theme.hairline))
+            }
+            .buttonStyle(.plain)
             comingCard(icon: "square.grid.2x2", title: "Assets", subtitle: "Bibliotek")
         }
         .padding(10)
