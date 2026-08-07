@@ -904,6 +904,7 @@ import { registerLeadgridMotebriefRoutes } from "./leadgrid-motebrief-routes";
 import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
 import { registerStageOneSceneRoutes } from "./stageone-scene-routes";
+import { registerStageOneAssistantRoutes } from "./stageone-assistant-routes";
 import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
 import { registerLeadgridDemoRequestRoutes } from "./leadgrid-demo-request-routes";
@@ -66790,6 +66791,9 @@ registerLeadgridEquipmentRoutes({ app, pool, requireUserSession });
 
 // StageOne Virtual Studio — sky-lagring av scener for iPad-appen (lat tabell).
 registerStageOneSceneRoutes({ app, pool, requireUserSession });
+
+// StageOne AI-assistent — naturlig språk → scene-patch (Claude).
+registerStageOneAssistantRoutes({ app, pool, requireUserSession });
 
 // Krasjrapportering — MetricKit-diagnostikk fra iPad-appen (mig 0387).
 registerLeadgridCrashRoutes({ app, pool, requireUserSession });
