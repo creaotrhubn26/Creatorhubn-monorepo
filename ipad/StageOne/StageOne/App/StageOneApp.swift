@@ -75,7 +75,11 @@ struct RootView: View {
                 StubScreen(mode: mode)
             }
         case .export:
-            StubScreen(mode: mode)
+            if let renderer {
+                ExportScreen(document: document, renderer: renderer)
+            } else {
+                StubScreen(mode: mode)
+            }
         }
     }
 
