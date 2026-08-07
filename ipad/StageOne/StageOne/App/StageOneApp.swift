@@ -68,7 +68,13 @@ struct RootView: View {
             } else {
                 StubScreen(mode: mode)
             }
-        case .cameras, .export:
+        case .cameras:
+            if let renderer {
+                CamerasScreen(document: document, renderer: renderer)
+            } else {
+                StubScreen(mode: mode)
+            }
+        case .export:
             StubScreen(mode: mode)
         }
     }
