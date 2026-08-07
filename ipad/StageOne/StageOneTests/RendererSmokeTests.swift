@@ -30,6 +30,32 @@ final class RendererSmokeTests: XCTestCase {
         XCTAssertGreaterThan(unique.count, 8, "render ser blank/ensfarget ut")
     }
 
+    @MainActor func testBeamAndShadowAffectImage() throws {
+        let renderer = try StageRenderer()
+        var scene = DefaultScene.make()
+        let cam = RenderCamera.from(node: scene.node("camera-a")!)
+        let base = readPixels(try renderer.renderOffscreen(scene: scene, camera: cam, width: 320, height: 180))
+        // smal beam → både kjegle-geometri og spot-avgrensning endres
+        if let i = scene.nodes.firstIndex(where: { $0.id == "key-light" }),
+           case .light(var p) = scene.nodes[i].params {
+            p.beamDeg = 10
+            scene.nodes[i].params = .light(p)
+        }
+        let narrow = readPixels(try renderer.renderOffscreen(scene: scene, camera: cam, width: 320, height: 180))
+        XCTAssertNotEqual(base, narrow, "beam-endring skal endre bildet")
+    }
+
+    @MainActor func testSelectionOutlineAffectsImage() throws {
+        let renderer = try StageRenderer()
+        let scene = DefaultScene.make()
+        let cam = RenderCamera.from(node: scene.node("camera-a")!)
+        let plain = readPixels(try renderer.renderOffscreen(scene: scene, camera: cam, width: 320, height: 180))
+        renderer.selectedNodeId = "coffee-table"
+        let selected = readPixels(try renderer.renderOffscreen(scene: scene, camera: cam, width: 320, height: 180))
+        renderer.selectedNodeId = nil
+        XCTAssertNotEqual(plain, selected, "selection-outline skal synes")
+    }
+
     @MainActor func testLightsAffectImage() throws {
         let renderer = try StageRenderer()
         var scene = DefaultScene.make()
