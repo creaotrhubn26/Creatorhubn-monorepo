@@ -93,6 +93,14 @@ struct CloudAPI: Sendable {
         return try await send(path: "/api/stageone/scenes/\(id)", method: "PUT", body: body)
     }
 
+    // MARK: - AI-assistent
+
+    func assistant(scene: SceneData, instruction: String) async throws -> AssistantPatch {
+        struct Body: Encodable { let scene: SceneData; let instruction: String }
+        let body = try JSONEncoder().encode(Body(scene: scene, instruction: instruction))
+        return try await send(path: "/api/stageone/assistant", method: "POST", body: body)
+    }
+
     // MARK: - Transport
 
     private func send<T: Decodable>(path: String, method: String, body: Data?) async throws -> T {

@@ -75,6 +75,12 @@ final class CloudSync {
         }
     }
 
+    /// AI-assistenten (fase 5): scene + instruks → patch. Krever innlogging.
+    func runAssistant(scene: SceneData, instruction: String) async throws -> AssistantPatch {
+        guard isSignedIn else { throw CloudAPI.APIError.http(401, "auth_required") }
+        return try await api.assistant(scene: scene, instruction: instruction)
+    }
+
     /// Hent remote-scenen om den er nyere enn lokal fil. Returnerer scenen som
     /// skal tas i bruk, ellers nil.
     func pullIfNewer(localSavedAt: Date?) async -> SceneData? {
