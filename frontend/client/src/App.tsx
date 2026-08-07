@@ -242,7 +242,6 @@ const TeamWorkspacePage = React.lazy(() => import('./components/workspace/TeamWo
 const WorkspaceHome = React.lazy(() => import('./components/workspace/WorkspaceHome'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
-const GoogleWorkspaceToolsPanel = React.lazy(() => import('@/components/google-workspace/GoogleWorkspaceToolsPanel'));
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
 const MockupVideoStudioPage = React.lazy(() => import('@/components/role-room/post-agent/mockup-video/MockupVideoStudio'));
 const AudioShowcasePage = React.lazy(() => import('@/pages/audio-showcase'));
@@ -1033,15 +1032,6 @@ function App() {
                     );
                   }} />
                   <Route path="/about" component={About as React.ComponentType<any>} />
-                  <Route path="/verktoy/google-workspace">
-                    <React.Suspense fallback={
-                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-                        <CircularProgress />
-                      </Box>
-                    }>
-                      <GoogleWorkspaceToolsPanel />
-                    </React.Suspense>
-                  </Route>
                   <Route path="/creatorhub-innovasjon" component={CreatorhubInnovationPage as React.ComponentType<any>} />
                   <Route path="/google-verification-demo" component={GoogleVerificationDemoPage as React.ComponentType<any>} />
                   <Route path="/pricing" component={PublicPricingPage as React.ComponentType<any>} />

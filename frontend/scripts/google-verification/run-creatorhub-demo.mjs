@@ -674,6 +674,12 @@ try {
     { key: "upload-youtube-video", timeoutMs: 180000 },
     { key: "update-youtube-video", timeoutMs: 90000 },
     { key: "upload-youtube-thumbnail", timeoutMs: 90000 },
+    // Stage 4 — nyeste scopes. Non-fatal: revenue krever monetisert kanal og
+    // kan 403, men resten av opptaket skal fullføre uansett.
+    { key: "load-youtube-analytics", timeoutMs: 60000, optional: true },
+    { key: "load-youtube-revenue", timeoutMs: 60000, optional: true },
+    { key: "load-drive-activity", timeoutMs: 60000, optional: true },
+    { key: "export-sheets", timeoutMs: 90000, optional: true },
   ];
 
   for (const action of actionPlan) {
@@ -686,7 +692,11 @@ try {
     });
 
     if (outcome.status !== "success") {
-      throw new Error(`Demo action failed for ${action.key}: ${outcome.text}`);
+      if (action.optional) {
+        log(`Optional demo action ${action.key} failed (non-fatal): ${outcome.text}`);
+      } else {
+        throw new Error(`Demo action failed for ${action.key}: ${outcome.text}`);
+      }
     }
 
     await sleep(1200);
