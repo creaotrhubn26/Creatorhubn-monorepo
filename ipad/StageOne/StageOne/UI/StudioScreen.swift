@@ -3,6 +3,9 @@ import SwiftUI
 struct StudioScreen: View {
     let document: SceneDocument
     let renderer: StageRenderer
+    let sync: CloudSync
+
+    @State private var aiOpen = false
 
     @State private var orbit: OrbitCamera = .default
     @State private var tool: EditorTool = .select
@@ -45,7 +48,25 @@ struct StudioScreen: View {
 
     private var comingOverlays: some View {
         VStack(alignment: .leading, spacing: 6) {
-            comingChip(icon: "sparkles", label: "AI Assistant")
+            if aiOpen {
+                AIAssistantPanel(document: document, sync: sync)
+            }
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { aiOpen.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11))
+                    Text("AI Assistant")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(aiOpen ? Theme.fg : Theme.muted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(aiOpen ? Theme.accent.opacity(0.35) : Theme.surface.opacity(0.85)))
+                .overlay(Capsule().stroke(aiOpen ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: Theme.hairline))
+            }
+            .buttonStyle(.plain)
             comingChip(icon: "arkit", label: "AR Preview")
         }
     }

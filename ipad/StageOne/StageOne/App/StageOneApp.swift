@@ -76,7 +76,7 @@ struct RootView: View {
         switch mode {
         case .studio:
             if let renderer {
-                StudioScreen(document: document, renderer: renderer)
+                StudioScreen(document: document, renderer: renderer, sync: sync)
             } else {
                 Text("Metal utilgjengelig")
                     .foregroundStyle(Theme.muted)
