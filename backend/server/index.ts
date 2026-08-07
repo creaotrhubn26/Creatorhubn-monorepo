@@ -790,6 +790,7 @@ import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-cha
 import { createDanceRealtimeServer } from "./dance-realtime-server.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter } from "./youtube-routes.js";
+import { createGoogleWorkspaceExtraRouter } from "./google-workspace-extra-routes.js";
 import {
   deletePersistedAuthSession,
   hydratePersistedAuthSessions,
@@ -1966,6 +1967,7 @@ app.use(
   createCastingVideoRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
+app.use("/api/google-workspace", createGoogleWorkspaceExtraRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
