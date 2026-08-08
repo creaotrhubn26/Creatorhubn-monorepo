@@ -76,6 +76,7 @@ import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective
 import { generateSceneBackground, aiBackgroundAvailable } from './mockupAiBackground';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
+import { exportAndSaveGif } from './mockupGifExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
@@ -302,6 +303,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runExportGif = async (cfg: MotionConfig) => {
+    if (videoBusy) return;
+    setVideoBusy(true);
+    try {
+      const saved = await exportAndSaveGif(doc, cfg, (l, f) => setExportMsg(`🎞️ ${l} ${Math.round(f * 100)}%`));
+      setExportMsg(saved ? '✓ GIF lagret.' : null);
+    } catch (e) {
+      console.error('[mockup-studio] gif-export', e);
+      setExportMsg('GIF-eksport gikk ikke — prøv en kortere lengde.');
+    } finally {
+      setVideoBusy(false);
+    }
+  };
+
   const assignShot = (shot: CapturedShot) => {
     if (selection.kind === 'device') {
       store.setDeviceImage(selection.id, shot.dataUrl);
@@ -412,14 +427,23 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
         <select
-          onChange={(e) => { const p = MOTION_PRESETS.find((x) => x.id === e.target.value); if (p) void runExportVideo(p.cfg); e.target.selectedIndex = 0; }}
+          onChange={(e) => {
+            const v = e.target.value; e.target.selectedIndex = 0;
+            if (v.startsWith('gif:')) { const p = MOTION_PRESETS.find((x) => x.id === v.slice(4)); if (p) void runExportGif(p.cfg); }
+            else { const p = MOTION_PRESETS.find((x) => x.id === v); if (p) void runExportVideo(p.cfg); }
+          }}
           disabled={videoBusy}
           value=""
           style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy ? 0.5 : 1 }}
-          title="Animér avsløringen (enheter → tekst → callouts én etter én → lupe) og eksporter som video"
+          title="Animér avsløringen (enheter → tekst → callouts én etter én → lupe) og eksporter som video (WebM) eller animert GIF"
         >
-          <option value="" disabled>{videoBusy ? '🎬 Lager…' : '🎬 Video'}</option>
-          {MOTION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          <option value="" disabled>{videoBusy ? '🎬 Lager…' : '🎬 Video / GIF'}</option>
+          <optgroup label="Video (WebM)">
+            {MOTION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </optgroup>
+          <optgroup label="Animert GIF">
+            {MOTION_PRESETS.map((p) => <option key={`gif-${p.id}`} value={`gif:${p.id}`}>🎞️ {p.label}</option>)}
+          </optgroup>
         </select>
         <button onClick={() => setShowExport(true)} style={primaryBtn} title="Kvalitetssjekk → format → eksport (PNG/PDF/PSD)">Eksporter</button>
       </div>
