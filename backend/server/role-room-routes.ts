@@ -948,7 +948,17 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/webmasters',
   // Site Verification API — verifisere domener (metatag/fil) for GSC.
   'https://www.googleapis.com/auth/siteverification',
-  // YouTube Analytics — channel + video performance metrics.
+  // MERK: yt-analytics.readonly + yt-analytics-monetary.readonly er FJERNET fra
+  // denne bunten. Google avviser hele consent-forespørselen med invalid_request
+  // («scopes that cannot be requested together») når YouTube Analytics-scopene
+  // (særlig monetary/finansdata) bes om sammen med Drive-scopes. De hentes i
+  // stedet via en egen, inkrementell YouTube-consent — se ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES.
+] as const;
+// YouTube Analytics-scopene isolert i egen bunt. MÅ bes om i en separat consent
+// (uten Drive/Workspace-scopes), ellers svarer Google invalid_request.
+const ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/youtube.readonly',
   'https://www.googleapis.com/auth/yt-analytics.readonly',
   'https://www.googleapis.com/auth/yt-analytics-monetary.readonly',
 ] as const;
