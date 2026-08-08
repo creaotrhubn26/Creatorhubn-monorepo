@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { deviceDims, type Device3DVariant } from './deviceGeometry';
 
 let renderer: THREE.WebGLRenderer | null = null;
@@ -29,10 +30,13 @@ function ensure(): { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
     camera.position.set(0, 0, 5.2); // strammet så telefonen (høyde ~2.06) fyller ~85% + margin for tilt
-    const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(3, 4, 5); scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.8); fill.position.set(-4, 1, 3); scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xffffff, 0.6); rim.position.set(0, -3, -4); scene.add(rim);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(3, 4, 5); scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.7); fill.position.set(-4, 1, 3); scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.5); rim.position.set(0, -3, -4); scene.add(rim);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    // HDRI-lignende miljø (nøytralt studio) via PMREM → refleksjoner i metall + glass.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   }
   return { renderer, scene, camera };
 }
@@ -41,7 +45,7 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('img')); im.src = src; });
 }
 
-const bodyMat = () => new THREE.MeshStandardMaterial({ color: 0x1b1d22, metalness: 0.85, roughness: 0.38 });
+const bodyMat = () => new THREE.MeshStandardMaterial({ color: 0x1b1d22, metalness: 0.9, roughness: 0.32, envMapIntensity: 0.9 });
 
 /** Selv-lyst (unlit) skjerm-materiale — skjermbilde i sanne farger uansett lys. */
 async function screenMat(shot?: string): Promise<THREE.Material> {
