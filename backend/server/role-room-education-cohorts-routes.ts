@@ -282,18 +282,23 @@ export function createEducationCohortsRouter(
       );
       if (owns.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
       const existing = await pool.query(
-        `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
+        `SELECT lower(email) AS email, lower(name) AS name FROM role_room_education_students WHERE cohort_id = $1`,
         [req.params.id],
       );
-      const seen = new Set<string>(existing.rows.map((r) => String(r.email)));
+      const seen = new Set<string>(existing.rows.filter((r) => r.email).map((r) => String(r.email)));
+      // Navn-dedup som fallback når e-post mangler (ellers dubletter uten unik constraint).
+      const seenNames = new Set<string>(existing.rows.map((r) => String(r.name ?? "")));
       let added = 0;
       let skipped = 0;
       for (const row of rows) {
         const name = typeof row.name === "string" ? row.name.trim() : "";
         const email = typeof row.email === "string" ? row.email.trim() : "";
         const emailKey = email.toLowerCase();
-        if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
-        if (emailKey) seen.add(emailKey);
+        const nameKey = name.toLowerCase();
+        if (!name) { skipped++; continue; }
+        const dup = emailKey ? seen.has(emailKey) : seenNames.has(nameKey);
+        if (dup) { skipped++; continue; }
+        if (emailKey) seen.add(emailKey); else seenNames.add(nameKey);
         // eslint-disable-next-line no-await-in-loop -- sekvensiell insert holder skjemaet enkelt
         await pool.query(
           `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email, student_number)

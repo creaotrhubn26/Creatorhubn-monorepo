@@ -29,11 +29,16 @@ async function runChain(stack: any[], req: any, res: any) {
   }
 }
 
-function makePool(opts: { ownsAssignment?: boolean; ownsCriterion?: boolean; criteria?: any[]; scores?: any[] } = {}) {
-  const { ownsAssignment = true, ownsCriterion = true, criteria, scores } = opts;
+function makePool(opts: { ownsAssignment?: boolean; ownsCriterion?: boolean; studentValid?: boolean; criteria?: any[]; scores?: any[] } = {}) {
+  const { ownsAssignment = true, ownsCriterion = true, studentValid = true, criteria, scores } = opts;
   const inserts: any[] = [];
   const pool: any = {
     query: vi.fn(async (sql: string, params: any[]) => {
+      // PUT-score eierskap+integritet-validering (kriterie+student+kull i én JOIN).
+      // Én rad kun når BÅDE kriterie-eierskap OG student/kull-match holder.
+      if (sql.includes("JOIN role_room_education_students s")) {
+        return { rows: (ownsCriterion && studentValid) ? [{ "?column?": 1 }] : [] };
+      }
       if (sql.includes("SELECT 1 FROM role_room_education_assignments")) {
         return { rows: ownsAssignment ? [{ "?column?": 1 }] : [] };
       }
@@ -116,6 +121,13 @@ describe("education rubric routes", () => {
     await runChain(H(R(pool), "PUT", "/education/rubric/scores"), authed({ criterionId: "c1", studentId: "s1", level: 1 }), res);
     expect(res.body.success).toBe(true);
     expect(res.body.level).toBe(1);
+  });
+
+  it("PUT score på student utenfor kriteriets kull → 404", async () => {
+    const { pool } = makePool({ studentValid: false });
+    const res = makeRes();
+    await runChain(H(R(pool), "PUT", "/education/rubric/scores"), authed({ criterionId: "c1", studentId: "s-annet-kull", level: 1 }), res);
+    expect(res.statusCode).toBe(404);
   });
 
   it("PUT score ugyldig nivå (3) → 400", async () => {

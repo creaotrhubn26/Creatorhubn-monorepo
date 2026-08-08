@@ -29,6 +29,7 @@ import {
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { escapeHtml } from "./email-design-system.js";
 
 interface SessionData {
   userId: string;
@@ -171,8 +172,8 @@ async function notifyStudentPromoted(pool: Pool, email: string, name: string, cr
   ].join("\n");
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6">
-      <p>Hei ${name},</p>
-      <p>Skolen din har opprettet et <b>utkast</b> til en talent-profil for deg i <b>Role Room Talents</b>, basert på ${cred}.</p>
+      <p>Hei ${escapeHtml(name)},</p>
+      <p>Skolen din har opprettet et <b>utkast</b> til en talent-profil for deg i <b>Role Room Talents</b>, basert på ${escapeHtml(cred)}.</p>
       <p>${ROLE_ROOM_TALENTS_INFO.summary}</p>
       <p style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;color:#166534;font-size:13px">${ROLE_ROOM_TALENTS_INFO.visibility}</p>
       <p style="margin:24px 0">

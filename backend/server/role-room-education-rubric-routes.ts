@@ -197,10 +197,17 @@ export function createEducationRubricRouter(
       return;
     }
     try {
-      // Eierskap: kriteriet MÅ tilhøre innlogget bruker.
+      // Eierskap + integritet: kriteriet MÅ tilhøre brukeren, studenten MÅ
+      // tilhøre brukeren OG samme kull som kriteriets oppgave (ellers kan man
+      // score fantom- eller kryss-kull-studenter).
       const owns = await pool.query(
-        `SELECT 1 FROM role_room_education_rubric_criteria WHERE id = $1 AND owner_user_id = $2`,
-        [criterionId, uid(req)],
+        `SELECT 1
+           FROM role_room_education_rubric_criteria c
+           JOIN role_room_education_assignments a ON a.id = c.assignment_id
+           JOIN role_room_education_students s ON s.id = $2 AND s.owner_user_id = $3
+          WHERE c.id = $1 AND c.owner_user_id = $3
+            AND (a.cohort_id IS NULL OR s.cohort_id = a.cohort_id)`,
+        [criterionId, studentId, uid(req)],
       );
       if (owns.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
       const id = newEntityId("edrsc");
