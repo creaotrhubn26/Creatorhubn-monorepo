@@ -16,7 +16,7 @@ import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, type Reveal } from './mockupMotion';
 import { matrixFor, tiltsLeft } from './mockupPerspective';
 import { render3dDevice, webglAvailable } from './mockup3d/mockup3d';
-import { cacheKey } from './mockup3d/deviceGeometry';
+import { cacheKey, is3dVariant } from './mockup3d/deviceGeometry';
 import { sceneById } from './mockupScenes';
 import { drawImageQuad, type Quad } from './mockupSceneWarp';
 import {
@@ -414,7 +414,7 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   }
 
   // Ekte 3D (WebGL) bakt til 2D-lag — erstatter 2D-ramme + 2.5D-perspektiv.
-  if (dev.threeD && (dev.variant === 'iphone' || dev.variant === 'android') && webglAvailable()) {
+  if (dev.threeD && is3dVariant(dev.variant) && webglAvailable()) {
     try {
       const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', Math.round(w), (dev.image ?? '').length]);
       let baked = _bakeCache.get(key);

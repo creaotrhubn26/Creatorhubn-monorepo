@@ -76,6 +76,7 @@ import { aiLocalizeTexts, localizeAvailable, LOCALIZE_LANGS } from './mockupAiLo
 import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective';
 import { generateSceneBackground, aiBackgroundAvailable } from './mockupAiBackground';
 import { MOCKUP_SCENES } from './mockupScenes';
+import { is3dVariant } from './mockup3d/deviceGeometry';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { exportAndSaveGif } from './mockupGifExport';
@@ -1073,7 +1074,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           {PERSPECTIVE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
       </Field>
-      {(device.variant === 'iphone' || device.variant === 'android') && (
+      {is3dVariant(device.variant) && (
         <>
           <label style={checkRow}>
             <input type="checkbox" checked={!!device.threeD} onChange={(e) => patchDevice(device.id, { threeD: e.target.checked ? { rotX: -6, rotY: 20, rotZ: 0 } : undefined })} />
