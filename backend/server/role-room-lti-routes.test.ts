@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore } from "./role-room-lti-routes.js";
+import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore, buildToolConfiguration } from "./role-room-lti-routes.js";
 
 describe("gradeToScore (fri-tekst-karakter → AGS-tallscore)", () => {
   it("bestått/godkjent → 1/1, ikke bestått → 0/1", () => {
@@ -145,6 +145,151 @@ describe("LTI routes: plattform-registrering (super-admin)", () => {
     } }, res);
     expect(res.statusCode).toBe(201);
     expect(res.body).toMatchObject({ platformId: "plat-1" });
+  });
+});
+
+describe("buildToolConfiguration (IMS dynamic-registration payload)", () => {
+  it("produserer gyldig IMS tool-config med LTI-claim", () => {
+    const c = buildToolConfiguration("The Role Room");
+    expect(c.application_type).toBe("web");
+    expect(c.grant_types).toEqual(expect.arrayContaining(["client_credentials", "implicit"]));
+    expect(c.response_types).toContain("id_token");
+    expect(c.token_endpoint_auth_method).toBe("private_key_jwt");
+    expect(c.initiate_login_uri).toMatch(/\/lti\/login$/);
+    expect(c.jwks_uri).toMatch(/\/lti\/jwks$/);
+    expect(c.redirect_uris).toEqual(expect.arrayContaining([expect.stringMatching(/\/lti\/launch$/)]));
+    expect(String(c.scope)).toContain("lineitem");            // AGS
+    expect(String(c.scope)).toContain("contextmembership");   // NRPS
+    const lti = (c as any)["https://purl.imsglobal.org/spec/lti-tool-configuration"];
+    expect(lti.target_link_uri).toMatch(/\/lti\/launch$/);
+    expect(lti.claims).toEqual(expect.arrayContaining(["sub", "name", "email", "roles"]));
+    const types = lti.messages.map((m: any) => m.type);
+    expect(types).toContain("LtiResourceLinkRequest");
+    expect(types).toContain("LtiDeepLinkingRequest");
+  });
+});
+
+describe("GET /lti/register (dynamic registration)", () => {
+  const OIDC = "https://moodle.example.edu/mod/lti/openid-configuration";
+  const openidConfig = {
+    issuer: "https://moodle.example.edu",
+    authorization_endpoint: "https://moodle.example.edu/mod/lti/auth.php",
+    token_endpoint: "https://moodle.example.edu/mod/lti/token.php",
+    jwks_uri: "https://moodle.example.edu/mod/lti/certs.php",
+    registration_endpoint: "https://moodle.example.edu/mod/lti/openid-registration.php",
+    "https://purl.imsglobal.org/spec/lti-platform-configuration": { product_family_code: "moodle" },
+  };
+
+  function stubFetch() {
+    return vi.fn(async (url: string, init?: any) => {
+      if (url === OIDC) return { ok: true, json: async () => openidConfig } as any;
+      if (url === openidConfig.registration_endpoint) {
+        return { ok: true, json: async () => ({
+          client_id: "CLIENT123",
+          "https://purl.imsglobal.org/spec/lti-tool-configuration": { deployment_id: "DEP1" },
+        }) } as any;
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  it("registrerer plattform som pending og returnerer close-page", async () => {
+    vi.stubGlobal("fetch", stubFetch());
+    const upserts: any[] = [];
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      if (sql.includes("INSERT INTO role_room_lti_platforms")) { upserts.push(params); return { rows: [{ id: "p1" }] }; }
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: OIDC, registration_token: "regtok" } }, res);
+    // close-page HTML
+    expect(String(res.sent)).toContain("org.imsglobal.lti.close");
+    // plattform lagret som pending + dynamic + product_family
+    const p = upserts[0];
+    expect(p).toContain("https://moodle.example.edu"); // issuer
+    expect(p).toContain("CLIENT123");                  // client_id
+    expect(p).toContain("DEP1");                        // deployment_id
+    expect(p).toContain("pending");
+    expect(p).toContain("dynamic");
+    expect(p).toContain("moodle");
+    vi.unstubAllGlobals();
+  });
+
+  it("avviser privat/ikke-https openid_configuration (SSRF)", async () => {
+    const pool: any = { query: vi.fn(async () => ({ rows: [] })) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: "http://127.0.0.1/openid" } }, res);
+    expect(res.statusCode).toBe(400);
+    expect(String(res.sent)).toMatch(/ugyldig|invalid/i);
+  });
+
+  it("feiler når openid-config mangler endepunkter", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ issuer: "https://x.edu" }) }) as any));
+    const pool: any = { query: vi.fn(async () => ({ rows: [] })) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: "https://x.edu/openid" } }, res);
+    expect(res.statusCode).toBe(400);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("POST /lti/launch approval gate", () => {
+  it("avviser launch fra pending plattform med 403", async () => {
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("DELETE FROM role_room_lti_states")) return { rows: [{ nonce: "n", platform_id: "p1" }] };
+      if (sql.includes("SELECT * FROM role_room_lti_platforms")) return { rows: [{ id: "p1", status: "pending", issuer: "https://moodle.example.edu", client_id: "C", jwks_url: "https://moodle.example.edu/certs" }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    // Minimal JWT med iss (unverified iss-uttrekk brukes til state-scoping).
+    const fakeJwt = ["e30", Buffer.from(JSON.stringify({ iss: "https://moodle.example.edu" })).toString("base64url"), "sig"].join(".");
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: fakeJwt, state: "st" } }, res);
+    expect(res.statusCode).toBe(403);
+    expect(String(res.sent)).toContain("platform_not_approved");
+  });
+});
+
+describe("LTI admin: approve/reject platforms", () => {
+  const admin = { headers: { authorization: "Bearer admin" }, params: {}, body: {}, query: {} };
+  const deps = { activeSessions: adminSessions as any };
+
+  it("POST /lti/platforms/:id/approve setter status=approved", async () => {
+    const calls: any[] = [];
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      calls.push([sql, params]);
+      if (sql.includes("UPDATE role_room_lti_platforms SET status")) return { rows: [{ id: params[0] }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, deps));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/platforms/:id/approve"), { ...admin, params: { id: "p1" } }, res);
+    expect(res.body).toMatchObject({ success: true });
+    expect(calls.some(([s]) => s.includes("SET status='approved'") || s.includes("SET status = 'approved'"))).toBe(true);
+  });
+
+  it("DELETE /lti/platforms/:id fjerner plattform", async () => {
+    const pool: any = { query: vi.fn(async () => ({ rows: [{ id: "p1" }] })) };
+    const rs = mountHandlers(createLtiRouter(pool, deps));
+    const res = makeRes();
+    await run(H(rs, "DELETE", "/lti/platforms/:id"), { ...admin, params: { id: "p1" } }, res);
+    expect(res.body).toMatchObject({ success: true });
+  });
+
+  it("GET /lti/platforms inkluderer status", async () => {
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("SELECT") && sql.includes("role_room_lti_platforms")) {
+        return { rows: [{ id: "p1", issuer: "https://moodle.example.edu", status: "pending", product_family: "moodle", registered_via: "dynamic" }] };
+      }
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, deps));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/platforms"), admin, res);
+    expect(res.body.platforms[0]).toMatchObject({ status: "pending", product_family: "moodle" });
   });
 });
 
