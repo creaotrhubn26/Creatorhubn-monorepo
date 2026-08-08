@@ -125,6 +125,9 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   setName: (name) => commit(set, (d) => ({ ...d, name })),
 
   pushHistory: () => set((s) => ({ past: [...s.past, s.doc].slice(-HISTORY_CAP), future: [] })),
+  // KONTRAKT: kall pushHistory() ÉN gang ved gest-start (dra/nudge) FØR første setDocSilent.
+  // setDocSilent rører bevisst ikke past/future (høyfrekvent, én angre per gest). pushHistory
+  // tømmer future, så redo er allerede invalidert; kall aldri setDocSilent alene etter en undo.
   setDocSilent: (next) => { saveDoc(next); set({ doc: next }); },
 
   undo: () => set((s) => {

@@ -462,6 +462,7 @@ export function deviceScreenRect(dev: MockupDeviceSlot): { x: number; y: number;
     return { x: dev.x + inset, y: dev.y + inset, w: w - inset * 2, h: h - inset * 2 };
   }
   const spec = DEVICE_FRAMES[dev.variant];
+  if (!spec) return { x: dev.x, y: dev.y, w, h }; // ukjent variant: fall tilbake til hele enhets-boksen (crash ikke rasteren)
   return { x: dev.x + spec.screen.x * w, y: dev.y + spec.screen.y * h, w: spec.screen.w * w, h: spec.screen.h * h };
 }
 

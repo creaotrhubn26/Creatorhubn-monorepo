@@ -63,7 +63,11 @@ export async function exportMotionWebm(
   const chunks: BlobPart[] = [];
   const mr = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
   mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-  const stopped = new Promise<Blob>((resolve) => { mr.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' })); });
+  const stopped = new Promise<Blob>((resolve, reject) => {
+    mr.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+    // Uten onerror ville en MediaRecorder-feil aldri trigge onstop → `await stopped` henger evig.
+    mr.onerror = () => reject(new Error('Video-opptak feilet i MediaRecorder.'));
+  });
 
   mr.start();
   const frameMs = 1000 / cfg.fps;
@@ -84,6 +88,7 @@ export async function exportMotionWebm(
   mr.stop();
 
   const blob = await stopped;
+  stream.getTracks().forEach((t) => t.stop()); // frigi capture-stream
   const buf = await blob.arrayBuffer();
   onProgress?.('Ferdig', 1);
   return base64FromArrayBuffer(buf);
