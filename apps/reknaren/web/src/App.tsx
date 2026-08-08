@@ -103,49 +103,49 @@ const NAV_GROUPS: { section?: string; items: NavItem[] }[] = [
       { key: 'documents', label: 'Bilagsinnboks', icon: 'inbox' },
       { key: 'gmail', label: 'Skann e-post', icon: 'mail' },
       { key: 'bank', label: 'Bank og avstemming', icon: 'bank' },
-      { key: 'payments', label: 'Betal leverandører', icon: 'bank' },
+      { key: 'payments', label: 'Betal leverandører', icon: 'coins' },
     ],
   },
   {
     section: 'Salg',
     items: [
-      { key: 'invoicing', label: 'Salg og faktura', icon: 'chart' },
-      { key: 'agreements', label: 'Avtaler', icon: 'chart' },
+      { key: 'invoicing', label: 'Salg og faktura', icon: 'receipt' },
+      { key: 'agreements', label: 'Avtaler', icon: 'file' },
     ],
   },
   {
     section: 'Innsikt',
     items: [
-      { key: 'ask', label: 'Spør virksomheten', icon: 'mail' },
+      { key: 'ask', label: 'Spør virksomheten', icon: 'sparkles' },
       { key: 'deduction', label: 'Kan jeg trekke fra?', icon: 'shield' },
       { key: 'planning', label: 'Framover', icon: 'chart' },
-      { key: 'deadlines', label: 'Frister', icon: 'shield' },
-      { key: 'calendar', label: 'Betalingskalender', icon: 'chart' },
+      { key: 'deadlines', label: 'Frister', icon: 'clock' },
+      { key: 'calendar', label: 'Betalingskalender', icon: 'calendar' },
       { key: 'fraud', label: 'Svindelkontroll', icon: 'shield' },
-      { key: 'recurring', label: 'Faste utgifter', icon: 'chart' },
-      { key: 'learning', label: 'Lært praksis', icon: 'overview' },
-      { key: 'assistant', label: 'Skatteassistent', icon: 'shield' },
+      { key: 'recurring', label: 'Faste utgifter', icon: 'coins' },
+      { key: 'learning', label: 'Lært praksis', icon: 'book' },
+      { key: 'assistant', label: 'Skatteassistent', icon: 'sparkles' },
     ],
   },
   {
     section: 'Avslutning & skatt',
     items: [
-      { key: 'period-close', label: 'Månedsavslutning', icon: 'shield' },
+      { key: 'period-close', label: 'Månedsavslutning', icon: 'calendar' },
       { key: 'vat', label: 'MVA', icon: 'percent' },
-      { key: 'tax', label: 'Skatt og reserver', icon: 'shield' },
-      { key: 'assets', label: 'Anleggsmidler', icon: 'overview' },
-      { key: 'year-end', label: 'Årsavslutning', icon: 'shield' },
+      { key: 'tax', label: 'Skatt og reserver', icon: 'coins' },
+      { key: 'assets', label: 'Anleggsmidler', icon: 'folder' },
+      { key: 'year-end', label: 'Årsavslutning', icon: 'book' },
     ],
   },
   {
     section: 'Mer',
     items: [
       { key: 'reports', label: 'Rapporter', icon: 'chart' },
-      { key: 'dimensions', label: 'Prosjekter', icon: 'overview' },
-      { key: 'saft-import', label: 'Importer fra Fiken', icon: 'inbox' },
-      { key: 'integrations', label: 'API og integrasjoner', icon: 'shield' },
-      { key: 'ai', label: 'Kunstig intelligens', icon: 'shield' },
-      { key: 'org', label: 'Virksomhet', icon: 'shield' },
+      { key: 'dimensions', label: 'Prosjekter', icon: 'folder' },
+      { key: 'saft-import', label: 'Importer fra Fiken', icon: 'file' },
+      { key: 'integrations', label: 'API og integrasjoner', icon: 'gear' },
+      { key: 'ai', label: 'Kunstig intelligens', icon: 'sparkles' },
+      { key: 'org', label: 'Virksomhet', icon: 'gear' },
     ],
   },
 ];
@@ -474,8 +474,7 @@ function OrgSwitcher({
         value={currentId}
         onChange={(e) => {
           const v = e.target.value;
-          if (v === '__add__') onAdd();
-          else if (v !== currentId) onSwitch(v);
+          if (v !== currentId) onSwitch(v);
         }}
       >
         {!hasCurrent && <option value={currentId}>Aktiv virksomhet</option>}
@@ -484,8 +483,8 @@ function OrgSwitcher({
             {o.name}
           </option>
         ))}
-        <option value="__add__">+ Legg til virksomhet …</option>
       </select>
+      <button type="button" className="linklike" onClick={onAdd}>+ Legg til virksomhet</button>
     </div>
   );
 }
@@ -537,7 +536,7 @@ function OrgGate({ onPick }: { onPick: (orgId: string) => void }) {
           ))}
         </div>
         <div className="actions">
-          <button onClick={() => setCreating(true)}>Opprett ny virksomhet</button>
+          <button className="primary" onClick={() => setCreating(true)}>Opprett ny virksomhet</button>
         </div>
       </div>
     </div>
@@ -621,7 +620,7 @@ function OrgSetupScreen({ onDone, onCancel }: { onDone: (orgId: string) => void;
               Opprett
             </button>
             {onCancel && (
-              <button type="button" onClick={onCancel}>
+              <button type="button" className="secondary" onClick={onCancel}>
                 Tilbake
               </button>
             )}

@@ -117,20 +117,25 @@ interface CodeLibrary {
   vatCodes: Map<string, VatCodeInfo>;
 }
 
+let codeLibraryOrgId: string | null = null;
 let codeLibraryPromise: Promise<CodeLibrary> | null = null;
 
-/** Lastes én gang per session; brukes til å vise vennlige navn i hele UI-et. */
+/** Caches per org — bygges på nytt ved org-bytte (ellers vises forrige orgs
+ *  konto-/mva-navn). Vennlige navn brukes i hele UI-et. */
 export function loadCodeLibrary(orgId: string): Promise<CodeLibrary> {
-  codeLibraryPromise ??= (async () => {
-    const [accounts, vatCodes] = await Promise.all([
-      api<AccountInfo[]>('GET', `/api/organizations/${orgId}/code-library/accounts`),
-      api<VatCodeInfo[]>('GET', `/api/organizations/${orgId}/code-library/vat-codes`),
-    ]);
-    return {
-      accounts: new Map(accounts.map((a) => [a.number, a])),
-      vatCodes: new Map(vatCodes.map((v) => [v.code, v])),
-    };
-  })();
+  if (codeLibraryOrgId !== orgId || !codeLibraryPromise) {
+    codeLibraryOrgId = orgId;
+    codeLibraryPromise = (async () => {
+      const [accounts, vatCodes] = await Promise.all([
+        api<AccountInfo[]>('GET', `/api/organizations/${orgId}/code-library/accounts`),
+        api<VatCodeInfo[]>('GET', `/api/organizations/${orgId}/code-library/vat-codes`),
+      ]);
+      return {
+        accounts: new Map(accounts.map((a) => [a.number, a])),
+        vatCodes: new Map(vatCodes.map((v) => [v.code, v])),
+      };
+    })();
+  }
   return codeLibraryPromise;
 }
 
@@ -155,4 +160,16 @@ export const STATUS_LABELS: Record<string, string> = {
   unmatched: 'Ikke avstemt',
   matched: 'Avstemt',
   suggested: 'Foreslått',
+  // Salg/faktura, sesjons- og valideringsstatuser (unngår rå engelsk kode i badgen).
+  issued: 'Utstedt',
+  paid: 'Betalt',
+  credited: 'Kreditert',
+  cancelled: 'Annullert',
+  reversed: 'Reversert',
+  valid: 'Gyldig',
+  active: 'Aktiv',
+  pending: 'Venter',
+  discrepancy: 'Avvik',
+  revoked: 'Tilbakekalt',
+  expired: 'Utløpt',
 };

@@ -338,6 +338,7 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
   background: var(--text); color: var(--bg); padding: 11px 16px; border-radius: 10px;
   font-size: 14px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.25); max-width: 380px;
   animation: toast-in 160ms ease-out;
+  border: none; font-family: inherit; text-align: left; cursor: pointer;
 }
 .toast.ok { background: var(--ok); color: #fff; }
 .toast.danger { background: var(--danger); color: #fff; }

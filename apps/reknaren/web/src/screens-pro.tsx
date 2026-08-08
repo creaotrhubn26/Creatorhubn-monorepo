@@ -160,7 +160,12 @@ export function JournalScreen({ orgId }: { orgId: string }) {
                     className="clickable"
                     tabIndex={0}
                     onClick={() => setOpen(open === e.id ? null : e.id)}
-                    onKeyDown={(ev) => ev.key === 'Enter' && setOpen(open === e.id ? null : e.id)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        setOpen(open === e.id ? null : e.id);
+                      }
+                    }}
                   >
                     <td className="num">{e.entry_number}</td>
                     <td>{e.entry_date}</td>

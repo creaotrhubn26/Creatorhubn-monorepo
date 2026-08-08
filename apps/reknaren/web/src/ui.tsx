@@ -59,6 +59,60 @@ export const Icons = {
       <path d="M4 20V10m5.3 10V4m5.4 16v-7m5.3 7V8" />
     </svg>
   ),
+  calendar: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <rect x="3.5" y="5" width="17" height="15" rx="2" />
+      <path d="M3.5 9.5h17M8 3.5v3m8-3v3" />
+    </svg>
+  ),
+  coins: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <ellipse cx="12" cy="6.5" rx="6.5" ry="2.8" />
+      <path d="M5.5 6.5v5c0 1.55 2.9 2.8 6.5 2.8s6.5-1.25 6.5-2.8v-5" />
+      <path d="M5.5 11.5v5c0 1.55 2.9 2.8 6.5 2.8s6.5-1.25 6.5-2.8v-5" />
+    </svg>
+  ),
+  sparkles: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <path d="M12 3.5c.6 3.7 1.8 4.9 5.5 5.5-3.7.6-4.9 1.8-5.5 5.5-.6-3.7-1.8-4.9-5.5-5.5 3.7-.6 4.9-1.8 5.5-5.5z" />
+      <path d="M18 15c.3 1.6.8 2.1 2.4 2.4-1.6.3-2.1.8-2.4 2.4-.3-1.6-.8-2.1-2.4-2.4 1.6-.3 2.1-.8 2.4-2.4z" />
+    </svg>
+  ),
+  book: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <path d="M12 6.5C10.5 5.2 8.3 4.7 4.5 4.7V17c3.8 0 6 .5 7.5 1.8 1.5-1.3 3.7-1.8 7.5-1.8V4.7c-3.8 0-6 .5-7.5 1.8z" />
+      <path d="M12 6.5v12" />
+    </svg>
+  ),
+  gear: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 2.5v3m0 13v3m9.5-9.5h-3m-13 0h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1m13.4 0l-2.1-2.1M7.4 7.4L5.3 5.3" />
+    </svg>
+  ),
+  receipt: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <path d="M6 3.5h12v17l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3z" />
+      <path d="M9 8h6m-6 3.5h6" />
+    </svg>
+  ),
+  clock: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  ),
+  folder: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <path d="M3.5 6.5a2 2 0 0 1 2-2h3.3l2 2.3H18.5a2 2 0 0 1 2 2v8.7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+    </svg>
+  ),
+  file: (
+    <svg viewBox="0 0 24 24" {...stroke}>
+      <path d="M6 3.5h7l5 5v12H6z" />
+      <path d="M13 3.5v5h5" />
+    </svg>
+  ),
 } as const;
 
 /* ── Statusmerke ───────────────────────────────────────────────────────── */
@@ -204,19 +258,29 @@ let toastCounter = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((text: string, kind: Toast['kind'] = 'info') => {
-    const id = ++toastCounter;
-    setToasts((t) => [...t, { id, text, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
-  }, []);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const push = useCallback(
+    (text: string, kind: Toast['kind'] = 'info') => {
+      const id = ++toastCounter;
+      setToasts((t) => [...t, { id, text, kind }]);
+      setTimeout(() => dismiss(id), 6000);
+    },
+    [dismiss],
+  );
   return (
     <ToastContext.Provider value={push}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind === 'info' ? '' : t.kind}`}>
+          <button
+            key={t.id}
+            type="button"
+            className={`toast ${t.kind === 'info' ? '' : t.kind}`}
+            onClick={() => dismiss(t.id)}
+            title="Lukk"
+          >
             {t.text}
-          </div>
+          </button>
         ))}
       </div>
     </ToastContext.Provider>

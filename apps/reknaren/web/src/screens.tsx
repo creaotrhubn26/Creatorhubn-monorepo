@@ -7,6 +7,15 @@ import { DimensionSelect } from './screens-dimensions';
 import { PostingLines } from './screens-pro';
 import { CardSkeleton, Disclosure, EmptyState, Modal, StatusBadge, TableSkeleton, useToast } from './ui';
 
+/** Tastatur-aktivering for role="button"-elementer: AT forventer BÅDE Enter og
+ *  Space (Space må preventDefault for å unngå at siden scroller). */
+const onActivate = (fn: () => void) => (e: { key: string; preventDefault: () => void }) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    fn();
+  }
+};
+
 /* ── Delte typer (speiler API-svarene) ─────────────────────────────────── */
 
 interface DocumentRow {
@@ -154,7 +163,7 @@ export function OverviewScreen({
         <>
           {/* Hero: månedsavslutning — den løpende statusen */}
           <div className="panel hero clickable" onClick={() => go('period-close')} role="button" tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && go('period-close')}>
+            onKeyDown={onActivate(() => go('period-close'))}>
             <div className="panel-head">
               <h2>{d.monthClose.monthName} — avstemming</h2>
               <span className={`confidence ${d.monthClose.blockerCount > 0 ? 'low' : d.monthClose.readinessPct >= 80 ? 'high' : 'medium'}`}>
@@ -379,7 +388,7 @@ export function DocumentsScreen({ orgId, onOpen }: { orgId: string; onOpen: (id:
                   className="clickable"
                   tabIndex={0}
                   onClick={() => onOpen(d.id)}
-                  onKeyDown={(e) => e.key === 'Enter' && onOpen(d.id)}
+                  onKeyDown={onActivate(() => onOpen(d.id))}
                 >
                   <td>
                     <div className="primary-line">{d.filename}</div>
@@ -610,7 +619,7 @@ export function DocumentDetailScreen({
           <div className="health-title">🔁 Gjentakende betaling?</div>
           <p className="hint" style={{ marginTop: 4 }}>{hint.data.reason}</p>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button disabled={nudgeBusy} onClick={addRecurring}>Ja, legg til i faste utgifter</button>
+            <button className="primary" disabled={nudgeBusy} onClick={addRecurring}>Ja, legg til i faste utgifter</button>
             <button className="secondary" disabled={nudgeBusy} onClick={() => setNudgeDismissed(true)}>Ikke nå</button>
           </div>
         </div>
@@ -1119,7 +1128,7 @@ export function GmailScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDo
                     className="clickable"
                     tabIndex={0}
                     onClick={() => onOpenDocument(doc.documentId)}
-                    onKeyDown={(e) => e.key === 'Enter' && onOpenDocument(doc.documentId)}
+                    onKeyDown={onActivate(() => onOpenDocument(doc.documentId))}
                   >
                     <td>{doc.filename}</td>
                     <td>
@@ -1499,7 +1508,7 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                   </button>
                 </div>
                 <div>
-                  <button disabled={busy} onClick={completeLink} title="Trykk her etter at du har logget inn i banken">
+                  <button className="primary" disabled={busy} onClick={completeLink} title="Trykk her etter at du har logget inn i banken">
                     Fullfør kobling
                   </button>
                 </div>
@@ -1988,7 +1997,7 @@ export function VatScreen({ orgId }: { orgId: string }) {
           <p className="hint">✓ Innlogget hos Skatteetaten{idporten.data.expiresAt ? ` (til ${new Date(idporten.data.expiresAt).toLocaleString('nb-NO')})` : ''}.</p>
         )}
         <div className="actions">
-          <button onClick={downloadMvaMelding}>Last ned MVA-melding (XML)</button>
+          <button className="secondary" onClick={downloadMvaMelding}>Last ned MVA-melding (XML)</button>
           {idporten.data?.configured && !idporten.data.loggedIn && (
             <>
               <button className="primary" onClick={loginIdporten}>Logg inn hos Skatteetaten (BankID)</button>
@@ -3400,12 +3409,15 @@ export function PeriodCloseScreen({ orgId, onNavigate }: { orgId: string; onNavi
             return (
               <button
                 key={m.month}
+                role="tab"
+                aria-selected={m.month === month}
+                aria-label={`${m.monthName}: ${m.status === 'locked' ? 'låst' : m.readinessPct + ' prosent ferdig'}`}
                 className={`year-chip ${lvl}${m.month === month ? ' active' : ''}`}
                 onClick={() => setMonth(m.month)}
                 title={`${m.monthName}: ${m.status === 'locked' ? 'låst' : m.readinessPct + ' % ferdig'}`}
               >
-                <span className="year-chip-m">{m.monthName.slice(0, 3)}</span>
-                <span className="year-chip-v">{m.status === 'locked' ? '🔒' : `${m.readinessPct}%`}</span>
+                <span className="year-chip-m" aria-hidden>{m.monthName.slice(0, 3)}</span>
+                <span className="year-chip-v" aria-hidden>{m.status === 'locked' ? '🔒' : `${m.readinessPct}%`}</span>
               </button>
             );
           })}
@@ -3841,7 +3853,7 @@ function FraudSettingsForm({ orgId, initial, onSaved }: { orgId: string; initial
         <input id="fs-end" type="number" min={1} max={24} value={end} onChange={(e) => setEnd(e.target.value)} />
       </div>
       <div style={{ gridColumn: '1 / -1' }}>
-        <button disabled={busy} onClick={save}>Lagre kontrollpolicy</button>
+        <button className="primary" disabled={busy} onClick={save}>Lagre kontrollpolicy</button>
       </div>
     </div>
   );
@@ -4004,7 +4016,7 @@ export function LearningScreen({ orgId, onOpenDocument }: { orgId: string; onOpe
           {d?.groupName ? `Konsern: ${d.groupName}.` : 'Ikke tilknyttet et konsern.'} Systemet kan foreslå regler ved å se
           etter mønstre i det du allerede har bokført.
         </p>
-        <button disabled={busy === 'detect'} onClick={detect}>Lær av historikken</button>
+        <button className="primary" disabled={busy === 'detect'} onClick={detect}>Lær av historikken</button>
       </div>
 
       {load.loading || !d ? (
@@ -4140,7 +4152,7 @@ function ManualRuleForm({ orgId, onSaved }: { orgId: string; onSaved: () => void
         </div>
       )}
       <div style={{ gridColumn: '1 / -1' }}>
-        <button disabled={busy} onClick={save}>Legg til regel</button>
+        <button className="primary" disabled={busy} onClick={save}>Legg til regel</button>
       </div>
     </div>
   );
@@ -4169,7 +4181,7 @@ function GroupForm({ orgId, onSaved }: { orgId: string; onSaved: () => void }) {
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Konsernnavn, f.eks. Mediehuset AS" />
-        <button disabled={busy || !name.trim()} onClick={save}>Opprett konsern</button>
+        <button className="primary" disabled={busy || !name.trim()} onClick={save}>Opprett konsern</button>
       </div>
     </div>
   );
@@ -4261,7 +4273,7 @@ export function RecurringScreen({ orgId }: { orgId: string }) {
         <p className="hint" style={{ margin: 0 }}>
           {d && d.overdueCount > 0 ? <><b>{d.overdueCount}</b> forventede faste utgifter mangler (~{kr(d.overdueAmountMinor)} ubokført).</> : 'Alt ser à jour ut.'}
         </p>
-        <button disabled={busy === 'detect'} onClick={detect}>Lær faste utgifter</button>
+        <button className="primary" disabled={busy === 'detect'} onClick={detect}>Lær faste utgifter</button>
       </div>
 
       {load.loading || !d ? (
@@ -4605,7 +4617,7 @@ export function IntegrationsScreen({ orgId }: { orgId: string }) {
             </div>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <button disabled={busy === 'key' || !keyName.trim() || keyScopes.length === 0} onClick={createKey}>Opprett API-nøkkel</button>
+            <button className="primary" disabled={busy === 'key' || !keyName.trim() || keyScopes.length === 0} onClick={createKey}>Opprett API-nøkkel</button>
           </div>
         </div>
         {activeKeys.length > 0 && (
@@ -4645,7 +4657,7 @@ export function IntegrationsScreen({ orgId }: { orgId: string }) {
             </div>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <button disabled={busy === 'hook' || !hookUrl.trim() || hookEvents.length === 0} onClick={createHook}>Legg til webhook</button>
+            <button className="primary" disabled={busy === 'hook' || !hookUrl.trim() || hookEvents.length === 0} onClick={createHook}>Legg til webhook</button>
           </div>
         </div>
         {hooks.data && hooks.data.length > 0 && (
