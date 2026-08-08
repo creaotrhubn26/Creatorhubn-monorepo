@@ -1031,6 +1031,12 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         <input type="checkbox" checked={device.reflection ?? false} onChange={(e) => patchDevice(device.id, { reflection: e.target.checked })} />
         Refleksjon
       </label>
+      {(device.variant === 'iphone' || device.variant === 'android') && (
+        <label style={checkRow}>
+          <input type="checkbox" checked={device.cleanStatusBar ?? false} onChange={(e) => patchDevice(device.id, { cleanStatusBar: e.target.checked })} />
+          Ren status-bar (09:41)
+        </label>
+      )}
       <Field label="Plassering (px)">
         <div style={{ display: 'flex', gap: 6 }}>
           <NumberBox label="X" value={Math.round(device.x)} onChange={(n) => patchDevice(device.id, { x: n })} />

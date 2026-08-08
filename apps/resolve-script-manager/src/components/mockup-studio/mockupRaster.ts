@@ -305,8 +305,50 @@ async function renderDeviceFrameLayer(doc: MockupDoc, dev: MockupDeviceSlot, spe
   } else {
     drawScreenPlaceholder(octx, doc, sx, sy, sw, sh);
   }
+  // Ren status-bar over skjermbildet (kun telefoner) — 09:41 + signal/wifi/batteri.
+  if (dev.cleanStatusBar && (dev.variant === 'iphone' || dev.variant === 'android')) {
+    drawStatusBar(octx, sx, sy, sw, sh);
+  }
   octx.restore();
   return off;
+}
+
+/** Tegn en ren iOS/Android-status-bar øverst i skjermflaten. Ink-farge auto fra topp-luma. */
+function drawStatusBar(ctx: CanvasRenderingContext2D, sx: number, sy: number, sw: number, sh: number): void {
+  const barH = Math.max(18, sh * 0.045);
+  // Sample topp-stripa for lys/mørk ink.
+  let ink = '#ffffff';
+  try {
+    const strip = ctx.getImageData(Math.round(sx + sw * 0.3), Math.round(sy + barH * 0.3), Math.max(1, Math.round(sw * 0.4)), 1).data;
+    let lum = 0; const n = strip.length / 4;
+    for (let i = 0; i < strip.length; i += 4) lum += 0.2126 * strip[i] + 0.7152 * strip[i + 1] + 0.0722 * strip[i + 2];
+    ink = (lum / n) > 140 ? '#0b0b0d' : '#ffffff';
+  } catch { /* cross-origin/tom: behold hvit */ }
+  ctx.save();
+  ctx.fillStyle = ink;
+  // Klokke (09:41) venstre.
+  const fs = barH * 0.5;
+  ctx.font = `600 ${fs}px -apple-system, system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('09:41', sx + sw * 0.06, sy + barH * 0.55);
+  // Høyre: signal-streker + wifi-bue + batteri.
+  const cy = sy + barH * 0.55;
+  let rx = sx + sw - sw * 0.06;
+  // batteri
+  const bw = barH * 0.9, bh = barH * 0.42;
+  rx -= bw;
+  ctx.strokeStyle = ink; ctx.lineWidth = Math.max(1, barH * 0.05);
+  ctx.strokeRect(rx, cy - bh / 2, bw, bh);
+  ctx.fillRect(rx + bw + 1, cy - bh * 0.18, barH * 0.06, bh * 0.36); // tut
+  ctx.fillRect(rx + 1.5, cy - bh / 2 + 1.5, (bw - 3) * 0.7, bh - 3); // ladning
+  // wifi (tre buer)
+  rx -= barH * 0.9;
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(rx + barH * 0.35, cy + barH * 0.2, barH * (0.12 + i * 0.09), Math.PI * 1.25, Math.PI * 1.75); ctx.stroke(); }
+  // signal (4 stolper)
+  rx -= barH * 0.9;
+  for (let i = 0; i < 4; i++) { const bhh = barH * (0.18 + i * 0.11); ctx.fillRect(rx + i * barH * 0.16, cy + barH * 0.25 - bhh, barH * 0.1, bhh); }
+  ctx.restore();
 }
 
 /** Speilrefleksjon under enheten: mirror + vertikal alpha-fade (via temp-canvas). */
@@ -757,7 +799,7 @@ function hexToRgba(hex: string, a: number): string {
  * (1 = full eksport-oppløsning; < 1 for rask preview). Async fordi ramme-PNG-er
  * og skjermbilder lastes on-demand.
  */
-export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean; anim?: { t: number } }): Promise<HTMLCanvasElement> {
+export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean; anim?: { t: number }; transparent?: boolean }): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(doc.canvas.w * scale);
   canvas.height = Math.round(doc.canvas.h * scale);
@@ -766,9 +808,11 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   ctx.scale(scale, scale);
   const t = opts?.anim?.t;
 
-  fillBackground(ctx, doc);
-  await drawBgImage(ctx, doc);
-  drawDecor(ctx, doc);
+  if (!opts?.transparent) {
+    fillBackground(ctx, doc);
+    await drawBgImage(ctx, doc);
+    drawDecor(ctx, doc);
+  }
 
   // Mind map-modus: lerretet ER en produkt-mind map (ingen enheter/tekst).
   if (doc.mindmap && doc.mindmap.trim()) {
@@ -819,10 +863,11 @@ export async function renderMotionFrames(doc: MockupDoc, cfg: { seconds: number;
   return frames;
 }
 
-/** Rasteriser + returner PNG-data-URL (full oppløsning som standard). */
-export async function rasterizeToPngDataUrl(doc: MockupDoc, scale = 1): Promise<string> {
-  const canvas = await rasterizeMockup(doc, scale);
-  return canvas.toDataURL('image/png');
+/** Rasteriser + returner data-URL. `transparent` hopper bakgrunn/dekor; `format` PNG/WebP. */
+export async function rasterizeToPngDataUrl(doc: MockupDoc, scale = 1, opts?: { transparent?: boolean; format?: 'png' | 'webp' }): Promise<string> {
+  const canvas = await rasterizeMockup(doc, scale, { transparent: opts?.transparent });
+  const mime = opts?.format === 'webp' ? 'image/webp' : 'image/png';
+  return canvas.toDataURL(mime, opts?.format === 'webp' ? 0.92 : undefined);
 }
 
 function newLayerCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D | null } {

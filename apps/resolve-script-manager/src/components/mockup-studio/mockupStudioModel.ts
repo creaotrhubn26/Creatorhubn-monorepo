@@ -53,6 +53,8 @@ export interface MockupDeviceSlot {
   perspective?: import('./mockupPerspective').MockupPerspective;
   /** Speilrefleksjon under enheten (fader ut). */
   reflection?: boolean;
+  /** Ren status-bar (09:41 + signal/wifi/batteri) over skjermbildet (kun telefoner). */
+  cleanStatusBar?: boolean;
 }
 
 export type MockupTextRole = 'eyebrow' | 'title' | 'body' | 'tag';

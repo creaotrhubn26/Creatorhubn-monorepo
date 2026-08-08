@@ -36,20 +36,23 @@ const C = {
   font: '-apple-system, system-ui, "Segoe UI", sans-serif',
 };
 
-type ExportFormat = 'png' | 'pdf' | 'svg' | 'psd' | 'psd_bridge';
+type ExportFormat = 'png' | 'webp' | 'pdf' | 'svg' | 'psd' | 'psd_bridge';
 type Step = 'preflight' | 'format' | 'settings' | 'running' | 'done';
 
 /** Rå-eksport-data (base64) + filendelse for ett format. Delt av enkelt- + batch-eksport. */
-async function buildOne(doc: import('./mockupStudioModel').MockupDoc, format: 'png' | 'pdf' | 'svg' | 'psd', scale: 1 | 2 | 4): Promise<string> {
+async function buildOne(doc: import('./mockupStudioModel').MockupDoc, format: 'png' | 'webp' | 'pdf' | 'svg' | 'psd', scale: 1 | 2 | 4, transparent = false): Promise<string> {
   switch (format) {
-    case 'png': return rasterizeToPngDataUrl(doc, scale);
+    case 'png': return rasterizeToPngDataUrl(doc, scale, { transparent });
+    case 'webp': return rasterizeToPngDataUrl(doc, scale, { transparent, format: 'webp' });
     case 'pdf': return buildPdfBase64(doc);
     case 'svg': return buildSvgBase64(doc, scale);
     case 'psd': return buildPsdBase64(doc);
   }
 }
 /** Kan formatet reflowes til alle sosiale formater i batch? (PSD-veiene kan ikke.) */
-const BATCHABLE: ExportFormat[] = ['png', 'pdf', 'svg'];
+const BATCHABLE: ExportFormat[] = ['png', 'webp', 'pdf', 'svg'];
+/** Formater som støtter transparent bakgrunn. */
+const SUPPORTS_TRANSPARENT: ExportFormat[] = ['png', 'webp'];
 
 const SEV_COLOR: Record<PreflightSeverity, string> = { must: C.must, should: C.should, info: C.info };
 
@@ -62,6 +65,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<ExportFormat>('png');
   const [scale, setScale] = useState<1 | 2 | 4>(2);
   const [socialPack, setSocialPack] = useState(false);
+  const [transparent, setTransparent] = useState(false);
   const [status, setStatus] = useState('');
   const [resultPath, setResultPath] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -83,7 +87,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const formatLabel = (): string =>
-    format === 'png' ? `PNG ${scale}×` : format === 'pdf' ? 'PDF' : format === 'svg' ? 'SVG' : format === 'psd' ? 'PSD' : 'PSD ✎';
+    format === 'png' ? `PNG ${scale}×` : format === 'webp' ? `WebP ${scale}×` : format === 'pdf' ? 'PDF' : format === 'svg' ? 'SVG' : format === 'psd' ? 'PSD' : 'PSD ✎';
 
   const runExport = async () => {
     setStep('running');
@@ -118,7 +122,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         let lastPath = dir;
         for (const fmt of SOCIAL_FORMATS) {
           setStatus(`Tegner ${fmt.label}…`);
-          const data = await buildOne(applyFormat(doc, fmt), ext, scale);
+          const data = await buildOne(applyFormat(doc, fmt), ext, scale, transparent && SUPPORTS_TRANSPARENT.includes(ext));
           lastPath = await demoWriteBinary(`${dir}/${base}-${fmt.id}.${ext}`, data);
         }
         addExport(doc.name, `${ext.toUpperCase()} sosial-pakke (${SOCIAL_FORMATS.length} formater)`, dir);
@@ -129,7 +133,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         return;
       }
       setStatus('Tegner materialet…');
-      const data = await buildOne(doc, ext, scale);
+      const data = await buildOne(doc, ext, scale, transparent && SUPPORTS_TRANSPARENT.includes(ext));
       const path = await saveFileDialog({ defaultPath: `${safeDocName(doc.name)}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
       if (typeof path !== 'string') { setStep('settings'); return; }
       setStatus('Lagrer fil…');
@@ -187,6 +191,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             <StepLabel>Velg format</StepLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <FormatCard active={format === 'png'} onClick={() => setFormat('png')} title="PNG" desc="Best for nettsider, e-post og sosiale medier." />
+              <FormatCard active={format === 'webp'} onClick={() => setFormat('webp')} title="WebP" desc="Mindre filer enn PNG, samme kvalitet. Støtter transparent bakgrunn." />
               <FormatCard active={format === 'pdf'} onClick={() => setFormat('pdf')} title="PDF" desc="Best for deling, presentasjon og utskrift." />
               <FormatCard active={format === 'svg'} onClick={() => setFormat('svg')} title="SVG (semi-vektor)" desc="Skalerbar. Tekst som ekte, redigerbare vektor-tekstlag; komposit som innebygd bilde." />
               <FormatCard active={format === 'psd'} onClick={() => setFormat('psd')} title="PSD (selvstendig)" desc="Lagdelt Photoshop-fil. Fungerer uten Photoshop åpent." />
@@ -203,7 +208,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         {step === 'settings' && (
           <div>
             <StepLabel>Innstillinger — {formatLabel()}</StepLabel>
-            {(format === 'png' || format === 'svg') && (
+            {(format === 'png' || format === 'webp' || format === 'svg') && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 6 }}>Oppløsning{format === 'svg' ? ' (innebygd bilde-lag)' : ''}</div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -218,6 +223,12 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             {format === 'svg' && <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 12 }}>Tekst blir ekte vektor-tekstlag (skalerbar, redigerbar); enhets-komposittet innebygges som bilde.</div>}
             {format === 'psd' && <div style={{ fontSize: 13, color: C.inkSoft }}>Lagdelt PSD: bakgrunn, ett lag per enhet, ett per tekst + logo.</div>}
             {format === 'psd_bridge' && <div style={{ fontSize: 13, color: C.inkSoft }}>Bygges i Photoshop via broen: enheter som Smart Objects, tekst som redigerbare tekstlag.</div>}
+            {SUPPORTS_TRANSPARENT.includes(format) && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>
+                <input type="checkbox" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} />
+                Transparent bakgrunn (hopper bakgrunn + dekor)
+              </label>
+            )}
             {BATCHABLE.includes(format) && (
               <>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
