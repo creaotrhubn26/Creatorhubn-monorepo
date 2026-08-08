@@ -179,6 +179,36 @@ async function resolveUserId(pool: Pool, req: Request): Promise<string | null> {
   return readStringValue(session?.userId);
 }
 
+// Eierskaps-sjekk for sensitive lese-endepunkter (analytics/inntekter). Krever en
+// autentisert sesjon (bearer) OG at en evt. eksplisitt ?userId/x-user-id matcher
+// sesjonsbrukeren. Hindrer IDOR: uten dette kunne ?userId=<annen> lekket en annen
+// brukers YouTube-statistikk/inntekter. Returnerer null → kaller svarer 403.
+async function resolveOwnedUserId(pool: Pool, req: Request): Promise<string | null> {
+  const bearer = readStringValue(req.headers.authorization)?.replace(/^Bearer\s+/i, "").trim();
+  if (!bearer) {
+    return null;
+  }
+  const session = await loadPersistedAuthSession<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    loginAt: string;
+  }>(pool, bearer);
+  const sessionUserId = readStringValue(session?.userId);
+  if (!sessionUserId) {
+    return null;
+  }
+  const requested =
+    readStringValue(req.query.userId)
+    ?? readStringValue(req.body?.userId)
+    ?? readStringValue(req.headers["x-user-id"]);
+  if (requested && requested !== sessionUserId) {
+    return null;
+  }
+  return sessionUserId;
+}
+
 function normalizePrivacyStatus(value: unknown): "private" | "unlisted" | "public" {
   const normalized = readStringValue(value)?.toLowerCase();
   if (normalized === "public" || normalized === "unlisted") {
@@ -557,6 +587,23 @@ function getYoutubeErrorStatus(error: unknown) {
 
 function sendYoutubeError(res: Response, error: unknown) {
   res.status(getYoutubeErrorStatus(error)).json({ error: normalizeYoutubeError(error) });
+}
+
+function toIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// YouTube Analytics-rapportene krever et [startDate, endDate]-vindu (YYYY-MM-DD).
+// Default = siste 28 dager; kan overstyres via ?startDate/?endDate.
+function analyticsDateRange(req: Request): { startDate: string; endDate: string } {
+  const end = readStringValue(req.query.endDate) ?? toIsoDate(new Date());
+  const explicitStart = readStringValue(req.query.startDate);
+  if (explicitStart) {
+    return { startDate: explicitStart, endDate: end };
+  }
+  const start = new Date(end);
+  start.setDate(start.getDate() - 27);
+  return { startDate: toIsoDate(start), endDate: end };
 }
 
 export function createYouTubeRouter(pool: Pool) {
@@ -991,6 +1038,77 @@ export function createYouTubeRouter(pool: Pool) {
       sendYoutubeError(res, error);
     } finally {
       await cleanupTempFile(filePath);
+    }
+  });
+
+  // YouTube Analytics — kanal-/videostatistikk (visninger, seertid, abonnenter).
+  // Krever scopet auth/yt-analytics.readonly. Dette gis IKKE i hoved-Workspace-
+  // consenten (Google avviser det sammen med Drive) — brukeren må først kjøre den
+  // inkrementelle «Koble YouTube Analytics»-consenten (mode='youtube-analytics').
+  router.get("/analytics", async (req: Request, res: Response) => {
+    const userId = await resolveOwnedUserId(pool, req);
+    if (!userId) {
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
+      return;
+    }
+
+    try {
+      const { authorized } = await buildAuthorizedYoutubeClient(pool, userId, req);
+      const analytics = google.youtubeAnalytics({ version: "v2", auth: authorized.oauthClient });
+      const { startDate, endDate } = analyticsDateRange(req);
+
+      const report = await analytics.reports.query({
+        ids: "channel==MINE",
+        startDate,
+        endDate,
+        metrics: "views,estimatedMinutesWatched,averageViewDuration,subscribersGained,likes,comments,shares",
+        dimensions: "day",
+        sort: "day",
+      });
+
+      res.json({
+        startDate,
+        endDate,
+        columnHeaders: report.data.columnHeaders ?? [],
+        rows: report.data.rows ?? [],
+      });
+    } catch (error) {
+      sendYoutubeError(res, error);
+    }
+  });
+
+  // YouTube Analytics — inntekter per dag. Bruker scopet
+  // auth/yt-analytics-monetary.readonly. Krever monetisert kanal; hvis ikke
+  // monetisert svarer Google 403 → normaliseres til en tydelig melding.
+  router.get("/analytics/revenue", async (req: Request, res: Response) => {
+    const userId = await resolveOwnedUserId(pool, req);
+    if (!userId) {
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
+      return;
+    }
+
+    try {
+      const { authorized } = await buildAuthorizedYoutubeClient(pool, userId, req);
+      const analytics = google.youtubeAnalytics({ version: "v2", auth: authorized.oauthClient });
+      const { startDate, endDate } = analyticsDateRange(req);
+
+      const report = await analytics.reports.query({
+        ids: "channel==MINE",
+        startDate,
+        endDate,
+        metrics: "estimatedRevenue,estimatedAdRevenue,grossRevenue,cpm,adImpressions",
+        dimensions: "day",
+        sort: "day",
+      });
+
+      res.json({
+        startDate,
+        endDate,
+        columnHeaders: report.data.columnHeaders ?? [],
+        rows: report.data.rows ?? [],
+      });
+    } catch (error) {
+      sendYoutubeError(res, error);
     }
   });
 

@@ -508,6 +508,30 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     }
   };
 
+  // Inkrementell YouTube Analytics-consent. Ber KUN om YouTube Analytics-scopene
+  // (yt-analytics.readonly + monetary) i en egen consent — de kan ikke bes om
+  // sammen med Drive/Workspace (Google avviser «scopes cannot be requested
+  // together»). include_granted_scopes fletter dem inn i den eksisterende koblingen.
+  const connectYouTubeAnalytics = async () => {
+    if ((!resolvedUserId && !hasSessionToken) || !isRoleRoomVariant) {
+      return;
+    }
+
+    const result = await apiRequest('/api/role-room/google/oauth/start', {
+      method: 'POST',
+      body: {
+        mode: 'youtube-analytics',
+        ...(resolvedUserId ? { targetConnectionUserId: resolvedUserId } : {}),
+        returnPath: window.location.pathname + window.location.search,
+        browserOrigin: window.location.origin,
+      },
+    });
+
+    if (result?.authorizationUrl) {
+      window.location.href = result.authorizationUrl;
+    }
+  };
+
   const uploadVideo = async () => {
     if (!resolvedUserId || !uploadForm.file) {
       setUploadError('Velg en videofil før publisering.');
@@ -786,6 +810,19 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
         <Grid2 container spacing={compact ? 2 : 3}>
           <Grid2 size={{ xs: 12, lg: 5 }}>
             <Stack spacing={compact ? 2 : 3}>
+              {/* Inkrementell YouTube Analytics-consent — kun tilgjengelig NÅR en
+                  Workspace-kobling finnes, så den ekstra consenten flettes inn
+                  (include_granted_scopes) i stedet for å overskrive med partielle scopes. */}
+              {isRoleRoomVariant && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={connectYouTubeAnalytics}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Koble YouTube Analytics (statistikk + inntekter)
+                </Button>
+              )}
               <Paper
                 elevation={0}
                 sx={{
