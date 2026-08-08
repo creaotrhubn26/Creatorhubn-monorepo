@@ -71,8 +71,45 @@ async function ensureNrpsColumn(pool: Pool): Promise<void> {
   nrpsColumnEnsured = true;
 }
 
+// Alle plattform-vendte URLer (jwks/token/nrps/ags-lineitems/scores) kommer fra
+// enten admin-registrering ELLER LMS-claims → må valideres før fetch: HTTPS
+// (ingen plaintext-exfil / http-internt) + ikke privat/loopback-host (SSRF-lite).
+// ponytail: literal privat-IP-blokk uten DNS-oppslag; oppgrader til resolve+sjekk
+// hvis intern-nett-eksponering blir en reell trussel.
+function assertSafeHttpsUrl(raw: string): string {
+  let u: URL;
+  try { u = new URL(raw); } catch { throw new Error("url_invalid"); }
+  if (u.protocol !== "https:") throw new Error("url_not_https");
+  const h = u.hostname;
+  if (/^(localhost|127\.|0\.|10\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || h.endsWith(".local")) {
+    throw new Error("url_private_host");
+  }
+  return raw;
+}
+
+// Plattform-fetch: validér URL + hard timeout (treg/hengende issuer skal ikke
+// henge requesten). Alle eksterne LTI-kall MÅ gå via denne.
+async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): Promise<Response> {
+  assertSafeHttpsUrl(url);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(timer); }
+}
+
+// Uverifisert uttrekk av én string-claim fra en JWT (kun til å scope state-
+// oppslaget mot issuer FØR signatur-verifisering — verdien stoles ikke på).
+function unverifiedJwtClaim(idToken: string, key: string): string | null {
+  const parts = idToken.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
+    return typeof payload[key] === "string" ? (payload[key] as string) : null;
+  } catch { return null; }
+}
+
 async function fetchPlatformJwks(jwksUrl: string): Promise<PlatformJwk[]> {
-  const res = await fetch(jwksUrl);
+  const res = await fetchPlatform(jwksUrl);
   if (!res.ok) throw new Error("jwks_fetch_failed");
   const data = (await res.json()) as { keys?: PlatformJwk[] };
   return data.keys ?? [];
@@ -118,6 +155,10 @@ async function mintLtiEducationSession(
   activeSessions: Map<string, SessionData> | undefined,
   identity: { email: string; name: string | null; educationRole: "faglærer" | "student" },
 ): Promise<string | null> {
+  // Valider e-post-format før den brukes som users.email/username (malformet
+  // claim skal ikke lage en ugyldig konto eller kollidere på username).
+  // ponytail: pragmatisk regex, ikke full RFC 5322 — oppgrader ved behov.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.email)) return null;
   const bcrypt = await import("bcrypt");
   const placeholderPassword = await bcrypt.default.hash(`${crypto.randomUUID()}${crypto.randomUUID()}`, 10);
   const upsert = await pool.query<{ id: string; role: string | null }>(
@@ -282,7 +323,20 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     const state = (req.body as Record<string, string> | undefined)?.state;
     if (!idToken || !state) { res.status(400).send("missing_id_token_or_state"); return; }
     try {
-      const st = await pool.query(`DELETE FROM role_room_lti_states WHERE state = $1 AND created_at > now() - INTERVAL '10 minutes' RETURNING nonce, platform_id`, [state]);
+      // Defense-in-depth: bind state-konsumeringen til issuer id_token faktisk
+      // hevder, så en feil-plattform-token ikke brenner en legitim state (og
+      // ikke kan gjenbruke state på tvers av plattformer). Signaturen verifiseres
+      // uansett rett etterpå mot platform.issuer.
+      const tokenIss = unverifiedJwtClaim(idToken, "iss");
+      if (!tokenIss) { res.status(400).send("invalid_id_token"); return; }
+      const st = await pool.query(
+        `DELETE FROM role_room_lti_states s
+           USING role_room_lti_platforms p
+          WHERE s.state = $1 AND s.created_at > now() - INTERVAL '10 minutes'
+            AND s.platform_id = p.id AND p.issuer = $2
+        RETURNING s.nonce, s.platform_id`,
+        [state, tokenIss],
+      );
       const stateRow = st.rows[0];
       if (!stateRow) { res.status(400).send("invalid_state"); return; }
 
@@ -820,7 +874,7 @@ export async function pushScore(
 
   const key = await ensureToolKey(pool);
   const assertion = signClientAssertion({ clientId: String(platform.client_id), tokenUrl: String(platform.token_url), privatePem: key.privatePem, kid: key.kid });
-  const tokenRes = await fetch(String(platform.token_url), {
+  const tokenRes = await fetchPlatform(String(platform.token_url), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -845,7 +899,7 @@ export async function pushScore(
     const base = String(launch.ags_lineitems);
     const sep = base.includes("?") ? "&" : "?";
     try {
-      const findRes = await fetch(`${base}${sep}tag=${encodeURIComponent(input.resourceTag)}`, {
+      const findRes = await fetchPlatform(`${base}${sep}tag=${encodeURIComponent(input.resourceTag)}`, {
         headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
       });
       if (findRes.ok) {
@@ -857,7 +911,7 @@ export async function pushScore(
       }
     } catch { /* faller gjennom til opprettelse */ }
     if (!lineitem) {
-      const liRes = await fetch(base, {
+      const liRes = await fetchPlatform(base, {
         method: "POST",
         headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
         body: JSON.stringify(buildLineItem({ label: input.label ?? "Oppgave", scoreMaximum: input.scoreMaximum, tag: input.resourceTag, resourceLinkId: launch.resource_link_id ?? undefined })),
@@ -868,7 +922,7 @@ export async function pushScore(
   } else {
     lineitem = launch.ags_lineitem ?? null;
     if (!lineitem && launch.ags_lineitems) {
-      const liRes = await fetch(String(launch.ags_lineitems), {
+      const liRes = await fetchPlatform(String(launch.ags_lineitems), {
         method: "POST",
         headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v2.lineitem+json" },
         body: JSON.stringify(buildLineItem({ label: input.label ?? "The Role Room", scoreMaximum: input.scoreMaximum, resourceLinkId: launch.resource_link_id ?? undefined })),
@@ -888,7 +942,7 @@ export async function pushScore(
     outMax = lineitemMax;
   }
   const scoreUrl = lineitem.includes("/scores") ? lineitem : `${lineitem.replace(/\?.*$/, "")}/scores`;
-  const scoreRes = await fetch(scoreUrl, {
+  const scoreRes = await fetchPlatform(scoreUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v1.score+json" },
     body: JSON.stringify(buildScore({ userId: String(targetUserSub), scoreGiven: outGiven, scoreMaximum: outMax, comment: input.comment })),
@@ -915,7 +969,7 @@ export async function fetchRoster(
 
   const key = await ensureToolKey(pool);
   const assertion = signClientAssertion({ clientId: String(platform.client_id), tokenUrl: String(platform.token_url), privatePem: key.privatePem, kid: key.kid });
-  const tokenRes = await fetch(String(platform.token_url), {
+  const tokenRes = await fetchPlatform(String(platform.token_url), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -940,12 +994,12 @@ export async function fetchRoster(
     try {
       const scopedUrl = new URL(String(launch.nrps_url));
       scopedUrl.searchParams.set("rlid", String(launch.resource_link_id));
-      const scopedRes = await fetch(scopedUrl.toString(), { headers: nrpsHeaders });
+      const scopedRes = await fetchPlatform(scopedUrl.toString(), { headers: nrpsHeaders });
       if (scopedRes.ok) container = await scopedRes.json();
     } catch { /* fall through til uscopet under */ }
   }
   if (container === null) {
-    const memRes = await fetch(String(launch.nrps_url), { headers: nrpsHeaders });
+    const memRes = await fetchPlatform(String(launch.nrps_url), { headers: nrpsHeaders });
     if (!memRes.ok) return { ok: false, error: "roster_fetch_failed", status: 502 };
     container = await memRes.json();
   }
@@ -972,7 +1026,7 @@ export async function fetchResults(
 
   const key = await ensureToolKey(pool);
   const assertion = signClientAssertion({ clientId: String(platform.client_id), tokenUrl: String(platform.token_url), privatePem: key.privatePem, kid: key.kid });
-  const tokenRes = await fetch(String(platform.token_url), {
+  const tokenRes = await fetchPlatform(String(platform.token_url), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -988,7 +1042,7 @@ export async function fetchResults(
 
   const base = String(launch.ags_lineitems);
   const sep = base.includes("?") ? "&" : "?";
-  const findRes = await fetch(`${base}${sep}tag=${encodeURIComponent(resourceTag)}`, {
+  const findRes = await fetchPlatform(`${base}${sep}tag=${encodeURIComponent(resourceTag)}`, {
     headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
   });
   if (!findRes.ok) return { ok: true, results: new Map() };
@@ -997,7 +1051,7 @@ export async function fetchResults(
   if (!lineitem) return { ok: true, results: new Map() };
 
   const resultsUrl = lineitem.includes("/results") ? lineitem : `${lineitem.replace(/\?.*$/, "")}/results`;
-  const resRes = await fetch(resultsUrl, {
+  const resRes = await fetchPlatform(resultsUrl, {
     headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.resultcontainer+json" },
   });
   if (!resRes.ok) return { ok: true, results: new Map() };

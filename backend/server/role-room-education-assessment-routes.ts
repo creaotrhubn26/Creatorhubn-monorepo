@@ -22,6 +22,7 @@ import {
 } from "express";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
+import { gradeToScore } from "./role-room-lti-routes.js";
 
 interface SessionData {
   userId: string;
@@ -170,7 +171,9 @@ export function createEducationAssessmentRouter(
     const cohortId = typeof req.query.cohortId === "string" ? req.query.cohortId : null;
     try {
       const items = await queryItems(uid(req), cohortId);
-      const header = ["Kull", "Oppgave", "Student", "Status", "Karakter", "Tilbakemelding", "Levert", "Vurdert"];
+      // Vurderingsform + normalisert Score/Maks (gradeToScore) så LMS kan tolke
+      // karakter-kolonnen — bestått vs A vs mappe-score er ellers uskillbare.
+      const header = ["Kull", "Oppgave", "Student", "Status", "Karakter", "Vurderingsform", "Score", "Maks", "Tilbakemelding", "Levert", "Vurdert"];
       const lines = [header.join(",")];
       for (const it of items) {
         lines.push([
@@ -179,6 +182,9 @@ export function createEducationAssessmentRouter(
           csvCell(it.studentName),
           csvCell(it.status === "reviewed" ? "Vurdert" : "Levert"),
           csvCell(it.grade),
+          csvCell(it.vurderingsform),
+          csvCell(it.grade ? (gradeToScore(it.grade)?.scoreGiven?.toString() ?? null) : null),
+          csvCell(it.grade ? (gradeToScore(it.grade)?.scoreMaximum?.toString() ?? null) : null),
           csvCell(it.feedback),
           csvCell(it.submittedAt ? it.submittedAt.slice(0, 10) : null),
           csvCell(it.reviewedAt ? it.reviewedAt.slice(0, 10) : null),
