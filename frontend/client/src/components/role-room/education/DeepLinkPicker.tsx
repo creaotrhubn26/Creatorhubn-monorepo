@@ -83,7 +83,7 @@ export function DeepLinkPicker() {
           <Box sx={{ width: 44, height: 44, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center' }}><ProductionIcon /></Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>Velg produksjon for Canvas</Typography>
-            <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)' }}>Legger til en direkte lenke til produksjonen som en oppgave/ressurs i Canvas.</Typography>
+            <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)' }}>Legger til en direkte lenke til produksjonen som en oppgave/ressurs i Canvas.</Typography>
           </Box>
         </Stack>
 
@@ -108,7 +108,7 @@ export function DeepLinkPicker() {
               </Stack>
             </Card>
 
-            <Divider sx={{ my: 2.5, borderColor: 'rgba(255,255,255,0.08)' }}><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>ELLER VELG EKSISTERENDE</Typography></Divider>
+            <Divider sx={{ my: 2.5, borderColor: 'rgba(255,255,255,0.08)' }}><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.75)' }}>ELLER VELG EKSISTERENDE</Typography></Divider>
 
             {productions.length === 0 ? (
               <Typography sx={{ fontSize: 13, color: 'text.secondary', textAlign: 'center', py: 2 }}>Ingen produksjoner ennå — opprett en over.</Typography>
@@ -121,7 +121,7 @@ export function DeepLinkPicker() {
                         <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{p.title}</Typography>
                         <Typography sx={{ fontSize: 11.5, color: 'text.secondary' }}>{p.assignmentCount} oppgaver</Typography>
                       </Box>
-                      {sendingId === p.id ? <CircularProgress size={18} sx={{ color: ACCENT }} /> : <SendIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />}
+                      {sendingId === p.id ? <CircularProgress size={18} sx={{ color: ACCENT }} /> : <SendIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.75)' }} />}
                     </CardActionArea>
                   </Card>
                 ))}

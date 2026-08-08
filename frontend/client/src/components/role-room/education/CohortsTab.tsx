@@ -279,7 +279,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
   const statusBadge = (status: string): { label: string; color: string; bg: string } => {
     if (status === 'active') return { label: 'Aktiv', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
     if (status === 'invited' || status === 'pending') return { label: 'Invitert', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
-    return { label: 'Ingen tilgang', color: 'rgba(255,255,255,0.6)', bg: 'rgba(255,255,255,0.07)' };
+    return { label: 'Ingen tilgang', color: 'rgba(255,255,255,0.75)', bg: 'rgba(255,255,255,0.07)' };
   };
   const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
@@ -301,7 +301,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CohortIcon /></Box>
             <Box>
               <T eid="edu-ks-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Kull &amp; studenter</T>
-              <T eid="edu-ks-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Administrer kull, studenter, roller og synkronisering mot Canvas.</T>
+              <T eid="edu-ks-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Administrer kull, studenter, roller og synkronisering mot Canvas.</T>
             </Box>
           </Stack>
           <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -350,7 +350,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                   ? [ctx.courseCode, ctx.courseTitle].filter(Boolean).join(' – ')
                   : 'Klasse-roster fra LMS-en er klart'}
               </T>
-              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.5 }}>
+              <T eid="edu-ks-canvas-meta" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', mt: 0.5 }}>
                 {[ctx?.institution, ctx?.term].filter(Boolean).join(' · ')}
                 {(ctx?.institution || ctx?.term) ? ' · ' : ''}
                 {rosterCount === null ? 'henter roster…' : `${rosterCount} studenter · via NRPS`}
@@ -377,7 +377,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                 <T eid="edu-ks-canvas-other" component="span" sx={{ fontWeight: 600 }}>Legg i «{selected.name}»</T>
               </Button>
             )}
-            <IconButton size="small" onClick={() => setBannerOpen(false)} sx={{ position: 'absolute', top: 8, right: 10, color: 'rgba(255,255,255,0.4)' }}><CloseIcon fontSize="small" /></IconButton>
+            <IconButton size="small" onClick={() => setBannerOpen(false)} sx={{ position: 'absolute', top: 8, right: 10, color: 'rgba(255,255,255,0.75)' }}><CloseIcon fontSize="small" /></IconButton>
           </Box>
         </Collapse>
 
@@ -391,10 +391,10 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
               { id: 'oppgave', done: assignmentsCount > 0, t: 'Tildel første oppgave', s: assignmentsCount > 0 ? `${assignmentsCount} oppgaver` : 'Ingen oppgaver ennå' },
             ].map((step, i, arr) => (
               <Stack key={step.id} direction="row" alignItems="center" spacing={1.25} sx={{ flex: 1 }}>
-                <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0, bgcolor: step.done ? ACCENT : 'rgba(255,255,255,0.06)', color: step.done ? '#fff' : 'rgba(255,255,255,0.55)' }}>{step.done ? <CheckIcon sx={{ fontSize: 16 }} /> : i + 1}</Box>
+                <Box sx={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0, bgcolor: step.done ? ACCENT : 'rgba(255,255,255,0.06)', color: step.done ? '#fff' : 'rgba(255,255,255,0.72)' }}>{step.done ? <CheckIcon sx={{ fontSize: 16 }} /> : i + 1}</Box>
                 <Box sx={{ minWidth: 0 }}>
                   <T eid={`edu-ks-step-${step.id}-t`} sx={{ fontSize: 13.5, fontWeight: 600 }}>{step.t}</T>
-                  <T eid={`edu-ks-step-${step.id}-s`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>{step.s}</T>
+                  <T eid={`edu-ks-step-${step.id}-s`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>{step.s}</T>
                 </Box>
                 {i < arr.length - 1 && <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255,255,255,0.1)', mx: 1, display: { xs: 'none', sm: 'block' } }} />}
               </Stack>
@@ -407,11 +407,11 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
           {kpis.map((k) => (
             <Panel key={k.id} sx={{ p: 2 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                <T eid={`edu-ks-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+                <T eid={`edu-ks-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
                 <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.color, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
               </Stack>
-              <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-              <T eid={`edu-ks-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+              <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+              <T eid={`edu-ks-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
             </Panel>
           ))}
         </Box>
@@ -448,9 +448,9 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
               <T eid="edu-ks-studenttbl-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>{selected ? `Studenter i ${selected.name} (${visibleStudents.length}${studentQuery.trim() ? ` av ${students.length}` : ''})` : 'Velg et kull'}</T>
               <Stack direction="row" spacing={1}>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.6, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-                  <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-                  <InputBase placeholder="Søk etter student" value={studentQuery} onChange={(e) => setStudentQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
-                  {studentQuery && <IconButton size="small" onClick={() => setStudentQuery('')} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>}
+                  <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.75)' }} />
+                  <InputBase placeholder="Søk etter student" value={studentQuery} onChange={(e) => setStudentQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.75)', opacity: 1 } }} />
+                  {studentQuery && <IconButton size="small" onClick={() => setStudentQuery('')} sx={{ color: 'rgba(255,255,255,0.75)', p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>}
                 </Stack>
               </Stack>
             </Stack>
@@ -464,7 +464,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             )}
             <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: BORDER, borderBottom: BORDER }}>
               {[['student', 'Student'], ['kull', 'Kull'], ['gruppe', 'Gruppe'], ['status', 'Status'], ['a', '']].map(([id, label]) => (
-                <T key={id} eid={`edu-ks-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+                <T key={id} eid={`edu-ks-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
               ))}
             </Box>
             {studentsLoading ? (
@@ -489,7 +489,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                     <Typography sx={{ fontSize: 12.5, color: 'text.disabled' }}>—</Typography>
                   ) : (
                     <Select value={s.groupId ?? ''} onChange={(e) => handleSetStudentGroup(s.id, e.target.value || null)} variant="standard" disableUnderline displayEmpty
-                      sx={{ fontSize: 12.5, color: s.groupId ? '#34d399' : 'rgba(255,255,255,0.4)', '& .MuiSelect-select': { py: 0.25, pr: '18px !important' }, '& .MuiSvgIcon-root': { fontSize: 16, color: 'rgba(255,255,255,0.35)' } }}>
+                      sx={{ fontSize: 12.5, color: s.groupId ? '#34d399' : 'rgba(255,255,255,0.75)', '& .MuiSelect-select': { py: 0.25, pr: '18px !important' }, '& .MuiSvgIcon-root': { fontSize: 16, color: 'rgba(255,255,255,0.35)' } }}>
                       <MenuItem value="" sx={{ fontSize: 12.5 }}>Ingen gruppe</MenuItem>
                       {groups.map((g) => <MenuItem key={g.id} value={g.id} sx={{ fontSize: 12.5 }}>{g.name}</MenuItem>)}
                     </Select>
@@ -514,9 +514,9 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         </Panel>
         <Panel>
           <T eid="edu-ks-rail-sync-title" sx={{ fontWeight: 700, fontSize: 14.5, mb: 1.25 }}>Synkronisering</T>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: launchId ? '#10b981' : 'rgba(255,255,255,0.5)', mb: 0.75 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ color: launchId ? '#10b981' : 'rgba(255,255,255,0.72)', mb: 0.75 }}>
             <CheckIcon sx={{ fontSize: 15 }} />
-            <T eid="edu-ks-sync-status" sx={{ fontSize: 12.5, color: launchId ? '#10b981' : 'rgba(255,255,255,0.5)' }}>{launchId ? 'Canvas tilkoblet (LTI)' : 'Ikke koblet — åpne fra Canvas'}</T>
+            <T eid="edu-ks-sync-status" sx={{ fontSize: 12.5, color: launchId ? '#10b981' : 'rgba(255,255,255,0.72)' }}>{launchId ? 'Canvas tilkoblet (LTI)' : 'Ikke koblet — åpne fra Canvas'}</T>
           </Stack>
           <Stack direction="row" justifyContent="space-between" sx={{ mb: 1.5 }}>
             <T eid="edu-ks-sync-last" sx={{ fontSize: 12, color: 'text.secondary' }}>Roster</T>
@@ -532,7 +532,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         </Panel>
         <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
           <T eid="edu-ks-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>
-          <T eid="edu-ks-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5 }}>Importer studenter fra Canvas (åpne Role Room fra emnet) eller via CSV for å komme raskt i gang.</T>
+          <T eid="edu-ks-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.76)', lineHeight: 1.5 }}>Importer studenter fra Canvas (åpne Role Room fra emnet) eller via CSV for å komme raskt i gang.</T>
         </Panel>
       </Stack>
 
@@ -541,7 +541,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
         PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Importer studenter fra CSV</DialogTitle>
         <DialogContent>
-          <T eid="edu-ks-csv-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 1.5 }}>
+          <T eid="edu-ks-csv-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 1.5 }}>
             Lim inn eller last opp CSV. Kolonner: <b>navn, e-post, studentnr</b> (komma eller semikolon). Header-rad hoppes over.
           </T>
           <Button component="label" size="small" startIcon={<CsvIcon />} sx={{ mb: 1.5, color: '#c4b5fd', textTransform: 'none' }}>

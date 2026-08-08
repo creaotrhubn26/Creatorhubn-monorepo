@@ -143,7 +143,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
   ], [stats]);
 
   const donutSegments = [
-    { label: 'Ikke startet', value: 0, color: 'rgba(255,255,255,0.4)' },
+    { label: 'Ikke startet', value: 0, color: 'rgba(255,255,255,0.75)' },
     { label: 'Påbegynt', value: 0, color: '#f59e0b' },
     { label: 'Levert', value: data?.reviewQueue.length ?? 0, color: '#38bdf8' },
     { label: 'Vurdert', value: 0, color: '#10b981' },
@@ -169,7 +169,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
             <Typography data-edit-id="edu-ov-title" variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>Utdannings-workspace</Typography>
             <Chip data-edit-id="edu-ov-rolechip" label="Faglærer" size="small" sx={{ bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff', fontWeight: 700 }} />
           </Stack>
-          <Typography data-edit-id="edu-ov-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, mt: 0.5 }}>
+          <Typography data-edit-id="edu-ov-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, mt: 0.5 }}>
             Undervisning, studentproduksjoner og samarbeid med eksterne oppdragsgivere — i én flate.
           </Typography>
         </Box>
@@ -227,7 +227,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
               <Stack direction="row" alignItems="flex-start" spacing={1.5}>
                 <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: `${k.color}22`, color: k.color, flexShrink: 0, '& svg': { fontSize: 22 } }}>{k.icon}</Box>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontSize: 30, fontWeight: 800, lineHeight: 1 }}>{k.value}</Typography>
+                  <Typography sx={{ fontSize: 25, fontWeight: 700, lineHeight: 1 }}>{k.value}</Typography>
                   <Typography data-edit-id={`edu-ov-kpi-${k.id}-label`} sx={{ fontSize: 13.5, fontWeight: 600, mt: 0.5 }}>{k.label}</Typography>
                   <Typography data-edit-id={`edu-ov-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.25 }}>{k.hint}</Typography>
                 </Box>
@@ -310,7 +310,7 @@ export function OverviewTab({ onNavigate }: { onNavigate: (tab: TabId) => void }
             </Box>
             <Button size="small" variant="outlined" onClick={() => onNavigate('cohorts')}
               sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Kom i gang</Button>
-            <IconButton size="small" onClick={() => setTipDismissed(true)} sx={{ color: 'rgba(255,255,255,0.4)' }}><CloseIcon fontSize="small" /></IconButton>
+            <IconButton size="small" onClick={() => setTipDismissed(true)} sx={{ color: 'rgba(255,255,255,0.75)' }}><CloseIcon fontSize="small" /></IconButton>
           </Stack>
         </Card>
       )}

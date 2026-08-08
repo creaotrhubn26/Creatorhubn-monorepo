@@ -60,7 +60,7 @@ function Pipeline({ stage, color }: { stage: number; color: string }) {
         })}
       </Stack>
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
-        {PIPE_LABELS.map((l) => <Typography key={l} sx={{ fontSize: 10.5, color: 'rgba(255,255,255,0.5)', width: 56, textAlign: 'center' }}>{l}</Typography>)}
+        {PIPE_LABELS.map((l) => <Typography key={l} sx={{ fontSize: 10.5, color: 'rgba(255,255,255,0.72)', width: 56, textAlign: 'center' }}>{l}</Typography>)}
       </Stack>
     </Box>
   );
@@ -226,7 +226,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
                 <T eid="edu-sp-canvas" sx={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>Canvas-koblet</T>
               </Stack>
             </Stack>
-            <T eid="edu-sp-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.6 }}>Hver produksjon er et fullt Role Room-prosjekt med team, story arc, call sheet, oppgaver og leveranser.</T>
+            <T eid="edu-sp-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.6 }}>Hver produksjon er et fullt Role Room-prosjekt med team, story arc, call sheet, oppgaver og leveranser.</T>
           </Box>
           <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
             <Button variant="outlined" startIcon={<TemplateIcon />} onClick={openTemplateDialog} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
@@ -263,11 +263,11 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
               <Stack direction="row" alignItems="center" spacing={1.5}>
                 <Box sx={{ width: 44, height: 44, borderRadius: 2.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', flexShrink: 0, '& svg': { fontSize: 22 } }}>{k.icon}</Box>
                 <Box>
-                  <T eid={`edu-sp-kpi-${k.id}-label`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
-                  <Typography sx={{ fontSize: 28, fontWeight: 800, lineHeight: 1, mt: 0.25 }}>{k.value}</Typography>
+                  <T eid={`edu-sp-kpi-${k.id}-label`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
+                  <Typography sx={{ fontSize: 25, fontWeight: 700, lineHeight: 1, mt: 0.25 }}>{k.value}</Typography>
                 </Box>
               </Stack>
-              <T eid={`edu-sp-kpi-${k.id}-hint`} sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', mt: 1.25, display: 'block' }}>{k.hint}</T>
+              <T eid={`edu-sp-kpi-${k.id}-hint`} sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', mt: 1.25, display: 'block' }}>{k.hint}</T>
             </Panel>
           ))}
         </Box>
@@ -278,12 +278,12 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
             <T eid="edu-sp-list-title" sx={{ fontWeight: 700, fontSize: 17 }}>Produksjoner</T>
             <Stack direction="row" spacing={1}>
               <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="small" IconComponent={CaretIcon}
-                sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+                sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
                 {STATUS_OPTIONS.map((o) => <MenuItem key={o} value={o} sx={{ fontSize: 12.5 }}>{o}</MenuItem>)}
               </Select>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-                <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-                <InputBase placeholder="Søk i produksjoner" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+                <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.75)' }} />
+                <InputBase placeholder="Søk i produksjoner" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.75)', opacity: 1 } }} />
               </Stack>
             </Stack>
           </Stack>
@@ -324,7 +324,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
           <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: 'rgba(139,92,246,0.2)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><RocketIcon /></Box>
           <Box sx={{ flex: 1 }}>
             <T eid="edu-sp-cta-title" sx={{ fontSize: 15, fontWeight: 700 }}>Kom i gang</T>
-            <T eid="edu-sp-cta-body" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', mt: 0.25 }}>Opprett din første studentproduksjon, eller bruk en av våre maler for å komme raskt i gang.</T>
+            <T eid="edu-sp-cta-body" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', mt: 0.25 }}>Opprett din første studentproduksjon, eller bruk en av våre maler for å komme raskt i gang.</T>
           </Box>
           <Button variant="contained" onClick={() => setCreating(true)} sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>
             <T eid="edu-sp-cta-btn" component="span" sx={{ fontWeight: 700 }}>Opprett første produksjon</T>
@@ -393,7 +393,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
               <MenuItem value="">Ingen</MenuItem>
               {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </TextField>
-            <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Såer {selectedTmpl.assignments.length} oppgaver: {selectedTmpl.assignments.map((a) => a.title).join(', ')}.</Typography>
+            <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>Såer {selectedTmpl.assignments.length} oppgaver: {selectedTmpl.assignments.map((a) => a.title).join(', ')}.</Typography>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -407,7 +407,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
         PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Team — {teamProd?.title}</DialogTitle>
         <DialogContent>
-          <T eid="edu-sp-team-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+          <T eid="edu-sp-team-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
             Tildel studenter en rolle i produksjonen. Rollen gir tilgang til de EKTE produksjonsverktøyene (studenten logger inn med sin egen konto): <b>Ser på</b> = les alt · <b>Bidragsyter</b> = redigér det kreative · <b>Ansvarlig</b> = redigér det meste. Studenter uten konto får tilgang når de oppretter/overtar en konto med samme e-post.
           </T>
           {membersBusy ? (
@@ -428,7 +428,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
                 )}
               </Box>
               <Select size="small" value={m.assigned ? m.role : 'none'} onChange={(e) => setMemberRole(m.studentId, e.target.value as MemberRole | 'none')}
-                sx={{ fontSize: 12.5, minWidth: 150, color: m.assigned ? '#e9d5ff' : 'rgba(255,255,255,0.5)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 } }}>
+                sx={{ fontSize: 12.5, minWidth: 150, color: m.assigned ? '#e9d5ff' : 'rgba(255,255,255,0.72)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 } }}>
                 <MenuItem value="none" sx={{ fontSize: 12.5 }}>Ikke med</MenuItem>
                 {(['viewer', 'contributor', 'lead'] as MemberRole[]).map((r) => <MenuItem key={r} value={r} sx={{ fontSize: 12.5 }}>{MEMBER_ROLE_LABELS[r]}</MenuItem>)}
               </Select>

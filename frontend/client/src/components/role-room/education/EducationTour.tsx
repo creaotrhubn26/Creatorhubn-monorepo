@@ -140,7 +140,7 @@ export function EducationTour({ open, onClose, onNavigate }: EducationTourProps)
         <Stepper activeStep={index} alternativeLabel sx={{
           mb: 3,
           display: { xs: 'none', sm: 'flex' },
-          '& .MuiStepLabel-label': { color: 'rgba(255,255,255,0.5)', fontSize: 11 },
+          '& .MuiStepLabel-label': { color: 'rgba(255,255,255,0.72)', fontSize: 11 },
           '& .MuiStepLabel-label.Mui-active': { color: '#fff' },
           '& .MuiStepLabel-label.Mui-completed': { color: '#e9d5ff' },
           '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.15)' },
@@ -192,7 +192,7 @@ export function EducationTour({ open, onClose, onNavigate }: EducationTourProps)
 
         <Stack direction="row" justifyContent="center" sx={{ mt: 0.5 }}>
           {!isLast && (
-            <Button size="small" onClick={finish} sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, textTransform: 'none' }}>
+            <Button size="small" onClick={finish} sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, textTransform: 'none' }}>
               Hopp over rundturen
             </Button>
           )}

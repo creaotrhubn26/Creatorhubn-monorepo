@@ -160,7 +160,7 @@ export function IndustryTab() {
   const statusChip = (r: PipelineRow) => {
     if (r.status === 'claimed') return { label: 'Overtatt ✓', color: '#34d399', bg: 'rgba(16,185,129,0.15)' };
     if (r.status === 'claimable') return { label: 'Claimable', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
-    return { label: 'Ikke promotert', color: 'rgba(255,255,255,0.55)', bg: 'rgba(255,255,255,0.07)' };
+    return { label: 'Ikke promotert', color: 'rgba(255,255,255,0.72)', bg: 'rgba(255,255,255,0.07)' };
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
@@ -173,7 +173,7 @@ export function IndustryTab() {
           <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><IndustryIcon /></Box>
           <Box>
             <T eid="edu-br-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Bransje</T>
-            <T eid="edu-br-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Avgangs-pipeline: fra klasserom til rollebesetning. Promoter studenter til Talents-registeret, gjør profilene søkbare for byråer/casting, og styr avgangs-showcase.</T>
+            <T eid="edu-br-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Avgangs-pipeline: fra klasserom til rollebesetning. Promoter studenter til Talents-registeret, gjør profilene søkbare for byråer/casting, og styr avgangs-showcase.</T>
           </Box>
         </Stack>
         <Button variant="outlined" startIcon={<IndustryIcon />} onClick={openShowcase} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
@@ -193,11 +193,11 @@ export function IndustryTab() {
         {kpis.map((k) => (
           <Panel key={k.id} sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <T eid={`edu-br-kpi-${k.id}-label`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+              <T eid={`edu-br-kpi-${k.id}-label`} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
               <Box sx={{ width: 32, height: 32, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 18 } }}>{k.icon}</Box>
             </Stack>
-            <Typography sx={{ fontSize: 28, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-            <T eid={`edu-br-kpi-${k.id}-hint`} sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+            <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+            <T eid={`edu-br-kpi-${k.id}-hint`} sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
           </Panel>
         ))}
       </Box>
@@ -207,20 +207,20 @@ export function IndustryTab() {
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <T eid="edu-br-list-title" sx={{ fontWeight: 700, fontSize: 15, mr: 1 }}>Avgangsstudenter</T>
           <Select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} size="small" displayEmpty IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             <MenuItem value="" sx={{ fontSize: 12.5 }}>Alle kull</MenuItem>
             {cohorts.map((c) => <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12.5 }}>{c.name}</MenuItem>)}
           </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
+            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.75)' }} />
             <TextField variant="standard" placeholder="Søk etter student" value={query} onChange={(e) => setQuery(e.target.value)} InputProps={{ disableUnderline: true }} sx={{ '& input': { color: '#fff', fontSize: 12.5, width: 150 } }} />
           </Stack>
         </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['student', 'Student'], ['kull', 'Kull'], ['status', 'Talent-status'], ['a', '']].map(([id, label]) => (
-            <T key={id} eid={`edu-br-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+            <T key={id} eid={`edu-br-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
         </Box>
 
@@ -285,7 +285,7 @@ export function IndustryTab() {
             <TextField size="small" label="Ferdigheter (komma-separert)" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="ridning, sang, fekting" fullWidth />
             <TextField size="small" label="Språk (komma-separert)" value={languages} onChange={(e) => setLanguages(e.target.value)} placeholder="norsk, engelsk" fullWidth />
             <TextField size="small" label="Dialekter (komma-separert)" value={dialects} onChange={(e) => setDialects(e.target.value)} placeholder="Oslo, Trøndersk" fullWidth />
-            <FormControlLabel control={<Checkbox checked={nsf} onChange={(e) => setNsf(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
+            <FormControlLabel control={<Checkbox checked={nsf} onChange={(e) => setNsf(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: '#f59e0b' } }} />}
               label={<Typography sx={{ fontSize: 13 }}>Medlem av Norsk Skuespillerforbund (NSF)</Typography>} />
           </Stack>
 
@@ -297,7 +297,7 @@ export function IndustryTab() {
                   <T eid="edu-br-consent-note" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.5 }}>
                     Samtykke først: profilen opprettes som et <b>utkast</b> og er usynlig for byråer. Studenten <b>varsles på e-post</b>, får lese hva Role Room Talents er, og må selv bekrefte (eller avslå) før noe blir aktivt.
                   </T>
-                  <FormControlLabel sx={{ mt: 0.5 }} control={<Checkbox checked={attested} onChange={(e) => setAttested(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
+                  <FormControlLabel sx={{ mt: 0.5 }} control={<Checkbox checked={attested} onChange={(e) => setAttested(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: '#f59e0b' } }} />}
                     label={<Typography sx={{ fontSize: 12.5 }}>Jeg bekrefter at studenten har samtykket til å bli lagt til i Role Room Talents.</Typography>} />
                 </Box>
               </Stack>
@@ -315,7 +315,7 @@ export function IndustryTab() {
         PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Avgangs-showcase</DialogTitle>
         <DialogContent>
-          <T eid="edu-br-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>Promoterte talenter i kullet. Byråer/casting ser kun de studentene selv har gitt samtykke til.</T>
+          <T eid="edu-br-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>Promoterte talenter i kullet. Byråer/casting ser kun de studentene selv har gitt samtykke til.</T>
           {showcaseBusy ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress size={24} sx={{ color: ACCENT }} /></Box>
           ) : showcase.length === 0 ? (

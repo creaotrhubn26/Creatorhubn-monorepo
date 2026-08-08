@@ -145,7 +145,7 @@ export function CoursesTab() {
           <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><CourseIcon /></Box>
           <Box>
             <T eid="edu-em-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Emner</T>
-            <T eid="edu-em-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Studiepoenggivende enheter med læringsutbytte (kunnskap / ferdigheter / generell kompetanse), vurderingsform og oppgaver.</T>
+            <T eid="edu-em-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Studiepoenggivende enheter med læringsutbytte (kunnskap / ferdigheter / generell kompetanse), vurderingsform og oppgaver.</T>
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -163,16 +163,16 @@ export function CoursesTab() {
       {/* KPI */}
       <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)' } }}>
         <Panel sx={{ p: 2 }}>
-          <T eid="edu-em-kpi-emner-label" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>Emner</T>
-          <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{courses.length}</Typography>
+          <T eid="edu-em-kpi-emner-label" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>Emner</T>
+          <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{courses.length}</Typography>
         </Panel>
         <Panel sx={{ p: 2 }}>
-          <T eid="edu-em-kpi-sp-label" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>Studiepoeng totalt</T>
-          <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{totalCredits || '—'}</Typography>
+          <T eid="edu-em-kpi-sp-label" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>Studiepoeng totalt</T>
+          <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{totalCredits || '—'}</Typography>
         </Panel>
         <Panel sx={{ p: 2 }}>
-          <T eid="edu-em-kpi-oppg-label" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>Oppgaver knyttet</T>
-          <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{courses.reduce((a, c) => a + c.assignmentCount, 0)}</Typography>
+          <T eid="edu-em-kpi-oppg-label" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>Oppgaver knyttet</T>
+          <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{courses.reduce((a, c) => a + c.assignmentCount, 0)}</Typography>
         </Panel>
       </Box>
 
@@ -226,7 +226,7 @@ export function CoursesTab() {
                       {c.code && <Chip label={c.code} size="small" sx={{ height: 20, fontSize: 10.5, fontWeight: 800, bgcolor: 'rgba(139,92,246,0.2)', color: '#c4b5fd' }} />}
                       <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{c.title}</Typography>
                     </Stack>
-                    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75, color: 'rgba(255,255,255,0.55)' }} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75, color: 'rgba(255,255,255,0.72)' }} flexWrap="wrap" useFlexGap>
                       {c.credits != null && <Stack direction="row" alignItems="center" spacing={0.4}><CreditIcon sx={{ fontSize: 14 }} /><Typography sx={{ fontSize: 12 }}>{c.credits} sp</Typography></Stack>}
                       {c.term && <Typography sx={{ fontSize: 12 }}>{c.term}</Typography>}
                       {cohortName(c.cohortId) && <Typography sx={{ fontSize: 12 }}>{cohortName(c.cohortId)}</Typography>}
@@ -235,7 +235,7 @@ export function CoursesTab() {
                     </Stack>
                   </Box>
                   <Stack direction="row" spacing={0.25} sx={{ position: 'absolute', top: 10, right: 10 }}>
-                    <IconButton size="small" onClick={() => openEdit(c)} sx={{ color: 'rgba(255,255,255,0.5)' }}><EditIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openEdit(c)} sx={{ color: 'rgba(255,255,255,0.72)' }}><EditIcon fontSize="small" /></IconButton>
                     <IconButton size="small" onClick={() => handleDelete(c.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton>
                   </Stack>
                 </Stack>
@@ -261,7 +261,7 @@ export function CoursesTab() {
         PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Adopter studieplan-mal</DialogTitle>
         <DialogContent>
-          <T eid="edu-em-pack-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+          <T eid="edu-em-pack-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
             Oppretter et sett emner (m/ læringsutbytte + vurderingsform) og tilhørende oppgaver/arbeidskrav. Generiske start-strukturer du redigerer etterpå.
           </T>
           <Stack spacing={1} sx={{ mb: 2 }}>
@@ -283,7 +283,7 @@ export function CoursesTab() {
             <MenuItem value="">Ingen</MenuItem>
             {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
           </TextField>
-          <Typography sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 1.25 }}>Emner: {selectedPack.courses.map((c) => c.title).join(', ')}.</Typography>
+          <Typography sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 1.25 }}>Emner: {selectedPack.courses.map((c) => c.title).join(', ')}.</Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setPackOpen(false)} disabled={packBusy} sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>Avbryt</Button>

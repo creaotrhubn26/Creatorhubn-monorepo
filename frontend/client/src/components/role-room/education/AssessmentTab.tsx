@@ -170,7 +170,7 @@ export function AssessmentTab() {
           <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssessmentIcon /></Box>
           <Box>
             <T eid="edu-vu-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Vurdering</T>
-            <T eid="edu-vu-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Formativ, produksjonsnær tilbakemelding på leveransene — offisiell karakter føres i skolens system.</T>
+            <T eid="edu-vu-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Formativ, produksjonsnær tilbakemelding på leveransene — offisiell karakter føres i skolens system.</T>
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -196,11 +196,11 @@ export function AssessmentTab() {
         {kpis.map((k) => (
           <Panel key={k.id} sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <T eid={`edu-vu-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+              <T eid={`edu-vu-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
               <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
             </Stack>
-            <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-            <T eid={`edu-vu-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+            <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+            <T eid={`edu-vu-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
           </Panel>
         ))}
       </Box>
@@ -218,7 +218,7 @@ export function AssessmentTab() {
           <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: readiness ? 1.5 : 0, flexWrap: 'wrap', gap: 1 }}>
             <Box>
               <T eid="edu-vu-exam-title" sx={{ fontWeight: 700, fontSize: 15 }}>Eksamensklar</T>
-              <T eid="edu-vu-exam-sub" sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>Alle arbeidskrav må være godkjent i Canvas før eksamen. Status leses fra Canvas-karakterboka.</T>
+              <T eid="edu-vu-exam-sub" sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>Alle arbeidskrav må være godkjent i Canvas før eksamen. Status leses fra Canvas-karakterboka.</T>
             </Box>
             <Button size="small" variant="outlined" startIcon={<LmsPushIcon sx={{ fontSize: '15px !important' }} />} onClick={loadReadiness} disabled={readinessBusy}
               sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2 }}>{readinessBusy ? 'Henter fra Canvas…' : 'Sjekk mot Canvas'}</Button>
@@ -251,7 +251,7 @@ export function AssessmentTab() {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
           <T eid="edu-vu-queue-title" sx={{ fontWeight: 700, fontSize: 17 }}>Vurderingskø</T>
           <ToggleButtonGroup size="small" exclusive value={filter} onChange={(_e, v: Filter | null) => { if (v) setFilter(v); }}
-            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', px: 1.5, borderColor: 'rgba(255,255,255,0.12)' }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
+            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', px: 1.5, borderColor: 'rgba(255,255,255,0.12)' }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
             <ToggleButton value="submitted">Til vurdering{pendingCount > 0 ? ` (${pendingCount})` : ''}</ToggleButton>
             <ToggleButton value="reviewed">Vurdert</ToggleButton>
             <ToggleButton value="all">Alle</ToggleButton>
@@ -319,7 +319,7 @@ export function AssessmentTab() {
                             <Box sx={{ width: { xs: '100%', sm: 240 } }}>
                               <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: it.isArbeidskrav ? '#f59e0b' : ACCENT, textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>{it.isArbeidskrav ? 'Arbeidskrav' : 'Bestått / ikke bestått'}</Typography>
                               <ToggleButtonGroup size="small" exclusive value={draft.grade} onChange={(_e, v: string | null) => { if (v) setDraft(it.submissionId, { grade: v }); }}
-                                sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', px: 1.5 }, '& .Mui-selected': { bgcolor: 'rgba(16,185,129,0.28) !important', color: '#fff !important' } }}>
+                                sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', px: 1.5 }, '& .Mui-selected': { bgcolor: 'rgba(16,185,129,0.28) !important', color: '#fff !important' } }}>
                                 <ToggleButton value={pass}>{pass}</ToggleButton>
                                 <ToggleButton value={fail}>{fail}</ToggleButton>
                               </ToggleButtonGroup>
@@ -412,7 +412,7 @@ function RubricScoring({ assignmentId, studentId, onError }: { assignmentId: str
           </Box>
           <ToggleButtonGroup size="small" exclusive value={scores[c.id] ?? 0}
             onChange={(_e, v: number | null) => { if (v !== null) void setLevel(c.id, v as 0 | 1 | 2); }}
-            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: 11, py: 0.25, px: 1 }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
+            sx={{ '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.75)', textTransform: 'none', fontSize: 11, py: 0.25, px: 1 }, '& .Mui-selected': { bgcolor: 'rgba(139,92,246,0.28) !important', color: '#fff !important' } }}>
             {RUBRIC_LEVELS.map((l) => <ToggleButton key={l.value} value={l.value}>{l.label}</ToggleButton>)}
           </ToggleButtonGroup>
         </Stack>
