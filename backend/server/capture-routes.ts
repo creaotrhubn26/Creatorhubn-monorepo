@@ -373,12 +373,16 @@ function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
   };
 }
 
+// Strukturell type-predicate: narrower `parse` til success-varianten så
+// `parse.data` blir garantert definert hos kalleren. (z.ZodSafeParseSuccess<T>
+// som predikat-mål narrowet ikke `data` bort fra `T | undefined` på union-typen
+// .safeParse() gir, siden data?:never i error-grenen gjør feltet valgfritt.)
 function handleZod<T>(
   res: Response,
-  parse: z.ZodSafeParseResult<T>,
-): parse is z.ZodSafeParseSuccess<T> {
+  parse: { success: true; data: T } | { success: false; error: z.ZodError },
+): parse is { success: true; data: T } {
   if (!parse.success) {
-    res.status(400).json({ error: 'invalid_request', details: z.treeifyError(parse.error) });
+    res.status(400).json({ error: 'invalid_request', details: parse.error.format() });
     return false;
   }
   return true;
@@ -774,6 +778,7 @@ export function createCaptureRouter(
       const key = await fetchAssetPreviewKey(db, req.params.id);
       if (!key) { res.status(404).json({ error: 'not_found' }); return; }
       const url = await signAssetReadUrl(key);
+      if (!url) { res.status(404).json({ error: 'not_found' }); return; }
       res.setHeader('Cache-Control', 'private, max-age=120');
       res.redirect(302, url);
     } catch {
