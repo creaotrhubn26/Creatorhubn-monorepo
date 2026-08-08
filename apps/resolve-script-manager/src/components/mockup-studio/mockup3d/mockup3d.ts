@@ -10,7 +10,40 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { deviceDims, type Device3DVariant } from './deviceGeometry';
+import iphoneGlb from './deviceMeshes/iphone.glb';
+import ipadGlb from './deviceMeshes/ipad.glb';
+
+/**
+ * Egne Blender-genererte device-KROPPER (glb; scripts/gen-device-glb.py). Kroppen
+ * (m/ side-knapper + bak-kamera-modul) er mer detaljert enn parametrisk. Skjermen
+ * legges av APPEN på +Z-fronten (deterministisk, unngår Blender↔glTF-orientering).
+ * macbook forblir parametrisk clamshell (Blender-laptop gjenstår).
+ */
+const DEVICE_GLB: Partial<Record<Device3DVariant, string>> = { iphone: iphoneGlb, ipad: ipadGlb };
+const _gltfScene = new Map<string, Promise<THREE.Group>>();
+
+function loadGltfScene(url: string): Promise<THREE.Group> {
+  let p = _gltfScene.get(url);
+  if (!p) { p = new GLTFLoader().loadAsync(url).then((g) => g.scene); _gltfScene.set(url, p); }
+  return p;
+}
+
+/** Bygg fra Blender-glb: klon kroppen, mål bbox, legg skjerm på +Z-fronten (app-frame). */
+async function buildDeviceGltf(url: string, shot?: string): Promise<THREE.Group> {
+  const body = (await loadGltfScene(url)).clone(true);
+  const box = new THREE.Box3().setFromObject(body);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const ctr = new THREE.Vector3(); box.getCenter(ctr);
+  const mat = await screenMat(shot);
+  const inset = size.x * 0.05;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(size.x - inset * 2, size.y - inset * 2), mat);
+  screen.position.set(ctr.x, ctr.y, box.max.z + 0.002);
+  const g = new THREE.Group();
+  g.add(body); g.add(screen);
+  return g;
+}
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -104,7 +137,8 @@ export async function render3dDevice(opts: { variant: Device3DVariant; shot?: st
   c.aspect = aspect; c.updateProjectionMatrix();
   const prev = s.getObjectByName('device');
   if (prev) { s.remove(prev); }
-  const dev = await buildDevice(opts.variant, opts.shot);
+  const glb = DEVICE_GLB[opts.variant];
+  const dev = glb ? await buildDeviceGltf(glb, opts.shot) : await buildDevice(opts.variant, opts.shot);
   dev.name = 'device';
   dev.rotation.set(THREE.MathUtils.degToRad(opts.rotX), THREE.MathUtils.degToRad(opts.rotY), THREE.MathUtils.degToRad(opts.rotZ));
   s.add(dev);

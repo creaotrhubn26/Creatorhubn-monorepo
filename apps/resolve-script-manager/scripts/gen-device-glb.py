@@ -32,7 +32,7 @@ def make_mat(name, color, metallic, roughness):
 
 
 def rbox(w, d, h, bevel, name, mat, loc=(0, 0, 0)):
-    bpy.ops.mesh.primitive_cube_add(size=1)
+    bpy.ops.mesh.primitive_cube_add(size=2)
     o = bpy.context.active_object; o.name = name
     o.scale = (w / 2, d / 2, h / 2); bpy.ops.object.transform_apply(scale=True)
     bev = o.modifiers.new('b', 'BEVEL'); bev.width = bevel; bev.segments = 3
@@ -64,9 +64,9 @@ def build_body(variant, w, h, d, bevel, cam, out):
     rbox(0.02, d * 0.5, h * 0.07, 0.006, 'btn_vu', body_m, (-bx, 0, h * 0.14))
     rbox(0.02, d * 0.5, h * 0.07, 0.006, 'btn_vd', body_m, (-bx, 0, h * 0.03))
     # bak-kamera-modul (Blender -Y = app -Z bakside), øvre venstre
-    by = -(d / 2)
+    by = (d / 2)
     plate = rbox(cam['plate'] * w, 0.03, cam['plate'] * w, cam['plate'] * w * 0.28,
-                 'cam_plate', body_m, (-w * 0.24, by - 0.012, h * 0.20))
+                 'cam_plate', body_m, (-w * 0.24, by + 0.012, h * 0.15))
     void = plate
     # linser (glass), protruderer bakover
     n = cam['lenses']
@@ -74,11 +74,11 @@ def build_body(variant, w, h, d, bevel, cam, out):
         col = i % 2
         row = i // 2
         lx = -w * 0.24 + (col - 0.5) * cam['plate'] * w * 0.42
-        lz = h * 0.20 + (0.5 - row) * cam['plate'] * w * 0.42
-        lens(cam['lr'] * w, 0.05, 'lens_%d' % i, glass_m, (lx, by - 0.028, lz))
+        lz = h * 0.15 + (0.5 - row) * cam['plate'] * w * 0.42
+        lens(cam['lr'] * w, 0.05, 'lens_%d' % i, glass_m, (lx, by + 0.028, lz))
     # blits (liten glass-prikk) hvis 3 linser
     if n >= 3:
-        lens(cam['lr'] * w * 0.4, 0.04, 'flash', glass_m, (-w * 0.24 + cam['plate'] * w * 0.3, by - 0.024, h * 0.20))
+        lens(cam['lr'] * w * 0.4, 0.04, 'flash', glass_m, (-w * 0.24 + cam['plate'] * w * 0.3, by + 0.024, h * 0.15))
     _ = void
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.export_scene.gltf(filepath=os.path.join(out, variant + '.glb'),
