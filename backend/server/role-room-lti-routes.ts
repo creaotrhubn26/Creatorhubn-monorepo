@@ -97,6 +97,35 @@ async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): P
   finally { clearTimeout(timer); }
 }
 
+// IMS LTI Dynamic Registration: verktøyets selvbeskrivelse (OpenID client
+// registration request + lti-tool-configuration-claim). Delt sannhet for
+// registrerings-flyten. Gjenbruker samme endepunkter/scopes som launchen.
+export function buildToolConfiguration(clientName = "The Role Room"): Record<string, unknown> {
+  const loginUri = `${TOOL_BASE}/lti/login`;
+  const launchUri = `${TOOL_BASE}/lti/launch`;
+  const jwksUri = `${TOOL_BASE}/lti/jwks`;
+  return {
+    application_type: "web",
+    client_name: clientName,
+    grant_types: ["client_credentials", "implicit"],
+    response_types: ["id_token"],
+    token_endpoint_auth_method: "private_key_jwt",
+    initiate_login_uri: loginUri,
+    redirect_uris: [launchUri],
+    jwks_uri: jwksUri,
+    scope: [...AGS_SCOPES, NRPS_SCOPE].join(" "),
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      domain: new URL(TOOL_BASE).host,
+      target_link_uri: launchUri,
+      claims: ["sub", "iss", "name", "email", "given_name", "family_name", "roles"],
+      messages: [
+        { type: "LtiResourceLinkRequest", target_link_uri: launchUri, label: clientName },
+        { type: "LtiDeepLinkingRequest", target_link_uri: launchUri, label: `${clientName} — velg produksjon` },
+      ],
+    },
+  };
+}
+
 // Uverifisert uttrekk av én string-claim fra en JWT (kun til å scope state-
 // oppslaget mot issuer FØR signatur-verifisering — verdien stoles ikke på).
 function unverifiedJwtClaim(idToken: string, key: string): string | null {

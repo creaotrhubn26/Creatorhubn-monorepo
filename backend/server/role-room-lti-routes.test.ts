@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore } from "./role-room-lti-routes.js";
+import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore, buildToolConfiguration } from "./role-room-lti-routes.js";
 
 describe("gradeToScore (fri-tekst-karakter → AGS-tallscore)", () => {
   it("bestått/godkjent → 1/1, ikke bestått → 0/1", () => {
@@ -145,6 +145,27 @@ describe("LTI routes: plattform-registrering (super-admin)", () => {
     } }, res);
     expect(res.statusCode).toBe(201);
     expect(res.body).toMatchObject({ platformId: "plat-1" });
+  });
+});
+
+describe("buildToolConfiguration (IMS dynamic-registration payload)", () => {
+  it("produserer gyldig IMS tool-config med LTI-claim", () => {
+    const c = buildToolConfiguration("The Role Room");
+    expect(c.application_type).toBe("web");
+    expect(c.grant_types).toEqual(expect.arrayContaining(["client_credentials", "implicit"]));
+    expect(c.response_types).toContain("id_token");
+    expect(c.token_endpoint_auth_method).toBe("private_key_jwt");
+    expect(c.initiate_login_uri).toMatch(/\/lti\/login$/);
+    expect(c.jwks_uri).toMatch(/\/lti\/jwks$/);
+    expect(c.redirect_uris).toEqual(expect.arrayContaining([expect.stringMatching(/\/lti\/launch$/)]));
+    expect(String(c.scope)).toContain("lineitem");            // AGS
+    expect(String(c.scope)).toContain("contextmembership");   // NRPS
+    const lti = (c as any)["https://purl.imsglobal.org/spec/lti-tool-configuration"];
+    expect(lti.target_link_uri).toMatch(/\/lti\/launch$/);
+    expect(lti.claims).toEqual(expect.arrayContaining(["sub", "name", "email", "roles"]));
+    const types = lti.messages.map((m: any) => m.type);
+    expect(types).toContain("LtiResourceLinkRequest");
+    expect(types).toContain("LtiDeepLinkingRequest");
   });
 });
 
