@@ -114,22 +114,23 @@ import { useExternalData } from '@/services/ExternalDataService';
 import { useBrandingSettings } from '../../hooks/useBrandingSettings';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import RoleRoomBrandMark from '../shared/RoleRoomBrandMark';
+import { useT } from '../../../../i18n';
 
 // TROLL area configuration matching CastingPlannerPanel navigation colors/icons
-const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: string }> = {
-  project: { Icon: DashboardIcon, color: 'var(--role-violet, #8b5cf6)', label: 'Prosjekt' },
-  roles: { Icon: TheaterComedyIcon, color: '#f48fb1', label: 'Roller' },
-  candidates: { Icon: RecentActorsIcon, color: '#10b981', label: 'Kandidater' },
-  crew: { Icon: GroupsIcon, color: 'var(--role-cyan, #00d4ff)', label: 'Team' },
-  locations: { Icon: LocationIcon, color: '#4caf50', label: 'Lokasjoner' },
-  equipment: { Icon: PropIcon, color: '#9333ea', label: 'Utstyr' },
-  production_days: { Icon: CalendarIcon, color: '#9c27b0', label: 'Prod.dager' },
-  scenes: { Icon: ShotListIcon, color: '#e91e63', label: 'Scener' },
-  shot_lists: { Icon: ShotListIcon, color: '#e91e63', label: 'Shot Lists' },
-  split_sheets: { Icon: ShareIcon, color: '#06b6d4', label: 'Deling' },
-  offers: { Icon: HandshakeIcon, color: '#ffb800', label: 'Tilbud' },
-  contracts: { Icon: ContractsIcon, color: '#7c3aed', label: 'Kontrakter' },
-  consents: { Icon: ConsentIcon, color: '#00bcd4', label: 'Samtykker' },
+const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string }> = {
+  project: { Icon: DashboardIcon, color: 'var(--role-violet, #8b5cf6)' },
+  roles: { Icon: TheaterComedyIcon, color: '#f48fb1' },
+  candidates: { Icon: RecentActorsIcon, color: '#10b981' },
+  crew: { Icon: GroupsIcon, color: 'var(--role-cyan, #00d4ff)' },
+  locations: { Icon: LocationIcon, color: '#4caf50' },
+  equipment: { Icon: PropIcon, color: '#9333ea' },
+  production_days: { Icon: CalendarIcon, color: '#9c27b0' },
+  scenes: { Icon: ShotListIcon, color: '#e91e63' },
+  shot_lists: { Icon: ShotListIcon, color: '#e91e63' },
+  split_sheets: { Icon: ShareIcon, color: '#06b6d4' },
+  offers: { Icon: HandshakeIcon, color: '#ffb800' },
+  contracts: { Icon: ContractsIcon, color: '#7c3aed' },
+  consents: { Icon: ConsentIcon, color: '#00bcd4' },
 };
 
 const readFirstNonEmptyString = (...values: unknown[]): string | undefined => {
@@ -245,11 +246,6 @@ interface NewProjectCreationModalProps {
   onOpenEconomy?: (projectId?: string) => void;
 }
 
-const STEPS = [
-  { label: 'Grunndata', description: 'Kontakt, prosjektinfo og type', icon: ContactIcon },
-  { label: 'Produksjonsteam', description: 'Team, ansvar og videreføring til økonomi', icon: SplitSheetIcon },
-];
-
 import { TOUCH_TARGET_SIZE } from '../../constants/accessibility';
 
 // Shared focus styles for WCAG 2.4.7 Focus Visible
@@ -290,6 +286,11 @@ export default function NewProjectCreationModal({
   const { getBRREGCompanyData, searchBRREGCompanies } = useExternalData();
   const brandingSettings = useBrandingSettings();
   const toast = useToast();
+  const { t } = useT();
+  const STEPS = useMemo(() => [
+    { label: t('newProj.step.basics'), description: t('newProj.step.basicsDesc'), icon: ContactIcon },
+    { label: t('newProj.step.team'), description: t('newProj.step.teamDesc'), icon: SplitSheetIcon },
+  ], [t]);
   // Use React reference 
   const isReactReady = typeof React !== 'undefined' && !!React.version;
   void isReactReady;
@@ -348,10 +349,10 @@ export default function NewProjectCreationModal({
   const [trollInitError, setTrollInitError] = useState<string | null>(null);
   const [trollInitAreas, setTrollInitAreas] = useState<Record<string, DemoInitArea>>({});
 
-  const demoProjectTitle = isContentProducerSession ? 'Bedriftsdemo for innholdsproduksjon' : 'TROLL Demo-prosjekt';
+  const demoProjectTitle = isContentProducerSession ? t('newProj.demo.titleProducer') : t('newProj.demo.titleTroll');
   const demoProjectDescription = isContentProducerSession
-    ? 'Last et fiktivt bedriftsprosjekt med klient, manus, storyboard og godkjenningsflyt'
-    : 'Prøv demo-prosjektet for å se hvordan alt fungerer';
+    ? t('newProj.demo.descProducer')
+    : t('newProj.demo.descTroll');
   
   // Generate project ID based on project name
   const generateProjectIdFromName = useCallback((projectName: string, timestamp?: number): string => {
@@ -572,7 +573,7 @@ export default function NewProjectCreationModal({
               setActiveStep(draftData.activeStep || 0);
               setLastSavedAt(new Date(draftData.savedAt));
               setDraftStatus('saved');
-              toast.showInfo('Utkast lastet inn automatisk');
+              toast.showInfo(t('newProj.toast.draftAutoLoaded'));
             } else {
               await settingsService.deleteSetting('casting-project-draft', { userId: resolvedUserId, projectId: draftKey });
             }
@@ -604,11 +605,11 @@ export default function NewProjectCreationModal({
         setDraftStatus('saved');
         setSelectedDraftKey(draftKey);
         setSelectedProjectId(null);
-        toast.showSuccess('Utkast lastet');
+        toast.showSuccess(t('newProj.toast.draftLoaded'));
       }
     } catch (error) {
       console.error('Error loading selected draft:', error);
-      toast.showError('Kunne ikke laste utkast');
+      toast.showError(t('newProj.toast.draftLoadFailed'));
     }
   }, [toast, userId]);
 
@@ -652,11 +653,11 @@ export default function NewProjectCreationModal({
         setSelectedProjectId(projectId);
         setSelectedDraftKey(null);
         setActiveStep(0);
-        toast.showSuccess('Prosjekt lastet');
+        toast.showSuccess(t('newProj.toast.projectLoaded'));
       }
     } catch (error) {
       console.error('Error loading project:', error);
-      toast.showError('Kunne ikke laste prosjekt');
+      toast.showError(t('newProj.toast.projectLoadFailed'));
     } finally {
       setLoadingProjects(false);
     }
@@ -709,7 +710,7 @@ export default function NewProjectCreationModal({
       void loadAvailableDrafts();
       
       if (isManual) {
-        toast.showSuccess('Utkast lagret');
+        toast.showSuccess(t('newProj.toast.draftSaved'));
       }
       
       // Clear saved status after 3 seconds
@@ -720,7 +721,7 @@ export default function NewProjectCreationModal({
       console.error('Error saving draft:', error);
       setDraftStatus('error');
       if (isManual) {
-        toast.showError('Kunne ikke lagre utkast');
+        toast.showError(t('newProj.toast.draftSaveFailed'));
       }
     }
   }, [profession, userId, toast, loadAvailableDrafts]);
@@ -803,6 +804,21 @@ export default function NewProjectCreationModal({
   const [clientCompanySearchLoading, setClientCompanySearchLoading] = useState(false);
 
   const loadedDemoAreaBadges = useMemo(() => {
+    const areaLabelByKey: Record<string, string> = {
+      project: t('newProj.area.project'),
+      roles: t('newProj.area.roles'),
+      candidates: t('newProj.area.candidates'),
+      crew: t('newProj.area.crew'),
+      locations: t('newProj.area.locations'),
+      equipment: t('newProj.area.equipment'),
+      production_days: t('newProj.area.productionDays'),
+      scenes: t('newProj.area.scenes'),
+      shot_lists: t('newProj.area.shotLists'),
+      split_sheets: t('newProj.area.splitSheets'),
+      offers: t('newProj.area.offers'),
+      contracts: t('newProj.area.contracts'),
+      consents: t('newProj.area.consents'),
+    };
     const badges: Array<{
       key: string;
       label: string;
@@ -830,7 +846,7 @@ export default function NewProjectCreationModal({
 
       badges.push({
         key,
-        label: config.label,
+        label: areaLabelByKey[key] || key,
         color: config.color,
         count,
         Icon: config.Icon,
@@ -840,7 +856,7 @@ export default function NewProjectCreationModal({
     if (economyCount > 0) {
       badges.push({
         key: 'economy',
-        label: 'Økonomi',
+        label: t('newProj.area.economy'),
         color: '#34d399',
         count: economyCount,
         Icon: AttachMoneyIcon as typeof DashboardIcon,
@@ -848,7 +864,7 @@ export default function NewProjectCreationModal({
     }
 
     return badges;
-  }, [trollInitAreas]);
+  }, [trollInitAreas, t]);
   // Get available roles based on profession (same as split sheet)
   const getAvailableRoles = (prof: string): ContributorRole[] => {
     switch(prof) {
@@ -1041,51 +1057,51 @@ export default function NewProjectCreationModal({
   ]);
 
   const buildDefaultClientInviteSubject = useCallback(() => (
-    'Invitasjon til {{projectName}} i The Role Room'
+    t('newProj.invite.subjectTemplate')
   ), []);
 
   const buildDefaultClientInviteBody = useCallback(() => {
     const companyName = brandingSettings.companyName?.trim() || 'The Role Room';
 
     return [
-      'Hei {{recipientName}},',
+      t('newProj.invite.bodyGreeting'),
       '',
-      'Du er invitert inn i The Role Room for prosjektet "{{projectName}}".',
-      'Klikk på magic-linken under for å åpne klientportalen direkte.',
+      t('newProj.invite.bodyInvited'),
+      t('newProj.invite.bodyClick'),
       '',
-      'Magic-link: {{magicLink}}',
+      t('newProj.invite.bodyMagicLink'),
       '',
-      'Tilgang: {{accessDurationLabel}}',
+      t('newProj.invite.bodyAccess'),
       '{{accessNote}}',
       '{{inviteExpiresNote}}',
       '',
-      'Hilsen',
+      t('newProj.invite.bodyRegards'),
       companyName,
     ].join('\n');
   }, [brandingSettings.companyName]);
 
   const renderClientInviteTemplate = useCallback((template: string, inviteUrlOverride?: string | null) => {
-    const inviteUrl = inviteUrlOverride || clientInviteUrl || '[magic-link genereres når invitasjonen opprettes]';
+    const inviteUrl = inviteUrlOverride || clientInviteUrl || t('newProj.invite.magicLinkPending');
     const accessEndLabel = resolveClientInviteAccessEndLabel();
     const accessDurationLabel = clientInviteAccessDuration === 'project_end'
-      ? 'Til prosjektets slutt'
-      : 'For alltid';
+      ? t('newProj.invite.accessDurationProjectEnd')
+      : t('newProj.invite.forever');
     const accessNote = clientInviteAccessDuration === 'project_end'
       ? (accessEndLabel
-        ? `Tilgangen varer til prosjektet avsluttes ${accessEndLabel}.`
-        : 'Tilgangen varer til prosjektet avsluttes når prosjektdato er satt.')
-      : 'Tilgangen forblir aktiv til den blir endret eller fjernet av teamet.';
+        ? t('newProj.invite.accessNoteProjectEndDate', { date: accessEndLabel })
+        : t('newProj.invite.accessNoteProjectEndNoDate'))
+      : t('newProj.invite.accessNoteForever');
     const inviteExpiresNote = generatedClientInvite?.expiresAt
-      ? `Magic-linken kan brukes frem til ${generatedClientInvite.expiresAt.slice(0, 10)}.`
-      : 'Magic-linken opprettes når du kopierer eller sender invitasjonen.';
+      ? t('newProj.invite.expiresNoteDate', { date: generatedClientInvite.expiresAt.slice(0, 10) })
+      : t('newProj.invite.expiresNotePending');
 
     return template.replace(/\{\{([^}]+)\}\}/g, (_match, rawKey) => {
       const key = String(rawKey).trim();
       switch (key) {
         case 'recipientName':
-          return clientInviteRecipientName?.trim() || projectData.clientName?.trim() || 'der';
+          return clientInviteRecipientName?.trim() || projectData.clientName?.trim() || t('newProj.invite.fallbackRecipient');
         case 'projectName':
-          return projectData.projectName?.trim() || 'prosjektet';
+          return projectData.projectName?.trim() || t('newProj.invite.fallbackProject');
         case 'magicLink':
           return inviteUrl;
         case 'companyName':
@@ -1153,14 +1169,14 @@ export default function NewProjectCreationModal({
 
     if (!inviteProjectId) {
       if (!options?.silent) {
-        toast.showError('Prosjekt-ID mangler. Lagre prosjektet før du sender klientinvitasjonen.');
+        toast.showError(t('newProj.invite.errProjectIdMissing'));
       }
       return null;
     }
 
     if (!validateEmail(targetEmail)) {
       if (!options?.silent) {
-        toast.showWarning('Legg inn en gyldig klient-e-post før du sender invitasjonen.');
+        toast.showWarning(t('newProj.invite.warnInvalidEmail'));
       }
       return null;
     }
@@ -1170,7 +1186,7 @@ export default function NewProjectCreationModal({
       && !resolveClientInviteAccessEndLabel()
     ) {
       if (!options?.silent) {
-        toast.showWarning('Prosjektet mangler sluttdato. Sett prosjektdato før du gir klienten tilgang til prosjektets slutt.');
+        toast.showWarning(t('newProj.invite.warnNoEndDate'));
       }
       return null;
     }
@@ -1196,13 +1212,13 @@ export default function NewProjectCreationModal({
       setGeneratedClientInviteSignature(clientInviteDraftSignature);
       if (options?.sendEmail) {
         if (response.invite.delivery?.sent) {
-          toast.showSuccess('Klientinvitasjonen er sendt fra The Role Room.');
+          toast.showSuccess(t('newProj.invite.sent'));
         } else {
           const deliveryReason = response.invite.delivery?.reason;
           toast.showWarning(
             deliveryReason === 'missing_email_config'
-              ? 'Invitasjonen ble opprettet, men systemet mangler e-postoppsett. Du kan fortsatt kopiere magic-linken.'
-              : 'Invitasjonen ble opprettet, men e-posten ble ikke sendt automatisk. Du kan fortsatt kopiere magic-linken.',
+              ? t('newProj.invite.createdNoEmailConfig')
+              : t('newProj.invite.createdNotSent'),
           );
         }
       }
@@ -1210,7 +1226,7 @@ export default function NewProjectCreationModal({
     } catch (error) {
       console.error('Failed to create client magic invite:', error);
       if (!options?.silent) {
-        toast.showError(error instanceof Error ? error.message : 'Kunne ikke opprette klientinvitasjonen.');
+        toast.showError(error instanceof Error ? error.message : t('newProj.invite.errCreate'));
       }
       return null;
     } finally {
@@ -1283,14 +1299,14 @@ export default function NewProjectCreationModal({
     if (freshData.projectId && onProjectIdChange) {
       onProjectIdChange(freshData.projectId);
     }
-    toast.showInfo('Startet med nytt prosjektutkast.');
+    toast.showInfo(t('newProj.toast.freshDraft'));
   };
 
   const lookupCollaboratorOrgNumber = useCallback(async (rawOrgNumber?: string) => {
     const cleaned = (rawOrgNumber ?? newCollaboratorOrgNumber ?? '').replace(/[\s-]/g, '');
 
     if (!validateOrgNumber(cleaned)) {
-      setBrregError('Organisasjonsnummer må være 9 siffer');
+      setBrregError(t('newProj.brreg.errOrgNumber9'));
       return;
     }
 
@@ -1313,11 +1329,11 @@ export default function NewProjectCreationModal({
         }
         setBrregError(null);
       } else {
-        setBrregError('Kunne ikke hente bedriftsinformasjon');
+        setBrregError(t('newProj.brreg.errFetch'));
       }
     } catch (error: unknown) {
       console.error('Error fetching BRREG data:', error);
-      setBrregError('Kunne ikke hente bedriftsinformasjon fra Brønnøysundregistrene');
+      setBrregError(t('newProj.brreg.errFetchBrreg'));
     } finally {
       setBrregLoading(false);
     }
@@ -1431,7 +1447,7 @@ export default function NewProjectCreationModal({
   const lookupClientOrgNumber = useCallback(async (rawOrgNumber?: string) => {
     const cleaned = (rawOrgNumber ?? projectData.clientOrganizationNumber ?? '').replace(/[\s-]/g, '');
     if (!validateOrgNumber(cleaned)) {
-      setClientBrregError('Organisasjonsnummer må være 9 siffer');
+      setClientBrregError(t('newProj.brreg.errOrgNumber9'));
       return;
     }
 
@@ -1441,11 +1457,11 @@ export default function NewProjectCreationModal({
       if (companyData?.name) {
         applyClientCompanyFromBrreg(companyData);
       } else {
-        setClientBrregError('Kunne ikke hente bedriftsinformasjon');
+        setClientBrregError(t('newProj.brreg.errFetch'));
       }
     } catch (error: unknown) {
       console.error('Error fetching BRREG client company data:', error);
-      setClientBrregError('Kunne ikke hente bedriftsinformasjon fra Brønnøysundregistrene');
+      setClientBrregError(t('newProj.brreg.errFetchBrreg'));
     } finally {
       setClientBrregLoading(false);
     }
@@ -1587,7 +1603,7 @@ export default function NewProjectCreationModal({
         };
       });
       
-      toast.showSuccess(`${finalName} oppdatert`);
+      toast.showSuccess(t('newProj.toast.collabUpdated', { name: finalName }));
     } else {
       // Adding new collaborator
       const newCollaborator = {
@@ -1634,7 +1650,7 @@ export default function NewProjectCreationModal({
         };
       });
 
-      toast.showSuccess(`${finalName} lagt til i teamet`);
+      toast.showSuccess(t('newProj.toast.collabAdded', { name: finalName }));
     }
 
     setNewCollaboratorEmail('');
@@ -1678,7 +1694,7 @@ export default function NewProjectCreationModal({
       
       // Validate project name (required for all)
       if (!projectData.projectName || projectData.projectName.trim() === '') {
-        toast.showWarning('Prosjektnavn er påkrevd');
+        toast.showWarning(t('newProj.err.projectNameRequired'));
         return;
       }
       
@@ -1702,7 +1718,7 @@ export default function NewProjectCreationModal({
         }
         
         if (hasErrors) {
-          toast.showWarning('Vennligst fyll ut alle påkrevde felt');
+          toast.showWarning(t('newProj.err.fillRequired'));
           return;
         }
       }
@@ -1805,20 +1821,20 @@ export default function NewProjectCreationModal({
     }
 
     if (!projectData.projectName.trim()) {
-      toast.showWarning('Navngi prosjektet før du åpner økonomi.');
+      toast.showWarning(t('newProj.err.nameBeforeEconomy'));
       return;
     }
 
     if (isCastingPlanner) {
       const saved = await saveProjectToDatabase();
       if (!saved) {
-        toast.showError('Prosjektet må lagres før økonomi kan åpnes.');
+        toast.showError(t('newProj.err.saveBeforeEconomy'));
         return;
       }
     }
 
     onOpenEconomy(projectData.projectId);
-    toast.showInfo('Åpner økonomi-arbeidsflaten for budsjett, tilbud, kontrakter og teamavtaler.');
+    toast.showInfo(t('newProj.info.openingEconomy'));
     onClose?.();
   }, [
     isCastingPlanner,
@@ -1834,16 +1850,16 @@ export default function NewProjectCreationModal({
     const invite = await createClientMagicInvite();
     const inviteUrl = invite?.inviteUrl || clientInviteUrl;
     if (!inviteUrl) {
-      toast.showError('Klientens magic-link kunne ikke bygges for dette prosjektet.');
+      toast.showError(t('newProj.err.magicLinkBuild'));
       return;
     }
 
     try {
       await navigator.clipboard.writeText(inviteUrl);
-      toast.showSuccess('Klientens magic-link er kopiert.');
+      toast.showSuccess(t('newProj.toast.magicLinkCopied'));
     } catch (error) {
       console.error('Failed to copy client invite url:', error);
-      toast.showError('Kunne ikke kopiere klientens magic-link.');
+      toast.showError(t('newProj.err.magicLinkCopy'));
     }
   }, [clientInviteUrl, createClientMagicInvite, toast]);
 
@@ -1861,11 +1877,11 @@ export default function NewProjectCreationModal({
       invite.inviteUrl,
     );
     try {
-      await navigator.clipboard.writeText(`Emne: ${inviteSubject}\n\n${inviteBody}`);
-      toast.showSuccess('Klientinvitasjon kopiert.');
+      await navigator.clipboard.writeText(`${t('newProj.invite.subjectPrefix')}${inviteSubject}\n\n${inviteBody}`);
+      toast.showSuccess(t('newProj.toast.inviteCopied'));
     } catch (error) {
       console.error('Failed to copy client invite:', error);
-      toast.showError('Kunne ikke kopiere klientinvitasjonen.');
+      toast.showError(t('newProj.err.inviteCopy'));
     }
   }, [
     buildDefaultClientInviteBody,
@@ -1880,7 +1896,7 @@ export default function NewProjectCreationModal({
   const handleSendClientInviteEmail = useCallback(async (): Promise<boolean> => {
     const targetEmail = clientInviteRecipientEmail.trim().toLowerCase();
     if (!validateEmail(targetEmail)) {
-      toast.showWarning('Legg inn en gyldig klient-epost før du sender invitasjonen.');
+      toast.showWarning(t('newProj.invite.warnInvalidEmail2'));
       return false;
     }
     const sentInvite = await createClientMagicInvite(targetEmail, {
@@ -1912,7 +1928,7 @@ export default function NewProjectCreationModal({
     try {
       // Validate required fields
       if (!projectData.projectName || projectData.projectName.trim() === '') {
-        toast.showWarning('Prosjektnavn er påkrevd');
+        toast.showWarning(t('newProj.err.projectNameRequired'));
         setLoading(false);
         return false;
       }
@@ -1937,7 +1953,7 @@ export default function NewProjectCreationModal({
         }
         
         if (hasErrors) {
-          toast.showWarning('Vennligst fyll ut alle påkrevde felt');
+          toast.showWarning(t('newProj.err.fillRequired'));
           setLoading(false);
           return false;
         }
@@ -1950,7 +1966,7 @@ export default function NewProjectCreationModal({
       const projectId = projectData.projectId || initialData?.id;
       
       if (!projectId) {
-        toast.showError('Prosjekt-ID mangler. Vennligst last siden på nytt.');
+        toast.showError(t('newProj.err.projectIdMissingReload'));
         setLoading(false);
         return false;
       }
@@ -2046,7 +2062,7 @@ export default function NewProjectCreationModal({
           usedLocalFallback = true;
           response = { id: projectId };
           console.warn(
-            '[NewProjectCreationModal] Backend utilgjengelig — prosjektet er lagret lokalt og lagt i synk-kø.',
+            '[NewProjectCreationModal] Backend unavailable — project saved locally and queued for sync.',
             postError,
           );
         } else {
@@ -2099,7 +2115,7 @@ export default function NewProjectCreationModal({
         
         if (!verified) {
           console.error('Failed to verify project in database after', maxRetries, 'attempts');
-          toast.showError(`Prosjektet kunne ikke verifiseres i databasen etter ${maxRetries} forsøk. Teamavtalen ble ikke opprettet. Vennligst prøv å lagre prosjektet på nytt.`);
+          toast.showError(t('newProj.err.verifyFailed', { n: maxRetries }));
           setLoading(false);
           return false;
         }
@@ -2137,22 +2153,22 @@ export default function NewProjectCreationModal({
                 expected: finalProjectId,
                 received: createdSplitSheet.project_id,
               });
-              toast.showError('Teamavtalen ble opprettet, men project_id matcher ikke. Vennligst kontakt support.');
+              toast.showError(t('newProj.err.splitSheetMismatch'));
             }
           } else {
             throw new Error('Split sheet creation returned error: ' + JSON.stringify(splitSheetResponse));
           }
         } catch (splitSheetError: unknown) {
           console.error('Failed to create split sheet:', splitSheetError);
-          toast.showError(`Teamavtale kunne ikke opprettes: ${splitSheetError instanceof Error ? splitSheetError.message : 'Ukjent feil'}. Prosjektet er lagret, men avtalen må opprettes manuelt i økonomi.`);
+          toast.showError(t('newProj.err.splitSheetCreate', { error: splitSheetError instanceof Error ? splitSheetError.message : t('newProj.err.unknown') }));
         }
       }
 
       // Show success message
       setSuccessMessage(
         usedLocalFallback
-          ? `Prosjektet "${projectData.projectName}" ble lagret lokalt og synkroniseres når tilkoblingen er tilbake.`
-          : `Prosjektet "${projectData.projectName}" ble opprettet!`,
+          ? t('newProj.msg.savedLocally', { name: projectData.projectName })
+          : t('newProj.msg.created', { name: projectData.projectName }),
       );
       setSavedProjectIdForInvite(finalProjectId || null);
 
@@ -2198,7 +2214,7 @@ export default function NewProjectCreationModal({
         });
       }
       // Show more detailed error message to user
-      let errorMessage = 'Ukjent feil ved opprettelse av prosjekt';
+      let errorMessage = t('newProj.err.unknownCreate');
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
@@ -2206,7 +2222,7 @@ export default function NewProjectCreationModal({
       } else {
         errorMessage = String(error);
       }
-      toast.showError(`Feil ved opprettelse av prosjekt: ${errorMessage}`);
+      toast.showError(t('newProj.err.createProject', { error: errorMessage }));
       return false;
     } finally {
       setLoading(false);
@@ -2227,12 +2243,12 @@ export default function NewProjectCreationModal({
         const demoProject = await castingService.getProject(demoProjectId);
 
         if (!demoProject) {
-          throw new Error('Innholdsprodusent-demo ble ikke funnet i database');
+          throw new Error(t('newProj.demo.errProducerNotFound'));
         }
 
         const collaborators = (demoProject.crew || []).slice(0, 5).map((crewMember: any, idx: number) => ({
           id: `collab-${idx}`,
-          name: String(crewMember.name || `Teammedlem ${idx + 1}`),
+          name: String(crewMember.name || t('newProj.demo.teamMember', { n: idx + 1 })),
           email: String(crewMember.email || `crew.${idx + 1}@demo.no`),
           role: (crewMember.role || crewMember.position || 'crew') as ContributorRole,
         }));
@@ -2263,7 +2279,7 @@ export default function NewProjectCreationModal({
           locations: { status: 'loaded', count: demoProject.locations?.length || 0, items: demoProject.locations || [] },
         });
         setTrollInitStatus('complete');
-        toast.showSuccess('Bedriftsdemo for innholdsproduksjon lastet inn.');
+        toast.showSuccess(t('newProj.demo.producerLoaded'));
         return;
       }
 
@@ -2369,7 +2385,7 @@ export default function NewProjectCreationModal({
             }));
             
             setTrollInitStatus('complete');
-            toast.showSuccess('TROLL demo-prosjekt lastet inn!');
+            toast.showSuccess(t('newProj.demo.trollLoaded'));
 
             // Naviger direkte til det seeded prosjektet i stedet for å la
             // brukeren stå igjen på create-formen og ende opp med å lage et
@@ -2384,21 +2400,21 @@ export default function NewProjectCreationModal({
               });
             }
           } else {
-            throw new Error('TROLL prosjekt ikke funnet i database');
+            throw new Error(t('newProj.demo.errTrollNotFound'));
           }
         } else {
-          throw new Error(data.error || 'Kunne ikke laste TROLL data');
+          throw new Error(data.error || t('newProj.demo.errLoadData'));
         }
       } else {
-        throw new Error('Serverfeil ved lasting av TROLL data');
+        throw new Error(t('newProj.demo.errServerLoad'));
       }
     } catch (error) {
       console.error('Failed to load TROLL demo:', error);
-      setTrollInitError(error instanceof Error ? error.message : 'Ukjent feil');
+      setTrollInitError(error instanceof Error ? error.message : t('newProj.err.unknown'));
       setTrollInitStatus('error');
       toast.showError(
-        (isContentProducerSession ? 'Kunne ikke laste innholdsprodusent-demo: ' : 'Kunne ikke laste TROLL demo: ')
-          + (error instanceof Error ? error.message : 'Ukjent feil')
+        (isContentProducerSession ? t('newProj.demo.errLoadProducerPrefix') : t('newProj.demo.errLoadTrollPrefix'))
+          + (error instanceof Error ? error.message : t('newProj.err.unknown'))
       );
     } finally {
       setLoadingTrollDemo(false);
@@ -2448,16 +2464,14 @@ export default function NewProjectCreationModal({
                   minWidth: 160,
                 }}
               >
-                {loadingTrollDemo ? 'Laster...' : trollInitStatus === 'complete' ? 'Lastet inn' : 'Last demo'}
+                {loadingTrollDemo ? t('newProj.btn.loading') : trollInitStatus === 'complete' ? t('newProj.btn.loaded') : t('newProj.btn.loadDemo')}
               </Button>
             </Box>
             
             {/* Show status when loading or complete */}
             {(trollInitStatus === 'loading' || trollInitStatus === 'complete') && Object.keys(trollInitAreas).length > 0 && (
               <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(156, 39, 176, 0.2)' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: 1 }}>
-                  Data lastet fra database:
-                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: 1 }}>{t('newProj.demo.dataLoadedFromDb')}</Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                   {loadedDemoAreaBadges.map(({ key, Icon, color, label, count }) => (
                     <Box
@@ -2486,8 +2500,7 @@ export default function NewProjectCreationModal({
             {/* Show error */}
             {trollInitStatus === 'error' && trollInitError && (
               <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(244, 67, 54, 0.2)' }}>
-                <Typography variant="caption" sx={{ color: '#f44336' }}>
-                  Feil: {trollInitError}
+                <Typography variant="caption" sx={{ color: '#f44336' }}>{t('newProj.demo.errorLabel')} {trollInitError}
                 </Typography>
               </Box>
             )}
@@ -2500,13 +2513,11 @@ export default function NewProjectCreationModal({
         <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }, mb: 0, flex: '1 1 auto', minWidth: 0 }}>
-              <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' }, flexShrink: 0 }} />
-              Prosjektnavn
-            </Typography>
+              <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' }, flexShrink: 0 }} />{t('newProj.field.projectName')}</Typography>
             {initialData?.updatedAt && (
               <Chip
                 icon={<EventIcon sx={{ fontSize: '1rem !important' }} />}
-                label={`Sist endret: ${new Date(initialData.updatedAt).toLocaleDateString('nb-NO', {
+                label={`${t('newProj.chip.lastModified')} ${new Date(initialData.updatedAt).toLocaleDateString('nb-NO', {
                   day: '2-digit',
                   month: 'short',
                   year: 'numeric',
@@ -2531,7 +2542,7 @@ export default function NewProjectCreationModal({
           </Box>
           <Divider sx={{ mb: 2, mt: 1 }} />
           <TextField
-            label="Prosjektnavn"
+            label={t('newProj.field.projectName')}
             fullWidth
             value={projectData.projectName}
             onChange={(e) => setProjectData((prev) => ({ ...prev, projectName: e.target.value }))}
@@ -2557,10 +2568,10 @@ export default function NewProjectCreationModal({
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
               <ContactIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-              {isCastingPlanner ? 'Prosjektansvarlig' : 'Kontakt'}
+              {isCastingPlanner ? t('newProj.field.projectLead') : t('newProj.field.contact')}
             </Typography>
             {isCastingPlanner && (
-              <Tooltip title={showProjectResponsibleInfo ? "Skjul informasjon" : "Vis informasjon om prosjektansvarlig"}>
+              <Tooltip title={showProjectResponsibleInfo ? t('newProj.tip.hideInfo') : t('newProj.tip.showLeadInfo')}>
                 <IconButton
                   size="small"
                   onClick={() => setShowProjectResponsibleInfo(!showProjectResponsibleInfo)}
@@ -2568,7 +2579,7 @@ export default function NewProjectCreationModal({
                     color: showProjectResponsibleInfo ? 'primary.main' : 'text.secondary',
                     '&:hover': { bgcolor: 'action.hover' },
                   }}
-                  aria-label="Vis informasjon om prosjektansvarlig"
+                  aria-label={t('newProj.tip.showLeadInfo')}
                 >
                   <InfoIcon />
                 </IconButton>
@@ -2594,25 +2605,17 @@ export default function NewProjectCreationModal({
                   },
                 }}
               >
-                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  Hva er prosjektansvarlig?
-                </Typography>
-                <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                  Prosjektansvarlig er personen som har hovedansvaret for The Role Room-prosjektet. 
-                  Dette er typisk produksjonsleder, casting director, eller produksjonssjef. 
-                  Kontaktinformasjonen brukes for kommunikasjon og koordinering av prosjektet.
-                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{t('newProj.info.whatIsLead')}</Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>{t('newProj.info.leadDescription')}</Typography>
               </Alert>
             </Collapse>
           )}
           {isCastingPlanner && !showProjectResponsibleInfo && (
-            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, fontSize: '0.875rem', fontStyle: 'italic' }}>
-              Angi hvem som er prosjektansvarlig for dette Role Room prosjektet.
-            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, fontSize: '0.875rem', fontStyle: 'italic' }}>{t('newProj.info.setLead')}</Typography>
           )}
           <Stack spacing={2}>
             <TextField
-              label={isCastingPlanner ? "Prosjektansvarlig navn *" : "Kontaktnavn"}
+              label={isCastingPlanner ? t('newProj.field.projectLeadName') : t('newProj.field.contactName')}
               fullWidth
               value={projectData.clientName}
               onChange={(e) => {
@@ -2621,13 +2624,13 @@ export default function NewProjectCreationModal({
               }}
               onFocus={() => isCastingPlanner && setShowProjectResponsibleInfo(true)}
               error={clientNameError}
-              helperText={clientNameError ? "Navn er påkrevd" : (isCastingPlanner ? "Navn på person som er ansvarlig for prosjektet" : undefined)}
+              helperText={clientNameError ? t('newProj.err.nameRequired') : (isCastingPlanner ? t('newProj.help.leadName') : undefined)}
               required={isCastingPlanner}
               autoComplete="name"
               tabIndex={0}
             />
             <TextField
-              label={isCastingPlanner ? "E-post *" : "E-post"}
+              label={isCastingPlanner ? t('newProj.field.emailRequired') : t('newProj.field.email')}
               fullWidth
               type="email"
               inputMode="email"
@@ -2639,12 +2642,12 @@ export default function NewProjectCreationModal({
               }}
               onFocus={() => isCastingPlanner && setShowProjectResponsibleInfo(true)}
               error={clientEmailError}
-              helperText={clientEmailError ? "Gyldig e-postadresse er påkrevd" : (isCastingPlanner ? "E-post til prosjektansvarlig" : undefined)}
+              helperText={clientEmailError ? t('newProj.err.validEmailRequired') : (isCastingPlanner ? t('newProj.help.leadEmail') : undefined)}
               required={isCastingPlanner}
               tabIndex={0}
             />
             <TextField
-              label={isCastingPlanner ? "Telefon *" : "Telefon"}
+              label={isCastingPlanner ? t('newProj.field.phoneRequired') : t('newProj.field.phone')}
               fullWidth
               type="tel"
               inputMode="tel"
@@ -2656,19 +2659,15 @@ export default function NewProjectCreationModal({
               }}
               onFocus={() => isCastingPlanner && setShowProjectResponsibleInfo(true)}
               error={clientPhoneError}
-              helperText={clientPhoneError ? "Gyldig telefonnummer er påkrevd (minst 8 siffer)" : (isCastingPlanner ? "Telefonnummer til prosjektansvarlig" : undefined)}
+              helperText={clientPhoneError ? t('newProj.err.validPhoneRequired') : (isCastingPlanner ? t('newProj.help.leadPhone') : undefined)}
               required={isCastingPlanner}
               tabIndex={0}
             />
             {isCastingPlanner && (
               <>
                 <Divider sx={{ my: 1 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                  Klientbedrift (BRREG)
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mt: -0.5 }}>
-                  Valgfritt: søk opp klientbedrift i Brønnøysundregistrene.
-                </Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>{t('newProj.field.clientCompanyBrreg')}</Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mt: -0.5 }}>{t('newProj.help.clientBrreg')}</Typography>
                 <Autocomplete
                   freeSolo
                   fullWidth
@@ -2704,14 +2703,14 @@ export default function NewProjectCreationModal({
                   }}
                   loading={clientCompanySearchLoading}
                   value={null}
-                  noOptionsText={(projectData.clientCompanyName || '').trim().length >= 3 ? 'Ingen bedrifter funnet' : 'Skriv minst 3 tegn for å søke'}
-                  loadingText="Søker i BRREG..."
+                  noOptionsText={(projectData.clientCompanyName || '').trim().length >= 3 ? t('newProj.company.noResults') : t('newProj.company.minChars')}
+                  loadingText={t('newProj.company.searching')}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       fullWidth
-                      label="Klientbedrift"
-                      placeholder="Skriv bedriftsnavn for å søke i BRREG"
+                      label={t('newProj.field.clientCompany')}
+                      placeholder={t('newProj.company.placeholderClient')}
                     />
                   )}
                   slotProps={{
@@ -2746,17 +2745,17 @@ export default function NewProjectCreationModal({
                   }}
                 />
                 <TextField
-                  label="Organisasjonsnummer (klient)"
+                  label={t('newProj.field.orgNumberClient')}
                   fullWidth
                   inputMode="numeric"
                   value={projectData.clientOrganizationNumber || ''}
                   onChange={(e) => handleClientOrgNumberChange(e.target.value)}
                   placeholder="123 456 789"
                   error={!!clientBrregError}
-                  helperText={clientBrregError || 'Fylles automatisk ved BRREG-søk'}
+                  helperText={clientBrregError || t('newProj.help.autoFillBrreg')}
                   slotProps={{
                     htmlInput: {
-                      'aria-label': 'Organisasjonsnummer for klientbedrift',
+                      'aria-label': t('newProj.aria.orgNumberClient'),
                       maxLength: 11,
                       pattern: '[0-9 ]*',
                     },
@@ -2779,7 +2778,7 @@ export default function NewProjectCreationModal({
                           }}
                           edge="end"
                           size="small"
-                          aria-label="Søk opp klientbedrift"
+                          aria-label={t('newProj.aria.searchClientCompany')}
                         >
                           <SearchIcon />
                         </IconButton>
@@ -2788,7 +2787,7 @@ export default function NewProjectCreationModal({
                   }}
                 />
                 <TextField
-                  label="Klientadresse"
+                  label={t('newProj.field.clientAddress')}
                   fullWidth
                   value={projectData.clientCompanyAddress || ''}
                   onChange={(e) => setProjectData((prev) => ({ ...prev, clientCompanyAddress: e.target.value }))}
@@ -2804,9 +2803,7 @@ export default function NewProjectCreationModal({
         <Card sx={{ mb: { xs: 2, sm: 3 }, borderRadius: { xs: 2, sm: 3 }, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem' }, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
-              Prosjekttype
-            </Typography>
+              <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />{t('newProj.field.projectType')}</Typography>
             <Divider sx={{ mb: 2, mt: 1 }} />
             <ProjectTypeSelector
               isCastingPlanner={isCastingPlanner}
@@ -2818,14 +2815,12 @@ export default function NewProjectCreationModal({
                 dette så artisten jobber i riktig aspect ratio fra start.
                 "Ikke valgt" lar editoren falle tilbake til 16:9. */}
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                Cinema-format (aspect ratio for storyboard)
-              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>{t('newProj.field.cinemaFormatHeading')}</Typography>
               <FormControl fullWidth size="small" data-testid="project-cinema-format">
-                <InputLabel id="project-cinema-format-label">Cinema-format</InputLabel>
+                <InputLabel id="project-cinema-format-label">{t('newProj.field.cinemaFormat')}</InputLabel>
                 <Select
                   labelId="project-cinema-format-label"
-                  label="Cinema-format"
+                  label={t('newProj.field.cinemaFormat')}
                   value={projectData.cinemaFormat}
                   onChange={(e) => setProjectData((prev) => ({
                     ...prev,
@@ -2833,16 +2828,16 @@ export default function NewProjectCreationModal({
                   }))}
                 >
                   <MenuItem value="">
-                    <em>Ikke valgt — bruker 16:9 som default</em>
+                    <em>{t('newProj.cinema.notSelected')}</em>
                   </MenuItem>
-                  <MenuItem value="2.39:1">Cinemascope (2.39:1) — moderne anamorphic</MenuItem>
-                  <MenuItem value="2.35:1">Scope (2.35:1) — klassisk anamorphic</MenuItem>
+                  <MenuItem value="2.39:1">{t('newProj.cinema.opt239')}</MenuItem>
+                  <MenuItem value="2.35:1">{t('newProj.cinema.opt235')}</MenuItem>
                   <MenuItem value="1.85:1">Academy Flat (1.85:1) — standard theatrical</MenuItem>
                   <MenuItem value="2.76:1">Ultra Panavision 70 (2.76:1)</MenuItem>
                   <MenuItem value="16:9">16:9 — TV / HDTV / web</MenuItem>
                   <MenuItem value="4:3">4:3 — legacy SD / Academy mute</MenuItem>
                   <MenuItem value="1:1">1:1 — Instagram-post</MenuItem>
-                  <MenuItem value="9:16">9:16 — vertikal / Stories / TikTok</MenuItem>
+                  <MenuItem value="9:16">{t('newProj.cinema.opt916')}</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -2859,13 +2854,9 @@ export default function NewProjectCreationModal({
       <Card sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
         <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-            <GroupsIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-            Produksjonsteam
-          </Typography>
+            <GroupsIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.section.productionTeam')}</Typography>
           <Divider sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, mt: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }} />
-          <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-            Legg til teammedlemmer som skal være med i prosjektet. Selve budsjettering, teamavtaler, tilbud og kontrakter håndteres samlet i økonomi-arbeidsflaten når teamet er klart.
-          </Typography>
+          <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>{t('newProj.help.teamIntro')}</Typography>
           <ProjectCollaborators
             collaborators={projectData.collaborators}
             onAddCollaborator={() => setAddCollaboratorDialogOpen(true)}
@@ -2892,7 +2883,7 @@ export default function NewProjectCreationModal({
                   splitSheetData: updatedSplitSheetData,
                 };
               });
-              showSuccessToast('Teammedlem fjernet fra teamet');
+              showSuccessToast(t('newProj.toast.collabRemoved'));
             }}
           />
         </CardContent>
@@ -2903,12 +2894,10 @@ export default function NewProjectCreationModal({
         <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }, mb: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
             <Typography variant="h6" gutterBottom={false} sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-              <SplitSheetIcon sx={{ color: '#9f7aea', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-              Økonomi og teamavtaler
-            </Typography>
+              <SplitSheetIcon sx={{ color: '#9f7aea', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.section.economyAgreements')}</Typography>
             <Chip
               size="small"
-              label={projectData.splitSheetData ? 'Avtaler klargjort i økonomi' : 'Avtaler opprettes i økonomi'}
+              label={projectData.splitSheetData ? t('newProj.chip.agreementsReady') : t('newProj.chip.agreementsCreated')}
               sx={{
                 bgcolor: projectData.splitSheetData ? 'rgba(34,197,94,0.14)' : 'rgba(59,130,246,0.14)',
                 color: projectData.splitSheetData ? '#86efac' : '#bfdbfe',
@@ -2917,23 +2906,19 @@ export default function NewProjectCreationModal({
             />
           </Box>
           <Divider sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, mt: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }} />
-          <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
-            Når prosjektet er navngitt og teamet er satt opp, åpner du økonomi for å jobbe med totalramme, kostlinjer, teamavtaler, tilbud og kontrakter i samme arbeidsflate.
-          </Typography>
+          <Typography variant="body1" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>{t('newProj.help.economyIntro')}</Typography>
           <Stack spacing={1.5}>
-            <Alert severity="info" sx={{ alignItems: 'center' }}>
-              Teamkostnader og fordelingsavtaler er flyttet hitfra og inn i prosjektets økonomi-arbeidsflate.
-            </Alert>
+            <Alert severity="info" sx={{ alignItems: 'center' }}>{t('newProj.help.costsMoved')}</Alert>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap">
               <Chip
                 size="small"
-                label={`${projectData.collaborators.length} teammedlem${projectData.collaborators.length === 1 ? '' : 'mer'}`}
+                label={`${projectData.collaborators.length} ${projectData.collaborators.length === 1 ? t('newProj.chip.teamMember') : t('newProj.chip.teamMembers')}`}
                 sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }}
               />
               {projectData.splitSheetData?.contributors?.length ? (
                 <Chip
                   size="small"
-                  label={`${projectData.splitSheetData.contributors.length} bidragsytere klargjort i økonomi`}
+                  label={t('newProj.chip.contributorsReady', { n: projectData.splitSheetData.contributors.length })}
                   sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe' }}
                 />
               ) : null}
@@ -2951,9 +2936,7 @@ export default function NewProjectCreationModal({
                 color: '#111827',
                 '&:hover': { bgcolor: '#f59e0b' },
               }}
-            >
-              Åpne økonomi
-            </Button>
+            >{t('newProj.btn.openEconomy')}</Button>
           </Stack>
         </CardContent>
       </Card>
@@ -2976,10 +2959,10 @@ export default function NewProjectCreationModal({
                   color: 'text.primary',
                 }}
               >
-                {getTerm ? getTerm('newProject') : 'Nytt Prosjekt'}
+                {getTerm ? getTerm('newProject') : t('newProj.title.newProject')}
               </Typography>
               {onClose && (
-                <IconButton onClick={onClose} size="small" aria-label="Lukk">
+                <IconButton onClick={onClose} size="small" aria-label={t('newProj.aria.close')}>
                   <CloseIcon />
                 </IconButton>
               )}
@@ -3018,9 +3001,7 @@ export default function NewProjectCreationModal({
                         letterSpacing: { xs: '0.5px', sm: '0.75px', md: '1px', lg: '1.25px', xl: '1.5px' },
                         display: 'block',
                         mb: { xs: 0.25, sm: 0.375, md: 0.5, lg: 0.625, xl: 0.75 },
-                      }}>
-                        Prosjekt-ID
-                      </Typography>
+                      }}>{t('newProj.label.projectId')}</Typography>
                       <Typography variant="body2" sx={{
                         fontWeight: 700,
                         fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.95rem', lg: '1rem', xl: '1.125rem' },
@@ -3049,9 +3030,7 @@ export default function NewProjectCreationModal({
                         px: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 },
                         py: { xs: 0.5, sm: 0.625, md: 0.75, lg: 0.875, xl: 1 },
                       }}
-                    >
-                      Åpne økonomi
-                    </Button>
+                    >{t('newProj.btn.openEconomy')}</Button>
                   )}
                 </Box>
                 <Alert
@@ -3065,9 +3044,7 @@ export default function NewProjectCreationModal({
                       color: '#34d399',
                     },
                   }}
-                >
-                  Budsjett, tilbud og kontrakter håndteres samlet i økonomi-arbeidsflaten etter at prosjektet er opprettet.
-                </Alert>
+                >{t('newProj.help.economyAfterCreate')}</Alert>
               </Stack>
             )}
           </Box>
@@ -3103,9 +3080,9 @@ export default function NewProjectCreationModal({
                     </Box>
                   </Box>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                    <Chip size="small" label="1. Grunndata" sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
-                    <Chip size="small" label="2. Team og økonomi" sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
-                    <Chip size="small" label="3. Oppsummering" sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }} />
+                    <Chip size="small" label={t('newProj.chip.step1')} sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }} />
+                    <Chip size="small" label={t('newProj.chip.step2')} sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }} />
+                    <Chip size="small" label={t('newProj.chip.step3')} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }} />
                   </Stack>
                 </Stack>
                 <Stack
@@ -3114,9 +3091,7 @@ export default function NewProjectCreationModal({
                   justifyContent="space-between"
                   alignItems={{ xs: 'stretch', sm: 'center' }}
                 >
-                  <Typography sx={{ color: 'rgba(255,255,255,0.76)', fontSize: { xs: '0.8rem', sm: '0.86rem' } }}>
-                    Fyll ut grunnfeltene først. Deretter kan du hoppe direkte til siste steg for gjennomgang.
-                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.76)', fontSize: { xs: '0.8rem', sm: '0.86rem' } }}>{t('newProj.help.fillBasicsFirst')}</Typography>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ minWidth: { sm: 'max-content' } }}>
                     {!initialData?.id && (
                       <Button
@@ -3132,9 +3107,7 @@ export default function NewProjectCreationModal({
                             bgcolor: 'rgba(255,255,255,0.06)',
                           },
                         }}
-                      >
-                        Start på nytt
-                      </Button>
+                      >{t('newProj.btn.startOver')}</Button>
                     )}
                     <Button
                       variant="contained"
@@ -3142,7 +3115,7 @@ export default function NewProjectCreationModal({
                       onClick={() => {
                         if (!hasRequiredProjectBasics) {
                           setActiveStep(0);
-                          toast.showWarning('Fyll ut prosjektnavn og ansvarlig kontakt før du går til oppsummering.');
+                          toast.showWarning(t('newProj.warn.fillBeforeSummary'));
                           return;
                         }
                         setActiveStep(STEPS.length - 1);
@@ -3154,9 +3127,7 @@ export default function NewProjectCreationModal({
                         fontWeight: 700,
                         '&:hover': { bgcolor: 'var(--role-cyan, #22d3ee)' },
                       }}
-                    >
-                      Fortsett til oppsummering
-                    </Button>
+                    >{t('newProj.btn.continueToSummary')}</Button>
                   </Stack>
                 </Stack>
               </Stack>
@@ -3180,12 +3151,8 @@ export default function NewProjectCreationModal({
               alignItems: 'center',
               gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
             }}>
-              <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-              Last inn utkast eller prosjekt
-            </Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: { xs: '0.8rem', sm: '0.86rem' }, mt: -2.25, mb: 2.25 }}>
-              Velg et tidligere utkast for å fortsette der du slapp, eller åpne et eksisterende prosjekt for redigering.
-            </Typography>
+              <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.section.loadDraftOrProject')}</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: { xs: '0.8rem', sm: '0.86rem' }, mt: -2.25, mb: 2.25 }}>{t('newProj.help.loadDraftOrProject')}</Typography>
             <Stack spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }} direction={{ xs: 'column', sm: 'row' }}>
               {/* Draft Selector */}
               <FormControl fullWidth sx={{ flex: 1 }}>
@@ -3197,9 +3164,7 @@ export default function NewProjectCreationModal({
                       color: 'primary.main',
                     },
                   }}
-                >
-                  Utkast
-                </InputLabel>
+                >{t('newProj.field.draft')}</InputLabel>
                 <Select
                   value={selectedDraftKey || ''}
                   onChange={(e) => {
@@ -3209,7 +3174,7 @@ export default function NewProjectCreationModal({
                       setSelectedDraftKey(null);
                     }
                   }}
-                  label="Utkast"
+                  label={t('newProj.field.draft')}
                   MenuProps={selectMenuProps}
                   sx={{
                     minHeight: { xs: 52, sm: 54, md: 56, lg: 58, xl: 60 },
@@ -3228,7 +3193,7 @@ export default function NewProjectCreationModal({
                   }}
                 >
                   <MenuItem value="">
-                    <em>Ingen utkast valgt</em>
+                    <em>{t('newProj.draft.noneSelected')}</em>
                   </MenuItem>
                   {availableDrafts.map((draft) => (
                     <MenuItem key={draft.key} value={draft.key}>
@@ -3262,9 +3227,7 @@ export default function NewProjectCreationModal({
                         color: 'primary.main',
                       },
                     }}
-                  >
-                    Eksisterende prosjekt
-                  </InputLabel>
+                  >{t('newProj.field.existingProject')}</InputLabel>
                   <Select
                     value={selectedProjectId || ''}
                     onChange={(e) => {
@@ -3274,7 +3237,7 @@ export default function NewProjectCreationModal({
                         setSelectedProjectId(null);
                       }
                     }}
-                    label="Eksisterende prosjekt"
+                    label={t('newProj.field.existingProject')}
                     disabled={loadingProjects}
                     MenuProps={selectMenuProps}
                     sx={{
@@ -3297,7 +3260,7 @@ export default function NewProjectCreationModal({
                     ) : null}
                   >
                     <MenuItem value="">
-                      <em>Ingen prosjekt valgt</em>
+                      <em>{t('newProj.project.noneSelected')}</em>
                     </MenuItem>
                     {availableProjects.map((project) => (
                       <MenuItem key={project.id} value={project.id}>
@@ -3382,7 +3345,7 @@ export default function NewProjectCreationModal({
                         minWidth: { xs: '100%', sm: 140, md: 150, lg: 160, xl: 180 },
                       }}
                     >
-                      {index === STEPS.length - 1 ? 'Fullfør' : 'Neste'}
+                      {index === STEPS.length - 1 ? t('newProj.btn.finish') : t('newProj.btn.next')}
                     </Button>
                     <Button
                       disabled={index === 0}
@@ -3398,9 +3361,7 @@ export default function NewProjectCreationModal({
                         flex: { xs: 1, sm: 'none' },
                         minWidth: { xs: '100%', sm: 140, md: 150, lg: 160, xl: 180 },
                       }}
-                    >
-                      Tilbake
-                    </Button>
+                    >{t('newProj.btn.back')}</Button>
                   </Box>
                 </StepContent>
               </Step>
@@ -3439,9 +3400,7 @@ export default function NewProjectCreationModal({
                   <Typography sx={{ 
                     fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
                     color: 'text.secondary',
-                  }}>
-                    Lagrer utkast...
-                  </Typography>
+                  }}>{t('newProj.status.savingDraft')}</Typography>
                 </>
               )}
               {draftStatus === 'saved' && (
@@ -3455,9 +3414,7 @@ export default function NewProjectCreationModal({
                       fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
                       color: 'success.main',
                       fontWeight: 600,
-                    }}>
-                      Utkast lagret
-                    </Typography>
+                    }}>{t('newProj.toast.draftSaved')}</Typography>
                     {lastSavedAt && (
                       <Typography sx={{ 
                         fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' },
@@ -3479,9 +3436,7 @@ export default function NewProjectCreationModal({
                   <Typography sx={{ 
                     fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
                     color: 'error.main',
-                  }}>
-                    Kunne ikke lagre utkast
-                  </Typography>
+                  }}>{t('newProj.toast.draftSaveFailed')}</Typography>
                 </>
               )}
               {draftStatus === 'idle' && (
@@ -3493,9 +3448,7 @@ export default function NewProjectCreationModal({
                   <Typography sx={{ 
                     fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
                     color: 'text.secondary',
-                  }}>
-                    Utkast lagres automatisk
-                  </Typography>
+                  }}>{t('newProj.status.autoSave')}</Typography>
                 </>
               )}
             </Box>
@@ -3521,9 +3474,7 @@ export default function NewProjectCreationModal({
                   bgcolor: 'rgba(0, 212, 255, 0.1)',
                 },
               }}
-            >
-              Lagre utkast
-            </Button>
+            >{t('newProj.btn.saveDraft')}</Button>
           </Box>
         )}
 
@@ -3544,7 +3495,7 @@ export default function NewProjectCreationModal({
                 py: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 },
               }}
             >
-              {initialData?.id ? 'Oppdater prosjekt' : 'Opprett prosjekt'}
+              {initialData?.id ? t('newProj.btn.updateProject') : t('newProj.btn.createProject')}
             </Button>
           </Box>
         )}
@@ -3613,7 +3564,7 @@ export default function NewProjectCreationModal({
             px: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
           }}
         >
-          {editingCollaborator ? 'Rediger teammedlem' : 'Nytt teammedlem'}
+          {editingCollaborator ? t('newProj.dialog.editMember') : t('newProj.dialog.newMember')}
           {isMobile && (
             <IconButton
               onClick={() => {
@@ -3630,7 +3581,7 @@ export default function NewProjectCreationModal({
                 setCompanySearchQuery('');
                 setCompanySearchOptions([]);
               }}
-              aria-label="Lukk dialog"
+              aria-label={t('newProj.aria.closeDialog')}
               sx={{ color: 'rgba(255,255,255,0.87)', mr: -1 }}
             >
               <CloseIcon />
@@ -3651,9 +3602,7 @@ export default function NewProjectCreationModal({
             id={dialogDescId}
             variant="body2"
             sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 2.5, sm: 3, md: 3.5, lg: 4, xl: 4.5 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}
-          >
-            Legg til et nytt medlem i produksjonsteamet. Felter merket med * er påkrevd.
-          </Typography>
+          >{t('newProj.dialog.addMemberDesc')}</Typography>
 
           {/* Bedriftssøk Card */}
           <Card sx={{ 
@@ -3672,13 +3621,9 @@ export default function NewProjectCreationModal({
                 gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
                 color: '#fff',
               }}>
-                <CompanyIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.375rem', lg: '1.5rem', xl: '1.625rem' } }} />
-                Bedriftssøk (valgfritt)
-              </Typography>
+                <CompanyIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.375rem', lg: '1.5rem', xl: '1.625rem' } }} />{t('newProj.section.companySearch')}</Typography>
               <Divider sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, mt: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 }, borderColor: 'rgba(255,255,255,0.1)' }} />
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                Søk i Brønnøysundregistrene for å fylle ut bedriftsinformasjon automatisk.
-              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>{t('newProj.help.companySearch')}</Typography>
               <Stack spacing={2}>
                 <Autocomplete
                   freeSolo
@@ -3707,13 +3652,13 @@ export default function NewProjectCreationModal({
                   }}
                   loading={companySearchLoading}
                   value={null}
-                  noOptionsText={companySearchQuery.length >= 3 ? 'Ingen bedrifter funnet' : 'Skriv minst 3 tegn for å søke'}
+                  noOptionsText={companySearchQuery.length >= 3 ? t('newProj.company.noResults') : t('newProj.company.minChars')}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       fullWidth
-                      label="Søk bedrift"
-                      placeholder="Søk på bedriftsnavn"
+                      label={t('newProj.field.searchCompany')}
+                      placeholder={t('newProj.company.placeholder')}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           color: '#fff',
@@ -3759,17 +3704,17 @@ export default function NewProjectCreationModal({
                   }}
                 />
                 <TextField
-                  label="Organisasjonsnummer"
+                  label={t('newProj.field.orgNumber')}
                   fullWidth
                   inputMode="numeric"
                   value={newCollaboratorOrgNumber}
                   onChange={(e) => handleOrgNumberChange(e.target.value)}
                   placeholder="123 456 789"
                   error={!!brregError}
-                  helperText={brregError || 'Eller søk på bedriftsnavn over'}
+                  helperText={brregError || t('newProj.help.orSearchAbove')}
                   slotProps={{
                     htmlInput: {
-                      'aria-label': 'Organisasjonsnummer for bedriftssøk',
+                      'aria-label': t('newProj.aria.orgNumberSearch'),
                       maxLength: 11,
                       pattern: '[0-9 ]*',
                     },
@@ -3790,7 +3735,7 @@ export default function NewProjectCreationModal({
                           onClick={handleOrgNumberSearch}
                           edge="end"
                           size="small"
-                          aria-label="Søk opp bedrift"
+                          aria-label={t('newProj.aria.searchCompany')}
                           sx={{
                             color: 'var(--role-cyan, #00d4ff)',
                             '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
@@ -3835,20 +3780,18 @@ export default function NewProjectCreationModal({
                 gap: 1,
                 color: '#fff',
               }}>
-                <ContactIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
-                Teammedlem
-              </Typography>
+                <ContactIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />{t('newProj.field.teamMember')}</Typography>
               <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
               <Stack spacing={2.5}>
                 <TextField
-                  label="Navn"
+                  label={t('newProj.field.name')}
                   fullWidth
                   value={newCollaboratorName}
                   onChange={(e) => setNewCollaboratorName(e.target.value)}
                   autoComplete="name"
                   slotProps={{
                     htmlInput: {
-                      'aria-label': 'Navn på teammedlem',
+                      'aria-label': t('newProj.aria.memberName'),
                     },
                   }}
                   InputProps={{
@@ -3871,7 +3814,7 @@ export default function NewProjectCreationModal({
                   }}
                 />
                 <TextField
-                  label="E-post *"
+                  label={t('newProj.field.emailRequired')}
                   fullWidth
                   type="email"
                   inputMode="email"
@@ -3882,12 +3825,12 @@ export default function NewProjectCreationModal({
                     setCollaboratorEmailError(false);
                   }}
                   error={collaboratorEmailError}
-                  helperText={collaboratorEmailError ? 'Ugyldig e-post format' : ''}
+                  helperText={collaboratorEmailError ? t('newProj.err.invalidEmailFormat') : ''}
                   required
                   slotProps={{
                     htmlInput: {
                       'aria-required': true,
-                      'aria-label': 'E-postadresse (påkrevd)',
+                      'aria-label': t('newProj.aria.emailRequired'),
                     },
                   }}
                   InputProps={{
@@ -3930,9 +3873,7 @@ export default function NewProjectCreationModal({
                 gap: 1,
                 color: '#fff',
               }}>
-                <GroupsIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
-                Rolle i prosjektet
-              </Typography>
+                <GroupsIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />{t('newProj.field.roleInProject')}</Typography>
               <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
               <FormControl fullWidth>
                 <InputLabel
@@ -3941,16 +3882,14 @@ export default function NewProjectCreationModal({
                     color: 'rgba(255,255,255,0.87)',
                     '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                   }}
-                >
-                  Rolle *
-                </InputLabel>
+                >{t('newProj.field.roleRequired')}</InputLabel>
                 <Select
                   labelId="collaborator-role-label"
                   value={newCollaboratorRole}
                   onChange={(e) => setNewCollaboratorRole(e.target.value as ContributorRole)}
-                  label="Rolle *"
+                  label={t('newProj.field.roleRequired')}
                   MenuProps={selectMenuProps}
-                  inputProps={{ 'aria-label': 'Velg rolle for teammedlem' }}
+                  inputProps={{ 'aria-label': t('newProj.aria.selectRole') }}
                   sx={{
                     color: '#fff',
                     minHeight: TOUCH_TARGET_SIZE,
@@ -3993,23 +3932,19 @@ export default function NewProjectCreationModal({
                 gap: 1,
                 color: '#fff',
               }}>
-                <CalendarIcon sx={{ color: '#9c27b0' }} />
-                Tilgjengelighet
-              </Typography>
+                <CalendarIcon sx={{ color: '#9c27b0' }} />{t('newProj.field.availability')}</Typography>
               <Divider sx={{ mb: 2, mt: 1, borderColor: 'rgba(156,39,176,0.3)' }} />
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2, fontSize: '0.875rem' }}>
-                Angi når teammedlemmet er tilgjengelig for prosjektet.
-              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2, fontSize: '0.875rem' }}>{t('newProj.help.availability')}</Typography>
               <Stack spacing={2}>
                 <TextField
-                  label="Tilgjengelig fra"
+                  label={t('newProj.field.availableFrom')}
                   fullWidth
                   type="date"
                   value={newCollaboratorAvailabilityStart}
                   onChange={(e) => setNewCollaboratorAvailabilityStart(e.target.value)}
                   slotProps={{
                     inputLabel: { shrink: true },
-                    htmlInput: { 'aria-label': 'Tilgjengelig fra dato' },
+                    htmlInput: { 'aria-label': t('newProj.aria.availableFrom') },
                   }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
@@ -4027,14 +3962,14 @@ export default function NewProjectCreationModal({
                   }}
                 />
                 <TextField
-                  label="Tilgjengelig til"
+                  label={t('newProj.field.availableTo')}
                   fullWidth
                   type="date"
                   value={newCollaboratorAvailabilityEnd}
                   onChange={(e) => setNewCollaboratorAvailabilityEnd(e.target.value)}
                   slotProps={{
                     inputLabel: { shrink: true },
-                    htmlInput: { 'aria-label': 'Tilgjengelig til dato' },
+                    htmlInput: { 'aria-label': t('newProj.aria.availableTo') },
                   }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
@@ -4083,7 +4018,7 @@ export default function NewProjectCreationModal({
               setCompanySearchOptions([]);
             }}
             startIcon={<CancelIcon />}
-            aria-label="Avbryt og lukk dialog"
+            aria-label={t('newProj.aria.cancelClose')}
             fullWidth={isMobile}
             sx={{
               color: 'rgba(255,255,255,0.87)',
@@ -4093,14 +4028,12 @@ export default function NewProjectCreationModal({
               ...focusVisibleStyles,
               '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('newProj.btn.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleAddCollaborator}
             startIcon={<SaveIcon />}
-            aria-label={editingCollaborator ? "Oppdater teammedlem" : "Legg til teammedlem"}
+            aria-label={editingCollaborator ? t('newProj.aria.updateMember') : t('newProj.aria.addMember')}
             fullWidth={isMobile}
             sx={{
               bgcolor: 'var(--role-cyan, #00d4ff)',
@@ -4113,7 +4046,7 @@ export default function NewProjectCreationModal({
               '&:hover': { bgcolor: '#00b8e6' },
             }}
           >
-            {editingCollaborator ? 'Oppdater' : 'Legg til'}
+            {editingCollaborator ? t('newProj.btn.update') : t('newProj.btn.add')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4164,11 +4097,11 @@ export default function NewProjectCreationModal({
             px: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 },
           }}
         >
-          Oppsummering
+          {t('newProj.dialog.summary')}
           {isMobile && !loading && (
             <IconButton
               onClick={() => setSummaryModalOpen(false)}
-              aria-label="Lukk"
+              aria-label={t('newProj.aria.close')}
               sx={{ color: 'rgba(255,255,255,0.87)', mr: -1 }}
             >
               <CloseIcon />
@@ -4202,9 +4135,7 @@ export default function NewProjectCreationModal({
                     gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 },
                     color: 'primary.main',
                   }}>
-                    <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                    Prosjekt-ID
-                  </Typography>
+                    <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.label.projectId')}</Typography>
                   <Typography variant="body1" sx={{ 
                     fontWeight: 700, 
                     fontSize: { xs: '0.938rem', sm: '1rem', md: '1.063rem', lg: '1.125rem', xl: '1.188rem' }, 
@@ -4223,9 +4154,7 @@ export default function NewProjectCreationModal({
             <Card sx={{ borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 }, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-                  <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                  Prosjektnavn
-                </Typography>
+                  <FolderProjectIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.field.projectName')}</Typography>
                 <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' }, color: 'text.primary' }}>
                   {projectData.projectName || '-'}
                 </Typography>
@@ -4237,29 +4166,23 @@ export default function NewProjectCreationModal({
               <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 }, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                   <ContactIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                  {isCastingPlanner ? 'Prosjektansvarlig' : 'Kontakt'}
+                  {isCastingPlanner ? t('newProj.field.projectLead') : t('newProj.field.contact')}
                 </Typography>
                 <Stack spacing={1.5}>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                      Navn
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.name')}</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                       {projectData.clientName || '-'}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                      E-post
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.email')}</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                       {projectData.clientEmail || '-'}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                      Telefon
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.phone')}</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                       {projectData.clientPhone || '-'}
                     </Typography>
@@ -4268,26 +4191,20 @@ export default function NewProjectCreationModal({
                     <>
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                       <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                          Klientbedrift
-                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.clientCompany')}</Typography>
                         <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                           {projectData.clientCompanyName || '-'}
                         </Typography>
                       </Box>
                       <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                          Organisasjonsnummer
-                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.orgNumber')}</Typography>
                         <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                           {projectData.clientOrganizationNumber || '-'}
                         </Typography>
                       </Box>
                       {projectData.clientCompanyAddress && (
                         <Box>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                            Bedriftsadresse
-                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.companyAddress')}</Typography>
                           <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                             {projectData.clientCompanyAddress}
                           </Typography>
@@ -4297,9 +4214,7 @@ export default function NewProjectCreationModal({
                   )}
                   {projectData.location && (
                     <Box>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
-                        Lokasjon
-                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>{t('newProj.field.location')}</Typography>
                       <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
                         {projectData.location}
                       </Typography>
@@ -4313,9 +4228,7 @@ export default function NewProjectCreationModal({
             <Card sx={{ borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 }, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-                  <GroupsIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                  Produksjonsteam
-                </Typography>
+                  <GroupsIcon sx={{ color: 'primary.main', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.section.productionTeam')}</Typography>
                 {projectData.collaborators.length > 0 ? (
                   <Stack spacing={{ xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 }}>
                     {projectData.collaborators.map((collab) => {
@@ -4389,7 +4302,7 @@ export default function NewProjectCreationModal({
                             </Box>
                           </Box>
                           <Chip
-                            label={ROLE_DISPLAY_NAMES[collab.role] || collab.role || 'Teammedlem'}
+                            label={ROLE_DISPLAY_NAMES[collab.role] || collab.role || t('newProj.field.teamMember')}
                             size="small"
                             sx={{
                               height: { xs: 22, sm: 24, md: 26, lg: 28, xl: 30 },
@@ -4405,9 +4318,7 @@ export default function NewProjectCreationModal({
                     })}
                   </Stack>
                 ) : (
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                    Ingen teammedlemmer lagt til
-                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>{t('newProj.team.none')}</Typography>
                 )}
               </CardContent>
             </Card>
@@ -4416,22 +4327,18 @@ export default function NewProjectCreationModal({
             <Card sx={{ borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
-                  <SplitSheetIcon sx={{ color: '#9f7aea', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                  Økonomi og teamavtaler
-                </Typography>
+                  <SplitSheetIcon sx={{ color: '#9f7aea', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />{t('newProj.section.economyAgreements')}</Typography>
                 <Stack spacing={1.5}>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                    Økonomi samler budsjett, teamkostnader, teamavtaler, tilbud og kontrakter i én arbeidsflate. Prosjektoppsettet viser bare status og sender deg videre dit.
-                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>{t('newProj.help.economySummary')}</Typography>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">
                     <Chip
                       size="small"
-                      label={projectData.splitSheetData ? 'Avtaler klargjort i økonomi' : 'Avtaler opprettes i økonomi'}
+                      label={projectData.splitSheetData ? t('newProj.chip.agreementsReady') : t('newProj.chip.agreementsCreated')}
                       sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe' }}
                     />
                     <Chip
                       size="small"
-                      label={`${projectData.collaborators.length} teammedlem${projectData.collaborators.length === 1 ? '' : 'mer'}`}
+                      label={`${projectData.collaborators.length} ${projectData.collaborators.length === 1 ? t('newProj.chip.teamMember') : t('newProj.chip.teamMembers')}`}
                       sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }}
                     />
                   </Stack>
@@ -4448,9 +4355,7 @@ export default function NewProjectCreationModal({
                       color: '#111827',
                       '&:hover': { bgcolor: '#f59e0b' },
                     }}
-                  >
-                    Åpne økonomi
-                  </Button>
+                  >{t('newProj.btn.openEconomy')}</Button>
                 </Stack>
               </CardContent>
             </Card>
@@ -4459,12 +4364,8 @@ export default function NewProjectCreationModal({
           {isCastingPlanner ? (
             <Card sx={{ mt: 2.5, borderRadius: 3, bgcolor: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.22)' }}>
               <CardContent sx={{ p: 2.25 }}>
-                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.98rem', mb: 0.5 }}>
-                  Send klientinvitasjon etter opprettelse
-                </Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', lineHeight: 1.55, mb: 1.1 }}>
-                  Når prosjektet er lagret, kan du åpne en invitasjonsvisning med ekte magic-link og e-postpreview før du sender videre til klienten.
-                </Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.98rem', mb: 0.5 }}>{t('newProj.invite.sendAfterCreate')}</Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', lineHeight: 1.55, mb: 1.1 }}>{t('newProj.invite.sendAfterCreateDesc')}</Typography>
                 <FormControlLabel
                   control={(
                     <Checkbox
@@ -4477,8 +4378,8 @@ export default function NewProjectCreationModal({
                     />
                   )}
                   label={validateEmail(projectData.clientEmail || '')
-                    ? `Forhåndsvis og send magic-link til ${projectData.clientEmail}`
-                    : 'Forhåndsvis klientinvitasjon etter lagring'}
+                    ? t('newProj.invite.previewSendTo', { email: projectData.clientEmail })
+                    : t('newProj.invite.previewAfterSave')}
                   sx={{
                     m: 0,
                     alignItems: 'flex-start',
@@ -4489,9 +4390,7 @@ export default function NewProjectCreationModal({
                   }}
                 />
                 {!validateEmail(projectData.clientEmail || '') ? (
-                  <Typography sx={{ color: 'rgba(255,255,255,0.66)', fontSize: '0.76rem', mt: 0.6 }}>
-                    Legg inn gyldig klient-e-post for å åpne e-postpreview automatisk.
-                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.66)', fontSize: '0.76rem', mt: 0.6 }}>{t('newProj.invite.enterEmailForPreview')}</Typography>
                 ) : null}
               </CardContent>
             </Card>
@@ -4518,9 +4417,7 @@ export default function NewProjectCreationModal({
               fontSize: { xs: '0.938rem', sm: '1rem', md: '1.063rem', lg: '1.125rem', xl: '1.188rem' },
               '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
             }}
-          >
-            Tilbake
-          </Button>
+          >{t('newProj.btn.back')}</Button>
           <Button
             variant="contained"
             onClick={async () => {
@@ -4547,7 +4444,7 @@ export default function NewProjectCreationModal({
               },
             }}
           >
-            {loading ? (initialData?.id ? 'Oppdaterer...' : 'Oppretter...') : (initialData?.id ? 'Bekreft og oppdater' : 'Bekreft og opprett')}
+            {loading ? (initialData?.id ? t('newProj.btn.updating') : t('newProj.btn.creating')) : (initialData?.id ? t('newProj.btn.confirmUpdate') : t('newProj.btn.confirmCreate'))}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4589,8 +4486,8 @@ export default function NewProjectCreationModal({
             alignItems: 'center',
           }}
         >
-          Send klientinvitasjon
-          <IconButton onClick={completeProjectCreatedFlow} aria-label="Lukk invitasjonsvisning" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          {t('newProj.invite.title')}
+          <IconButton onClick={completeProjectCreatedFlow} aria-label={t('newProj.aria.closeInvite')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -4605,19 +4502,17 @@ export default function NewProjectCreationModal({
                 color: '#fff',
                 '& .MuiAlert-icon': { color: 'var(--role-cyan, #00d4ff)' },
               }}
-            >
-              Prosjektet er opprettet. Her kan du redigere mottaker, emne, e-postinnhold og hvor lenge klienten skal ha tilgang før The Role Room sender invitasjonen fra systemet.
-            </Alert>
+            >{t('newProj.invite.createdIntro')}</Alert>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
-                label="Mottaker navn"
+                label={t('newProj.field.recipientName')}
                 value={clientInviteRecipientName}
                 onChange={(event) => {
                   setClientInviteRecipientName(event.target.value);
                 }}
                 fullWidth
-                helperText="Navnet brukes i hilsen og i klientportalen."
+                helperText={t('newProj.help.recipientName')}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     color: '#fff',
@@ -4630,7 +4525,7 @@ export default function NewProjectCreationModal({
                 }}
               />
               <TextField
-                label="Mottaker e-post"
+                label={t('newProj.field.recipientEmail')}
                 value={clientInviteRecipientEmail}
                 onChange={(event) => {
                   setClientInviteRecipientEmail(event.target.value);
@@ -4638,8 +4533,8 @@ export default function NewProjectCreationModal({
                 type="email"
                 fullWidth
                 helperText={clientInviteEmailIsValid
-                  ? 'Denne adressen brukes for magic-linken som sendes til klienten.'
-                  : 'Legg inn en gyldig e-postadresse for å generere magic-link.'}
+                  ? t('newProj.help.recipientEmailValid')
+                  : t('newProj.help.recipientEmailInvalid')}
                 error={Boolean(clientInviteRecipientEmail) && !clientInviteEmailIsValid}
                 sx={{
                   '& .MuiOutlinedInput-root': {
@@ -4655,13 +4550,13 @@ export default function NewProjectCreationModal({
             </Stack>
 
             <TextField
-              label="Emne"
+              label={t('newProj.field.subject')}
               value={clientInviteSubjectDraft}
               onChange={(event) => {
                 setClientInviteSubjectDraft(event.target.value);
               }}
               fullWidth
-              helperText={`Du kan bruke tokens som ${CLIENT_INVITE_TEMPLATE_TOKENS.slice(0, 4).join(', ')}`}
+              helperText={t('newProj.help.tokensSome', { tokens: CLIENT_INVITE_TEMPLATE_TOKENS.slice(0, 4).join(', ') })}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
@@ -4675,10 +4570,10 @@ export default function NewProjectCreationModal({
             />
 
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Klienttilgang</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('newProj.field.clientAccess')}</InputLabel>
               <Select
                 value={clientInviteAccessDuration}
-                label="Klienttilgang"
+                label={t('newProj.field.clientAccess')}
                 onChange={(event) => {
                   setClientInviteAccessDuration(event.target.value as RoleRoomClientInviteAccessDuration);
                 }}
@@ -4690,15 +4585,15 @@ export default function NewProjectCreationModal({
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)' },
                 }}
               >
-                <MenuItem value="forever">For alltid</MenuItem>
-                <MenuItem value="project_end">Til prosjekt slutt</MenuItem>
+                <MenuItem value="forever">{t('newProj.invite.forever')}</MenuItem>
+                <MenuItem value="project_end">{t('newProj.invite.untilProjectEnd')}</MenuItem>
               </Select>
               <Typography variant="caption" sx={{ mt: 1, color: 'rgba(255,255,255,0.66)' }}>
                 {clientInviteAccessDuration === 'project_end'
                   ? (resolveClientInviteAccessEndLabel()
-                    ? `Klienttilgangen stopper når prosjektet avsluttes ${resolveClientInviteAccessEndLabel()}.`
-                    : 'Prosjektet må ha en sluttdato før du kan sende tilgang til prosjektets slutt.')
-                  : 'Klienttilgangen blir stående til du endrer eller fjerner den senere.'}
+                    ? t('newProj.invite.accessStopsAt', { date: resolveClientInviteAccessEndLabel() })
+                    : t('newProj.invite.needEndDate'))
+                  : t('newProj.invite.accessStays')}
               </Typography>
             </FormControl>
 
@@ -4706,39 +4601,31 @@ export default function NewProjectCreationModal({
               <CardContent>
                 <Stack spacing={1.25}>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
-                      Til
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>{t('newProj.invite.toLabel')}</Typography>
                     <Typography sx={{ color: '#fff', fontWeight: 600 }}>
-                      {clientInviteRecipientEmail || 'Mangler klient-e-post'}
+                      {clientInviteRecipientEmail || t('newProj.invite.missingEmail')}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
-                      Emne
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>{t('newProj.field.subject')}</Typography>
                     <Typography sx={{ color: '#fff', fontWeight: 600 }}>
                       {clientInviteSubject}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
-                      Magic-link
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>{t('newProj.label.magicLink')}</Typography>
                     <Typography sx={{ color: '#93c5fd', wordBreak: 'break-all', fontSize: '0.86rem' }}>
                       {clientInviteLoading
-                        ? 'Genererer magic-link…'
-                        : clientInviteUrl || 'Magic-link genereres når du kopierer eller sender invitasjonen'}
+                        ? t('newProj.invite.generatingMagicLink')
+                        : clientInviteUrl || t('newProj.invite.magicLinkOnCopy')}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>
-                      Tilgang
-                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontWeight: 700 }}>{t('newProj.label.access')}</Typography>
                     <Typography sx={{ color: '#fff', fontWeight: 600 }}>
                       {clientInviteAccessDuration === 'project_end'
-                        ? `Til prosjekt slutt${resolveClientInviteAccessEndLabel() ? ` (${resolveClientInviteAccessEndLabel()})` : ''}`
-                        : 'For alltid'}
+                        ? `${t('newProj.invite.untilProjectEnd')}${resolveClientInviteAccessEndLabel() ? ` (${resolveClientInviteAccessEndLabel()})` : ''}`
+                        : t('newProj.invite.forever')}
                     </Typography>
                   </Box>
                   {generatedClientInvite?.delivery ? (
@@ -4751,8 +4638,8 @@ export default function NewProjectCreationModal({
                       }}
                     >
                       {generatedClientInvite.delivery.sent
-                        ? 'Invitasjonen er sendt fra systemet.'
-                        : 'Invitasjonen er opprettet, men ble ikke sendt automatisk. Du kan fortsatt kopiere tekst eller magic-link.'}
+                        ? t('newProj.invite.deliverySent')
+                        : t('newProj.invite.deliveryNotSent')}
                     </Alert>
                   ) : null}
                 </Stack>
@@ -4760,7 +4647,7 @@ export default function NewProjectCreationModal({
             </Card>
 
             <TextField
-              label="Invitasjonstekst"
+              label={t('newProj.field.inviteText')}
               value={clientInviteBodyDraft}
               multiline
               minRows={12}
@@ -4768,7 +4655,7 @@ export default function NewProjectCreationModal({
               onChange={(event) => {
                 setClientInviteBodyDraft(event.target.value);
               }}
-              helperText={`Støttede tokens: ${CLIENT_INVITE_TEMPLATE_TOKENS.join(', ')}`}
+              helperText={t('newProj.help.supportedTokens', { tokens: CLIENT_INVITE_TEMPLATE_TOKENS.join(', ') })}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
@@ -4784,7 +4671,7 @@ export default function NewProjectCreationModal({
             />
 
             <TextField
-              label="Forhåndsvisning"
+              label={t('newProj.field.preview')}
               value={clientInviteBody}
               multiline
               minRows={10}
@@ -4815,9 +4702,7 @@ export default function NewProjectCreationModal({
             onClick={completeProjectCreatedFlow}
             fullWidth={isMobile}
             sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE }}
-          >
-            Fortsett uten å sende
-          </Button>
+          >{t('newProj.btn.continueWithoutSending')}</Button>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
             <Button
               variant="outlined"
@@ -4827,7 +4712,7 @@ export default function NewProjectCreationModal({
               fullWidth={isMobile}
               sx={{ minHeight: TOUCH_TARGET_SIZE, textTransform: 'none', fontWeight: 700 }}
             >
-              {clientInviteLoading ? 'Genererer…' : 'Kopier magic-link'}
+              {clientInviteLoading ? t('newProj.btn.generating') : t('newProj.btn.copyMagicLink')}
             </Button>
             <Button
               variant="outlined"
@@ -4836,9 +4721,7 @@ export default function NewProjectCreationModal({
               disabled={clientInviteLoading || !canPrepareClientInvite}
               fullWidth={isMobile}
               sx={{ minHeight: TOUCH_TARGET_SIZE, textTransform: 'none', fontWeight: 700 }}
-            >
-              Kopier invitasjon
-            </Button>
+            >{t('newProj.btn.copyInvite')}</Button>
             <Button
               variant="contained"
                 startIcon={<MailOutlineIcon />}
@@ -4860,7 +4743,7 @@ export default function NewProjectCreationModal({
                 '&:hover': { bgcolor: '#00b8e6' },
               }}
             >
-              {clientInviteLoading ? 'Sender…' : 'Send e-post'}
+              {clientInviteLoading ? t('newProj.btn.sending') : t('newProj.btn.sendEmail')}
             </Button>
           </Stack>
         </DialogActions>
@@ -4873,29 +4756,29 @@ export default function NewProjectCreationModal({
       <Dialog open={trollInitDialogOpen} onClose={() => setTrollInitDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
           <SvgIcon sx={{ color: '#9c27b0' }}><InterpreterModeIcon /></SvgIcon>
-          {isContentProducerSession ? 'Innholdsprodusent-initialisering' : 'TROLL Initialisering'}
+          {isContentProducerSession ? t('newProj.demo.producerInit') : t('newProj.demo.trollInit')}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">
-              {trollInitStatus === 'loading' ? 'Laster inn demo-data...' : 
-               trollInitStatus === 'complete' ? 'Demo-data er lastet inn!' :
-               trollInitStatus === 'error' ? `Feil: ${trollInitError || 'Ukjent feil'}` :
-               'Klar til å laste demo-data'}
+              {trollInitStatus === 'loading' ? t('newProj.demo.loadingData') : 
+               trollInitStatus === 'complete' ? t('newProj.demo.dataLoaded') :
+               trollInitStatus === 'error' ? t('newProj.demo.errorWith', { error: trollInitError || t('newProj.err.unknown') }) :
+               t('newProj.demo.readyToLoad')}
             </Typography>
             {trollInitStatus === 'loading' && <CircularProgress size={24} />}
             <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
               <Tooltip title="Story Arc">
                 <span><StoryArcIcon sx={{ fontSize: 20, color: '#e91e63' }} /></span>
               </Tooltip>
-              <Tooltip title="Kamera">
+              <Tooltip title={t('newProj.tip.camera')}>
                 <span><CameraIcon sx={{ fontSize: 20, color: 'var(--role-cyan, #00d4ff)' }} /></span>
               </Tooltip>
             </Stack>
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTrollInitDialogOpen(false)}>Lukk</Button>
+          <Button onClick={() => setTrollInitDialogOpen(false)}>{t('newProj.aria.close')}</Button>
         </DialogActions>
       </Dialog>
 

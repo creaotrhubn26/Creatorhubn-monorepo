@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useT, type TranslationKey } from '../../../i18n';
 import { keyframes } from '@mui/system';
 import {
   Dialog,
@@ -213,34 +214,34 @@ const ROLE_CARDS: Record<string, {
    *  (MUI SVG-ikon med fontSize: 'inherit' — skaleres av parent-Box). */
   glyph?:         ReactNode;
 }> = {
-  admin:             { label: 'Admin',         icon: '/role-room-assets/roleroom_dashboard.webp' },
-  photographer:      { label: 'Fotograf',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mov' },
-  film_photographer: { label: 'Innholdsprodusent',  icon: '/role-room-assets/roleroom_filmfotograf.webp',     video: '/role-room-assets/roleroom_filmfotograf.mp4' },
-  photo_director:    { label: 'Fotodirektør',  icon: '/role-room-assets/roleroom_photo_director.webp',   video: '/role-room-assets/roleroom_photo_director.mov' },
-  photo_assistant:   { label: 'Fotoassistent', icon: '/role-room-assets/roleroom_photo_assistant.webp',  video: '/role-room-assets/roleroom_photo_assistant.mov' },
-  director:          { label: 'Regissør',      icon: '/role-room-assets/roleroom_director.webp',         video: '/role-room-assets/roleroom_director.mp4' },
-  producer:          { label: 'Produsent',     icon: '/role-room-assets/roleroom_producer.webp', video: '/role-room-assets/roleroom_producer.mp4' },
-  casting_director:  { label: 'Casting Director', icon: '/role-room-assets/roleroom_casting_director.webp', video: '/role-room-assets/roleroom_casting_director.mp4', videoPosition: '60% 15%' },
-  camera_operator:   { label: 'Kamera',        icon: '/role-room-assets/roleroom_cinemag.webp', video: '/role-room-assets/roleroom_cinemag.mp4' },
-  talent:            { label: 'Skuespiller',   icon: '/role-room-assets/roleroom_skuespiller.webp', video: '/role-room-assets/roleroom_skuespiller.mov' },
-  agent:             { label: 'Agent',         icon: '/role-room-assets/roleroom_agent.webp',            video: '/role-room-assets/roleroom_agent.mp4' },
-  client:            { label: 'Klient',        icon: '/role-room-assets/roleroom_klient.webp',       video: '/role-room-assets/roleroom_klient.mov' },
-  education_institution: { label: 'Utdanningsinstitusjon', icon: ROLE_ROOM_BRAND_ASSETS.appLogo },
+  admin:             { label: 'dlgLogin.role.admin',         icon: '/role-room-assets/roleroom_dashboard.webp' },
+  photographer:      { label: 'dlgLogin.role.photographer',      icon: '/role-room-assets/roleroom_photographer.webp', video: '/role-room-assets/roleroom_photographer.mov' },
+  film_photographer: { label: 'dlgLogin.role.film_photographer',  icon: '/role-room-assets/roleroom_filmfotograf.webp',     video: '/role-room-assets/roleroom_filmfotograf.mp4' },
+  photo_director:    { label: 'dlgLogin.role.photo_director',  icon: '/role-room-assets/roleroom_photo_director.webp',   video: '/role-room-assets/roleroom_photo_director.mov' },
+  photo_assistant:   { label: 'dlgLogin.role.photo_assistant', icon: '/role-room-assets/roleroom_photo_assistant.webp',  video: '/role-room-assets/roleroom_photo_assistant.mov' },
+  director:          { label: 'dlgLogin.role.director',      icon: '/role-room-assets/roleroom_director.webp',         video: '/role-room-assets/roleroom_director.mp4' },
+  producer:          { label: 'dlgLogin.role.producer',     icon: '/role-room-assets/roleroom_producer.webp', video: '/role-room-assets/roleroom_producer.mp4' },
+  casting_director:  { label: 'dlgLogin.role.casting_director', icon: '/role-room-assets/roleroom_casting_director.webp', video: '/role-room-assets/roleroom_casting_director.mp4', videoPosition: '60% 15%' },
+  camera_operator:   { label: 'dlgLogin.role.camera_operator',        icon: '/role-room-assets/roleroom_cinemag.webp', video: '/role-room-assets/roleroom_cinemag.mp4' },
+  talent:            { label: 'dlgLogin.role.talent',   icon: '/role-room-assets/roleroom_skuespiller.webp', video: '/role-room-assets/roleroom_skuespiller.mov' },
+  agent:             { label: 'dlgLogin.role.agent',         icon: '/role-room-assets/roleroom_agent.webp',            video: '/role-room-assets/roleroom_agent.mp4' },
+  client:            { label: 'dlgLogin.role.client',        icon: '/role-room-assets/roleroom_klient.webp',       video: '/role-room-assets/roleroom_klient.mov' },
+  education_institution: { label: 'dlgLogin.role.education_institution', icon: ROLE_ROOM_BRAND_ASSETS.appLogo },
 
   // ── Sound ─────────────────────────────────────────────────────────────
   // Drop in icon / video paths once assets are ready
-  sound_designer:    { label: 'Lyddesigner',  icon: '/role-room-assets/roleroom_sound_designer.webp', video: '/role-room-assets/roleroom_sound_designer.mp4' },
-  sound_mixer:       { label: 'Lydmikser', icon: '/role-room-assets/roleroom_sound_designer.webp' },
-  boom_operator:     { label: 'Bom-operator', video: '/role-room-assets/roleroom_boom_operator.mp4' },
-  composer:          { label: 'Komponist'    , video: '/role-room-assets/roleroom_composer.mp4' },
+  sound_designer:    { label: 'dlgLogin.role.sound_designer',  icon: '/role-room-assets/roleroom_sound_designer.webp', video: '/role-room-assets/roleroom_sound_designer.mp4' },
+  sound_mixer:       { label: 'dlgLogin.role.sound_mixer', icon: '/role-room-assets/roleroom_sound_designer.webp' },
+  boom_operator:     { label: 'dlgLogin.role.boom_operator', video: '/role-room-assets/roleroom_boom_operator.mp4' },
+  composer:          { label: 'dlgLogin.role.composer'    , video: '/role-room-assets/roleroom_composer.mp4' },
 
   // ── Dans-vertikalen — 3 path-valg (Studio-eier / Frilansdanser / Har invitasjon)
   // De gamle 5 dance-rollekortene (Koreograf/Instruktør/Co-danser/Pianist) er
   // droppet — de er nå custom roller som Studio-eier definerer per studio og
   // tildeler ved invite, ikke noe brukeren selv-velger ved signup.
-  dance_studio_owner:    { label: 'Studio-eier',    glyph: <DanceStudioOwnerIcon   sx={{ fontSize: 'inherit' }} /> },
-  dance_freelance:       { label: 'Frilansdanser',  glyph: <DanceFreelanceIcon     sx={{ fontSize: 'inherit' }} /> },
-  dance_invite_holder:   { label: 'Har invitasjon', glyph: <DanceInviteHolderIcon  sx={{ fontSize: 'inherit' }} /> },
+  dance_studio_owner:    { label: 'dlgLogin.role.dance_studio_owner',    glyph: <DanceStudioOwnerIcon   sx={{ fontSize: 'inherit' }} /> },
+  dance_freelance:       { label: 'dlgLogin.role.dance_freelance',  glyph: <DanceFreelanceIcon     sx={{ fontSize: 'inherit' }} /> },
+  dance_invite_holder:   { label: 'dlgLogin.role.dance_invite_holder', glyph: <DanceInviteHolderIcon  sx={{ fontSize: 'inherit' }} /> },
 
   // ── HOW TO ADD A NEW CARD ────────────────────────────────────────────
   // 1. Add an entry below (copy any line above as a template)
@@ -284,6 +285,7 @@ function RoleRoomTurnstileWidget({
   onTokenChange: (token: string) => void;
   onErrorChange: (message: string) => void;
 }) {
+  const { t } = useLoginT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<RoleRoomTurnstileWidgetId | null>(null);
 
@@ -314,15 +316,15 @@ function RoleRoomTurnstileWidget({
         },
         'expired-callback': () => {
           onTokenChange('');
-          onErrorChange('Bekreftelsen utløp. Bekreft på nytt før du sender forespørselen.');
+          onErrorChange(t('dlgLogin.turnstile.expired'));
         },
         'timeout-callback': () => {
           onTokenChange('');
-          onErrorChange('Bekreftelsen tok for lang tid. Prøv igjen.');
+          onErrorChange(t('dlgLogin.turnstile.timeout'));
         },
         'error-callback': () => {
           onTokenChange('');
-          onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+          onErrorChange(t('dlgLogin.turnstile.loadFailed'));
         },
       });
     };
@@ -333,7 +335,7 @@ function RoleRoomTurnstileWidget({
 
     const handleLoad = () => {
       if (!window.turnstile) {
-        onErrorChange('Bekreftelsen kunne ikke initialiseres. Oppdater siden og prøv igjen.');
+        onErrorChange(t('dlgLogin.turnstile.initFailed'));
         return;
       }
       renderWidget();
@@ -344,7 +346,7 @@ function RoleRoomTurnstileWidget({
     } else if (existingScript) {
       existingScript.addEventListener('load', handleLoad);
       existingScript.addEventListener('error', () => {
-        onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+        onErrorChange(t('dlgLogin.turnstile.loadFailed'));
       });
     } else {
       const script = document.createElement('script');
@@ -352,7 +354,7 @@ function RoleRoomTurnstileWidget({
       script.src = ROLE_ROOM_TURNSTILE_SCRIPT_SRC;
       script.addEventListener('load', handleLoad);
       script.addEventListener('error', () => {
-        onErrorChange('Bekreftelsen kunne ikke lastes. Oppdater siden og prøv igjen.');
+        onErrorChange(t('dlgLogin.turnstile.loadFailed'));
       });
       document.head.appendChild(script);
     }
@@ -383,14 +385,14 @@ function RoleRoomTurnstileWidget({
 
 /* ── use-case scenarios shown on the left branding panel ──────────── */
 const USE_CASES: { roleId: string; line: string }[] = [
-  { roleId: 'photographer',     line: 'Book talent, brief crew og lever ferdige bilder' },
-  { roleId: 'director',         line: 'Bygg shotliste, koordiner crew og hold deadline' },
-  { roleId: 'talent',           line: 'Søk auditions og motta rolletilbud direkte' },
-  { roleId: 'producer',         line: 'Planlegg innspilling og logistikk i én flyt' },
-  { roleId: 'agent',            line: 'Send klienter til riktige auditions automatisk' },
-  { roleId: 'casting_director', line: 'Finn rett talent til rett rolle — raskt' },
-  { roleId: 'client',           line: 'Følg produksjonen fra brief til ferdig levering' },
-  { roleId: 'education_institution', line: 'La studenter, lærere og bransje jobbe i samme produksjonsflyt' },
+  { roleId: 'photographer',     line: 'dlgLogin.useCase.photographer' },
+  { roleId: 'director',         line: 'dlgLogin.useCase.director' },
+  { roleId: 'talent',           line: 'dlgLogin.useCase.talent' },
+  { roleId: 'producer',         line: 'dlgLogin.useCase.producer' },
+  { roleId: 'agent',            line: 'dlgLogin.useCase.agent' },
+  { roleId: 'casting_director', line: 'dlgLogin.useCase.casting_director' },
+  { roleId: 'client',           line: 'dlgLogin.useCase.client' },
+  { roleId: 'education_institution', line: 'dlgLogin.useCase.education_institution' },
 ];
 
 /* ── per-role accent RGB — drives reactive glow + tinting ─────── */
@@ -416,101 +418,101 @@ const ROLE_COLOURS: Record<string, { r: number; g: number; b: number }> = {
 
 /* ── short taglines shown on left panel when a role is selected ── */
 const ROLE_TAGLINES: Record<string, string> = {
-  photographer:      'Ditt blikk. Ditt brand.',
-  film_photographer: 'Brief, produksjon og levering i ett arbeidsrom.',
-  photo_director:    'Visuell regi — fra idé til levering.',
-  photo_assistant:   'Ryggraden i ethvert fotoset.',
-  director:          'Fra storyboard til levering uten verktøykaos.',
-  producer:          'Alt henger på deg — og du holder det.',
-  casting_director:  'Rett person. Rett rolle. Hvert gang.',
-  camera_operator:   'Skyt, koordiner og lever i samme flyt.',
-  talent:            'Din scene. Ditt øyeblikk.',
-  agent:             'Du åpner dørene. De går gjennom dem.',
-  client:            'Fra brief til ferdig — full oversikt.',
-  education_institution: 'Fra kull til produksjon, i samme arbeidsrom.',
-  sound_designer:    'Lydarbeid og leveranse uten friksjon i små team.',
-  sound_mixer:       'Perfekt balanse, hvert eneste take.',
-  boom_operator:     'Det beste opptak starter med deg.',
-  composer:          'Musikk, versjoner og godkjenning i samme prosjekt.',
-  admin:             'Du holder alt i bevegelse.',
+  photographer:      'dlgLogin.tagline.photographer',
+  film_photographer: 'dlgLogin.tagline.film_photographer',
+  photo_director:    'dlgLogin.tagline.photo_director',
+  photo_assistant:   'dlgLogin.tagline.photo_assistant',
+  director:          'dlgLogin.tagline.director',
+  producer:          'dlgLogin.tagline.producer',
+  casting_director:  'dlgLogin.tagline.casting_director',
+  camera_operator:   'dlgLogin.tagline.camera_operator',
+  talent:            'dlgLogin.tagline.talent',
+  agent:             'dlgLogin.tagline.agent',
+  client:            'dlgLogin.tagline.client',
+  education_institution: 'dlgLogin.tagline.education_institution',
+  sound_designer:    'dlgLogin.tagline.sound_designer',
+  sound_mixer:       'dlgLogin.tagline.sound_mixer',
+  boom_operator:     'dlgLogin.tagline.boom_operator',
+  composer:          'dlgLogin.tagline.composer',
+  admin:             'dlgLogin.tagline.admin',
 };
 
 /* ── default testimonials ─────────────────────────────────────── */
 const DEFAULT_TESTIMONIALS: { roleId: string; quote: string; author: string; title: string }[] = [
-  { roleId: 'casting_director', quote: 'The Role Room sparte meg 3 timer per casting-runde.',   author: 'Maria H.',   title: 'Casting Director' },
-  { roleId: 'director',         quote: 'Endelig én plass for shotliste, crew og manus.',          author: 'Eskil T.',   title: 'Regissør' },
-  { roleId: 'photographer',     quote: 'Jeg booker talent og briefer crew på 10 minutter.',       author: 'Lena K.',    title: 'Fotograf' },
-  { roleId: 'producer',         quote: 'Produksjonskalenderen alene er verdt alt.',               author: 'Jonas W.',   title: 'Produsent' },
-  { roleId: 'talent',           quote: 'Jeg fikk min første rolle via audition-portalen her.',    author: 'Camilla R.', title: 'Skuespiller' },
-  { roleId: 'agent',            quote: 'Klientene mine finner riktige auditions automatisk.',      author: 'Henrik B.',  title: 'Agent' },
-  { roleId: 'client',           quote: 'Full oversikt fra dag én — uten e-postkjeder.',           author: 'Sofie N.',   title: 'Klient' },
-  { roleId: 'education_institution', quote: 'Studentene våre fikk en faktisk produksjonsflyt å jobbe i, ikke bare flere løse verktøy.', author: 'Ragnhild E.', title: 'Programansvarlig' },
+  { roleId: 'casting_director', quote: 'dlgLogin.testi.casting_director.quote',   author: 'Maria H.',   title: 'dlgLogin.testi.casting_director.title' },
+  { roleId: 'director',         quote: 'dlgLogin.testi.director.quote',          author: 'Eskil T.',   title: 'dlgLogin.testi.director.title' },
+  { roleId: 'photographer',     quote: 'dlgLogin.testi.photographer.quote',       author: 'Lena K.',    title: 'dlgLogin.testi.photographer.title' },
+  { roleId: 'producer',         quote: 'dlgLogin.testi.producer.quote',               author: 'Jonas W.',   title: 'dlgLogin.testi.producer.title' },
+  { roleId: 'talent',           quote: 'dlgLogin.testi.talent.quote',    author: 'Camilla R.', title: 'dlgLogin.testi.talent.title' },
+  { roleId: 'agent',            quote: 'dlgLogin.testi.agent.quote',      author: 'Henrik B.',  title: 'dlgLogin.testi.agent.title' },
+  { roleId: 'client',           quote: 'dlgLogin.testi.client.quote',           author: 'Sofie N.',   title: 'dlgLogin.testi.client.title' },
+  { roleId: 'education_institution', quote: 'dlgLogin.testi.education_institution.quote', author: 'Ragnhild E.', title: 'dlgLogin.testi.education_institution.title' },
 ];
 const CONTENT_PRODUCER_TESTIMONIALS: { roleId: string; quote: string; author: string; title: string }[] = [
-  { roleId: 'film_photographer', quote: 'Jeg samler brief, produksjon og levering i ett arbeidsrom i stedet for fem verktøy.', author: 'Mina T.', title: 'Innholdsprodusent' },
-  { roleId: 'photographer', quote: 'For små team er forskjellen enorm når kunde, filer og godkjenninger henger sammen fra dag én.', author: 'Sander H.', title: 'Fotograf' },
-  { roleId: 'director', quote: 'Vi beveger oss raskere fra storyboard til opptak når hele teamet jobber i samme flyt.', author: 'Elise K.', title: 'Regissør' },
-  { roleId: 'camera_operator', quote: 'Det føles bygget for små produksjoner som må levere raskt uten å miste oversikt.', author: 'Tobias L.', title: 'Kamera' },
-  { roleId: 'sound_designer', quote: 'Selv når vi er få personer, er det tydelig hvem som gjør hva og hva som er klart til levering.', author: 'Mari A.', title: 'Lyddesigner' },
-  { roleId: 'composer', quote: 'Det gir ro å vite at musikk, versjoner og godkjenninger er koblet til samme prosjekt.', author: 'Joakim R.', title: 'Komponist' },
+  { roleId: 'film_photographer', quote: 'dlgLogin.cpTesti.film_photographer.quote', author: 'Mina T.', title: 'dlgLogin.cpTesti.film_photographer.title' },
+  { roleId: 'photographer', quote: 'dlgLogin.cpTesti.photographer.quote', author: 'Sander H.', title: 'dlgLogin.cpTesti.photographer.title' },
+  { roleId: 'director', quote: 'dlgLogin.cpTesti.director.quote', author: 'Elise K.', title: 'dlgLogin.cpTesti.director.title' },
+  { roleId: 'camera_operator', quote: 'dlgLogin.cpTesti.camera_operator.quote', author: 'Tobias L.', title: 'dlgLogin.cpTesti.camera_operator.title' },
+  { roleId: 'sound_designer', quote: 'dlgLogin.cpTesti.sound_designer.quote', author: 'Mari A.', title: 'dlgLogin.cpTesti.sound_designer.title' },
+  { roleId: 'composer', quote: 'dlgLogin.cpTesti.composer.quote', author: 'Joakim R.', title: 'dlgLogin.cpTesti.composer.title' },
 ];
 const CONTENT_PRODUCER_USE_CASES: { roleId: string; line: string }[] = [
-  { roleId: 'film_photographer', line: 'Samle brief, storyboard, opptak og levering i én flyt for solo creators og små team.' },
-  { roleId: 'photographer', line: 'Hold kunder, filer og godkjenninger tett på uten å hoppe mellom løse verktøy.' },
-  { roleId: 'director', line: 'Planlegg produksjon, shotlist og samarbeid i samme rom som leveransen faktisk skjer i.' },
-  { roleId: 'camera_operator', line: 'Gi små videoteam en raskere og mer strukturert produksjonsflyt fra brief til eksport.' },
+  { roleId: 'film_photographer', line: 'dlgLogin.cpUseCase.film_photographer' },
+  { roleId: 'photographer', line: 'dlgLogin.cpUseCase.photographer' },
+  { roleId: 'director', line: 'dlgLogin.cpUseCase.director' },
+  { roleId: 'camera_operator', line: 'dlgLogin.cpUseCase.camera_operator' },
 ];
 const DECISION_ROLE_SPOTLIGHTS: Partial<Record<string, {
   eyebrow: string;
   summary: string;
 }>> = {
   film_photographer: {
-    eyebrow: 'Hovedinngang',
-    summary: 'For solo creators og små team som vil samle brief, opptak og levering i samme rom.',
+    eyebrow: 'dlgLogin.spot.film_photographer.eyebrow',
+    summary: 'dlgLogin.spot.film_photographer.summary',
   },
   photographer: {
-    eyebrow: 'Foto & stills',
-    summary: 'For produksjoner som må håndtere kunder, godkjenninger og leveranser uten ekstra prosjektverktøy.',
+    eyebrow: 'dlgLogin.spot.photographer.eyebrow',
+    summary: 'dlgLogin.spot.photographer.summary',
   },
   director: {
-    eyebrow: 'Regi & storyboard',
-    summary: 'For deg som leder visjon, plan og samarbeid fra idé til siste leveranse.',
+    eyebrow: 'dlgLogin.spot.director.eyebrow',
+    summary: 'dlgLogin.spot.director.summary',
   },
   camera_operator: {
-    eyebrow: 'Video & capture',
-    summary: 'For små videoteam som trenger fart, struktur og tydelig ansvar i samme arbeidsflyt.',
+    eyebrow: 'dlgLogin.spot.camera_operator.eyebrow',
+    summary: 'dlgLogin.spot.camera_operator.summary',
   },
   sound_designer: {
-    eyebrow: 'Utvid senere',
-    summary: 'Legg til lydarbeid når prosjektet krever mer kapasitet, uten å endre flyten.',
+    eyebrow: 'dlgLogin.spot.sound_designer.eyebrow',
+    summary: 'dlgLogin.spot.sound_designer.summary',
   },
   composer: {
-    eyebrow: 'Utvid senere',
-    summary: 'Koble musikk, versjoner og godkjenninger direkte til prosjektet når teamet vokser.',
+    eyebrow: 'dlgLogin.spot.composer.eyebrow',
+    summary: 'dlgLogin.spot.composer.summary',
   },
   producer: {
-    eyebrow: 'Teamleder',
-    summary: 'For produksjoner der produsenten holder sammen plan, fremdrift, bemanning og levering.',
+    eyebrow: 'dlgLogin.spot.producer.eyebrow',
+    summary: 'dlgLogin.spot.producer.summary',
   },
   casting_director: {
-    eyebrow: 'Castingflyt',
-    summary: 'For produksjoner som trenger tett samarbeid mellom roller, auditioner og planlegging.',
+    eyebrow: 'dlgLogin.spot.casting_director.eyebrow',
+    summary: 'dlgLogin.spot.casting_director.summary',
   },
   photo_director: {
-    eyebrow: 'Visuell ledelse',
-    summary: 'For team som bygger produksjonen rundt visuelt uttrykk, kamera og lysrigg.',
+    eyebrow: 'dlgLogin.spot.photo_director.eyebrow',
+    summary: 'dlgLogin.spot.photo_director.summary',
   },
   photo_assistant: {
-    eyebrow: 'Utvid senere',
-    summary: 'Legg til ekstra kapasitet når settet vokser og teamet trenger tydelig støttefunksjon.',
+    eyebrow: 'dlgLogin.spot.photo_assistant.eyebrow',
+    summary: 'dlgLogin.spot.photo_assistant.summary',
   },
   sound_mixer: {
-    eyebrow: 'Lydteam',
-    summary: 'Koble på miks og teknisk lydansvar når produksjonen trenger mer avansert lydflyt.',
+    eyebrow: 'dlgLogin.spot.sound_mixer.eyebrow',
+    summary: 'dlgLogin.spot.sound_mixer.summary',
   },
   boom_operator: {
-    eyebrow: 'Lydteam',
-    summary: 'For opptak der lyd jobber tett sammen med resten av crewet i samme plan og fremdrift.',
+    eyebrow: 'dlgLogin.spot.boom_operator.eyebrow',
+    summary: 'dlgLogin.spot.boom_operator.summary',
   },
 };
 
@@ -569,20 +571,20 @@ const CONTENT_PRODUCER_ONBOARDING_STEPS: ReadonlyArray<{
   label: string;
   description: string;
 }> = [
-  { id: 'company', label: 'Bedrift', description: 'Verifiser foretaket før oppsettet åpnes.' },
-  { id: 'role', label: 'Fokus', description: 'Velg hovedrollen som best beskriver hvordan dere jobber.' },
-  { id: 'team', label: 'Team', description: 'Sett opp kontoeier, eventuelle ekstra plasser og plan.' },
-  { id: 'auth', label: 'Betaling', description: 'Aktiver planen i Stripe før innlogging åpnes.' },
+  { id: 'company', label: 'dlgLogin.cpStep.company.label', description: 'dlgLogin.cpStep.company.desc' },
+  { id: 'role', label: 'dlgLogin.cpStep.role.label', description: 'dlgLogin.cpStep.role.desc' },
+  { id: 'team', label: 'dlgLogin.cpStep.team.label', description: 'dlgLogin.cpStep.team.desc' },
+  { id: 'auth', label: 'dlgLogin.cpStep.auth.label', description: 'dlgLogin.cpStep.auth.desc' },
 ];
 const PRODUCTION_TEAM_ONBOARDING_STEPS: ReadonlyArray<{
   id: ProductionTeamOnboardingStep;
   label: string;
   description: string;
 }> = [
-  { id: 'company', label: 'Bedrift', description: 'Verifiser foretaket før produksjonsteamet åpnes.' },
-  { id: 'role', label: 'Rolle', description: 'Velg hvilken rolle som leder produksjonen inn i plattformen.' },
-  { id: 'team', label: 'Team', description: 'Legg inn minst tre personer, fordel roller og se planoppsummeringen.' },
-  { id: 'auth', label: 'Betaling', description: 'Aktiver planen i Stripe før innlogging åpnes.' },
+  { id: 'company', label: 'dlgLogin.ptStep.company.label', description: 'dlgLogin.ptStep.company.desc' },
+  { id: 'role', label: 'dlgLogin.ptStep.role.label', description: 'dlgLogin.ptStep.role.desc' },
+  { id: 'team', label: 'dlgLogin.ptStep.team.label', description: 'dlgLogin.ptStep.team.desc' },
+  { id: 'auth', label: 'dlgLogin.ptStep.auth.label', description: 'dlgLogin.ptStep.auth.desc' },
 ];
 const PRODUCTION_TEAM_MIN_MEMBERS = 3;
 const CONTENT_PRODUCER_MIN_MEMBERS = 1;
@@ -612,40 +614,40 @@ const EDUCATION_INSTITUTION_TYPES: ReadonlyArray<{
   id: Exclude<EducationInstitutionType, ''>;
   label: string;
 }> = [
-  { id: 'upper_secondary', label: 'Videregående skole' },
-  { id: 'folk_high_school', label: 'Folkehøyskole' },
-  { id: 'vocational_college', label: 'Fagskole' },
-  { id: 'higher_education', label: 'Høyskole / universitet' },
-  { id: 'private_school', label: 'Privat skole / kursaktør' },
+  { id: 'upper_secondary', label: 'dlgLogin.eduInst.upper_secondary' },
+  { id: 'folk_high_school', label: 'dlgLogin.eduInst.folk_high_school' },
+  { id: 'vocational_college', label: 'dlgLogin.eduInst.vocational_college' },
+  { id: 'higher_education', label: 'dlgLogin.eduInst.higher_education' },
+  { id: 'private_school', label: 'dlgLogin.eduInst.private_school' },
 ];
 const EDUCATION_STUDENT_SEAT_OPTIONS: ReadonlyArray<{
   id: Exclude<EducationSeatRange, ''>;
   label: string;
 }> = [
-  { id: 'up_to_15', label: 'Opptil 15 studenter' },
-  { id: 'up_to_30', label: '16–30 studenter' },
-  { id: 'up_to_60', label: '31–60 studenter' },
-  { id: 'up_to_120', label: '61–120 studenter' },
-  { id: 'more_than_120', label: '120+ studenter' },
+  { id: 'up_to_15', label: 'dlgLogin.eduStudent.up_to_15' },
+  { id: 'up_to_30', label: 'dlgLogin.eduStudent.up_to_30' },
+  { id: 'up_to_60', label: 'dlgLogin.eduStudent.up_to_60' },
+  { id: 'up_to_120', label: 'dlgLogin.eduStudent.up_to_120' },
+  { id: 'more_than_120', label: 'dlgLogin.eduStudent.more_than_120' },
 ];
 const EDUCATION_STAFF_SEAT_OPTIONS: ReadonlyArray<{
   id: Exclude<EducationSeatRange, ''>;
   label: string;
 }> = [
-  { id: 'up_to_15', label: '1–2 faglærere / koordinatorer' },
-  { id: 'up_to_30', label: '3–5 faglærere / koordinatorer' },
-  { id: 'up_to_60', label: '6–10 faglærere / koordinatorer' },
-  { id: 'up_to_120', label: '11–20 faglærere / koordinatorer' },
-  { id: 'more_than_120', label: '20+ faglærere / koordinatorer' },
+  { id: 'up_to_15', label: 'dlgLogin.eduStaff.up_to_15' },
+  { id: 'up_to_30', label: 'dlgLogin.eduStaff.up_to_30' },
+  { id: 'up_to_60', label: 'dlgLogin.eduStaff.up_to_60' },
+  { id: 'up_to_120', label: 'dlgLogin.eduStaff.up_to_120' },
+  { id: 'more_than_120', label: 'dlgLogin.eduStaff.more_than_120' },
 ];
 const EDUCATION_START_WINDOW_OPTIONS: ReadonlyArray<{
   id: Exclude<EducationStartWindow, ''>;
   label: string;
 }> = [
-  { id: 'this_semester', label: 'Så snart som mulig' },
-  { id: 'next_semester', label: 'Neste semester' },
-  { id: 'next_academic_year', label: 'Neste studieår' },
-  { id: 'exploring', label: 'Vi sonderer fortsatt' },
+  { id: 'this_semester', label: 'dlgLogin.eduStart.this_semester' },
+  { id: 'next_semester', label: 'dlgLogin.eduStart.next_semester' },
+  { id: 'next_academic_year', label: 'dlgLogin.eduStart.next_academic_year' },
+  { id: 'exploring', label: 'dlgLogin.eduStart.exploring' },
 ];
 const ROLE_ROOM_EDUCATION_INQUIRY_ENDPOINT = '/api/role-room/education-inquiries';
 const ROLE_ROOM_COMMERCIAL_CHECKOUT_ENDPOINT = '/api/role-room/billing/checkout-session';
@@ -776,16 +778,16 @@ function getEducationSeatLabel(
   options: ReadonlyArray<{ id: Exclude<EducationSeatRange, ''>; label: string }>,
 ): string {
   if (!value) {
-    return 'Ikke satt ennå';
+    return 'dlgLogin.notSet';
   }
-  return options.find((option) => option.id === value)?.label || 'Ikke satt ennå';
+  return options.find((option) => option.id === value)?.label || 'dlgLogin.notSet';
 }
 
 function getEducationStartWindowLabel(value: EducationStartWindow): string {
   if (!value) {
-    return 'Ikke satt ennå';
+    return 'dlgLogin.notSet';
   }
-  return EDUCATION_START_WINDOW_OPTIONS.find((option) => option.id === value)?.label || 'Ikke satt ennå';
+  return EDUCATION_START_WINDOW_OPTIONS.find((option) => option.id === value)?.label || 'dlgLogin.notSet';
 }
 
 function getEffectiveLoginPersona(
@@ -904,51 +906,51 @@ function clearRoleRoomCommercialDraft() {
  * 3. That’s it — the grid renders automatically                      *
  * ─────────────────────────────────────────────────────────────────── */
 const professionCategories = [
-  { id: 'admin',  label: 'Admin', roleIds: ['admin'] },
-  { id: 'foto',   label: 'Foto',  roleIds: ['photographer', 'film_photographer', 'photo_director', 'photo_assistant'] },
-  { id: 'video',  label: 'Video', roleIds: ['director', 'producer', 'casting_director', 'camera_operator'] },
-  { id: 'lyd',    label: 'Lyd',   roleIds: ['sound_designer', 'sound_mixer', 'boom_operator', 'composer'] },
-  { id: 'felles', label: 'Andre', roleIds: ['talent', 'agent', 'client'] },
+  { id: 'admin',  label: 'dlgLogin.cat.prof.admin', roleIds: ['admin'] },
+  { id: 'foto',   label: 'dlgLogin.cat.prof.foto',  roleIds: ['photographer', 'film_photographer', 'photo_director', 'photo_assistant'] },
+  { id: 'video',  label: 'dlgLogin.cat.prof.video', roleIds: ['director', 'producer', 'casting_director', 'camera_operator'] },
+  { id: 'lyd',    label: 'dlgLogin.cat.prof.lyd',   roleIds: ['sound_designer', 'sound_mixer', 'boom_operator', 'composer'] },
+  { id: 'felles', label: 'dlgLogin.cat.prof.felles', roleIds: ['talent', 'agent', 'client'] },
 ];
 const contentProducerCategories = [
   {
     id: 'kjerne',
-    label: 'Hovedfokus',
-    description: 'Velg inngangen som best beskriver hvordan du tar inn brief, produserer og leverer for kunder.',
+    label: 'dlgLogin.cat.cp.kjerne.label',
+    description: 'dlgLogin.cat.cp.kjerne.desc',
     roleIds: ['film_photographer', 'photographer', 'director', 'camera_operator'],
   },
   {
     id: 'utvid',
-    label: 'Utvid ved behov',
-    description: 'Disse kan legges til senere når leveransen trenger lyd, musikk eller mer spesialisert kapasitet.',
+    label: 'dlgLogin.cat.cp.utvid.label',
+    description: 'dlgLogin.cat.cp.utvid.desc',
     roleIds: ['sound_designer', 'composer'],
   },
 ] as const;
 const productionTeamCategories = [
   {
     id: 'kjerne',
-    label: 'Kjerne & ledelse',
-    description: 'Start med rollen som best beskriver hvem som leder produksjonen og eier hovedflyten i prosjektet.',
+    label: 'dlgLogin.cat.pt.kjerne.label',
+    description: 'dlgLogin.cat.pt.kjerne.desc',
     roleIds: ['producer', 'director', 'casting_director', 'photo_director'],
   },
   {
     id: 'produksjon',
-    label: 'Crew & capture',
-    description: 'Legg til opptak, foto og settkapasitet når teamet settes opp i neste steg.',
+    label: 'dlgLogin.cat.pt.produksjon.label',
+    description: 'dlgLogin.cat.pt.produksjon.desc',
     roleIds: ['camera_operator', 'photographer', 'photo_assistant'],
   },
   {
     id: 'utvid',
-    label: 'Lyd & musikk',
-    description: 'Aktiver spesialiserte lydroller når produksjonen trenger miks, boom eller originalmusikk.',
+    label: 'dlgLogin.cat.pt.utvid.label',
+    description: 'dlgLogin.cat.pt.utvid.desc',
     roleIds: ['sound_designer', 'sound_mixer', 'boom_operator', 'composer'],
   },
 ] as const;
 const danceStudioCategories = [
   {
     id: 'velg_vei',
-    label: 'Velg din vei',
-    description: 'Driver du eget studio, jobber du som frilanser, eller har du fått en invitasjon fra et studio? Velg det som passer deg best — du kan endre senere.',
+    label: 'dlgLogin.cat.dance.velg_vei.label',
+    description: 'dlgLogin.cat.dance.velg_vei.desc',
     roleIds: ['dance_studio_owner', 'dance_freelance', 'dance_invite_holder'],
   },
 ] as const;
@@ -962,23 +964,23 @@ const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
 }> = [
   {
     id: 'production_team',
-    label: 'Produksjonsteam',
-    description: 'For crew, planlegging og live set',
+    label: 'dlgLogin.persona.production_team.label',
+    description: 'dlgLogin.persona.production_team.desc',
   },
   {
     id: 'content_producer',
-    label: 'Innholdsprodusent',
-    description: 'For innhold, storyboard og leveranser',
+    label: 'dlgLogin.persona.content_producer.label',
+    description: 'dlgLogin.persona.content_producer.desc',
   },
   {
     id: 'education_institution',
-    label: 'Utdanningsinstitusjon',
-    description: 'For studenter, lærere og bransje i samme produksjonsflyt',
+    label: 'dlgLogin.persona.education_institution.label',
+    description: 'dlgLogin.persona.education_institution.desc',
   },
   {
     id: 'dance_studio',
-    label: 'Dansestudio',
-    description: 'For studioeier eller frilansdanser',
+    label: 'dlgLogin.persona.dance_studio.label',
+    description: 'dlgLogin.persona.dance_studio.desc',
   },
 ];
 
@@ -989,13 +991,13 @@ const CONTENT_PRODUCER_ACCESS_OPTIONS: ReadonlyArray<{
 }> = [
   {
     id: 'film_photographer',
-    label: 'Innholdsprodusent',
-    description: 'Planlegg, produser og lever innhold',
+    label: 'dlgLogin.cpAccess.film_photographer.label',
+    description: 'dlgLogin.cpAccess.film_photographer.desc',
   },
   {
     id: 'client',
-    label: 'Klient',
-    description: 'Legg inn brief, materiale og godkjenning',
+    label: 'dlgLogin.cpAccess.client.label',
+    description: 'dlgLogin.cpAccess.client.desc',
   },
 ];
 
@@ -1143,12 +1145,13 @@ const hintBounce = keyframes`
  * nok for å identifisere mottakeren.
  */
 function DanceInvitePasteEntry(): React.ReactElement {
+  const { t } = useLoginT();
   const [raw, setRaw] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
   const submit = () => {
     const trimmed = raw.trim();
-    if (!trimmed) { setErr('Lim inn en invite-lenke eller -token først.'); return; }
+    if (!trimmed) { setErr(t('dlgLogin.dance.pasteFirst')); return; }
     // Hent token-delen — enten siste path-segment fra URL eller hele input
     let token = trimmed;
     try {
@@ -1163,7 +1166,7 @@ function DanceInvitePasteEntry(): React.ReactElement {
       // Ikke URL — bruk som token direkte
     }
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) {
-      setErr('Token-formatet ser ikke gyldig ut. Sjekk e-post-lenken.');
+      setErr(t('dlgLogin.dance.invalidToken'));
       return;
     }
     window.location.href = `/dance/invite/${encodeURIComponent(token)}`;
@@ -1172,12 +1175,11 @@ function DanceInvitePasteEntry(): React.ReactElement {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
       <Typography sx={{ fontSize: 12, color: 'rgba(229,231,235,0.7)', mb: 0.5 }}>
-        Lim inn invite-lenken fra e-posten din nedenfor — vi tar deg videre
-        til siden der du godkjenner invitasjonen.
+        {t('dlgLogin.dance.pasteHelp')}
       </Typography>
       {err ? <Alert severity="error">{err}</Alert> : null}
       <TextField
-        label="Invite-lenke eller -token"
+        label={t('dlgLogin.dance.inviteLabel')}
         value={raw}
         onChange={(e) => { setRaw(e.target.value); setErr(null); }}
         fullWidth
@@ -1196,9 +1198,7 @@ function DanceInvitePasteEntry(): React.ReactElement {
           alignSelf: 'flex-start',
           mt: 0.5,
         }}
-      >
-        Fortsett til invitasjon
-      </Button>
+      >{t('dlgLogin.dance.continueBtn')}</Button>
     </Box>
   );
 }
@@ -1222,7 +1222,9 @@ function RoleChip({
   compact?: boolean;
   variant?: RoleChipVariant;
 }) {
-  const shortLabel = role.label.split(' ')[0];
+  const { tr } = useLoginT();
+  const roleLabel = tr(role.label);
+  const shortLabel = roleLabel.split(' ')[0];
   const spotlight = variant === 'decision'
     ? DECISION_ROLE_SPOTLIGHTS[role.id]
     : null;
@@ -1333,7 +1335,7 @@ function RoleChip({
         <Box
           component="img"
           src={fallbackImage}
-          alt={role.label}
+          alt={roleLabel}
           className="card-icon"
           sx={{
             position: 'absolute', inset: 0,
@@ -1388,7 +1390,7 @@ function RoleChip({
         <Box
           component="img"
           src={roleIcons[role.id]}
-          alt={role.label}
+          alt={roleLabel}
           className="card-icon"
           sx={{
             position: 'absolute', inset: 0,
@@ -1480,7 +1482,7 @@ function RoleChip({
               color: selected ? DESIGN.p.textSelected : 'rgba(228,220,245,0.78)',
             }}
           >
-            {spotlight.eyebrow}
+            {tr(spotlight.eyebrow)}
           </Typography>
         </Box>
       ) : null}
@@ -1573,7 +1575,7 @@ function RoleChip({
                 textShadow: `0 0 12px ${DESIGN.p.textLabelGlow}, 0 1px 3px rgba(0,0,0,1)`,
                 maxWidth: '92%',
               }}>
-                {role.label}
+                {roleLabel}
               </Typography>
               {spotlight ? (
                 <Typography
@@ -1585,7 +1587,7 @@ function RoleChip({
                     maxWidth: compact ? '88%' : '90%',
                   }}
                 >
-                  {spotlight.summary}
+                  {tr(spotlight.summary)}
                 </Typography>
               ) : null}
             </Box>
@@ -1616,7 +1618,7 @@ function RoleChip({
                 : '0 1px 4px rgba(0,0,0,0.95)',
               wordBreak: 'break-word',
             }}>
-              {role.label}
+              {roleLabel}
             </Typography>
           </Box>
         )}
@@ -1650,6 +1652,7 @@ function CategorySection({
   compact?: boolean;
   variant?: RoleChipVariant;
 }) {
+  const { tr } = useLoginT();
   const isSecondaryDecisionGroup = variant === 'decision' && category.id === 'utvid';
   const cols = variant === 'decision'
     ? 2
@@ -1681,7 +1684,7 @@ function CategorySection({
           pl: 0.25,
         }}
       >
-        {category.label}
+        {tr(category.label)}
       </Typography>
       {variant === 'decision' && category.description ? (
         <Typography
@@ -1694,7 +1697,7 @@ function CategorySection({
             pl: 0.25,
           }}
         >
-          {category.description}
+          {tr(category.description)}
         </Typography>
       ) : null}
       <Box
@@ -1807,6 +1810,12 @@ const LANDING_PROFESSION_PICKER_MODES: readonly ProfessionMode[] = [
 
 /* ════════════════════════ LoginDialog ═════════════════════════════ */
 
+function useLoginT() {
+  const { t } = useT();
+  const tr = useCallback((k?: string) => (k ? t(k as TranslationKey) : ''), [t]);
+  return { t, tr };
+}
+
 export default function LoginDialog({
   open,
   onClose,
@@ -1821,6 +1830,7 @@ export default function LoginDialog({
   // cyan-aksenten retinter også når dialogen vises på landingssiden (der casting-shellet ikke er
   // montert). Ingen override → vars uset → literalene (#22d3ee) gjelder → identisk.
   useRoleRoomBrand();
+  const { t, tr } = useLoginT();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1845,7 +1855,7 @@ export default function LoginDialog({
     if (!twoFactorState) return;
     const code = twoFactorCode.trim();
     if (code.length < 6) {
-      setTwoFactorError('Skriv inn 6-sifret kode (eller backup-kode på 8 tegn).');
+      setTwoFactorError(t('dlgLogin.tfa.enterCode'));
       return;
     }
     setTwoFactorSubmitting(true);
@@ -1865,7 +1875,7 @@ export default function LoginDialog({
         usedBackupCode?: boolean;
       } | null;
       if (!response.ok || !payload?.success) {
-        setTwoFactorError(payload?.message ?? 'Feil kode. Prøv igjen.');
+        setTwoFactorError(payload?.message ?? t('dlgLogin.tfa.wrongCode'));
         return;
       }
       // Match samme normalisering som vanlig login-success-grenen
@@ -1884,7 +1894,7 @@ export default function LoginDialog({
       setTwoFactorCode('');
       onLoginSuccess(normalizedUser);
     } catch {
-      setTwoFactorError('Nettverksfeil — prøv igjen.');
+      setTwoFactorError(t('dlgLogin.tfa.networkError'));
     } finally {
       setTwoFactorSubmitting(false);
     }
@@ -2129,16 +2139,16 @@ export default function LoginDialog({
   );
   const teamOwner = productionTeamMembers[0] ?? createBlankTeamMember();
   const teamOwnerLabel = isProductionTeamFlow
-    ? 'Teamleder'
+    ? 'dlgLogin.teamLeadLabel'
     : isEducationInstitutionFlow
-      ? 'Institusjonsansvarlig'
-      : 'Kontoeier';
+      ? 'dlgLogin.institutionContactLabel'
+      : 'dlgLogin.accountOwnerLabel';
   const buildCommercialSetupPayload = useCallback((
     persona: Exclude<LoginPersona, '' | 'education_institution'>,
   ) => {
     const normalizedMembers = productionTeamMembers
       .map((member, index) => {
-        const roleLabel = allRoles.find((entry) => entry.id === member.roleId)?.label || member.roleId;
+        const roleLabel = tr(allRoles.find((entry) => entry.id === member.roleId)?.label) || member.roleId;
         return {
           name: member.name.trim(),
           email: member.email.trim().toLowerCase(),
@@ -2261,13 +2271,13 @@ export default function LoginDialog({
     // Bygg stats fra alle tilgjengelige metrics — viser kun de
     // med faktisk verdi (>0) så vi unngår "0 kandidater"-pinligheter.
     const allStats: { value: number | undefined; label: string }[] = [
-      { value: roleRoomPublicStats.kreative, label: 'kreative' },
-      { value: roleRoomPublicStats.produksjoner, label: 'produksjoner' },
-      { value: roleRoomPublicStats.rollerBesatt, label: 'roller besatt' },
-      { value: roleRoomPublicStats.kandidater, label: 'kandidater' },
-      { value: roleRoomPublicStats.auditioner, label: 'auditioner' },
-      { value: roleRoomPublicStats.crew, label: 'crew-medlemmer' },
-      { value: roleRoomPublicStats.lokasjoner, label: 'lokasjoner' },
+      { value: roleRoomPublicStats.kreative, label: 'dlgLogin.stat.kreative' },
+      { value: roleRoomPublicStats.produksjoner, label: 'dlgLogin.stat.produksjoner' },
+      { value: roleRoomPublicStats.rollerBesatt, label: 'dlgLogin.stat.rollerBesatt' },
+      { value: roleRoomPublicStats.kandidater, label: 'dlgLogin.stat.kandidater' },
+      { value: roleRoomPublicStats.auditioner, label: 'dlgLogin.stat.auditioner' },
+      { value: roleRoomPublicStats.crew, label: 'dlgLogin.stat.crew' },
+      { value: roleRoomPublicStats.lokasjoner, label: 'dlgLogin.stat.lokasjoner' },
     ];
     return allStats
       .filter((s) => Number.isFinite(s.value) && (s.value as number) > 0)
@@ -2757,14 +2767,14 @@ export default function LoginDialog({
         const payload = await response.json() as RoleRoomCompanyScreeningResponse;
 
         if (!response.ok || !payload.success) {
-          throw new Error(payload.error || 'Kunne ikke verifisere foretaket');
+          throw new Error(payload.error || t('dlgLogin.err.verifyCompanyFailed'));
         }
 
         const companyName = payload.data?.companyName?.trim();
         const isVerified = Boolean(payload.data?.brregVerified && companyName);
 
         if (!isVerified || !companyName) {
-          throw new Error('Fant ikke foretaket i Brønnøysundregistrene');
+          throw new Error(t('dlgLogin.err.companyNotFound'));
         }
 
         setOrganizationCompanyName(companyName);
@@ -2779,7 +2789,7 @@ export default function LoginDialog({
         setOrganizationLookupError(
           lookupError instanceof Error
             ? lookupError.message
-            : 'Kunne ikke verifisere organisasjonsnummeret',
+            : t('dlgLogin.err.verifyOrgFailed'),
         );
       } finally {
         if (!controller.signal.aborted) {
@@ -2804,24 +2814,24 @@ export default function LoginDialog({
       return true;
     }
     if (!persona) {
-      setError('Velg om dette er Produksjonsteam, Innholdsprodusent eller Dansestudio');
+      setError(t('dlgLogin.err.choosePersona'));
       return false;
     }
     if (!hasVerifiedOrganization) {
-      setError('Legg inn et gyldig organisasjonsnummer og verifiser foretaket før du fortsetter');
+      setError(t('dlgLogin.err.verifyOrgFirst'));
       return false;
     }
     if (!selectedRole) {
-      setError('Velg rollen til den som leder kontoen før du fortsetter');
+      setError(t('dlgLogin.err.chooseLeadRole'));
       return false;
     }
     if (persona === 'education_institution') {
       if (!teamOwner.name.trim() || !teamOwner.email.trim()) {
-        setError('Fyll inn navn og e-post til institusjonsansvarlig');
+        setError(t('dlgLogin.err.fillInstitutionContact'));
         return false;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(teamOwner.email.trim())) {
-        setError('Kontaktpersonen må ha en gyldig e-postadresse');
+        setError(t('dlgLogin.err.contactEmail'));
         return false;
       }
       if (
@@ -2833,7 +2843,7 @@ export default function LoginDialog({
         || !educationDesiredStartWindow
         || !educationUseCase.trim()
       ) {
-        setError('Fullfør institusjonsoppsettet før du sender forespørselen');
+        setError(t('dlgLogin.err.completeInstitution'));
         return false;
       }
       return true;
@@ -2841,14 +2851,14 @@ export default function LoginDialog({
     if (productionTeamMembers.length < minimumSeatCount) {
       setError(
         persona === 'production_team'
-          ? `Produksjonsteam må ha minst ${PRODUCTION_TEAM_MIN_MEMBERS} personer`
-          : 'Legg inn minst én person i innholdsprodusent-teamet',
+          ? t('dlgLogin.err.minTeam', { n: PRODUCTION_TEAM_MIN_MEMBERS })
+          : t('dlgLogin.err.minCpTeam'),
       );
       return false;
     }
     const incompleteMember = productionTeamMembers.find((member) => !isTeamMemberComplete(member));
     if (incompleteMember) {
-      setError('Fyll inn navn, e-post og rolle for alle som skal inn i planen');
+      setError(t('dlgLogin.err.fillAllMembers'));
       return false;
     }
     const invalidEmailMember = productionTeamMembers.find((member) => (
@@ -2856,7 +2866,7 @@ export default function LoginDialog({
       && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email.trim())
     ));
     if (invalidEmailMember) {
-      setError('Alle teammedlemmer må ha gyldige e-postadresser');
+      setError(t('dlgLogin.err.allValidEmails'));
       return false;
     }
     return true;
@@ -2900,7 +2910,7 @@ export default function LoginDialog({
     const result = await response.json() as RoleRoomCommercialAccessResponse;
 
     if (!response.ok || !result.success) {
-      throw new Error(result.error || 'Kunne ikke lagre Role Room-oppsettet');
+      throw new Error(result.error || t('dlgLogin.err.saveSetupFailed'));
     }
 
     persistedCommercialSetupRef.current = signature;
@@ -2925,7 +2935,7 @@ export default function LoginDialog({
       severity: options?.severity || 'success',
       message:
         options?.message ||
-        'Betalingen er registrert. Du kan nå fortsette til innlogging.',
+        t('dlgLogin.notice.paymentRegisteredContinue'),
     });
   }, []);
 
@@ -2936,7 +2946,7 @@ export default function LoginDialog({
 
     const persona = effectiveLoginPersona;
     if (!persona || persona === 'education_institution') {
-      setError('Velg Produksjonsteam eller Innholdsprodusent før du går til betaling.');
+      setError(t('dlgLogin.err.choosePersonaBeforePayment'));
       return;
     }
     if (!validateCommercialSetup(persona)) {
@@ -2964,7 +2974,7 @@ export default function LoginDialog({
       const persisted = await persistCommercialSetup(persona);
       if (persisted?.paymentCompleted) {
         markCommercialPaymentComplete(commercialSetupSignature, {
-          message: 'Betaling er allerede registrert på dette teamoppsettet.',
+          message: t('dlgLogin.notice.paymentAlreadyShort'),
         });
         return;
       }
@@ -2989,18 +2999,18 @@ export default function LoginDialog({
       const result = await response.json() as RoleRoomCommercialCheckoutResponse;
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Kunne ikke starte Stripe Checkout');
+        throw new Error(result.error || t('dlgLogin.err.startStripeFailed'));
       }
 
       if (result.alreadyPaid || result.paymentCompleted) {
         markCommercialPaymentComplete(commercialSetupSignature, {
-          message: 'Betalingen er allerede registrert på dette teamoppsettet.',
+          message: t('dlgLogin.notice.paymentAlready'),
         });
         return;
       }
 
       if (!result.checkoutUrl) {
-        throw new Error('Mangler checkout-url fra Stripe Checkout');
+        throw new Error(t('dlgLogin.err.missingCheckoutUrl'));
       }
 
       window.location.assign(result.checkoutUrl);
@@ -3008,7 +3018,7 @@ export default function LoginDialog({
       setError(
         checkoutError instanceof Error
           ? checkoutError.message
-          : 'Kunne ikke starte Stripe Checkout',
+          : t('dlgLogin.err.startStripeFailed'),
       );
     } finally {
       setCommercialPaymentPending(false);
@@ -3042,7 +3052,7 @@ export default function LoginDialog({
 
     if (educationTurnstileEnabled && !educationInquiryTurnstileToken) {
       const message = educationInquiryTurnstileError
-        || 'Bekreft at du er et menneske før du sender forespørselen.';
+        || t('dlgLogin.err.confirmHuman');
       setEducationInquiryTurnstileError(message);
       setError(message);
       return;
@@ -3078,7 +3088,7 @@ export default function LoginDialog({
       const result = await response.json() as RoleRoomEducationInquiryResponse;
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Kunne ikke sende institusjonsforespørselen');
+        throw new Error(result.error || t('dlgLogin.err.sendInstitutionFailed'));
       }
 
       setEducationInquirySubmitted({
@@ -3086,13 +3096,13 @@ export default function LoginDialog({
         notificationEmailSent: Boolean(result.notificationEmailSent),
         message:
           result.message ||
-          'Forespørselen er mottatt. Vi tar kontakt for å avtale neste steg.',
+          t('dlgLogin.notice.requestReceived'),
       });
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
           ? submissionError.message
-          : 'Kunne ikke sende institusjonsforespørselen',
+          : t('dlgLogin.err.sendInstitutionFailed'),
       );
     } finally {
       if (educationTurnstileEnabled) {
@@ -3136,11 +3146,11 @@ export default function LoginDialog({
     if (activationStatus === 'success') {
       setCommercialPaymentNotice({
         severity: 'success',
-        message: activationMessage || 'Kontoen er godkjent. Du kan logge inn.',
+        message: activationMessage || t('dlgLogin.notice.accountApproved'),
       });
       setError('');
     } else {
-      setError(activationMessage || 'Kontoen kunne ikke godkjennes. Åpne lenken fra e-posten på nytt.');
+      setError(activationMessage || t('dlgLogin.err.accountApproveFailed'));
     }
 
     clearCommercialActivationParams();
@@ -3162,7 +3172,7 @@ export default function LoginDialog({
       handledCheckoutSessionRef.current = 'cancel';
       setCommercialPaymentNotice({
         severity: 'warning',
-        message: 'Betalingen ble avbrutt. Du kan fortsette når du er klar.',
+        message: t('dlgLogin.notice.paymentCanceled'),
       });
       clearCommercialCheckoutParams();
       return;
@@ -3190,13 +3200,13 @@ export default function LoginDialog({
         const result = await response.json() as RoleRoomCommercialSessionStatusResponse;
 
         if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Kunne ikke verifisere Stripe-betalingen');
+          throw new Error(result.error || t('dlgLogin.err.verifyStripeFailed'));
         }
 
         if (!result.paymentCompleted) {
           setCommercialPaymentNotice({
             severity: 'info',
-            message: 'Stripe-betalingen behandles fortsatt. Oppdater siden om noen sekunder hvis statusen ikke endrer seg.',
+            message: t('dlgLogin.notice.stripeProcessing'),
           });
           return;
         }
@@ -3211,15 +3221,15 @@ export default function LoginDialog({
         setCommercialPaymentNotice({
           severity: result.activationRequired ? 'warning' : 'success',
           message: result.activationRequired
-            ? 'Betalingen er registrert. Vi har sendt en e-post for kontogodkjenning. Godkjenn kontoen før første innlogging.'
-            : 'Betalingen er registrert. Innloggingen er nå åpen.',
+            ? t('dlgLogin.notice.paymentRegisteredApprove')
+            : t('dlgLogin.notice.paymentRegisteredOpen'),
         });
         markCommercialPaymentComplete(commercialSetupSignature);
       } catch (sessionError) {
         setError(
           sessionError instanceof Error
             ? sessionError.message
-            : 'Kunne ikke verifisere Stripe-betalingen',
+            : t('dlgLogin.err.verifyStripeFailed'),
         );
       } finally {
         clearCommercialCheckoutParams();
@@ -3240,15 +3250,15 @@ export default function LoginDialog({
     const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
 
     if (!email.trim() || !password) {
-      setError('E-post og passord er påkrevd');
+      setError(t('dlgLogin.err.emailPwRequired'));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError('Vennligst oppgi en gyldig e-postadresse');
+      setError(t('dlgLogin.err.invalidEmail'));
       return;
     }
     if (isLandingPage && !selectedRole) {
-      setError('Velg en rolle for å fortsette');
+      setError(t('dlgLogin.err.chooseRole'));
       return;
     }
     // Admin variant (isLandingPage=false) authenticates on pure email +
@@ -3258,18 +3268,18 @@ export default function LoginDialog({
     // (including Meta App Review reviewer accounts).
     if (isLandingPage) {
       if (!effectiveLoginPersona) {
-        setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Dansestudio');
+        setError(t('dlgLogin.err.choosePersonaLogin'));
         return;
       }
       if (effectiveLoginPersona === 'education_institution') {
-        setError('Utdanningsinstitusjoner onboardes via samarbeid. Bruk institusjonsoppsettet og send forespørsel i stedet for direkte innlogging.');
+        setError(t('dlgLogin.err.educationOnboard'));
         return;
       }
       if (!validateCommercialSetup(effectiveLoginPersona)) {
         return;
       }
       if (isCommercialPaymentRequired && !isCommercialPaymentSatisfied) {
-        setError('Aktiver planen i Stripe før du logger inn.');
+        setError(t('dlgLogin.err.activateBeforeLogin'));
         return;
       }
     }
@@ -3360,7 +3370,7 @@ export default function LoginDialog({
       if (!data.success && data.needs_2fa && data.tempToken) {
         setTwoFactorState({
           tempToken: data.tempToken,
-          message: data.message ?? 'Skriv inn 6-sifret kode fra Authenticator-appen.',
+          message: data.message ?? t('dlgLogin.tfa.promptDefault'),
         });
         setLoading(false);
         return;
@@ -3387,10 +3397,10 @@ export default function LoginDialog({
         clearRoleRoomCommercialDraft();
         onLoginSuccess(normalizedUser);
       } else {
-        setError(data.detail ?? data.error ?? 'Ugyldig e-post eller passord');
+        setError(data.detail ?? data.error ?? t('dlgLogin.err.invalidCredentials'));
       }
     } catch {
-      setError('Innloggingen kunne ikke fullføres. Prøv igjen når kontoen er godkjent.');
+      setError(t('dlgLogin.err.loginIncomplete'));
     } finally {
       setLoading(false);
     }
@@ -3413,22 +3423,22 @@ export default function LoginDialog({
     if (loading) return;
     const effectiveLoginPersona = getEffectiveLoginPersona(selectedRole, loginPersona);
     if (!effectiveLoginPersona) {
-      setError('Velg om du logger inn som Produksjonsteam, Innholdsprodusent eller Dansestudio');
+      setError(t('dlgLogin.err.choosePersonaLogin'));
       return;
     }
     if (isLandingPage && !selectedRole) {
-      setError('Velg en rolle for å fortsette');
+      setError(t('dlgLogin.err.chooseRole'));
       return;
     }
     if (effectiveLoginPersona === 'education_institution') {
-      setError('Utdanningsinstitusjoner onboardes via samarbeid. Bruk institusjonsoppsettet og send forespørsel i stedet for direkte innlogging.');
+      setError(t('dlgLogin.err.educationOnboard'));
       return;
     }
     if (!validateCommercialSetup(effectiveLoginPersona)) {
       return;
     }
     if (isCommercialPaymentRequired && !isCommercialPaymentSatisfied) {
-      setError('Aktiver planen i Stripe før du logger inn.');
+      setError(t('dlgLogin.err.activateBeforeLogin'));
       return;
     }
 
@@ -3458,13 +3468,13 @@ export default function LoginDialog({
       });
 
       if (!response.authorizationUrl) {
-        throw new Error('Mangler autorisasjonslenke fra Google Workspace');
+        throw new Error(t('dlgLogin.err.missingGoogleAuth'));
       }
 
       window.location.assign(response.authorizationUrl);
     } catch (googleError) {
       setLoading(false);
-      setError(googleError instanceof Error ? googleError.message : 'Kunne ikke starte Google-innlogging');
+      setError(googleError instanceof Error ? googleError.message : t('dlgLogin.err.startGoogleFailed'));
     }
   }, [
     loading,
@@ -3540,7 +3550,7 @@ export default function LoginDialog({
     }
     if (contentProducerStep === 'company') {
       if (!hasVerifiedOrganization) {
-        setError('Verifiser organisasjonsnummeret før du går videre.');
+        setError(t('dlgLogin.err.verifyOrgNumber'));
         return;
       }
       setError('');
@@ -3550,7 +3560,7 @@ export default function LoginDialog({
     }
     if (contentProducerStep === 'role') {
       if (!selectedRole) {
-        setError('Velg hovedrollen som best beskriver hvordan dere jobber.');
+        setError(t('dlgLogin.err.chooseMainRole'));
         return;
       }
       setError('');
@@ -3560,7 +3570,7 @@ export default function LoginDialog({
     }
     if (contentProducerStep === 'team') {
       if (!isCommercialSetupComplete) {
-        setError('Fyll inn kontoeier, e-post og teamoppsett før du går videre til innlogging.');
+        setError(t('dlgLogin.err.fillOwner'));
         return;
       }
       setError('');
@@ -3601,7 +3611,7 @@ export default function LoginDialog({
     }
     if (productionTeamStep === 'company') {
       if (!hasVerifiedOrganization) {
-        setError('Verifiser organisasjonsnummeret før du går videre.');
+        setError(t('dlgLogin.err.verifyOrgNumber'));
         return;
       }
       setError('');
@@ -3611,7 +3621,7 @@ export default function LoginDialog({
     }
     if (productionTeamStep === 'role') {
       if (!selectedRole) {
-        setError('Velg rollen som leder produksjonsteamet inn i plattformen.');
+        setError(t('dlgLogin.err.chooseLeadTeamRole'));
         return;
       }
       setError('');
@@ -3621,7 +3631,7 @@ export default function LoginDialog({
     }
     if (productionTeamStep === 'team') {
       if (!isCommercialSetupComplete) {
-        setError(`Legg inn minst ${PRODUCTION_TEAM_MIN_MEMBERS} personer med navn, e-post og rolle før du går videre til innlogging.`);
+        setError(t('dlgLogin.err.addMembersBeforeLogin', { n: PRODUCTION_TEAM_MIN_MEMBERS }));
         return;
       }
       setError('');
@@ -3645,7 +3655,7 @@ export default function LoginDialog({
     resetCommercialPanelScroll();
   }, [isStepwiseProductionTeamFlow, productionTeamStepIndex, resetCommercialPanelScroll]);
 
-  const selectedRoleLabel = allRoles.find((r) => r.id === selectedRole)?.label;
+  const selectedRoleLabel = tr(allRoles.find((r) => r.id === selectedRole)?.label);
   const effectiveLoginPersonaOption = effectiveLoginPersona
     ? LOGIN_PERSONA_OPTIONS.find((option) => option.id === effectiveLoginPersona) || null
     : null;
@@ -3766,7 +3776,7 @@ export default function LoginDialog({
                     letterSpacing: '0.01em',
                   }}
                 >
-                  {option.label}
+                  {tr(option.label)}
                 </Typography>
                 <Typography
                   sx={{
@@ -3779,7 +3789,7 @@ export default function LoginDialog({
                     transition: 'color 0.25s ease',
                   }}
                 >
-                  {option.description}
+                  {tr(option.description)}
                 </Typography>
               </Box>
             </Button>
@@ -3797,8 +3807,8 @@ export default function LoginDialog({
           }}
         >
           {([
-            { mode: 'dance_studio',    label: 'Studio',          desc: 'Drift, klasser, koreografier' },
-            { mode: 'dance_freelance', label: 'Frilansdanser',   desc: 'Auditions, gigs, reel' },
+            { mode: 'dance_studio',    label: 'dlgLogin.danceMode.studio.label',          desc: 'dlgLogin.danceMode.studio.desc' },
+            { mode: 'dance_freelance', label: 'dlgLogin.danceMode.freelance.label',   desc: 'dlgLogin.danceMode.freelance.desc' },
           ] as const).map((opt) => {
             const active = selectedProfessionMode === opt.mode;
             return (
@@ -3829,10 +3839,10 @@ export default function LoginDialog({
               >
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.15 }}>
                   <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.2 }}>
-                    {opt.label}
+                    {tr(opt.label)}
                   </Typography>
                   <Typography sx={{ fontSize: '0.62rem', color: active ? 'rgba(255,255,255,0.85)' : 'rgba(185,185,200,0.65)' }}>
-                    {opt.desc}
+                    {tr(opt.desc)}
                   </Typography>
                 </Box>
               </Button>
@@ -3881,7 +3891,7 @@ export default function LoginDialog({
               }}
             >
               <Typography sx={{ fontSize: { xs: '0.56rem', sm: '0.62rem' }, textTransform: 'uppercase', letterSpacing: '0.08em', color: isActive ? glass.text : 'rgba(185,185,200,0.62)' }}>
-                {`${index + 1}. ${step.label}`}
+                {`${index + 1}. ${tr(step.label)}`}
               </Typography>
             </Box>
           );
@@ -3889,10 +3899,10 @@ export default function LoginDialog({
       </Box>
       <Box>
         <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(245,240,255,0.96)' }}>
-          {contentProducerCurrentStep.label}
+          {tr(contentProducerCurrentStep.label)}
         </Typography>
         <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(205,198,224,0.72)' }}>
-          {contentProducerCurrentStep.description}
+          {tr(contentProducerCurrentStep.description)}
         </Typography>
       </Box>
     </Box>
@@ -3936,7 +3946,7 @@ export default function LoginDialog({
               }}
             >
               <Typography sx={{ fontSize: { xs: '0.56rem', sm: '0.62rem' }, textTransform: 'uppercase', letterSpacing: '0.08em', color: isActive ? glass.text : 'rgba(185,185,200,0.62)' }}>
-                {`${index + 1}. ${step.label}`}
+                {`${index + 1}. ${tr(step.label)}`}
               </Typography>
             </Box>
           );
@@ -3944,10 +3954,10 @@ export default function LoginDialog({
       </Box>
       <Box>
         <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.86rem' }, fontWeight: 600, color: 'rgba(245,240,255,0.96)' }}>
-          {productionTeamCurrentStep.label}
+          {tr(productionTeamCurrentStep.label)}
         </Typography>
         <Typography sx={{ mt: 0.2, fontSize: { xs: '0.7rem', sm: '0.76rem' }, lineHeight: 1.5, color: 'rgba(205,198,224,0.72)' }}>
-          {productionTeamCurrentStep.description}
+          {tr(productionTeamCurrentStep.description)}
         </Typography>
       </Box>
     </Box>
@@ -3965,25 +3975,23 @@ export default function LoginDialog({
       }}
     >
       <Box sx={{ display: 'grid', gap: 0.4 }}>
-        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>
-          Klar til innlogging
-        </Typography>
+        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>{t('dlgLogin.readyToLogin')}</Typography>
         <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
-          {organizationCompanyName || 'Foretak ikke satt'}
+          {organizationCompanyName || t('dlgLogin.companyNotSet')}
         </Typography>
         <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
-          {selectedRoleLabel || 'Rolle ikke valgt'} · {formatRoleRoomStatValue(planMonthlyTotal)} kr / måned eks. mva.
+          {selectedRoleLabel || t('dlgLogin.roleNotSelected')} · {formatRoleRoomStatValue(planMonthlyTotal)} {t('dlgLogin.krPerMonthExVat')}
         </Typography>
       </Box>
       <Box sx={{ display: 'grid', gap: 0.35 }}>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-          Kontoeier: {teamOwner.name.trim() || 'Ikke satt ennå'}
+          {t('dlgLogin.accountOwnerLabel')}: {teamOwner.name.trim() || t('dlgLogin.notSet')}
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-          E-post: {teamOwner.email.trim() || 'Ikke satt ennå'}
+          {t('dlgLogin.emailColon')}: {teamOwner.email.trim() || t('dlgLogin.notSet')}
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-          Plasser: {billableSeatCount}
+          {t('dlgLogin.seatsLabel')}: {billableSeatCount}
         </Typography>
       </Box>
     </Box>
@@ -4001,25 +4009,23 @@ export default function LoginDialog({
       }}
     >
       <Box sx={{ display: 'grid', gap: 0.4 }}>
-        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>
-          Klar til innlogging
-        </Typography>
+        <Typography sx={{ fontSize: '0.7rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(184,170,226,0.72)' }}>{t('dlgLogin.readyToLogin')}</Typography>
         <Typography sx={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
-          {organizationCompanyName || 'Foretak ikke satt'}
+          {organizationCompanyName || t('dlgLogin.companyNotSet')}
         </Typography>
         <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
-          {selectedRoleLabel || 'Rolle ikke valgt'} · {formatRoleRoomStatValue(planMonthlyTotal)} kr / måned eks. mva.
+          {selectedRoleLabel || t('dlgLogin.roleNotSelected')} · {formatRoleRoomStatValue(planMonthlyTotal)} {t('dlgLogin.krPerMonthExVat')}
         </Typography>
       </Box>
       <Box sx={{ display: 'grid', gap: 0.35 }}>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-          Teamleder: {teamOwner.name.trim() || 'Ikke satt ennå'}
+          {t('dlgLogin.teamLeadLabel')}: {teamOwner.name.trim() || t('dlgLogin.notSet')}
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-          Teamlederrolle: {selectedRoleLabel || 'Ikke satt ennå'}
+          {t('dlgLogin.teamLeadRoleLabel')}: {selectedRoleLabel || t('dlgLogin.notSet')}
         </Typography>
         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-          Plasser: {billableSeatCount}
+          {t('dlgLogin.seatsLabel')}: {billableSeatCount}
         </Typography>
       </Box>
     </Box>
@@ -4046,18 +4052,14 @@ export default function LoginDialog({
             textTransform: 'uppercase',
             color: 'rgba(188,176,222,0.66)',
           }}
-        >
-          Plan
-        </Typography>
+        >{t('dlgLogin.planLabel')}</Typography>
         <Typography
           sx={{
             fontSize: '0.92rem',
             fontWeight: 700,
             color: 'rgba(245,240,255,0.96)',
           }}
-        >
-          Innholdsprodusent
-        </Typography>
+        >{t('dlgLogin.persona.content_producer.label')}</Typography>
       </Box>
       <Box
         sx={{
@@ -4076,7 +4078,7 @@ export default function LoginDialog({
             letterSpacing: '0.01em',
           }}
         >
-          {selectedRoleLabel || 'Velg hovedfokus'}
+          {selectedRoleLabel || t('dlgLogin.chooseMainFocus')}
         </Typography>
       </Box>
     </Box>
@@ -4103,18 +4105,14 @@ export default function LoginDialog({
             textTransform: 'uppercase',
             color: 'rgba(188,176,222,0.66)',
           }}
-        >
-          Plan
-        </Typography>
+        >{t('dlgLogin.planLabel')}</Typography>
         <Typography
           sx={{
             fontSize: '0.92rem',
             fontWeight: 700,
             color: 'rgba(245,240,255,0.96)',
           }}
-        >
-          Produksjonsteam
-        </Typography>
+        >{t('dlgLogin.persona.production_team.label')}</Typography>
       </Box>
       <Box
         sx={{
@@ -4133,7 +4131,7 @@ export default function LoginDialog({
             letterSpacing: '0.01em',
           }}
         >
-          {selectedRoleLabel || 'Velg teamlederrolle'}
+          {selectedRoleLabel || t('dlgLogin.chooseTeamLeadRoleShort')}
         </Typography>
       </Box>
     </Box>
@@ -4148,9 +4146,7 @@ export default function LoginDialog({
           letterSpacing: '0.03em',
           textTransform: 'uppercase',
         }}
-      >
-        Tilgang
-      </Typography>
+      >{t('dlgLogin.accessLabel')}</Typography>
       <Box
         sx={{
           display: 'grid',
@@ -4203,7 +4199,7 @@ export default function LoginDialog({
                     letterSpacing: '0.01em',
                   }}
                 >
-                  {option.label}
+                  {tr(option.label)}
                 </Typography>
                 <Typography
                   sx={{
@@ -4215,7 +4211,7 @@ export default function LoginDialog({
                     transition: 'color 0.25s ease',
                   }}
                 >
-                  {option.description}
+                  {tr(option.description)}
                 </Typography>
               </Box>
             </Button>
@@ -4336,7 +4332,7 @@ export default function LoginDialog({
       {/* ── floating close button ── */}
       <IconButton
         onClick={onClose}
-        aria-label="Lukk"
+        aria-label={t('dlgLogin.close')}
         sx={{
           position: 'absolute',
           top: 14,
@@ -4460,7 +4456,7 @@ export default function LoginDialog({
               zIndex: 1,
             }}
           >
-            {isLandingPage ? loginEyebrow : 'Administrasjon'}
+            {isLandingPage ? loginEyebrow : t('dlgLogin.eyebrowAdmin')}
           </Typography>
 
           {/* title */}
@@ -4482,7 +4478,7 @@ export default function LoginDialog({
               backgroundClip: 'text',
             }}
           >
-            {isLandingPage ? loginTitle : 'Logg inn'}
+            {isLandingPage ? loginTitle : t('dlgLogin.logIn')}
           </Typography>
 
           {/* subtitle */}
@@ -4502,7 +4498,7 @@ export default function LoginDialog({
           >
             {isLandingPage
               ? loginSubtitle
-              : 'Logg inn med Google Workspace for å administrere The Role Room og velge modus.'}
+              : t('dlgLogin.adminSubtitle')}
           </Typography>
 
           {showPersonaChooserInLeftPanel && (
@@ -4556,7 +4552,7 @@ export default function LoginDialog({
                       mt: 0.3,
                     }}
                   >
-                    {s.label}
+                    {tr(s.label)}
                   </Typography>
                 </Box>
               ))}
@@ -4635,7 +4631,7 @@ export default function LoginDialog({
                       textShadow: `0 0 20px rgba(${aR},${aG},${aB},0.4)`,
                     }}
                   >
-                    {ROLE_CARDS[selectedRole]?.label ?? selectedRole}
+                    {tr(ROLE_CARDS[selectedRole]?.label) || selectedRole}
                   </Typography>
                   <Typography
                     sx={{
@@ -4647,7 +4643,7 @@ export default function LoginDialog({
                       lineHeight: 1.55,
                     }}
                   >
-                    {ROLE_TAGLINES[selectedRole] ?? ''}
+                    {tr(ROLE_TAGLINES[selectedRole])}
                   </Typography>
                 </Box>
               ) : (
@@ -4704,7 +4700,7 @@ export default function LoginDialog({
                       }}
                     >
                       {activeUseCase
-                        ? (ROLE_CARDS[activeUseCase.roleId]?.label ?? activeUseCase.roleId)
+                        ? (tr(ROLE_CARDS[activeUseCase.roleId]?.label) || activeUseCase.roleId)
                         : ''}
                     </Typography>
                   </Box>
@@ -4718,7 +4714,7 @@ export default function LoginDialog({
                       letterSpacing: '0.01em',
                     }}
                   >
-                    {activeUseCase?.line ?? ''}
+                    {tr(activeUseCase?.line)}
                   </Typography>
                 </Box>
               )}
@@ -4774,7 +4770,7 @@ export default function LoginDialog({
                       mb: 0.4,
                     }}
                   >
-                    &ldquo;{activeTestimonials[testimonialIdx]?.quote}&rdquo;
+                    &ldquo;{tr(activeTestimonials[testimonialIdx]?.quote)}&rdquo;
                   </Typography>
                   <Typography
                     sx={{
@@ -4785,7 +4781,7 @@ export default function LoginDialog({
                       transition: 'color 1.2s ease',
                     }}
                   >
-                    — {activeTestimonials[testimonialIdx]?.author},&nbsp;{activeTestimonials[testimonialIdx]?.title}
+                    — {activeTestimonials[testimonialIdx]?.author},&nbsp;{tr(activeTestimonials[testimonialIdx]?.title)}
                   </Typography>
                 </Box>
               )}
@@ -4973,9 +4969,7 @@ export default function LoginDialog({
                     textTransform: 'uppercase',
                     color: 'rgba(181,171,212,0.62)',
                   }}
-                >
-                  Valgt inngang
-                </Typography>
+                >{t('dlgLogin.selectedEntry')}</Typography>
                 <Typography
                   sx={{
                     fontSize: { xs: '0.9rem', sm: '0.96rem' },
@@ -4983,7 +4977,7 @@ export default function LoginDialog({
                     color: 'rgba(244,240,255,0.96)',
                   }}
                 >
-                  {effectiveLoginPersonaOption?.label || 'The Role Room'}
+                  {tr(effectiveLoginPersonaOption?.label) || 'The Role Room'}
                 </Typography>
               </Box>
               <Button
@@ -5006,9 +5000,7 @@ export default function LoginDialog({
                     color: 'rgba(242,236,255,0.96)',
                   },
                 }}
-              >
-                Bytt inngang
-              </Button>
+              >{t('dlgLogin.changeEntry')}</Button>
             </Box>
           )}
 
@@ -5035,7 +5027,7 @@ export default function LoginDialog({
                   color: 'rgba(206,199,226,0.72)',
                 }}
               >
-                Start med å velge om dette er et produksjonsteam, en innholdsprodusent-plan eller et institusjonssamarbeid. Deretter verifiserer du bedriften, setter opp teamet eller institusjonen og ser hva neste steg er.
+                {t('dlgLogin.introBlurb')}
               </Typography>
             </Box>
           )}
@@ -5065,9 +5057,7 @@ export default function LoginDialog({
                         letterSpacing: '0.08em',
                         textTransform: 'uppercase',
                       }}
-                    >
-                      Bedrift først
-                    </Typography>
+                    >{t('dlgLogin.companyFirst')}</Typography>
                     <Typography
                       sx={{
                         fontSize: '0.78rem',
@@ -5075,12 +5065,12 @@ export default function LoginDialog({
                         color: 'rgba(205,198,224,0.72)',
                       }}
                     >
-                      Legg inn organisasjonsnummeret deres først. Vi verifiserer det automatisk mot Brønnøysundregistrene før team og abonnement åpnes.
+                      {t('dlgLogin.companyFirstHelp')}
                     </Typography>
                   </Box>
 
                   <TextField
-                    label="Organisasjonsnummer"
+                    label={t('dlgLogin.orgNumberLabel')}
                     value={formatOrganizationNumber(organizationNumber)}
                     onChange={(event) => {
                       setOrganizationNumber(event.target.value);
@@ -5091,7 +5081,7 @@ export default function LoginDialog({
                     fullWidth
                     size="small"
                     error={Boolean(organizationLookupError)}
-                    helperText={organizationLookupError || '9 sifre. Bedriftsnavnet fylles inn automatisk når nummeret er verifisert.'}
+                    helperText={organizationLookupError || t('dlgLogin.orgNumberHelper')}
                     inputProps={{
                       inputMode: 'numeric',
                       maxLength: 11,
@@ -5119,16 +5109,14 @@ export default function LoginDialog({
                         : '1px solid rgba(255,255,255,0.07)',
                     }}
                   >
-                    <Typography sx={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(195,188,214,0.72)' }}>
-                      Foretak
-                    </Typography>
+                    <Typography sx={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(195,188,214,0.72)' }}>{t('dlgLogin.companyField')}</Typography>
                     <Typography sx={{ mt: 0.35, fontSize: '0.94rem', fontWeight: 600, color: 'rgba(244,240,255,0.95)' }}>
-                      {organizationCompanyName || 'Venter på verifisert organisasjonsnummer'}
+                      {organizationCompanyName || t('dlgLogin.waitingVerifiedOrg')}
                     </Typography>
                     <Typography sx={{ mt: 0.25, fontSize: '0.74rem', color: 'rgba(205,198,224,0.68)' }}>
                       {hasVerifiedOrganization
-                        ? `${formatOrganizationNumber(normalizedOrganizationNumber)} er verifisert.`
-                        : 'Teamoppsettet låses opp når foretaket er verifisert.'}
+                        ? t('dlgLogin.orgVerified', { num: formatOrganizationNumber(normalizedOrganizationNumber) })
+                        : t('dlgLogin.teamUnlocks')}
                     </Typography>
                   </Box>
                 </>
@@ -5173,9 +5161,7 @@ export default function LoginDialog({
                       textTransform: 'uppercase',
                       transition: 'color 1.2s ease',
                     }}
-                  >
-                    Start her
-                  </Typography>
+                  >{t('dlgLogin.startHere')}</Typography>
                   <Box
                     sx={{
                       fontSize: '1.1rem',
@@ -5198,12 +5184,12 @@ export default function LoginDialog({
                 }}
               >
                 {isStepwiseProductionTeamFlow
-                  ? 'Velg teamlederens rolle'
+                  ? t('dlgLogin.chooseTeamLeadRole')
                   : isProductionTeamFlow
-                    ? 'Din rolle i teamet'
+                    ? t('dlgLogin.yourRoleInTeam')
                     : isStepwiseContentProducerFlow
-                      ? 'Velg hovedfokus for teamet'
-                      : 'Din rolle'}
+                      ? t('dlgLogin.chooseTeamFocus')
+                      : t('dlgLogin.yourRole')}
               </Typography>
               {(isStepwiseContentProducerFlow || isStepwiseProductionTeamFlow) && (
                 <Typography
@@ -5216,8 +5202,8 @@ export default function LoginDialog({
                   }}
                 >
                   {isStepwiseProductionTeamFlow
-                    ? 'Start med rollen som best beskriver hvem som leder produksjonen. Resten av crewet legges inn i neste steg.'
-                    : 'Start med inngangen som best beskriver hvordan dere jobber i dag. Du kan utvide teamet med flere spesialiseringer senere.'}
+                    ? t('dlgLogin.roleStepHintPt')
+                    : t('dlgLogin.roleStepHintCp')}
                 </Typography>
               )}
               <Box
@@ -5274,7 +5260,7 @@ export default function LoginDialog({
                     textTransform: 'uppercase',
                   }}
                 >
-                  {isEducationInstitutionFlow ? 'Institusjonsoppsett' : 'Team og abonnement'}
+                  {isEducationInstitutionFlow ? t('dlgLogin.institutionSetup') : t('dlgLogin.teamAndSubscription')}
                 </Typography>
                 <Typography
                   sx={{
@@ -5285,10 +5271,10 @@ export default function LoginDialog({
                   }}
                 >
                   {isEducationInstitutionFlow
-                    ? 'Fortell oss hvordan institusjonen deres jobber. Denne flyten brukes til samarbeid og onboarding, ikke til direkte selvbetjent innlogging.'
+                    ? t('dlgLogin.teamStepDescEdu')
                     : isProductionTeamFlow
-                      ? 'Sett opp hvem som skal inn i produksjonsteamet. Planen starter på tre personer, og hvert medlem prises individuelt.'
-                      : 'Sett opp hvem som skal inn i innholdsprodusent-teamet. Planen starter på én person, men du kan bygge teamet videre med flere plasser.'}
+                      ? t('dlgLogin.teamStepDescPt')
+                      : t('dlgLogin.teamStepDescCp')}
                 </Typography>
               </Box>
 
@@ -5316,7 +5302,7 @@ export default function LoginDialog({
                       }}
                     >
                       <TextField
-                        label="Nettside"
+                        label={t('dlgLogin.website')}
                         name="website"
                         value={educationInquiryWebsite}
                         onChange={(event) => setEducationInquiryWebsite(event.target.value)}
@@ -5346,11 +5332,11 @@ export default function LoginDialog({
                             color: `rgba(${aR},${aG},${aB},0.92)`,
                           }}
                         >
-                          {teamOwnerLabel}
+                          {tr(teamOwnerLabel)}
                         </Typography>
                       </Box>
                       <TextField
-                        label={`${teamOwnerLabel} navn`}
+                        label={t('dlgLogin.ownerName', { owner: tr(teamOwnerLabel) })}
                         value={teamOwner.name}
                         onChange={(event) => updateProductionTeamMember(0, 'name', event.target.value)}
                         fullWidth
@@ -5358,13 +5344,13 @@ export default function LoginDialog({
                         sx={glassInputSx(false)}
                       />
                       <TextField
-                        label="E-post"
+                        label={t('dlgLogin.emailLabel')}
                         type="email"
                         value={teamOwner.email}
                         onChange={(event) => updateProductionTeamMember(0, 'email', event.target.value)}
                         fullWidth
                         size="small"
-                        helperText="Bruk jobb- eller institusjonse-post. Midlertidige e-posttjenester blir blokkert."
+                        helperText={t('dlgLogin.emailHelperEdu')}
                         sx={glassInputSx(false)}
                       />
                     </Box>
@@ -5382,7 +5368,7 @@ export default function LoginDialog({
                     >
                       <TextField
                         select
-                        label="Institusjonstype"
+                        label={t('dlgLogin.institutionTypeLabel')}
                         value={educationInstitutionType}
                         onChange={(event) => setEducationInstitutionType(event.target.value as EducationInstitutionType)}
                         fullWidth
@@ -5394,31 +5380,31 @@ export default function LoginDialog({
                       >
                         {EDUCATION_INSTITUTION_TYPES.map((option) => (
                           <MenuItem key={option.id} value={option.id}>
-                            {option.label}
+                            {tr(option.label)}
                           </MenuItem>
                         ))}
                       </TextField>
                       <TextField
-                        label="Stilling / rolle"
+                        label={t('dlgLogin.positionRoleLabel')}
                         value={educationContactRole}
                         onChange={(event) => setEducationContactRole(event.target.value)}
                         fullWidth
                         size="small"
-                        placeholder="Programansvarlig, faglærer, instituttleder ..."
+                        placeholder={t('dlgLogin.positionPlaceholder')}
                         sx={glassInputSx(false)}
                       />
                       <TextField
-                        label="Studieprogram / fagområde"
+                        label={t('dlgLogin.programLabel')}
                         value={educationProgramName}
                         onChange={(event) => setEducationProgramName(event.target.value)}
                         fullWidth
                         size="small"
-                        placeholder="Filmproduksjon, TV, foto, lyd ..."
+                        placeholder={t('dlgLogin.programPlaceholder')}
                         sx={glassInputSx(false)}
                       />
                       <TextField
                         select
-                        label="Omtrentlig studentomfang"
+                        label={t('dlgLogin.studentScopeLabel')}
                         value={educationStudentSeatRange}
                         onChange={(event) => setEducationStudentSeatRange(event.target.value as EducationSeatRange)}
                         fullWidth
@@ -5430,13 +5416,13 @@ export default function LoginDialog({
                       >
                         {EDUCATION_STUDENT_SEAT_OPTIONS.map((option) => (
                           <MenuItem key={option.id} value={option.id}>
-                            {option.label}
+                            {tr(option.label)}
                           </MenuItem>
                         ))}
                       </TextField>
                       <TextField
                         select
-                        label="Faglærere / koordinatorer"
+                        label={t('dlgLogin.staffLabel')}
                         value={educationStaffSeatRange}
                         onChange={(event) => setEducationStaffSeatRange(event.target.value as EducationSeatRange)}
                         fullWidth
@@ -5448,13 +5434,13 @@ export default function LoginDialog({
                       >
                           {EDUCATION_STAFF_SEAT_OPTIONS.map((option) => (
                             <MenuItem key={option.id} value={option.id}>
-                              {option.label}
+                              {tr(option.label)}
                             </MenuItem>
                           ))}
                       </TextField>
                       <TextField
                         select
-                        label="Ønsket oppstart"
+                        label={t('dlgLogin.desiredStartLabel')}
                         value={educationDesiredStartWindow}
                         onChange={(event) => setEducationDesiredStartWindow(event.target.value as EducationStartWindow)}
                         fullWidth
@@ -5466,19 +5452,19 @@ export default function LoginDialog({
                       >
                         {EDUCATION_START_WINDOW_OPTIONS.map((option) => (
                           <MenuItem key={option.id} value={option.id}>
-                            {option.label}
+                            {tr(option.label)}
                           </MenuItem>
                         ))}
                       </TextField>
                       <TextField
-                        label="Hva ønsker dere å bruke The Role Room til?"
+                        label={t('dlgLogin.useCaseLabel')}
                         value={educationUseCase}
                         onChange={(event) => setEducationUseCase(event.target.value)}
                         multiline
                         minRows={4}
                         fullWidth
                         size="small"
-                        placeholder="Beskriv hvordan dere ønsker å bruke plattformen i undervisning, studentproduksjoner, kull, praksis eller samarbeid med eksterne."
+                        placeholder={t('dlgLogin.useCasePlaceholder')}
                         sx={{
                           gridColumn: '1 / -1',
                           ...glassInputSx(false),
@@ -5493,8 +5479,7 @@ export default function LoginDialog({
                         color: 'rgba(198,191,218,0.68)',
                       }}
                     >
-                      Institusjonsansvarlig blir hovedkontakt for oppsettet. Når samarbeid, kull og faglærerstruktur er avklart,
-                      settes innlogging og tilgangsnivåer opp sammen med teamet vårt.
+                      {t('dlgLogin.institutionContactNote')}
                     </Typography>
                     {educationInquirySubmitted ? (
                       <Alert
@@ -5514,11 +5499,11 @@ export default function LoginDialog({
                         </Typography>
                         <Typography sx={{ fontSize: '0.72rem', mt: 0.35, color: 'rgba(224,244,233,0.82)' }}>
                           {educationInquirySubmitted.requestId
-                            ? `Forespørsel-ID: ${educationInquirySubmitted.requestId}`
-                            : 'Forespørselen er registrert.'}
+                            ? t('dlgLogin.requestId', { id: educationInquirySubmitted.requestId })
+                            : t('dlgLogin.requestRegistered')}
                           {educationInquirySubmitted.notificationEmailSent
-                            ? ' Admin er varslet på e-post.'
-                            : ' Adminvarsel på e-post er ikke bekreftet ennå.'}
+                            ? t('dlgLogin.adminNotified')
+                            : t('dlgLogin.adminNotifyUnconfirmed')}
                         </Typography>
                       </Alert>
                     ) : null}
@@ -5533,36 +5518,32 @@ export default function LoginDialog({
                         border: '1px solid rgba(246,195,88,0.22)',
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(246,195,88,0.84)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                        Institusjonssamarbeid
-                      </Typography>
-                      <Typography sx={{ mt: 0.5, fontSize: '1.45rem', fontWeight: 700, letterSpacing: '-0.04em', color: 'rgba(255,255,255,0.96)' }}>
-                        Samarbeidsforespørsel
-                      </Typography>
+                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(246,195,88,0.84)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('dlgLogin.institutionPartnership')}</Typography>
+                      <Typography sx={{ mt: 0.5, fontSize: '1.45rem', fontWeight: 700, letterSpacing: '-0.04em', color: 'rgba(255,255,255,0.96)' }}>{t('dlgLogin.partnershipRequest')}</Typography>
                       <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
-                        Vi bruker opplysningene til å forberede en institusjonssamtale og anbefale riktig oppsett for kull, lærere og produksjonsflyt.
+                        {t('dlgLogin.partnershipBlurb')}
                       </Typography>
                       <Box sx={{ mt: 1, display: 'grid', gap: 0.55 }}>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Institusjon: {organizationCompanyName || 'Venter på verifisering'}
+                          {t('dlgLogin.institutionLabel')}: {organizationCompanyName || t('dlgLogin.awaitingVerification')}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Institusjonstype: {EDUCATION_INSTITUTION_TYPES.find((option) => option.id === educationInstitutionType)?.label || 'Ikke satt ennå'}
+                          {t('dlgLogin.institutionTypeLabel')}: {tr(EDUCATION_INSTITUTION_TYPES.find((option) => option.id === educationInstitutionType)?.label || 'dlgLogin.notSet')}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Studieprogram: {educationProgramName.trim() || 'Ikke satt ennå'}
+                          {t('dlgLogin.programShort')}: {educationProgramName.trim() || t('dlgLogin.notSet')}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Studenter: {getEducationSeatLabel(educationStudentSeatRange, EDUCATION_STUDENT_SEAT_OPTIONS)}
+                          {t('dlgLogin.studentsLabel')}: {tr(getEducationSeatLabel(educationStudentSeatRange, EDUCATION_STUDENT_SEAT_OPTIONS))}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Faglærere / koordinatorer: {getEducationSeatLabel(educationStaffSeatRange, EDUCATION_STAFF_SEAT_OPTIONS)}
+                          {t('dlgLogin.staffLabel')}: {tr(getEducationSeatLabel(educationStaffSeatRange, EDUCATION_STAFF_SEAT_OPTIONS))}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Ønsket oppstart: {getEducationStartWindowLabel(educationDesiredStartWindow)}
+                          {t('dlgLogin.desiredStartLabel')}: {tr(getEducationStartWindowLabel(educationDesiredStartWindow))}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Hovedkontakt: {teamOwner.name.trim() || 'Ikke satt ennå'}
+                          {t('dlgLogin.mainContact')}: {teamOwner.name.trim() || t('dlgLogin.notSet')}
                         </Typography>
                       </Box>
                     </Box>
@@ -5578,17 +5559,15 @@ export default function LoginDialog({
                         gap: 0.85,
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
-                        Hva skjer etter innsending?
-                      </Typography>
+                      <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>{t('dlgLogin.whatHappensAfter')}</Typography>
                       <Typography sx={{ fontSize: '0.74rem', lineHeight: 1.6, color: 'rgba(210,204,228,0.72)' }}>
-                        Vi bruker forespørselen til å forstå struktur, kullstørrelse og behov før vi setter opp en institusjonssamtale med riktig oppsett og tilgangsmodell.
+                        {t('dlgLogin.afterSubmitBlurb')}
                       </Typography>
                       <Box sx={{ display: 'grid', gap: 0.45 }}>
                         {[
-                          'Vi gjennomgår organisasjon, studieprogram og ønsket bruk.',
-                          'Vi foreslår et oppsett for kull, lærere og produksjonsrom.',
-                          'Eventuelle kommersielle betingelser avklares i dialog. Alle tilbud oppgis eks. mva.',
+                          t('dlgLogin.afterStep1'),
+                          t('dlgLogin.afterStep2'),
+                          t('dlgLogin.afterStep3'),
                         ].map((line) => (
                           <Typography
                             key={line}
@@ -5612,11 +5591,9 @@ export default function LoginDialog({
                           gap: 0.75,
                         }}
                       >
-                        <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
-                          Bekreft innsendingen
-                        </Typography>
+                        <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>{t('dlgLogin.confirmSubmission')}</Typography>
                         <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.55, color: 'rgba(210,204,228,0.72)' }}>
-                          Vi bruker Cloudflare Turnstile for å stoppe automatisert spam mot institusjonsforespørsler.
+                          {t('dlgLogin.turnstileBlurb')}
                         </Typography>
                         <RoleRoomTurnstileWidget
                           siteKey={educationTurnstileSiteKey}
@@ -5656,9 +5633,7 @@ export default function LoginDialog({
                             bgcolor: 'rgba(255,255,255,0.1)',
                           },
                         }}
-                      >
-                        Les mer om samarbeid
-                      </Button>
+                      >{t('dlgLogin.readMorePartnership')}</Button>
                       <Button
                         type="button"
                         onClick={handleEducationInquirySubmit}
@@ -5684,7 +5659,7 @@ export default function LoginDialog({
                           },
                         }}
                       >
-                        {loading ? 'Sender forespørsel ...' : 'Send samarbeidsforespørsel'}
+                        {loading ? t('dlgLogin.sendingRequest') : t('dlgLogin.sendPartnershipRequest')}
                       </Button>
                     </Box>
                   </Box>
@@ -5733,12 +5708,12 @@ export default function LoginDialog({
                                 color: `rgba(${aR},${aG},${aB},0.92)`,
                               }}
                             >
-                              {teamOwnerLabel}
+                              {tr(teamOwnerLabel)}
                             </Typography>
                           </Box>
                         )}
                         <TextField
-                          label={index === 0 ? `${teamOwnerLabel} navn` : `Navn ${index + 1}`}
+                          label={index === 0 ? t('dlgLogin.ownerName', { owner: tr(teamOwnerLabel) }) : t('dlgLogin.nameN', { n: index + 1 })}
                           value={member.name}
                           onChange={(event) => updateProductionTeamMember(index, 'name', event.target.value)}
                           fullWidth
@@ -5746,7 +5721,7 @@ export default function LoginDialog({
                           sx={glassInputSx(false)}
                         />
                         <TextField
-                          label="E-post"
+                          label={t('dlgLogin.emailLabel')}
                           type="email"
                           value={member.email}
                           onChange={(event) => updateProductionTeamMember(index, 'email', event.target.value)}
@@ -5756,7 +5731,7 @@ export default function LoginDialog({
                         />
                         <TextField
                           select
-                          label="Rolle i teamet"
+                          label={t('dlgLogin.roleInTeamLabel')}
                           value={member.roleId}
                           onChange={(event) => updateProductionTeamMember(index, 'roleId', event.target.value)}
                           fullWidth
@@ -5771,7 +5746,7 @@ export default function LoginDialog({
                         >
                           {teamRoleOptions.map((roleId) => (
                             <MenuItem key={roleId} value={roleId}>
-                              {ROLE_CARDS[roleId].label}
+                              {tr(ROLE_CARDS[roleId].label)}
                             </MenuItem>
                           ))}
                         </TextField>
@@ -5798,9 +5773,7 @@ export default function LoginDialog({
                                   bgcolor: 'rgba(255,255,255,0.08)',
                                 },
                               }}
-                            >
-                              Fjern plass
-                            </Button>
+                            >{t('dlgLogin.removeSeat')}</Button>
                           </Box>
                         ) : null}
                       </Box>
@@ -5830,9 +5803,7 @@ export default function LoginDialog({
                           border: '1px solid rgba(255,255,255,0.08)',
                         },
                       }}
-                    >
-                      + Legg til person
-                    </Button>
+                    >{t('dlgLogin.addPerson')}</Button>
                     <Typography
                       sx={{
                         fontSize: '0.72rem',
@@ -5841,8 +5812,8 @@ export default function LoginDialog({
                       }}
                     >
                       {isProductionTeamFlow
-                        ? 'Det første medlemmet blir teamleder. Bare teamlederen kan senere utvide teamet videre.'
-                        : 'Det første medlemmet blir kontoeier. Denne brukeren leder innholdsprodusent-planen og kan senere utvide teamet videre.'}
+                        ? t('dlgLogin.firstMemberLeadPt')
+                        : t('dlgLogin.firstMemberOwnerCp')}
                     </Typography>
                   </Box>
 
@@ -5862,32 +5833,32 @@ export default function LoginDialog({
                       }}
                     >
                       <Typography sx={{ fontSize: '0.72rem', color: 'rgba(184,170,226,0.72)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                        {isProductionTeamFlow ? 'Produksjonsteam-plan' : 'Innholdsprodusent-plan'}
+                        {isProductionTeamFlow ? t('dlgLogin.productionTeamPlan') : t('dlgLogin.contentProducerPlan')}
                       </Typography>
                       <Typography sx={{ mt: 0.5, fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.04em', color: 'rgba(255,255,255,0.96)' }}>
                         {formatRoleRoomStatValue(planMonthlyTotal)} kr
                       </Typography>
                       <Typography sx={{ fontSize: '0.78rem', color: 'rgba(214,208,230,0.72)' }}>
-                        {formatRoleRoomStatValue(seatPrice)} kr per person / måned eks. mva.
+                        {formatRoleRoomStatValue(seatPrice)} {t('dlgLogin.krPerPersonPerMonthExVat')}
                       </Typography>
                       <Typography sx={{ mt: 0.35, fontSize: '0.72rem', color: 'rgba(196,188,220,0.64)' }}>
-                        Alle priser i The Role Room oppgis eks. mva.
+                        {t('dlgLogin.allPricesExVat')}
                       </Typography>
                       <Box sx={{ mt: 1, display: 'grid', gap: 0.55 }}>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Minste team: {minimumSeatCount} {minimumSeatCount === 1 ? 'person' : 'personer'}
+                          {t('dlgLogin.minTeamLabel')}: {minimumSeatCount} {minimumSeatCount === 1 ? t('dlgLogin.person') : t('dlgLogin.persons')}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Valgte plasser: {billableSeatCount}
+                          {t('dlgLogin.selectedSeats')}: {billableSeatCount}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Roller valgt: {teamVisualMembers.length}
+                          {t('dlgLogin.rolesSelected')}: {teamVisualMembers.length}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          {teamOwnerLabel}: {teamOwner.name.trim() || 'Ikke satt ennå'}
+                          {tr(teamOwnerLabel)}: {teamOwner.name.trim() || t('dlgLogin.notSet')}
                         </Typography>
                         <Typography sx={{ fontSize: '0.76rem', color: 'rgba(234,228,245,0.84)' }}>
-                          Bedrift: {organizationCompanyName || 'Venter på verifisering'}
+                          {t('dlgLogin.companyLabel')}: {organizationCompanyName || t('dlgLogin.awaitingVerification')}
                         </Typography>
                       </Box>
                     </Box>
@@ -5901,7 +5872,7 @@ export default function LoginDialog({
                     >
                       {teamVisualMembers.length > 0 ? teamVisualMembers.map((member, index) => {
                         const previewAsset = getRoleCardPreviewAsset(member.roleId);
-                        const roleLabel = ROLE_CARDS[member.roleId]?.label || 'Rolle';
+                        const roleLabel = tr(ROLE_CARDS[member.roleId]?.label) || t('dlgLogin.roleFallback');
                         return (
                           <Box
                             key={`team-card-${index}`}
@@ -5945,7 +5916,7 @@ export default function LoginDialog({
                             </Box>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
                               <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(245,240,255,0.95)' }}>
-                                {member.name.trim() || `Teammedlem ${index + 1}`}
+                                {member.name.trim() || t('dlgLogin.teamMemberN', { n: index + 1 })}
                               </Typography>
                               <Typography sx={{ fontSize: '0.68rem', color: 'rgba(195,188,214,0.72)' }}>
                                 {roleLabel}
@@ -5964,7 +5935,7 @@ export default function LoginDialog({
                           }}
                         >
                           <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.5, color: 'rgba(205,198,224,0.68)' }}>
-                            Når du velger roller til teamet ditt, dukker de opp her som en visuell teamstripe.
+                            {t('dlgLogin.teamStripeHint')}
                           </Typography>
                         </Box>
                       )}
@@ -5980,11 +5951,9 @@ export default function LoginDialog({
                     border: '1px solid rgba(160,140,255,0.18)',
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>
-                    Admin-tilgang
-                  </Typography>
+                  <Typography sx={{ fontSize: '0.76rem', fontWeight: 600, color: 'rgba(245,240,255,0.94)' }}>{t('dlgLogin.adminAccess')}</Typography>
                   <Typography sx={{ mt: 0.45, fontSize: '0.78rem', lineHeight: 1.5, color: 'rgba(210,204,228,0.72)' }}>
-                    Administratorer går utenfor den vanlige teamplanen. Denne innloggingen bruker ikke produksjonsteamets setepris.
+                    {t('dlgLogin.adminAccessBlurb')}
                   </Typography>
                 </Box>
               ) : null}
@@ -5998,8 +5967,8 @@ export default function LoginDialog({
                   }}
                 >
                   {isEducationInstitutionFlow
-                    ? 'Når bedriften er verifisert og institusjonsoppsettet er fylt ut, kan du sende en forespørsel om samarbeid. Innlogging åpnes først etter avtalt onboarding.'
-                    : 'Når bedriften er verifisert og alle i teamet er lagt inn, åpnes innloggingen nederst i modalen.'}
+                    ? t('dlgLogin.setupCompleteNoteEdu')
+                    : t('dlgLogin.setupCompleteNotePt')}
                 </Typography>
               )}
             </Box>
@@ -6031,9 +6000,7 @@ export default function LoginDialog({
                     bgcolor: 'rgba(255,255,255,0.1)',
                   },
                 }}
-              >
-                Tilbake
-              </Button>
+              >{t('dlgLogin.back')}</Button>
               {((isStepwiseContentProducerFlow && contentProducerStep !== 'auth') || (isStepwiseProductionTeamFlow && productionTeamStep !== 'auth')) && (
                 <Button
                   type="button"
@@ -6060,16 +6027,16 @@ export default function LoginDialog({
                   {isStepwiseProductionTeamFlow
                     ? (
                       productionTeamStep === 'company'
-                        ? 'Fortsett til rolle'
+                        ? t('dlgLogin.continueToRole')
                         : productionTeamStep === 'role'
-                          ? 'Fortsett til team'
-                          : 'Fortsett til betaling'
+                          ? t('dlgLogin.continueToTeam')
+                          : t('dlgLogin.continueToPayment')
                     ) : (
                       contentProducerStep === 'company'
-                        ? 'Fortsett til fokus'
+                        ? t('dlgLogin.continueToFocus')
                         : contentProducerStep === 'role'
-                          ? 'Fortsett til team'
-                          : 'Fortsett til betaling'
+                          ? t('dlgLogin.continueToTeam')
+                          : t('dlgLogin.continueToPayment')
                     )}
                 </Button>
               )}
@@ -6093,17 +6060,17 @@ export default function LoginDialog({
               }}
             >
               <Typography sx={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: isCommercialPaymentSatisfied ? 'rgba(142,255,196,0.88)' : 'rgba(184,170,226,0.74)' }}>
-                {isCommercialPaymentSatisfied ? 'Plan aktivert' : 'Stripe Checkout'}
+                {isCommercialPaymentSatisfied ? t('dlgLogin.planActivated') : 'Stripe Checkout'}
               </Typography>
               <Typography sx={{ fontSize: { xs: '0.96rem', sm: '1.02rem' }, fontWeight: 700, color: 'rgba(250,247,255,0.96)' }}>
                 {isCommercialPaymentSatisfied
-                  ? 'Betalingen er registrert. Fullfør kontogodkjenningen fra e-posten hvis dette er første gang du logger inn.'
-                  : `Aktiver ${isProductionTeamFlow ? 'produksjonsteamet' : 'innholdsprodusent-planen'} før innlogging.`}
+                  ? t('dlgLogin.paymentRegisteredFinish')
+                  : t('dlgLogin.activateBeforeLoginX', { what: isProductionTeamFlow ? t('dlgLogin.theProductionTeam') : t('dlgLogin.theContentProducerPlan') })}
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', lineHeight: 1.6, color: 'rgba(210,204,228,0.72)' }}>
                 {isCommercialPaymentSatisfied
-                  ? `Planen er registrert på ${organizationCompanyName || 'bedriften'} med ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva.`
-                  : `Du sendes til Stripe for å aktivere ${billableSeatCount} ${billableSeatCount === 1 ? 'plass' : 'plasser'} til ${formatRoleRoomStatValue(planMonthlyTotal)} kr per måned eks. mva. Eventuell mva. beregnes i Stripe ved checkout.`}
+                  ? t('dlgLogin.planRegisteredOn', { company: organizationCompanyName || t('dlgLogin.theCompany'), total: formatRoleRoomStatValue(planMonthlyTotal) })
+                  : t('dlgLogin.stripeActivate', { n: billableSeatCount, seatWord: billableSeatCount === 1 ? t('dlgLogin.seat') : t('dlgLogin.seats'), total: formatRoleRoomStatValue(planMonthlyTotal) })}
               </Typography>
               {!isCommercialPaymentSatisfied && (
                 <Button
@@ -6130,7 +6097,7 @@ export default function LoginDialog({
                     },
                   }}
                 >
-                  {commercialPaymentPending ? 'Starter Stripe Checkout…' : 'Gå til sikker betaling'}
+                  {commercialPaymentPending ? t('dlgLogin.startingStripe') : t('dlgLogin.goToSecurePayment')}
                 </Button>
               )}
             </Box>
@@ -6146,7 +6113,7 @@ export default function LoginDialog({
             <>
           <TextField
             id="login-email"
-            label="E-post"
+            label={t('dlgLogin.emailLabel')}
             type="email"
             inputMode="email"
             autoComplete="email"
@@ -6171,7 +6138,7 @@ export default function LoginDialog({
           {/* ── password ── */}
           <TextField
             id="login-password"
-            label="Passord"
+            label={t('dlgLogin.passwordLabel')}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -6206,9 +6173,7 @@ export default function LoginDialog({
                   transition: 'color 1.2s ease',
                   '&:hover': { bgcolor: 'transparent', color: `rgba(${aR},${aG},${aB},0.95)`, textDecoration: 'underline' },
                 }}
-              >
-                Glemt passord?
-              </Button>
+              >{t('dlgLogin.forgotPassword')}</Button>
             </Box>
           ) : (
             <Box
@@ -6221,17 +6186,15 @@ export default function LoginDialog({
             >
               {forgotSent ? (
                 <Typography sx={{ fontSize: '0.82rem', color: 'rgba(100,230,160,0.85)', textAlign: 'center', py: 0.5 }}>
-                  ✓ Tilbakestillingslenke sendt til {forgotEmail}
+                  {t('dlgLogin.resetLinkSent', { email: forgotEmail })}
                 </Typography>
               ) : (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-                  <Typography sx={{ fontSize: '0.76rem', color: 'rgba(200,190,255,0.7)', letterSpacing: '0.02em' }}>
-                    Skriv inn e-postadressen din
-                  </Typography>
+                  <Typography sx={{ fontSize: '0.76rem', color: 'rgba(200,190,255,0.7)', letterSpacing: '0.02em' }}>{t('dlgLogin.enterYourEmail')}</Typography>
                   <TextField
                     size="small"
                     type="email"
-                    placeholder="din@epost.no"
+                    placeholder={t('dlgLogin.emailPlaceholder')}
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
                     fullWidth
@@ -6241,9 +6204,7 @@ export default function LoginDialog({
                     <Button
                       onClick={() => setForgotPassword(false)}
                       sx={{ textTransform: 'none', fontSize: '0.77rem', color: glass.textMuted, flex: 1, borderRadius: '12px', '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}
-                    >
-                      Avbryt
-                    </Button>
+                    >{t('dlgLogin.cancel')}</Button>
                     <Button
                       variant="contained"
                       disableElevation
@@ -6271,9 +6232,7 @@ export default function LoginDialog({
                         transition: 'background 1.2s ease',
                         '&:hover': { bgcolor: `rgba(${aR},${aG},${aB},0.34)`, boxShadow: 'none' },
                       }}
-                    >
-                      Send tilbakestillingslenke
-                    </Button>
+                    >{t('dlgLogin.sendResetLink')}</Button>
                   </Box>
                 </Box>
               )}
@@ -6351,7 +6310,7 @@ export default function LoginDialog({
             {loading ? (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
                 <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.5)' }} />
-                <span style={{ opacity: 0.6 }}>Logger inn…</span>
+                <span style={{ opacity: 0.6 }}>{t('dlgLogin.loggingIn')}</span>
               </Box>
             ) : (
               ctaButtonLabel
@@ -6403,7 +6362,7 @@ export default function LoginDialog({
                   </Box>
                 }
               >
-                {isLandingPage ? 'Google' : 'Fortsett med Google'}
+                {isLandingPage ? 'Google' : t('dlgLogin.continueWithGoogle')}
               </Button>
               {/* Feide (institusjons-innlogging) — skjuler seg selv hvis ikke konfigurert */}
               <FeideLoginButton compact={isLandingPage} />
@@ -6465,9 +6424,7 @@ export default function LoginDialog({
                 bgcolor: 'rgba(255,255,255,0.04)',
               },
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('dlgLogin.cancel')}</Button>
 
           {/* ── guest bypass (only when demoMode is enabled in admin) ── */}
           {onGuestEnter && demoModeEnabled && (
@@ -6488,9 +6445,7 @@ export default function LoginDialog({
                     textDecoration: 'underline',
                   },
                 }}
-              >
-                Fortsett uten innlogging
-              </Button>
+              >{t('dlgLogin.continueWithoutLogin')}</Button>
             </Box>
           )}
         </Box>
@@ -6505,9 +6460,7 @@ export default function LoginDialog({
         PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
       >
         <Box sx={{ p: 3 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: 'var(--role-cyan, #22d3ee)' }}>
-            To-faktor-bekreftelse
-          </Typography>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', mb: 1, color: 'var(--role-cyan, #22d3ee)' }}>{t('dlgLogin.tfaTitle')}</Typography>
           <Typography sx={{ fontSize: '0.85rem', color: 'rgba(226,232,240,0.72)', mb: 2 }}>
             {twoFactorState?.message}
           </Typography>
@@ -6550,9 +6503,7 @@ export default function LoginDialog({
               onClick={() => { setTwoFactorState(null); setTwoFactorCode(''); setTwoFactorError(null); }}
               disabled={twoFactorSubmitting}
               sx={{ textTransform: 'none', color: '#94a3b8', flex: 1 }}
-            >
-              Avbryt
-            </Button>
+            >{t('dlgLogin.cancel')}</Button>
             <Button
               onClick={() => void completeTwoFactorLogin()}
               disabled={twoFactorSubmitting || twoFactorCode.length < 6}
@@ -6566,12 +6517,10 @@ export default function LoginDialog({
                 '&:hover': { bgcolor: '#06b6d4' },
               }}
             >
-              {twoFactorSubmitting ? 'Verifiserer…' : 'Bekreft'}
+              {twoFactorSubmitting ? t('dlgLogin.verifying') : t('dlgLogin.confirm')}
             </Button>
           </Box>
-          <Typography sx={{ fontSize: '0.7rem', color: 'rgba(226,232,240,0.5)', mt: 1.4 }}>
-            Bruker du en backup-kode? Skriv inn de 8 tegnene.
-          </Typography>
+          <Typography sx={{ fontSize: '0.7rem', color: 'rgba(226,232,240,0.5)', mt: 1.4 }}>{t('dlgLogin.backupCodeHint')}</Typography>
         </Box>
       </Dialog>
     </Dialog>
