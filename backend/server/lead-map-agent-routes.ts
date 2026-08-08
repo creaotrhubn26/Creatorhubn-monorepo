@@ -118,9 +118,9 @@ export function registerLeadMapAgentRoutes({ app, pool, activeSessions }: Deps):
                 sourceUrl: brandKit.sourceUrl,
                 hasProfile: !!brandKit.brandProfile && Object.keys(brandKit.brandProfile).length > 0,
                 lastScannedAt: brandKit.lastScannedAt,
-                summary: brandKit.brandProfile?.positioning_summary ?? null,
-                tone: brandKit.brandProfile?.tone ?? null,
-                palette: brandKit.brandProfile?.color_palette ?? null,
+                summary: brandKit.brandProfile?.tagline ?? null,
+                tone: brandKit.brandProfile?.toneOfVoice ?? null,
+                palette: brandKit.brandProfile?.colors ?? null,
               }
             : null,
           marketScan: marketScan
@@ -129,7 +129,7 @@ export function registerLeadMapAgentRoutes({ app, pool, activeSessions }: Deps):
                 name: marketScan.name,
                 status: marketScan.status,
                 confidence: marketScan.confidenceSummary,
-                lastRunAt: marketScan.lastRunAt,
+                lastRunAt: marketScan.updatedAt,
                 marketQuery: marketScan.marketQuery,
               }
             : null,
