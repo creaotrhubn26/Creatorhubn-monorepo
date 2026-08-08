@@ -40,6 +40,7 @@ import {
   deleteVersion,
   loadVersionDoc,
   resolveBaseBg,
+  resolveColor,
   contrastRatio,
   isDark,
   type MockupKit,
@@ -403,6 +404,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <button onClick={() => setShowGallery(true)} style={ghostBtn} title="Bla i ferdig-stylede design">✦ Galleri</button>
         <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre" aria-label="Angre">↶</button>
         <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om" aria-label="Gjør om">↷</button>
+        <span style={{ fontSize: 11, color: C.inkSoft, whiteSpace: 'nowrap' }} title="Alt lagres automatisk lokalt ved hver endring">✓ Lagret{store.past.length ? ` · ${store.past.length} angre` : ''}</span>
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
@@ -985,7 +987,12 @@ function trimToWords(s: string, max: number): string {
 function TextInspector({ text, advanced }: { text: import('./mockupStudioModel').MockupTextSlot; advanced: boolean }) {
   const patchText = useMockupStudio((s) => s.patchText);
   const removeText = useMockupStudio((s) => s.removeText);
+  const canvas = useMockupStudio((s) => s.doc.canvas);
   const colorMode = text.color === 'accent' ? 'accent' : text.color === 'accent2' ? 'accent2' : 'custom';
+  // Per-tekst kontrast mot lerret-bakgrunnen (approksimasjon; teksten kan ligge over en enhet).
+  const textHex = resolveColor(text.color, canvas);
+  const contrast = contrastRatio(resolveBaseBg(canvas), textHex);
+  const contrastOk = contrast >= 4.5;
   return (
     <div>
       <SectionLabel>{TEXT_ROLE_LABELS[text.role]}</SectionLabel>
@@ -1028,6 +1035,9 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
         <input type="checkbox" checked={text.uppercase} onChange={(e) => patchText(text.id, { uppercase: e.target.checked })} />
         Store bokstaver
       </label>
+      <div style={{ fontSize: 11, color: contrastOk ? C.inkSoft : '#e0b060', margin: '2px 0 10px' }} title="WCAG AA krever ≥ 4.5:1 for brødtekst. Målt mot lerret-bakgrunnen.">
+        Kontrast mot bakgrunn: {contrast.toFixed(1)}:1{contrastOk ? ' ✓' : ' · lav (mål ≥ 4.5:1)'}
+      </div>
       {advanced && (
         <>
           <Field label={`Bredde: ${Math.round(text.w)} px`}>

@@ -258,6 +258,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
             <button
               key={dev.id}
               onPointerDown={(e) => beginDrag('device', dev.id, e)}
+              onFocus={() => select({ kind: 'device', id: dev.id })}
               aria-label={`Enhet: ${dev.variant}${active ? ' (valgt)' : ''} — dra for å flytte, piltaster nudger, Delete fjerner`}
               aria-pressed={active}
               title="Dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner"
@@ -292,6 +293,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
             <button
               key={t.id}
               onPointerDown={(e) => beginDrag('text', t.id, e)}
+              onFocus={() => select({ kind: 'text', id: t.id })}
               onDoubleClick={(e) => { e.stopPropagation(); select({ kind: 'text', id: t.id }); setEditingId(t.id); }}
               aria-label={`Tekst: ${t.text.slice(0, 40)}${active ? ' (valgt)' : ''} — dra for å flytte, dobbeltklikk for å redigere`}
               aria-pressed={active}
