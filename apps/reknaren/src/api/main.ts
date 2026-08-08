@@ -89,6 +89,8 @@ const app = createApiServer({
   idporten: new IdPortenClient(config.idporten),
   inboundDomain: config.inboundDomain,
   inboundSecret: config.inboundSecret,
+  resendApiKey: config.resendApiKey,
+  resendWebhookSecret: config.resendWebhookSecret,
   // Ekte Gmail-lesing via IMAP (samme app-passord som SMTP). Uten creds → sandbox.
   ...(config.smtpUser && config.smtpPassword
     ? {

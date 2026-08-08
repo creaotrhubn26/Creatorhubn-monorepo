@@ -50,6 +50,7 @@ import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../ing
 import { buildDashboard } from '../ledger/dashboard.js';
 import { getActivationStatus } from '../ledger/onboarding.js';
 import { ingestForwardedEmail } from '../ingestion/inbound-email.js';
+import { ingestResendEmail, verifyResendSignature, type ResendReceivedEvent } from '../ingestion/resend-inbound.js';
 import { createAgreement, listAgreements, reviewAgreements } from '../invoicing/agreements.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
@@ -220,8 +221,12 @@ export interface ApiDeps {
   idporten?: IdPortenClient | undefined;
   /** Domene for virksomhetenes bilag-adresse (videresend kvitteringer hit). */
   inboundDomain?: string | undefined;
-  /** Delt hemmelighet for inn-e-post-webhooken. Uten den er mottak inaktivt (503). */
+  /** Delt hemmelighet for den generiske inn-e-post-webhooken. Uten den: 503. */
   inboundSecret?: string | undefined;
+  /** Resend API-nøkkel — brukes til å hente vedlegg for mottatt e-post. */
+  resendApiKey?: string | undefined;
+  /** Svix-signeringshemmelighet for Resend inn-e-post-webhook. Uten den: 503. */
+  resendWebhookSecret?: string | undefined;
   /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
   cronSecret?: string | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
@@ -298,7 +303,15 @@ function isoDateParam(v: unknown, fallback: string): string {
 export function createApiServer(deps: ApiDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '20mb' }));
+  app.use(
+    express.json({
+      limit: '20mb',
+      // Behold rå body for webhook-signaturverifisering (Resend/Svix).
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: string }).rawBody = buf.toString('utf8');
+      },
+    }),
+  );
   const secret = resolveAuthSecret();
 
   const pipelineDeps: PipelineDeps = {
@@ -2086,7 +2099,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
           toJson(
             await getActivationStatus(deps.db, req.params.orgId!, {
               inboundDomain: deps.inboundDomain ?? 'inbound.reknaren.no',
-              inboundActive: Boolean(deps.inboundSecret),
+              inboundActive: Boolean(deps.inboundSecret || deps.resendWebhookSecret),
             }),
           ),
         );
@@ -2127,6 +2140,45 @@ export function createApiServer(deps: ApiDeps): express.Express {
         recipient: body.to,
         attachments: body.attachments.map((a) => ({ filename: a.filename, mimeType: a.contentType, content: Buffer.from(a.contentBase64, 'base64') })),
       });
+      res.json(toJson(result));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Resend inn-e-post-webhook: Resend POST-er et `email.received`-event når det
+  // kommer e-post til en virksomhets bilag-adresse. Vi verifiserer Svix-signaturen,
+  // henter vedleggene via Resends API og lagrer dem som `forward`-bilag.
+  app.post('/api/inbound/resend', async (req, res, next) => {
+    try {
+      if (!deps.resendWebhookSecret || !deps.resendApiKey) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Resend inn-e-post er ikke konfigurert.' } });
+        return;
+      }
+      const rawBody = (req as express.Request & { rawBody?: string }).rawBody ?? '';
+      const ok = verifyResendSignature(
+        deps.resendWebhookSecret,
+        {
+          id: req.header('svix-id'),
+          timestamp: req.header('svix-timestamp'),
+          signature: req.header('svix-signature'),
+        },
+        rawBody,
+      );
+      if (!ok) {
+        res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Ugyldig webhook-signatur.' } });
+        return;
+      }
+      if (!deps.storage) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Objektlager mangler.' } });
+        return;
+      }
+      const event = req.body as ResendReceivedEvent;
+      if (event?.type !== 'email.received') {
+        res.json({ ignored: true }); // andre event-typer kvitteres bare ut
+        return;
+      }
+      const result = await ingestResendEmail(deps.db, deps.storage, { apiKey: deps.resendApiKey }, event);
       res.json(toJson(result));
     } catch (err) {
       next(err);
