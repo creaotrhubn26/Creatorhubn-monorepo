@@ -70,7 +70,6 @@ kan du registrere verktøyet manuelt med disse verdiene:
 | **Client ID** | (oppgis av The Role Room ved manuell registrering) |
 | **Deployment ID** | (oppgis av The Role Room ved manuell registrering) |
 | **Auth login URL** | `https://www.theroleroom.com/api/role-room/lti/login` |
-| **Token URL** | `https://www.theroleroom.com/api/role-room/lti/token` |
 | **JWKS URL** | `https://www.theroleroom.com/api/role-room/lti/jwks` |
 
 Aktivér følgende **scopes:**

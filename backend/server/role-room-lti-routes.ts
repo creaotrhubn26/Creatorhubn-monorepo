@@ -88,12 +88,15 @@ function assertSafeHttpsUrl(raw: string): string {
 }
 
 // Plattform-fetch: validér URL + hard timeout (treg/hengende issuer skal ikke
-// henge requesten). Alle eksterne LTI-kall MÅ gå via denne.
+// henge requesten). Alle eksterne LTI-kall MÅ gå via denne. Redirects følges
+// IKKE (redirect: "manual") — en 3xx gir res.ok=false og behandles som feil —
+// for å hindre redirect-basert SSRF forbi assertSafeHttpsUrl, som kun
+// validerer start-URLen.
 async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): Promise<Response> {
   assertSafeHttpsUrl(url);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
-  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  try { return await fetch(url, { ...opts, redirect: "manual", signal: ctrl.signal }); }
   finally { clearTimeout(timer); }
 }
 
