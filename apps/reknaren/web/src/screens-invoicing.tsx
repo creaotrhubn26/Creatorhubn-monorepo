@@ -349,11 +349,11 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
           <div className="row">
             <div>
               <label htmlFor="idate">Fakturadato (valgfri, i dag hvis tom)</label>
-              <input id="idate" placeholder="ÅÅÅÅ-MM-DD" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+              <input id="idate" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
             </div>
             <div>
               <label htmlFor="ddate">Forfallsdato</label>
-              <input id="ddate" placeholder="ÅÅÅÅ-MM-DD" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <input id="ddate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
             <DimensionSelect orgId={orgId} kind="project" value={project} onChange={setProject} id="inv-project" />
           </div>

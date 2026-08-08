@@ -2,7 +2,7 @@
  * Delte UI-komponenter: ikoner, tilstander (tom/laster), toasts,
  * progressiv visning og statusmerker.
  */
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { STATUS_LABELS } from './api';
 
 /* ── Ikoner (inline SVG, arver farge) ──────────────────────────────────── */
@@ -126,9 +126,56 @@ export function Disclosure({ label, children }: { label: string; children: React
 }
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null;
+    // Flytt fokus inn i dialogen ved åpning.
+    const focusables = () =>
+      Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => !el.hasAttribute('disabled'));
+    (focusables()[0] ?? dialogRef.current)?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      // Felle Tab/Shift+Tab innenfor dialogen.
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      prevFocus?.focus(); // gjenopprett fokus ved lukking
+    };
+  }, [onClose]);
+
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" role="presentation" onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        ref={dialogRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-head">
           <h2>{title}</h2>
           <button className="modal-close" aria-label="Lukk" onClick={onClose}>✕</button>

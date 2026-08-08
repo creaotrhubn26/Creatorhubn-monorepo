@@ -100,7 +100,7 @@ export function FixedAssetsScreen({ orgId }: { orgId: string }) {
               {Object.entries(groups).map(([k, g]) => <option key={k} value={k}>{k} — {g.name} ({g.ratePct} %)</option>)}
             </select>
           </div>
-          <div><label>Anskaffet</label><input placeholder="ÅÅÅÅ-MM-DD" value={acqDate} onChange={(e) => setAcqDate(e.target.value)} style={{ width: 130 }} /></div>
+          <div><label>Anskaffet</label><input type="date" value={acqDate} onChange={(e) => setAcqDate(e.target.value)} style={{ width: 160 }} /></div>
           <div><label>Kostpris (kr)</label><input value={cost} onChange={(e) => setCost(e.target.value)} placeholder="60 000" style={{ width: 110 }} /></div>
           <div><label>Konto</label><input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="1280" style={{ width: 80 }} /></div>
           <button className="primary" disabled={busy} onClick={addAsset}>Legg til</button>

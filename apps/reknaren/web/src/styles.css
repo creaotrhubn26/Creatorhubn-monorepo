@@ -385,12 +385,12 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
 .org-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 4px; }
 .org-choice {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-  padding: 14px 16px; border: 1px solid var(--border, #e2e2e2); border-radius: 12px;
-  background: #fff; cursor: pointer; text-align: left; transition: border-color .12s, box-shadow .12s;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); cursor: pointer; text-align: left; transition: border-color .12s, box-shadow .12s;
 }
-.org-choice:hover { border-color: var(--accent, #1f4d3a); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.org-choice:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
 .org-choice-name { font-weight: 700; font-size: 15px; }
-.org-choice-meta { font-size: 12px; color: #666; }
+.org-choice-meta { font-size: 12px; color: var(--text-3); }
 
 /* MVA-registreringsterskel */
 .threshold-panel { border-left: 4px solid var(--accent, #1f4d3a); }
@@ -399,30 +399,29 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
 .threshold-panel.danger { border-left-color: #b3402f; }
 .threshold-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .threshold-head h2 { margin: 0; }
-.threshold-bar { height: 12px; border-radius: 999px; background: #eee; overflow: hidden; margin: 12px 0 8px; }
-.threshold-fill { height: 100%; border-radius: 999px; background: var(--accent, #1f4d3a); transition: width .3s; }
+.threshold-bar { height: 12px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 12px 0 8px; }
+.threshold-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: none; }
 .threshold-fill.ok { background: #1f7a4d; }
 .threshold-fill.warn { background: #b0913b; }
 .threshold-fill.danger { background: #b3402f; }
 .threshold-nums { font-size: 14px; }
-.threshold-window { color: #888; }
+.threshold-window { color: var(--text-3); }
 
 /* Virksomhetsbytter i sidefeltet */
 .org-switcher { margin: 4px 10px 12px; }
-.org-switcher label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #888; margin: 0 0 3px; display: block; }
+.org-switcher label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin: 0 0 3px; display: block; }
 .org-switcher select { width: 100%; font-weight: 600; }
 
 /* Regnskapshelse */
 .health-panel .threshold-head { margin-bottom: 6px; }
 .health-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.health-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border, #e6e6e6); border-radius: 12px; background: #fff; }
+.health-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .health-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; background: #888; }
 .health-item.error .health-dot { background: #b3402f; }
 .health-item.warning .health-dot { background: #b0913b; }
 .health-item.info .health-dot { background: #3a6ea5; }
-.health-item.error { border-left: 3px solid #b3402f; }
-.health-item.warning { border-left: 3px solid #b0913b; }
+/* Status vises av den fargede .health-dot — ikke dupliser med en venstre-kant. */
 .health-body { flex: 1; }
 .health-title { font-weight: 700; font-size: 14px; }
-.health-detail { font-size: 13px; color: #555; margin-top: 2px; line-height: 1.45; }
+.health-detail { font-size: 13px; color: var(--text-2); margin-top: 2px; line-height: 1.45; }
 .health-action { flex: 0 0 auto; align-self: center; white-space: nowrap; }

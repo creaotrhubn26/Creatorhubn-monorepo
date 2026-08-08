@@ -1031,7 +1031,7 @@ export function GmailScreen({ orgId, onOpenDocument }: { orgId: string; onOpenDo
           </div>
           <div>
             <label htmlFor="after">Fra dato (valgfritt)</label>
-            <input id="after" placeholder="ÅÅÅÅ-MM-DD" value={afterDate} onChange={(e) => setAfterDate(e.target.value)} />
+            <input id="after" type="date" value={afterDate} onChange={(e) => setAfterDate(e.target.value)} />
           </div>
           <div>
             <button className="primary" disabled={busy} onClick={runScan}>
@@ -2290,7 +2290,7 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
                   {progress.company ? <>Fra <b>{progress.company}</b>{progress.periodStart ? ` · ${progress.periodStart}–${progress.periodEnd}` : ''}</> : 'Starter …'}
                 </p>
                 <div style={{ height: 14, borderRadius: 8, background: 'rgba(120,120,140,0.18)', overflow: 'hidden' }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent, #5b4bff)', transition: 'width .25s ease' }} />
+                  <div style={{ height: '100%', width: '100%', background: 'var(--accent)', transform: `scaleX(${pct / 100})`, transformOrigin: 'left', transition: 'transform .25s ease' }} />
                 </div>
                 <p className="hint" style={{ marginTop: 8 }}>
                   {progress.total ? <><b>{pct}%</b> · {progress.posted} av {progress.total} bilag ført</> : 'Klargjør kontoer og kontakter …'}
@@ -2349,7 +2349,7 @@ export function SaftImportScreen({ orgId }: { orgId: string }) {
                   <span className="badge plain">Rask</span>
                   <div className="value" style={{ fontSize: 18 }}>Bare startsaldoen</div>
                   <p className="hint" style={{ margin: 0 }}>Dagens saldoer som ett åpningsbilag. Raskt å komme i gang, men uten bilagshistorikk.</p>
-                  <input placeholder="Startdato ÅÅÅÅ-MM-DD" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} style={{ width: 'auto' }} />
+                  <input type="date" aria-label="Startdato" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} style={{ width: 'auto' }} />
                   <button className="secondary" disabled={busy} onClick={bookOpening}>{busy ? 'Bokfører …' : 'Bokfør bare startsaldo'}</button>
                 </div>
               </div>
@@ -5059,7 +5059,7 @@ export function AgreementsScreen({ orgId }: { orgId: string }) {
           <div className="row">
             <div>
               <label htmlFor="a-start">Startdato</label>
-              <input id="a-start" placeholder="2025-01-01" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} />
+              <input id="a-start" type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} />
             </div>
             <div>
               <label htmlFor="a-end">Sluttdato (valgfritt)</label>
