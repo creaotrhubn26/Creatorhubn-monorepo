@@ -135,6 +135,68 @@ interface BookkeepingError {
   actionLabel: string;
 }
 
+interface ActivationStatus {
+  orgReady: boolean;
+  hasBank: boolean;
+  hasDocument: boolean;
+  hasPostedEntry: boolean;
+  complete: boolean;
+}
+
+const ONBOARD_STEPS: { key: keyof ActivationStatus; label: string; desc: string; cta: string; nav: string }[] = [
+  { key: 'orgReady', label: 'Fyll inn virksomhetsinfo', desc: 'Organisasjonsnummer trengs for MVA-melding og faktura.', cta: 'Til virksomhet', nav: 'org' },
+  { key: 'hasBank', label: 'Koble banken', desc: 'Importer transaksjonene, så avstemmer vi mot bilag automatisk.', cta: 'Til bank', nav: 'bank' },
+  { key: 'hasDocument', label: 'Legg til ditt første bilag', desc: 'Last opp en kvittering, eller skann e-posten din etter fakturaer.', cta: 'Til bilag', nav: 'documents' },
+  { key: 'hasPostedEntry', label: 'Kontroller og bokfør', desc: 'Vi foreslår konteringen — du kontrollerer tallene og godkjenner.', cta: 'Til bilag', nav: 'documents' },
+];
+
+/** «Kom i gang»-veiviser for novisen: fra tom konto til første bokførte bilag.
+ *  Utledet fra ekte data — forsvinner når stegene er gjort, og kan skjules. */
+function KomIGang({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: string) => void }) {
+  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem('reknaren.onboardDismissed') === '1');
+  const act = useLoad(() => api<ActivationStatus>('GET', `/api/organizations/${orgId}/activation`), [orgId]);
+  const a = act.data;
+  if (dismissed || !a || a.complete) return null;
+  const done = ONBOARD_STEPS.filter((s) => a[s.key]).length;
+  const nextIdx = ONBOARD_STEPS.findIndex((s) => !a[s.key]);
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2 style={{ marginTop: 0 }}>Kom i gang</h2>
+        <span className="confidence high">{done} av {ONBOARD_STEPS.length} fullført</span>
+      </div>
+      <p className="subtitle" style={{ marginTop: 0 }}>Fire steg til regnskapet ditt går av seg selv.</p>
+      <ul className="health-list">
+        {ONBOARD_STEPS.map((step, i) => {
+          const isDone = a[step.key];
+          const isNext = i === nextIdx;
+          return (
+            <li key={step.key} className={`health-item${isDone ? ' info' : ''}`}>
+              <span className="health-dot" style={{ background: isDone ? 'var(--ok)' : isNext ? 'var(--accent)' : 'var(--border-strong)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11 }}>
+                {isDone ? '✓' : ''}
+              </span>
+              <div className="health-body">
+                <div className="health-title" style={isDone ? { color: 'var(--text-3)' } : undefined}>{step.label}</div>
+                <div className="health-detail">{step.desc}</div>
+              </div>
+              {!isDone && (
+                <div className="health-action">
+                  <button className={isNext ? 'primary' : 'secondary'} onClick={() => onNavigate?.(step.nav)}>{step.cta}</button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <div style={{ marginTop: 12 }}>
+        <button className="linklike" onClick={() => { sessionStorage.setItem('reknaren.onboardDismissed', '1'); setDismissed(true); }}>
+          Skjul veiviseren
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function OverviewScreen({
   orgId,
   onOpenDocument,
@@ -153,6 +215,7 @@ export function OverviewScreen({
         <h1>Oversikt</h1>
         <p className="subtitle">Alt på ett sted — hva som er bra, og hva som trenger deg.</p>
       </div>
+      <KomIGang orgId={orgId} onNavigate={onNavigate} />
       {dash.error && <div className="error">{dash.error}</div>}
       {dash.loading || !d ? (
         <>

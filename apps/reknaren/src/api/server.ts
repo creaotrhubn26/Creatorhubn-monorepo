@@ -48,6 +48,7 @@ import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
 import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../ingestion/document-hunt.js';
 import { buildDashboard } from '../ledger/dashboard.js';
+import { getActivationStatus } from '../ledger/onboarding.js';
 import { createAgreement, listAgreements, reviewAgreements } from '../invoicing/agreements.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
@@ -2063,6 +2064,20 @@ export function createApiServer(deps: ApiDeps): express.Express {
         res.json(
           toJson(await buildDashboard(deps.db, deps.rules, { organizationId: req.params.orgId!, orgForm: org.org_form, asOf })),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // «Kom i gang»-aktiveringsstatus for novisen (utledet fra ekte data, ikke lagret).
+  app.get(
+    '/api/organizations/:orgId/activation',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.json(toJson(await getActivationStatus(deps.db, req.params.orgId!)));
       } catch (err) {
         next(err);
       }
