@@ -10,8 +10,11 @@ import iphoneFrame from './frames/iphone.png';
 import ipadFrame from './frames/ipad.png';
 import ipadLandscapeFrame from './frames/ipad-landscape.png';
 import macbookFrame from './frames/macbook.png';
+import androidFrame from './frames/android.png';
+import browserFrame from './frames/browser.png';
+import tabletFrame from './frames/tablet.png';
 
-export type FrameVariant = 'iphone' | 'ipad' | 'ipad_landscape' | 'macbook';
+export type FrameVariant = 'iphone' | 'ipad' | 'ipad_landscape' | 'macbook' | 'android' | 'browser' | 'tablet';
 
 export interface FrameSpec {
   src: string;
@@ -53,5 +56,24 @@ export const DEVICE_FRAMES: Record<FrameVariant, FrameSpec> = {
     src: macbookFrame, aspect: 1586 / 992,
     screen: { x: 256 / 1586, y: 20 / 992, w: 1073 / 1586, h: 739 / 992 },
     radius: 6 / 1586,
+  },
+  // Nye egne ChatGPT-mockups (2026-08-08), skjerm piksel-detektert (svart region):
+  //   android 621x1378  screen 17,11 583x1350
+  //   browser 1342x959  screen 3,78 1336x879
+  //   tablet  780x987   screen 27,27 726x933
+  android: {
+    src: androidFrame, aspect: 621 / 1378,
+    screen: { x: 0.0274, y: 0.0080, w: 0.9388, h: 0.9797 },
+    radius: 0.045,
+  },
+  browser: {
+    src: browserFrame, aspect: 1342 / 959,
+    screen: { x: 0.0022, y: 0.0813, w: 0.9955, h: 0.9166 },
+    radius: 0.006,
+  },
+  tablet: {
+    src: tabletFrame, aspect: 780 / 987,
+    screen: { x: 0.0346, y: 0.0274, w: 0.9308, h: 0.9453 },
+    radius: 0.028,
   },
 };

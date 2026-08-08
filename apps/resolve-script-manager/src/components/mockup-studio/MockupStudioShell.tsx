@@ -98,6 +98,9 @@ const DEVICE_LABELS: Record<MockupDeviceVariant, string> = {
   ipad_landscape: 'iPad (liggende)',
   iphone: 'iPhone',
   watch: 'Apple Watch',
+  android: 'Android',
+  browser: 'Nettleser',
+  tablet: 'Nettbrett',
 };
 
 const TEXT_ROLE_LABELS: Record<MockupTextRole, string> = {

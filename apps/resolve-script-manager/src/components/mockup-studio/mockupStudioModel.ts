@@ -286,6 +286,9 @@ export const FRAME_ASPECT: Record<MockupDeviceVariant, number> = {
   ipad_landscape: 1448 / 1086,
   macbook: 1586 / 992,
   watch: 0.84, // ~45mm-kasse (litt høyere enn bred)
+  android: 621 / 1378,
+  browser: 1342 / 959,
+  tablet: 780 / 987,
 };
 
 /** Høyde til et device-slot ut fra bredden + rammens aspect. */
@@ -340,6 +343,9 @@ export function makeDevice(variant: MockupDeviceVariant, partial: Partial<Mockup
     ipad_landscape: 620,
     iphone: 240,
     watch: 170,
+    android: 240,
+    browser: 820,
+    tablet: 460,
   };
   return {
     id: uid('dev'),
@@ -566,13 +572,13 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
   },
 ];
 
-const DEV_LABEL: Record<MockupDeviceVariant, string> = { macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad', iphone: 'iPhone', watch: 'Apple Watch' };
+const DEV_LABEL: Record<MockupDeviceVariant, string> = { macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad', iphone: 'iPhone', watch: 'Apple Watch', android: 'Android', browser: 'Nettleser', tablet: 'Nettbrett' };
 const ROLE_LABEL: Record<MockupTextRole, string> = { eyebrow: 'Etikett', title: 'Overskrift', body: 'Brødtekst', tag: 'Liten tekst' };
 
 /** Enhets-varianter i samme orientering (tillatt device-bytte i en slot). */
 export function orientationGroup(v: MockupDeviceVariant): MockupDeviceVariant[] {
-  const landscape: MockupDeviceVariant[] = ['macbook', 'ipad_landscape'];
-  const portrait: MockupDeviceVariant[] = ['iphone', 'ipad', 'watch'];
+  const landscape: MockupDeviceVariant[] = ['macbook', 'ipad_landscape', 'browser'];
+  const portrait: MockupDeviceVariant[] = ['iphone', 'ipad', 'watch', 'android', 'tablet'];
   return landscape.includes(v) ? landscape : portrait;
 }
 
