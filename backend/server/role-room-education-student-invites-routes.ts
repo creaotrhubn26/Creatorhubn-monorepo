@@ -142,11 +142,12 @@ export function createEducationStudentInvitesRouter(
       const token = crypto.randomBytes(24).toString("hex");
       // Regenererer token og nullstiller status hvis invitasjon finnes (upsert på student_id).
       const r = await pool.query(
-        `INSERT INTO role_room_education_student_invites (id, owner_user_id, student_id, token, status, email)
-         VALUES ($1,$2,$3,$4,'pending',$5)
+        `INSERT INTO role_room_education_student_invites (id, owner_user_id, student_id, token, status, email, expires_at)
+         VALUES ($1,$2,$3,$4,'pending',$5, now() + INTERVAL '7 days')
          ON CONFLICT (student_id)
          DO UPDATE SET token = EXCLUDED.token, status = 'pending', accepted_at = NULL,
-                       email = EXCLUDED.email, updated_at = now()
+                       email = EXCLUDED.email, updated_at = now(),
+                       expires_at = now() + INTERVAL '7 days'
          RETURNING *`,
         [id, uid(req), req.params.id, token, (student.email as string) || null],
       );

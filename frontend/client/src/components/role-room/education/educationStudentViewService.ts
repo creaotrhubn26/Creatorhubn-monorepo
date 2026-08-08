@@ -129,15 +129,20 @@ export const educationStudentViewService = {
   },
 
   /** Løs inn en invitasjon → lagrer studentsesjon-token. */
-  async claim(inviteToken: string): Promise<{ id: string; name: string; cohortName: string | null } | null> {
+  async claim(inviteToken: string, email?: string): Promise<{ id: string; name: string; cohortName: string | null } | null> {
     const res = await fetch(`${BASE}/student/claim`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: inviteToken }),
+      body: JSON.stringify({ token: inviteToken, email: email?.trim() || undefined }),
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error === 'invalid_invite' ? 'Ugyldig eller utløpt invitasjon' : (body.error || `HTTP ${res.status}`));
+      const msg: Record<string, string> = {
+        invalid_invite: 'Ugyldig eller utløpt invitasjon',
+        email_required: 'Skriv inn e-posten invitasjonen ble sendt til.',
+        email_mismatch: 'E-posten stemmer ikke med invitasjonen.',
+      };
+      throw new Error(msg[body.error ?? ''] || body.error || `HTTP ${res.status}`);
     }
     const data = (await res.json()) as { sessionToken: string; student: { id: string; name: string; cohortName: string | null } | null };
     if (data.sessionToken) setStudentToken(data.sessionToken);

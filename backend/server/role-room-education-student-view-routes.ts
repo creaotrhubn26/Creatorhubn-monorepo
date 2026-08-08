@@ -208,18 +208,30 @@ export function createEducationStudentViewRouter(
 
   // ── Claim: invite-token → isolert studentsesjon (OFFENTLIG) ──────────────
   router.post("/education/student/claim", async (req, res) => {
-    const body = (req.body ?? {}) as { token?: string };
+    const body = (req.body ?? {}) as { token?: string; email?: string };
     const inviteToken = typeof body.token === "string" ? body.token.trim() : "";
+    const claimEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (!inviteToken) { res.status(400).json({ error: "token_required" }); return; }
     try {
       const inv = await pool.query(
-        `SELECT id, student_id, owner_user_id, status
+        `SELECT id, student_id, owner_user_id, status, email, expires_at
            FROM role_room_education_student_invites
           WHERE token = $1`,
         [inviteToken],
       );
       const invite = inv.rows[0];
       if (!invite || invite.status === "revoked") { res.status(404).json({ error: "invalid_invite" }); return; }
+      // Utløp håndheves kun for ikke-aksepterte invitasjoner (aksepterte = varig re-claim).
+      if (invite.status !== "accepted" && invite.expires_at && new Date(invite.expires_at as string) < new Date()) {
+        res.status(404).json({ error: "invalid_invite" }); return;
+      }
+      // E-post-verifisering: invitasjon utstedt til en bestemt e-post kan bare
+      // løses inn av eier av den e-posten (mot lekket/videresendt lenke).
+      const inviteEmail = typeof invite.email === "string" ? invite.email.trim().toLowerCase() : "";
+      if (inviteEmail) {
+        if (!claimEmail) { res.status(400).json({ error: "email_required" }); return; }
+        if (claimEmail !== inviteEmail) { res.status(403).json({ error: "email_mismatch" }); return; }
+      }
 
       // Marker akseptert (idempotent — tillater re-claim).
       await pool.query(
@@ -231,8 +243,8 @@ export function createEducationStudentViewRouter(
 
       const sessionToken = crypto.randomBytes(24).toString("hex");
       await pool.query(
-        `INSERT INTO role_room_education_student_sessions (token, student_id, owner_user_id)
-         VALUES ($1,$2,$3)`,
+        `INSERT INTO role_room_education_student_sessions (token, student_id, owner_user_id, expires_at)
+         VALUES ($1,$2,$3, now() + INTERVAL '30 days')`,
         [sessionToken, invite.student_id, invite.owner_user_id],
       );
 

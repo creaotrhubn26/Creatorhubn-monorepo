@@ -442,13 +442,13 @@ export function createEducationTalentPipelineRouter(
     if (!email) { res.status(400).json({ error: "no_email" }); return; }
     try {
       const r = await pool.query(
+        // Claim = kun eierskap-overtakelse + aktiver profil. Byrå-synlighet
+        // krever separat, eksplisitt grant i talent_consent_registry — vi
+        // fabrikkerer IKKE et 'consent accepted'-stempel her (villledende
+        // samtykke: å overta profilen ≠ å samtykke til byrå-synlighet).
         `UPDATE talents
             SET owner_user_id = $1,
                 profile_status = CASE WHEN profile_status = 'draft' THEN 'active' ELSE profile_status END,
-                metadata = COALESCE(metadata, '{}'::jsonb)
-                  || jsonb_build_object('consent',
-                       COALESCE(metadata->'consent', '{}'::jsonb)
-                       || jsonb_build_object('status', 'accepted', 'confirmedAt', now()::text)),
                 updated_at = now()
           WHERE owner_user_id IS NULL
             AND lower(email) = lower($2)

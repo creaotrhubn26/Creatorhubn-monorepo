@@ -85,7 +85,8 @@ export function verifyIdToken(idToken: string, opts: {
   const decodedHeader = jwt.decode(idToken, { complete: true });
   if (!decodedHeader || typeof decodedHeader === "string") throw new Error("invalid_token");
   const kid = (decodedHeader.header as { kid?: string }).kid;
-  const jwk = opts.jwks.find((k) => (kid ? k.kid === kid : true));
+  if (!kid) throw new Error("no_kid_in_header");
+  const jwk = opts.jwks.find((k) => k.kid === kid);
   if (!jwk) throw new Error("no_matching_key");
   const pem = crypto.createPublicKey({ key: jwk as crypto.JsonWebKey, format: "jwk" })
     .export({ type: "spki", format: "pem" }).toString();
