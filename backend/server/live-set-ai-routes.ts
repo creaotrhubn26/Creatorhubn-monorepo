@@ -520,7 +520,7 @@ export function createLiveSetAiRouter(
     req: Request,
     res: Response,
     action: string,
-    parse: z.ZodSafeParseResult<Input>,
+    parse: { success: true; data: Input } | { success: false; error: z.ZodError },
     systemPrompt: string,
     buildMessage: (input: Input) => string,
     sanitise: (raw: unknown, input: Input) => Output,

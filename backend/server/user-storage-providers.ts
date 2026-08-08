@@ -147,8 +147,11 @@ let driveImportWarned = false;
 async function loadDriveMirror(): Promise<DriveMirrorFn | null> {
   if (cachedDriveMirror !== undefined) return cachedDriveMirror;
   try {
-    // Eslint-disable: dynamic-import er hele poenget her.
-    const mod = (await import("./user-drive-mirror-worker")) as {
+    // Eslint-disable: dynamic-import er hele poenget her. Modulen er valgfri og
+    // finnes ikke nødvendigvis (bygges lazy); indirekte string-spesifikator hindrer
+    // at tsc prøver å resolve den statisk (TS2307) — try/catch håndterer fraværet.
+    const mirrorSpecifier: string = "./user-drive-mirror-worker";
+    const mod = (await import(mirrorSpecifier)) as {
       mirrorUploadToUserDrive?: DriveMirrorFn;
       enqueueMirrorToUserDrive?: DriveMirrorFn;
     };

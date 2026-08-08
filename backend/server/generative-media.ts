@@ -278,7 +278,7 @@ export function aiAllowed(settings: GenSettings, email?: string | null, role?: s
 export async function emitGenAiMeter(
   pool: any,
   opts: { userId?: string | null; valueUsd: number; settings: GenSettings },
-): Promise<{ emitted?: boolean; skipped?: string; error?: string }> {
+): Promise<{ emitted?: boolean; skipped?: string; error?: string; billedUsd?: number }> {
   if (opts.settings.billingMode !== "metered") return { skipped: "free_mode" };
   const eventName = process.env.STRIPE_OVERAGE_GENAI_METER_EVENT_NAME;
   const secret = process.env.STRIPE_SECRET_KEY;

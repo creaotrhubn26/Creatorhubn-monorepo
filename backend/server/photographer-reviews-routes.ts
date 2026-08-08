@@ -307,7 +307,10 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
         text,
         kind: "review_request",
         sentByUserId: session.userId,
-        pool,
+        // Ruteren typer pool løst som AnyPool ({query}); sendTransactionalEmail vil
+        // ha en full pg Pool. Runtime er en ekte pg Pool — cast bort den lokale
+        // innsnevringen.
+        pool: pool as unknown as import("pg").Pool,
       });
 
       if (!result.sent) {
