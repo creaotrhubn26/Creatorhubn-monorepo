@@ -385,12 +385,18 @@ export async function issueInvoice(
         customerId: issued.customerId,
         description: `Faktura ${issued.invoiceNumber}`,
       },
-      ...[...revenueByKey.values()].map((r) => ({
-        accountNumber: r.account,
-        creditMinor: r.netMinor,
-        vatCode: r.vatCode,
-        ...(r.project ? { project: r.project } : {}),
-      })),
+      // Hopp over null-beløp: en 0-kroners linje (gyldig pris) gir netto 0, og en
+      // 0-sats mva-kode gir mva 0 — postering av en linje uten positiv side avvises
+      // av motoren og ville låst fakturaen som utstedt-men-ubokført. (Beløp kan ikke
+      // bli negative: DB-CHECK krever quantity > 0 og unit_price >= 0.)
+      ...[...revenueByKey.values()]
+        .filter((r) => r.netMinor > 0n)
+        .map((r) => ({
+          accountNumber: r.account,
+          creditMinor: r.netMinor,
+          vatCode: r.vatCode,
+          ...(r.project ? { project: r.project } : {}),
+        })),
       ...[...vatByCode.entries()]
         .filter(([, amount]) => amount > 0n)
         .map(([code, amount]) => ({
@@ -432,6 +438,9 @@ export async function createCreditNote(
     );
     if (!inv.rowCount) throw new NotFoundError('Fakturaen finnes ikke.');
     const invoice = inv.rows[0];
+    if (invoice.kind !== 'invoice') {
+      throw new ValidationError('Bare en faktura kan krediteres — ikke en kreditnota.');
+    }
     if (!['issued', 'paid'].includes(invoice.status)) {
       throw new ValidationError(`Kun utstedte fakturaer kan krediteres (status: ${invoice.status}).`);
     }
@@ -544,12 +553,15 @@ export async function createCreditNote(
     description: `Kreditnota ${prepared.creditNumber} (faktura ${prepared.originalNumber}) — ${prepared.customerName}`,
     lines: [
       { accountNumber: '1500', creditMinor: prepared.grossMinor, customerId: prepared.customerId, description: `Kreditnota ${prepared.creditNumber}` },
-      ...[...revenueByKey.values()].map((r) => ({
-        accountNumber: r.account,
-        debitMinor: r.netMinor,
-        vatCode: r.vatCode,
-        ...(r.project ? { project: r.project } : {}),
-      })),
+      // Speiler fakturaen (debet-normal her); hopp over null-beløp av samme grunn.
+      ...[...revenueByKey.values()]
+        .filter((r) => r.netMinor > 0n)
+        .map((r) => ({
+          accountNumber: r.account,
+          debitMinor: r.netMinor,
+          vatCode: r.vatCode,
+          ...(r.project ? { project: r.project } : {}),
+        })),
       ...[...vatByCode.entries()]
         .filter(([, amount]) => amount > 0n)
         .map(([code, amount]) => ({ accountNumber: '2700', debitMinor: amount, vatCode: code, description: 'Utgående mva, kreditert' })),
@@ -571,14 +583,27 @@ export async function registerInvoicePayment(
   client: DbClient,
   params: { organizationId: string; invoiceId: string; amountMinor: bigint },
 ): Promise<void> {
-  const res = await client.query(
+  if (params.amountMinor <= 0n) throw new ValidationError('Innbetaling må være et positivt beløp.');
+  const cur = await client.query(
+    `SELECT gross_minor, paid_minor FROM invoices
+     WHERE id = $1 AND organization_id = $2 AND status IN ('issued','paid')
+     FOR UPDATE`,
+    [params.invoiceId, params.organizationId],
+  );
+  if (!cur.rowCount) throw new NotFoundError('Fakturaen finnes ikke eller kan ikke motta betaling.');
+  const gross = BigInt(cur.rows[0].gross_minor);
+  const paid = BigInt(cur.rows[0].paid_minor);
+  if (paid + params.amountMinor > gross) {
+    throw new ValidationError(
+      `Innbetaling overstiger restbeløpet (rest ${gross - paid} øre, forsøkt ${params.amountMinor} øre).`,
+    );
+  }
+  await client.query(
     `UPDATE invoices
      SET paid_minor = paid_minor + $3,
          status = CASE WHEN paid_minor + $3 >= gross_minor THEN 'paid' ELSE status END,
          updated_at = now(), version = version + 1
-     WHERE id = $1 AND organization_id = $2 AND status IN ('issued','paid')
-     RETURNING id`,
+     WHERE id = $1 AND organization_id = $2`,
     [params.invoiceId, params.organizationId, params.amountMinor.toString()],
   );
-  if (!res.rowCount) throw new NotFoundError('Fakturaen finnes ikke eller kan ikke motta betaling.');
 }
