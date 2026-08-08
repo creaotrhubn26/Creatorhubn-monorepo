@@ -17,11 +17,17 @@
  *   - Returnerer rapport som JSON
  */
 
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+// Guard-signatur (matcher den ekte requireAdminSession i index.ts): 2 args,
+// returnerer session-objektet eller null (sender selv 401/403). Ikke en
+// (req,res,next)=>void-middleware — koden bruker den som `if (!guard(req,res)) return`.
+type RequireAdminSession = (
+  req: Request,
+  res: Response,
+) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 
 let stripeClient: Stripe | null = null;
 const getStripe = (): Stripe | null => {
