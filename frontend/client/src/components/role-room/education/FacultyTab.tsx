@@ -212,8 +212,8 @@ export function FacultyTab() {
       </Box>
 
       {/* Fakultet-tabell */}
-      <Panel sx={{ p: 0, overflow: 'hidden' }}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2fr 1fr 40px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <Panel sx={{ p: 0, overflowX: 'auto' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2fr 1fr 40px', minWidth: 600, px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['navn', 'Navn'], ['rolle', 'Rolle'], ['kull', 'Kull tildelt'], ['status', 'Status'], ['a', '']].map(([id, label]) => (
             <T key={id} eid={`edu-fk-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
@@ -225,7 +225,7 @@ export function FacultyTab() {
             <T eid="edu-fk-empty" sx={{ color: 'rgba(255,255,255,0.72)', display: 'block' }}>Ingen fakultetsmedlemmer ennå. Inviter lærere og veiledere, og koble dem til kull.</T>
           </Box>
         ) : faculty.map((f) => (
-          <Box key={f.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2fr 1fr 40px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)', gap: 1 }}>
+          <Box key={f.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2fr 1fr 40px', minWidth: 600, alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)', gap: 1 }}>
             <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
               <Avatar sx={{ width: 34, height: 34, fontSize: 12, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(f.name)}</Avatar>
               <Box sx={{ minWidth: 0 }}>

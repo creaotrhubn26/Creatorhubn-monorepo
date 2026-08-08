@@ -203,7 +203,7 @@ export function IndustryTab() {
       </Box>
 
       {/* Student-tabell */}
-      <Panel sx={{ p: 0, overflow: 'hidden' }}>
+      <Panel sx={{ p: 0, overflowX: 'auto' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <T eid="edu-br-list-title" sx={{ fontWeight: 700, fontSize: 15, mr: 1 }}>Avgangsstudenter</T>
           <Select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} size="small" displayEmpty IconComponent={CaretIcon}
@@ -218,7 +218,7 @@ export function IndustryTab() {
           </Stack>
         </Stack>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', minWidth: 560, px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['student', 'Student'], ['kull', 'Kull'], ['status', 'Talent-status'], ['a', '']].map(([id, label]) => (
             <T key={id} eid={`edu-br-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
@@ -231,7 +231,7 @@ export function IndustryTab() {
         ) : visible.map((r) => {
           const sc = statusChip(r);
           return (
-            <Box key={r.studentId} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <Box key={r.studentId} sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2.2fr 100px', minWidth: 560, alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
                 <Avatar sx={{ width: 32, height: 32, fontSize: 11.5, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(r.name)}</Avatar>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</Typography>

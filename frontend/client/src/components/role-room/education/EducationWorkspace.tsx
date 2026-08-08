@@ -24,7 +24,7 @@ import educationLtiService from './educationLtiService';
 import { RoleRoomEduLogo } from './RoleRoomEduLogo';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
-  Box, Typography, Card, CardContent, Chip, Stack, InputBase, IconButton, Tooltip, Avatar,
+  Box, Typography, Card, CardContent, Chip, Stack, InputBase, IconButton, Tooltip, Avatar, Drawer,
 } from '@mui/material';
 import {
   School as SchoolIcon,
@@ -45,6 +45,7 @@ import {
   UnfoldMore as SwitchIcon,
   ChatBubbleOutline as FeedbackIcon,
   KeyboardArrowDown as CaretIcon,
+  Menu as MenuIcon,
 } from '@mui/icons-material';
 
 export type EducationTabId =
@@ -98,6 +99,31 @@ function EmptyState({ tab }: { tab: EducationTabDef }) {
   );
 }
 
+/** Nav-lista — delt mellom desktop-sidemenyen og mobil-Draweren. */
+function NavItems({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavigate: (t: EducationTabId) => void }) {
+  return (
+    <Stack spacing={0.4} sx={{ flex: 1, overflow: 'auto' }}>
+      {EDUCATION_TABS.map((t) => {
+        const active = t.id === activeTab;
+        return (
+          <Box key={t.id} onClick={() => onNavigate(t.id)} data-edit-id={`edu-nav-${t.id}`} sx={{
+            display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.05, borderRadius: 2, cursor: 'pointer',
+            color: active ? '#fff' : 'rgba(255,255,255,0.76)',
+            bgcolor: active ? 'rgba(139,92,246,0.16)' : 'transparent',
+            boxShadow: active ? 'inset 3px 0 0 #8B5CF6' : 'none',
+            transition: 'background .15s, color .15s',
+            '&:hover': { bgcolor: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', color: '#fff' },
+            '& svg': { fontSize: 20, color: active ? ACCENT : 'inherit' },
+          }}>
+            {t.icon}
+            <Typography data-edit-id={`edu-nav-lbl-${t.id}`} sx={{ fontSize: 13.5, fontWeight: active ? 700 : 500 }}>{t.label}</Typography>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
 function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavigate: (t: EducationTabId) => void }) {
   return (
     <Box component="nav" sx={{
@@ -116,25 +142,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
       </Box>
 
       {/* Nav */}
-      <Stack spacing={0.4} sx={{ flex: 1, overflow: 'auto' }}>
-        {EDUCATION_TABS.map((t) => {
-          const active = t.id === activeTab;
-          return (
-            <Box key={t.id} onClick={() => onNavigate(t.id)} data-edit-id={`edu-nav-${t.id}`} sx={{
-              display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.05, borderRadius: 2, cursor: 'pointer',
-              color: active ? '#fff' : 'rgba(255,255,255,0.76)',
-              bgcolor: active ? 'rgba(139,92,246,0.16)' : 'transparent',
-              boxShadow: active ? 'inset 3px 0 0 #8B5CF6' : 'none',
-              transition: 'background .15s, color .15s',
-              '&:hover': { bgcolor: active ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', color: '#fff' },
-              '& svg': { fontSize: 20, color: active ? ACCENT : 'inherit' },
-            }}>
-              {t.icon}
-              <Typography data-edit-id={`edu-nav-lbl-${t.id}`} sx={{ fontSize: 13.5, fontWeight: active ? 700 : 500 }}>{t.label}</Typography>
-            </Box>
-          );
-        })}
-      </Stack>
+      <NavItems activeTab={activeTab} onNavigate={onNavigate} />
 
       {/* Kom-i-gang-kortet fjernet: duplikerte Oversikt-sjekklisten (én
           vedvarende onboarding-flate holder) og kolliderte med cookie-kontrollen
@@ -156,7 +164,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
   );
 }
 
-function TopBar({ onHelp }: { onHelp: () => void }) {
+function TopBar({ onHelp, onMenu }: { onHelp: () => void; onMenu: () => void }) {
   const now = new Date();
   const dateLabel = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: '2-digit' }) +
     ' ' + now.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
@@ -166,6 +174,12 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
       borderBottom: '1px solid rgba(255,255,255,0.06)', bgcolor: 'rgba(10,10,10,0.6)',
       backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 5,
     }}>
+      {/* Hamburger — åpner nav-Draweren (kun mobil/nettbrett-portrett, der
+          sidemenyen er skjult). Uten denne kunne man ikke bytte fane på mobil. */}
+      <IconButton onClick={onMenu} aria-label="Åpne meny" sx={{ display: { xs: 'inline-flex', md: 'none' }, color: '#fff', ml: -0.5 }}>
+        <MenuIcon />
+      </IconButton>
+
       {/* Modus-velger */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', bgcolor: 'rgba(139,92,246,0.1)', flexShrink: 0 }}>
         <SchoolIcon sx={{ fontSize: 17, color: ACCENT }} />
@@ -204,6 +218,7 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
   const [isDeepLink] = useState(() => { educationLtiService.captureLaunchContext(); return educationLtiService.isDeepLinkMode(); });
   const [activeTab, setActiveTab] = useState<EducationTabId>('overview');
   const [tourOpen, setTourOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // «Legg til oppgave» fra en produksjon → forhåndsvelg produksjonen i Oppgaver.
   const [assignmentPrefillProd, setAssignmentPrefillProd] = useState<string | null>(null);
   const active = EDUCATION_TABS.find((t) => t.id === activeTab) ?? EDUCATION_TABS[0];
@@ -240,8 +255,20 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff' }}>
       <EducationTour open={tourOpen} onClose={() => setTourOpen(false)} onNavigate={(tab) => setActiveTab(tab)} />
       <Sidebar activeTab={activeTab} onNavigate={setActiveTab} />
+
+      {/* Mobil-nav: temporær Drawer med samme nav-liste (sidemenyen er skjult
+          under md). Lukkes når man velger en fane. */}
+      <Drawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)}
+        ModalProps={{ keepMounted: true }}
+        sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: 272, boxSizing: 'border-box', p: 1.75, bgcolor: '#0c0816', color: '#fff', borderRight: '1px solid rgba(255,255,255,0.08)' } }}>
+        <Box sx={{ px: 0.75, pt: 0.5, pb: 1, mb: 0.5 }}>
+          <RoleRoomEduLogo markSize={44} />
+        </Box>
+        <NavItems activeTab={activeTab} onNavigate={(t) => { setActiveTab(t); setMobileNavOpen(false); }} />
+      </Drawer>
+
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <TopBar onHelp={() => setTourOpen(true)} />
+        <TopBar onHelp={() => setTourOpen(true)} onMenu={() => setMobileNavOpen(true)} />
         <Box sx={{ flex: 1, position: 'relative' }}>
           {/* Ambient The Role Room-backdrop — KUN på Oversikt (var tidligere på
               hver fane = dekorativ støy + bildets venstre kant leste som en

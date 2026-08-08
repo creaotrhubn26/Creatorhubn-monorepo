@@ -443,7 +443,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             </Button>
           </Panel>
 
-          <Panel sx={{ p: 0, overflow: 'hidden' }}>
+          <Panel sx={{ p: 0, overflowX: 'auto' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
               <T eid="edu-ks-studenttbl-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>{selected ? `Studenter i ${selected.name} (${visibleStudents.length}${studentQuery.trim() ? ` av ${students.length}` : ''})` : 'Velg et kull'}</T>
               <Stack direction="row" spacing={1}>
@@ -462,7 +462,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
                 <Button variant="outlined" startIcon={<InviteIcon />} onClick={handleAddStudent} disabled={!addName.trim() || busy} sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', borderRadius: 2, whiteSpace: 'nowrap' }}>Legg til</Button>
               </Stack>
             )}
-            <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: BORDER, borderBottom: BORDER }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', minWidth: 560, px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: BORDER, borderBottom: BORDER }}>
               {[['student', 'Student'], ['kull', 'Kull'], ['gruppe', 'Gruppe'], ['status', 'Status'], ['a', '']].map(([id, label]) => (
                 <T key={id} eid={`edu-ks-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
               ))}
@@ -476,7 +476,7 @@ export function CohortsTab({ onNavigate }: { onNavigate?: (t: EducationTabId) =>
             ) : visibleStudents.map((s) => {
               const b = statusBadge(s.status);
               return (
-                <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', alignItems: 'center', px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px', minWidth: 560, alignItems: 'center', px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0 }}>
                     <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff' }}>{initials(s.name)}</Avatar>
                     <Box sx={{ minWidth: 0 }}>
