@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import {
   Hub as LtiIcon, ContentCopy as CopyIcon, Check as CheckIcon,
-  Add as AddIcon, Delete as DeleteIcon, OpenInNew as OpenIcon,
+  Add as AddIcon, OpenInNew as OpenIcon,
 } from '@mui/icons-material';
 import { apiFetch } from '@/lib/queryClient';
 
@@ -27,6 +27,7 @@ interface ToolConfig {
 }
 interface Platform {
   id: string; name: string | null; issuer: string; client_id: string; created_at: string;
+  status?: string; product_family?: string; registered_via?: string;
 }
 
 const EMPTY_FORM = { name: '', issuer: '', client_id: '', deployment_id: '', auth_login_url: '', token_url: '', jwks_url: '' };
@@ -68,6 +69,15 @@ export default function LtiPlatformsPanel() {
   };
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const approvePlatform = async (id: string) => {
+    await apiFetch(`/api/role-room/lti/platforms/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+    await load();
+  };
+  const rejectPlatform = async (id: string) => {
+    await apiFetch(`/api/role-room/lti/platforms/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await load();
+  };
 
   const register = async () => {
     if (busy) return;
@@ -130,6 +140,16 @@ export default function LtiPlatformsPanel() {
         </Card>
       )}
 
+      {/* Dynamic Registration — Moodle/Canvas-admin limer denne inn */}
+      <Box sx={{ mb: 3, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>Selvbetjent registrering (Moodle / Canvas)</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          LMS-admin limer denne URL-en inn i «External tool → LTI Advantage → Dynamic registration».
+          Plattformen dukker opp som «Venter godkjenning» under.
+        </Typography>
+        <TextField size="small" fullWidth value={`${window.location.origin}/api/role-room/lti/register`} InputProps={{ readOnly: true }} />
+      </Box>
+
       {/* Registrer plattform */}
       <Card variant="outlined">
         <CardContent sx={{ display: 'grid', gap: 1.5 }}>
@@ -170,7 +190,15 @@ export default function LtiPlatformsPanel() {
                     <Typography sx={{ fontWeight: 600 }}>{p.name || p.issuer}</Typography>
                     <Typography sx={{ fontSize: 12, color: 'text.secondary', fontFamily: 'monospace' }}>{p.issuer} · {p.client_id}</Typography>
                   </Box>
-                  <IconButton size="small" disabled aria-label="Fjern (kommer)"><DeleteIcon fontSize="small" /></IconButton>
+                  <Box>
+                    <Chip size="small" label={p.status === 'approved' ? 'Godkjent' : 'Venter godkjenning'}
+                      color={p.status === 'approved' ? 'success' : 'warning'} variant="outlined" sx={{ mr: 1 }} />
+                    {p.product_family && <Chip size="small" label={p.product_family} variant="outlined" sx={{ mr: 1 }} />}
+                    {p.status !== 'approved' && (
+                      <Button size="small" variant="contained" onClick={() => approvePlatform(p.id)} sx={{ mr: 1 }}>Godkjenn</Button>
+                    )}
+                    <Button size="small" color="error" onClick={() => rejectPlatform(p.id)}>Fjern</Button>
+                  </Box>
                 </Stack>
               ))}
             </Stack>
