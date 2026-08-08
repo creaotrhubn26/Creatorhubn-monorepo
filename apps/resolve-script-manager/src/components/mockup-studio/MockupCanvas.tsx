@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { rasterizeMockup, measureTextHeight } from './mockupRaster';
+import { parseMermaidMindmap } from './mockupMindmap';
 import { deviceHeight, type MockupDoc } from './mockupStudioModel';
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 
@@ -29,10 +30,18 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ kind: 'device' | 'text'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   const dragAbort = useRef<AbortController | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     const scale = PREVIEW_W / doc.canvas.w;
+    // Mind map-modus: valider kilden så en tom/ugyldig Mermaid ikke bare «gjør ingenting».
+    if (doc.mindmap != null) {
+      const tree = parseMermaidMindmap(doc.mindmap);
+      setRenderError(!tree || tree.children.length === 0
+        ? 'Mind map-kilden er tom eller ugyldig — sjekk Mermaid-syntaksen (rot-node + innrykkede grener).'
+        : null);
+    }
     rasterizeMockup(doc, scale).then((off) => {
       if (!alive) return;
       const cv = canvasRef.current;
@@ -40,7 +49,13 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       cv.width = off.width; cv.height = off.height;
       const ctx = cv.getContext('2d');
       if (ctx) ctx.drawImage(off, 0, 0);
-    }).catch(() => { /* behold forrige frame */ });
+      if (doc.mindmap == null) setRenderError(null); // vellykket vanlig render
+    }).catch((e) => {
+      // IKKE lenger stille: behold forrige frame MEN vis at noe feilet.
+      if (!alive) return;
+      console.error('[mockup-studio] preview-render', e);
+      setRenderError('Kunne ikke tegne forhåndsvisningen — sjekk innholdet/kilden.');
+    });
     return () => { alive = false; };
   }, [doc]);
 
@@ -137,6 +152,18 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     >
       <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
 
+      {/* Feil-banner: gjør en mislykket/ugyldig render synlig i stedet for stille «ingenting skjedde». */}
+      {renderError && (
+        <div role="alert" style={{
+          position: 'absolute', left: 12, right: 12, top: 12, zIndex: 5,
+          background: 'rgba(120,20,20,0.92)', color: '#fff', borderRadius: 8,
+          padding: '8px 12px', fontSize: 13, lineHeight: 1.4, pointerEvents: 'none',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+        }}>
+          ⚠️ {renderError}
+        </div>
+      )}
+
       {/* Enheter — dra for å flytte */}
       {doc.devices.map((dev) => {
         const h = deviceHeight(dev);
@@ -145,12 +172,14 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           <button
             key={dev.id}
             onPointerDown={(e) => beginDrag('device', dev.id, e)}
+            aria-label={`Enhet: ${dev.variant}${active ? ' (valgt)' : ''} — dra for å flytte, piltaster nudger, Delete fjerner`}
+            aria-pressed={active}
             title="Dra for å flytte · piltaster nudger · Delete fjerner"
             style={{
               position: 'absolute', left: pct(dev.x, W), top: pct(dev.y, H), width: pct(dev.w, W), height: pct(h, H),
               transform: `rotate(${dev.rotation}deg)`, transformOrigin: 'center',
               background: 'transparent', border: active ? '2px solid #22d3ee' : '2px solid transparent',
-              borderRadius: 8, padding: 0, cursor: overlayCursor, outline: 'none', touchAction: 'none',
+              borderRadius: 8, padding: 0, cursor: overlayCursor, touchAction: 'none',
             }}
           />
         );
@@ -178,8 +207,10 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
             key={t.id}
             onPointerDown={(e) => beginDrag('text', t.id, e)}
             onDoubleClick={(e) => { e.stopPropagation(); select({ kind: 'text', id: t.id }); setEditingId(t.id); }}
+            aria-label={`Tekst: ${t.text.slice(0, 40)}${active ? ' (valgt)' : ''} — dra for å flytte, dobbeltklikk for å redigere`}
+            aria-pressed={active}
             title="Dra for å flytte · dobbeltklikk = rediger · piltaster nudger"
-            style={{ ...box, background: active ? 'rgba(34,211,238,0.08)' : 'transparent', border: active ? '2px solid #22d3ee' : '2px dashed transparent', borderRadius: 6, padding: 0, cursor: overlayCursor, outline: 'none', touchAction: 'none' }}
+            style={{ ...box, background: active ? 'rgba(34,211,238,0.08)' : 'transparent', border: active ? '2px solid #22d3ee' : '2px dashed transparent', borderRadius: 6, padding: 0, cursor: overlayCursor, touchAction: 'none' }}
           />
         );
       })}
