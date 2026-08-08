@@ -157,6 +157,21 @@ const PRO_NAV: { key: Screen['name']; label: string; icon: keyof typeof Icons }[
   { key: 'audit', label: 'Revisjonslogg', icon: 'shield' },
 ];
 
+/**
+ * «Enkel visning» viser bare det en novise trenger for å komme gjennom året:
+ * daglig løkke + salg + novise-hjelpen + HELE avslutning/skatt (nordstjernen) +
+ * rapporter og innstillinger. Power-verktøy (avtaler, kalender, svindelkontroll,
+ * faste utgifter, lært praksis, skatteassistent, prosjekter, Fiken-import, API,
+ * KI) skjules til brukeren velger «Standard» eller «Regnskapsfører».
+ */
+const SIMPLE_SCREENS = new Set<Screen['name']>([
+  'overview', 'documents', 'gmail', 'bank', 'payments',
+  'invoicing',
+  'ask', 'deduction', 'planning', 'deadlines',
+  'period-close', 'vat', 'tax', 'assets', 'year-end',
+  'reports', 'org',
+]);
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [verifyingMagic, setVerifyingMagic] = useState(false);
@@ -175,6 +190,11 @@ export default function App() {
     setViewMode(mode);
     sessionStorage.setItem('reknaren.viewMode', mode);
     if (mode !== 'pro' && ['ledger', 'journal', 'audit'].includes(screen.name)) {
+      setScreen({ name: 'overview' });
+      return;
+    }
+    // Bytter til Enkel visning mens en nå-skjult skjerm er åpen → tilbake til Oversikt.
+    if (mode === 'simple' && !SIMPLE_SCREENS.has(screen.name)) {
       setScreen({ name: 'overview' });
     }
   };
@@ -245,22 +265,27 @@ export default function App() {
           </div>
           <OrgSwitcher currentId={orgId} onSwitch={switchOrg} onAdd={() => setAddingOrg(true)} />
           <nav aria-label="Hovedmeny">
-            {NAV_GROUPS.map((group) => (
-              <div key={group.section ?? 'daglig'}>
-                {group.section && <div className="nav-section">{group.section}</div>}
-                {group.items.map((item) => (
-                  <button
-                    key={item.key}
-                    className={`navlink${screen.name === item.key ? ' active' : ''}`}
-                    aria-current={screen.name === item.key ? 'page' : undefined}
-                    onClick={() => setScreen({ name: item.key } as Screen)}
-                  >
-                    {Icons[item.icon]}
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ))}
+            {NAV_GROUPS.map((group) => {
+              const items =
+                viewMode === 'simple' ? group.items.filter((i) => SIMPLE_SCREENS.has(i.key)) : group.items;
+              if (items.length === 0) return null;
+              return (
+                <div key={group.section ?? 'daglig'}>
+                  {group.section && <div className="nav-section">{group.section}</div>}
+                  {items.map((item) => (
+                    <button
+                      key={item.key}
+                      className={`navlink${screen.name === item.key ? ' active' : ''}`}
+                      aria-current={screen.name === item.key ? 'page' : undefined}
+                      onClick={() => setScreen({ name: item.key } as Screen)}
+                    >
+                      {Icons[item.icon]}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
             {viewMode === 'pro' && (
               <>
                 <div className="nav-section">Regnskapsfører</div>
