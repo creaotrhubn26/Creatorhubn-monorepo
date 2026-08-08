@@ -71,6 +71,7 @@ import {
 } from './mockupCapture';
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
+import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
@@ -993,6 +994,20 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
   const textHex = resolveColor(text.color, canvas);
   const contrast = contrastRatio(resolveBaseBg(canvas), textHex);
   const contrastOk = contrast >= 4.5;
+  const [variants, setVariants] = useState<string[] | null>(null);
+  const [vBusy, setVBusy] = useState(false);
+  const [vErr, setVErr] = useState<string | null>(null);
+  const runVariants = async () => {
+    setVErr(null); setVBusy(true);
+    try {
+      const v = await aiCopyVariants(text.text, text.role);
+      setVariants(v);
+      if (!v.length) setVErr('Fikk ingen varianter — prøv igjen.');
+    } catch (e) {
+      console.error('[mockup-studio] copy-variants', e);
+      setVErr('AI-varianter gikk ikke — sjekk at du er innlogget (RR-token).');
+    } finally { setVBusy(false); }
+  };
   return (
     <div>
       <SectionLabel>{TEXT_ROLE_LABELS[text.role]}</SectionLabel>
@@ -1008,6 +1023,20 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
           </div>
         )}
       </Field>
+      <div style={{ marginBottom: 12 }}>
+        <button
+          disabled={vBusy || !copyVariantsAvailable() || !text.text.trim()}
+          onClick={() => void runVariants()}
+          style={{ ...listBtn, width: '100%', opacity: vBusy || !copyVariantsAvailable() || !text.text.trim() ? 0.6 : 1 }}
+          title={copyVariantsAvailable() ? 'La AI foreslå tone-varianter av denne teksten (kortere / mer selgende / roligere / mer konkret)' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+        >
+          {vBusy ? 'Skriver…' : '✨ Tekst-varianter'}
+        </button>
+        {vErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 6 }}>{vErr}</div>}
+        {variants && variants.map((v, i) => (
+          <button key={i} onClick={() => { patchText(text.id, { text: v }); setVariants(null); }} style={{ ...listBtn, width: '100%', textAlign: 'left', marginTop: 6, whiteSpace: 'normal', lineHeight: 1.4 }} title="Bruk denne varianten">{v}</button>
+        ))}
+      </div>
       <Field label={`Størrelse: ${Math.round(text.size)} px`}>
         <input type="range" min={12} max={140} value={text.size} onChange={(e) => patchText(text.id, { size: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>
