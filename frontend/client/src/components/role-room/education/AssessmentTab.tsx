@@ -90,7 +90,7 @@ export function AssessmentTab() {
   const setDraft = (id: string, patch: Partial<{ grade: string; feedback: string }>) =>
     setDrafts((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
-  const save = async (it: AssessmentItem, markReviewed: boolean) => {
+  const save = async (it: AssessmentItem, markReviewed: boolean): Promise<boolean> => {
     const draft = drafts[it.submissionId] ?? { grade: '', feedback: '' };
     setSavingId(it.submissionId);
     try {
@@ -104,8 +104,10 @@ export function AssessmentTab() {
       setItems((prev) => prev.map((x) => x.submissionId === it.submissionId
         ? { ...x, status, grade: draft.grade.trim() || null, feedback: draft.feedback.trim() || null, reviewedAt: markReviewed ? new Date().toISOString() : x.reviewedAt }
         : x));
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kunne ikke lagre vurdering');
+      return false;
     } finally {
       setSavingId(null);
     }
@@ -353,9 +355,25 @@ export function AssessmentTab() {
                         sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>
                         Lagre utkast
                       </Button>
-                      <Button size="small" variant="contained" startIcon={<DoneIcon />} onClick={() => save(it, true)} disabled={savingId === it.submissionId}
+                      <Button size="small" variant="contained" startIcon={<DoneIcon />}
+                        onClick={async () => {
+                          const ok = await save(it, true);
+                          // Arbeidskrav: verdikt MÅ til Canvas for å telle mot eksamensklar
+                          // (Canvas = fasit). Auto-push så «Marker vurdert» ikke etterlater en
+                          // lokal godkjenning som ikke driver eksamens-gaten.
+                          if (ok && it.isArbeidskrav && launchId && (drafts[it.submissionId]?.grade || '').trim()) {
+                            await pushToLms(it);
+                            // Oppdater eksamensklar-status om den alt vises (ingen overraskende Canvas-kall).
+                            if (readiness) await loadReadiness();
+                          }
+                        }}
+                        disabled={savingId === it.submissionId || pushingId === it.submissionId}
                         sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: ACCENT }, textTransform: 'none' }}>
-                        {savingId === it.submissionId ? 'Lagrer…' : it.status === 'reviewed' ? 'Oppdater vurdering' : 'Marker vurdert'}
+                        {savingId === it.submissionId ? 'Lagrer…'
+                          : pushingId === it.submissionId ? 'Sender til Canvas…'
+                          : it.status === 'reviewed' ? 'Oppdater vurdering'
+                          : it.isArbeidskrav && launchId ? 'Godkjenn i Canvas'
+                          : 'Marker vurdert'}
                       </Button>
                     </Stack>
                   </CardContent>
