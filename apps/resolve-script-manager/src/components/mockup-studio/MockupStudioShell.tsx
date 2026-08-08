@@ -72,6 +72,7 @@ import {
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
 import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
+import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
@@ -961,9 +962,18 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           </Field>
         </>
       )}
+      <Field label="Perspektiv (2.5D)">
+        <select value={device.perspective ?? 'none'} onChange={(e) => patchDevice(device.id, { perspective: e.target.value as MockupPerspective })} style={textInput}>
+          {PERSPECTIVE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+      </Field>
       <label style={checkRow}>
         <input type="checkbox" checked={device.shadow} onChange={(e) => patchDevice(device.id, { shadow: e.target.checked })} />
         Skygge
+      </label>
+      <label style={checkRow}>
+        <input type="checkbox" checked={device.reflection ?? false} onChange={(e) => patchDevice(device.id, { reflection: e.target.checked })} />
+        Refleksjon
       </label>
       <Field label="Plassering (px)">
         <div style={{ display: 'flex', gap: 6 }}>

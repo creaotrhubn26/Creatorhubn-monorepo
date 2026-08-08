@@ -49,6 +49,10 @@ export interface MockupDeviceSlot {
   focusY?: number;
   /** Myk kontaktskygge under enheten. */
   shadow: boolean;
+  /** 2.5D perspektiv-preset (affint). Default 'none' (rett på). Watch ignorerer. */
+  perspective?: import('./mockupPerspective').MockupPerspective;
+  /** Speilrefleksjon under enheten (fader ut). */
+  reflection?: boolean;
 }
 
 export type MockupTextRole = 'eyebrow' | 'title' | 'body' | 'tag';

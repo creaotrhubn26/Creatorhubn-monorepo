@@ -14,6 +14,7 @@
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, type Reveal } from './mockupMotion';
+import { matrixFor, tiltsLeft } from './mockupPerspective';
 import {
   type MockupDoc,
   type MockupDeviceSlot,
@@ -269,6 +270,53 @@ async function drawLogo(ctx: CanvasRenderingContext2D, canvas: MockupCanvasSpec)
   }
 }
 
+/**
+ * Rendrer en innrammet enhet (ramme + skjermbilde klippet til skjerm-hullet)
+ * til et gjennomsiktig offscreen-canvas i rammens NATIVE oppløsning. Brukes så
+ * som ett lag av drawDevice for perspektiv + skygge + refleksjon.
+ * ponytail: én offscreen-render per enhet per frame (motion). Cache per (fil,geom)
+ * hvis video-eksport blir treg.
+ */
+async function renderDeviceFrameLayer(doc: MockupDoc, dev: MockupDeviceSlot, spec: (typeof DEVICE_FRAMES)[keyof typeof DEVICE_FRAMES], frame: HTMLImageElement): Promise<HTMLCanvasElement> {
+  const natW = frame.naturalWidth || frame.width || 1000;
+  const natH = frame.naturalHeight || frame.height || 1000;
+  const off = document.createElement('canvas');
+  off.width = natW; off.height = natH;
+  const octx = off.getContext('2d');
+  if (!octx) return off;
+  octx.drawImage(frame, 0, 0, natW, natH);
+  const sx = spec.screen.x * natW, sy = spec.screen.y * natH, sw = spec.screen.w * natW, sh = spec.screen.h * natH, r = spec.radius * natW;
+  octx.save();
+  roundRectPath(octx, sx, sy, sw, sh, r);
+  octx.clip();
+  if (dev.image) {
+    try { drawFitted(octx, await loadImage(dev.image), sx, sy, sw, sh, dev.fit, dev.focusX, dev.focusY); }
+    catch { drawScreenPlaceholder(octx, doc, sx, sy, sw, sh); }
+  } else {
+    drawScreenPlaceholder(octx, doc, sx, sy, sw, sh);
+  }
+  octx.restore();
+  return off;
+}
+
+/** Speilrefleksjon under enheten: mirror + vertikal alpha-fade (via temp-canvas). */
+function drawReflection(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement, x: number, y: number, w: number, h: number): void {
+  const tmp = document.createElement('canvas');
+  tmp.width = layer.width; tmp.height = layer.height;
+  const tctx = tmp.getContext('2d');
+  if (!tctx) return;
+  tctx.translate(0, tmp.height); tctx.scale(1, -1); // vertikal speiling
+  tctx.drawImage(layer, 0, 0);
+  tctx.setTransform(1, 0, 0, 1, 0, 0);
+  tctx.globalCompositeOperation = 'destination-in'; // fade nær-kant→borte
+  const g = tctx.createLinearGradient(0, 0, 0, tmp.height);
+  g.addColorStop(0, 'rgba(0,0,0,0.32)');
+  g.addColorStop(0.45, 'rgba(0,0,0,0)');
+  tctx.fillStyle = g;
+  tctx.fillRect(0, 0, tmp.width, tmp.height);
+  ctx.drawImage(tmp, x, y + h, w, h);
+}
+
 async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot): Promise<void> {
   const w = dev.w;
   const h = deviceHeight(dev);
@@ -281,50 +329,42 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   ctx.rotate((dev.rotation * Math.PI) / 180);
   ctx.translate(-cx, -cy);
 
-  // Apple Watch tegnes syntetisk (ingen PNG-ramme, lisensfri).
+  // Apple Watch tegnes syntetisk (ingen PNG-ramme, lisensfri; ignorerer perspektiv).
   if (dev.variant === 'watch') {
     await drawWatch(ctx, doc, dev, w, h);
     ctx.restore();
     return;
   }
 
+  // 2.5D perspektiv-transform rundt senter (affint) — 'none' = ingen.
+  const m = matrixFor(dev.perspective);
+  if (m) {
+    ctx.translate(cx, cy);
+    ctx.transform(m.a, m.b, m.c, m.d, 0, 0);
+    ctx.translate(-cx, -cy);
+  }
+
   const spec = DEVICE_FRAMES[dev.variant];
-  // Kontaktskygge følger rammens alfa (device-formet, ikke en boks).
   const frame = await loadImage(spec.src);
+  const layer = await renderDeviceFrameLayer(doc, dev, spec, frame);
+
+  // Kontakt-/kast-skygge: tegn laget med Multiply-lignende mørk skygge; selve
+  // laget dekkes av den ekte enheten over, så bare skyggen (utenfor) vises.
   if (dev.shadow) {
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.34)';
-    ctx.shadowBlur = w * 0.05;
-    ctx.shadowOffsetY = w * 0.03;
-    ctx.drawImage(frame, dev.x, dev.y, w, h);
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = w * 0.06;
+    ctx.shadowOffsetX = tiltsLeft(dev.perspective) ? -w * 0.02 : w * 0.02;
+    ctx.shadowOffsetY = w * 0.045;
+    ctx.drawImage(layer, dev.x, dev.y, w, h);
     ctx.restore();
   }
 
-  // Skjermbilde inn i skjerm-hullet FØR rammen? Nei — rammens skjermflate er
-  // opak (svart), så vi tegner rammen først, deretter skjermbildet klippet til
-  // det avrundede skjerm-rektangelet OVER (samme lagdeling som FramedDevice).
-  ctx.drawImage(frame, dev.x, dev.y, w, h);
+  // Refleksjon under (følger perspektiv/rotasjon siden vi er inne i transformen).
+  if (dev.reflection) drawReflection(ctx, layer, dev.x, dev.y, w, h);
 
-  const sx = dev.x + spec.screen.x * w;
-  const sy = dev.y + spec.screen.y * h;
-  const sw = spec.screen.w * w;
-  const sh = spec.screen.h * h;
-  const r = spec.radius * w;
-
-  ctx.save();
-  roundRectPath(ctx, sx, sy, sw, sh, r);
-  ctx.clip();
-  if (dev.image) {
-    try {
-      const shot = await loadImage(dev.image);
-      drawFitted(ctx, shot, sx, sy, sw, sh, dev.fit, dev.focusX, dev.focusY);
-    } catch {
-      drawScreenPlaceholder(ctx, doc, sx, sy, sw, sh);
-    }
-  } else {
-    drawScreenPlaceholder(ctx, doc, sx, sy, sw, sh);
-  }
-  ctx.restore();
+  // Selve enheten.
+  ctx.drawImage(layer, dev.x, dev.y, w, h);
 
   ctx.restore();
 }
