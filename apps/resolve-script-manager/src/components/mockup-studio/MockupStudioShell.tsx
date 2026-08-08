@@ -72,6 +72,7 @@ import {
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
 import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
+import { aiLocalizeTexts, localizeAvailable, LOCALIZE_LANGS } from './mockupAiLocalize';
 import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective';
 import { generateSceneBackground, aiBackgroundAvailable } from './mockupAiBackground';
 import { aiProductMindmap } from './mockupMindmap';
@@ -306,6 +307,24 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runLocalize = async (code: string, label: string) => {
+    if (videoBusy) return;
+    const texts = store.doc.texts.map((t) => ({ id: t.id, text: t.text }));
+    if (texts.length === 0) { setExportMsg('Ingen tekst å oversette.'); return; }
+    setVideoBusy(true);
+    try {
+      setExportMsg(`🌐 Oversetter til ${label}…`);
+      const map = await aiLocalizeTexts(texts, label);
+      let n = 0;
+      for (const [id, translated] of Object.entries(map)) { if (translated.trim()) { store.patchText(id, { text: translated }); n++; } }
+      setExportMsg(n > 0 ? `✓ Oversatt ${n} tekst(er) til ${label}.` : 'Fikk ingen oversettelse — prøv igjen.');
+      void code;
+    } catch (e) {
+      console.error('[mockup-studio] localize', e);
+      setExportMsg('Oversettelse gikk ikke — sjekk at du er innlogget (RR-token).');
+    } finally { setVideoBusy(false); }
+  };
+
   const runExportGif = async (cfg: MotionConfig) => {
     if (videoBusy) return;
     setVideoBusy(true);
@@ -429,6 +448,16 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
+        <select
+          onChange={(e) => { const c = e.target.value; e.target.selectedIndex = 0; const l = LOCALIZE_LANGS.find((x) => x.code === c); if (l) void runLocalize(l.code, l.label); }}
+          disabled={videoBusy || !localizeAvailable()}
+          value=""
+          style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy || !localizeAvailable() ? 0.5 : 1 }}
+          title={localizeAvailable() ? 'Oversett all tekst til et annet språk (App Store / Play-lokalisering)' : 'Krever innlogget AI (RR-token)'}
+        >
+          <option value="" disabled>🌐 Oversett</option>
+          {LOCALIZE_LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
         <select
           onChange={(e) => {
             const v = e.target.value; e.target.selectedIndex = 0;

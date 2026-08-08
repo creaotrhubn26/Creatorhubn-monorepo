@@ -18,7 +18,7 @@ import { buildSvgBase64 } from './mockupSvg';
 import { buildEditablePsdViaBridge, isBridgeConnected } from './mockupPhotoshop';
 import { runPreflight, preflightSummary, SEVERITY_LABEL, type PreflightIssue, type PreflightSeverity } from './mockupPreflight';
 import { useMockupStudio } from './mockupStudioStore';
-import { safeDocName, addExport, setProjectStatus, applyFormat, SOCIAL_FORMATS } from './mockupStudioModel';
+import { safeDocName, addExport, setProjectStatus, applyFormat, SOCIAL_FORMATS, APPSTORE_FORMATS } from './mockupStudioModel';
 
 const C = {
   overlay: 'rgba(6,8,13,0.72)',
@@ -65,6 +65,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<ExportFormat>('png');
   const [scale, setScale] = useState<1 | 2 | 4>(2);
   const [socialPack, setSocialPack] = useState(false);
+  const [packSet, setPackSet] = useState<'social' | 'appstore'>('social');
   const [transparent, setTransparent] = useState(false);
   const [status, setStatus] = useState('');
   const [resultPath, setResultPath] = useState<string | null>(null);
@@ -119,13 +120,14 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         const dir = slash >= 0 ? path.slice(0, slash) : '.';
         const base = safeDocName(doc.name);
+        const formats = packSet === 'appstore' ? APPSTORE_FORMATS : SOCIAL_FORMATS;
         let lastPath = dir;
-        for (const fmt of SOCIAL_FORMATS) {
+        for (const fmt of formats) {
           setStatus(`Tegner ${fmt.label}…`);
           const data = await buildOne(applyFormat(doc, fmt), ext, scale, transparent && SUPPORTS_TRANSPARENT.includes(ext));
           lastPath = await demoWriteBinary(`${dir}/${base}-${fmt.id}.${ext}`, data);
         }
-        addExport(doc.name, `${ext.toUpperCase()} sosial-pakke (${SOCIAL_FORMATS.length} formater)`, dir);
+        addExport(doc.name, `${ext.toUpperCase()} ${packSet === 'appstore' ? 'App Store-pakke' : 'sosial-pakke'} (${formats.length} formater)`, dir);
         setProjectStatus(doc.id, 'exported');
         setResultPath(lastPath);
         setStatus('');
@@ -233,9 +235,18 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
               <>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={socialPack} onChange={(e) => setSocialPack(e.target.checked)} />
-                  Sosial-pakke: alle formater (kvadrat, story, portrett, landskap, LinkedIn)
+                  Format-pakke: reflow til alle formater i ett
                 </label>
-                {socialPack && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>Lagrer {SOCIAL_FORMATS.length} {format.toUpperCase()}-filer i valgt mappe, reflowet per format.</div>}
+                {socialPack && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                      {(['social', 'appstore'] as const).map((s) => (
+                        <button key={s} onClick={() => setPackSet(s)} style={{ ...chip, padding: '6px 12px', fontSize: 13, background: packSet === s ? C.accent : C.soft, color: packSet === s ? C.accentInk : C.ink }}>{s === 'social' ? 'Sosiale medier' : 'App Store / Play'}</button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.inkSoft }}>Lagrer {(packSet === 'appstore' ? APPSTORE_FORMATS : SOCIAL_FORMATS).length} {format.toUpperCase()}-filer i valgt mappe, reflowet per format.</div>
+                  </div>
+                )}
               </>
             )}
             {err && <div style={{ fontSize: 13, color: C.must, marginTop: 12 }}>{err}</div>}

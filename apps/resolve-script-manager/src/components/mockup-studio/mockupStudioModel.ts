@@ -692,6 +692,16 @@ export const MOCKUP_FORMATS: MockupFormat[] = [
 /** Sosiale formater for pakke-eksport (uten one-pager-kilden). */
 export const SOCIAL_FORMATS = MOCKUP_FORMATS.filter((f) => f.id !== 'onepager');
 
+/** App Store / Google Play skjermbilde-dimensjoner (portrett). Reflowes via applyFormat. */
+export const APPSTORE_FORMATS: MockupFormat[] = [
+  { id: 'ios_6_9', label: 'App Store iPhone 6.9″', w: 1290, h: 2796 },
+  { id: 'ios_6_5', label: 'App Store iPhone 6.5″', w: 1242, h: 2688 },
+  { id: 'ios_5_5', label: 'App Store iPhone 5.5″', w: 1242, h: 2208 },
+  { id: 'ios_ipad_13', label: 'App Store iPad 13″', w: 2048, h: 2732 },
+  { id: 'play_phone', label: 'Play telefon', w: 1080, h: 1920 },
+  { id: 'play_tablet', label: 'Play nettbrett', w: 1600, h: 2560 },
+];
+
 /** Grovt anslag på tekst-høyde (px) uten canvas (for reflow-stabling). */
 function estTextHeight(t: MockupTextSlot, w: number): number {
   const hard = Math.max(1, t.text.split('\n').length);
