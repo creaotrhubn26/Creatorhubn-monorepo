@@ -11,6 +11,7 @@ import { withTransaction } from '../db/pool.js';
 import { registerInvoicePayment } from '../invoicing/service.js';
 import { postJournalEntry, type PostedJournalEntry } from '../ledger/engine.js';
 import { newId } from '../shared/ids.js';
+import { money, moneyToDecimalString } from '../shared/money.js';
 import { ConflictError, NotFoundError, ValidationError } from '../shared/errors.js';
 
 export interface MatchSuggestion {
@@ -78,7 +79,8 @@ export async function suggestMatches(
 
   for (const row of rows) {
     if (usedTx.has(row.tx_id) || usedDoc.has(row.doc_id)) continue;
-    const amountKr = (BigInt(-row.amount_minor) / 100n).toString();
+    // Eksakt kroner med øre (ikke heltalls-divisjon som droppet ørene i forklaringen).
+    const amountKr = moneyToDecimalString(money(BigInt(-row.amount_minor), 'NOK')).replace('.', ',');
     let matchType: 'exact' | 'rule' | null = null;
     let explanation = '';
 
@@ -91,6 +93,9 @@ export async function suggestMatches(
     } else if (
       row.vendor_name &&
       row.counterparty &&
+      // Krev at leverandørnavnet normaliserer til noe reelt: en tom/for-kort nøkkel
+      // ga includes('') === true → falskt navnetreff på beløp alene.
+      normalize(row.vendor_name).length >= 3 &&
       normalize(row.counterparty).includes(normalize(row.vendor_name).slice(0, 12))
     ) {
       matchType = 'rule';

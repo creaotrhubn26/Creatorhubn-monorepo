@@ -283,6 +283,12 @@ function bankCallbackHtml(opts: { ok: boolean; error?: string | undefined; code?
 /** Nøkkelord som driver Gmail-søket etter bilag (norsk + engelsk). */
 const BILAG_KEYWORDS = ['faktura', 'kvittering', 'kreditnota', 'ordrebekreftelse', 'invoice', 'receipt', 'order confirmation'];
 
+/** En valgfri ÅÅÅÅ-MM-DD dato-query: bruk verdien bare hvis den har gyldig format,
+ *  ellers fallback. Hindrer at f.eks. ?to=abc blir en NaN-dato inn i rapport-SQL (500). */
+function isoDateParam(v: unknown, fallback: string): string {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : fallback;
+}
+
 export function createApiServer(deps: ApiDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
@@ -2001,7 +2007,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
           .object({
             customerId: z.string().uuid(),
             name: z.string().min(1).max(200),
-            amountMinor: z.string(),
+            amountMinor: z.string().regex(/^\d+$/, 'Beløp må være et ikke-negativt heltall i øre.'),
             cadence: z.enum(['monthly', 'quarterly', 'yearly', 'one_time']),
             startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
             endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
@@ -2223,12 +2229,9 @@ export function createApiServer(deps: ApiDeps): express.Express {
     async (req: AuthedRequest, res, next) => {
       try {
         const today = new Date().toISOString().slice(0, 10);
-        const toDate = typeof req.query.to === 'string' ? req.query.to : today;
+        const toDate = isoDateParam(req.query.to, today);
         // Standard: siste 12 måneder fram til i dag.
-        const fromDate =
-          typeof req.query.from === 'string'
-            ? req.query.from
-            : `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`;
+        const fromDate = isoDateParam(req.query.from, `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`);
         res.json(
           toJson(
             await detectBookkeepingErrors(deps.db, deps.rules, {
@@ -2252,9 +2255,8 @@ export function createApiServer(deps: ApiDeps): express.Express {
     async (req: AuthedRequest, res, next) => {
       try {
         const today = new Date().toISOString().slice(0, 10);
-        const toDate = typeof req.query.to === 'string' ? req.query.to : today;
-        const fromDate =
-          typeof req.query.from === 'string' ? req.query.from : `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`;
+        const toDate = isoDateParam(req.query.to, today);
+        const fromDate = isoDateParam(req.query.from, `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`);
         res.json(
           toJson(
             await detectFraudSignals(deps.db, deps.rules, {
@@ -2333,7 +2335,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const body = z
           .object({
-            significantThresholdMinor: z.union([z.string(), z.number()]).optional(),
+            significantThresholdMinor: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]).optional(),
             requiredApprovers: z.number().int().min(1).max(10).optional(),
             businessHoursStart: z.number().int().min(0).max(23).optional(),
             businessHoursEnd: z.number().int().min(1).max(24).optional(),
@@ -2363,9 +2365,8 @@ export function createApiServer(deps: ApiDeps): express.Express {
     async (req: AuthedRequest, res, next) => {
       try {
         const today = new Date().toISOString().slice(0, 10);
-        const toDate = typeof req.query.to === 'string' ? req.query.to : today;
-        const fromDate =
-          typeof req.query.from === 'string' ? req.query.from : `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`;
+        const toDate = isoDateParam(req.query.to, today);
+        const fromDate = isoDateParam(req.query.from, `${Number(toDate.slice(0, 4)) - 1}${toDate.slice(4)}`);
         res.json(
           toJson(
             await listPaymentsAwaitingApproval(deps.db, {
@@ -2748,14 +2749,13 @@ export function createApiServer(deps: ApiDeps): express.Express {
       const org = (await deps.db.query(`SELECT org_form FROM organizations WHERE id=$1`, [req.params.orgId!])).rows[0];
       if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
       const today = new Date().toISOString().slice(0, 10);
-      const iso = (d: unknown, fb: string) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : fb);
       const defFrom = `${today.slice(0, 4)}-01-01`;
       const defTo = new Date(Date.parse(today + 'T00:00:00Z') + 90 * 86400000).toISOString().slice(0, 10);
       res.json(toJson(await buildPaymentCalendar(deps.db, deps.rules, {
         organizationId: req.params.orgId!,
         orgForm: org.org_form,
-        from: iso(req.query.from, defFrom),
-        to: iso(req.query.to, defTo),
+        from: isoDateParam(req.query.from, defFrom),
+        to: isoDateParam(req.query.to, defTo),
         asOf: today,
       })));
     } catch (err) { next(err); }
@@ -3363,7 +3363,9 @@ export function createApiServer(deps: ApiDeps): express.Express {
       try {
         const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
         const adjustments =
-          typeof req.query.adjustments === 'string' ? BigInt(req.query.adjustments) : 0n;
+          req.query.adjustments === undefined
+            ? 0n
+            : BigInt(z.string().regex(/^-?\d+$/).parse(req.query.adjustments));
         const org = (
           await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])
         ).rows[0];
@@ -3461,7 +3463,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
     async (req: AuthedRequest, res, next) => {
       try {
         const year = z.coerce.number().int().min(2000).max(2100).parse(req.params.year);
-        const body = z.object({ adjustmentsMinor: z.string().optional() }).parse(req.body ?? {});
+        const body = z.object({ adjustmentsMinor: z.string().regex(/^-?\d+$/).optional() }).parse(req.body ?? {});
         const org = (
           await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])
         ).rows[0];

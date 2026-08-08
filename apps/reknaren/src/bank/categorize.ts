@@ -126,19 +126,37 @@ export async function categorizeBankTransaction(
           { accountNumber: bankAccount, creditMinor: magnitude },
         ];
 
-  const entry = await postJournalEntry(db, {
-    organizationId: params.organizationId,
-    actor: params.actor,
-    entryDate: String(tx.booked_date),
-    description: `${cat.label}${tx.description ? ` — ${tx.description}` : ''}`,
-    idempotencyKey: `bank-cat:${params.transactionId}`,
-    lines,
-  });
+  // Claim transaksjonen FØR postering: én betinget UPDATE avgjør vinneren, slik at
+  // en ny kategorisering (annen kategori) ikke kan bokføres oppå. Postering og claim
+  // er ikke i samme DB-transaksjon (postJournalEntry eier sin egen), så vi ruller
+  // tilbake claimet hvis posteringen feiler — da kan brukeren prøve på nytt.
+  // ponytail: et tynt tidsvindu mellom claim og postering kan i teorien la en
+  // 'matched' transaksjon stå uten bilag ved krasj; å lagre journal_entry_id på
+  // bank_transactions og utlede status derfra ville lukke det helt (schema-endring).
+  const claim = await db.query(
+    `UPDATE bank_transactions SET status = 'matched'
+     WHERE id = $1 AND organization_id = $2 AND status = 'unmatched'
+     RETURNING id`,
+    [params.transactionId, params.organizationId],
+  );
+  if (!claim.rowCount) throw new ConflictError('Transaksjonen er allerede avstemt.');
 
-  await db.query(`UPDATE bank_transactions SET status = 'matched' WHERE id = $1 AND organization_id = $2`, [
-    params.transactionId,
-    params.organizationId,
-  ]);
-
-  return { entryNumber: entry.entryNumber };
+  try {
+    const entry = await postJournalEntry(db, {
+      organizationId: params.organizationId,
+      actor: params.actor,
+      entryDate: String(tx.booked_date),
+      description: `${cat.label}${tx.description ? ` — ${tx.description}` : ''}`,
+      idempotencyKey: `bank-cat:${params.transactionId}`,
+      lines,
+    });
+    return { entryNumber: entry.entryNumber };
+  } catch (err) {
+    await db.query(
+      `UPDATE bank_transactions SET status = 'unmatched'
+       WHERE id = $1 AND organization_id = $2 AND status = 'matched'`,
+      [params.transactionId, params.organizationId],
+    );
+    throw err;
+  }
 }

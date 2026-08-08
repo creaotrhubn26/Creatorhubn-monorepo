@@ -157,7 +157,7 @@ describe('Scenario 4: matching og avstemming', () => {
     const s = suggestions[0]!;
     expect(s.matchType).toBe('exact');
     expect(s.explanation).toContain('KID 004212345678903');
-    expect(s.explanation).toContain('25000 kr');
+    expect(s.explanation).toContain('25000,00 kr');
     matchId = s.matchId;
   });
 

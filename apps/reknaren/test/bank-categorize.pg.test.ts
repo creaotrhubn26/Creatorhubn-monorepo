@@ -96,4 +96,16 @@ describe('categorizeBankTransaction', () => {
       categorizeBankTransaction(db, { organizationId: orgId, actor: actor(), transactionId: ut, category: 'bankgebyr' }),
     ).rejects.toThrow(/allerede avstemt/);
   });
+
+  it('en ANNEN kategori på samme transaksjon avvises — ingen dobbelpostering (claim-first)', async () => {
+    const { orgId, acc } = await orgWithAccount('Retry AS', 'AS');
+    const tx = await importTx(orgId, acc, 'rt1', -5000n);
+    await categorizeBankTransaction(db, { organizationId: orgId, actor: actor(), transactionId: tx, category: 'bankgebyr' });
+    // En retry med annen kategori (f.eks. tapt svar) skal ikke føre en ny postering oppå.
+    await expect(
+      categorizeBankTransaction(db, { organizationId: orgId, actor: actor(), transactionId: tx, category: 'rentekostnad' }),
+    ).rejects.toThrow(/allerede avstemt/);
+    expect(await line(orgId, '7770')).toEqual({ debit: 5000n, credit: 0n }); // bankgebyr står
+    expect((await line(orgId, '8150')).debit).toBe(0n); // rentekostnad ble ALDRI ført
+  });
 });
