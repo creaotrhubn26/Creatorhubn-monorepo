@@ -742,7 +742,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   }
   doc.texts.forEach((tx, i) => {
     const rev = t != null ? revealFor('text', i, doc.texts.length, t) : null;
-    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y, () => drawText(ctx, doc, tx));
+    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y + measureTextHeight(tx) / 2, () => drawText(ctx, doc, tx));
   });
   await drawLogo(ctx, doc.canvas);
   if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);

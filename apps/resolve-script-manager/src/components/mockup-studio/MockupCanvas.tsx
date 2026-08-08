@@ -28,6 +28,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ kind: 'device' | 'text'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const dragAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -62,8 +63,11 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     const el = kind === 'device' ? st.doc.devices.find((d) => d.id === id) : st.doc.texts.find((t) => t.id === id);
     if (!el) return;
     dragRef.current = { kind, id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, moved: false };
-    window.addEventListener('pointermove', onDragMove);
-    window.addEventListener('pointerup', onDragEnd, { once: true });
+    dragAbort.current?.abort();
+    const ac = new AbortController();
+    dragAbort.current = ac;
+    window.addEventListener('pointermove', onDragMove, { signal: ac.signal });
+    window.addEventListener('pointerup', onDragEnd, { signal: ac.signal, once: true });
   };
 
   const onDragMove = (e: PointerEvent) => {
@@ -79,10 +83,14 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   };
 
   const onDragEnd = () => {
-    window.removeEventListener('pointermove', onDragMove);
+    dragAbort.current?.abort();
+    dragAbort.current = null;
     dragRef.current = null;
     setDragging(false);
   };
+
+  // Unmount midt i dra: fjern window-listeners (self-healer ellers på neste pointerup)
+  useEffect(() => () => dragAbort.current?.abort(), []);
 
   // ── Tastatur: nudge / slett / avvelg ─────────────────────────────────────
   useEffect(() => {
