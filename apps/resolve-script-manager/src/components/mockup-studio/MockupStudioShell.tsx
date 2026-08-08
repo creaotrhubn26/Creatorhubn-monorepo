@@ -1069,10 +1069,23 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         </>
       )}
       <Field label="Perspektiv (2.5D)">
-        <select value={device.perspective ?? 'none'} onChange={(e) => patchDevice(device.id, { perspective: e.target.value as MockupPerspective })} style={textInput}>
+        <select value={device.perspective ?? 'none'} onChange={(e) => patchDevice(device.id, { perspective: e.target.value as MockupPerspective })} style={textInput} disabled={!!device.threeD}>
           {PERSPECTIVE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
       </Field>
+      {(device.variant === 'iphone' || device.variant === 'android') && (
+        <>
+          <label style={checkRow}>
+            <input type="checkbox" checked={!!device.threeD} onChange={(e) => patchDevice(device.id, { threeD: e.target.checked ? { rotX: -6, rotY: 20, rotZ: 0 } : undefined })} />
+            Ekte 3D (WebGL)
+          </label>
+          {device.threeD && (['rotY', 'rotX', 'rotZ'] as const).map((axis) => (
+            <Field key={axis} label={`3D ${axis === 'rotY' ? 'snu' : axis === 'rotX' ? 'vipp' : 'rull'}: ${Math.round(device.threeD![axis])}°`}>
+              <input type="range" min={-45} max={45} value={device.threeD![axis]} onChange={(e) => patchDevice(device.id, { threeD: { ...device.threeD!, [axis]: Number(e.target.value) } })} style={{ width: '100%' }} />
+            </Field>
+          ))}
+        </>
+      )}
       <label style={checkRow}>
         <input type="checkbox" checked={device.shadow} onChange={(e) => patchDevice(device.id, { shadow: e.target.checked })} />
         Skygge
