@@ -169,6 +169,73 @@ describe("buildToolConfiguration (IMS dynamic-registration payload)", () => {
   });
 });
 
+describe("GET /lti/register (dynamic registration)", () => {
+  const OIDC = "https://moodle.example.edu/mod/lti/openid-configuration";
+  const openidConfig = {
+    issuer: "https://moodle.example.edu",
+    authorization_endpoint: "https://moodle.example.edu/mod/lti/auth.php",
+    token_endpoint: "https://moodle.example.edu/mod/lti/token.php",
+    jwks_uri: "https://moodle.example.edu/mod/lti/certs.php",
+    registration_endpoint: "https://moodle.example.edu/mod/lti/openid-registration.php",
+    "https://purl.imsglobal.org/spec/lti-platform-configuration": { product_family_code: "moodle" },
+  };
+
+  function stubFetch() {
+    return vi.fn(async (url: string, init?: any) => {
+      if (url === OIDC) return { ok: true, json: async () => openidConfig } as any;
+      if (url === openidConfig.registration_endpoint) {
+        return { ok: true, json: async () => ({
+          client_id: "CLIENT123",
+          "https://purl.imsglobal.org/spec/lti-tool-configuration": { deployment_id: "DEP1" },
+        }) } as any;
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  it("registrerer plattform som pending og returnerer close-page", async () => {
+    vi.stubGlobal("fetch", stubFetch());
+    const upserts: any[] = [];
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      if (sql.includes("INSERT INTO role_room_lti_platforms")) { upserts.push(params); return { rows: [{ id: "p1" }] }; }
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: OIDC, registration_token: "regtok" } }, res);
+    // close-page HTML
+    expect(String(res.sent)).toContain("org.imsglobal.lti.close");
+    // plattform lagret som pending + dynamic + product_family
+    const p = upserts[0];
+    expect(p).toContain("https://moodle.example.edu"); // issuer
+    expect(p).toContain("CLIENT123");                  // client_id
+    expect(p).toContain("DEP1");                        // deployment_id
+    expect(p).toContain("pending");
+    expect(p).toContain("dynamic");
+    expect(p).toContain("moodle");
+    vi.unstubAllGlobals();
+  });
+
+  it("avviser privat/ikke-https openid_configuration (SSRF)", async () => {
+    const pool: any = { query: vi.fn(async () => ({ rows: [] })) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: "http://127.0.0.1/openid" } }, res);
+    expect(res.statusCode).toBe(400);
+    expect(String(res.sent)).toMatch(/ugyldig|invalid/i);
+  });
+
+  it("feiler når openid-config mangler endepunkter", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ issuer: "https://x.edu" }) }) as any));
+    const pool: any = { query: vi.fn(async () => ({ rows: [] })) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: "https://x.edu/openid" } }, res);
+    expect(res.statusCode).toBe(400);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("pushScore (AGS grade-passback)", () => {
   const realFetch = globalThis.fetch;
   afterEach(() => { globalThis.fetch = realFetch; });

@@ -311,6 +311,82 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     });
   });
 
+  // ── IMS LTI Dynamic Registration ─────────────────────────────────────────
+  // Plattform-initiert selv-registrering: Moodle/Canvas åpner denne med
+  // ?openid_configuration=<platform openid-config> [&registration_token=<bearer>].
+  // Vi henter plattformens config, POST-er verktøy-registrering tilbake, lagrer
+  // en PENDING plattform (super-admin må godkjenne før launch), og returnerer en
+  // close-page. All URL-henting via fetchPlatform (SSRF-vakt + timeout).
+  router.get("/lti/register", async (req, res) => {
+    const q = req.query as Record<string, string>;
+    const openidUrl = typeof q.openid_configuration === "string" ? q.openid_configuration : "";
+    const regToken = typeof q.registration_token === "string" ? q.registration_token : "";
+    const errPage = (msg: string) =>
+      `<!doctype html><html><body style="font-family:sans-serif;padding:24px"><h3>Registrering feilet</h3><p>${msg}</p></body></html>`;
+    try {
+      assertSafeHttpsUrl(openidUrl);
+    } catch {
+      res.status(400).send(errPage("Ugyldig registrerings-URL (openid_configuration).")); return;
+    }
+    try {
+      const cfgRes = await fetchPlatform(openidUrl);
+      if (!cfgRes.ok) { res.status(400).send(errPage("Kunne ikke hente plattformens OpenID-config.")); return; }
+      const cfg = (await cfgRes.json()) as Record<string, unknown>;
+      const issuer = String(cfg.issuer ?? "");
+      const authUrl = String(cfg.authorization_endpoint ?? "");
+      const tokenUrl = String(cfg.token_endpoint ?? "");
+      const jwksUrl = String(cfg.jwks_uri ?? "");
+      const regEndpoint = String(cfg.registration_endpoint ?? "");
+      if (!issuer || !authUrl || !tokenUrl || !jwksUrl || !regEndpoint) {
+        res.status(400).send(errPage("Plattformen mangler påkrevde LTI-endepunkter.")); return;
+      }
+      const platformCfg = cfg["https://purl.imsglobal.org/spec/lti-platform-configuration"] as { product_family_code?: string } | undefined;
+      const productFamily = platformCfg?.product_family_code ?? null;
+
+      const regRes = await fetchPlatform(regEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(regToken ? { Authorization: `Bearer ${regToken}` } : {}),
+        },
+        body: JSON.stringify(buildToolConfiguration()),
+      });
+      if (!regRes.ok) { res.status(400).send(errPage("Plattformen avviste registreringen.")); return; }
+      const reg = (await regRes.json()) as Record<string, unknown>;
+      const clientId = String(reg.client_id ?? "");
+      const toolCfg = reg["https://purl.imsglobal.org/spec/lti-tool-configuration"] as { deployment_id?: string } | undefined;
+      const deploymentId = toolCfg?.deployment_id ?? null;
+      if (!clientId) { res.status(400).send(errPage("Registrerings-svaret manglet client_id.")); return; }
+
+      await pool.query(
+        `INSERT INTO role_room_lti_platforms
+           (id, owner_user_id, name, issuer, client_id, deployment_id, auth_login_url, token_url, jwks_url, status, registered_via, product_family)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (issuer, client_id) DO UPDATE SET
+           deployment_id=EXCLUDED.deployment_id, auth_login_url=EXCLUDED.auth_login_url,
+           token_url=EXCLUDED.token_url, jwks_url=EXCLUDED.jwks_url,
+           product_family=EXCLUDED.product_family, registered_via='dynamic',
+           status=CASE WHEN role_room_lti_platforms.status='approved' THEN 'approved' ELSE 'pending' END,
+           updated_at=now()`,
+        [newEntityId("ltiplat"), null, productFamily ? `${productFamily} · ${issuer}` : issuer,
+         issuer, clientId, deploymentId, authUrl, tokenUrl, jwksUrl, "pending", "dynamic", productFamily],
+      );
+
+      // Close-page: signalér plattformen at registreringen er ferdig.
+      res.status(200).send(
+        `<!doctype html><html><body style="font-family:sans-serif;padding:24px">` +
+        `<h3>The Role Room er registrert</h3>` +
+        `<p>Institusjonen venter på godkjenning fra The Role Room før verktøyet kan brukes.</p>` +
+        `<script>(function(){var m={subject:"org.imsglobal.lti.close"};` +
+        `(window.opener||window.parent).postMessage(m,"*");})();</script>` +
+        `</body></html>`,
+      );
+    } catch (err) {
+      console.error("[lti] dynamic registration failed:", (err as Error).message);
+      res.status(400).send(errPage("Uventet feil under registrering."));
+    }
+  });
+
   // ── LMS-initiert OIDC: login-initiering ──────────────────────────────────
   const handleLogin = async (req: Request, res: Response): Promise<void> => {
     const q = { ...(req.query as Record<string, string>), ...(req.body as Record<string, string> | undefined ?? {}) };
