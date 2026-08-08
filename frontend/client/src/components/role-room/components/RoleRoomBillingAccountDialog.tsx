@@ -47,6 +47,7 @@ import WorkspaceWhatsAppSettings from './WorkspaceWhatsAppSettings';
 import type { CastingProject } from '../models/casting';
 import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
+import { useT } from '../../../i18n';
 
 type WorkspaceAccountTeamMember = {
   name: string;
@@ -54,13 +55,6 @@ type WorkspaceAccountTeamMember = {
 };
 
 type RoleRoomAdminPreviewMode = 'admin' | 'production_team' | 'content_producer' | 'client';
-
-const ROLE_ROOM_PREVIEW_MODE_LABELS: Record<RoleRoomAdminPreviewMode, string> = {
-  admin: 'Administrator',
-  production_team: 'Produksjon',
-  content_producer: 'Innhold',
-  client: 'Klient',
-};
 
 type RoleRoomBillingAccountDialogProps = {
   open: boolean;
@@ -107,9 +101,9 @@ const dateFormatter = new Intl.DateTimeFormat('nb-NO', {
   timeStyle: 'short',
 });
 
-function formatMoney(value?: number | null) {
+function formatMoney(value: number | null | undefined, notAvailableLabel: string) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    return 'Ikke tilgjengelig';
+    return notAvailableLabel;
   }
   return moneyFormatter.format(value);
 }
@@ -160,16 +154,16 @@ function getGoogleStatusTone(status?: RoleRoomGoogleStatusResponse['state']) {
   }
 }
 
-function getGoogleStatusLabel(status?: RoleRoomGoogleStatusResponse['state']) {
+function getGoogleStatusLabel(t: ReturnType<typeof useT>['t'], status?: RoleRoomGoogleStatusResponse['state']) {
   switch (status) {
     case 'connected':
-      return 'Aktiv';
+      return t('billAcct.googleStatusActive');
     case 'expired':
-      return 'Utløpt';
+      return t('billAcct.googleStatusExpired');
     case 'error':
-      return 'Krever oppfølging';
+      return t('billAcct.googleStatusNeedsAttention');
     default:
-      return 'Ikke koblet';
+      return t('billAcct.googleStatusNotConnected');
   }
 }
 
@@ -188,6 +182,13 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   adminPreview = null,
   onProjectUpdated,
 }) => {
+  const { t } = useT();
+  const previewModeLabels = useMemo(() => ({
+    admin: t('billAcct.previewModeAdmin'),
+    production_team: t('billAcct.previewModeProduction'),
+    content_producer: t('billAcct.previewModeContent'),
+    client: t('billAcct.previewModeClient'),
+  } satisfies Record<RoleRoomAdminPreviewMode, string>), [t]);
   const [tabValue, setTabValue] = useState(0);
   const paymentTimestamp = formatDateTime(account?.paymentTimestamp);
   const paymentFailedAt = formatDateTime(account?.paymentFailedAt);
@@ -236,12 +237,12 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     } catch (statusError) {
       const message = statusError instanceof Error
         ? statusError.message
-        : 'Kunne ikke hente Google Workspace-status.';
+        : t('billAcct.googleStatusFetchError');
       setGoogleStatusError(message);
     } finally {
       setGoogleStatusLoading(false);
     }
-  }, [currentProject?.id, open]);
+  }, [currentProject?.id, open, t]);
 
   const loadSyncState = useCallback(async () => {
     if (!open || !currentProject?.id) {
@@ -262,11 +263,11 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
       setQueuedChanges(nextQueue);
       setSnapshots(nextSnapshots);
     } catch (stateError) {
-      setSyncError(stateError instanceof Error ? stateError.message : 'Kunne ikke hente prosjektets sync-status.');
+      setSyncError(stateError instanceof Error ? stateError.message : t('billAcct.syncStatusFetchError'));
     } finally {
       setSyncLoading(false);
     }
-  }, [currentProject?.id, open]);
+  }, [currentProject?.id, open, t]);
 
   useEffect(() => {
     if (!open) {
@@ -291,22 +292,22 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     currentProject?.id && googleIsConnected && (!googleDriveReady || !googleCalendarReady),
   );
   const googleStatusSeverity = getGoogleStatusTone(googleStatus?.state);
-  const googleStatusLabel = getGoogleStatusLabel(googleStatus?.state);
+  const googleStatusLabel = getGoogleStatusLabel(t, googleStatus?.state);
   const googleHelperText = useMemo(() => {
     if (!googleStatus?.configured) {
-      return 'Google Workspace er ikke ferdig konfigurert for denne installasjonen ennå.';
+      return t('billAcct.googleNotConfiguredYet');
     }
     if (googleStatus.state === 'connected') {
-      return 'Når du logger inn med Google i The Role Room, brukes koblingen automatisk. Du trenger bare å fornye den hvis den er utløpt eller prosjektintegrasjonen må repareres.';
+      return t('billAcct.googleConnectedHelper');
     }
     if (googleStatus.state === 'expired') {
-      return 'Google-koblingen er utløpt. Forny den her inne i kontoprofilen for å få møter, signering og Drive tilbake.';
+      return t('billAcct.googleExpiredHelper');
     }
     if (googleStatus.state === 'error') {
-      return googleConnection?.lastError || 'Google Workspace svarte med en feil. Prøv å fornye koblingen.';
+      return googleConnection?.lastError || t('billAcct.googleErrorHelper');
     }
-    return 'Google vises nå bare her inne i kontoprofilen. Koble den til her hvis prosjektet trenger Drive, Kalender eller signering.';
-  }, [googleConnection?.lastError, googleStatus]);
+    return t('billAcct.googleDisconnectedHelper');
+  }, [googleConnection?.lastError, googleStatus, t]);
 
   const handleConnectGoogle = useCallback(async () => {
     setGoogleActionPending(true);
@@ -325,12 +326,12 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     } catch (connectError) {
       const message = connectError instanceof Error
         ? connectError.message
-        : 'Kunne ikke starte Google Workspace-koblingen.';
+        : t('billAcct.googleConnectStartError');
       setGoogleStatusError(message);
     } finally {
       setGoogleActionPending(false);
     }
-  }, [currentProject?.id, currentUser.email]);
+  }, [currentProject?.id, currentUser.email, t]);
 
   const handlePrepareProjectBinding = useCallback(async () => {
     if (!currentProject?.id) {
@@ -344,12 +345,12 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     } catch (bindingError) {
       const message = bindingError instanceof Error
         ? bindingError.message
-        : 'Kunne ikke klargjøre prosjektet for Google Workspace.';
+        : t('billAcct.googleProjectPrepareError');
       setGoogleStatusError(message);
     } finally {
       setGoogleActionPending(false);
     }
-  }, [currentProject?.id, googleBinding, loadGoogleStatus]);
+  }, [currentProject?.id, googleBinding, loadGoogleStatus, t]);
 
   const handleSyncQueuedChanges = useCallback(async () => {
     if (!currentProject?.id) {
@@ -361,16 +362,16 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     try {
       const result = await castingService.syncQueuedProjectChanges(currentProject.id);
       if (result.failed.length > 0) {
-        throw new Error(result.failed[0]?.error ?? 'Kunne ikke synkronisere lokale endringer.');
+        throw new Error(result.failed[0]?.error ?? t('billAcct.syncQueuedChangesError'));
       }
-      setSyncNotice(result.synced.length > 0 ? 'Lokale endringer er synkronisert med serveren.' : 'Ingen lokale endringer lå i kø.');
+      setSyncNotice(result.synced.length > 0 ? t('billAcct.syncedWithServer') : t('billAcct.noQueuedChangesToSync'));
       await loadSyncState();
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Kunne ikke synkronisere lokale endringer.');
+      setSyncError(error instanceof Error ? error.message : t('billAcct.syncQueuedChangesError'));
     } finally {
       setSyncActionPending(false);
     }
-  }, [currentProject?.id, loadSyncState]);
+  }, [currentProject?.id, loadSyncState, t]);
 
   const handleResyncFromServer = useCallback(async () => {
     if (!currentProject?.id) {
@@ -382,17 +383,17 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     try {
       const project = await castingService.resyncProjectFromServer(currentProject.id);
       if (!project) {
-        throw new Error('Fant ikke prosjektet på serveren.');
+        throw new Error(t('billAcct.projectNotFoundOnServer'));
       }
       await onProjectUpdated?.(project);
       await loadSyncState();
-      setSyncNotice('Prosjektet er hentet på nytt fra serveren uten hard refresh.');
+      setSyncNotice(t('billAcct.resyncedFromServer'));
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Kunne ikke hente prosjektet på nytt fra serveren.');
+      setSyncError(error instanceof Error ? error.message : t('billAcct.resyncFromServerError'));
     } finally {
       setSyncActionPending(false);
     }
-  }, [currentProject?.id, loadSyncState, onProjectUpdated]);
+  }, [currentProject?.id, loadSyncState, onProjectUpdated, t]);
 
   const handleRestoreSnapshot = useCallback(async (snapshotId: string) => {
     if (!currentProject?.id) {
@@ -405,13 +406,13 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
       const restoredProject = await castingService.restoreProjectSnapshot(currentProject.id, snapshotId);
       await onProjectUpdated?.(restoredProject);
       await loadSyncState();
-      setSyncNotice('Nylige endringer er gjenopprettet i prosjektet.');
+      setSyncNotice(t('billAcct.snapshotRestored'));
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : 'Kunne ikke gjenopprette prosjektendringen.');
+      setSyncError(error instanceof Error ? error.message : t('billAcct.snapshotRestoreError'));
     } finally {
       setSyncActionPending(false);
     }
-  }, [currentProject?.id, loadSyncState, onProjectUpdated]);
+  }, [currentProject?.id, loadSyncState, onProjectUpdated, t]);
 
   return (
     <Dialog
@@ -434,10 +435,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
           <PersonIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
           <Box>
             <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>
-              Konto, abonnement og team
+              {t('billAcct.dialogTitle')}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.64)', fontSize: '0.84rem' }}>
-              Oversikt over hvem som er innlogget, aktivt prosjekt, Google Workspace og workspace-abonnementet.
+              {t('billAcct.dialogSubtitle')}
             </Typography>
           </Box>
         </Stack>
@@ -454,15 +455,15 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
           }}
         >
-          <Tab label="Oversikt" />
-          <Tab label="Sync og gjenoppretting" />
+          <Tab label={t('billAcct.tabOverview')} />
+          <Tab label={t('billAcct.tabSyncRecovery')} />
         </Tabs>
 
         {tabValue === 1 ? (
           <Stack spacing={2}>
             {!currentProject ? (
               <Alert severity="info">
-                Velg et prosjekt først for å se resync, nylige endringer og lokale endringer som venter på synk.
+                {t('billAcct.selectProjectForSyncTab')}
               </Alert>
             ) : null}
 
@@ -494,21 +495,23 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
                     <Box>
                       <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
-                        Resync uten refresh
+                        {t('billAcct.resyncWithoutRefresh')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.84rem' }}>
-                        Hent prosjektet på nytt fra serveren, synk lokale endringer som lå i kø, eller gjenopprett et nylig endringspunkt.
+                        {t('billAcct.resyncWithoutRefreshDesc')}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                       <Chip
                         size="small"
-                        label={syncMeta?.lastSyncedAt ? `Sist synket ${formatDateTime(syncMeta.lastSyncedAt)}` : 'Ikke synket ennå'}
+                        label={syncMeta?.lastSyncedAt ? t('billAcct.lastSyncedAt', { date: formatDateTime(syncMeta.lastSyncedAt) ?? '' }) : t('billAcct.notSyncedYet')}
                         sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
                       />
                       <Chip
                         size="small"
-                        label={queuedChanges.length > 0 ? `${queuedChanges.length} lokale endring${queuedChanges.length === 1 ? '' : 'er'} i kø` : 'Ingen lokale endringer i kø'}
+                        label={queuedChanges.length > 0
+                          ? t(queuedChanges.length === 1 ? 'billAcct.queuedChangesSingular' : 'billAcct.queuedChangesPlural', { n: queuedChanges.length })
+                          : t('billAcct.noQueuedChanges')}
                         sx={{
                           bgcolor: queuedChanges.length > 0 ? 'rgba(251,191,36,0.16)' : 'rgba(16,185,129,0.16)',
                           color: queuedChanges.length > 0 ? '#fde68a' : '#86efac',
@@ -532,7 +535,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                         '&:hover': { bgcolor: '#bae6fd' },
                       }}
                     >
-                      Synk lokale endringer
+                      {t('billAcct.syncLocalChanges')}
                     </Button>
                     <Button
                       variant="outlined"
@@ -543,7 +546,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                       disabled={syncActionPending || !currentProject || queuedChanges.length > 0}
                       sx={{ borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }}
                     >
-                      Resync fra server
+                      {t('billAcct.resyncFromServer')}
                     </Button>
                     <Button
                       variant="text"
@@ -554,7 +557,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                       disabled={syncActionPending || !currentProject}
                       sx={{ color: 'rgba(255,255,255,0.78)' }}
                     >
-                      Oppdater oversikten
+                      {t('billAcct.updateOverview')}
                     </Button>
                   </Stack>
 
@@ -562,21 +565,21 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                     {syncMeta?.lastLocalSaveAt ? (
                       <Chip
                         size="small"
-                        label={`Sist lagret lokalt ${formatDateTime(syncMeta.lastLocalSaveAt)}`}
+                        label={t('billAcct.lastSavedLocally', { date: formatDateTime(syncMeta.lastLocalSaveAt) ?? '' })}
                         sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.78)' }}
                       />
                     ) : null}
                     {syncMeta?.lastResyncedAt ? (
                       <Chip
                         size="small"
-                        label={`Resync ${formatDateTime(syncMeta.lastResyncedAt)}`}
+                        label={t('billAcct.resyncAt', { date: formatDateTime(syncMeta.lastResyncedAt) ?? '' })}
                         sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.78)' }}
                       />
                     ) : null}
                     {syncMeta?.lastRestoreAt ? (
                       <Chip
                         size="small"
-                        label={`Sist gjenopprettet ${formatDateTime(syncMeta.lastRestoreAt)}`}
+                        label={t('billAcct.lastRestoredAt', { date: formatDateTime(syncMeta.lastRestoreAt) ?? '' })}
                         sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.78)' }}
                       />
                     ) : null}
@@ -593,13 +596,13 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   }}
                 >
                   <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
-                    Nylige endringspunkter
+                    {t('billAcct.recentChangePoints')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.84rem' }}>
-                    Gjenopprett et nylig lagret punkt hvis noe ble feil. Dette lager en ny versjon av prosjektet, uten hard refresh.
+                    {t('billAcct.recentChangePointsDesc')}
                   </Typography>
                   {snapshots.length === 0 ? (
-                    <Alert severity="info">Ingen nylige endringspunkter er lagret ennå.</Alert>
+                    <Alert severity="info">{t('billAcct.noRecentChangePoints')}</Alert>
                   ) : (
                     <Stack spacing={1}>
                       {snapshots.slice(0, 8).map((snapshot) => (
@@ -623,7 +626,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                                 {snapshot.label}
                               </Typography>
                               <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: '0.82rem' }}>
-                                {formatDateTime(snapshot.createdAt) ?? 'Ukjent tidspunkt'}
+                                {formatDateTime(snapshot.createdAt) ?? t('billAcct.unknownTime')}
                               </Typography>
                             </Box>
                             <Button
@@ -635,7 +638,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                               disabled={syncActionPending}
                               sx={{ textTransform: 'none', fontWeight: 700, borderColor: 'rgba(246,195,88,0.34)', color: '#f6c358' }}
                             >
-                              Gjenopprett
+                              {t('billAcct.restore')}
                             </Button>
                           </Stack>
                         </Box>
@@ -723,7 +726,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               {adminPreview?.enabled ? (
                 <Stack spacing={0.9} sx={{ pt: 1 }}>
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.76rem' }}>
-                    Se løsningen slik ulike roller opplever den. Dette endrer bare visningen for din adminøkt.
+                    {t('billAcct.adminPreviewDesc')}
                   </Typography>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
                     <FormControl
@@ -746,10 +749,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                         },
                       }}
                     >
-                      <InputLabel id="role-room-preview-mode-label">Åpne som</InputLabel>
+                      <InputLabel id="role-room-preview-mode-label">{t('billAcct.openAs')}</InputLabel>
                       <Select
                         labelId="role-room-preview-mode-label"
-                        label="Åpne som"
+                        label={t('billAcct.openAs')}
                         value={adminPreview.selectedMode}
                         disabled={actionPending}
                         onChange={(event) => {
@@ -757,10 +760,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                           void adminPreview.onSelectMode(nextMode);
                         }}
                       >
-                        <MenuItem value="admin">{ROLE_ROOM_PREVIEW_MODE_LABELS.admin}</MenuItem>
-                        <MenuItem value="production_team">{ROLE_ROOM_PREVIEW_MODE_LABELS.production_team}</MenuItem>
-                        <MenuItem value="content_producer">{ROLE_ROOM_PREVIEW_MODE_LABELS.content_producer}</MenuItem>
-                        <MenuItem value="client">{ROLE_ROOM_PREVIEW_MODE_LABELS.client}</MenuItem>
+                        <MenuItem value="admin">{previewModeLabels.admin}</MenuItem>
+                        <MenuItem value="production_team">{previewModeLabels.production_team}</MenuItem>
+                        <MenuItem value="content_producer">{previewModeLabels.content_producer}</MenuItem>
+                        <MenuItem value="client">{previewModeLabels.client}</MenuItem>
                       </Select>
                     </FormControl>
                     {currentProject && adminPreview.clientPortalAvailable ? (
@@ -787,7 +790,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                               }),
                         }}
                       >
-                        Åpne klientportal
+                        {t('billAcct.openClientPortal')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -809,20 +812,20 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               <Stack direction="row" spacing={1} alignItems="center">
                 <FolderOpenIcon sx={{ color: '#a5f3fc', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
-                  Aktivt prosjekt
+                  {t('billAcct.activeProject')}
                 </Typography>
               </Stack>
               <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
                 {currentProject.name}
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: '0.84rem' }}>
-                {[currentProject.clientName, currentProject.workflowLabel].filter(Boolean).join(' • ') || 'Ingen ekstra prosjektinfo tilgjengelig ennå.'}
+                {[currentProject.clientName, currentProject.workflowLabel].filter(Boolean).join(' • ') || t('billAcct.noExtraProjectInfo')}
               </Typography>
 
               {currentProject.teamMembers.length > 0 ? (
                 <Stack spacing={0.85} sx={{ pt: 0.5 }}>
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
-                    Aktivt prosjektteam
+                    {t('billAcct.activeProjectTeam')}
                   </Typography>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                     {currentProject.teamMembers.map((member) => (
@@ -867,12 +870,12 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 size="small"
                 color={googleStatusSeverity}
                 variant={googleIsConnected ? 'filled' : 'outlined'}
-                label={googleStatusLoading ? 'Oppdaterer…' : googleStatusLabel}
+                label={googleStatusLoading ? t('billAcct.updatingEllipsis') : googleStatusLabel}
               />
             </Stack>
 
             <Typography sx={{ fontWeight: 700, color: '#f8fafc' }}>
-              {googleConnection?.googleEmail || googleConnection?.roleRoomEmail || 'Ingen aktiv Google-kobling ennå'}
+              {googleConnection?.googleEmail || googleConnection?.roleRoomEmail || t('billAcct.noActiveGoogleConnection')}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.84rem' }}>
               {googleHelperText}
@@ -883,7 +886,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 <Chip
                   size="small"
                   icon={<CloudDoneOutlinedIcon sx={{ fontSize: 16 }} />}
-                  label="Google-login aktiv"
+                  label={t('billAcct.googleLoginActive')}
                   sx={{
                     bgcolor: 'rgba(16,185,129,0.16)',
                     color: '#86efac',
@@ -894,7 +897,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 <Chip
                   size="small"
                   icon={<LinkOffOutlinedIcon sx={{ fontSize: 16 }} />}
-                  label="Ingen Google-kobling"
+                  label={t('billAcct.noGoogleConnection')}
                   sx={{
                     bgcolor: 'rgba(148,163,184,0.12)',
                     color: '#cbd5e1',
@@ -906,7 +909,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 <Chip
                   size="small"
                   icon={<CalendarMonthOutlinedIcon sx={{ fontSize: 16 }} />}
-                  label={googleCalendarReady ? 'Kalender klar' : 'Kalender ikke klargjort'}
+                  label={googleCalendarReady ? t('billAcct.calendarReady') : t('billAcct.calendarNotReady')}
                   sx={{
                     bgcolor: googleCalendarReady ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
                     color: googleCalendarReady ? '#bfdbfe' : '#cbd5e1',
@@ -918,7 +921,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 <Chip
                   size="small"
                   icon={<FolderOpenIcon sx={{ fontSize: 16 }} />}
-                  label={googleDriveReady ? 'Drive klar' : 'Drive ikke klargjort'}
+                  label={googleDriveReady ? t('billAcct.driveReady') : t('billAcct.driveNotReady')}
                   sx={{
                     bgcolor: googleDriveReady ? 'rgba(125,211,252,0.16)' : 'rgba(148,163,184,0.12)',
                     color: googleDriveReady ? '#bae6fd' : '#cbd5e1',
@@ -929,7 +932,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               {googleConnection?.lastUsedAt ? (
                 <Chip
                   size="small"
-                  label={`Sist brukt ${formatDateTime(googleConnection.lastUsedAt)}`}
+                  label={t('billAcct.googleLastUsed', { date: formatDateTime(googleConnection.lastUsedAt) ?? '' })}
                   sx={{
                     bgcolor: 'rgba(255,255,255,0.05)',
                     color: 'rgba(255,255,255,0.72)',
@@ -946,8 +949,8 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             {!googleStatusLoading && !googleStatus?.configured ? (
               <Alert severity="warning">
-                Google Workspace mangler konfigurasjon for denne installasjonen.
-                {googleStatus?.missing?.length ? ` Mangler: ${googleStatus.missing.join(', ')}.` : ''}
+                {t('billAcct.googleMissingConfig')}
+                {googleStatus?.missing?.length ? t('billAcct.googleMissingList', { list: googleStatus.missing.join(', ') }) : ''}
               </Alert>
             ) : null}
 
@@ -972,8 +975,8 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   }}
                 >
                   {googleStatus?.state === 'expired' || googleStatus?.state === 'error'
-                    ? 'Forny Google'
-                    : 'Koble til Google'}
+                    ? t('billAcct.renewGoogle')
+                    : t('billAcct.connectGoogle')}
                 </Button>
               ) : null}
 
@@ -986,7 +989,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   disabled={googleStatusLoading || googleActionPending}
                   sx={{ borderColor: 'rgba(125,211,252,0.34)', color: '#bae6fd' }}
                 >
-                  Klargjør prosjekt
+                  {t('billAcct.prepareProject')}
                 </Button>
               ) : null}
 
@@ -999,7 +1002,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 disabled={googleStatusLoading || googleActionPending}
                 sx={{ color: 'rgba(255,255,255,0.78)' }}
               >
-                Oppdater Google-status
+                {t('billAcct.updateGoogleStatus')}
               </Button>
             </Stack>
           </Stack>
@@ -1022,13 +1025,13 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               <Stack direction="row" spacing={1} alignItems="center">
                 <InstallMobileOutlinedIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
-                  Mobilapp og varsler
+                  {t('billAcct.mobileAppAndNotifications')}
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                 <Chip
                   size="small"
-                  label={pwaInstalled ? 'App installert' : 'App ikke installert'}
+                  label={pwaInstalled ? t('billAcct.appInstalled') : t('billAcct.appNotInstalled')}
                   sx={{
                     bgcolor: pwaInstalled ? 'rgba(16,185,129,0.16)' : 'rgba(148,163,184,0.12)',
                     color: pwaInstalled ? '#86efac' : '#cbd5e1',
@@ -1038,7 +1041,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 <Chip
                   size="small"
                   icon={pushEnabled ? <NotificationsActiveOutlinedIcon sx={{ fontSize: 16 }} /> : <NotificationsOffOutlinedIcon sx={{ fontSize: 16 }} />}
-                  label={pushEnabled ? 'Mobilvarsler på' : 'Mobilvarsler av'}
+                  label={pushEnabled ? t('billAcct.mobileNotificationsOn') : t('billAcct.mobileNotificationsOff')}
                   sx={{
                     bgcolor: pushEnabled ? 'rgba(59,130,246,0.16)' : 'rgba(148,163,184,0.12)',
                     color: pushEnabled ? '#bfdbfe' : '#cbd5e1',
@@ -1049,7 +1052,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             </Stack>
 
             <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontSize: '0.84rem' }}>
-              Installer The Role Room på mobilen og få varsler når klienten sender brief, materiale eller godkjenning i dette prosjektet.
+              {t('billAcct.installAppDesc')}
             </Typography>
 
             <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -1057,12 +1060,12 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 size="small"
                 label={
                   notificationPermission === 'granted'
-                    ? 'Varsler tillatt'
+                    ? t('billAcct.notificationsAllowed')
                     : notificationPermission === 'denied'
-                      ? 'Varsler blokkert'
+                      ? t('billAcct.notificationsBlocked')
                       : notificationPermission === 'default'
-                        ? 'Varsler ikke tillatt ennå'
-                        : 'Varsler støttes ikke'
+                        ? t('billAcct.notificationsNotAllowedYet')
+                        : t('billAcct.notificationsNotSupported')
                 }
                 sx={{
                   bgcolor: notificationPermission === 'granted'
@@ -1074,7 +1077,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               {currentProject ? (
                 <Chip
                   size="small"
-                  label={`Prosjekt: ${currentProject.name}`}
+                  label={t('billAcct.projectLabel', { name: currentProject.name })}
                   sx={{
                     bgcolor: 'rgba(125,211,252,0.12)',
                     color: '#bae6fd',
@@ -1092,7 +1095,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             {pushLastError ? (
               <Alert severity="warning">
-                Sist registrerte push-feil: {pushLastError}
+                {t('billAcct.lastPushErrorLabel')} {pushLastError}
               </Alert>
             ) : null}
 
@@ -1110,7 +1113,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
             {pwaSupported && !currentProject ? (
               <Alert severity="info">
-                Velg et aktivt prosjekt først. Installering av appen fungerer uten prosjekt, men mobilvarsler knyttes til prosjektet du står i.
+                {t('billAcct.selectActiveProjectFirst')}
               </Alert>
             ) : null}
 
@@ -1135,7 +1138,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                       '&:hover': { bgcolor: '#bae6fd' },
                     }}
               >
-                {pwaInstalled ? 'App installert' : 'Installer app'}
+                {pwaInstalled ? t('billAcct.appInstalled') : t('billAcct.installApp')}
               </Button>
 
               {pushEnabled ? (
@@ -1148,7 +1151,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   disabled={pwaBusy || !currentProject}
                   sx={{ borderColor: 'rgba(248,113,113,0.36)', color: '#fca5a5' }}
                 >
-                  Skru av mobilvarsler
+                  {t('billAcct.disableMobileNotifications')}
                 </Button>
               ) : (
                 <Button
@@ -1166,7 +1169,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                     '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
                   }}
                 >
-                  Aktiver mobilvarsler
+                  {t('billAcct.enableMobileNotifications')}
                 </Button>
               )}
 
@@ -1179,7 +1182,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 disabled={pwaBusy || !pushEnabled || !currentProject}
                 sx={{ color: 'rgba(255,255,255,0.78)' }}
               >
-                Send testvarsel
+                {t('billAcct.sendTestNotification')}
               </Button>
             </Stack>
           </Stack>
@@ -1221,11 +1224,11 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   </Typography>
                 </Stack>
                 <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.88rem' }}>
-                  {account.planName || 'Abonnement'}
-                  {account.organizationNumber ? ` · Org.nr. ${account.organizationNumber}` : ''}
+                  {account.planName || t('billAcct.subscriptionFallback')}
+                  {account.organizationNumber ? t('billAcct.orgNumberSuffix', { orgNumber: account.organizationNumber }) : ''}
                 </Typography>
                 <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.82rem' }}>
-                  {formatMoney(account.monthlyTotalExVat)} / mnd eks. mva.
+                  {t('billAcct.monthlyPriceExVat', { amount: formatMoney(account.monthlyTotalExVat, t('billAcct.notAvailable')) })}
                 </Typography>
               </Stack>
 
@@ -1237,17 +1240,17 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 />
                 {paymentTimestamp ? (
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.78rem' }}>
-                    Sist betalt: {paymentTimestamp}
+                    {t('billAcct.lastPaidLabel')} {paymentTimestamp}
                   </Typography>
                 ) : null}
                 {paymentFailedAt ? (
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.78rem' }}>
-                    Betaling feilet: {paymentFailedAt}
+                    {t('billAcct.paymentFailedLabel')} {paymentFailedAt}
                   </Typography>
                 ) : null}
                 {nextPaymentAttemptAt ? (
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.78rem' }}>
-                    Neste Stripe-forsøk: {nextPaymentAttemptAt}
+                    {t('billAcct.nextStripeAttemptLabel')} {nextPaymentAttemptAt}
                   </Typography>
                 ) : null}
               </Stack>
@@ -1271,7 +1274,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                     '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
                   }}
                 >
-                  Oppdater betalingsinformasjon
+                  {t('billAcct.updateBillingInfo')}
                 </Button>
               ) : null}
               {canRetryPayment ? (
@@ -1281,7 +1284,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   disabled={actionPending}
                   sx={{ borderColor: 'rgba(246,195,88,0.34)', color: '#f6c358' }}
                 >
-                  Prøv betalingen på nytt
+                  {t('billAcct.retryPayment')}
                 </Button>
               ) : null}
               <Button
@@ -1293,7 +1296,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 disabled={actionPending}
                 sx={{ color: 'rgba(255,255,255,0.78)' }}
               >
-                Oppdater status
+                {t('billAcct.updateStatus')}
               </Button>
             </Stack>
 
@@ -1315,7 +1318,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               <Stack direction="row" spacing={1} alignItems="center">
                 <PeopleIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
-                  Teamet ditt
+                  {t('billAcct.yourTeam')}
                 </Typography>
               </Stack>
 
@@ -1344,16 +1347,16 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                             <Chip
                               size="small"
                               icon={<SupervisorAccountIcon />}
-                              label="Teamleder"
+                              label={t('billAcct.teamLead')}
                               sx={{ bgcolor: 'rgba(246,195,88,0.14)', color: '#f6c358' }}
                             />
                           ) : null}
                           {member.activationApproved ? (
-                            <Chip size="small" color="success" label="Godkjent" />
+                            <Chip size="small" color="success" label={t('billAcct.approved')} />
                           ) : member.activationPendingApproval ? (
-                            <Chip size="small" color="warning" label="Venter godkjenning" />
+                            <Chip size="small" color="warning" label={t('billAcct.awaitingApproval')} />
                           ) : (
-                            <Chip size="small" variant="outlined" label="Venter aktivering" />
+                            <Chip size="small" variant="outlined" label={t('billAcct.awaitingActivation')} />
                           )}
                         </Stack>
                         <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: '0.86rem' }}>
@@ -1373,7 +1376,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
               <Stack direction="row" spacing={1} alignItems="center">
                 <SmsOutlinedIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>
-                  Forbruk denne måneden
+                  {t('billAcct.usageThisMonth')}
                 </Typography>
               </Stack>
 
@@ -1393,31 +1396,31 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                 >
                   <Stack spacing={0.4}>
                     <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
-                      Audition-SMS · {account.smsUsage?.billingPeriod ?? '—'}
+                      {t('billAcct.auditionSmsLabel', { period: account.smsUsage?.billingPeriod ?? '—' })}
                     </Typography>
                     <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-                      {(account.smsUsage?.smsCount ?? 0).toLocaleString('nb-NO')} SMS sendt
+                      {t('billAcct.smsSentCount', { n: (account.smsUsage?.smsCount ?? 0).toLocaleString('nb-NO') })}
                     </Typography>
                     <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
-                      {formatMoney(account.smsUsage?.unitPriceNokExVat ?? 0)} per SMS eks. mva.
-                      {account.smsUsage?.vatRate ? ` (+ ${Math.round((account.smsUsage.vatRate ?? 0) * 100)}% mva.)` : ''}
+                      {formatMoney(account.smsUsage?.unitPriceNokExVat ?? 0, t('billAcct.notAvailable'))} {t('billAcct.perSmsExVat')}
+                      {account.smsUsage?.vatRate ? t('billAcct.vatSurchargeSuffix', { pct: Math.round((account.smsUsage.vatRate ?? 0) * 100) }) : ''}
                     </Typography>
                   </Stack>
 
                   <Stack spacing={0.3} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
                     <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)' }}>
-                      Tillegg på neste faktura
+                      {t('billAcct.addedToNextInvoice')}
                     </Typography>
                     <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
-                      {formatMoney(account.smsUsage?.totalNokExVat ?? 0)} eks. mva.
+                      {formatMoney(account.smsUsage?.totalNokExVat ?? 0, t('billAcct.notAvailable'))} {t('billAcct.exVat')}
                     </Typography>
                     <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
-                      {formatMoney(account.smsUsage?.totalNokInclVat ?? 0)} inkl. mva.
+                      {formatMoney(account.smsUsage?.totalNokInclVat ?? 0, t('billAcct.notAvailable'))} {t('billAcct.inclVat')}
                     </Typography>
                   </Stack>
                 </Stack>
                 <Typography sx={{ mt: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
-                  Branded SMS via The Role Room (Twilio). E-post-påminnelser er inkludert i abonnementet. Kandidater kan slå av SMS i Talent Portal.
+                  {t('billAcct.smsFooterNote')}
                 </Typography>
               </Box>
 
@@ -1439,32 +1442,32 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                     <Stack direction="row" spacing={0.6} alignItems="center">
                       <WhatsAppIcon sx={{ fontSize: 14, color: '#22c55e' }} />
                       <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
-                        Audition-WhatsApp · {account.whatsappUsage?.billingPeriod ?? '—'}
+                        {t('billAcct.auditionWhatsappLabel', { period: account.whatsappUsage?.billingPeriod ?? '—' })}
                       </Typography>
                     </Stack>
                     <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-                      {(account.whatsappUsage?.whatsappCount ?? 0).toLocaleString('nb-NO')} meldinger sendt
+                      {t('billAcct.whatsappSentCount', { n: (account.whatsappUsage?.whatsappCount ?? 0).toLocaleString('nb-NO') })}
                     </Typography>
                     <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
-                      {formatMoney(account.whatsappUsage?.unitPriceNokExVat ?? 0)} per melding eks. mva.
-                      {account.whatsappUsage?.vatRate ? ` (+ ${Math.round((account.whatsappUsage.vatRate ?? 0) * 100)}% mva.)` : ''}
+                      {formatMoney(account.whatsappUsage?.unitPriceNokExVat ?? 0, t('billAcct.notAvailable'))} {t('billAcct.perMessageExVat')}
+                      {account.whatsappUsage?.vatRate ? t('billAcct.vatSurchargeSuffix', { pct: Math.round((account.whatsappUsage.vatRate ?? 0) * 100) }) : ''}
                     </Typography>
                   </Stack>
 
                   <Stack spacing={0.3} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
                     <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)' }}>
-                      Tillegg på neste faktura
+                      {t('billAcct.addedToNextInvoice')}
                     </Typography>
                     <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
-                      {formatMoney(account.whatsappUsage?.totalNokExVat ?? 0)} eks. mva.
+                      {formatMoney(account.whatsappUsage?.totalNokExVat ?? 0, t('billAcct.notAvailable'))} {t('billAcct.exVat')}
                     </Typography>
                     <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
-                      {formatMoney(account.whatsappUsage?.totalNokInclVat ?? 0)} inkl. mva.
+                      {formatMoney(account.whatsappUsage?.totalNokInclVat ?? 0, t('billAcct.notAvailable'))} {t('billAcct.inclVat')}
                     </Typography>
                   </Stack>
                 </Stack>
                 <Typography sx={{ mt: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
-                  WhatsApp via Meta Cloud API. Bedriften kobler eget WhatsApp Business-nummer i innstillinger; kandidaten ser bedriftens display-navn som avsender.
+                  {t('billAcct.whatsappFooterNote')}
                 </Typography>
               </Box>
             </Stack>
@@ -1483,7 +1486,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
         {!loading && !error && !account ? (
           <Alert severity="info" sx={{ mt: 1 }}>
-            Abonnementsinformasjon blir tilgjengelig når denne workspacen er koblet til en kommersiell konto.
+            {t('billAcct.noAccountInfo')}
           </Alert>
         ) : null}
           </>
@@ -1492,7 +1495,7 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
       <DialogActions sx={{ px: 3, pb: 2.5, pt: 1.25 }}>
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.78)' }}>
-          Lukk
+          {t('billAcct.close')}
         </Button>
       </DialogActions>
     </Dialog>

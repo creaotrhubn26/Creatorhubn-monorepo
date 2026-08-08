@@ -12,6 +12,7 @@ import SplitSheetSongFlowIntegration from "./SplitSheetSongFlowIntegration";
 import SplitSheetPortalView from "./SplitSheetPortalView";
 import PricingSelector from "../shared/PricingSelector";
 import GlobalMentionHelper from "../shared/GlobalMentionHelper";
+import { useT } from '../../../../i18n';
 
 interface SplitSheetEditorProps {
   splitSheet?: SplitSheet | null;
@@ -45,6 +46,7 @@ export default function SplitSheetEditor({
   onCancel,
   onSaveProject
 }: SplitSheetEditorProps) {
+  const { t } = useT();
   const [title, setTitle] = useState(splitSheet?.title || (projectName ? `${projectName} - ${agreementLabel}` : ''));
   const [description, setDescription] = useState(splitSheet?.description || '');
   const [totalBudget, setTotalBudget] = useState<number>(splitSheet?.metadata?.total_budget || 0);
@@ -125,44 +127,42 @@ export default function SplitSheetEditor({
   }, [contributors, projectName]);
   
   // Get profession-specific terminology for labels
-  const getProfessionLabels = () => {
+  const labels = useMemo(() => {
     switch (profession) {
       case 'music_producer':
         return {
-          titlePlaceholder: 'F.eks. "Summer Vibes - Single"',
-          descriptionPlaceholder: 'Beskrivelse av låten eller prosjektet...',
-          contributorLabel: 'Bidragsyter',
-          contributorsLabel: 'Bidragsytere',
-          addContributorLabel: 'Legg til bidragsyter',
+          titlePlaceholder: t('splitEd.placeholder.musicTitle'),
+          descriptionPlaceholder: t('splitEd.placeholder.musicDescription'),
+          contributorLabel: t('splitEd.contributorLabel.generic'),
+          contributorsLabel: t('splitEd.contributorsLabel.generic'),
+          addContributorLabel: t('splitEd.addContributorLabel.generic'),
         };
       case 'photographer':
         return {
-          titlePlaceholder: 'F.eks. "Bryllup Hansen/Olsen 2024"',
-          descriptionPlaceholder: 'Beskrivelse av fotoprosjektet...',
-          contributorLabel: 'Samarbeidspartner',
-          contributorsLabel: 'Samarbeidspartnere',
-          addContributorLabel: 'Legg til samarbeidspartner',
+          titlePlaceholder: t('splitEd.placeholder.photoTitle'),
+          descriptionPlaceholder: t('splitEd.placeholder.photoDescription'),
+          contributorLabel: t('splitEd.contributorLabel.collaborator'),
+          contributorsLabel: t('splitEd.contributorsLabel.collaborator'),
+          addContributorLabel: t('splitEd.addContributorLabel.collaborator'),
         };
       case 'videographer':
         return {
-          titlePlaceholder: 'F.eks. "Bedriftsvideo - Firma AS"',
-          descriptionPlaceholder: 'Beskrivelse av videoproduksjonen...',
-          contributorLabel: 'Crew-medlem',
-          contributorsLabel: 'Crew-medlemmer',
-          addContributorLabel: 'Legg til crew-medlem',
+          titlePlaceholder: t('splitEd.placeholder.videoTitle'),
+          descriptionPlaceholder: t('splitEd.placeholder.videoDescription'),
+          contributorLabel: t('splitEd.contributorLabel.crew'),
+          contributorsLabel: t('splitEd.contributorsLabel.crew'),
+          addContributorLabel: t('splitEd.addContributorLabel.crew'),
         };
       default:
         return {
-          titlePlaceholder: `Tittel på ${agreementLabel.toLowerCase()}`,
-          descriptionPlaceholder: 'Beskrivelse av prosjektet...',
-          contributorLabel: 'Bidragsyter',
-          contributorsLabel: 'Bidragsytere',
-          addContributorLabel: 'Legg til bidragsyter',
+          titlePlaceholder: t('splitEd.placeholder.defaultTitle', { agreement: agreementLabel.toLowerCase() }),
+          descriptionPlaceholder: t('splitEd.placeholder.defaultDescription'),
+          contributorLabel: t('splitEd.contributorLabel.generic'),
+          contributorsLabel: t('splitEd.contributorsLabel.generic'),
+          addContributorLabel: t('splitEd.addContributorLabel.generic'),
         };
     }
-  };
-  
-  const labels = getProfessionLabels();
+  }, [profession, agreementLabel, t]);
   const selectedRightsManagers = unionSettings.rightsManagement ?? [];
   const activeTariffReferences = useMemo(() => {
     const references: Array<(typeof NSF_WAGE_REFERENCES)[keyof typeof NSF_WAGE_REFERENCES] | (typeof NFF_WAGE_REFERENCES)[keyof typeof NFF_WAGE_REFERENCES]> = [];
@@ -615,10 +615,10 @@ export default function SplitSheetEditor({
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 1.5, sm: 2 }, mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, flexWrap: 'wrap' }}>
               <Box>
                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, mb: 0.5 }}>
-                  Grunnleggende informasjon
+                  {t('splitEd.basicInfo.title')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Navngi avtalen og beskriv hva teamet skal budsjettere, levere og signere.
+                  {t('splitEd.basicInfo.subtitle')}
                 </Typography>
               </Box>
               <Chip
@@ -643,7 +643,7 @@ export default function SplitSheetEditor({
             </Box>
             <Stack spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }}>
               <TextField
-                label="Tittel"
+                label={t('splitEd.field.title')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
@@ -662,7 +662,7 @@ export default function SplitSheetEditor({
                 }}
               />
               <TextField
-                label="Beskrivelse (valgfritt)"
+                label={t('splitEd.field.description')}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 fullWidth
@@ -699,13 +699,13 @@ export default function SplitSheetEditor({
               >
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem', '2xl': '1.313rem', '3xl': '1.375rem' }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
-                    <GavelIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24, '2xl': 25, '3xl': 26 } }} /> Fagforeninger, tariff og lønn
+                    <GavelIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24, '2xl': 25, '3xl': 26 } }} /> {t('splitEd.union.sectionTitle')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    NSF (Skuespillerforbundet) • NFF (Filmforbundet) • F©R rettighetsforvaltning • Lønnsatser
+                    {t('splitEd.union.sectionSubtitle')}
                   </Typography>
                 </Box>
-                <IconButton size="small" aria-label={showUnionSettings ? 'Skjul fagforeninger' : 'Utvid fagforeninger'}>
+                <IconButton size="small" aria-label={showUnionSettings ? t('splitEd.union.hideAriaLabel') : t('splitEd.union.expandAriaLabel')}>
                   <ExpandMoreIcon sx={{ transform: showUnionSettings ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
                 </IconButton>
               </Box>
@@ -714,11 +714,11 @@ export default function SplitSheetEditor({
                 <Stack spacing={{ xs: 2, sm: 2.25, md: 2.5, lg: 2.75, xl: 3, '2xl': 3.25, '3xl': 3.5 }}>
                   {/* Production Type */}
                   <FormControl fullWidth size="small">
-                    <InputLabel>Produksjonstype</InputLabel>
+                    <InputLabel>{t('splitEd.union.productionTypeLabel')}</InputLabel>
                     <Select
                       value={unionSettings.productionType}
                       onChange={(e) => setUnionSettings({ ...unionSettings, productionType: e.target.value as ProductionType })}
-                      label="Produksjonstype"
+                      label={t('splitEd.union.productionTypeLabel')}
                       MenuProps={{ sx: { zIndex: 1400 } }}
                     >
                       {Object.entries(PRODUCTION_TYPE_LABELS).map(([key, label]) => (
@@ -729,11 +729,11 @@ export default function SplitSheetEditor({
 
                   {/* Participant Type */}
                   <FormControl fullWidth size="small">
-                    <InputLabel>Hvem gjelder dette for?</InputLabel>
+                    <InputLabel>{t('splitEd.union.participantTypeLabel')}</InputLabel>
                     <Select
                       value={unionSettings.participantType}
                       onChange={(e) => setUnionSettings({ ...unionSettings, participantType: e.target.value as ParticipantType })}
-                      label="Hvem gjelder dette for?"
+                      label={t('splitEd.union.participantTypeLabel')}
                       MenuProps={{ sx: { zIndex: 1400 } }}
                     >
                       {Object.entries(PARTICIPANT_TYPE_LABELS).map(([key, label]) => (
@@ -744,7 +744,7 @@ export default function SplitSheetEditor({
 
                   {/* Union Membership */}
                   <FormControl fullWidth size="small">
-                    <InputLabel>Fagforeningsmedlemskap</InputLabel>
+                    <InputLabel>{t('splitEd.union.membershipLabel')}</InputLabel>
                     <Select
                       value={unionSettings.unionMembership}
                       onChange={(e) => {
@@ -756,7 +756,7 @@ export default function SplitSheetEditor({
                           isFilmWorker: val === 'nff_member' || val === 'both',
                         });
                       }}
-                      label="Fagforeningsmedlemskap"
+                      label={t('splitEd.union.membershipLabel')}
                       MenuProps={{ sx: { zIndex: 1400 } }}
                     >
                       {Object.entries(UNION_MEMBERSHIP_LABELS).map(([key, label]) => (
@@ -775,11 +775,11 @@ export default function SplitSheetEditor({
                         style={{ width: 18, height: 18 }}
                       />
                       <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>
-                        Produsent er medlem av Virke Produsentforeningen
+                        {t('splitEd.union.virkeCheckboxLabel')}
                       </Typography>
                     </Box>
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                      Kollektive tariffavtaler gjelder kun når produsent er Virke-medlem
+                      {t('splitEd.union.virkeHelperText')}
                     </Typography>
                   </Box>
 
@@ -787,7 +787,7 @@ export default function SplitSheetEditor({
                   {(unionSettings.isProfessionalActor || unionSettings.unionMembership === 'nsf_member' || unionSettings.unionMembership === 'both') && (
                     <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(236, 72, 153, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(236, 72, 153, 0.3)' }}>
                       <Typography variant="subtitle2" sx={{ color: '#ec4899', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
-                        <TheaterComedyIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Norsk Skuespillerforbund (NSF)
+                        <TheaterComedyIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> {t('splitEd.union.nsfTitle')}
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 } }}>
                         <input
@@ -796,15 +796,15 @@ export default function SplitSheetEditor({
                           onChange={(e) => setUnionSettings({ ...unionSettings, nsfAgreementApplies: e.target.checked })}
                           style={{ width: 16, height: 16 }}
                         />
-                        <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>NSF-tariffavtale gjelder</Typography>
+                        <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>{t('splitEd.union.nsfAgreementAppliesLabel')}</Typography>
                       </Box>
                       {unionSettings.nsfAgreementApplies && (
                         <FormControl fullWidth size="small">
-                          <InputLabel>NSF-avtale</InputLabel>
+                          <InputLabel>{t('splitEd.union.nsfAgreementLabel')}</InputLabel>
                           <Select
                             value={unionSettings.nsfAgreementType || 'none'}
                             onChange={(e) => setUnionSettings({ ...unionSettings, nsfAgreementType: e.target.value as NSFAgreementType })}
-                            label="NSF-avtale"
+                            label={t('splitEd.union.nsfAgreementLabel')}
                             MenuProps={{ sx: { zIndex: 1400 } }}
                           >
                             {Object.entries(NSF_AGREEMENT_LABELS).map(([key, label]) => (
@@ -820,7 +820,7 @@ export default function SplitSheetEditor({
                   {(unionSettings.isFilmWorker || unionSettings.unionMembership === 'nff_member' || unionSettings.unionMembership === 'both') && (
                     <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(0, 212, 255, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(0, 212, 255, 0.3)' }}>
                       <Typography variant="subtitle2" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
-                        <MovieIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Norsk Filmforbund (NFF)
+                        <MovieIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> {t('splitEd.union.nffTitle')}
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 } }}>
                         <input
@@ -829,16 +829,16 @@ export default function SplitSheetEditor({
                           onChange={(e) => setUnionSettings({ ...unionSettings, nffAgreementApplies: e.target.checked })}
                           style={{ width: 16, height: 16 }}
                         />
-                        <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>NFF-tariffavtale gjelder</Typography>
+                        <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>{t('splitEd.union.nffAgreementAppliesLabel')}</Typography>
                       </Box>
                       {unionSettings.nffAgreementApplies && (
                         <>
                           <FormControl fullWidth size="small" sx={{ mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 } }}>
-                            <InputLabel>NFF-avtale</InputLabel>
+                            <InputLabel>{t('splitEd.union.nffAgreementLabel')}</InputLabel>
                             <Select
                               value={unionSettings.nffAgreementType || 'none'}
                               onChange={(e) => setUnionSettings({ ...unionSettings, nffAgreementType: e.target.value as NFFAgreementType })}
-                              label="NFF-avtale"
+                              label={t('splitEd.union.nffAgreementLabel')}
                               MenuProps={{ sx: { zIndex: 1400 } }}
                             >
                               {Object.entries(NFF_AGREEMENT_LABELS).map(([key, label]) => (
@@ -865,9 +865,9 @@ export default function SplitSheetEditor({
                               style={{ width: 16, height: 16 }}
                             />
                             <Box>
-                              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>F©R rettighetsforvaltning</Typography>
+                              <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>{t('splitEd.union.forRightsLabel')}</Typography>
                               <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                                Opphavsrettsvederlag via Filmforbundet
+                                {t('splitEd.union.forRightsHelper')}
                               </Typography>
                             </Box>
                           </Box>
@@ -878,10 +878,10 @@ export default function SplitSheetEditor({
 
                   <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(59, 130, 246, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
                     <Typography variant="subtitle2" sx={{ color: '#60a5fa', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
-                      <LanguageIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Rettighetsforvaltning
+                      <LanguageIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> {t('splitEd.union.rightsManagementTitle')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25 } }}>
-                      Velg hvilke forvaltere eller rettighetsløp som gjelder for denne avtalen. Valgene lagres som del av økonomigrunnlaget og kan gjenbrukes i kontrakter og klientgjennomgang.
+                      {t('splitEd.union.rightsManagementDescription')}
                     </Typography>
                     <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
                       {(Object.entries(RIGHTS_MANAGEMENT_LABELS) as Array<[RightsManagementType, string]>)
@@ -910,7 +910,7 @@ export default function SplitSheetEditor({
                         })}
                     </Stack>
                     <Alert severity="info" sx={{ mt: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25 }, borderRadius: { xs: 1.5, sm: 1.75, md: 2 } }}>
-                      Aktiv rettighetsflyt:{' '}
+                      {t('splitEd.union.activeRightsFlow')}{' '}
                       {selectedRightsManagers.length > 0
                         ? selectedRightsManagers.map((entry) => RIGHTS_MANAGEMENT_LABELS[entry]).join(', ')
                         : RIGHTS_MANAGEMENT_LABELS.none}
@@ -920,7 +920,7 @@ export default function SplitSheetEditor({
                   {/* Compensation Settings */}
                   <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(139, 92, 246, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(139, 92, 246, 0.3)' }}>
                     <Typography variant="subtitle2" sx={{ color: 'var(--role-violet, #8b5cf6)', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
-                      <PaymentsIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> Vederlag og kompensasjon
+                      <PaymentsIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20 } }} /> {t('splitEd.union.compensationTitle')}
                     </Typography>
                     <Stack spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 } }}>
@@ -930,7 +930,7 @@ export default function SplitSheetEditor({
                           onChange={(e) => setUnionSettings({ ...unionSettings, compensationAgreed: e.target.checked })}
                           style={{ width: 16, height: 16 }}
                         />
-                        <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>Honorar/lønn er avtalt separat</Typography>
+                        <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>{t('splitEd.union.compensationAgreedLabel')}</Typography>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 } }}>
                         <input
@@ -940,9 +940,9 @@ export default function SplitSheetEditor({
                           style={{ width: 16, height: 16 }}
                         />
                         <Box>
-                          <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>Rettighetsvederlag adskilt fra lønn</Typography>
+                          <Typography variant="body2" sx={{ fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>{t('splitEd.union.rightsPaymentSeparateLabel')}</Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                            Ref. EU/Stortinget: Krav om "rimelig vederlag"
+                            {t('splitEd.union.rightsPaymentSeparateHelper')}
                           </Typography>
                         </Box>
                       </Box>
@@ -962,11 +962,11 @@ export default function SplitSheetEditor({
                   {/* Legal References */}
                   <Box sx={{ pt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75, '2xl': 2, '3xl': 2.25 } }}>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                      Juridiske kilder:
+                      {t('splitEd.union.legalSourcesLabel')}
                     </Typography>
                     <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
-                      <Chip 
-                        label="skuespillerforbund.no" 
+                      <Chip
+                        label="skuespillerforbund.no"
                         size="small" 
                         onClick={() => window.open(UNION_LEGAL_REFERENCES.nsf.url, '_blank')}
                         sx={{ fontSize: { xs: '0.65rem', sm: '0.675rem', md: '0.7rem', lg: '0.725rem', xl: '0.75rem', '2xl': '0.775rem', '3xl': '0.8rem' }, cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
@@ -977,8 +977,8 @@ export default function SplitSheetEditor({
                         onClick={() => window.open(UNION_LEGAL_REFERENCES.nff.url, '_blank')}
                         sx={{ fontSize: { xs: '0.65rem', sm: '0.675rem', md: '0.7rem', lg: '0.725rem', xl: '0.75rem', '2xl': '0.775rem', '3xl': '0.8rem' }, cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
                       />
-                      <Chip 
-                        label="F©R rettigheter" 
+                      <Chip
+                        label={t('splitEd.union.chipForRights')}
                         size="small" 
                         onClick={() => window.open(UNION_LEGAL_REFERENCES.for.url, '_blank')}
                         sx={{ fontSize: { xs: '0.65rem', sm: '0.675rem', md: '0.7rem', lg: '0.725rem', xl: '0.75rem', '2xl': '0.775rem', '3xl': '0.8rem' }, cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
@@ -995,16 +995,16 @@ export default function SplitSheetEditor({
                   {/* Wage/Salary References */}
                   <Box sx={{ p: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, bgcolor: 'rgba(34, 197, 94, 0.1)', borderRadius: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, border: '1px solid rgba(34, 197, 94, 0.3)' }}>
                     <Typography variant="subtitle2" sx={{ color: '#22c55e', fontWeight: 600, mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.925rem', lg: '0.95rem', xl: '1rem', '2xl': '1.025rem', '3xl': '1.05rem' } }}>
-                      <AttachMoneyIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20, '2xl': 21, '3xl': 22 } }} /> Lønn og satser – Referanser
+                      <AttachMoneyIcon sx={{ fontSize: { xs: 16, sm: 17, md: 18, lg: 19, xl: 20, '2xl': 21, '3xl': 22 } }} /> {t('splitEd.union.wageReferencesTitle')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 }, fontSize: { xs: '0.8rem', sm: '0.825rem', md: '0.85rem', lg: '0.875rem', xl: '0.9rem', '2xl': '0.925rem', '3xl': '0.95rem' } }}>
-                      Bruk offisielle tariffavtaler for å sikre riktig lønn til skuespillere og crew.
+                      {t('splitEd.union.wageReferencesDescription')}
                     </Typography>
 
                     {activeTariffReferences.length > 0 && (
                       <Box sx={{ mb: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5 } }}>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                          Aktive tariffreferanser:
+                          {t('splitEd.union.activeTariffReferencesLabel')}
                         </Typography>
                         <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
                           {activeTariffReferences.map((reference) => (
@@ -1064,29 +1064,29 @@ export default function SplitSheetEditor({
 
                     {/* Quick links to wage overviews */}
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                      Generelle lønnsressurser:
+                      {t('splitEd.union.generalWageResourcesLabel')}
                     </Typography>
                     <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
-                      <Chip 
+                      <Chip
                         icon={<AttachMoneyIcon sx={{ fontSize: { xs: 12, sm: 13, md: 14, lg: 15, xl: 16 } }} />}
-                        label="NSF Lønn & Tariff" 
+                        label={t('splitEd.union.chipNsfWageTariff')}
                         size="small" 
                         color="success"
                         variant="outlined"
                         onClick={() => window.open(WAGE_INFO_RESOURCES.nsf_main.url, '_blank')}
                         sx={{ fontSize: { xs: '0.65rem', sm: '0.675rem', md: '0.7rem', lg: '0.725rem', xl: '0.75rem', '2xl': '0.775rem', '3xl': '0.8rem' }, cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
                       />
-                      <Chip 
+                      <Chip
                         icon={<AttachMoneyIcon sx={{ fontSize: { xs: 12, sm: 13, md: 14, lg: 15, xl: 16 } }} />}
-                        label="NFF Tariff" 
+                        label={t('splitEd.union.chipNffTariff')}
                         size="small" 
                         color="info"
                         variant="outlined"
                         onClick={() => window.open(WAGE_INFO_RESOURCES.nff_main.url, '_blank')}
                         sx={{ fontSize: { xs: '0.65rem', sm: '0.675rem', md: '0.7rem', lg: '0.725rem', xl: '0.75rem', '2xl': '0.775rem', '3xl': '0.8rem' }, cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
                       />
-                      <Chip 
-                        label="NFF Lønnskalkulator" 
+                      <Chip
+                        label={t('splitEd.union.chipNffWageCalculator')}
                         size="small" 
                         variant="outlined"
                         onClick={() => window.open(WAGE_INFO_RESOURCES.nff_lonnskalkulator.url, '_blank')}
@@ -1099,8 +1099,8 @@ export default function SplitSheetEditor({
                         onClick={() => window.open(WAGE_INFO_RESOURCES.skuespillerkatalogen.url, '_blank')}
                         sx={{ fontSize: { xs: '0.65rem', sm: '0.675rem', md: '0.7rem', lg: '0.725rem', xl: '0.75rem', '2xl': '0.775rem', '3xl': '0.8rem' }, cursor: 'pointer', height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }}
                       />
-                      <Chip 
-                        label="NSF Rettigheter" 
+                      <Chip
+                        label={t('splitEd.union.chipNsfRights')}
                         size="small" 
                         variant="outlined"
                         onClick={() => window.open(WAGE_INFO_RESOURCES.betaling_rettigheter.url, '_blank')}
@@ -1112,7 +1112,7 @@ export default function SplitSheetEditor({
                     {unionSettings.productionType !== 'other' && (
                       <Box sx={{ mt: { xs: 1.5, sm: 1.75, md: 2, lg: 2.25, xl: 2.5, '2xl': 2.75, '3xl': 3 }, pt: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2 }, borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }, fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' } }}>
-                          Spesifikke avtaler for {PRODUCTION_TYPE_LABELS[unionSettings.productionType]}:
+                          {t('splitEd.union.specificAgreementsLabel', { productionType: PRODUCTION_TYPE_LABELS[unionSettings.productionType] })}
                         </Typography>
                         <Stack direction="row" spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5 }} flexWrap="wrap" useFlexGap>
                           {unionSettings.participantType === 'actor' && (
@@ -1123,7 +1123,7 @@ export default function SplitSheetEditor({
                               onClick={() => window.open(getWageReferenceUrl(unionSettings.productionType, 'actor'), '_blank')}
                               sx={{ fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' }, textTransform: 'none' }}
                             >
-                              NSF satser for skuespillere
+                              {t('splitEd.union.nsfActorRatesButton')}
                             </Button>
                           )}
                           {unionSettings.participantType === 'crew' && (
@@ -1134,7 +1134,7 @@ export default function SplitSheetEditor({
                               onClick={() => window.open(getWageReferenceUrl(unionSettings.productionType, 'crew'), '_blank')}
                               sx={{ fontSize: { xs: '0.7rem', sm: '0.725rem', md: '0.75rem', lg: '0.775rem', xl: '0.8rem', '2xl': '0.825rem', '3xl': '0.85rem' }, textTransform: 'none' }}
                             >
-                              NFF satser for crew
+                              {t('splitEd.union.nffCrewRatesButton')}
                             </Button>
                           )}
                         </Stack>
@@ -1162,7 +1162,7 @@ export default function SplitSheetEditor({
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom sx={{ fontWeight: 600}}>
-                Prisinformasjon
+                {t('splitEd.pricing.title')}
               </Typography>
               <PricingSelector
                 projectId={projectId}
@@ -1193,7 +1193,7 @@ export default function SplitSheetEditor({
             {/* Calculation Method Selection */}
             <Box sx={{ mb: { xs: 2.5, sm: 3, md: 3.5, lg: 4, xl: 4.5 } }}>
               <Typography variant="body2" sx={{ mb: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 }, fontWeight: 600, color: 'text.primary', fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' } }}>
-                Beregningsmetode *
+                {t('splitEd.contributors.calculationMethodLabel')}
               </Typography>
               <ToggleButtonGroup
                 value={calculationMethod}
@@ -1229,7 +1229,7 @@ export default function SplitSheetEditor({
                     setContributors(updated);
                   }
                 }}
-                aria-label="beregningsmetode"
+                aria-label={t('splitEd.contributors.calcMethodAriaLabel')}
                 fullWidth
                 sx={{
                   '& .MuiToggleButton-root': {
@@ -1258,11 +1258,11 @@ export default function SplitSheetEditor({
                   },
                 }}
               >
-                <ToggleButton value="budget" aria-label="totalt budsjett" tabIndex={0}>
-                  Totalt budsjett
+                <ToggleButton value="budget" aria-label={t('splitEd.contributors.totalBudgetAriaLabel')} tabIndex={0}>
+                  {t('splitEd.contributors.totalBudgetToggle')}
                 </ToggleButton>
-                <ToggleButton value="percentage" aria-label="prosentandel" tabIndex={0}>
-                  Prosentandel
+                <ToggleButton value="percentage" aria-label={t('splitEd.contributors.percentageAriaLabel')} tabIndex={0}>
+                  {t('splitEd.contributors.percentageToggle')}
                 </ToggleButton>
               </ToggleButtonGroup>
             </Box>
@@ -1271,7 +1271,7 @@ export default function SplitSheetEditor({
             {calculationMethod === 'budget' && (
               <Box sx={{ mb: { xs: 2.5, sm: 3, md: 3.5, lg: 4, xl: 4.5 } }}>
                 <TextField
-                  label="Totalt budsjett *"
+                  label={t('splitEd.contributors.totalBudgetFieldLabel')}
                   type="text"
                   value={formatNumberWithSpaces(totalBudget)}
                   onChange={(e) => {
@@ -1303,7 +1303,7 @@ export default function SplitSheetEditor({
                   size="medium"
                   tabIndex={0}
                   placeholder="0"
-                  helperText="Totalt budsjett i NOK (ekskl. MVA). Brukes til å kalkulere prosentandel basert på fast honorar."
+                  helperText={t('splitEd.contributors.totalBudgetHelper')}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       minHeight: { xs: 52, sm: 54, md: 56, lg: 58, xl: 60 },
@@ -1364,7 +1364,7 @@ export default function SplitSheetEditor({
                     minHeight: { xs: 40, sm: 42, md: 44, lg: 46, xl: 48 },
                   }}
                 >
-                  Del likt
+                  {t('splitEd.contributors.distributeEvenlyButton')}
                 </Button>
                 <Button
                   size="small"
@@ -1379,7 +1379,7 @@ export default function SplitSheetEditor({
                     minHeight: { xs: 40, sm: 42, md: 44, lg: 46, xl: 48 },
                   }}
                 >
-                  Auto-fordeling
+                  {t('splitEd.contributors.autoDistributeButton')}
                 </Button>
                 <Button
                   size="small"
@@ -1402,7 +1402,7 @@ export default function SplitSheetEditor({
 
             {contributors.length === 0 ? (
               <Alert severity="info" sx={{ mb: 2 }}>
-                Legg til minst én {labels.contributorLabel.toLowerCase()} for å opprette {agreementLabel.toLowerCase()}.
+                {t('splitEd.contributors.emptyState', { contributor: labels.contributorLabel.toLowerCase(), agreement: agreementLabel.toLowerCase() })}
               </Alert>
             ) : (
               <>
@@ -1442,13 +1442,13 @@ export default function SplitSheetEditor({
                             <AttachMoneyIcon sx={{ fontSize: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 }, color: '#2196f3' }} />
                           )}
                           <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary', fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' } }}>
-                            Budsjettoversikt
+                            {t('splitEd.budget.overviewTitle')}
                           </Typography>
                         </Box>
                         <Stack spacing={1.5}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="body1" color="text.secondary">
-                              Totalt budsjett (ekskl. MVA):
+                              {t('splitEd.budget.totalExclVat')}
                             </Typography>
                             <Typography variant="body1" sx={{ fontWeight: 600 }}>
                               {totalBudget.toLocaleString('no-NO')} NOK
@@ -1456,7 +1456,7 @@ export default function SplitSheetEditor({
                           </Box>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pl: 2 }}>
                             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                              inkl. MVA:
+                              {t('splitEd.budget.inclVat')}
                             </Typography>
                             <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.secondary' }}>
                               {totalBudgetInklMVA.toLocaleString('no-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} NOK
@@ -1464,7 +1464,7 @@ export default function SplitSheetEditor({
                           </Box>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="body1" color="text.secondary">
-                              Totalt brukt (fast honorar, ekskl. MVA):
+                              {t('splitEd.budget.totalUsedExclVat')}
                             </Typography>
                             <Typography variant="body1" sx={{ fontWeight: 600 }}>
                               {totalDagsats.toLocaleString('no-NO')} NOK
@@ -1472,7 +1472,7 @@ export default function SplitSheetEditor({
                           </Box>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pl: 2 }}>
                             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                              inkl. MVA:
+                              {t('splitEd.budget.inclVat')}
                             </Typography>
                             <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.secondary' }}>
                               {totalDagsatsInklMVA.toLocaleString('no-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} NOK
@@ -1481,7 +1481,7 @@ export default function SplitSheetEditor({
                           <Divider />
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="body1" sx={{ fontWeight: 700 }}>
-                              Gjenstående budsjett (ekskl. MVA):
+                              {t('splitEd.budget.remainingExclVat')}
                             </Typography>
                             <Typography 
                               variant="body1" 
@@ -1495,7 +1495,7 @@ export default function SplitSheetEditor({
                           </Box>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pl: 2 }}>
                             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', fontWeight: 500 }}>
-                              inkl. MVA:
+                              {t('splitEd.budget.inclVat')}
                             </Typography>
                             <Typography 
                               variant="body2" 
@@ -1523,7 +1523,7 @@ export default function SplitSheetEditor({
                             }}
                           >
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              Du har brukt {Math.abs(remainingBudget).toLocaleString('no-NO')} NOK mer enn budsjettet
+                              {t('splitEd.budget.overBudgetAlert', { amount: Math.abs(remainingBudget).toLocaleString('no-NO') })}
                             </Typography>
                           </Alert>
                         )}
@@ -1542,7 +1542,7 @@ export default function SplitSheetEditor({
                             }}
                           >
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              Budsjettet er fullt brukt
+                              {t('splitEd.budget.fullyUsedAlert')}
                             </Typography>
                           </Alert>
                         )}
@@ -1582,7 +1582,7 @@ export default function SplitSheetEditor({
                             <CheckCircleIcon sx={{ fontSize: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 }, color: '#4caf50' }} />
                           )}
                           <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary', fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' } }}>
-                            Total prosentandel
+                            {t('splitEd.percentage.totalTitle')}
                           </Typography>
                         </Box>
                         <Chip
@@ -1617,15 +1617,12 @@ export default function SplitSheetEditor({
                           }}
                         >
                           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                            {totalPercentage > 100 
-                              ? `Totalen er ${totalPercentage.toFixed(2)}% - må være nøyaktig 100%`
-                              : `Totalen er ${totalPercentage.toFixed(2)}% - må være nøyaktig 100%`
-                            }
+                            {t('splitEd.percentage.totalMismatch', { value: totalPercentage.toFixed(2) })}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {totalPercentage > 100
-                              ? `${(totalPercentage - 100).toFixed(2)}% for mye`
-                              : `${(100 - totalPercentage).toFixed(2)}% mangler`
+                              ? t('splitEd.percentage.excessLabel', { value: (totalPercentage - 100).toFixed(2) })
+                              : t('splitEd.percentage.missingLabel', { value: (100 - totalPercentage).toFixed(2) })
                             }
                           </Typography>
                         </Alert>
@@ -1648,7 +1645,7 @@ export default function SplitSheetEditor({
                               },
                             }}
                           >
-                            Auto-juster til 100%
+                            {t('splitEd.percentage.autoAdjustButton')}
                           </Button>
                           {totalPercentage > 100 && (
                             <Button
@@ -1675,7 +1672,7 @@ export default function SplitSheetEditor({
                                 },
                               }}
                             >
-                              Reduser med {(totalPercentage - 100).toFixed(2)}%
+                              {t('splitEd.percentage.reduceButton', { value: (totalPercentage - 100).toFixed(2) })}
                             </Button>
                           )}
                           {totalPercentage < 100 && (
@@ -1702,7 +1699,7 @@ export default function SplitSheetEditor({
                                 },
                               }}
                             >
-                              Legg til {(100 - totalPercentage).toFixed(2)}%
+                              {t('splitEd.percentage.addButton', { value: (100 - totalPercentage).toFixed(2) })}
                             </Button>
                           )}
                         </Stack>
@@ -1723,7 +1720,7 @@ export default function SplitSheetEditor({
                         }}
                       >
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          Prosentandel er korrekt ({totalPercentage.toFixed(2)}%)
+                          {t('splitEd.percentage.correctAlert', { value: totalPercentage.toFixed(2) })}
                         </Typography>
                       </Alert>
                     )}
@@ -1765,7 +1762,7 @@ export default function SplitSheetEditor({
                               </Avatar>
                               <Box>
                                 <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, mb: { xs: 0.375, sm: 0.5, md: 0.625, lg: 0.75, xl: 0.875 } }}>
-                                  {contributor.name || `${labels.contributorLabel} ${index + 1}`}
+                                  {contributor.name || t('splitEd.contributor.defaultName', { contributor: labels.contributorLabel, n: index + 1 })}
                                 </Typography>
                                 {contributor.email && (
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
@@ -1782,7 +1779,7 @@ export default function SplitSheetEditor({
                               color="error"
                               onClick={() => handleRemoveContributor(index)}
                               tabIndex={0}
-                              aria-label={`Slett ${labels.contributorLabel.toLowerCase()} ${contributor.name}`}
+                              aria-label={t('splitEd.contributor.deleteAriaLabel', { contributor: labels.contributorLabel.toLowerCase(), name: contributor.name })}
                               sx={{
                                 '&:hover': {
                                   bgcolor: 'error.light',
@@ -1800,7 +1797,7 @@ export default function SplitSheetEditor({
                           <Grid container spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }}>
                             <Grid size={{ xs: 12, md: 6 }}>
                               <TextField
-                                label="Navn *"
+                                label={t('splitEd.field.name')}
                                 value={contributor.name}
                                 onChange={(e) => handleContributorChange(index, 'name', e.target.value)}
                                 required
@@ -1841,7 +1838,7 @@ export default function SplitSheetEditor({
                             </Grid>
                             <Grid size={{ xs: 12, md: 6 }}>
                               <TextField
-                                label="E-post *"
+                                label={t('splitEd.field.email')}
                                 type="email"
                                 inputMode="email"
                                 autoComplete="email"
@@ -1854,9 +1851,9 @@ export default function SplitSheetEditor({
                                 error={!contributor.email || (contributor.email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contributor.email))}
                                 helperText={
                                   !contributor.email
-                                    ? 'E-post er påkrevd'
+                                    ? t('splitEd.field.emailRequired')
                                     : contributor.email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contributor.email)
-                                    ? 'Ugyldig e-postadresse'
+                                    ? t('splitEd.field.emailInvalid')
                                     : ''
                                 }
                                 sx={{
@@ -1904,11 +1901,11 @@ export default function SplitSheetEditor({
                                     },
                                   }}
                                 >
-                                  Rolle
+                                  {t('splitEd.field.role')}
                                 </InputLabel>
                                 <Select
                                   value={contributor.role}
-                                  label="Rolle"
+                                  label={t('splitEd.field.role')}
                                   onChange={(e) => handleContributorChange(index, 'role', e.target.value)}
                                   tabIndex={0}
                                   MenuProps={{
@@ -1969,7 +1966,7 @@ export default function SplitSheetEditor({
                               {calculationMethod === 'budget' ? (
                                 <Box>
                                   <TextField
-                                    label="Fast honorar *"
+                                    label={t('splitEd.field.fixedFee')}
                                     type="text"
                                     value={contributor.custom_fields?.dagsats 
                                       ? formatNumberWithSpaces(String(contributor.custom_fields.dagsats))
@@ -1992,10 +1989,10 @@ export default function SplitSheetEditor({
                                     placeholder="0"
                                     helperText={
                                       totalBudget > 0 && contributor.custom_fields?.dagsats
-                                        ? `Fast honorar i NOK ekskl. MVA (≈ ${contributor.percentage.toFixed(2)}% av budsjettet)`
+                                        ? t('splitEd.field.fixedFeeHelperWithPercent', { percent: contributor.percentage.toFixed(2) })
                                         : totalBudget === 0
-                                        ? 'Fast honorar i NOK ekskl. MVA (sett totalt budsjett for å se prosentandel)'
-                                        : 'Fast honorar i NOK ekskl. MVA'
+                                        ? t('splitEd.field.fixedFeeHelperNoBudget')
+                                        : t('splitEd.field.fixedFeeHelper')
                                     }
                                     sx={{
                                       '& .MuiOutlinedInput-root': {
@@ -2042,7 +2039,7 @@ export default function SplitSheetEditor({
                                   {totalBudget > 0 && contributor.custom_fields?.dagsats && contributor.percentage > 0 && (
                                     <Box sx={{ mt: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.25 } }}>
                                       <Chip
-                                        label={`${contributor.percentage.toFixed(2)}% av budsjettet`}
+                                        label={t('splitEd.field.percentOfBudgetChip', { percent: contributor.percentage.toFixed(2) })}
                                         size="medium"
                                         sx={{
                                           bgcolor: alpha(professionColor, 0.15),
@@ -2060,7 +2057,7 @@ export default function SplitSheetEditor({
                               ) : (
                                 <Box>
                                   <TextField
-                                    label="Prosentandel *"
+                                    label={t('splitEd.field.percentage')}
                                     type="number"
                                     value={contributor.percentage}
                                     onChange={(e) => {
@@ -2075,7 +2072,7 @@ export default function SplitSheetEditor({
                                     error={contributor.percentage < 0 || contributor.percentage > 100}
                                     helperText={
                                       contributor.percentage < 0 || contributor.percentage > 100
-                                        ? 'Må være mellom 0 og 100'
+                                        ? t('splitEd.field.percentageRangeError')
                                         : ''
                                     }
                                     sx={{
@@ -2180,7 +2177,7 @@ export default function SplitSheetEditor({
                                   gap: 1,
                                 }}
                               >
-                                📝 Tilleggsfelter (valgfritt)
+                                {t('splitEd.customFields.sectionTitle')}
                               </Typography>
                             </AccordionSummary>
                             <AccordionDetails sx={{ px: { xs: 1, sm: 2 }, pt: 3, pb: 3 }}>
@@ -2210,12 +2207,12 @@ export default function SplitSheetEditor({
                                       }}
                                     >
                                       <LocationOnIcon sx={{ fontSize: { xs: 20, sm: 18 }, color: professionColor }} />
-                                      Kontaktinformasjon
+                                      {t('splitEd.customFields.contactInfoTitle')}
                                     </Typography>
                                     <Grid container spacing={{ xs: 2, sm: 2.5 }}>
                                       <Grid size={12}>
                                         <TextField
-                                          label="Adresse"
+                                          label={t('splitEd.field.address')}
                                           value={contributor.custom_fields?.address || ''}
                                           onChange={(e) => handleCustomFieldChange(index, 'address', e.target.value)}
                                           fullWidth
@@ -2235,7 +2232,7 @@ export default function SplitSheetEditor({
                                       </Grid>
                                       <Grid size={{ xs: 12, sm: profession === 'music_producer' ? 6 : 12 }}>
                                         <TextField
-                                          label="Nettside"
+                                          label={t('splitEd.field.website')}
                                           value={contributor.custom_fields?.website || ''}
                                           onChange={(e) => handleCustomFieldChange(index, 'website', e.target.value)}
                                           fullWidth
@@ -2245,7 +2242,7 @@ export default function SplitSheetEditor({
                                           InputProps={{
                                             startAdornment: <LanguageIcon sx={{ mr: 1, fontSize: { xs: 20, sm: 18 }, color: 'text.secondary' }} />
                                           }}
-                                          helperText="Full URL til nettside eller portfolio"
+                                          helperText={t('splitEd.field.websiteHelper')}
                                           sx={{
                                             '& .MuiInputBase-root': {
                                               minHeight: { xs: 56, sm: 48 },
@@ -2266,7 +2263,7 @@ export default function SplitSheetEditor({
                                             InputProps={{
                                               startAdornment: <LanguageIcon sx={{ mr: 1, fontSize: { xs: 20, sm: 18 }, color: 'text.secondary' }} />
                                             }}
-                                            helperText="Lenke til artistens Spotify-profil"
+                                            helperText={t('splitEd.field.spotifyHelper')}
                                             sx={{
                                               '& .MuiInputBase-root': {
                                                 minHeight: { xs: 56, sm: 48 },
@@ -2304,7 +2301,7 @@ export default function SplitSheetEditor({
                                       }}
                                     >
                                       <LanguageIcon sx={{ fontSize: { xs: 20, sm: 18 }, color: professionColor }} />
-                                      Sosiale medier
+                                      {t('splitEd.customFields.socialMediaTitle')}
                                     </Typography>
                                     <Grid container spacing={{ xs: 2, sm: 2.5 }}>
                                       <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -2352,7 +2349,7 @@ export default function SplitSheetEditor({
                                           onChange={(e) => handleCustomFieldChange(index, 'facebook', e.target.value)}
                                           fullWidth
                                           size="medium"
-                                          placeholder="username eller URL"
+                                          placeholder={t('splitEd.field.facebookPlaceholder')}
                                           tabIndex={0}
                                           InputProps={{
                                             startAdornment: <LanguageIcon sx={{ mr: 1, fontSize: { xs: 20, sm: 18 }, color: 'text.secondary' }} />
@@ -2371,7 +2368,7 @@ export default function SplitSheetEditor({
                                           onChange={(e) => handleCustomFieldChange(index, 'linkedin', e.target.value)}
                                           fullWidth
                                           size="medium"
-                                          placeholder="@username eller URL"
+                                          placeholder={t('splitEd.field.linkedinPlaceholder')}
                                           tabIndex={0}
                                           InputProps={{
                                             startAdornment: <LanguageIcon sx={{ mr: 1, fontSize: { xs: 20, sm: 18 }, color: 'text.secondary' }} />
@@ -2411,17 +2408,17 @@ export default function SplitSheetEditor({
                                         gap: 1,
                                       }}
                                     >
-                                      📝 Interne notater
+                                      {t('splitEd.customFields.notesTitle')}
                                     </Typography>
                                     <TextField
-                                      label="Notater"
+                                      label={t('splitEd.field.notes')}
                                       value={contributor.custom_fields?.notes || ''}
                                       onChange={(e) => handleCustomFieldChange(index, 'notes', e.target.value)}
                                       fullWidth
                                       multiline
                                       rows={6}
                                       tabIndex={0}
-                                      placeholder="Legg til notater om bidragsyteren, roller, ansvar, spesielle avtaler, eller annen relevant informasjon..."
+                                      placeholder={t('splitEd.field.notesPlaceholder')}
                                       sx={{
                                         width: '100%',
                                         '& .MuiInputBase-root': {
@@ -2434,7 +2431,7 @@ export default function SplitSheetEditor({
                                           padding: { xs: '14px', sm: '12px' },
                                         },
                                       }}
-                                      helperText="Notater er kun synlig internt og deles ikke med bidragsyteren"
+                                      helperText={t('splitEd.field.notesHelper')}
                                     />
                                     <GlobalMentionHelper
                                       text={contributor.custom_fields?.notes || ''}
@@ -2446,8 +2443,8 @@ export default function SplitSheetEditor({
                                           applyMentionSuggestion(contributor.custom_fields?.notes, name)
                                         )
                                       }
-                                      autoTagTitle="Auto-tagget i notater"
-                                      suggestionTitle="Mener du?"
+                                      autoTagTitle={t('splitEd.mention.autoTagTitle')}
+                                      suggestionTitle={t('splitEd.mention.suggestionTitle')}
                                     />
                                   </CardContent>
                                 </Card>
@@ -2494,7 +2491,7 @@ export default function SplitSheetEditor({
                 }}
                 tabIndex={0}
               >
-                Forhåndsvis portal
+                {t('splitEd.portal.previewButton')}
               </Button>
             )}
           </Box>
@@ -2512,7 +2509,7 @@ export default function SplitSheetEditor({
                 minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
               }}
             >
-              Avbryt
+              {t('splitEd.actions.cancel')}
             </Button>
             <Button
               variant="contained"
@@ -2529,16 +2526,16 @@ export default function SplitSheetEditor({
               }}
               tabIndex={0}
             >
-              {saveMutation.isPending ? 'Lagrer...' : splitSheet?.id ? 'Oppdater' : 'Opprett'}
+              {saveMutation.isPending ? t('splitEd.actions.saving') : splitSheet?.id ? t('splitEd.actions.update') : t('splitEd.actions.create')}
             </Button>
           </Stack>
         </Stack>
 
         {saveMutation.isError && (
           <Alert severity="error">
-            {saveMutation.error instanceof Error 
-              ? saveMutation.error.message 
-              : `Feil ved lagring av ${agreementLabel.toLowerCase()}. Prøv igjen.`}
+            {saveMutation.error instanceof Error
+              ? saveMutation.error.message
+              : t('splitEd.save.errorDefault', { agreement: agreementLabel.toLowerCase() })}
             {saveMutation.error && typeof saveMutation.error === 'object' &&'details' in saveMutation.error && (
               <Box sx={{ mt: 1 }}>
                 <Typography variant="caption">
@@ -2581,7 +2578,7 @@ export default function SplitSheetEditor({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
             <PortalIcon sx={{ color: professionColor, fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
             <Typography variant="h6" sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' } }}>
-              Portal-visning
+              {t('splitEd.portal.dialogTitle')}
             </Typography>
           </Box>
           <IconButton
@@ -2592,7 +2589,7 @@ export default function SplitSheetEditor({
               width: { xs: 40, sm: 44, md: 48, lg: 52, xl: 56 },
               height: { xs: 40, sm: 44, md: 48, lg: 52, xl: 56 },
             }}
-            aria-label="Lukk"
+            aria-label={t('splitEd.portal.closeAriaLabel')}
           >
             <CancelIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
           </IconButton>

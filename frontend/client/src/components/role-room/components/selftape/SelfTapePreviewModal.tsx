@@ -25,6 +25,7 @@ import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { useEffect, useState } from 'react';
 
+import { useT } from '../../../../i18n';
 import {
   addProductionComment,
   availabilityChipStyle,
@@ -61,6 +62,7 @@ interface Props {
 export default function SelfTapePreviewModal({
   open, selftape, viewerLabel, onClose, onChanged,
 }: Props) {
+  const { t } = useT();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [viewError, setViewError] = useState<string | null>(null);
@@ -80,12 +82,12 @@ export default function SelfTapePreviewModal({
     trackSelftapeView(selftape.submission_id)
       .then(() => setViewTracked(true))
       .catch((err) => {
-        const msg = err instanceof Error ? err.message : 'View-tracking feilet';
+        const msg = err instanceof Error ? err.message : t('selfTapePrev.viewTrackFailed');
         if (msg.toLowerCase().includes('revoket')) {
-          setViewError('Talent har trukket tilbake denne self-tapen');
+          setViewError(t('selfTapePrev.revokedError'));
         }
       });
-  }, [open, selftape, viewTracked]);
+  }, [open, selftape, viewTracked, t]);
 
   // Reset state når modal lukkes
   useEffect(() => {
@@ -127,10 +129,10 @@ export default function SelfTapePreviewModal({
     setActionMsg(null);
     try {
       await remindTalentToUpload(selftape.submission_id);
-      setActionMsg({ msg: 'Påminnelse sendt til talenten', tone: 'success' });
+      setActionMsg({ msg: t('selfTapePrev.reminderSent'), tone: 'success' });
     } catch (err) {
       setActionMsg({
-        msg: err instanceof Error ? err.message : 'Påminnelse feilet',
+        msg: err instanceof Error ? err.message : t('selfTapePrev.reminderFailed'),
         tone: 'error',
       });
     } finally {
@@ -146,11 +148,11 @@ export default function SelfTapePreviewModal({
       const iso = new Date(deadlineDraft).toISOString();
       await setSelftapeDeadline(selftape.submission_id, iso);
       setLocalDeadline(iso);
-      setActionMsg({ msg: 'Deadline lagret', tone: 'success' });
+      setActionMsg({ msg: t('selfTapePrev.deadlineSaved'), tone: 'success' });
       onChanged?.();
     } catch (err) {
       setActionMsg({
-        msg: err instanceof Error ? err.message : 'Sett deadline feilet',
+        msg: err instanceof Error ? err.message : t('selfTapePrev.deadlineSetFailed'),
         tone: 'error',
       });
     } finally {
@@ -165,11 +167,11 @@ export default function SelfTapePreviewModal({
       await setSelftapeDeadline(selftape.submission_id, null);
       setLocalDeadline(null);
       setDeadlineDraft('');
-      setActionMsg({ msg: 'Deadline fjernet', tone: 'success' });
+      setActionMsg({ msg: t('selfTapePrev.deadlineRemoved'), tone: 'success' });
       onChanged?.();
     } catch (err) {
       setActionMsg({
-        msg: err instanceof Error ? err.message : 'Fjern deadline feilet',
+        msg: err instanceof Error ? err.message : t('selfTapePrev.deadlineRemoveFailed'),
         tone: 'error',
       });
     } finally {
@@ -185,11 +187,11 @@ export default function SelfTapePreviewModal({
     try {
       await addProductionComment(selftape.submission_id, body);
       setCommentBody('');
-      setActionMsg({ msg: 'Kommentar sendt — talent er varslet', tone: 'success' });
+      setActionMsg({ msg: t('selfTapePrev.commentSent'), tone: 'success' });
       onChanged?.();
     } catch (err) {
       setActionMsg({
-        msg: err instanceof Error ? err.message : 'Kommentar feilet',
+        msg: err instanceof Error ? err.message : t('selfTapePrev.commentFailed'),
         tone: 'error',
       });
     } finally {
@@ -250,10 +252,10 @@ export default function SelfTapePreviewModal({
             )}
             <Box>
               <Typography sx={{ fontWeight: 800, fontSize: '1rem' }}>
-                {selftape.talent_display_name ?? 'Ukjent talent'}
+                {selftape.talent_display_name ?? t('selfTapePrev.unknownTalent')}
               </Typography>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                Take {selftape.take_number ?? '—'} · {selftape.selftape_project_name}
+                {t('selfTapePrev.takeMeta', { n: selftape.take_number ?? '—', project: selftape.selftape_project_name })}
               </Typography>
             </Box>
           </Stack>
@@ -284,7 +286,9 @@ export default function SelfTapePreviewModal({
               }}
             >
               <VisibilityOutlinedIcon sx={{ fontSize: 12 }} />
-              {selftape.view_count} {selftape.view_count === 1 ? 'visning' : 'visninger'}
+              {selftape.view_count === 1
+                ? t('selfTapePrev.viewCountSingular', { n: selftape.view_count })
+                : t('selfTapePrev.viewCountPlural', { n: selftape.view_count })}
             </Stack>
             <IconButton onClick={onClose} sx={{ color: palette.textMuted }}>
               <CloseIcon />
@@ -310,17 +314,17 @@ export default function SelfTapePreviewModal({
             >
               <Box>
                 <Typography sx={{ color: '#f87171', fontWeight: 700, fontSize: '1.1rem', mb: 1 }}>
-                  Tilgangen er trukket tilbake
+                  {t('selfTapePrev.accessRevokedTitle')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.86rem' }}>
-                  Talent har revokert denne self-tapen. Kontakt byrået for ny tilgang.
+                  {t('selfTapePrev.accessRevokedBody')}
                 </Typography>
               </Box>
             </Box>
           ) : isExternal && selftape.video_url ? (
             <iframe
               src={selftape.video_url}
-              title={`Take ${selftape.take_number ?? ''}`}
+              title={t('selfTapePrev.videoTitle', { n: selftape.take_number ?? '' })}
               allow="autoplay; fullscreen; encrypted-media"
               allowFullScreen
               referrerPolicy="strict-origin-when-cross-origin"
@@ -343,7 +347,7 @@ export default function SelfTapePreviewModal({
                 color: 'rgba(255,255,255,0.4)',
               }}
             >
-              Video ikke tilgjengelig
+              {t('selfTapePrev.videoUnavailable')}
             </Box>
           )}
 
@@ -383,18 +387,17 @@ export default function SelfTapePreviewModal({
               }}
             >
               <Typography sx={{ fontWeight: 700, fontSize: '0.84rem', mb: 0.4 }}>
-                Eksternt hostet ({externalProviderLabel(selftape.source_provider)})
+                {t('selfTapePrev.externallyHosted', { provider: externalProviderLabel(selftape.source_provider) })}
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', opacity: 0.92 }}>
-                Vi kan ikke watermarke eller view-audit denne videoen.
-                Talenten styrer fortsatt tilgangen via plattformen.
+                {t('selfTapePrev.externalWatermarkNote')}
               </Typography>
             </Box>
           ) : (
             <Stack direction="row" alignItems="center" spacing={1} sx={{ color: '#34d399' }}>
               <VerifiedOutlinedIcon sx={{ fontSize: 16 }} />
               <Typography sx={{ fontSize: '0.78rem', fontWeight: 600 }}>
-                Signed URL · 3 timer gyldighet · audit-logget
+                {t('selfTapePrev.signedUrlNote')}
               </Typography>
             </Stack>
           )}
@@ -404,7 +407,7 @@ export default function SelfTapePreviewModal({
             <Stack direction="row" alignItems="center" spacing={1}>
               <AutoAwesomeOutlinedIcon sx={{ color: palette.accentBright, fontSize: 16 }} />
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                Claude Opus 4.7 har vurdert denne taken
+                {t('selfTapePrev.aiReviewedNote')}
               </Typography>
             </Stack>
           ) : null}
@@ -413,7 +416,7 @@ export default function SelfTapePreviewModal({
           <Stack direction="row" justifyContent="space-between" sx={{ pt: 1.4, borderTop: `1px solid ${palette.borderSubtle}` }}>
             <Box>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                Sendt
+                {t('selfTapePrev.submittedLabel')}
               </Typography>
               <Typography sx={{ fontSize: '0.86rem', fontWeight: 600 }}>
                 {selftape.submitted_at
@@ -425,7 +428,7 @@ export default function SelfTapePreviewModal({
             </Box>
             <Box>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                Sist sett
+                {t('selfTapePrev.lastSeenLabel')}
               </Typography>
               <Typography sx={{ fontSize: '0.86rem', fontWeight: 600 }}>
                 {selftape.last_viewed_at
@@ -451,7 +454,7 @@ export default function SelfTapePreviewModal({
                 }}
               >
                 <OpenInNewIcon sx={{ fontSize: 14 }} />
-                Original
+                {t('selfTapePrev.originalLink')}
               </Box>
             ) : null}
           </Stack>
@@ -475,7 +478,7 @@ export default function SelfTapePreviewModal({
                 <Stack direction="row" alignItems="center" spacing={0.6} sx={{ minWidth: 130 }}>
                   <EventOutlinedIcon sx={{ fontSize: 16, color: palette.textMuted }} />
                   <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                    Frist
+                    {t('selfTapePrev.deadlineLabel')}
                   </Typography>
                 </Stack>
                 {localDeadline && !deadlineDraft ? (
@@ -491,7 +494,7 @@ export default function SelfTapePreviewModal({
                       onClick={() => setDeadlineDraft(localDeadline.slice(0, 16))}
                       sx={{ color: palette.accentBright, textTransform: 'none', fontSize: '0.78rem' }}
                     >
-                      Endre
+                      {t('selfTapePrev.editBtn')}
                     </Button>
                     <Button
                       size="small"
@@ -499,7 +502,7 @@ export default function SelfTapePreviewModal({
                       disabled={actionBusy === 'deadline'}
                       sx={{ color: '#f87171', textTransform: 'none', fontSize: '0.78rem' }}
                     >
-                      Fjern
+                      {t('selfTapePrev.removeBtn')}
                     </Button>
                   </Stack>
                 ) : (
@@ -531,7 +534,7 @@ export default function SelfTapePreviewModal({
                         '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.5)' },
                       }}
                     >
-                      {actionBusy === 'deadline' ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : 'Lagre'}
+                      {actionBusy === 'deadline' ? <CircularProgress size={12} sx={{ color: '#fff' }} /> : t('selfTapePrev.saveBtn')}
                     </Button>
                     {deadlineDraft && localDeadline ? (
                       <Button
@@ -539,7 +542,7 @@ export default function SelfTapePreviewModal({
                         onClick={() => setDeadlineDraft('')}
                         sx={{ color: palette.textMuted, textTransform: 'none', fontSize: '0.78rem' }}
                       >
-                        Avbryt
+                        {t('selfTapePrev.cancelBtn')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -559,8 +562,7 @@ export default function SelfTapePreviewModal({
                 >
                   <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
                     <Typography sx={{ color: '#fbbf24', fontSize: '0.82rem', flex: 1 }}>
-                      Talent har sendt submission, men ikke lastet opp video ennå.
-                      Send en vennlig påminnelse?
+                      {t('selfTapePrev.remindPrompt')}
                     </Typography>
                     <Button
                       size="small"
@@ -579,7 +581,7 @@ export default function SelfTapePreviewModal({
                         '&:hover': { bgcolor: 'rgba(251,191,36,0.32)' },
                       }}
                     >
-                      Påminn
+                      {t('selfTapePrev.remindBtn')}
                     </Button>
                   </Stack>
                 </Box>
@@ -594,7 +596,7 @@ export default function SelfTapePreviewModal({
                   }}
                 >
                   <Typography sx={{ color: '#fbbf24', fontSize: '0.82rem' }}>
-                    Cloudflare transkoder videoen. Den blir spillbar om 1-2 minutter.
+                    {t('selfTapePrev.processingNote')}
                   </Typography>
                 </Box>
               ) : null}
@@ -604,7 +606,7 @@ export default function SelfTapePreviewModal({
                 <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.8 }}>
                   <ChatBubbleOutlineIcon sx={{ fontSize: 16, color: palette.textMuted }} />
                   <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                    Skriv kommentar til talent
+                    {t('selfTapePrev.commentFieldLabel')}
                   </Typography>
                 </Stack>
                 <TextField
@@ -612,7 +614,7 @@ export default function SelfTapePreviewModal({
                   minRows={2}
                   maxRows={6}
                   fullWidth
-                  placeholder="F.eks. 'Veldig god lyd, men prøv et tighter utsnitt på neste take.'"
+                  placeholder={t('selfTapePrev.commentPlaceholder')}
                   value={commentBody}
                   onChange={(e) => setCommentBody(e.target.value)}
                   inputProps={{ maxLength: 2000 }}
@@ -624,7 +626,7 @@ export default function SelfTapePreviewModal({
                 />
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.8 }}>
                   <Typography sx={{ color: palette.textMuted, fontSize: '0.72rem' }}>
-                    Talent får e-post med kommentaren.
+                    {t('selfTapePrev.commentEmailNote')}
                   </Typography>
                   <Button
                     onClick={handleComment}
@@ -642,7 +644,7 @@ export default function SelfTapePreviewModal({
                       '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.6)' },
                     }}
                   >
-                    Send kommentar
+                    {t('selfTapePrev.sendCommentBtn')}
                   </Button>
                 </Stack>
               </Box>

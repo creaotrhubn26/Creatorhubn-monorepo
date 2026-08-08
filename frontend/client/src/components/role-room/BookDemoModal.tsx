@@ -29,6 +29,7 @@ import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import { trackEvent } from '@/utils/ga4-client-tracking';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
+import { useT } from '../../i18n';
 
 const palette = {
   bgCard: '#150b2e',
@@ -41,17 +42,6 @@ const palette = {
   accentBright: '#c084fc',
   accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
 };
-
-// "Hva beskriver dere best?" — mapper til agency_leads.segment (CHECK-begrenset).
-const BUSINESS_TYPES: { label: string; segment: string }[] = [
-  { label: 'Produksjonsteam / produksjonsselskap', segment: 'annet' },
-  { label: 'Innholdsprodusent / skaper', segment: 'annet' },
-  { label: 'Skuespillerbyrå', segment: 'skuespillerbyrå' },
-  { label: 'Modellbyrå', segment: 'modellbyrå' },
-  { label: 'Bookingbyrå', segment: 'bookingbyrå' },
-  { label: 'Dansestudio', segment: 'annet' },
-  { label: 'Annet', segment: 'annet' },
-];
 
 const TEAM_SIZES = ['1–3', '4–10', '11–30', '31–75', '75+'];
 
@@ -95,6 +85,22 @@ function utmParam(key: string): string | undefined {
 }
 
 export default function BookDemoModal({ open, onClose, trigger }: Props) {
+  const { t } = useT();
+
+  // "Hva beskriver dere best?" — mapper til agency_leads.segment (CHECK-begrenset).
+  const businessTypes = useMemo(
+    () => [
+      { label: t('bookDemo.businessType.production'), segment: 'annet' },
+      { label: t('bookDemo.businessType.creator'), segment: 'annet' },
+      { label: t('bookDemo.businessType.actingAgency'), segment: 'skuespillerbyrå' },
+      { label: t('bookDemo.businessType.modelAgency'), segment: 'modellbyrå' },
+      { label: t('bookDemo.businessType.bookingAgency'), segment: 'bookingbyrå' },
+      { label: t('bookDemo.businessType.danceStudio'), segment: 'annet' },
+      { label: t('bookDemo.businessType.other'), segment: 'annet' },
+    ],
+    [t],
+  );
+
   const [form, setForm] = useState({
     agency_name: '',
     contact_name: '',
@@ -103,7 +109,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
     phone: '',
     org_number: '',
     website: '',
-    business_type: BUSINESS_TYPES[0].label,
+    business_type: businessTypes[0].label,
     team_size: '',
     use_case: '',
     current_tools: '',
@@ -146,7 +152,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
     setSubmitting(true);
     setError(null);
     const segment =
-      BUSINESS_TYPES.find((b) => b.label === form.business_type)?.segment || 'annet';
+      businessTypes.find((b) => b.label === form.business_type)?.segment || 'annet';
     try {
       const res = await fetch('/api/public/agency-lead', {
         method: 'POST',
@@ -179,7 +185,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || 'Innsending feilet. Prøv igjen.');
+        throw new Error(data?.error || t('bookDemo.submitError'));
       }
       setDone(true);
       try {
@@ -193,7 +199,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
         /* analytics best-effort */
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Innsending feilet. Prøv igjen.');
+      setError(e instanceof Error ? e.message : t('bookDemo.submitError'));
     } finally {
       setSubmitting(false);
     }
@@ -232,7 +238,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
     >
       <IconButton
         onClick={handleClose}
-        aria-label="Lukk"
+        aria-label={t('bookDemo.close')}
         sx={{ position: 'absolute', top: 10, right: 10, color: palette.textMuted, zIndex: 2 }}
       >
         <CloseIcon />
@@ -243,12 +249,15 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
           <Stack alignItems="center" spacing={2} sx={{ py: 4, textAlign: 'center' }}>
             <CheckCircleRoundedIcon sx={{ fontSize: 56, color: '#34d399' }} />
             <Typography sx={{ fontWeight: 800, fontSize: '1.4rem' }}>
-              Takk — demoen er på vei
+              {t('bookDemo.success.title')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, maxWidth: 380 }}>
-              Vi tar kontakt innen 24 timer med konkrete tider, tilpasset
-              {form.business_type ? ` «${form.business_type}»` : ' din virksomhet'}.
-              Du får en bekreftelse på {form.email.trim()}.
+              {t('bookDemo.success.body', {
+                business: form.business_type
+                  ? `«${form.business_type}»`
+                  : t('bookDemo.success.yourBusiness'),
+                email: form.email.trim(),
+              })}
             </Typography>
             <Button
               onClick={handleClose}
@@ -263,18 +272,17 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                 borderRadius: 2,
               }}
             >
-              Lukk
+              {t('bookDemo.close')}
             </Button>
           </Stack>
         ) : (
           <>
             <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 0.5, pr: 4 }}>
               <CalendarMonthOutlinedIcon sx={{ color: palette.accentBright }} />
-              <Typography sx={{ fontWeight: 800, fontSize: '1.35rem' }}>Book en demo</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.35rem' }}>{t('bookDemo.title')}</Typography>
             </Stack>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem', mb: 2.5 }}>
-              30 minutter, skreddersydd for din virksomhet. Fyll ut det viktigste,
-              så finner vi en tid som passer.
+              {t('bookDemo.subtitle')}
             </Typography>
 
             {error && (
@@ -286,7 +294,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
             <Stack spacing={1.8}>
               <TextField
                 required
-                label="Bedrift / selskap"
+                label={t('bookDemo.field.agencyName')}
                 value={form.agency_name}
                 onChange={set('agency_name')}
                 fullWidth
@@ -296,7 +304,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.8}>
                 <TextField
                   required
-                  label="Ditt navn"
+                  label={t('bookDemo.field.contactName')}
                   value={form.contact_name}
                   onChange={set('contact_name')}
                   fullWidth
@@ -304,7 +312,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   sx={fieldSx}
                 />
                 <TextField
-                  label="Din rolle / tittel"
+                  label={t('bookDemo.field.contactTitle')}
                   value={form.contact_title}
                   onChange={set('contact_title')}
                   fullWidth
@@ -316,7 +324,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                 <TextField
                   required
                   type="email"
-                  label="Jobb-e-post"
+                  label={t('bookDemo.field.email')}
                   value={form.email}
                   onChange={set('email')}
                   fullWidth
@@ -324,7 +332,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   sx={fieldSx}
                 />
                 <TextField
-                  label="Telefon"
+                  label={t('bookDemo.field.phone')}
                   value={form.phone}
                   onChange={set('phone')}
                   fullWidth
@@ -334,7 +342,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
               </Stack>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.8}>
                 <TextField
-                  label="Org.nr"
+                  label={t('bookDemo.field.orgNumber')}
                   value={form.org_number}
                   onChange={set('org_number')}
                   fullWidth
@@ -342,8 +350,8 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   sx={fieldSx}
                 />
                 <TextField
-                  label="Nettside"
-                  placeholder="dittfirma.no"
+                  label={t('bookDemo.field.website')}
+                  placeholder={t('bookDemo.field.websitePlaceholder')}
                   value={form.website}
                   onChange={set('website')}
                   fullWidth
@@ -354,7 +362,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.8}>
                 <TextField
                   select
-                  label="Hva beskriver dere best?"
+                  label={t('bookDemo.field.businessType')}
                   value={form.business_type}
                   onChange={set('business_type')}
                   fullWidth
@@ -362,13 +370,13 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   sx={fieldSx}
                   SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: palette.bgElevated, color: palette.textPrimary } } } }}
                 >
-                  {BUSINESS_TYPES.map((b) => (
+                  {businessTypes.map((b) => (
                     <MenuItem key={b.label} value={b.label}>{b.label}</MenuItem>
                   ))}
                 </TextField>
                 <TextField
                   select
-                  label="Team-størrelse"
+                  label={t('bookDemo.field.teamSize')}
                   value={form.team_size}
                   onChange={set('team_size')}
                   fullWidth
@@ -376,15 +384,15 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   sx={fieldSx}
                   SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: palette.bgElevated, color: palette.textPrimary } } } }}
                 >
-                  <MenuItem value="">Velg…</MenuItem>
+                  <MenuItem value="">{t('bookDemo.field.teamSizePlaceholder')}</MenuItem>
                   {TEAM_SIZES.map((s) => (
                     <MenuItem key={s} value={s}>{s}</MenuItem>
                   ))}
                 </TextField>
               </Stack>
               <TextField
-                label="Hva vil dere oppnå?"
-                placeholder="F.eks. samle casting, produksjon og distribusjon ett sted"
+                label={t('bookDemo.field.useCase')}
+                placeholder={t('bookDemo.field.useCasePlaceholder')}
                 value={form.use_case}
                 onChange={set('use_case')}
                 fullWidth
@@ -395,7 +403,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
               />
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.8}>
                 <TextField
-                  label="Hva bruker dere i dag?"
+                  label={t('bookDemo.field.currentTools')}
                   value={form.current_tools}
                   onChange={set('current_tools')}
                   fullWidth
@@ -403,8 +411,8 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   sx={fieldSx}
                 />
                 <TextField
-                  label="Når passer en demo?"
-                  placeholder="F.eks. tirsdager før kl. 12"
+                  label={t('bookDemo.field.preferredTime')}
+                  placeholder={t('bookDemo.field.preferredTimePlaceholder')}
                   value={form.preferred_demo_time}
                   onChange={set('preferred_demo_time')}
                   fullWidth
@@ -414,7 +422,7 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
               </Stack>
               <TextField
                 select
-                label="Språk på demoen"
+                label={t('bookDemo.field.demoLanguage')}
                 value={form.demo_language}
                 onChange={set('demo_language')}
                 fullWidth
@@ -422,8 +430,8 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                 sx={fieldSx}
                 SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: palette.bgElevated, color: palette.textPrimary } } } }}
               >
-                <MenuItem value="nb">Norsk</MenuItem>
-                <MenuItem value="en">Engelsk</MenuItem>
+                <MenuItem value="nb">{t('bookDemo.language.norwegian')}</MenuItem>
+                <MenuItem value="en">{t('bookDemo.language.english')}</MenuItem>
               </TextField>
 
               {/* Consent: auto-research */}
@@ -449,16 +457,15 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   </Box>
                   <Box sx={{ flex: 1 }}>
                     <Typography sx={{ color: palette.textPrimary, fontWeight: 600, fontSize: '0.9rem' }}>
-                      Ja, dere kan automatisk hente offentlig bedriftsinformasjon før møtet
+                      {t('bookDemo.consent.title')}
                     </Typography>
                     <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.5 }}>
-                      Vi sjekker Brønnøysundregistrene + hjemmesiden deres, og Claude lager
-                      et kort sammendrag — slik at samtalen blir mer relevant fra første sekund.{' '}
+                      {t('bookDemo.consent.body')}{' '}
                       <Box component="a" href="/personvern/automatisk-research"
                            target="_blank" rel="noopener noreferrer"
                            onClick={(e) => e.stopPropagation()}
                            sx={{ color: palette.accentBright, textDecoration: 'underline' }}>
-                        Les mer →
+                        {t('bookDemo.consent.learnMore')}
                       </Box>
                     </Typography>
                   </Box>
@@ -482,10 +489,10 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
                   '&.Mui-disabled': { background: 'rgba(168,85,247,0.25)', color: 'rgba(245,243,255,0.5)' },
                 }}
               >
-                {submitting ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Send forespørsel'}
+                {submitting ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : t('bookDemo.submit')}
               </Button>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', textAlign: 'center' }}>
-                Vi tar kontakt innen 24 timer. Ingen forpliktelse.
+                {t('bookDemo.footer')}
               </Typography>
             </Stack>
           </>
