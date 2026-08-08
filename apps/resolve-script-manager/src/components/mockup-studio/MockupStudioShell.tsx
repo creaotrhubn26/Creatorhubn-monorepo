@@ -73,6 +73,7 @@ import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
 import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
 import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective';
+import { generateSceneBackground, aiBackgroundAvailable } from './mockupAiBackground';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
@@ -666,6 +667,19 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
   const [brandKits, setBrandKits] = useState<MockupBrandKit[]>(() => listBrandKits());
   const [bkName, setBkName] = useState('');
   const doSaveBrandKit = () => { if (saveBrandKit(bkName || 'Merkevare', canvas).ok) { setBrandKits(listBrandKits()); setBkName(''); } };
+  const [bgPrompt, setBgPrompt] = useState('');
+  const [bgBusy, setBgBusy] = useState(false);
+  const [bgErr, setBgErr] = useState<string | null>(null);
+  const runBgGen = async () => {
+    setBgErr(null); setBgBusy(true);
+    try {
+      const dataUrl = await generateSceneBackground(canvas, bgPrompt);
+      patchCanvas({ bgImage: dataUrl });
+    } catch (e) {
+      console.error('[mockup-studio] ai-background', e);
+      setBgErr('AI-bakgrunn gikk ikke — sjekk at du er innlogget (RR-token) og har kreditter.');
+    } finally { setBgBusy(false); }
+  };
   return (
     <div>
       <SectionLabel>Merkevare</SectionLabel>
@@ -708,6 +722,21 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           value={canvas.background}
           onChange={(v) => patchCanvas({ background: v })}
         />
+      </Field>
+      <Field label="AI-bakgrunn">
+        <input value={bgPrompt} onChange={(e) => setBgPrompt(e.target.value)} placeholder="Beskriv scene (tomt = fra palett)" style={{ ...textInput, marginBottom: 6 }} />
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            disabled={bgBusy || !aiBackgroundAvailable()}
+            onClick={() => void runBgGen()}
+            style={{ ...listBtn, flex: 1, opacity: bgBusy || !aiBackgroundAvailable() ? 0.6 : 1 }}
+            title={aiBackgroundAvailable() ? 'Generér en scene-bakgrunn (fal) fra prompt eller lerretets palett' : 'Krever innlogget AI (RR-token) + kreditter'}
+          >
+            {bgBusy ? 'Genererer…' : '✨ Generér bakgrunn'}
+          </button>
+          {canvas.bgImage && <button onClick={() => patchCanvas({ bgImage: undefined })} style={{ ...listBtn, width: 34, textAlign: 'center' }} title="Fjern AI-bakgrunn" aria-label="Fjern AI-bakgrunn">✕</button>}
+        </div>
+        {bgErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 6 }}>{bgErr}</div>}
       </Field>
       <Field label="Stil">
         <Segmented<MockupBgStyle>

@@ -132,6 +132,8 @@ export interface MockupCanvasSpec {
   typography?: MockupTypographyId;
   /** Dekor-lag bak innholdet. Default 'none'. */
   decor?: MockupDecor;
+  /** Valgfri AI-generert bakgrunnsbilde (data-URL, cover-fylt bak dekor). */
+  bgImage?: string;
   /** Valgfri logo. */
   logo?: MockupLogo;
 }

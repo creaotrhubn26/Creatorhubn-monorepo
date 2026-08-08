@@ -141,6 +141,16 @@ function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
   glow(w * 0.18, h * 0.9, w * 0.45, c.accent2, light ? 0.13 : 0.22);
 }
 
+/** AI-generert bakgrunnsbilde: cover-fyll hele lerretet (bak dekor). Best-effort. */
+async function drawBgImage(ctx: CanvasRenderingContext2D, doc: MockupDoc): Promise<void> {
+  const src = doc.canvas.bgImage;
+  if (!src) return;
+  try {
+    const img = await loadImage(src);
+    drawFitted(ctx, img, 0, 0, doc.canvas.w, doc.canvas.h, 'cover');
+  } catch { /* behold farge-bakgrunnen */ }
+}
+
 /** Dekor-lag: designer-elementer bak innholdet (glød-orber, mesh, rutenett, former). */
 function drawDecor(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
   const c = doc.canvas;
@@ -757,6 +767,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   const t = opts?.anim?.t;
 
   fillBackground(ctx, doc);
+  await drawBgImage(ctx, doc);
   drawDecor(ctx, doc);
 
   // Mind map-modus: lerretet ER en produkt-mind map (ingen enheter/tekst).
@@ -835,7 +846,7 @@ export async function rasterizeLayers(doc: MockupDoc): Promise<{ name: string; c
   const out: { name: string; canvas: HTMLCanvasElement }[] = [];
 
   const bg = newLayerCanvas(w, h);
-  if (bg.ctx) { fillBackground(bg.ctx, doc); drawDecor(bg.ctx, doc); }
+  if (bg.ctx) { fillBackground(bg.ctx, doc); await drawBgImage(bg.ctx, doc); drawDecor(bg.ctx, doc); }
   out.push({ name: 'Bakgrunn', canvas: bg.canvas });
 
   for (const dev of doc.devices) {
