@@ -43,6 +43,10 @@ export interface ProductConfig {
   smtpPort?: number | undefined;
   smtpUser?: string | undefined;
   smtpPassword?: string | undefined;
+  /** Domene for virksomhetenes bilag-adresse (videresend kvitteringer hit). */
+  inboundDomain: string;
+  /** Delt hemmelighet for inn-e-post-webhooken. Udefinert = mottak inaktivt (503). */
+  inboundSecret?: string | undefined;
   /**
    * Hemmelig token for hodeløse cron-jobber (f.eks. Stripe-synk). Udefinert =
    * cron-endepunktene svarer 503 (ikke konfigurert).
@@ -148,6 +152,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
     smtpPort: Number(env.REKNAREN_SMTP_PORT ?? 465),
     smtpUser: env.REKNAREN_SMTP_USER,
     smtpPassword: env.REKNAREN_SMTP_PASSWORD,
+    inboundDomain: env.REKNAREN_INBOUND_DOMAIN ?? 'inbound.reknaren.no',
+    inboundSecret: env.REKNAREN_INBOUND_SECRET,
     cronSecret: env.REKNAREN_CRON_SECRET,
     bootstrapOrg: loadBootstrapOrg(env),
     allowedEmails: parseAllowlist(env.REKNAREN_ALLOWED_EMAILS),

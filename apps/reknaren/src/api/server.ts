@@ -49,6 +49,7 @@ import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
 import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../ingestion/document-hunt.js';
 import { buildDashboard } from '../ledger/dashboard.js';
 import { getActivationStatus } from '../ledger/onboarding.js';
+import { ingestForwardedEmail } from '../ingestion/inbound-email.js';
 import { createAgreement, listAgreements, reviewAgreements } from '../invoicing/agreements.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
@@ -217,6 +218,10 @@ export interface ApiDeps {
   peppol?: PeppolAccessPoint | undefined;
   /** ID-porten OIDC for mva-melding (validering/innsending). Inaktiv uten IDPORTEN_*. */
   idporten?: IdPortenClient | undefined;
+  /** Domene for virksomhetenes bilag-adresse (videresend kvitteringer hit). */
+  inboundDomain?: string | undefined;
+  /** Delt hemmelighet for inn-e-post-webhooken. Uten den er mottak inaktivt (503). */
+  inboundSecret?: string | undefined;
   /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
   cronSecret?: string | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
@@ -2077,12 +2082,56 @@ export function createApiServer(deps: ApiDeps): express.Express {
     requireOrgPermission('reports.view'),
     async (req: AuthedRequest, res, next) => {
       try {
-        res.json(toJson(await getActivationStatus(deps.db, req.params.orgId!)));
+        res.json(
+          toJson(
+            await getActivationStatus(deps.db, req.params.orgId!, {
+              inboundDomain: deps.inboundDomain ?? 'inbound.reknaren.no',
+              inboundActive: Boolean(deps.inboundSecret),
+            }),
+          ),
+        );
       } catch (err) {
         next(err);
       }
     },
   );
+
+  // Inn-e-post-webhook: en e-postleverandør POST-er en videresendt kvittering hit.
+  // Ruter på mottakeradressen (virksomhetens bilag-adresse) og lagrer vedleggene.
+  // Autentiseres med delt hemmelighet — ikke bruker-sesjon.
+  app.post('/api/inbound/email', async (req, res, next) => {
+    try {
+      if (!deps.inboundSecret) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Inn-e-post er ikke konfigurert.' } });
+        return;
+      }
+      const provided = Buffer.from(req.header('x-inbound-secret') ?? '');
+      const expected = Buffer.from(deps.inboundSecret);
+      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+        res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Ugyldig hemmelighet.' } });
+        return;
+      }
+      if (!deps.storage) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Objektlager mangler.' } });
+        return;
+      }
+      const body = z
+        .object({
+          to: z.string().min(3),
+          attachments: z
+            .array(z.object({ filename: z.string().min(1), contentType: z.string().min(1), contentBase64: z.string().min(1) }))
+            .default([]),
+        })
+        .parse(req.body);
+      const result = await ingestForwardedEmail(deps.db, deps.storage, {
+        recipient: body.to,
+        attachments: body.attachments.map((a) => ({ filename: a.filename, mimeType: a.contentType, content: Buffer.from(a.contentBase64, 'base64') })),
+      });
+      res.json(toJson(result));
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // Smart dokumentjakt — betalinger uten bilag + sannsynlig faktura vi alt har hentet.
   app.get(

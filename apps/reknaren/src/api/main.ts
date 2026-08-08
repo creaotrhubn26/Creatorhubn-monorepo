@@ -87,6 +87,8 @@ const app = createApiServer({
   // ID-porten OIDC for mva-melding (validering/innsending krever pålogget bruker).
   // Inaktiv uten IDPORTEN_CLIENT_ID + nøkkel.
   idporten: new IdPortenClient(config.idporten),
+  inboundDomain: config.inboundDomain,
+  inboundSecret: config.inboundSecret,
   // Ekte Gmail-lesing via IMAP (samme app-passord som SMTP). Uten creds → sandbox.
   ...(config.smtpUser && config.smtpPassword
     ? {

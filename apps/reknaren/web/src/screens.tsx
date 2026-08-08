@@ -139,47 +139,73 @@ interface ActivationStatus {
   orgReady: boolean;
   hasBank: boolean;
   hasDocument: boolean;
+  hasEmailDocument: boolean;
   hasPostedEntry: boolean;
+  inboundEmail: string;
+  inboundActive: boolean;
+  mvaRelevant: boolean;
+  mvaReady: boolean;
   complete: boolean;
 }
 
-const ONBOARD_STEPS: { key: keyof ActivationStatus; label: string; desc: string; cta: string; nav: string }[] = [
-  { key: 'orgReady', label: 'Fyll inn virksomhetsinfo', desc: 'Organisasjonsnummer trengs for MVA-melding og faktura.', cta: 'Til virksomhet', nav: 'org' },
-  { key: 'hasBank', label: 'Koble banken', desc: 'Importer transaksjonene, så avstemmer vi mot bilag automatisk.', cta: 'Til bank', nav: 'bank' },
-  { key: 'hasDocument', label: 'Legg til ditt første bilag', desc: 'Last opp en kvittering, eller skann e-posten din etter fakturaer.', cta: 'Til bilag', nav: 'documents' },
-  { key: 'hasPostedEntry', label: 'Kontroller og bokfør', desc: 'Vi foreslår konteringen — du kontrollerer tallene og godkjenner.', cta: 'Til bilag', nav: 'documents' },
-];
-
-/** «Kom i gang»-veiviser for novisen: fra tom konto til første bokførte bilag.
- *  Utledet fra ekte data — forsvinner når stegene er gjort, og kan skjules. */
+/** «Kom i gang»-veiviser for novisen: fra tom konto til første bokførte bilag,
+ *  med e-post-fangst og MVA på plass. Utledet fra ekte data — forsvinner når de
+ *  påkrevde stegene er gjort, og kan skjules. */
 function KomIGang({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: string) => void }) {
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem('reknaren.onboardDismissed') === '1');
   const act = useLoad(() => api<ActivationStatus>('GET', `/api/organizations/${orgId}/activation`), [orgId]);
   const a = act.data;
   if (dismissed || !a || a.complete) return null;
-  const done = ONBOARD_STEPS.filter((s) => a[s.key]).length;
-  const nextIdx = ONBOARD_STEPS.findIndex((s) => !a[s.key]);
+
+  const steps: { done: boolean; label: string; desc: string; cta: string; nav: string; email?: string; emailActive?: boolean }[] = [
+    { done: a.orgReady, label: 'Fyll inn virksomhetsinfo', desc: 'Organisasjonsnummer trengs for MVA-melding og faktura.', cta: 'Til virksomhet', nav: 'org' },
+    { done: a.hasBank, label: 'Koble banken', desc: 'Importer transaksjonene, så avstemmer vi mot bilag automatisk.', cta: 'Til bank', nav: 'bank' },
+    { done: a.hasDocument, label: 'Legg til ditt første bilag', desc: 'Last opp en kvittering eller faktura.', cta: 'Til bilag', nav: 'documents' },
+    {
+      done: a.hasEmailDocument,
+      label: 'Koble e-post for automatisk kvittering-fangst',
+      desc: a.inboundActive
+        ? 'Videresend kvitteringer til din bilag-adresse (eller oppgi den som fakturamottaker) — vi tolker dem automatisk.'
+        : 'Skann e-posten din etter kvitteringer og fakturaer, så tolker vi dem.',
+      cta: 'Til e-post',
+      nav: 'gmail',
+      email: a.inboundEmail,
+      emailActive: a.inboundActive,
+    },
+    { done: a.hasPostedEntry, label: 'Kontroller og bokfør', desc: 'Vi foreslår konteringen — du kontrollerer tallene og godkjenner.', cta: 'Til bilag', nav: 'documents' },
+    ...(a.mvaRelevant
+      ? [{ done: a.mvaReady, label: 'Koble BankID for MVA', desc: 'Logg inn med BankID (ID-porten) for å validere og sende MVA-meldingen rett til Skatteetaten.', cta: 'Til MVA', nav: 'vat' }]
+      : []),
+  ];
+  const done = steps.filter((s) => s.done).length;
+  const nextIdx = steps.findIndex((s) => !s.done);
+
   return (
     <div className="panel">
       <div className="panel-head">
         <h2 style={{ marginTop: 0 }}>Kom i gang</h2>
-        <span className="confidence high">{done} av {ONBOARD_STEPS.length} fullført</span>
+        <span className="confidence high">{done} av {steps.length} fullført</span>
       </div>
-      <p className="subtitle" style={{ marginTop: 0 }}>Fire steg til regnskapet ditt går av seg selv.</p>
+      <p className="subtitle" style={{ marginTop: 0 }}>Noen steg til regnskapet ditt går av seg selv.</p>
       <ul className="health-list">
-        {ONBOARD_STEPS.map((step, i) => {
-          const isDone = a[step.key];
+        {steps.map((step, i) => {
           const isNext = i === nextIdx;
           return (
-            <li key={step.key} className={`health-item${isDone ? ' info' : ''}`}>
-              <span className="health-dot" style={{ background: isDone ? 'var(--ok)' : isNext ? 'var(--accent)' : 'var(--border-strong)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11 }}>
-                {isDone ? '✓' : ''}
+            <li key={step.label} className={`health-item${step.done ? ' info' : ''}`}>
+              <span className="health-dot" style={{ background: step.done ? 'var(--ok)' : isNext ? 'var(--accent)' : 'var(--border-strong)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11 }}>
+                {step.done ? '✓' : ''}
               </span>
               <div className="health-body">
-                <div className="health-title" style={isDone ? { color: 'var(--text-3)' } : undefined}>{step.label}</div>
+                <div className="health-title" style={step.done ? { color: 'var(--text-3)' } : undefined}>{step.label}</div>
                 <div className="health-detail">{step.desc}</div>
+                {step.email && !step.done && (
+                  <div style={{ marginTop: 8 }}>
+                    <span className="secret-reveal">{step.email}</span>
+                    {!step.emailActive && <div className="health-detail" style={{ marginTop: 4 }}>Adressen er klar — mottak aktiveres når e-postkoblingen er satt opp.</div>}
+                  </div>
+                )}
               </div>
-              {!isDone && (
+              {!step.done && (
                 <div className="health-action">
                   <button className={isNext ? 'primary' : 'secondary'} onClick={() => onNavigate?.(step.nav)}>{step.cta}</button>
                 </div>
