@@ -2273,7 +2273,10 @@ export function createApiServer(deps: ApiDeps): express.Express {
   app.post(
     '/api/organizations/:orgId/fraud-signals/review',
     requireAuth,
-    requireOrgPermission('reports.view'),
+    // Skriver fraud_reviews + blokklister bankkontoer/leverandører — en kontroll-
+    // handling, ikke lesing. bank.reconcile stenger read-only-roller uten å låse
+    // ute regnskapsførere som legitimt behandler signalene.
+    requireOrgPermission('bank.reconcile'),
     async (req: AuthedRequest, res, next) => {
       try {
         const body = z
@@ -2415,7 +2418,8 @@ export function createApiServer(deps: ApiDeps): express.Express {
   app.post(
     '/api/organizations/:orgId/learned-rules/detect',
     requireAuth,
-    requireOrgPermission('reports.view'),
+    // Persisterer lærte regler — samme skrive-nivå som create/approve/dismiss.
+    requireOrgPermission('org.manage'),
     async (req: AuthedRequest, res, next) => {
       try {
         res.status(201).json(toJson(await detectLearnedRules(deps.db, { organizationId: req.params.orgId! })));
@@ -2733,7 +2737,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       res.json(toJson({ ...due, expectations }));
     } catch (err) { next(err); }
   });
-  app.post('/api/organizations/:orgId/recurring/detect', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+  app.post('/api/organizations/:orgId/recurring/detect', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
     try {
       res.status(201).json(toJson(await detectRecurringExpectations(deps.db, { organizationId: req.params.orgId! })));
     } catch (err) { next(err); }
