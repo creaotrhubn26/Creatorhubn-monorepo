@@ -34,7 +34,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const viewportRef = useRef<HTMLDivElement>(null); // ytre klippboks
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ kind: 'device' | 'text'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ kind: 'device' | 'text'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; rot?: { rx: number; ry: number } } | null>(null);
   const dragAbort = useRef<AbortController | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
@@ -89,6 +89,10 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       ? { ...base, devices: base.devices.map((d) => (d.id === id ? { ...d, x: nx, y: ny } : d)) }
       : { ...base, texts: base.texts.map((t) => (t.id === id ? { ...t, x: nx, y: ny } : t)) };
 
+  // 3D-orbit: oppdater device.threeD.rotX/rotY (beholder rotZ/light).
+  const rotateTo = (base: MockupDoc, id: string, rotX: number, rotY: number): MockupDoc =>
+    ({ ...base, devices: base.devices.map((d) => (d.id === id && d.threeD ? { ...d, threeD: { ...d.threeD, rotX, rotY } } : d)) });
+
   // Snap `nx,ny` (topp-venstre) til andre elementers kanter/senter + lerret-senter/kanter.
   const applySnap = (id: string, box: Box, nx: number, ny: number) => {
     const st = useMockupStudio.getState().doc;
@@ -106,7 +110,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     const st = useMockupStudio.getState();
     const el = kind === 'device' ? st.doc.devices.find((d) => d.id === id) : st.doc.texts.find((t) => t.id === id);
     if (!el) return;
-    dragRef.current = { kind, id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, moved: false };
+    // 3D-enhet: dra = orbit (roter). Flytt via numerisk/piltaster.
+    const dev3d = kind === 'device' ? (el as MockupDoc['devices'][number]).threeD : undefined;
+    dragRef.current = { kind, id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, moved: false, rot: dev3d ? { rx: dev3d.rotX, ry: dev3d.rotY } : undefined };
     dragAbort.current?.abort();
     const ac = new AbortController();
     dragAbort.current = ac;
@@ -126,6 +132,14 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     const st = useMockupStudio.getState();
     const el = d.kind === 'device' ? st.doc.devices.find((x) => x.id === d.id) : st.doc.texts.find((x) => x.id === d.id);
     if (!el) return;
+    // 3D-orbit: horisontal dra → snu (rotY), vertikal → vipp (rotX).
+    if (d.rot) {
+      const SENS = 0.18;
+      const ry = Math.max(-70, Math.min(70, Math.round(d.rot.ry + dx * SENS)));
+      const rx = Math.max(-55, Math.min(55, Math.round(d.rot.rx - dy * SENS)));
+      st.setDocSilent(rotateTo(st.doc, d.id, rx, ry));
+      return;
+    }
     const rawX = Math.round(d.ox + dx), rawY = Math.round(d.oy + dy);
     const snapped = e.altKey ? { x: rawX, y: rawY, vx: [], hy: [] } : applySnap(d.id, boxOf(d.kind, el), rawX, rawY); // Alt = fri (ingen snap)
     setGuides({ vx: snapped.vx, hy: snapped.hy });
@@ -259,9 +273,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
               key={dev.id}
               onPointerDown={(e) => beginDrag('device', dev.id, e)}
               onFocus={() => select({ kind: 'device', id: dev.id })}
-              aria-label={`Enhet: ${dev.variant}${active ? ' (valgt)' : ''} — dra for å flytte, piltaster nudger, Delete fjerner`}
+              aria-label={`Enhet: ${dev.variant}${active ? ' (valgt)' : ''} — ${dev.threeD ? 'dra for å rotere (3D)' : 'dra for å flytte'}, piltaster nudger, Delete fjerner`}
               aria-pressed={active}
-              title="Dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner"
+              title={dev.threeD ? 'Dra for å ROTERE (3D) · flytt med piltaster/numerisk · Delete fjerner' : 'Dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner'}
               style={{
                 position: 'absolute', left: pct(dev.x, W), top: pct(dev.y, H), width: pct(dev.w, W), height: pct(h, H),
                 transform: `rotate(${dev.rotation}deg)`, transformOrigin: 'center',
