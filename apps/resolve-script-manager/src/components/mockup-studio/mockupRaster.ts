@@ -15,6 +15,8 @@ import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, type Reveal } from './mockupMotion';
 import { matrixFor, tiltsLeft } from './mockupPerspective';
+import { render3dDevice, webglAvailable } from './mockup3d/mockup3d';
+import { cacheKey } from './mockup3d/deviceGeometry';
 import { sceneById } from './mockupScenes';
 import { drawImageQuad, type Quad } from './mockupSceneWarp';
 import {
@@ -35,6 +37,8 @@ import {
 // ── Bilde-lasting (cache per src) ───────────────────────────────────────────
 
 const _imgCache = new Map<string, Promise<HTMLImageElement>>();
+/** Cache av bakte 3D-enhets-canvas per (variant,rot,størrelse,shot-lengde). */
+const _bakeCache = new Map<string, HTMLCanvasElement>();
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = _imgCache.get(src);
@@ -407,6 +411,25 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
     await drawWatch(ctx, doc, dev, w, h);
     ctx.restore();
     return;
+  }
+
+  // Ekte 3D (WebGL) bakt til 2D-lag — erstatter 2D-ramme + 2.5D-perspektiv.
+  if (dev.threeD && (dev.variant === 'iphone' || dev.variant === 'android') && webglAvailable()) {
+    try {
+      const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', Math.round(w), (dev.image ?? '').length]);
+      let baked = _bakeCache.get(key);
+      if (!baked) {
+        const px = Math.max(256, Math.round(w * 2));
+        baked = await render3dDevice({ variant: dev.variant, shot: dev.image, rotX: dev.threeD.rotX, rotY: dev.threeD.rotY, rotZ: dev.threeD.rotZ, light: dev.threeD.light, w: px, h: Math.round(px * (h / w)) });
+        if (_bakeCache.size > 40) _bakeCache.clear();
+        _bakeCache.set(key, baked);
+      }
+      if (dev.shadow) { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = w * 0.06; ctx.shadowOffsetY = w * 0.045; ctx.drawImage(baked, dev.x, dev.y, w, h); ctx.restore(); }
+      if (dev.reflection) drawReflection(ctx, baked, dev.x, dev.y, w, h);
+      ctx.drawImage(baked, dev.x, dev.y, w, h);
+      ctx.restore();
+      return;
+    } catch { /* fall gjennom til 2D-vei */ }
   }
 
   // 2.5D perspektiv-transform rundt senter (affint) — 'none' = ingen.

@@ -28,7 +28,7 @@ function ensure(): { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: 
     renderer.setClearColor(0x000000, 0);
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
-    camera.position.set(0, 0, 7.4);
+    camera.position.set(0, 0, 5.2); // strammet så telefonen (høyde ~2.06) fyller ~85% + margin for tilt
     const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(3, 4, 5); scene.add(key);
     const fill = new THREE.DirectionalLight(0xffffff, 0.8); fill.position.set(-4, 1, 3); scene.add(fill);
     const rim = new THREE.DirectionalLight(0xffffff, 0.6); rim.position.set(0, -3, -4); scene.add(rim);

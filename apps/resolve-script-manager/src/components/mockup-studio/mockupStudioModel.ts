@@ -55,6 +55,8 @@ export interface MockupDeviceSlot {
   reflection?: boolean;
   /** Ren status-bar (09:41 + signal/wifi/batteri) over skjermbildet (kun telefoner). */
   cleanStatusBar?: boolean;
+  /** Ekte 3D-render (WebGL, bakt til 2D-lag). Kun iphone/android i fase 1. Default av. */
+  threeD?: { rotX: number; rotY: number; rotZ: number; light?: string };
 }
 
 export type MockupTextRole = 'eyebrow' | 'title' | 'body' | 'tag';
