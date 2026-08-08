@@ -254,7 +254,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
       </Box>
 
       {/* Filter + tabell */}
-      <Panel sx={{ p: 0, overflow: 'hidden' }}>
+      <Panel sx={{ p: 0, overflowX: 'auto' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | AssignmentStatus)} size="small" IconComponent={CaretIcon}
             sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
@@ -275,7 +275,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
           </Stack>
         </Stack>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', minWidth: 700, px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['oppgave', 'Oppgave'], ['kull', 'Knyttet kull'], ['frist', 'Frist'], ['status', 'Status'], ['innlev', 'Innleveringer'], ['open', '']].map(([id, label]) => (
             <T key={id} eid={`edu-op-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
@@ -290,7 +290,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
           const due = relDue(a.dueAt);
           const pct = a.submittedCount > 0 ? Math.round((a.reviewedCount / a.submittedCount) * 100) : 0;
           return (
-            <Box key={a.id} sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', alignItems: 'center', px: 2, py: 1.75, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <Box key={a.id} sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', minWidth: 700, alignItems: 'center', px: 2, py: 1.75, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <Box sx={{ minWidth: 0, pr: 2 }}>
                 <Stack direction="row" alignItems="center" spacing={0.75}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</Typography>
