@@ -592,7 +592,18 @@ async function refineWithClaude(s: StaticSignals): Promise<ClaudeRefinement> {
   try {
     parsed = JSON.parse(jsonText) as ClaudeRefinement;
   } catch {
-    return s;
+    // Claude-svaret var ikke gyldig JSON — degradert fallback fra de statiske
+    // signalene (StaticSignals mangler toneOfVoice/usps/industry/targetAudience).
+    return {
+      businessName: s.businessName,
+      tagline: s.tagline,
+      description: s.description,
+      primaryCTA: s.primaryCTA,
+      toneOfVoice: {} as ToneOfVoice,
+      usps: [],
+      industry: '',
+      targetAudience: '',
+    };
   }
 
   // Defensive: clip array length + enforce ToneOfVoice union

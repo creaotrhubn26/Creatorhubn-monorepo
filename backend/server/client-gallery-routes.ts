@@ -960,7 +960,7 @@ export function setupClientGalleryRoutes(
           );
           const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
           if (captureAssetId) {
-            await updateAssetLabels(db, gallery.photographerId, String(captureAssetId), {
+            await updateAssetLabels(db as unknown as Parameters<typeof updateAssetLabels>[0], gallery.photographerId, String(captureAssetId), {
               flaggedForClient: hearted,
             });
           }

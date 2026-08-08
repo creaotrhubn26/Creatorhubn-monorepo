@@ -245,7 +245,7 @@ export interface AnomalyView {
 
 export async function getAnomalyView(pool: Pool): Promise<AnomalyView> {
   const generatedAt = new Date().toISOString();
-  const view: AnomalyView = {
+  const view: Omit<AnomalyView, 'generatedAt'> = {
     spike: false,
     latestDelta: null,
     baseline: null,
