@@ -573,6 +573,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     if (!requireUserSession(req, res)) return;
     try {
       const userId = await resolveQuoteUserId(req);
+      if (!userId) {
+        res.status(401).json({ error: "Ikke autentisert." });
+        return;
+      }
       const config = normalizeQuoteReminderConfig(req.body?.config);
       await compatStoreSet(buildQuoteReminderConfigStoreKey(userId), config);
       res.json({ success: true, config });
@@ -618,6 +622,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       await ensureQuotesCompatibilitySchema();
 
       const userId = await resolveQuoteUserId(req);
+      if (!userId) {
+        res.status(401).json({ error: "Ikke autentisert." });
+        return;
+      }
       const config = normalizeQuoteReminderConfig(
         await compatStoreGet<unknown>(buildQuoteReminderConfigStoreKey(userId)),
       );
@@ -674,6 +682,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       await ensureQuotesCompatibilitySchema();
 
       const userId = await resolveQuoteUserId(req);
+      if (!userId) {
+        res.status(401).json({ error: "Ikke autentisert." });
+        return;
+      }
       const description =
         typeof req.body?.description === "string"
           ? req.body.description.trim()
@@ -814,6 +826,9 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     if (!requireUserSession(req, res)) return;
     try {
       const userId = await resolveQuoteUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "Ikke autentisert." });
+      }
       const row = await insertSharedQuote(req.body, userId);
       const syncedRow = await syncQuoteArtifactToCustomerDrive(row, userId);
       return res.status(201).json(mapQuoteCompatibilityRecord(syncedRow));
