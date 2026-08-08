@@ -236,6 +236,23 @@ describe("GET /lti/register (dynamic registration)", () => {
   });
 });
 
+describe("POST /lti/launch approval gate", () => {
+  it("avviser launch fra pending plattform med 403", async () => {
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("DELETE FROM role_room_lti_states")) return { rows: [{ nonce: "n", platform_id: "p1" }] };
+      if (sql.includes("SELECT * FROM role_room_lti_platforms")) return { rows: [{ id: "p1", status: "pending", issuer: "https://moodle.example.edu", client_id: "C", jwks_url: "https://moodle.example.edu/certs" }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, {}));
+    const res = makeRes();
+    // Minimal JWT med iss (unverified iss-uttrekk brukes til state-scoping).
+    const fakeJwt = ["e30", Buffer.from(JSON.stringify({ iss: "https://moodle.example.edu" })).toString("base64url"), "sig"].join(".");
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: fakeJwt, state: "st" } }, res);
+    expect(res.statusCode).toBe(403);
+    expect(String(res.sent)).toContain("platform_not_approved");
+  });
+});
+
 describe("pushScore (AGS grade-passback)", () => {
   const realFetch = globalThis.fetch;
   afterEach(() => { globalThis.fetch = realFetch; });

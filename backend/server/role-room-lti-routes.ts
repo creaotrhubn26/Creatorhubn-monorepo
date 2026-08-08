@@ -449,6 +449,11 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       const platform = pr.rows[0];
       if (!platform) { res.status(400).send("unknown_platform"); return; }
 
+      if (platform.status && platform.status !== "approved") {
+        res.status(403).send("platform_not_approved");
+        return;
+      }
+
       const jwks = await fetchPlatformJwks(String(platform.jwks_url));
       const claims = verifyIdToken(idToken, {
         jwks, clientId: String(platform.client_id), issuer: String(platform.issuer), nonce: String(stateRow.nonce),
