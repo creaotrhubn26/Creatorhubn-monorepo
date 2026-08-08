@@ -1828,7 +1828,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       if (!code || !state || !deps.idporten?.configured) { res.status(400).type('html').send(page('Innlogging feilet', 'Mangler kode/state, eller ID-porten er ikke konfigurert.')); return; }
       const st = await takeLoginState(deps.db, state);
       if (!st) { res.status(400).type('html').send(page('Innlogging utløpt', 'Prøv å logge inn på nytt fra Reknaren.')); return; }
-      const tokens = await deps.idporten.exchangeCode({ code, codeVerifier: st.codeVerifier });
+      const tokens = await deps.idporten.exchangeCode({ code, codeVerifier: st.codeVerifier, expectedNonce: st.nonce });
       await saveSession(deps.db, st.organizationId, tokens);
       res.type('html').send(page('Logget inn hos Skatteetaten ✓', 'Du kan lukke dette vinduet og gå tilbake til Reknaren for å validere/sende mva-meldingen.'));
     } catch (err) { next(err); }

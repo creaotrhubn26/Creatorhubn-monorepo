@@ -50,7 +50,7 @@ export async function getStatus(db: Db, organizationId: string): Promise<IdPorte
     [organizationId],
   )).rows[0];
   if (!row) return { loggedIn: false, expiresAt: null, scope: null, subject: null };
-  return { loggedIn: Boolean(row.live) || true, expiresAt: new Date(row.expires_at).toISOString(), scope: row.scope, subject: row.subject };
+  return { loggedIn: Boolean(row.live), expiresAt: new Date(row.expires_at).toISOString(), scope: row.scope, subject: row.subject };
 }
 
 /**

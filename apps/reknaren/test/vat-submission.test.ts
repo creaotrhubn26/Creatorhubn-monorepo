@@ -127,6 +127,13 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
     expect(res.messages).toContain('Ugyldig periode');
   });
 
+  it('uventet svarform (200 uten gjenkjent resultat-felt) rapporteres IKKE som gyldig', async () => {
+    const validateFetch = fakeFetch(() => ({ status: 200, body: { status: 'REJECTED', detalj: 'noe galt' } }));
+    const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), validateFetch.impl);
+    const res = await client.validate(report, OPTS);
+    expect(res.valid).toBe(false);
+  });
+
   it('submit() kjører Altinn 3-flyten: veksle token → opprett instans → last opp → fullfør → kvittering', async () => {
     const f = fakeFetch((url, method) => {
       if (url.includes('/exchange/maskinporten')) return { status: 200, text: '"altinn-token"' };

@@ -229,8 +229,7 @@ export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
       },
     );
     const raw = await safeJson(res);
-    const messages = extractMessages(raw);
-    return { valid: res.ok && messages.length === 0, messages, raw };
+    return interpretValidation(res, raw);
   }
 
   /**
@@ -384,8 +383,7 @@ export async function validateMvaMeldingWithToken(params: {
     body: xml,
   });
   const raw = await safeJson(res);
-  const messages = extractMessages(raw);
-  return { valid: res.ok && messages.length === 0, messages, raw };
+  return interpretValidation(res, raw);
 }
 
 async function safeJson(res: { json(): Promise<unknown>; text(): Promise<string> }): Promise<unknown> {
@@ -400,13 +398,35 @@ async function safeJson(res: { json(): Promise<unknown>; text(): Promise<string>
   }
 }
 
-function extractMessages(raw: unknown): string[] {
+function extractValidation(raw: unknown): { recognized: boolean; messages: string[] } {
   if (raw && typeof raw === 'object') {
     const r = raw as Record<string, unknown>;
     for (const key of ['messages', 'valideringsfeil', 'errors', 'avvik']) {
       const v = r[key];
-      if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x)));
+      if (Array.isArray(v)) {
+        return { recognized: true, messages: v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))) };
+      }
     }
   }
-  return [];
+  return { recognized: false, messages: [] };
+}
+
+/**
+ * Tolker valideringssvaret konservativt: HTTP 200 betyr «behandlet», ikke «gyldig».
+ * Uten et gjenkjent resultat-felt kan vi ikke bekrefte gyldighet → valid=false, slik
+ * at en avvisning i uventet form aldri feilrapporteres som godkjent.
+ */
+function interpretValidation(res: { ok: boolean; status: number }, raw: unknown): VatValidationResult {
+  const { recognized, messages } = extractValidation(raw);
+  if (!res.ok) {
+    return { valid: false, messages: messages.length ? messages : [`Skatteetaten svarte med feil (HTTP ${res.status}).`], raw };
+  }
+  if (!recognized) {
+    return {
+      valid: false,
+      messages: ['Kunne ikke bekrefte validering — uventet svarformat fra Skatteetaten. Se rådata og prøv igjen.'],
+      raw,
+    };
+  }
+  return { valid: messages.length === 0, messages, raw };
 }

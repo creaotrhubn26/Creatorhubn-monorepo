@@ -41,10 +41,10 @@ describe('IdPortenClient', () => {
     const fetchImpl = async (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
       expect(url).toBe('https://idporten.no/token');
       captured = init.body;
-      const idPayload = b64url(Buffer.from(JSON.stringify({ sub: 'person-xyz' })));
+      const idPayload = b64url(Buffer.from(JSON.stringify({ sub: 'person-xyz', nonce: 'NONCE', iss: 'https://idporten.no', aud: 'client-123' })));
       return { status: 200, ok: true, json: async () => ({ access_token: 'AT', refresh_token: 'RT', scope: 'openid skatteetaten:mvameldingvalidering', expires_in: 300, id_token: `h.${idPayload}.s` }), text: async () => '' };
     };
-    const tokens = await new IdPortenClient(cfg, fetchImpl).exchangeCode({ code: 'CODE', codeVerifier: 'VER' });
+    const tokens = await new IdPortenClient(cfg, fetchImpl).exchangeCode({ code: 'CODE', codeVerifier: 'VER', expectedNonce: 'NONCE' });
     expect(tokens.accessToken).toBe('AT');
     expect(tokens.refreshToken).toBe('RT');
     expect(tokens.subject).toBe('person-xyz');
@@ -61,8 +61,18 @@ describe('IdPortenClient', () => {
     expect(claims.aud).toBe('https://idporten.no');
   });
 
+  it('avviser id_token med feil nonce (replay-vern)', async () => {
+    const fetchImpl = async () => {
+      const idPayload = b64url(Buffer.from(JSON.stringify({ sub: 'x', nonce: 'ANNEN', iss: 'https://idporten.no', aud: 'client-123' })));
+      return { status: 200, ok: true, json: async () => ({ access_token: 'AT', expires_in: 300, id_token: `h.${idPayload}.s` }), text: async () => '' };
+    };
+    await expect(
+      new IdPortenClient(cfg, fetchImpl).exchangeCode({ code: 'C', codeVerifier: 'V', expectedNonce: 'NONCE' }),
+    ).rejects.toThrow(/nonce stemmer ikke/);
+  });
+
   it('kaster ved token-feil fra ID-porten', async () => {
     const fetchImpl = async () => ({ status: 400, ok: false, json: async () => ({ error: 'invalid_grant' }), text: async () => '' });
-    await expect(new IdPortenClient(cfg, fetchImpl).exchangeCode({ code: 'x', codeVerifier: 'y' })).rejects.toThrow(/ID-porten token-feil/);
+    await expect(new IdPortenClient(cfg, fetchImpl).exchangeCode({ code: 'x', codeVerifier: 'y', expectedNonce: 'n' })).rejects.toThrow(/ID-porten token-feil/);
   });
 });

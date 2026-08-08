@@ -55,6 +55,19 @@ function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
+/** Dekoder (uten signatursjekk) payload-delen av en JWT. base64url, ikke base64. */
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  try {
+    const part = jwt.split('.')[1];
+    if (!part) return null;
+    const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+    const obj = JSON.parse(json);
+    return obj && typeof obj === 'object' ? (obj as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** PKCE: tilfeldig verifier + S256-challenge. */
 export function generatePkce(): { verifier: string; challenge: string } {
   const verifier = base64url(randomBytes(48));
@@ -115,7 +128,7 @@ export class IdPortenClient {
     return `${signingInput}.${base64url(sig)}`;
   }
 
-  private async tokenRequest(body: Record<string, string>): Promise<IdPortenTokens> {
+  private async tokenRequest(body: Record<string, string>, verifyNonce?: string): Promise<IdPortenTokens> {
     const cfg = this.ensure();
     const form = new URLSearchParams({
       ...body,
@@ -139,10 +152,24 @@ export class IdPortenClient {
       const idToken = typeof raw.id_token === 'string' ? raw.id_token : null;
       let subject: string | null = null;
       if (idToken) {
-        try {
-          const payload = JSON.parse(Buffer.from(idToken.split('.')[1] ?? '', 'base64').toString('utf-8'));
-          subject = typeof payload.sub === 'string' ? payload.sub : null;
-        } catch { /* ignorer */ }
+        const payload = decodeJwtPayload(idToken);
+        if (verifyNonce !== undefined) {
+          // Validér id_token-claims ved code-veksling. Signaturen verifiseres IKKE:
+          // tokenet kommer over TLS-backchannel autentisert med private_key_jwt, og
+          // brukes her kun til å vise hvem som er pålogget — API-tilgangen styres av
+          // access_token, som Skatteetaten validerer selv.
+          // ponytail: full JWKS-signatursjekk hvis id_token noen gang skal bære autoritet.
+          if (!payload) throw new IdPortenError('id_token kunne ikke leses.');
+          if (payload.nonce !== verifyNonce) throw new IdPortenError('id_token nonce stemmer ikke — mulig replay.');
+          if (payload.iss !== this.ep.issuer) throw new IdPortenError('id_token iss stemmer ikke.');
+          const aud = payload.aud;
+          const audOk = aud === cfg.clientId || (Array.isArray(aud) && aud.includes(cfg.clientId));
+          if (!audOk) throw new IdPortenError('id_token aud stemmer ikke.');
+          if (typeof payload.exp === 'number' && payload.exp < this.now() - 60) {
+            throw new IdPortenError('id_token er utløpt.');
+          }
+        }
+        subject = payload && typeof payload.sub === 'string' ? payload.sub : null;
       }
       if (typeof raw.access_token !== 'string') throw new IdPortenError('Fikk ikke access_token fra ID-porten.');
       return {
@@ -157,9 +184,12 @@ export class IdPortenClient {
     }
   }
 
-  /** Steg 3: veksle authorization code → tokens. */
-  exchangeCode(params: { code: string; codeVerifier: string }): Promise<IdPortenTokens> {
-    return this.tokenRequest({ grant_type: 'authorization_code', code: params.code, redirect_uri: this.ensure().redirectUri, code_verifier: params.codeVerifier });
+  /** Steg 3: veksle authorization code → tokens. Nonce fra login-steget må stemme. */
+  exchangeCode(params: { code: string; codeVerifier: string; expectedNonce: string }): Promise<IdPortenTokens> {
+    return this.tokenRequest(
+      { grant_type: 'authorization_code', code: params.code, redirect_uri: this.ensure().redirectUri, code_verifier: params.codeVerifier },
+      params.expectedNonce,
+    );
   }
 
   /** Forny access-token uten ny BankID-innlogging. */
