@@ -9105,7 +9105,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const mode = readStringValue(req.body?.mode)?.toLowerCase() === 'link' ? 'link' : 'login';
+      // 'youtube-analytics' = inkrementell YouTube Analytics-consent. Lagres som
+      // 'link' i staten (samme callback + eierskaps-flyt), men ber KUN om YouTube-
+      // Analytics-scopene — de kan ikke bes om sammen med Drive (Google avviser
+      // «scopes that cannot be requested together»). include_granted_scopes fletter
+      // dem inn i den eksisterende bevilgningen.
+      const rawMode = readStringValue(req.body?.mode)?.toLowerCase();
+      const isYoutubeAnalyticsConsent = rawMode === 'youtube-analytics';
+      const mode = (rawMode === 'link' || isYoutubeAnalyticsConsent) ? 'link' : 'login';
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
       if (mode === 'link' && !requestUser?.userId) {
         res.status(401).json({ error: 'Må være innlogget for å koble Google Workspace' });
@@ -9170,9 +9177,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       // Login = kun minimale identitets-scopes (unngår Googles «scopes cannot be
       // requested together»-avvisning); link = full Workspace-scope-sett.
       const isLoginMode = mode === 'login';
+      const requestedScopes = isYoutubeAnalyticsConsent
+        ? [...ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES]
+        : isLoginMode
+          ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES]
+          : [...ROLE_ROOM_GOOGLE_SCOPES];
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
-        scope: isLoginMode ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES] : [...ROLE_ROOM_GOOGLE_SCOPES],
+        scope: requestedScopes,
         include_granted_scopes: !isLoginMode,
         prompt: 'consent',
         state: stateId,
