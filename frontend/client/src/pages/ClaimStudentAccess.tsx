@@ -6,37 +6,37 @@
  * (?mode=student). Selvstendig side (som AcceptTesterInvite).
  */
 
-import { useEffect, useState } from 'react';
-import { Box, Typography, CircularProgress, Button, Stack } from '@mui/material';
+import { useState } from 'react';
+import { Box, Typography, CircularProgress, Button, Stack, TextField } from '@mui/material';
 import { School as StudentIcon, CheckCircle as DoneIcon, ErrorOutline as ErrorIcon } from '@mui/icons-material';
 import { educationStudentViewService } from '@/components/role-room/education/educationStudentViewService';
 
 const ACCENT = '#8B5CF6';
 
 export default function ClaimStudentAccess() {
-  const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
+  const token = new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
+  const [state, setState] = useState<'form' | 'loading' | 'ok' | 'error'>(token ? 'form' : 'error');
+  const [email, setEmail] = useState('');
   const [studentName, setStudentName] = useState<string | null>(null);
-  const [message, setMessage] = useState<string>('');
+  const [message, setMessage] = useState<string>(token ? '' : 'Mangler invitasjonslenke.');
 
-  useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get('token')?.trim();
-    if (!token) { setState('error'); setMessage('Mangler invitasjonslenke.'); return; }
-    let cancelled = false;
-    void educationStudentViewService.claim(token)
+  const submit = () => {
+    if (!token) return;
+    setState('loading');
+    void educationStudentViewService.claim(token, email)
       .then((student) => {
-        if (cancelled) return;
         setStudentName(student?.name ?? null);
         setState('ok');
         // Kort pause så bruker ser bekreftelsen, deretter inn i Min side.
         window.setTimeout(() => { window.location.href = '/?mode=student'; }, 1400);
       })
       .catch((e) => {
-        if (cancelled) return;
-        setState('error');
-        setMessage(e instanceof Error ? e.message : 'Kunne ikke løse inn invitasjonen.');
+        // Tilbake til skjema så bruker kan rette e-posten; hard feil = feilskjerm.
+        const msg = e instanceof Error ? e.message : 'Kunne ikke løse inn invitasjonen.';
+        setMessage(msg);
+        setState(msg.includes('Ugyldig') ? 'error' : 'form');
       });
-    return () => { cancelled = true; };
-  }, []);
+  };
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
@@ -44,8 +44,27 @@ export default function ClaimStudentAccess() {
         <Box sx={{ width: 72, height: 72, borderRadius: '50%', bgcolor: 'rgba(139,92,246,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: ACCENT }}>
           {state === 'loading' ? <CircularProgress sx={{ color: ACCENT }} />
             : state === 'ok' ? <DoneIcon sx={{ fontSize: 40, color: '#10b981' }} />
+            : state === 'form' ? <StudentIcon sx={{ fontSize: 40, color: ACCENT }} />
             : <ErrorIcon sx={{ fontSize: 40, color: '#ef4444' }} />}
         </Box>
+        {state === 'form' && (
+          <>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>Aktiver studenttilgangen din</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>Bekreft e-posten invitasjonen ble sendt til.</Typography>
+            <TextField
+              type="email" value={email} autoFocus fullWidth
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              placeholder="din@epost.no"
+              sx={{ mt: 1, input: { color: '#fff' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(139,92,246,0.4)' } }}
+            />
+            {message && <Typography sx={{ color: '#f87171', fontSize: 13 }}>{message}</Typography>}
+            <Button variant="contained" onClick={submit} fullWidth
+              sx={{ mt: 1, bgcolor: ACCENT, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#7c3aed' } }}>
+              Aktiver tilgang
+            </Button>
+          </>
+        )}
         {state === 'loading' && (
           <>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>Aktiverer studenttilgangen din…</Typography>

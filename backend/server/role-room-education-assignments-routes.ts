@@ -73,6 +73,21 @@ const SUBMISSION_STATUSES = new Set(["not_started", "submitted", "reviewed"]);
 const ASSIGNMENT_STATUSES = new Set(["draft", "published", "archived"]);
 const VURDERINGSFORMER = new Set(["bestatt", "bokstav", "mappe"]);
 
+// Karakter-verdikt må matche oppgavens vurderingsform, ellers blir karakter-
+// kolonnen umulig å tolke (bestått vs A vs mappe-score). Returnerer feilkode
+// eller null. Tom karakter = ikke satt (tillatt).
+const GRADE_PASSFAIL = /^(best[åa]tt|godkjent|ikke[\s-]?best[åa]tt|ikke[\s-]?godkjent|underkjent)$/i;
+const GRADE_LETTER = /^[A-F]$/i;
+function validateGradeForm(grade: string | null, vurderingsform: unknown): string | null {
+  if (!grade) return null;
+  switch (vurderingsform) {
+    case "bestatt": return GRADE_PASSFAIL.test(grade) ? null : "grade_not_bestatt";
+    case "bokstav": return GRADE_LETTER.test(grade) ? null : "grade_not_bokstav";
+    case "mappe": return (GRADE_PASSFAIL.test(grade) || GRADE_LETTER.test(grade)) ? null : "grade_not_mappe";
+    default: return null; // NULL/fri vurderingsform: ingen validering
+  }
+}
+
 function isoOrNull(v: unknown): string | null {
   return v ? new Date(v as string).toISOString() : null;
 }
@@ -338,6 +353,19 @@ export function createEducationAssignmentsRouter(
         [studentId, uid(req)],
       );
       if (owns.rows.length === 0) { res.status(404).json({ error: "student_not_found" }); return; }
+      // Karakter må matche oppgavens vurderingsform (bestatt/bokstav/mappe).
+      const gradeErr = validateGradeForm(grade, assignment.vurderingsform);
+      if (gradeErr) {
+        res.status(422).json({ error: gradeErr, message: "Karakteren passer ikke oppgavens vurderingsform." });
+        return;
+      }
+      // Arbeidskrav-gate: obligatorisk arbeid kan ikke markeres 'reviewed' uten et
+      // registrert (form-gyldig) godkjent/ikke godkjent-verdikt — ellers er
+      // progresjons-status udefinert.
+      if (assignment.is_arbeidskrav && status === "reviewed" && !grade) {
+        res.status(422).json({ error: "arbeidskrav_grade_required", message: "Arbeidskrav kan ikke markeres behandlet uten et godkjent/ikke godkjent-verdikt." });
+        return;
+      }
       const submittedAt = status === "not_started" ? null : new Date().toISOString();
       // reviewed_at settes når status blir 'reviewed', nullstilles ved not_started.
       const reviewedAt = status === "reviewed" ? new Date().toISOString() : null;

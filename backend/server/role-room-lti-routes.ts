@@ -295,6 +295,12 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         jwks, clientId: String(platform.client_id), issuer: String(platform.issuer), nonce: String(stateRow.nonce),
       });
 
+      // LTI-spec: id_token.deployment_id MÅ matche registrert plattform (mot cross-deployment token-injeksjon).
+      const deploymentId = String(claims["https://purl.imsglobal.org/spec/lti/claim/deployment_id"] ?? "");
+      if (platform.deployment_id && deploymentId !== String(platform.deployment_id)) {
+        res.status(400).send("deployment_id_mismatch"); return;
+      }
+
       const ags = extractAgs(claims);
       const nrps = extractNrps(claims);
       const context = claims["https://purl.imsglobal.org/spec/lti/claim/context"] as { id?: string; title?: string; label?: string } | undefined;
@@ -713,6 +719,12 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       res.status(400).json({ error: "grade_or_score_required" });
       return;
     }
+    // AGS-korrekthet: score må være endelig, ikke-negativ, maks > 0, given ≤ maks.
+    if (!Number.isFinite(scoreGiven) || !Number.isFinite(scoreMaximum) ||
+        scoreGiven < 0 || scoreMaximum <= 0 || scoreGiven > scoreMaximum) {
+      res.status(422).json({ error: "score_out_of_bounds", message: "scoreGiven må være mellom 0 og scoreMaximum, og scoreMaximum > 0." });
+      return;
+    }
     try {
       // Målbruker: eksplisitt sub, ellers slå opp e-post i rosteret (NRPS).
       let targetUserSub = typeof b.ltiUserSub === "string" && b.ltiUserSub.trim() ? b.ltiUserSub.trim() : undefined;
@@ -826,6 +838,9 @@ export async function pushScore(
   // oppgave sin EGEN kolonne: finn line item m/ tag=oppgave-id, ellers opprett.
   // Uten resourceTag: eksisterende oppførsel (launchens default line item).
   let lineitem: string | null = null;
+  // Registrert scoreMaximum på gjenbrukt lineitem (Canvas' egen kolonne-skala).
+  // Score MÅ sendes mot DENNE, ellers skalerer LMS karakteren feil.
+  let lineitemMax: number | null = null;
   if (input.resourceTag && launch.ags_lineitems) {
     const base = String(launch.ags_lineitems);
     const sep = base.includes("?") ? "&" : "?";
@@ -834,8 +849,11 @@ export async function pushScore(
         headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.ims.lis.v2.lineitemcontainer+json" },
       });
       if (findRes.ok) {
-        const arr = (await findRes.json()) as Array<{ id?: string }>;
-        if (Array.isArray(arr) && arr[0]?.id) lineitem = String(arr[0].id);
+        const arr = (await findRes.json()) as Array<{ id?: string; scoreMaximum?: number }>;
+        if (Array.isArray(arr) && arr[0]?.id) {
+          lineitem = String(arr[0].id);
+          if (typeof arr[0].scoreMaximum === "number" && arr[0].scoreMaximum > 0) lineitemMax = arr[0].scoreMaximum;
+        }
       }
     } catch { /* faller gjennom til opprettelse */ }
     if (!lineitem) {
@@ -861,11 +879,19 @@ export async function pushScore(
   }
   if (!lineitem) return { ok: false, error: "no_lineitem", status: 400 };
 
+  // Reskalér mot lineitemens registrerte maks om den avviker fra kallets maks,
+  // slik at forholdstallet bevares i LMS-kolonnen (AGS-korrekthet).
+  let outGiven = input.scoreGiven;
+  let outMax = input.scoreMaximum;
+  if (lineitemMax != null && input.scoreMaximum > 0 && lineitemMax !== input.scoreMaximum) {
+    outGiven = (input.scoreGiven / input.scoreMaximum) * lineitemMax;
+    outMax = lineitemMax;
+  }
   const scoreUrl = lineitem.includes("/scores") ? lineitem : `${lineitem.replace(/\?.*$/, "")}/scores`;
   const scoreRes = await fetch(scoreUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/vnd.ims.lis.v1.score+json" },
-    body: JSON.stringify(buildScore({ userId: String(targetUserSub), scoreGiven: input.scoreGiven, scoreMaximum: input.scoreMaximum, comment: input.comment })),
+    body: JSON.stringify(buildScore({ userId: String(targetUserSub), scoreGiven: outGiven, scoreMaximum: outMax, comment: input.comment })),
   });
   if (!scoreRes.ok) return { ok: false, error: "score_post_failed", status: 502 };
   return { ok: true };
