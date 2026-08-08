@@ -19,16 +19,12 @@ function readStringValue(value: unknown): string | null {
   return null;
 }
 
+// Eierskaps-håndhevende bruker-oppslag. Alle endepunktene her leser/skriver
+// sensitiv Workspace-data (Drive-aktivitet, Sheets), så vi krever en autentisert
+// sesjon (bearer) OG at en evt. eksplisitt ?userId/x-user-id matcher sesjons-
+// brukeren. Hindrer IDOR: uten dette kunne ?userId=<annen> lekket/skrevet en
+// annen brukers data. Returnerer null → kaller svarer 403.
 async function resolveUserId(pool: Pool, req: Request): Promise<string | null> {
-  const explicitUserId =
-    readStringValue(req.query.userId)
-    ?? readStringValue(req.body?.userId)
-    ?? readStringValue(req.headers["x-user-id"]);
-
-  if (explicitUserId) {
-    return explicitUserId;
-  }
-
   const bearer = readStringValue(req.headers.authorization)?.replace(/^Bearer\s+/i, "").trim();
   if (!bearer) {
     return null;
@@ -41,7 +37,20 @@ async function resolveUserId(pool: Pool, req: Request): Promise<string | null> {
     role: string;
     loginAt: string;
   }>(pool, bearer);
-  return readStringValue(session?.userId);
+  const sessionUserId = readStringValue(session?.userId);
+  if (!sessionUserId) {
+    return null;
+  }
+
+  const requested =
+    readStringValue(req.query.userId)
+    ?? readStringValue(req.body?.userId)
+    ?? readStringValue(req.headers["x-user-id"]);
+  if (requested && requested !== sessionUserId) {
+    return null;
+  }
+
+  return sessionUserId;
 }
 
 async function resolveOauthClient(pool: Pool, userId: string, req: Request) {
@@ -69,7 +78,7 @@ export function createGoogleWorkspaceExtraRouter(pool: Pool) {
   router.get("/drive-activity", async (req: Request, res: Response) => {
     const userId = await resolveUserId(pool, req);
     if (!userId) {
-      res.status(400).json({ error: "userId er påkrevd." });
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
       return;
     }
 
@@ -97,13 +106,19 @@ export function createGoogleWorkspaceExtraRouter(pool: Pool) {
   router.post("/sheets/export", async (req: Request, res: Response) => {
     const userId = await resolveUserId(pool, req);
     if (!userId) {
-      res.status(400).json({ error: "userId er påkrevd." });
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
       return;
     }
 
     const rows = req.body?.rows;
-    if (!Array.isArray(rows) || rows.length === 0) {
-      res.status(400).json({ error: "rows (string[][]) er påkrevd." });
+    const rowsValid = Array.isArray(rows)
+      && rows.length > 0
+      && rows.every((row) =>
+        Array.isArray(row)
+        && row.every((cell) => cell == null || ['string', 'number', 'boolean'].includes(typeof cell)),
+      );
+    if (!rowsValid) {
+      res.status(400).json({ error: "rows må være en ikke-tom liste av rader, der hver rad er en liste av tekst/tall/boolean." });
       return;
     }
 
@@ -146,7 +161,7 @@ export function createGoogleWorkspaceExtraRouter(pool: Pool) {
   router.get("/sheets/:spreadsheetId", async (req: Request, res: Response) => {
     const userId = await resolveUserId(pool, req);
     if (!userId) {
-      res.status(400).json({ error: "userId er påkrevd." });
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
       return;
     }
 

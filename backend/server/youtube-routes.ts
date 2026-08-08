@@ -179,6 +179,36 @@ async function resolveUserId(pool: Pool, req: Request): Promise<string | null> {
   return readStringValue(session?.userId);
 }
 
+// Eierskaps-sjekk for sensitive lese-endepunkter (analytics/inntekter). Krever en
+// autentisert sesjon (bearer) OG at en evt. eksplisitt ?userId/x-user-id matcher
+// sesjonsbrukeren. Hindrer IDOR: uten dette kunne ?userId=<annen> lekket en annen
+// brukers YouTube-statistikk/inntekter. Returnerer null → kaller svarer 403.
+async function resolveOwnedUserId(pool: Pool, req: Request): Promise<string | null> {
+  const bearer = readStringValue(req.headers.authorization)?.replace(/^Bearer\s+/i, "").trim();
+  if (!bearer) {
+    return null;
+  }
+  const session = await loadPersistedAuthSession<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    loginAt: string;
+  }>(pool, bearer);
+  const sessionUserId = readStringValue(session?.userId);
+  if (!sessionUserId) {
+    return null;
+  }
+  const requested =
+    readStringValue(req.query.userId)
+    ?? readStringValue(req.body?.userId)
+    ?? readStringValue(req.headers["x-user-id"]);
+  if (requested && requested !== sessionUserId) {
+    return null;
+  }
+  return sessionUserId;
+}
+
 function normalizePrivacyStatus(value: unknown): "private" | "unlisted" | "public" {
   const normalized = readStringValue(value)?.toLowerCase();
   if (normalized === "public" || normalized === "unlisted") {
@@ -1016,9 +1046,9 @@ export function createYouTubeRouter(pool: Pool) {
   // consenten (Google avviser det sammen med Drive) — brukeren må først kjøre den
   // inkrementelle «Koble YouTube Analytics»-consenten (mode='youtube-analytics').
   router.get("/analytics", async (req: Request, res: Response) => {
-    const userId = await resolveUserId(pool, req);
+    const userId = await resolveOwnedUserId(pool, req);
     if (!userId) {
-      res.status(400).json({ error: "userId er påkrevd." });
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
       return;
     }
 
@@ -1051,9 +1081,9 @@ export function createYouTubeRouter(pool: Pool) {
   // auth/yt-analytics-monetary.readonly. Krever monetisert kanal; hvis ikke
   // monetisert svarer Google 403 → normaliseres til en tydelig melding.
   router.get("/analytics/revenue", async (req: Request, res: Response) => {
-    const userId = await resolveUserId(pool, req);
+    const userId = await resolveOwnedUserId(pool, req);
     if (!userId) {
-      res.status(400).json({ error: "userId er påkrevd." });
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
       return;
     }
 

@@ -2491,6 +2491,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_google_connections.access_token_encrypted),
           refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
           expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
+          -- OVERSKRIVER scopes (ikke union). Korrekt fordi inkrementelle consenter
+          -- bruker include_granted_scopes=true → Googles token-svar bærer HELE den
+          -- samlede bevilgningen (eksisterende + nye), ikke bare de nye scopene.
           scopes = EXCLUDED.scopes,
           connection_state = 'connected',
           last_error = NULL,
