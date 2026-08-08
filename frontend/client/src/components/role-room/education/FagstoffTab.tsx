@@ -37,7 +37,7 @@ function resourceType(r: Resource): { label: string; icon: React.ReactNode; colo
   if (/\.pdf/.test(u)) return { label: 'PDF', icon: <PdfIcon sx={{ fontSize: 15 }} />, color: '#f59e0b' };
   if (r.body) return { label: 'ARTIKKEL', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: '#38bdf8' };
   if (r.url) return { label: 'LENKE', icon: <GenericLinkIcon sx={{ fontSize: 15 }} />, color: '#c4b5fd' };
-  return { label: 'NOTAT', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: 'rgba(255,255,255,0.6)' };
+  return { label: 'NOTAT', icon: <ArticleIcon sx={{ fontSize: 15 }} />, color: 'rgba(255,255,255,0.75)' };
 }
 
 export function FagstoffTab() {
@@ -115,7 +115,7 @@ export function FagstoffTab() {
             <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><LibraryIcon /></Box>
             <Box>
               <T eid="edu-fs-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Fagstoff</T>
-              <T eid="edu-fs-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.</T>
+              <T eid="edu-fs-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Korte «hvordan»-leksjoner gruppert etter produksjonssteg — lær faget mens dere bruker verktøyet.</T>
             </Box>
           </Stack>
           <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -154,11 +154,11 @@ export function FagstoffTab() {
           {kpis.map((k) => (
             <Panel key={k.id} sx={{ p: 2 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                <T eid={`edu-fs-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+                <T eid={`edu-fs-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
                 <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
               </Stack>
-              <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-              <T eid={`edu-fs-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+              <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+              <T eid={`edu-fs-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
             </Panel>
           ))}
         </Box>
@@ -166,18 +166,18 @@ export function FagstoffTab() {
         {/* Filter-bar */}
         <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Select value={stegFilter} onChange={(e) => setStegFilter(e.target.value as 'all' | ResourceCategory)} size="small" IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 160, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 160, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle produksjonssteg</MenuItem>
             {RESOURCE_CATEGORIES.map((c) => <MenuItem key={c.key} value={c.key} sx={{ fontSize: 12.5 }}>{c.label}</MenuItem>)}
           </Select>
           <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} size="small" IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 120, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 120, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             {['all', 'VIDEO', 'PDF', 'ARTIKKEL', 'LENKE', 'NOTAT'].map((t) => <MenuItem key={t} value={t} sx={{ fontSize: 12.5 }}>{t === 'all' ? 'Alle typer' : t}</MenuItem>)}
           </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-            <InputBase placeholder="Søk i fagstoff" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.75)' }} />
+            <InputBase placeholder="Søk i fagstoff" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.75)', opacity: 1 } }} />
           </Stack>
         </Stack>
 
@@ -186,7 +186,7 @@ export function FagstoffTab() {
           <Panel><T eid="edu-fs-empty" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 13.5, py: 3, display: 'block' }}>{anyFilter ? 'Ingen leksjoner matcher filteret.' : 'Ingen leksjoner ennå — legg til en, eller bruk et startforslag fra høyre.'}</T></Panel>
         ) : grouped.map((g) => (
           <Box key={g.cat.key}>
-            <Typography sx={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.5)', mb: 1.25 }}>{g.cat.label}</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.72)', mb: 1.25 }}>{g.cat.label}</Typography>
             <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
               {g.items.map((r) => {
                 const t = resourceType(r);
@@ -216,12 +216,12 @@ export function FagstoffTab() {
             <SuggestIcon sx={{ fontSize: 18, color: '#c4b5fd' }} />
             <T eid="edu-fs-rail-sugg-title" sx={{ fontWeight: 700, fontSize: 14.5 }}>Kuraterte startforslag</T>
           </Stack>
-          <T eid="edu-fs-rail-sugg-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', mb: 1.5 }}>Ett-klikks leksjoner knyttet til ekte Role Room-funksjoner.</T>
+          <T eid="edu-fs-rail-sugg-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', mb: 1.5 }}>Ett-klikks leksjoner knyttet til ekte Role Room-funksjoner.</T>
           {suggestions.length === 0 ? (
             <T eid="edu-fs-sugg-empty" sx={{ fontSize: 12.5, color: 'text.secondary' }}>Alle forslag er lagt til 🎬</T>
           ) : suggestions.map((s, i) => (
             <Box key={i} sx={{ py: 1, borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{categoryLabel(s.category)}</Typography>
+              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{categoryLabel(s.category)}</Typography>
               <Typography sx={{ fontSize: 13, fontWeight: 600, mt: 0.25 }}>{s.title}</Typography>
               <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.25, lineHeight: 1.4 }}>{s.description}</Typography>
               <Button size="small" startIcon={<AddIcon sx={{ fontSize: '14px !important' }} />} onClick={() => handleAddSuggested(s)} disabled={busy} sx={{ color: '#c4b5fd', textTransform: 'none', fontSize: 12, mt: 0.5, px: 0 }}>Legg til</Button>
@@ -230,7 +230,7 @@ export function FagstoffTab() {
         </Panel>
         <Panel sx={{ bgcolor: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.26)' }}>
           <T eid="edu-fs-tips-title" sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.75 }}>Tips</T>
-          <T eid="edu-fs-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5 }}>Hold leksjonene korte (3–6 min) og knytt dem til steget studentene er i akkurat nå.</T>
+          <T eid="edu-fs-tips-body" sx={{ fontSize: 12, color: 'rgba(255,255,255,0.76)', lineHeight: 1.5 }}>Hold leksjonene korte (3–6 min) og knytt dem til steget studentene er i akkurat nå.</T>
         </Panel>
       </Stack>
     </Box>

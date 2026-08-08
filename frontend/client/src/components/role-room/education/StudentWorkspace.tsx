@@ -43,7 +43,7 @@ function StudentRubricBreakdown({ rubric }: { rubric: StudentRubricBreakdownData
               {c.goalTitle && <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{c.goalTitle}</Typography>}
             </Box>
             <Chip size="small" label={RUBRIC_LEVEL_LABELS[c.level] ?? '—'}
-              sx={{ height: 20, fontSize: 10, color: c.level >= 2 ? '#10b981' : c.level === 1 ? '#e9d5ff' : 'rgba(255,255,255,0.5)', borderColor: c.level >= 2 ? '#10b981' : 'rgba(255,255,255,0.2)' }}
+              sx={{ height: 20, fontSize: 10, color: c.level >= 2 ? '#10b981' : c.level === 1 ? '#e9d5ff' : 'rgba(255,255,255,0.72)', borderColor: c.level >= 2 ? '#10b981' : 'rgba(255,255,255,0.2)' }}
               variant="outlined" />
           </Stack>
         ))}
@@ -57,7 +57,7 @@ import { TalentConsentCard } from './TalentConsentCard';
 const ACCENT = '#8B5CF6';
 
 const SUB_META: Record<StudentViewAssignment['submissionStatus'], { label: string; color: string }> = {
-  not_started: { label: 'Ikke levert', color: 'rgba(255,255,255,0.5)' },
+  not_started: { label: 'Ikke levert', color: 'rgba(255,255,255,0.72)' },
   submitted: { label: 'Levert', color: '#e9d5ff' },
   reviewed: { label: 'Vurdert', color: '#10b981' },
 };
@@ -86,13 +86,13 @@ export function StudentWorkspace() {
           <>
             <Box sx={{ flexGrow: 1 }} />
             <Button size="small" startIcon={<LogoutIcon />} onClick={() => { clearStudentSession(); window.location.reload(); }}
-              sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'none' }}>
+              sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}>
               Logg ut
             </Button>
           </>
         )}
       </Stack>
-      <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 13.5, mb: 3 }}>
+      <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 13.5, mb: 3 }}>
         Produksjonene, oppgavene og tilbakemeldingene dine — samlet på ett sted.
       </Typography>
 

@@ -159,7 +159,7 @@ export function FacultyTab() {
           <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><FacultyIcon /></Box>
           <Box>
             <T eid="edu-fk-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Fakultet</T>
-            <T eid="edu-fk-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Stab-seter, lærer-roller og hvem som veileder hvilket kull — pluss eksterne sensorer.</T>
+            <T eid="edu-fk-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Stab-seter, lærer-roller og hvem som veileder hvilket kull — pluss eksterne sensorer.</T>
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -198,14 +198,14 @@ export function FacultyTab() {
           return (
           <Panel key={k.id} sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <T eid={`edu-fk-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+              <T eid={`edu-fk-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
               <Stack direction="row" alignItems="center" spacing={0.5}>
-                {onEdit && <Tooltip title="Rediger lisens"><IconButton size="small" onClick={onEdit} sx={{ color: 'rgba(255,255,255,0.4)' }}><LicenseIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>}
+                {onEdit && <Tooltip title="Rediger lisens"><IconButton size="small" onClick={onEdit} sx={{ color: 'rgba(255,255,255,0.75)' }}><LicenseIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>}
                 <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
               </Stack>
             </Stack>
-            <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-            <T eid={`edu-fk-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+            <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+            <T eid={`edu-fk-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
           </Panel>
           );
         })}
@@ -215,7 +215,7 @@ export function FacultyTab() {
       <Panel sx={{ p: 0, overflow: 'hidden' }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 2fr 1fr 40px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['navn', 'Navn'], ['rolle', 'Rolle'], ['kull', 'Kull tildelt'], ['status', 'Status'], ['a', '']].map(([id, label]) => (
-            <T key={id} eid={`edu-fk-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+            <T key={id} eid={`edu-fk-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
         </Box>
 
@@ -249,7 +249,7 @@ export function FacultyTab() {
               {cohorts.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </Select>
             <Box>{(() => { const assigned = f.cohortIds.length > 0; return (
-              <Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: assigned ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: assigned ? '#34d399' : 'rgba(255,255,255,0.55)', fontSize: 11.5, fontWeight: 600 }}>{assigned ? 'Aktiv' : 'Uten kull'}</Box>
+              <Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: assigned ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: assigned ? '#34d399' : 'rgba(255,255,255,0.72)', fontSize: 11.5, fontWeight: 600 }}>{assigned ? 'Aktiv' : 'Uten kull'}</Box>
             ); })()}</Box>
             <IconButton size="small" onClick={() => remove(f.id)} sx={{ color: 'rgba(255,255,255,0.3)' }} aria-label="Fjern"><DeleteIcon fontSize="small" /></IconButton>
           </Box>
@@ -261,10 +261,10 @@ export function FacultyTab() {
         PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>TRR-lisens</DialogTitle>
         <DialogContent>
-          <T eid="edu-fk-lic-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+          <T eid="edu-fk-lic-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
             Ett TRR-sete = én aktiv Role Room-bruker (faglærer eller student). Settes etter avtalen med institusjonen. {license ? `${license.used} i bruk nå.` : ''}
           </T>
-          <FormControlLabel control={<Checkbox checked={licUnlimited} onChange={(e) => setLicUnlimited(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: ACCENT } }} />}
+          <FormControlLabel control={<Checkbox checked={licUnlimited} onChange={(e) => setLicUnlimited(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: ACCENT } }} />}
             label={<Typography sx={{ fontSize: 13.5 }}>Ubegrenset (site-/FTE-lisens)</Typography>} />
           <TextField size="small" type="number" label="Antall TRR-seter" value={licSeats} onChange={(e) => setLicSeats(e.target.value)} disabled={licUnlimited} fullWidth sx={{ mt: 1.5 }} inputProps={{ min: 0 }} />
         </DialogContent>

@@ -165,7 +165,7 @@ export function PortfolioTab() {
           <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><PortfolioIcon /></Box>
           <Box>
             <T eid="edu-pf-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Portefølje</T>
-            <T eid="edu-pf-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Studentenes showreels og eksamensmapper — klare for visning og deling med sensor.</T>
+            <T eid="edu-pf-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Studentenes showreels og eksamensmapper — klare for visning og deling med sensor.</T>
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -188,11 +188,11 @@ export function PortfolioTab() {
         {kpis.map((k) => (
           <Panel key={k.id} sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <T eid={`edu-pf-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+              <T eid={`edu-pf-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
               <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
             </Stack>
-            <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-            <T eid={`edu-pf-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+            <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+            <T eid={`edu-pf-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
           </Panel>
         ))}
       </Box>
@@ -202,26 +202,26 @@ export function PortfolioTab() {
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <T eid="edu-pf-list-title" sx={{ fontWeight: 700, fontSize: 15, mr: 1 }}>Studentporteføljer</T>
           <Select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} size="small" displayEmpty IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             <MenuItem value="" sx={{ fontSize: 12.5 }}>Alle kull</MenuItem>
             {cohorts.map((c) => <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12.5 }}>{c.name}</MenuItem>)}
           </Select>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} size="small" IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 120, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 120, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle statuser</MenuItem>
             <MenuItem value="published" sx={{ fontSize: 12.5 }}>Publisert</MenuItem>
             <MenuItem value="draft" sx={{ fontSize: 12.5 }}>Utkast</MenuItem>
           </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-            <InputBase placeholder="Søk etter student" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.75)' }} />
+            <InputBase placeholder="Søk etter student" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 150, '& input::placeholder': { color: 'rgba(255,255,255,0.75)', opacity: 1 } }} />
           </Stack>
         </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 150px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['student', 'Student'], ['prosjekt', 'Kull · portefølje'], ['status', 'Status'], ['open', '']].map(([id, label]) => (
-            <T key={id} eid={`edu-pf-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+            <T key={id} eid={`edu-pf-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
         </Box>
 
@@ -247,11 +247,11 @@ export function PortfolioTab() {
                 <Typography sx={{ fontSize: 12.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[p.cohortName, p.title || kindLabel(p.kind)].filter(Boolean).join(' · ')}</Typography>
                 <Chip label={kindLabel(p.kind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: p.kind === 'exam' ? 'rgba(56,189,248,0.15)' : 'rgba(236,72,153,0.15)', color: p.kind === 'exam' ? '#38bdf8' : '#ec4899', flexShrink: 0 }} />
               </Stack>
-              <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: published ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: published ? '#34d399' : 'rgba(255,255,255,0.6)', fontSize: 11.5, fontWeight: 600 }}>{published ? 'Publisert' : 'Utkast'}</Box></Box>
+              <Box><Box sx={{ display: 'inline-block', px: 1.25, py: 0.4, borderRadius: 5, bgcolor: published ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)', color: published ? '#34d399' : 'rgba(255,255,255,0.75)', fontSize: 11.5, fontWeight: 600 }}>{published ? 'Publisert' : 'Utkast'}</Box></Box>
               <Stack direction="row" alignItems="center" spacing={0.25} justifyContent="flex-end">
                 <Tooltip title={tMeta.title}><span><IconButton size="small" disabled sx={{ color: tMeta.color, '&.Mui-disabled': { color: tMeta.color } }}>{tMeta.icon}</IconButton></span></Tooltip>
-                <Tooltip title={published ? 'Avpubliser' : 'Publiser'}><span><IconButton size="small" onClick={() => togglePublish(p)} disabled={busyId === p.id} sx={{ color: published ? '#34d399' : 'rgba(255,255,255,0.5)' }}>{published ? <UnpublishIcon fontSize="small" /> : <PublishIcon fontSize="small" />}</IconButton></span></Tooltip>
-                <Tooltip title="Åpne"><IconButton size="small" onClick={() => openPortfolio(p)} sx={{ color: 'rgba(255,255,255,0.5)' }}><OpenIcon fontSize="small" /></IconButton></Tooltip>
+                <Tooltip title={published ? 'Avpubliser' : 'Publiser'}><span><IconButton size="small" onClick={() => togglePublish(p)} disabled={busyId === p.id} sx={{ color: published ? '#34d399' : 'rgba(255,255,255,0.72)' }}>{published ? <UnpublishIcon fontSize="small" /> : <PublishIcon fontSize="small" />}</IconButton></span></Tooltip>
+                <Tooltip title="Åpne"><IconButton size="small" onClick={() => openPortfolio(p)} sx={{ color: 'rgba(255,255,255,0.72)' }}><OpenIcon fontSize="small" /></IconButton></Tooltip>
                 <Tooltip title="Slett"><IconButton size="small" onClick={() => handleDelete(p.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
               </Stack>
             </Box>
@@ -287,7 +287,7 @@ export function PortfolioTab() {
         PaperProps={{ sx: { bgcolor: '#141018', color: '#fff', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 800 }}>Avgangs-showcase</DialogTitle>
         <DialogContent>
-          <T eid="edu-pf-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+          <T eid="edu-pf-showcase-help" sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)', mb: 2 }}>
             Avgangskullet som er promotert til Talents. Byråer/casting ser kun de studentene selv har gitt samtykke til (via Talents-profilen sin).
           </T>
           {showcaseBusy ? (

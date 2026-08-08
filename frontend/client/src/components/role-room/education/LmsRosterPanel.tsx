@@ -26,7 +26,7 @@ function roleLabel(roles: string[]): { label: string; color: string } {
     return { label: 'Faglærer', color: '#38bdf8' };
   }
   if (/Learner|Student/i.test(joined)) return { label: 'Student', color: '#a78bfa' };
-  return { label: 'Medlem', color: 'rgba(255,255,255,0.5)' };
+  return { label: 'Medlem', color: 'rgba(255,255,255,0.72)' };
 }
 
 export function LmsRosterPanel({ launchId }: { launchId: string }) {

@@ -50,9 +50,9 @@ const VURDERINGSFORM_OPTIONS: { key: string; label: string }[] = [
 const vurderingsformLabel = (k: string | null) => VURDERINGSFORM_OPTIONS.find((o) => o.key === k)?.label ?? null;
 
 const STATUS_META: Record<AssignmentStatus, { label: string; color: string }> = {
-  draft: { label: 'Utkast', color: 'rgba(255,255,255,0.55)' },
+  draft: { label: 'Utkast', color: 'rgba(255,255,255,0.72)' },
   published: { label: 'Pågår', color: '#38bdf8' },
-  archived: { label: 'Arkivert', color: 'rgba(255,255,255,0.4)' },
+  archived: { label: 'Arkivert', color: 'rgba(255,255,255,0.75)' },
 };
 
 function relDue(dueAt: string | null): { text: string; overdue: boolean } {
@@ -171,7 +171,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
           <Box sx={{ width: 50, height: 50, borderRadius: 3, bgcolor: 'rgba(139,92,246,0.16)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><AssignmentIcon /></Box>
           <Box>
             <T eid="edu-op-title" variant="h5" sx={{ fontWeight: 800, letterSpacing: -0.4 }}>Oppgaver</T>
-            <T eid="edu-op-subtitle" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13.5, mt: 0.4 }}>Oppgave-brief → student-leveranse → frist, koblet til kull, produksjon og læringsmål.</T>
+            <T eid="edu-op-subtitle" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 13.5, mt: 0.4 }}>Oppgave-brief → student-leveranse → frist, koblet til kull, produksjon og læringsmål.</T>
           </Box>
         </Stack>
         <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
@@ -184,7 +184,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               <MenuItem key={t.id} onClick={() => applyTemplate(t)} sx={{ display: 'block', py: 1 }}>
                 <ListItemText primary={t.name} secondary={t.description}
                   primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }}
-                  secondaryTypographyProps={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', sx: { whiteSpace: 'normal' } }} />
+                  secondaryTypographyProps={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', sx: { whiteSpace: 'normal' } }} />
               </MenuItem>
             ))}
           </Menu>
@@ -226,9 +226,9 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
               <TextField size="small" select label="Vurderingsform" value={f.vurderingsform} onChange={(e) => setField('vurderingsform', e.target.value)} sx={{ minWidth: 220 }}>
                 {VURDERINGSFORM_OPTIONS.map((o) => <MenuItem key={o.key || 'none'} value={o.key}>{o.label}</MenuItem>)}
               </TextField>
-              <FormControlLabel control={<Checkbox checked={f.isArbeidskrav} onChange={(e) => setField('isArbeidskrav', e.target.checked)} disabled={f.isExam} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#f59e0b' } }} />}
+              <FormControlLabel control={<Checkbox checked={f.isArbeidskrav} onChange={(e) => setField('isArbeidskrav', e.target.checked)} disabled={f.isExam} sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: '#f59e0b' } }} />}
                 label={<Typography sx={{ fontSize: 13 }}>Arbeidskrav (må godkjennes før eksamen)</Typography>} />
-              <FormControlLabel control={<Checkbox checked={f.isExam} onChange={(e) => setField('isExam', e.target.checked)} disabled={f.isArbeidskrav} sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#ec4899' } }} />}
+              <FormControlLabel control={<Checkbox checked={f.isExam} onChange={(e) => setField('isExam', e.target.checked)} disabled={f.isArbeidskrav} sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: '#ec4899' } }} />}
                 label={<Typography sx={{ fontSize: 13 }}>Eksamen / sluttvurdering</Typography>} />
             </Stack>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>
@@ -244,11 +244,11 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
         {kpis.map((k) => (
           <Panel key={k.id} sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <T eid={`edu-op-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{k.label}</T>
+              <T eid={`edu-op-kpi-${k.id}-label`} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{k.label}</T>
               <Box sx={{ width: 34, height: 34, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: k.bg, color: k.c, '& svg': { fontSize: 19 } }}>{k.icon}</Box>
             </Stack>
-            <Typography sx={{ fontSize: 30, fontWeight: 800, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
-            <T eid={`edu-op-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', mt: 0.75 }}>{k.hint}</T>
+            <Typography sx={{ fontSize: 25, fontWeight: 700, mt: 1, lineHeight: 1 }}>{k.value}</Typography>
+            <T eid={`edu-op-kpi-${k.id}-hint`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', mt: 0.75 }}>{k.hint}</T>
           </Panel>
         ))}
       </Box>
@@ -257,27 +257,27 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
       <Panel sx={{ p: 0, overflow: 'hidden' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ p: 2, flexWrap: 'wrap', gap: 1 }}>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | AssignmentStatus)} size="small" IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle status</MenuItem>
             <MenuItem value="published" sx={{ fontSize: 12.5 }}>Pågår</MenuItem>
             <MenuItem value="draft" sx={{ fontSize: 12.5 }}>Utkast</MenuItem>
             <MenuItem value="archived" sx={{ fontSize: 12.5 }}>Arkivert</MenuItem>
           </Select>
           <Select value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)} size="small" IconComponent={CaretIcon}
-            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' } }}>
+            sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', borderRadius: 2, minWidth: 130, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' }, '& .MuiSelect-select': { py: 0.75 }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.72)' } }}>
             <MenuItem value="all" sx={{ fontSize: 12.5 }}>Alle kull</MenuItem>
             {cohorts.map((c) => <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12.5 }}>{c.name}</MenuItem>)}
           </Select>
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-            <InputBase placeholder="Søk i oppgaver" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
+            <SearchIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.75)' }} />
+            <InputBase placeholder="Søk i oppgaver" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ color: '#fff', fontSize: 12.5, width: 160, '& input::placeholder': { color: 'rgba(255,255,255,0.75)', opacity: 1 } }} />
           </Stack>
         </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '2.4fr 1.4fr 1fr 1fr 1.2fr 120px', px: 2, py: 1.25, bgcolor: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           {[['oppgave', 'Oppgave'], ['kull', 'Knyttet kull'], ['frist', 'Frist'], ['status', 'Status'], ['innlev', 'Innleveringer'], ['open', '']].map(([id, label]) => (
-            <T key={id} eid={`edu-op-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</T>
+            <T key={id} eid={`edu-op-th-${id}`} sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>{label}</T>
           ))}
         </Box>
 

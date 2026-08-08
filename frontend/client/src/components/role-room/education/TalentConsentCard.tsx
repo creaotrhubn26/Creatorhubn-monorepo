@@ -59,7 +59,7 @@ export function TalentConsentCard({ onDone }: { onDone?: () => void }) {
     return (
       <Box sx={{ p: 2, borderRadius: 3, bgcolor: done === 'accepted' ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${done === 'accepted' ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.1)'}`, color: '#fff' }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          {done === 'accepted' ? <AcceptIcon sx={{ color: '#34d399' }} /> : <DeclineIcon sx={{ color: 'rgba(255,255,255,0.5)' }} />}
+          {done === 'accepted' ? <AcceptIcon sx={{ color: '#34d399' }} /> : <DeclineIcon sx={{ color: 'rgba(255,255,255,0.72)' }} />}
           <Typography sx={{ fontSize: 13.5 }}>
             {done === 'accepted'
               ? 'Du har overtatt profilen din i Role Room Talents. Den er fortsatt usynlig for byråer til du selv gir samtykke per byrå.'
@@ -77,7 +77,7 @@ export function TalentConsentCard({ onDone }: { onDone?: () => void }) {
         <Box sx={{ width: 42, height: 42, borderRadius: 2.5, bgcolor: 'rgba(139,92,246,0.22)', color: '#c4b5fd', display: 'grid', placeItems: 'center', flexShrink: 0 }}><TalentIcon /></Box>
         <Box>
           <Typography sx={{ fontWeight: 800, fontSize: 16 }}>Du er invitert til Role Room Talents</Typography>
-          <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)' }}>Skolen din har opprettet et utkast til talent-profil for deg{p.credential?.institution ? ` (${[p.credential.program, p.credential.institution, p.credential.year].filter(Boolean).join(' · ')})` : ''}.</Typography>
+          <Typography sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)' }}>Skolen din har opprettet et utkast til talent-profil for deg{p.credential?.institution ? ` (${[p.credential.program, p.credential.institution, p.credential.year].filter(Boolean).join(' · ')})` : ''}.</Typography>
         </Box>
       </Stack>
 
@@ -101,7 +101,7 @@ export function TalentConsentCard({ onDone }: { onDone?: () => void }) {
           <Stack spacing={0.25} sx={{ mb: 1 }}>
             {info.yourRights.map((r, i) => <Typography key={i} sx={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)' }}>• {r}</Typography>)}
           </Stack>
-          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}>{info.controller}</Typography>
+          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.76)', fontStyle: 'italic' }}>{info.controller}</Typography>
         </Box>
       )}
 

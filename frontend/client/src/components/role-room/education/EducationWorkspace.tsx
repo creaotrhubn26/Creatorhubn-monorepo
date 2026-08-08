@@ -24,7 +24,7 @@ import educationLtiService from './educationLtiService';
 import { RoleRoomEduLogo } from './RoleRoomEduLogo';
 import { EducationTour, hasSeenEducationTour } from './EducationTour';
 import {
-  Box, Typography, Card, CardContent, Chip, Stack, Button, InputBase, IconButton, Tooltip, Avatar,
+  Box, Typography, Card, CardContent, Chip, Stack, InputBase, IconButton, Tooltip, Avatar,
 } from '@mui/material';
 import {
   School as SchoolIcon,
@@ -122,7 +122,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
           return (
             <Box key={t.id} onClick={() => onNavigate(t.id)} data-edit-id={`edu-nav-${t.id}`} sx={{
               display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.05, borderRadius: 2, cursor: 'pointer',
-              color: active ? '#fff' : 'rgba(255,255,255,0.62)',
+              color: active ? '#fff' : 'rgba(255,255,255,0.76)',
               bgcolor: active ? 'rgba(139,92,246,0.16)' : 'transparent',
               boxShadow: active ? 'inset 3px 0 0 #8B5CF6' : 'none',
               transition: 'background .15s, color .15s',
@@ -136,16 +136,12 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
         })}
       </Stack>
 
-      {/* Kom i gang-kort */}
-      <Card sx={{ bgcolor: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.28)', borderRadius: 2.5, p: 1.75, mt: 1 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.5 }}>Kom i gang med workspace</Typography>
-        <Typography sx={{ fontSize: 11.5, color: 'rgba(255,255,255,0.6)', mb: 1.25 }}>Opprett ditt første kull og inviter studenter for å komme i gang.</Typography>
-        <Button fullWidth size="small" variant="contained" onClick={() => onNavigate('cohorts')}
-          sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>Opprett kull</Button>
-      </Card>
+      {/* Kom-i-gang-kortet fjernet: duplikerte Oversikt-sjekklisten (én
+          vedvarende onboarding-flate holder) og kolliderte med cookie-kontrollen
+          i bunn-venstre hjørne. */}
 
       {/* Feedback */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.1, mt: 0.5, borderRadius: 2, cursor: 'pointer', color: 'rgba(255,255,255,0.6)', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fff' } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1.1, mt: 0.5, borderRadius: 2, cursor: 'pointer', color: 'rgba(255,255,255,0.75)', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fff' } }}>
         <FeedbackIcon sx={{ fontSize: 19 }} />
         <Typography sx={{ fontSize: 13 }}>Gi tilbakemelding</Typography>
       </Box>
@@ -154,7 +150,7 @@ function Sidebar({ activeTab, onNavigate }: { activeTab: EducationTabId; onNavig
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1, py: 1, mt: 0.5, borderTop: '1px solid rgba(255,255,255,0.07)', pt: 1.25 }}>
         <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(139,92,246,0.3)', color: '#e9d5ff', fontSize: 12, fontWeight: 700 }}>TRR</Avatar>
         <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1 }}>The Role Room</Typography>
-        <CaretIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />
+        <CaretIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.75)' }} />
       </Box>
     </Box>
   );
@@ -174,22 +170,22 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderRadius: 2, border: '1px solid rgba(255,255,255,0.12)', bgcolor: 'rgba(139,92,246,0.1)', flexShrink: 0 }}>
         <SchoolIcon sx={{ fontSize: 17, color: ACCENT }} />
         <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Utdannings-modus</Typography>
-        <SwitchIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }} />
+        <SwitchIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.72)' }} />
       </Box>
 
       {/* Søk */}
       <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1, flex: 1, maxWidth: 460, px: 1.5, py: 0.6, borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-        <SearchIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />
-        <InputBase placeholder="Søk i workspace…" sx={{ flex: 1, color: '#fff', fontSize: 13.5, '& input::placeholder': { color: 'rgba(255,255,255,0.4)', opacity: 1 } }} />
-        <Chip label="⌘K" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }} />
+        <SearchIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.75)' }} />
+        <InputBase placeholder="Søk i workspace…" sx={{ flex: 1, color: '#fff', fontSize: 13.5, '& input::placeholder': { color: 'rgba(255,255,255,0.75)', opacity: 1 } }} />
+        <Chip label="⌘K" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.72)' }} />
       </Box>
       <Box sx={{ flex: { xs: 1, sm: 0 } }} />
 
       {/* Ikoner */}
       <Stack direction="row" spacing={0.5} alignItems="center">
-        <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}><BellIcon fontSize="small" /></IconButton>
-        <Tooltip title="Rundtur"><IconButton size="small" onClick={onHelp} sx={{ color: 'rgba(255,255,255,0.6)' }}><HelpIcon fontSize="small" /></IconButton></Tooltip>
-        <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}><ThemeIcon fontSize="small" /></IconButton>
+        <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.75)' }}><BellIcon fontSize="small" /></IconButton>
+        <Tooltip title="Rundtur"><IconButton size="small" onClick={onHelp} sx={{ color: 'rgba(255,255,255,0.75)' }}><HelpIcon fontSize="small" /></IconButton></Tooltip>
+        <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.75)' }}><ThemeIcon fontSize="small" /></IconButton>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ pl: 1 }}>
           <Box sx={{ textAlign: 'right', display: { xs: 'none', md: 'block' } }}>
             <Typography sx={{ fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>{dateLabel}</Typography>
@@ -247,14 +243,18 @@ export function EducationWorkspace(_props: EducationWorkspaceProps = {}) {
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <TopBar onHelp={() => setTourOpen(true)} />
         <Box sx={{ flex: 1, position: 'relative' }}>
-          {/* Ambient The Role Room-backdrop (lilla lys top-høyre + fage merker
-              i hjørnet) — glir ned i solid mørk så innholdskortene forblir rene. */}
+          {/* Ambient The Role Room-backdrop — KUN på Oversikt (var tidligere på
+              hver fane = dekorativ støy + bildets venstre kant leste som en
+              vertikal strek-bug). Radial-maske fader mot venstre OG bunn fra
+              top-høyre-hjørnet, så ingen hard kant. */}
+          {activeTab === 'overview' && (
           <Box sx={{
             position: 'absolute', top: 0, right: 0, width: '78%', height: 560, pointerEvents: 'none', opacity: 0.7,
             backgroundImage: 'url(/trr-edu-content-bg.png)', backgroundSize: 'cover', backgroundPosition: 'top right', backgroundRepeat: 'no-repeat',
-            WebkitMaskImage: 'linear-gradient(to bottom, #000 35%, transparent 100%)',
-            maskImage: 'linear-gradient(to bottom, #000 35%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(125% 125% at 100% 0%, #000 32%, transparent 72%)',
+            maskImage: 'radial-gradient(125% 125% at 100% 0%, #000 32%, transparent 72%)',
           }} />
+          )}
           <Box sx={{ position: 'relative', p: { xs: 2, md: 4 } }}>
             {renderTab()}
           </Box>
