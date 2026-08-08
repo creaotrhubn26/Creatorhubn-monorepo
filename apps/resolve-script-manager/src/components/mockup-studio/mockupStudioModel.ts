@@ -264,7 +264,7 @@ export const LAYOUT_VARIANTS: { id: LayoutVariantId; label: string }[] = [
 // ── Fabrikker ──────────────────────────────────────────────────────────────
 
 let _seq = 0;
-function uid(prefix: string): string {
+export function uid(prefix: string): string {
   _seq += 1;
   return `${prefix}_${Date.now().toString(36)}_${_seq}`;
 }

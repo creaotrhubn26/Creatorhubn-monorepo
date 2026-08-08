@@ -19,6 +19,7 @@ import {
   makeDevice,
   makeText,
   makeAnnotation,
+  uid,
   buildTemplate,
   loadDoc,
   saveDoc,
@@ -32,6 +33,7 @@ import {
   type MockupFormat,
 } from './mockupStudioModel';
 import { computeSmartFocus } from './mockupSmartCrop';
+import { reorder } from './mockupArrange';
 
 /** Hva som er valgt i editoren (styrer inspektør-panelet). */
 export type Selection =
@@ -75,12 +77,18 @@ interface MockupStudioState {
   patchDevice: (id: string, patch: Partial<MockupDeviceSlot>) => void;
   setDeviceImage: (id: string, image: string | undefined) => void;
   removeDevice: (id: string) => void;
+  duplicateDevice: (id: string) => void;
 
   // Tekst
   addText: (role: MockupTextRole) => void;
   addTexts: (texts: MockupTextSlot[]) => void;
   patchText: (id: string, patch: Partial<MockupTextSlot>) => void;
   removeText: (id: string) => void;
+  duplicateText: (id: string) => void;
+
+  // Lag-rekkefølge (z): tegner i array-rekkefølge — flytt et element fram/bak.
+  reorderElement: (kind: 'device' | 'text', id: string, dir: 'up' | 'down') => void;
+  duplicateSelected: () => void;
 
   // Illustrasjons-lag (callout/lupe/markør)
   addAnnotation: (kind: MockupAnnotationKind, deviceId?: string) => void;
@@ -192,6 +200,14 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     set((s) => (s.selection.kind === 'device' && s.selection.id === id ? { selection: { kind: 'canvas' } } : {}));
   },
 
+  duplicateDevice: (id) => {
+    const src = get().doc.devices.find((dv) => dv.id === id);
+    if (!src) return;
+    const copy = { ...src, id: uid('dev'), x: src.x + 40, y: src.y + 40 };
+    commit(set, (d) => ({ ...d, devices: [...d.devices, copy] }));
+    set({ selection: { kind: 'device', id: copy.id } });
+  },
+
   addText: (role) => {
     const t = makeText(role, { text: role === 'title' ? 'Ny overskrift' : role === 'body' ? 'Ny tekst' : 'Tekst', x: 120, y: 120 });
     commit(set, (d) => ({ ...d, texts: [...d.texts, t] }));
@@ -213,6 +229,25 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   removeText: (id) => {
     commit(set, (d) => ({ ...d, texts: d.texts.filter((t) => t.id !== id) }));
     set((s) => (s.selection.kind === 'text' && s.selection.id === id ? { selection: { kind: 'canvas' } } : {}));
+  },
+
+  duplicateText: (id) => {
+    const src = get().doc.texts.find((t) => t.id === id);
+    if (!src) return;
+    const copy = { ...src, id: uid('txt'), x: src.x + 40, y: src.y + 40 };
+    commit(set, (d) => ({ ...d, texts: [...d.texts, copy] }));
+    set({ selection: { kind: 'text', id: copy.id } });
+  },
+
+  reorderElement: (kind, id, dir) => commit(set, (d) =>
+    kind === 'device'
+      ? { ...d, devices: reorder(d.devices, id, dir) }
+      : { ...d, texts: reorder(d.texts, id, dir) }),
+
+  duplicateSelected: () => {
+    const s = get().selection;
+    if (s.kind === 'device') get().duplicateDevice(s.id);
+    else if (s.kind === 'text') get().duplicateText(s.id);
   },
 
   addAnnotation: (kind, deviceId) => {

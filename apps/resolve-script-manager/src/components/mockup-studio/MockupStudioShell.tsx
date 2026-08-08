@@ -874,6 +874,37 @@ function IllustrationInspector() {
   );
 }
 
+/** Kompakt numerisk felt (X/Y/B/H) — presis posisjonering ved siden av sliderne. */
+function NumberBox({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <label style={{ flex: 1, minWidth: 0 }}>
+      <span style={{ display: 'block', fontSize: 10, color: C.inkSoft, marginBottom: 2 }}>{label}</span>
+      <input
+        type="number" value={value}
+        onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) onChange(Math.round(n)); }}
+        aria-label={label}
+        style={{ ...textInput, width: '100%', padding: '5px 6px', fontVariantNumeric: 'tabular-nums' }}
+      />
+    </label>
+  );
+}
+
+/** Lag-rad: dupliser + z-rekkefølge (delt av enhet/tekst-inspektør). */
+function ArrangeRow({ kind, id }: { kind: 'device' | 'text'; id: string }) {
+  const dupDevice = useMockupStudio((s) => s.duplicateDevice);
+  const dupText = useMockupStudio((s) => s.duplicateText);
+  const reorder = useMockupStudio((s) => s.reorderElement);
+  return (
+    <Field label="Lag">
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={() => (kind === 'device' ? dupDevice(id) : dupText(id))} style={{ ...listBtn, flex: 1 }} title="Dupliser (Cmd/Ctrl+D)">⧉ Dupliser</button>
+        <button onClick={() => reorder(kind, id, 'up')} style={{ ...listBtn, width: 36, textAlign: 'center' }} title="Flytt fram (tegnes over)" aria-label="Flytt fram">↑</button>
+        <button onClick={() => reorder(kind, id, 'down')} style={{ ...listBtn, width: 36, textAlign: 'center' }} title="Flytt bak" aria-label="Flytt bak">↓</button>
+      </div>
+    </Field>
+  );
+}
+
 function DeviceInspector({ device, onUpload, advanced }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void; advanced: boolean }) {
   const patchDevice = useMockupStudio((s) => s.patchDevice);
   const setDeviceImage = useMockupStudio((s) => s.setDeviceImage);
@@ -931,6 +962,14 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         <input type="checkbox" checked={device.shadow} onChange={(e) => patchDevice(device.id, { shadow: e.target.checked })} />
         Skygge
       </label>
+      <Field label="Plassering (px)">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <NumberBox label="X" value={Math.round(device.x)} onChange={(n) => patchDevice(device.id, { x: n })} />
+          <NumberBox label="Y" value={Math.round(device.y)} onChange={(n) => patchDevice(device.id, { y: n })} />
+          <NumberBox label="Bredde" value={Math.round(device.w)} onChange={(n) => patchDevice(device.id, { w: Math.max(40, n) })} />
+        </div>
+      </Field>
+      <ArrangeRow kind="device" id={device.id} />
       <button onClick={() => removeDevice(device.id)} style={{ ...dangerBtn, marginTop: 12 }}>Slett enhet</button>
     </div>
   );
@@ -1002,6 +1041,14 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
           </Field>
         </>
       )}
+      <Field label="Plassering (px)">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <NumberBox label="X" value={Math.round(text.x)} onChange={(n) => patchText(text.id, { x: n })} />
+          <NumberBox label="Y" value={Math.round(text.y)} onChange={(n) => patchText(text.id, { y: n })} />
+          <NumberBox label="Bredde" value={Math.round(text.w)} onChange={(n) => patchText(text.id, { w: Math.max(40, n) })} />
+        </div>
+      </Field>
+      <ArrangeRow kind="text" id={text.id} />
       <button onClick={() => removeText(text.id)} style={{ ...dangerBtn, marginTop: 12 }}>Slett tekst</button>
     </div>
   );
