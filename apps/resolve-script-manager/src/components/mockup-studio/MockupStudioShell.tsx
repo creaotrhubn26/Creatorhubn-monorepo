@@ -75,6 +75,7 @@ import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
 import { aiLocalizeTexts, localizeAvailable, LOCALIZE_LANGS } from './mockupAiLocalize';
 import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective';
 import { generateSceneBackground, aiBackgroundAvailable } from './mockupAiBackground';
+import { MOCKUP_SCENES } from './mockupScenes';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { exportAndSaveGif } from './mockupGifExport';
@@ -778,6 +779,26 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           value={canvas.background}
           onChange={(v) => patchCanvas({ background: v })}
         />
+      </Field>
+      <Field label="Lifestyle-scene">
+        <select
+          value={canvas.scene?.id ?? ''}
+          onChange={(e) => patchCanvas({ scene: e.target.value ? { id: e.target.value, shot: canvas.scene?.shot } : undefined })}
+          style={{ ...textInput, marginBottom: canvas.scene?.id ? 6 : 0 }}
+        >
+          <option value="">Ingen (vanlig lerret)</option>
+          {MOCKUP_SCENES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        {canvas.scene?.id && (
+          <label style={{ ...listBtn, display: 'block', textAlign: 'center', cursor: 'pointer' }}>
+            {canvas.scene.shot ? 'Bytt skjermbilde' : 'Legg til skjermbilde'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
+              const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+              const r = new FileReader(); r.onload = () => patchCanvas({ scene: { id: canvas.scene!.id, shot: String(r.result) } }); r.readAsDataURL(f);
+            }} />
+          </label>
+        )}
+        {canvas.scene?.id && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Skjermbildet warpes i perspektiv inn i scenens skjerm. Tekst legges oppå.</div>}
       </Field>
       <Field label="AI-bakgrunn">
         <input value={bgPrompt} onChange={(e) => setBgPrompt(e.target.value)} placeholder="Beskriv scene (tomt = fra palett)" style={{ ...textInput, marginBottom: 6 }} />

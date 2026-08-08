@@ -136,6 +136,8 @@ export interface MockupCanvasSpec {
   decor?: MockupDecor;
   /** Valgfri AI-generert bakgrunnsbilde (data-URL, cover-fylt bak dekor). */
   bgImage?: string;
+  /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad. */
+  scene?: { id: string; shot?: string };
   /** Valgfri logo. */
   logo?: MockupLogo;
 }

@@ -15,6 +15,8 @@ import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, type Reveal } from './mockupMotion';
 import { matrixFor, tiltsLeft } from './mockupPerspective';
+import { sceneById } from './mockupScenes';
+import { drawImageQuad, type Quad } from './mockupSceneWarp';
 import {
   type MockupDoc,
   type MockupDeviceSlot,
@@ -139,6 +141,25 @@ function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
   };
   glow(w * 0.75, h * 0.14, w * 0.5, c.accent, light ? 0.18 : 0.28);
   glow(w * 0.18, h * 0.9, w * 0.45, c.accent2, light ? 0.13 : 0.22);
+}
+
+/** Lifestyle-scene: fotografisk bakgrunn cover-fylt + skjermbilde warpet i quad. */
+async function drawScene(ctx: CanvasRenderingContext2D, doc: MockupDoc): Promise<void> {
+  const sc = sceneById(doc.canvas.scene?.id);
+  if (!sc) return;
+  const W = doc.canvas.w, H = doc.canvas.h;
+  try { drawFitted(ctx, await loadImage(sc.src), 0, 0, W, H, 'cover'); } catch { /* behold */ }
+  const shot = doc.canvas.scene?.shot;
+  if (!shot) return;
+  // Scenen er cover-fittet (kan beskjæres) → mål samme crop-transform for quad'en.
+  const img = await loadImage(sc.src).catch(() => null);
+  if (!img) return;
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const scale = Math.max(W / iw, H / ih);
+  const dw = iw * scale, dh = ih * scale, ox = (W - dw) / 2, oy = (H - dh) / 2;
+  const px = (p: [number, number]): [number, number] => [ox + p[0] * dw, oy + p[1] * dh];
+  const quad = sc.screen.map(px) as Quad;
+  try { drawImageQuad(ctx, await loadImage(shot), quad); } catch { /* behold svart skjerm */ }
 }
 
 /** AI-generert bakgrunnsbilde: cover-fyll hele lerretet (bak dekor). Best-effort. */
@@ -812,6 +833,15 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     fillBackground(ctx, doc);
     await drawBgImage(ctx, doc);
     drawDecor(ctx, doc);
+  }
+
+  // Lifestyle-scene-modus: fotografisk scene + warpet skjermbilde (tekst/logo over).
+  if (doc.canvas.scene?.id) {
+    await drawScene(ctx, doc);
+    doc.texts.forEach((tx) => drawText(ctx, doc, tx));
+    await drawLogo(ctx, doc.canvas);
+    if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
+    return canvas;
   }
 
   // Mind map-modus: lerretet ER en produkt-mind map (ingen enheter/tekst).
