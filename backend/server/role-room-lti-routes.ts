@@ -554,11 +554,33 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
 
   router.get("/lti/platforms", requireAdmin, async (_req, res) => {
     try {
-      const r = await pool.query(`SELECT id, name, issuer, client_id, created_at FROM role_room_lti_platforms ORDER BY created_at DESC`);
+      const r = await pool.query(`SELECT id, name, issuer, client_id, status, product_family, registered_via, created_at FROM role_room_lti_platforms ORDER BY created_at DESC`);
       res.json({ platforms: r.rows });
     } catch (err) {
       if ((err as { code?: string })?.code === "42P01") { res.json({ platforms: [] }); return; }
       res.json({ platforms: [] });
+    }
+  });
+
+  router.post("/lti/platforms/:id/approve", requireAdmin, async (req, res) => {
+    try {
+      const r = await pool.query(`UPDATE role_room_lti_platforms SET status='approved', updated_at=now() WHERE id=$1 RETURNING id`, [req.params.id]);
+      if (r.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[lti] approve platform failed:", (err as Error).message);
+      res.status(500).json({ error: "approve_failed" });
+    }
+  });
+
+  router.delete("/lti/platforms/:id", requireAdmin, async (req, res) => {
+    try {
+      const r = await pool.query(`DELETE FROM role_room_lti_platforms WHERE id=$1 RETURNING id`, [req.params.id]);
+      if (r.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[lti] delete platform failed:", (err as Error).message);
+      res.status(500).json({ error: "delete_failed" });
     }
   });
 

@@ -253,6 +253,46 @@ describe("POST /lti/launch approval gate", () => {
   });
 });
 
+describe("LTI admin: approve/reject platforms", () => {
+  const admin = { headers: { authorization: "Bearer admin" }, params: {}, body: {}, query: {} };
+  const deps = { activeSessions: adminSessions as any };
+
+  it("POST /lti/platforms/:id/approve setter status=approved", async () => {
+    const calls: any[] = [];
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      calls.push([sql, params]);
+      if (sql.includes("UPDATE role_room_lti_platforms SET status")) return { rows: [{ id: params[0] }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, deps));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/platforms/:id/approve"), { ...admin, params: { id: "p1" } }, res);
+    expect(res.body).toMatchObject({ success: true });
+    expect(calls.some(([s]) => s.includes("SET status='approved'") || s.includes("SET status = 'approved'"))).toBe(true);
+  });
+
+  it("DELETE /lti/platforms/:id fjerner plattform", async () => {
+    const pool: any = { query: vi.fn(async () => ({ rows: [{ id: "p1" }] })) };
+    const rs = mountHandlers(createLtiRouter(pool, deps));
+    const res = makeRes();
+    await run(H(rs, "DELETE", "/lti/platforms/:id"), { ...admin, params: { id: "p1" } }, res);
+    expect(res.body).toMatchObject({ success: true });
+  });
+
+  it("GET /lti/platforms inkluderer status", async () => {
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("SELECT") && sql.includes("role_room_lti_platforms")) {
+        return { rows: [{ id: "p1", issuer: "https://moodle.example.edu", status: "pending", product_family: "moodle", registered_via: "dynamic" }] };
+      }
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createLtiRouter(pool, deps));
+    const res = makeRes();
+    await run(H(rs, "GET", "/lti/platforms"), admin, res);
+    expect(res.body.platforms[0]).toMatchObject({ status: "pending", product_family: "moodle" });
+  });
+});
+
 describe("pushScore (AGS grade-passback)", () => {
   const realFetch = globalThis.fetch;
   afterEach(() => { globalThis.fetch = realFetch; });
