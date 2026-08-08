@@ -1012,7 +1012,9 @@ export function createYouTubeRouter(pool: Pool) {
   });
 
   // YouTube Analytics — kanal-/videostatistikk (visninger, seertid, abonnenter).
-  // Bruker scopet auth/yt-analytics.readonly (allerede i ROLE_ROOM_GOOGLE_SCOPES).
+  // Krever scopet auth/yt-analytics.readonly. Dette gis IKKE i hoved-Workspace-
+  // consenten (Google avviser det sammen med Drive) — brukeren må først kjøre den
+  // inkrementelle «Koble YouTube Analytics»-consenten (mode='youtube-analytics').
   router.get("/analytics", async (req: Request, res: Response) => {
     const userId = await resolveUserId(pool, req);
     if (!userId) {

@@ -785,16 +785,9 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                         </Button>
                       </>
                     ) : (
-                      <>
-                        <Button color="inherit" size="small" onClick={connectToGoogleWorkspace}>
-                          {youtubeNeedsReconnect ? 'Forny Google-SSO' : 'Fortsett med Google-SSO'}
-                        </Button>
-                        {isRoleRoomVariant && (
-                          <Button color="inherit" size="small" onClick={connectYouTubeAnalytics}>
-                            Koble YouTube Analytics
-                          </Button>
-                        )}
-                      </>
+                      <Button color="inherit" size="small" onClick={connectToGoogleWorkspace}>
+                        {youtubeNeedsReconnect ? 'Forny Google-SSO' : 'Fortsett med Google-SSO'}
+                      </Button>
                     )}
                   </Stack>
                 )}
@@ -817,6 +810,19 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
         <Grid2 container spacing={compact ? 2 : 3}>
           <Grid2 size={{ xs: 12, lg: 5 }}>
             <Stack spacing={compact ? 2 : 3}>
+              {/* Inkrementell YouTube Analytics-consent — kun tilgjengelig NÅR en
+                  Workspace-kobling finnes, så den ekstra consenten flettes inn
+                  (include_granted_scopes) i stedet for å overskrive med partielle scopes. */}
+              {isRoleRoomVariant && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={connectYouTubeAnalytics}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Koble YouTube Analytics (statistikk + inntekter)
+                </Button>
+              )}
               <Paper
                 elevation={0}
                 sx={{
