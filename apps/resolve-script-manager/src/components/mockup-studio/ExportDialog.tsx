@@ -65,6 +65,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState('');
   const [resultPath, setResultPath] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [warnMsg, setWarnMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -87,6 +88,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const runExport = async () => {
     setStep('running');
     setErr(null);
+    setWarnMsg(null);
     try {
       if (format === 'psd_bridge') {
         setStatus('Kobler til Photoshop-broen…');
@@ -99,6 +101,10 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         if (typeof path !== 'string') { setStep('settings'); return; }
         setStatus('Bygger redigerbar PSD i Photoshop…');
         const res = await buildEditablePsdViaBridge(doc, path);
+        if (res.fontWarnings.length) {
+          const list = res.fontWarnings.map((w) => `${w.requested} → ${w.used}`).join(', ');
+          setWarnMsg(`Merk: ${res.fontWarnings.length} font(er) var ikke installert i Photoshop og ble erstattet (${list}). Installer fontene for eksakt match.`);
+        }
         finish(res.output_path);
         return;
       }
@@ -242,7 +248,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           <div>
             <StepLabel>Ferdig</StepLabel>
             <div style={{ fontSize: 14, color: C.ok, marginBottom: 6 }}>✓ {formatLabel()} eksportert.</div>
-            {resultPath && <div style={{ fontSize: 12.5, color: C.inkSoft, wordBreak: 'break-all', marginBottom: 16 }}>{resultPath}</div>}
+            {resultPath && <div style={{ fontSize: 12.5, color: C.inkSoft, wordBreak: 'break-all', marginBottom: warnMsg ? 8 : 16 }}>{resultPath}</div>}
+            {warnMsg && <div style={{ fontSize: 12.5, color: C.should, marginBottom: 16, lineHeight: 1.4 }}>{warnMsg}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               {resultPath && <button onClick={() => void openPath(resultPath).catch(() => {})} style={ghost}>Åpne fil</button>}
               <button onClick={() => setStep('format')} style={ghost}>Eksporter på nytt</button>
