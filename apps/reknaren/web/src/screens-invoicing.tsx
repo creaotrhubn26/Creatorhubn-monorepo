@@ -38,6 +38,11 @@ interface LineDraft {
   vatCode: string;
 }
 
+const ISSUE_CONFIRM =
+  'Utsted fakturaen nå?\n\n'
+  + 'Den får et permanent fakturanummer og bokføres. En utstedt faktura kan ikke '
+  + 'slettes — bare rettes med kreditnota.';
+
 const INVOICE_STATUS_LABELS: Record<string, string> = {
   draft: 'Kladd',
   issued: 'Utstedt',
@@ -194,6 +199,13 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
         body,
       );
       if (issueNow) {
+        if (!window.confirm(ISSUE_CONFIRM)) {
+          toast(`Fakturakladd opprettet (${kr(draft.grossMinor)}) — ikke utstedt`, 'ok');
+          setLines([emptyLine()]);
+          setShowBuilder(false);
+          invoices.reload();
+          return;
+        }
         const issued = await api<{ invoiceNumber: string; kid: string }>(
           'POST',
           `/api/organizations/${orgId}/invoices/${draft.id}/issue`,
@@ -214,6 +226,7 @@ export function InvoicingScreen({ orgId }: { orgId: string }) {
   };
 
   const issueDraft = async (invoiceId: string) => {
+    if (!window.confirm(ISSUE_CONFIRM)) return;
     try {
       const issued = await api<{ invoiceNumber: string; kid: string }>(
         'POST',

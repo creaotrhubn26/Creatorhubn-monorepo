@@ -2650,6 +2650,11 @@ export function YearEndScreen({ orgId }: { orgId: string }) {
 
   const close = async () => {
     if (!p) return;
+    if (!window.confirm(
+      `Gjennomfør årsavslutning ${year}?\n\n`
+      + 'Skatteposteringen bokføres og hele året låses permanent. '
+      + 'Dette kan bare angres med korreksjonsposteringer.',
+    )) return;
     setBusy(true);
     try {
       const r = await api<{ payableTaxMinor: string; lockedMonths: number[]; taxPosted: boolean }>(
@@ -3343,6 +3348,11 @@ export function PeriodCloseScreen({ orgId, onNavigate }: { orgId: string; onNavi
   const p = pc.data;
 
   const lock = async () => {
+    if (!window.confirm(
+      `Lås ${MONTH_NAMES[month - 1]} ${year}?\n\n`
+      + 'Perioden blir låst permanent. Etterpå kan tallene bare endres med en '
+      + 'korreksjonspostering — du kan ikke låse opp igjen.',
+    )) return;
     setBusy(true);
     try {
       await api('POST', `/api/organizations/${orgId}/periods/${year}/${month}/lock`, {
