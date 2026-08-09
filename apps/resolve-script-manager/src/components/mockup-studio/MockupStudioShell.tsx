@@ -1059,6 +1059,23 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
   const patchDevice = useMockupStudio((s) => s.patchDevice);
   const setDeviceImage = useMockupStudio((s) => s.setDeviceImage);
   const removeDevice = useMockupStudio((s) => s.removeDevice);
+  const [simBusy, setSimBusy] = useState(false);
+  const [simMsg, setSimMsg] = useState<string | null>(null);
+  // Fang skjermen fra en bootet iOS-simulator som device-innhold (ekte app-skjerm).
+  const runSimCapture = async () => {
+    if (simBusy) return;
+    setSimBusy(true); setSimMsg('📱 Henter fra simulator…');
+    try {
+      const sims = await listSimulators();
+      if (sims.length === 0) { setSimMsg('Ingen bootet simulator. Start én i Simulator/Xcode.'); return; }
+      const target = sims[0];
+      const dataUrl = await captureSimShot(target.udid);
+      setDeviceImage(device.id, dataUrl);
+      setSimMsg(`✓ Fanget fra ${target.label}${sims.length > 1 ? ` (+${sims.length - 1} flere bootet)` : ''}.`);
+    } catch (e) {
+      setSimMsg(`Sim-fangst gikk ikke: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setSimBusy(false); }
+  };
   return (
     <div>
       <SectionLabel>{DEVICE_LABELS[device.variant]}</SectionLabel>
@@ -1070,8 +1087,10 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
       <Field label="Skjermbilde">
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onUpload} style={{ ...listBtn, flex: 1 }}>{device.image ? 'Bytt bilde' : 'Last opp'}</button>
+          <button onClick={() => void runSimCapture()} disabled={simBusy} style={{ ...listBtn, flex: 1, opacity: simBusy ? 0.6 : 1 }} title="Fang skjermen fra en bootet iOS-simulator som device-innhold (ekte app-skjerm)">{simBusy ? '📱 …' : '📱 Fra sim'}</button>
           {device.image && <button onClick={() => setDeviceImage(device.id, undefined)} style={listBtn} title="Fjern bilde" aria-label="Fjern bilde">✕</button>}
         </div>
+        {simMsg && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>{simMsg}</div>}
       </Field>
       {device.image && (
         <Field label="Utsnitt">
