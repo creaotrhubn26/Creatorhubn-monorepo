@@ -1,6 +1,6 @@
 ---
 name: documentation-intelligence
-description: Technical intelligence operating layer for authoritative documentation research, repository-aware version/API validation, compatibility solving, project impact analysis, migration planning, evidence traceability, and low-noise release monitoring.
+description: Technical intelligence operating layer for authoritative documentation research, repository-aware version/API validation, compatibility solving, project impact analysis, migration planning, evidence traceability, and low-noise release monitoring. ALSO use for open improvement questions about products with external integrations ("what could make Post Agent better?", "what do new Resolve/Xcode releases enable?") — route them through docs/impact-reports/ product opportunities and the evidence graph, not from memory.
 ---
 
 # Documentation Intelligence v2
@@ -365,6 +365,59 @@ Available contracts:
 - `schemas/project-intelligence.schema.json`
 - `schemas/impact-report.schema.json`
 - `schemas/evidence-graph.schema.json`
+
+## Interaction Rule (interactive sessions)
+
+Before producing analysis for an open question ("what could be improved",
+"what does release X mean for us"), ALWAYS ask 1–3 short focus questions
+first: which system (Post Agent / iPad apps / Role Room / Leadgrid /
+CreatorHub platform / Reknaren / Pondus), which vendor surface, and
+risk-focus vs. opportunity-focus. Depth on the chosen focus beats breadth
+across everything. Skip this only when the user already specified the focus,
+or in autonomous cron/cloud runs (they follow their own prompt).
+
+## Model Tiering (cost discipline)
+
+Match model to step complexity — light to heavy. When delegating to
+subagents (Agent tool) or choosing a model, use:
+
+| Step | Tier |
+|---|---|
+| Mechanical extraction (versions, tags, RSS, symbol grep, baselines) | **Scripts — no model.** `scripts/` does this; never burn tokens on what grep does |
+| Fetch + condense a release note / doc page per vendor | **Haiku** (cheap fan-out, one subagent per vendor) |
+| api-validator exact-symbol checks against a doc | **Sonnet** |
+| Impact verdict (GO/HOLD), compatibility solving, migration plan, product proposals | **Strongest available** (session model — this is where being wrong costs real money) |
+
+Fan out the cheap steps in parallel; reserve the strong model for synthesis
+and verdicts. The weekly cloud agent runs sonnet-5 end-to-end (quiet runs are
+a handful of tool calls; analysis runs need the reasoning). PR Guardian and
+the release-monitor cron are pure bash — zero model cost by design.
+
+**Announce the choice.** At the start of a doc-intel task, state the model
+plan in one or two lines WITH the reason, and flag when the task deserves
+escalation or de-escalation. Examples:
+
+> «Vendor-henting: 3 Haiku-subagenter (ren kondensering). Verdikt: Fable 5 —
+> dette rører billing-migrering, feil verdikt koster produksjon.»
+
+> «Dette er rutinemessig symbolsjekk — Sonnet holder, Fable er sløsing her.»
+
+The user decides on disagreement; silent model choice is not allowed for
+verdicts with production consequences.
+
+## Output Contract (token discipline)
+
+Be token-efficient. No filler, no generic advice, no changelog dumps.
+
+Every improvement proposal MUST have exactly these parts, compactly:
+1. **What**: the new vendor function/API (with source)
+2. **Where**: system + file pointer it improves
+3. **Why/benefit**: one sentence — what the user concretely gets
+4. **Size**: rough estimate (hours/days)
+
+A proposal missing any part is noise — drop it. Analysis output follows
+Impact-First (above): lead with the verdict and the N project-relevant items;
+never reproduce vendor release notes wholesale.
 
 ## Runtime Notes (Claude Code)
 
