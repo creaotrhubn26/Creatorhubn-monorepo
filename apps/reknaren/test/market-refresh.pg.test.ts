@@ -61,4 +61,37 @@ describe('refresh + regenerate', () => {
     const rate = rows.rows.find((r) => r.kind === 'rate_debt');
     expect(BigInt(rate.impact_minor)).toBe(120000n);
   });
+
+  it('bygger fx-input fra ekte kjøp og genererer fx_timing/fx_retro-kort', async () => {
+    const userId = await ensureUser(db, 'fx@x.no', 'Fx');
+    const org = await createOrganization(db, { name: 'Fx AS', orgForm: 'AS', vatStatus: 'registered', orgNumber: '923609016', createdByUserId: userId });
+    // Ekte USD-kjøp: 1000 USD (100000 minor) bokført til 12 500 NOK (1250000 minor) — effektiv kurs 12.50 — på en fersk dato (innen 90 dager).
+    const today = new Date().toISOString().slice(0, 10);
+    await postJournalEntry(db, {
+      organizationId: org.id,
+      actor: { userId, role: 'owner' },
+      entryDate: today,
+      description: 'Utenlandsk innkjøp (USD)',
+      idempotencyKey: 'refresh-test:fx-1',
+      lines: [
+        { accountNumber: '6810', debitMinor: 1250000n, creditMinor: 0n, originalCurrency: 'USD', originalAmountMinor: 100000n, exchangeRate: '12.50', exchangeRateSource: 'test' },
+        { accountNumber: '1920', debitMinor: 0n, creditMinor: 1250000n },
+      ],
+    });
+
+    const fxSources = { ...sources, fxWindow: new StaticFxWindowStub({ USD: { latest: '12.00', median: '11.50', period: '2026-08-14' } }) };
+    await regenerateInsights(db, fxSources, org.id);
+
+    const rows = await db.query(`SELECT kind, impact_minor FROM insight_cards WHERE organization_id=$1 ORDER BY kind`, [org.id]);
+    const timing = rows.rows.find((r) => r.kind === 'fx_timing:USD');
+    expect(timing).toBeDefined(); // kronen ~4,35 % svak vs median (>=3 % terskel) -> vises
+
+    const retro = rows.rows.find((r) => r.kind === 'fx_retro:USD');
+    expect(retro).toBeDefined();
+    // retro medianNokMinor = 100000 x 11.50 = 1 150 000 øre; delta = 1 250 000 - 1 150 000 = 100 000 øre (akkurat på terskelen).
+    expect(BigInt(retro.impact_minor)).toBe(100000n);
+
+    const signal = await db.query(`SELECT value_num FROM market_signals WHERE kind='fx_rate' AND signal_key='USD'`);
+    expect(signal.rows.length).toBeGreaterThan(0);
+  });
 });
