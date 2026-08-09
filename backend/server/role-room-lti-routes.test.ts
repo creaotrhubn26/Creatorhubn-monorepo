@@ -76,11 +76,13 @@ function mountHandlers(router: any) {
   return out;
 }
 function makeRes() {
-  const res: any = { statusCode: 200, body: undefined, redirectedTo: null, sent: undefined };
+  const res: any = { statusCode: 200, body: undefined, redirectedTo: null, sent: undefined, headers: {} as Record<string, string>, removedHeaders: [] as string[] };
   res.status = (c: number) => { res.statusCode = c; return res; };
   res.json = (b: unknown) => { res.body = b; return res; };
   res.redirect = (u: string) => { res.redirectedTo = u; return res; };
   res.send = (b: unknown) => { res.sent = b; return res; };
+  res.removeHeader = (h: string) => { res.removedHeaders.push(h); return res; };
+  res.setHeader = (h: string, v: string) => { res.headers[h] = v; return res; };
   return res;
 }
 async function run(stack: any[], req: any, res: any) {
@@ -205,6 +207,9 @@ describe("GET /lti/register (dynamic registration)", () => {
     await run(H(rs, "GET", "/lti/register"), { query: { openid_configuration: OIDC, registration_token: "regtok" } }, res);
     // close-page HTML
     expect(String(res.sent)).toContain("org.imsglobal.lti.close");
+    // frame-headere ryddet så LMS kan ramme close-siden (ellers «refused to connect»)
+    expect(res.removedHeaders).toContain("X-Frame-Options");
+    expect(String(res.headers["Content-Security-Policy"])).toContain("frame-ancestors");
     // plattform lagret som pending + dynamic + product_family
     const p = upserts[0];
     expect(p).toContain("https://moodle.example.edu"); // issuer
