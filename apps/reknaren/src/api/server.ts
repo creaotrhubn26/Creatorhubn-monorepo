@@ -230,6 +230,8 @@ export interface ApiDeps {
   resendWebhookSecret?: string | undefined;
   /** Hemmelig token for hodeløse cron-jobber. Uten den svarer cron-endepunkter 503. */
   cronSecret?: string | undefined;
+  /** Markedskilder (rente/KPI/valuta/enhetsregister) for markedsinnsikt-kortene. Uten den: cron 503. */
+  marketSources?: import('../market/refresh.js').MarketSources | undefined;
   /** Org hodeløse jobber opererer på (Creatorhubs egne bøker). */
   bootstrapOrg?: BootstrapOrgConfig | undefined;
   /** Utgående e-post (betalingspåminnelser). Uten konfig er sending ærlig inaktiv. */
@@ -1498,6 +1500,35 @@ export function createApiServer(deps: ApiDeps): express.Express {
     }
   });
 
+  // Hodeløs markedsinnsikt-oppdatering — token-autentisert. Henter rente/KPI-signaler,
+  // regenererer innsikts-kort for alle organisasjoner ut fra deres eksponering.
+  app.post('/api/cron/market-refresh', async (req, res, next) => {
+    try {
+      const secret = deps.cronSecret;
+      if (!secret || secret.length < 16) {
+        res.status(503).json({ error: { code: 'CRON_NOT_CONFIGURED', message: 'REKNAREN_CRON_SECRET mangler eller er for kort.' } });
+        return;
+      }
+      const provided = typeof req.headers['x-cron-secret'] === 'string' ? (req.headers['x-cron-secret'] as string) : '';
+      const a = Buffer.from(secret);
+      const b = Buffer.from(provided);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Ugyldig cron-token.' } });
+        return;
+      }
+      if (!deps.marketSources) {
+        res.status(503).json({ error: { code: 'MARKET_NOT_CONFIGURED', message: 'Markedskilder er ikke konfigurert.' } });
+        return;
+      }
+      const { refreshMarketSignals, regenerateAllOrgs } = await import('../market/refresh.js');
+      const refreshed = await refreshMarketSignals(deps.db, deps.marketSources);
+      const regen = await regenerateAllOrgs(deps.db, deps.marketSources);
+      res.json(toJson({ ...refreshed, ...regen }));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Hodeløs, planlagt e-postskanning — token-autentisert. Sikrer org, skanner Gmail
   // med det smarte filteret, og henter automatisk inn de e-postene filteret er SIKRE
   // på er bilag (til bilagsinnboksen for kontroll — bokfører ingenting selv).
@@ -2083,6 +2114,45 @@ export function createApiServer(deps: ApiDeps): express.Express {
         res.json(
           toJson(await buildDashboard(deps.db, deps.rules, { organizationId: req.params.orgId!, orgForm: org.org_form, asOf })),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Markedsinnsikt-kort (rente/KPI/valuta) — ikke-avviste, viktigste/nyeste først.
+  app.get(
+    '/api/organizations/:orgId/market/insights',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const orgId = req.params.orgId!;
+        const r = await deps.db.query(
+          `SELECT id, kind, severity, title, body, impact_minor, direction, signal_refs, sources, created_at
+             FROM insight_cards WHERE organization_id=$1 AND dismissed_at IS NULL
+            ORDER BY (impact_minor IS NULL), abs(COALESCE(impact_minor,0)) DESC, created_at DESC`,
+          [orgId],
+        );
+        res.json(toJson({ cards: r.rows }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Avvis et markedsinnsikt-kort (skjules fra visningen; historikken beholdes).
+  app.post(
+    '/api/organizations/:orgId/market/insights/:id/dismiss',
+    requireAuth,
+    requireOrgPermission('reports.view'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        await deps.db.query(`UPDATE insight_cards SET dismissed_at=now() WHERE id=$1 AND organization_id=$2`, [
+          req.params.id,
+          req.params.orgId,
+        ]);
+        res.json({ ok: true });
       } catch (err) {
         next(err);
       }

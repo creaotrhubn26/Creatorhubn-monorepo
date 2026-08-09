@@ -13,6 +13,9 @@ import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { BrregCompanyRegistry } from '../integrations/company-registry.js';
 import { NorgesBankFxRates } from '../integrations/fx-rates.js';
 import { LovdataApiClient } from '../integrations/lovdata.js';
+import { NorgesBankPolicyRate } from '../market/sources/policy-rate.js';
+import { SsbKpi } from '../market/sources/kpi.js';
+import { NorgesBankFxWindow } from '../market/sources/fx-window.js';
 import { MaskinportenClient } from '../integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../integrations/vat-submission.js';
 import { StripeApiClient } from '../integrations/stripe.js';
@@ -48,6 +51,8 @@ const extractor = config.anthropicApiKey
   : ocrStatus.tesseract
     ? new OcrExtractor()
     : new DeterministicTextExtractor();
+// Delt instans: brukes både til kunde-/leverandørrisiko og markedseksponering (NACE-bransje).
+const companyRegistry = new BrregCompanyRegistry();
 const app = createApiServer({
   db,
   rules,
@@ -61,9 +66,16 @@ const app = createApiServer({
   // Åpne data fra Brønnøysundregistrene — ekte klient, ingen nøkkel kreves.
   vatRegister: new BrregVatRegisterClient(),
   // Fullt Enhetsregister-oppslag til kunde-/leverandørrisiko (åpne data).
-  companyRegistry: new BrregCompanyRegistry(),
+  companyRegistry,
   // Automatisk valutakurs fra Norges Bank (åpne data).
   fxRates: new NorgesBankFxRates(),
+  // Markedsinnsikt-kilder (rente/KPI/valuta/bransje) for cron-refresh av insight_cards.
+  marketSources: {
+    policyRate: new NorgesBankPolicyRate(),
+    kpi: new SsbKpi(),
+    fxWindow: new NorgesBankFxWindow(),
+    registry: companyRegistry,
+  },
   // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
   // X-API-Key (REKNAREN_LOVDATA_API_KEY). Status rapporteres ærlig.
   legalText: new LovdataApiClient(config.lovdataApiKey),
