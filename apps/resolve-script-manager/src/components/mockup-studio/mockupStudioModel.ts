@@ -567,12 +567,59 @@ export const collageCells: LayoutFn = (n, W, H, opts = {}) => {
   });
 };
 
+/** Bento/mosaikk: masonry med varierte høyder, pakket i korteste kolonne, skalert til å fylle høyden. */
+export const bentoCells: LayoutFn = (n, W, H, opts = {}) => {
+  if (n <= 0) return [];
+  const { m, gap, top, bottom } = bounds(W, H, opts);
+  const cols = Math.max(2, opts.cols ?? (n >= 6 ? 3 : 2));
+  const cw = (W - 2 * m - gap * (cols - 1)) / cols;
+  const colH = new Array(cols).fill(top);
+  const cells: LayoutCell[] = [];
+  for (let i = 0; i < n; i++) {
+    const col = colH.indexOf(Math.min(...colH)); // korteste kolonne
+    const h = cw * (i % 3 === 0 ? 0.98 : 0.6);    // deterministisk stor/liten
+    cells.push({ x: Math.round(m + col * (cw + gap)), y: Math.round(colH[col]), w: Math.round(cw), h: Math.round(h) });
+    colH[col] += h + gap;
+  }
+  // Skaler vertikalt så alt fyller [top, H-bottom] uten overflyt.
+  const maxB = Math.max(...cells.map((c) => c.y + c.h)), avail = H - bottom;
+  if (maxB > top) {
+    const f = (avail - top) / (maxB - top);
+    cells.forEach((c) => { c.y = Math.round(top + (c.y - top) * f); c.h = Math.round(c.h * f); });
+  }
+  return cells;
+};
+
+/** Sirkulær: bildene i en ring rundt sentrum. */
+export const circleCells: LayoutFn = (n, W, H, opts = {}) => {
+  if (n <= 0) return [];
+  if (n === 1) return [{ x: Math.round(W * 0.3), y: Math.round(H * 0.3), w: Math.round(W * 0.4), h: Math.round(W * 0.4) }];
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.33, size = Math.min(W, H) * (opts.cols ? 0.2 : 0.24);
+  return Array.from({ length: n }, (_, i) => {
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    return { x: Math.round(cx + R * Math.cos(a) - size / 2), y: Math.round(cy + R * Math.sin(a) - size / 2), w: Math.round(size), h: Math.round(size), rotation: Math.round((a * 180 / Math.PI + 90) / 4) };
+  });
+};
+
+/** Diagonal: overlappende kaskade fra øvre venstre mot nedre høyre, lett rotasjon. */
+export const diagonalCells: LayoutFn = (n, W, H, opts = {}) => {
+  if (n <= 0) return [];
+  const { m } = bounds(W, H, opts);
+  const size = Math.min(W, H) * 0.42;
+  const stepX = (W - 2 * m - size) / Math.max(1, n - 1);
+  const stepY = (H - 2 * m - size) / Math.max(1, n - 1);
+  return Array.from({ length: n }, (_, i) => ({ x: Math.round(m + i * stepX), y: Math.round(m + i * stepY), w: Math.round(size), h: Math.round(size), rotation: ((i * 47) % 9) - 4 }));
+};
+
 /** Registry av fremvisninger (galleri). */
 export const PRESENTATIONS: { id: string; label: string; layout: LayoutFn; rotated?: boolean }[] = [
   { id: 'grid', label: 'Rutenett', layout: gridCells },
   { id: 'row', label: 'Rad', layout: rowCells },
   { id: 'hero', label: 'Hero', layout: heroCells },
+  { id: 'bento', label: 'Bento', layout: bentoCells },
   { id: 'collage', label: 'Kollasje', layout: collageCells, rotated: true },
+  { id: 'circle', label: 'Sirkel', layout: circleCells, rotated: true },
+  { id: 'diagonal', label: 'Diagonal', layout: diagonalCells, rotated: true },
   { id: 'story', label: 'Historie', layout: columnCells },
 ];
 

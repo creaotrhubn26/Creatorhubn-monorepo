@@ -33,6 +33,8 @@ export function MockupLibraryPanel() {
   const patchLibraryMeta = useMockupStudio((s) => s.patchLibraryMeta);
   const placeLibraryImage = useMockupStudio((s) => s.placeLibraryImage);
   const arrangeLibrary = useMockupStudio((s) => s.arrangeLibrary);
+  const buildOnePager = useMockupStudio((s) => s.buildOnePager);
+  const docName = useMockupStudio((s) => s.doc.name);
   const canvas = useMockupStudio((s) => s.doc.canvas);
   const selection = useMockupStudio((s) => s.selection);
   const [hoverPreset, setHoverPreset] = useState<string | null>(null);
@@ -140,6 +142,12 @@ export function MockupLibraryPanel() {
               onMouseEnter={() => setHoverPreset(pr.id)}
               onClick={() => { void arrangeLibrary([...sel].map((id) => ({ assetId: id })), pr.id); }}>{pr.label}</button>
           ))}
+          <button style={{ ...chip, width: '100%', marginTop: 2, background: 'rgba(34,211,238,0.10)', color: C.accent, borderColor: C.accent, fontWeight: 700 }}
+            title="Bygg en komplett one-pager: grid + navn-labels + overskrift + merkevare"
+            onClick={() => {
+              const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => ({ assetId: (m as LibraryMeta).id, label: (m as LibraryMeta).name }));
+              void buildOnePager(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny' });
+            }}>✦ Bygg one-pager</button>
           {hoverPreset && (() => {
             const pr = PRESENTATIONS.find((x) => x.id === hoverPreset)!;
             const metas = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean) as LibraryMeta[];

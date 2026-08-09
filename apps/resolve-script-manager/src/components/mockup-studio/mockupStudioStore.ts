@@ -122,6 +122,8 @@ interface MockupStudioState {
   arrangeLibrary: (items: { assetId: string; label?: string }[], presetId: string, opts?: GridOpts & { radius?: number; showLabels?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
   /** Snarvei: fremvisning 'grid' (bakoverkompatibel). */
   arrangeLibraryGrid: (items: { assetId: string; label?: string }[], opts?: GridOpts & { radius?: number; showLabels?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
+  /** Ett-klikk: bygg en komplett one-pager (grid m/ labels + overskrift + brand) fra valgte bilder. */
+  buildOnePager: (items: { assetId: string; label?: string }[], opts?: { title?: string; eyebrow?: string; accent?: string; titleColor?: string; labelColor?: string }) => Promise<void>;
 }
 
 function initialDoc(): MockupDoc {
@@ -370,6 +372,22 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     get().select({ kind: 'canvas' });
   },
   arrangeLibraryGrid: (items, opts) => get().arrangeLibrary(items, 'grid', opts),
+
+  // Ett-klikk one-pager: brand + grid m/ pris-labels + eyebrow + tittel.
+  buildOnePager: async (items, opts) => {
+    const H = get().doc.canvas.h;
+    get().patchCanvas(opts?.accent ? { background: 'light', accent: opts.accent } : { background: 'light' });
+    await get().arrangeLibrary(items, 'grid', { top: Math.round(H * 0.22), showLabels: true, labelColor: opts?.labelColor ?? '#1A1A1A' });
+    if (opts?.eyebrow) {
+      get().addText('eyebrow');
+      const s = get().selection;
+      if (s.kind === 'text') get().patchText(s.id, { text: opts.eyebrow, x: 60, y: Math.round(H * 0.06), w: 1000, size: 30, color: 'accent' });
+    }
+    get().addText('title');
+    const st = get().selection;
+    if (st.kind === 'text') get().patchText(st.id, { text: opts?.title ?? 'Meny', x: 60, y: Math.round(H * 0.10), w: 1200, size: 88, weight: 800, color: opts?.titleColor ?? '#1A1A1A' });
+    get().select({ kind: 'canvas' });
+  },
 }));
 
 // Test-modus: eksponer storen for Playwright-E2E (programmatisk oppbygging av dokumenter).
