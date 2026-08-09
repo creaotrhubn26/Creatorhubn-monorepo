@@ -567,7 +567,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             style={{ ...listBtn, marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
             title={aiAvailable() ? 'Kun one-pager-utkast (overskrift, tekst, farger, mal + skjermbilder) — uten callouts' : 'Krever innlogget AI (RR-token i Innstillinger)'}
           >
-            ✨ AI-utkast (uten callouts)
+            <span style={iconRow}><IcSparkle />AI-utkast (uten callouts)</span>
           </button>
           <button
             onClick={() => void runAiMindmap()}
@@ -575,7 +575,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             style={{ ...listBtn, marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
             title={aiAvailable() ? 'Lag en produkt-mind map (Mermaid) fra URL-en som setter hele perspektivet — som eget prosjekt' : 'Krever innlogget AI (RR-token i Innstillinger)'}
           >
-            🧠 Produkt-mind map fra URL
+            <span style={iconRow}><IcNodes />Produkt-mind map fra URL</span>
           </button>
           <button onClick={() => setShowCapture(true)} style={{ ...listBtn, marginTop: 6 }} title="Guidet fangst: velg skjermbilde og forhåndsvis i enheten før innsetting">Fang fra URL (guidet)…</button>
           {engineReady === false && (
@@ -673,8 +673,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Midt: lerret */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18, overflow: 'auto', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
-          <div style={{ width: '100%', maxWidth: 1400 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12, overflow: 'auto', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
+          <div style={{ width: '100%', maxWidth: 1800 }}>
             <MockupCanvas safeArea={safeArea} />
           </div>
         </div>
@@ -851,7 +851,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
             style={{ ...listBtn, flex: 1, opacity: bgBusy || !aiBackgroundAvailable() ? 0.6 : 1 }}
             title={aiBackgroundAvailable() ? 'Generér en scene-bakgrunn (fal) fra prompt eller lerretets palett' : 'Krever innlogget AI (RR-token) + kreditter'}
           >
-            {bgBusy ? 'Genererer…' : '✨ Generér bakgrunn'}
+            {bgBusy ? 'Genererer…' : <span style={iconRow}><IcImage />Generér bakgrunn</span>}
           </button>
           {canvas.bgImage && <button onClick={() => patchCanvas({ bgImage: undefined })} style={{ ...listBtn, width: 34, textAlign: 'center' }} title="Fjern AI-bakgrunn" aria-label="Fjern AI-bakgrunn">✕</button>}
         </div>
@@ -1280,7 +1280,7 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
           style={{ ...listBtn, width: '100%', opacity: vBusy || !copyVariantsAvailable() || !text.text.trim() ? 0.6 : 1 }}
           title={copyVariantsAvailable() ? 'La AI foreslå tone-varianter av denne teksten (kortere / mer selgende / roligere / mer konkret)' : 'Krever innlogget AI (RR-token i Innstillinger)'}
         >
-          {vBusy ? 'Skriver…' : '✨ Tekst-varianter'}
+          {vBusy ? 'Skriver…' : <span style={iconRow}><IcSparkle />Tekst-varianter</span>}
         </button>
         {vErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 6 }}>{vErr}</div>}
         {variants && variants.map((v, i) => (
@@ -1390,5 +1390,12 @@ const dangerBtn: React.CSSProperties = {
 const checkRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.ink, cursor: 'pointer', marginBottom: 4,
 };
+
+// Ekte SVG-ikoner i stedet for emoji (arver knappefargen via currentColor).
+const iconRow: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 7, verticalAlign: 'middle' };
+const svgProps = { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { flexShrink: 0 } };
+const IcSparkle = () => <svg {...svgProps}><path d="M12 2l2.2 6.2L20 10l-5.8 1.8L12 18l-2.2-6.2L4 10l5.8-1.8z" /></svg>;
+const IcNodes = () => <svg {...svgProps}><circle cx="5" cy="12" r="2.2" /><circle cx="18" cy="6" r="2.2" /><circle cx="18" cy="18" r="2.2" /><path d="M7 11l9-4M7 13l9 4" /></svg>;
+const IcImage = () => <svg {...svgProps}><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>;
 
 export default MockupStudioShell;
