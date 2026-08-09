@@ -12,8 +12,11 @@ import { deriveTimeline, type TimelineClip, type MockupTimeline } from './mockup
 const TRACK_H = 32;
 const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst'];
 const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed' };
-const tlZoomBtn: CSSProperties = { width: 15, height: 13, lineHeight: '11px', padding: 0, borderRadius: 3, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', cursor: 'pointer', fontSize: 11 };
-const clipBtn: CSSProperties = { padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#d7dbe4', cursor: 'pointer', fontSize: 10, fontWeight: 600 };
+// Responsiv skalering for NLE-tett timeline (litt tettere enn shell-chromet).
+const TL_FS = 'clamp(10px, 0.72vw, 12.5px)';   // labels / klipp / knapper
+const TL_FS_SM = 'clamp(8px, 0.58vw, 10px)';   // linjal-ticks
+const tlZoomBtn: CSSProperties = { width: 'clamp(15px, 1.2vw, 20px)', height: 'clamp(13px, 1.05vw, 17px)', lineHeight: 1, padding: 0, borderRadius: 3, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', cursor: 'pointer', fontSize: TL_FS };
+const clipBtn: CSSProperties = { padding: '3px 9px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#d7dbe4', cursor: 'pointer', fontSize: TL_FS, fontWeight: 600 };
 
 export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetOut }: { playT: number | null; onScrub: (t: number) => void; inT: number; outT: number; onSetIn: (v: number) => void; onSetOut: (v: number) => void }) {
   const doc = useMockupStudio((s) => s.doc);
@@ -150,9 +153,9 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
   for (let s = 0; s <= dur; s += 0.5) ticks.push(s);
 
   return (
-    <div style={{ background: 'rgba(12,15,22,0.92)', borderTop: '1px solid rgba(255,255,255,0.1)', color: '#c7cdd8', font: '600 10px system-ui, sans-serif', userSelect: 'none' }}>
+    <div style={{ background: 'rgba(12,15,22,0.92)', borderTop: '1px solid rgba(255,255,255,0.1)', color: '#c7cdd8', fontWeight: 600, fontSize: TL_FS, fontFamily: 'system-ui, sans-serif', userSelect: 'none' }}>
       {/* Klipp-handlinger (vises når et klipp er valgt) */}
-      <div style={{ height: 22, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8, borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 10 }}>
+      <div style={{ minHeight: 22, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8, borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: TL_FS, flexWrap: 'wrap', paddingTop: 2, paddingBottom: 2 }}>
         {sel ? (
           <>
             <span style={{ opacity: 0.75, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sel.label} · {sel.start.toFixed(1)}–{(sel.start + sel.len).toFixed(1)}s</span>
@@ -172,7 +175,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
             <button onClick={() => setZoom((z) => Math.min(8, z * 1.4))} title="Zoom inn (timeline) · Cmd/Ctrl+hjul" style={tlZoomBtn}>+</button>
           </div>
           {Array.from({ length: nTracks }, (_, i) => (
-            <div key={i} style={{ height: TRACK_H, display: 'flex', alignItems: 'center', paddingLeft: 8, color: '#c7cdd8', fontSize: 11 }}>{TRACK_LABELS[i] ?? `Spor ${i + 1}`}</div>
+            <div key={i} style={{ height: TRACK_H, display: 'flex', alignItems: 'center', paddingLeft: 8, color: '#c7cdd8', fontSize: TL_FS }}>{TRACK_LABELS[i] ?? `Spor ${i + 1}`}</div>
           ))}
         </div>
         {/* Rail: linjal + spor + klipp + playhead (zoombar + scrollbar horisontalt) */}
@@ -181,7 +184,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
           {/* Linjal */}
           <div style={{ position: 'relative', height: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             {ticks.map((s) => (
-              <div key={s} style={{ position: 'absolute', left: `${(s / dur) * 100}%`, top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.12)', paddingLeft: 3, fontSize: 8, opacity: 0.6 }}>{s % 1 === 0 ? `${s}s` : ''}</div>
+              <div key={s} style={{ position: 'absolute', left: `${(s / dur) * 100}%`, top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.12)', paddingLeft: 3, fontSize: TL_FS_SM, opacity: 0.6 }}>{s % 1 === 0 ? `${s}s` : ''}</div>
             ))}
           </div>
           {/* Spor-rader */}
@@ -200,7 +203,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
                 background: CLIP_COLORS[c.kind], borderRadius: 4,
                 border: c.id === selClip ? '1.5px solid #fff' : '1px solid rgba(255,255,255,0.25)',
                 display: 'flex', alignItems: 'center', paddingLeft: 8, overflow: 'hidden', whiteSpace: 'nowrap',
-                color: '#fff', fontSize: 10, cursor: 'grab', boxShadow: c.id === selClip ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
+                color: '#fff', fontSize: TL_FS, cursor: 'grab', boxShadow: c.id === selClip ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
               }}
             >
               {c.label}

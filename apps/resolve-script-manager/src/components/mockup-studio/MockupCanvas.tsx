@@ -24,8 +24,9 @@ const NUDGE = 6;        // piltast-steg (base-px)
 const NUDGE_BIG = 48;   // med Shift
 const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
-const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: 12 };
-const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: 11 };
+const TL_FS = 'clamp(10px, 0.72vw, 12.5px)'; // responsiv transport-tekst (matcher timeline)
+const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(28px, 2.1vw, 40px)', height: 'clamp(28px, 2.1vw, 40px)', borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
+const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: TL_FS };
 // Ordentlige SVG-ikoner (ikke emoji) for transport.
 const FPS = 30;
 const fmtTimecode = (sec: number): string => {
@@ -36,13 +37,13 @@ const fmtTimecode = (sec: number): string => {
 };
 const ICON = '#eef1f6';
 const Svg = ({ children }: { children: ReactNode }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
+  <svg width="62%" height="62%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
 );
 const IcStart = () => <Svg><rect x="6" y="5" width="2.4" height="14" rx="1" /><path d="M19 5 10 12l9 7z" /></Svg>;
 const IcPlay = () => <Svg><path d="M8 5v14l11-7z" /></Svg>;
 const IcPause = () => <Svg><rect x="7" y="5" width="3.4" height="14" rx="1" /><rect x="13.6" y="5" width="3.4" height="14" rx="1" /></Svg>;
 const IcLoop = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+  <svg width="62%" height="62%" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
     <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
   </svg>
 );
@@ -493,7 +494,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         <div onPointerDown={beginTimelineResize} title="Dra for å endre timeline-høyde" style={gripStyle}><div style={gripBar} /></div>
       <div style={{ height: timelineH, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
         {/* Transport (under preview, ingen overlapp med zoom) */}
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', font: '600 11px system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', fontWeight: 600, fontSize: TL_FS, fontFamily: 'system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}><IcStart /></button>
           <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? <IcPause /> : <IcPlay />}</button>
           <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}><IcLoop /></button>
@@ -517,8 +518,8 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
 }
 
 const zoomBtnStyle: React.CSSProperties = {
-  width: 26, height: 26, display: 'grid', placeItems: 'center', background: 'transparent',
-  color: '#e6e8ee', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 15, lineHeight: 1,
+  width: 'clamp(24px, 1.9vw, 34px)', height: 'clamp(24px, 1.9vw, 34px)', display: 'grid', placeItems: 'center', background: 'transparent',
+  color: '#e6e8ee', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 'clamp(14px, 1.1vw, 18px)', lineHeight: 1,
 };
 const gripStyle: CSSProperties = { height: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'row-resize', touchAction: 'none' };
 const gripBar: CSSProperties = { width: 46, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)' };
