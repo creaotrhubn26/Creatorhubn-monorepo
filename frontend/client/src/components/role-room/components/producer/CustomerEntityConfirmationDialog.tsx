@@ -48,6 +48,7 @@ import {
 import type {
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
 
 interface CustomerEntityConfirmationDialogProps {
   open: boolean;
@@ -69,12 +70,7 @@ export interface ConfirmedCustomerEntity {
   confirmedAt: string;
 }
 
-const STEPS: ReadonlyArray<{ id: 'entity' | 'address' | 'bydel' | 'website'; label: string }> = [
-  { id: 'entity', label: 'Bedrift' },
-  { id: 'address', label: 'Adresse' },
-  { id: 'bydel', label: 'Bydel' },
-  { id: 'website', label: 'Nettside' },
-];
+const STEP_IDS = ['entity', 'address', 'bydel', 'website'] as const;
 
 const STORAGE_PREFIX = 'role-room-merch-customer-entity:';
 
@@ -104,6 +100,13 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
   bootstrap,
   onConfirm,
 }) => {
+  const { t } = useT();
+  const STEPS = useMemo<ReadonlyArray<{ id: (typeof STEP_IDS)[number]; label: string }>>(() => [
+    { id: 'entity', label: t('custEntity.stepEntity') },
+    { id: 'address', label: t('custEntity.stepAddress') },
+    { id: 'bydel', label: t('custEntity.stepBydel') },
+    { id: 'website', label: t('custEntity.stepWebsite') },
+  ], [t]);
   const initialBrandName = bootstrap?.companyProfile?.companyName ?? '';
   const initialWebsite = bootstrap?.companyProfile?.websiteUrl ?? '';
 
@@ -181,10 +184,10 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
     if (c.website) setWebsiteUrl(c.website);
   }, []);
 
-  const next = useCallback(() => setStepIdx((s) => Math.min(s + 1, STEPS.length - 1)), []);
+  const next = useCallback(() => setStepIdx((s) => Math.min(s + 1, STEP_IDS.length - 1)), []);
   const back = useCallback(() => setStepIdx((s) => Math.max(s - 1, 0)), []);
 
-  const isLast = stepIdx === STEPS.length - 1;
+  const isLast = stepIdx === STEP_IDS.length - 1;
 
   const handleSave = useCallback(() => {
     if (!projectId) return;
@@ -209,21 +212,21 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
         <Stack alignItems="center" sx={{ py: 4 }} spacing={1}>
           <CircularProgress size={24} />
           <Typography sx={{ color: 'text.secondary', fontSize: '0.86rem' }}>
-            Henter Brreg-kandidater for {initialBrandName || initialWebsite}…
+            {t('custEntity.loadingCandidates', { name: initialBrandName || initialWebsite })}
           </Typography>
         </Stack>
       );
     }
 
-    switch (STEPS[stepIdx].id) {
+    switch (STEP_IDS[stepIdx]) {
       case 'entity':
         return (
           <Stack spacing={1.4}>
             <Typography sx={{ color: 'text.primary', fontSize: '0.96rem', fontWeight: 600 }}>
-              Stemmer det at bedriften er <strong>{legalName || '(ikke valgt)'}</strong>?
+              {t('custEntity.entityAskPre')}<strong>{legalName || t('custEntity.notSelected')}</strong>{t('custEntity.entityAskPost')}
             </Typography>
             <Typography sx={{ color: 'text.secondary', fontSize: '0.84rem' }}>
-              Vi fant {candidates.length} mulige Brreg-bedrifter for "{initialBrandName}". Velg den riktige eller endre under.
+              {t('custEntity.foundCandidates', { n: candidates.length, name: initialBrandName })}
             </Typography>
             <Stack spacing={0.8}>
               {candidates.map((c) => {
@@ -251,10 +254,10 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                             {c.name}
                           </Typography>
                           {c.scrapedFromBrandWebsite ? (
-                            <Chip size="small" label="Orgnr fra nettsiden" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0' }} />
+                            <Chip size="small" label={t('custEntity.chipOrgFromSite')} sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0' }} />
                           ) : null}
                           {c.websiteHostMatch ? (
-                            <Chip size="small" label="Nettside-match" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                            <Chip size="small" label={t('custEntity.chipSiteMatch')} sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                           ) : null}
                         </Stack>
                         <Typography sx={{ fontSize: '0.78rem', color: 'text.secondary', fontFamily: 'monospace', mt: 0.2 }}>
@@ -290,16 +293,16 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                 );
               })}
             </Stack>
-            <Divider sx={{ my: 0.5 }}>eller</Divider>
+            <Divider sx={{ my: 0.5 }}>{t('custEntity.orDivider')}</Divider>
             <TextField
-              label="Skriv inn juridisk navn manuelt"
+              label={t('custEntity.legalNameLabel')}
               value={legalName}
               onChange={(e) => setLegalName(e.target.value)}
               size="small"
               fullWidth
             />
             <TextField
-              label="Organisasjonsnummer (9 siffer, valgfritt)"
+              label={t('custEntity.orgnrLabel')}
               value={orgnr}
               onChange={(e) => setOrgnr(e.target.value.replace(/\D/g, '').slice(0, 9))}
               size="small"
@@ -312,15 +315,14 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
       case 'address': {
         const display = registeredAddress
           ? `${registeredAddress}, ${postalCode} ${postalCity}`.trim()
-          : '(ingen adresse)';
+          : t('custEntity.noAddress');
         return (
           <Stack spacing={1.4}>
             <Typography sx={{ color: 'text.primary', fontSize: '0.96rem', fontWeight: 600 }}>
-              Stemmer adressen <strong>{display}</strong>?
+              {t('custEntity.addressAskPre')}<strong>{display}</strong>{t('custEntity.addressAskPost')}
             </Typography>
             <Typography sx={{ color: 'text.secondary', fontSize: '0.84rem' }}>
-              Brregs forretningsadresse er ofte juridisk hovedsete. Hvis dere driver fra et annet sted (mobile aktører,
-              ny lokasjon), endre her.
+              {t('custEntity.addressHint')}
             </Typography>
             {!editAddress ? (
               <Button
@@ -330,14 +332,14 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                 size="small"
                 variant="outlined"
               >
-                Endre adresse
+                {t('custEntity.editAddressBtn')}
               </Button>
             ) : (
               <Stack spacing={1}>
-                <TextField label="Gateadresse" value={registeredAddress} onChange={(e) => setRegisteredAddress(e.target.value)} size="small" fullWidth />
+                <TextField label={t('custEntity.streetLabel')} value={registeredAddress} onChange={(e) => setRegisteredAddress(e.target.value)} size="small" fullWidth />
                 <Stack direction="row" spacing={1}>
-                  <TextField label="Postnummer" value={postalCode} onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 4))} size="small" sx={{ maxWidth: 140 }} />
-                  <TextField label="Poststed" value={postalCity} onChange={(e) => setPostalCity(e.target.value)} size="small" sx={{ flex: 1 }} />
+                  <TextField label={t('custEntity.postalCodeLabel')} value={postalCode} onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 4))} size="small" sx={{ maxWidth: 140 }} />
+                  <TextField label={t('custEntity.postalCityLabel')} value={postalCity} onChange={(e) => setPostalCity(e.target.value)} size="small" sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
             )}
@@ -348,11 +350,10 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
         return (
           <Stack spacing={1.4}>
             <Typography sx={{ color: 'text.primary', fontSize: '0.96rem', fontWeight: 600 }}>
-              Driver dere fra <strong>{bydel || '(ingen bydel valgt)'}</strong>?
+              {t('custEntity.bydelAskPre')}<strong>{bydel || t('custEntity.noBydelSelected')}</strong>{t('custEntity.bydelAskPost')}
             </Typography>
             <Typography sx={{ color: 'text.secondary', fontSize: '0.84rem' }}>
-              Bydel-keyword styrer hvilke lokale klubber, skoler og foreninger vi viser som potensielle samarbeidspartnere.
-              Auto-detektert fra postnummer {postalCode || '(?)'}.
+              {t('custEntity.bydelHint', { postal: postalCode || '(?)' })}
             </Typography>
             {!editBydel ? (
               <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
@@ -377,18 +378,18 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                   startIcon={<EditIcon fontSize="small" />}
                   sx={{ textTransform: 'none' }}
                 >
-                  Annen bydel…
+                  {t('custEntity.otherBydelBtn')}
                 </Button>
               </Stack>
             ) : (
               <TextField
-                label="Bydel / nabolag"
+                label={t('custEntity.bydelLabel')}
                 value={bydel}
                 onChange={(e) => setBydel(e.target.value.toLowerCase())}
                 size="small"
                 fullWidth
-                placeholder="f.eks. furuset, bryn, ammerud"
-                helperText="Brukes som søke-keyword mot Brreg-klubber. Småbokstaver."
+                placeholder={t('custEntity.bydelPlaceholder')}
+                helperText={t('custEntity.bydelHelper')}
               />
             )}
           </Stack>
@@ -397,10 +398,10 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
         return (
           <Stack spacing={1.4}>
             <Typography sx={{ color: 'text.primary', fontSize: '0.96rem', fontWeight: 600 }}>
-              Stemmer nettsiden <strong>{websiteUrl || '(ingen)'}</strong>?
+              {t('custEntity.websiteAskPre')}<strong>{websiteUrl || t('custEntity.none')}</strong>{t('custEntity.websiteAskPost')}
             </Typography>
             <Typography sx={{ color: 'text.secondary', fontSize: '0.84rem' }}>
-              Brand-nettsiden brukes når vi henter logo, brand-farger og scraper kontakt-informasjon.
+              {t('custEntity.websiteHint')}
             </Typography>
             {!editWebsite ? (
               <Button
@@ -410,11 +411,11 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
                 size="small"
                 variant="outlined"
               >
-                Endre nettside
+                {t('custEntity.editWebsiteBtn')}
               </Button>
             ) : (
               <TextField
-                label="Nettside"
+                label={t('custEntity.websiteLabel')}
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
                 size="small"
@@ -443,18 +444,19 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
     editBydel,
     editWebsite,
     handlePickCandidate,
+    t,
   ]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6, display: 'flex', alignItems: 'center', gap: 1 }}>
         <BusinessIcon sx={{ color: '#a5b4fc' }} />
-        Bekreft kunde-data
+        {t('custEntity.dialogTitle')}
         <IconButton
           onClick={onClose}
           size="small"
           sx={{ position: 'absolute', right: 8, top: 8 }}
-          aria-label="Lukk"
+          aria-label={t('custEntity.closeAria')}
         >
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -480,15 +482,15 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
         {stepBody}
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button onClick={back} disabled={stepIdx === 0}>Tilbake</Button>
+        <Button onClick={onClose}>{t('custEntity.cancelBtn')}</Button>
+        <Button onClick={back} disabled={stepIdx === 0}>{t('custEntity.backBtn')}</Button>
         {!isLast ? (
           <Button onClick={next} variant="contained" startIcon={<CheckIcon fontSize="small" />}>
-            Stemmer — videre
+            {t('custEntity.nextBtn')}
           </Button>
         ) : (
           <Button onClick={handleSave} variant="contained" startIcon={<CheckIcon fontSize="small" />}>
-            Lagre kundeprofil
+            {t('custEntity.saveBtn')}
           </Button>
         )}
       </DialogActions>

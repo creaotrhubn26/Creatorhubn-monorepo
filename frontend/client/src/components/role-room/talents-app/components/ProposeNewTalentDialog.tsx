@@ -35,27 +35,19 @@ import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import roleRoomTalentsService, {
   type RoleRoomTalentConsentScope,
   type TalentProposal,
 } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
+import { useT } from '../../../../i18n';
 
 interface ProposalResult extends TalentProposal {
   emailSent?: boolean;
   emailReason?: string;
 }
-
-const SCOPE_OPTIONS: Array<[RoleRoomTalentConsentScope, string, string]> = [
-  ['basic_profile', 'Basis', 'Navn, by, bio'],
-  ['media_portfolio', 'Media', 'Headshot, showreel, CV'],
-  ['contact_info', 'Kontakt', 'E-post, telefon'],
-  ['demographics', 'Demografi', 'Alder, høyde, kjønn'],
-  ['availability', 'Tilgjengelighet', 'Når kan de jobbe'],
-  ['audition_invitations', 'Audition-invites', 'Du kan sende roller direkte'],
-];
 
 interface ProposeNewTalentDialogProps {
   open: boolean;
@@ -64,6 +56,15 @@ interface ProposeNewTalentDialogProps {
 }
 
 export default function ProposeNewTalentDialog({ open, onClose, onCreated }: ProposeNewTalentDialogProps) {
+  const { t } = useT();
+  const SCOPE_OPTIONS = useMemo<Array<[RoleRoomTalentConsentScope, string, string]>>(() => [
+    ['basic_profile', t('propNewTalent.scopeBasicLabel'), t('propNewTalent.scopeBasicDesc')],
+    ['media_portfolio', t('propNewTalent.scopeMediaLabel'), t('propNewTalent.scopeMediaDesc')],
+    ['contact_info', t('propNewTalent.scopeContactLabel'), t('propNewTalent.scopeContactDesc')],
+    ['demographics', t('propNewTalent.scopeDemoLabel'), t('propNewTalent.scopeDemoDesc')],
+    ['availability', t('propNewTalent.scopeAvailLabel'), t('propNewTalent.scopeAvailDesc')],
+    ['audition_invitations', t('propNewTalent.scopeAuditionLabel'), t('propNewTalent.scopeAuditionDesc')],
+  ], [t]);
   const [form, setForm] = useState({
     proposed_email: '',
     proposed_display_name: '',
@@ -120,7 +121,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth
       PaperProps={{ sx: { bgcolor: palette.bgCard, color: palette.textPrimary, borderRadius: radius.lg, border: `1px solid ${palette.border}` } }}>
       <DialogTitle sx={{ fontWeight: 800, borderBottom: `1px solid ${palette.borderSubtle}` }}>
-        {created ? '✓ Forslag sendt — venter på godkjenning' : 'Foreslå ny skuespiller'}
+        {created ? t('propNewTalent.titleSent') : t('propNewTalent.title')}
       </DialogTitle>
       <DialogContent sx={{ pt: 2.4 }}>
         {created ? (
@@ -131,28 +132,28 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
                 icon={<EmailOutlinedIcon />}
                 sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.success } }}
               >
-                <strong>E-post sendt til {form.proposed_display_name || form.proposed_email}</strong> — de mottar nå et forslag med beskrivelse av hva du ber om og en lenke for å akseptere eller avslå.
+                <strong>{t('propNewTalent.emailSentTo', { name: form.proposed_display_name || form.proposed_email })}</strong> {t('propNewTalent.emailSentBody')}
               </Alert>
             ) : (
               <Alert
                 severity="warning"
                 sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: palette.textPrimary, '& .MuiAlert-icon': { color: palette.warning } }}
               >
-                <strong>E-post-tjenesten ikke konfigurert akkurat nå</strong>{created.emailReason ? ` (${created.emailReason})` : ''}. Kopier lenken under og send den til {form.proposed_email} selv (e-post, SMS, WhatsApp).
+                <strong>{t('propNewTalent.emailNotConfigured')}</strong>{created.emailReason ? ` (${created.emailReason})` : ''}{t('propNewTalent.emailNotConfiguredBody', { email: form.proposed_email })}
               </Alert>
             )}
             <Box sx={{ p: 1.4, borderRadius: radius.sm, bgcolor: palette.bgCardElevated, border: `1px solid ${palette.borderSubtle}`, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography sx={{ flexGrow: 1, color: palette.textSecondary, fontSize: '0.82rem', wordBreak: 'break-all', fontFamily: 'monospace' }}>
                 {created.acceptUrl}
               </Typography>
-              <Tooltip title="Kopier lenken">
+              <Tooltip title={t('propNewTalent.copyLink')}>
                 <IconButton size="small" onClick={() => navigator.clipboard.writeText(created.acceptUrl || '')} sx={{ color: palette.accentBright }}>
                   <ContentCopyOutlinedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             </Box>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-              Status vises i "Forslag"-tab i Talent Registry. Du får varsel her når {form.proposed_display_name || 'de'} har svart.
+              {t('propNewTalent.statusHint', { name: form.proposed_display_name || t('propNewTalent.themFallback') })}
             </Typography>
           </Stack>
         ) : (
@@ -169,33 +170,33 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
                 '& .MuiAlert-message': { width: '100%' },
               }}
             >
-              <Typography sx={{ fontWeight: 700, fontSize: '0.88rem', mb: 0.6 }}>GDPR-regler for forslag</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.88rem', mb: 0.6 }}>{t('propNewTalent.gdprTitle')}</Typography>
               <Typography sx={{ fontSize: '0.84rem', color: palette.textSecondary, lineHeight: 1.55 }}>
-                Skuespilleren får e-post med klar info om hvem du er, hvilke data du ber om, og en lenke. <strong>Profilen blir IKKE synlig i ditt register før de eksplisitt har godkjent.</strong> Vi deler ingen data før det. Forslaget utløper etter 30 dager om de ikke svarer.
+                {t('propNewTalent.gdprBody1')}<strong>{t('propNewTalent.gdprBodyStrong')}</strong>{t('propNewTalent.gdprBody2')}
               </Typography>
             </Alert>
 
             <Stack direction="row" spacing={1.4}>
               <TextField
                 fullWidth size="small"
-                label="E-post (påkrevd)"
-                placeholder="kari@eksempel.no"
+                label={t('propNewTalent.emailLabel')}
+                placeholder={t('propNewTalent.emailPlaceholder')}
                 value={form.proposed_email}
                 onChange={(e) => setForm({ ...form, proposed_email: e.target.value })}
-                helperText="Til denne adressen sender vi godkjennings-lenken"
+                helperText={t('propNewTalent.emailHelper')}
               />
             </Stack>
             <Stack direction="row" spacing={1.4}>
               <TextField
                 fullWidth size="small"
-                label="Navn (valgfritt)"
+                label={t('propNewTalent.nameLabel')}
                 placeholder="Kari Hansen"
                 value={form.proposed_display_name}
                 onChange={(e) => setForm({ ...form, proposed_display_name: e.target.value })}
               />
               <TextField
                 fullWidth size="small"
-                label="Telefon (valgfritt)"
+                label={t('propNewTalent.phoneLabel')}
                 placeholder="+47 …"
                 value={form.proposed_phone}
                 onChange={(e) => setForm({ ...form, proposed_phone: e.target.value })}
@@ -204,7 +205,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
 
             <Box>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mb: 1 }}>
-                Hva ber du om tilgang til? (skuespilleren ser dette og bestemmer)
+                {t('propNewTalent.scopesLabel')}
               </Typography>
               <Stack direction="row" flexWrap="wrap" gap={0.8}>
                 {SCOPE_OPTIONS.map(([scope, label, desc]) => {
@@ -236,15 +237,15 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
 
             <TextField
               fullWidth size="small" multiline minRows={2}
-              label="Personlig melding (valgfritt)"
-              placeholder="Eks: Hei Kari, vi caster en hovedrolle for en serie og tror du passer perfekt."
+              label={t('propNewTalent.messageLabel')}
+              placeholder={t('propNewTalent.messagePlaceholder')}
               value={form.personal_message}
               onChange={(e) => setForm({ ...form, personal_message: e.target.value })}
             />
             <TextField
               fullWidth size="small"
-              label="Rolle/produksjon (valgfritt)"
-              placeholder="Eks: Hovedrolle i NRK-serie 'Vinterland'"
+              label={t('propNewTalent.roleLabel')}
+              placeholder={t('propNewTalent.rolePlaceholder')}
               value={form.context_role}
               onChange={(e) => setForm({ ...form, context_role: e.target.value })}
             />
@@ -258,9 +259,9 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
               }
               label={
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                  Jeg bekrefter at hvis dette gjelder en mindreårig (under 18), vil jeg sende parallellt forslag til foresatte og vente på begge godkjennelser.{' '}
+                  {t('propNewTalent.minorLabel')}{' '}
                   <Box component="a" href="https://datatilsynet.no/personvern-pa-ulike-omrader/barn-og-unge/" target="_blank" rel="noreferrer" sx={{ color: palette.accentBright }}>
-                    Les mer
+                    {t('propNewTalent.minorLink')}
                   </Box>
                 </Typography>
               }
@@ -272,7 +273,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.4, borderTop: `1px solid ${palette.borderSubtle}` }}>
         <Button onClick={handleClose} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-          {created ? 'Lukk' : 'Avbryt'}
+          {created ? t('propNewTalent.closeBtn') : t('propNewTalent.cancelBtn')}
         </Button>
         {!created ? (
           <Button
@@ -281,7 +282,7 @@ export default function ProposeNewTalentDialog({ open, onClose, onCreated }: Pro
             startIcon={saving ? <CircularProgress size={14} /> : <PersonAddOutlinedIcon />}
             sx={{ textTransform: 'none', fontWeight: 700, px: 2.4, borderRadius: radius.sm, background: palette.accentGradient, color: '#fff' }}
           >
-            Send forslag
+            {t('propNewTalent.sendBtn')}
           </Button>
         ) : null}
       </DialogActions>

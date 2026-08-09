@@ -24,12 +24,7 @@ import { focalToObjectPosition } from '../utils/avatarFocalPoint';
 import { categoryForEquipment } from '../utils/equipmentCatalog';
 import { EquipmentCategoryIcon } from './EquipmentCategoryIcon';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
-
-const AVAILABILITY_META: Record<AvailabilityStatus, { label: string; color: 'success' | 'warning' | 'default' }> = {
-  available: { label: 'Tilgjengelig for oppdrag', color: 'success' },
-  busy: { label: 'Delvis opptatt', color: 'warning' },
-  unavailable: { label: 'Ikke tilgjengelig nå', color: 'default' },
-};
+import { useT } from '../../../i18n';
 
 export interface RoleRoomMemberDirectoryDialogProps {
   open: boolean;
@@ -43,6 +38,7 @@ export interface RoleRoomMemberDirectoryDialogProps {
 export function RoleRoomMemberDirectoryDialog({
   open, onClose, initialProfession, initialQuery,
 }: RoleRoomMemberDirectoryDialogProps) {
+  const { t } = useT();
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -56,7 +52,7 @@ export function RoleRoomMemberDirectoryDialog({
   // Søk med debounce
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       void (async () => {
         setLoading(true); setError(null);
         try {
@@ -73,7 +69,7 @@ export function RoleRoomMemberDirectoryDialog({
         }
       })();
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [q, profession, open]);
 
   // Unike profesjoner fra current resultatsett — for chips-filter
@@ -104,7 +100,7 @@ export function RoleRoomMemberDirectoryDialog({
             </IconButton>
           )}
           <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
-            {selectedUserId ? 'Profil' : 'Finn medlemmer'}
+            {selectedUserId ? t('memberDir.profileTitle') : t('memberDir.findMembers')}
           </Typography>
           <IconButton onClick={onClose} size="small"><Close /></IconButton>
         </Box>
@@ -117,7 +113,7 @@ export function RoleRoomMemberDirectoryDialog({
             <Box sx={{ p: 2, pt: 1.5 }}>
               <TextField
                 fullWidth size="small" autoFocus
-                placeholder="Søk navn, bedrift, sted, bio …"
+                placeholder={t('memberDir.searchPlaceholder')}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 InputProps={{
@@ -160,11 +156,11 @@ export function RoleRoomMemberDirectoryDialog({
                 <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
                   <Person sx={{ fontSize: 48, opacity: 0.3 }} />
                   <Typography sx={{ mt: 1 }}>
-                    {q || profession ? 'Ingen treff' : 'Ingen team-medlemmer ennå'}
+                    {q || profession ? t('memberDir.noHits') : t('memberDir.noMembers')}
                   </Typography>
                   {!q && !profession && (
                     <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
-                      Du ser kun medlemmer som er lagt til prosjekter du er med i.
+                      {t('memberDir.onlyProjectMembers')}
                     </Typography>
                   )}
                 </Box>
@@ -189,6 +185,7 @@ export function RoleRoomMemberDirectoryDialog({
 }
 
 function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () => void }) {
+  const { t } = useT();
   return (
     <Box
       onClick={onClick}
@@ -209,7 +206,7 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
       </Avatar>
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
-          {member.displayName ?? '(uten navn)'}
+          {member.displayName ?? t('memberDir.noName')}
           {member.companyName && (
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
               · {member.companyName}
@@ -220,7 +217,7 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {member.professions.slice(0, 3).join(' · ')}
             {typeof member.yearsExperience === 'number' && member.yearsExperience > 0
-              && ` · ${member.yearsExperience} års erfaring`}
+              && ` · ${t('memberDir.yearsExp', { n: member.yearsExperience })}`}
           </Typography>
         )}
         {(member.locationCity || member.locationCountry) && (
@@ -240,6 +237,12 @@ function MemberCard({ member, onClick }: { member: MemberListItem; onClick: () =
 }
 
 function PublicProfileView({ userId }: { userId: string }) {
+  const { t } = useT();
+  const AVAILABILITY_META: Record<AvailabilityStatus, { label: string; color: 'success' | 'warning' | 'default' }> = useMemo(() => ({
+    available: { label: t('memberDir.availAvailable'), color: 'success' },
+    busy: { label: t('memberDir.availBusy'), color: 'warning' },
+    unavailable: { label: t('memberDir.availUnavailable'), color: 'default' },
+  }), [t]);
   const [profile, setProfile] = useState<RoleRoomMemberProfile | null>(null);
   const [sharedProjects, setSharedProjects] = useState<SharedProject[]>([]);
   const [availability, setAvailability] = useState<AvailabilityEntry[]>([]);
@@ -275,7 +278,7 @@ function PublicProfileView({ userId }: { userId: string }) {
     );
   }
   if (error || !profile) {
-    return <Alert severity="error" sx={{ m: 3 }}>{error ?? 'Profil ikke funnet'}</Alert>;
+    return <Alert severity="error" sx={{ m: 3 }}>{error ?? t('memberDir.profileNotFound')}</Alert>;
   }
 
   const socials = profile.socialLinks ?? {};
@@ -306,7 +309,7 @@ function PublicProfileView({ userId }: { userId: string }) {
         </Avatar>
 
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          {profile.displayName ?? '(uten navn)'}
+          {profile.displayName ?? t('memberDir.noName')}
         </Typography>
         {profile.companyName && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
@@ -335,7 +338,7 @@ function PublicProfileView({ userId }: { userId: string }) {
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: 'text.secondary', mb: 2 }}>
             <WorkOutline sx={{ fontSize: 16 }} />
             <Typography variant="body2">
-              {profile.yearsExperience} års erfaring
+              {t('memberDir.yearsExp', { n: profile.yearsExperience })}
             </Typography>
           </Stack>
         )}
@@ -365,7 +368,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {profile.skills.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">Ferdigheter</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secSkills')}</Typography>
             <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
               {profile.skills.map((s) => (
                 <Chip key={s} label={s} size="small" variant="outlined" />
@@ -376,7 +379,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {profile.expertiseAreas?.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">Fagområder</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secExpertise')}</Typography>
             <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
               {profile.expertiseAreas.map((a) => (
                 <Chip key={a} label={a} size="small" color="secondary" variant="outlined" />
@@ -387,7 +390,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {profile.equipment?.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">Utstyr</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secEquipment')}</Typography>
             <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
               {profile.equipment.map((e) => (
                 <Chip
@@ -404,7 +407,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {profile.certifications?.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">Sertifiseringer & lisenser</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secCerts')}</Typography>
             <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
               {profile.certifications.map((c) => (
                 <Chip key={c} size="small" icon={<Verified sx={{ fontSize: 15 }} />} label={c} />
@@ -415,7 +418,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {profile.languages.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">Språk</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secLanguages')}</Typography>
             <Typography variant="body2">{profile.languages.join(' · ')}</Typography>
           </Box>
         )}
@@ -423,7 +426,7 @@ function PublicProfileView({ userId }: { userId: string }) {
         {profile.earlierProjects?.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="overline" color="text.secondary">
-              Tidligere prosjekter
+              {t('memberDir.secEarlierProjects')}
             </Typography>
             <Stack spacing={0.75} sx={{ mt: 0.5 }}>
               {profile.earlierProjects.map((proj, i) => (
@@ -449,7 +452,7 @@ function PublicProfileView({ userId }: { userId: string }) {
         {profile.portfolioItems?.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="overline" color="text.secondary">
-              Portfolio / arbeidsprøver
+              {t('memberDir.secPortfolio')}
             </Typography>
             <Stack spacing={0.5} sx={{ mt: 0.5 }}>
               {profile.portfolioItems.map((item, i) => (
@@ -466,7 +469,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {profile.memberReferences?.length > 0 && (
           <Box sx={{ mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">Referanser</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secReferences')}</Typography>
             <Stack spacing={1} sx={{ mt: 0.5 }}>
               {profile.memberReferences.map((ref, i) => (
                 <Box key={i} sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'rgba(0,0,0,0.03)' }}>
@@ -494,7 +497,7 @@ function PublicProfileView({ userId }: { userId: string }) {
         {sharedProjects.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="overline" color="text.secondary">
-              Felles prosjekter ({sharedProjects.length})
+              {t('memberDir.secSharedProjects', { n: sharedProjects.length })}
             </Typography>
             <Stack spacing={0.75} sx={{ mt: 0.5 }}>
               {sharedProjects.map((proj) => (
@@ -524,7 +527,7 @@ function PublicProfileView({ userId }: { userId: string }) {
         {availability.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              Tilgjengelighet
+              {t('memberDir.secAvailability')}
             </Typography>
             <AvailabilityCalendar entries={availability} months={2} />
           </Box>
@@ -532,7 +535,7 @@ function PublicProfileView({ userId }: { userId: string }) {
 
         {hasAnyLink && (
           <Box sx={{ mb: 2 }}>
-            <Typography variant="overline" color="text.secondary">Lenker</Typography>
+            <Typography variant="overline" color="text.secondary">{t('memberDir.secLinks')}</Typography>
             <Stack spacing={0.5} sx={{ mt: 0.5 }}>
               {profile.website && (
                 <LinkRow icon={<Language fontSize="small" />} href={profile.website} label={profile.website} />
@@ -556,7 +559,7 @@ function PublicProfileView({ userId }: { userId: string }) {
           disabled
           sx={{ mt: 1, opacity: 0.5 }}
         >
-          Send melding (kommer)
+          {t('memberDir.sendMsgBtn')}
         </Button>
       </Box>
     </DialogContent>

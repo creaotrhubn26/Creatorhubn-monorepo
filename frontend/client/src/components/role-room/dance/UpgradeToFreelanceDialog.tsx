@@ -15,6 +15,7 @@
  */
 
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
 import React from 'react';
 import {
   Box,
@@ -46,27 +47,28 @@ interface Props {
   onClose: () => void;
 }
 
-const FREELANCE_BENEFITS: { title: string; detail: string }[] = [
-  {
-    title: 'Egen reel-portefølje',
-    detail: 'Bygg opp din profesjonelle profil utenfor studioet — for auditions og frilans-jobber.',
-  },
-  {
-    title: 'Egne prosjekter og oppdrag',
-    detail: 'Logg jobber, kontakter og fakturaer du tar utenfor team-aktivitetene.',
-  },
-  {
-    title: 'NAV- og union-dokumentasjon',
-    detail: 'Automatisk timeoversikt for skuda, NoDa og inntektsrapportering.',
-  },
-  {
-    title: 'Tilleggsmoduler etter behov',
-    detail: 'Aktiver video-review pro, marketing-pakke eller AI-koreografi når du trenger dem.',
-  },
-];
-
 export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose }) => {
+  const { t } = useT();
   const [submitting, setSubmitting] = React.useState(false);
+
+  const FREELANCE_BENEFITS: { title: string; detail: string }[] = React.useMemo(() => [
+    {
+      title: t('upgradeFreelance.benefit1Title'),
+      detail: t('upgradeFreelance.benefit1Detail'),
+    },
+    {
+      title: t('upgradeFreelance.benefit2Title'),
+      detail: t('upgradeFreelance.benefit2Detail'),
+    },
+    {
+      title: t('upgradeFreelance.benefit3Title'),
+      detail: t('upgradeFreelance.benefit3Detail'),
+    },
+    {
+      title: t('upgradeFreelance.benefit4Title'),
+      detail: t('upgradeFreelance.benefit4Detail'),
+    },
+  ], [t]);
 
   const dismissAndClose = React.useCallback(async () => {
     setSubmitting(true);
@@ -114,22 +116,20 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
           }}
           disabled={submitting}
         >
-          Lukk
+          {t('upgradeFreelance.closeBtn')}
         </Button>
 
         <Stack spacing={3} alignItems="center" sx={{ textAlign: 'center', mb: 4 }}>
           <Chip
-            label={`Du er en del av ${membership.role?.label ?? 'teamet'}`}
+            label={t('upgradeFreelance.partOf', { team: membership.role?.label ?? t('upgradeFreelance.teamFallback') })}
             size="small"
             sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT, fontWeight: 600 }}
           />
           <Typography sx={{ fontSize: { xs: 22, md: 28 }, fontWeight: 700, color: 'rgba(237,233,254,0.95)', lineHeight: 1.2, maxWidth: 540 }}>
-            Vil du også jobbe som frilanser?
+            {t('upgradeFreelance.headline')}
           </Typography>
           <Typography sx={{ fontSize: 14, color: TEXT_DIM, maxWidth: 480, lineHeight: 1.55 }}>
-            Du kan beholde plassen i teamet ditt og samtidig låse opp en egen
-            frilans-profil for jobber utenfor studioet. Dette er additivt —
-            du mister ingenting du allerede har.
+            {t('upgradeFreelance.subhead')}
           </Typography>
         </Stack>
 
@@ -147,7 +147,7 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
             }}
           >
             <Chip
-              label="Anbefalt"
+              label={t('upgradeFreelance.recommended')}
               size="small"
               sx={{
                 position: 'absolute', top: -10, left: 16,
@@ -157,7 +157,7 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
               <FreelanceIcon sx={{ fontSize: 30, color: PURPLE_LIGHT }} />
               <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'rgba(237,233,254,0.95)' }}>
-                Frilansdanser-konto
+                {t('upgradeFreelance.cardFreelanceTitle')}
               </Typography>
             </Stack>
             <Stack spacing={1.25} sx={{ mb: 3 }}>
@@ -189,10 +189,10 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
                 py: 1.25,
               }}
             >
-              Se planene
+              {t('upgradeFreelance.seePlans')}
             </Button>
             <Typography sx={{ fontSize: 11, color: TEXT_MUTED, textAlign: 'center', mt: 1 }}>
-              Du blir værende i {membership.team.teamOrganizationId ? 'teamet' : 'studioet'} uansett.
+              {t('upgradeFreelance.stayIn', { where: membership.team.teamOrganizationId ? t('upgradeFreelance.teamWord') : t('upgradeFreelance.studioWord') })}
             </Typography>
           </Box>
 
@@ -208,14 +208,11 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
               <TeamIcon sx={{ fontSize: 30, color: 'rgba(229,231,235,0.7)' }} />
               <Typography sx={{ fontSize: 18, fontWeight: 600, color: 'rgba(237,233,254,0.92)' }}>
-                Fortsett som team-medlem
+                {t('upgradeFreelance.cardTeamTitle')}
               </Typography>
             </Stack>
             <Typography sx={{ fontSize: 13, color: TEXT_DIM, lineHeight: 1.55, mb: 3 }}>
-              Du er allerede del av <strong>{membership.role?.label ?? 'teamet'}</strong> og
-              har tilgang til klasser, øvinger, video-review og andre verktøy
-              som studioet har konfigurert for din rolle. Hvis behovene endres,
-              kan du oppgradere senere fra workspace-instillinger.
+              {t('upgradeFreelance.teamBodyPre')}<strong>{membership.role?.label ?? t('upgradeFreelance.teamFallback')}</strong>{t('upgradeFreelance.teamBodyPost')}
             </Typography>
             <Button
               variant="outlined"
@@ -232,13 +229,13 @@ export const UpgradeToFreelanceDialog: React.FC<Props> = ({ membership, onClose 
                 py: 1.25,
               }}
             >
-              Til workspace
+              {t('upgradeFreelance.toWorkspace')}
             </Button>
           </Box>
         </Box>
 
         <Typography sx={{ fontSize: 11, color: TEXT_MUTED, textAlign: 'center', mt: 4 }}>
-          Du kan alltids endre senere fra menyen øverst — vi spør deg ikke igjen.
+          {t('upgradeFreelance.footer')}
         </Typography>
       </DialogContent>
     </Dialog>

@@ -48,6 +48,7 @@ import { castingAuthService } from '../services/castingAuthService';
 import { castingService } from '../services/castingService';
 import { Z_INDEX } from '../config/zIndex';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
+import { useT } from '../../../i18n';
 
 interface CastingSharingDialogProps {
   open: boolean;
@@ -57,6 +58,7 @@ interface CastingSharingDialogProps {
 }
 
 export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: CastingSharingDialogProps) {
+  const { t } = useT();
   const toast = useToast();
   const branding = useBrandingSettings();
   const [sharedUsers, setSharedUsers] = useState<UserRole[]>([]);
@@ -118,7 +120,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             castingService.getLocations(projectId),
             castingService.getProps(projectId),
           ]);
-          setProjectName(project?.name || 'Prosjekt tittel');
+          setProjectName(project?.name || t('castShare.projectTitleFallback'));
           setExportCounts({
             roles: roles.length,
             candidates: candidates.length,
@@ -133,7 +135,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       }
     };
     loadExportData();
-  }, [exportDialogOpen, projectId]);
+  }, [exportDialogOpen, projectId, t]);
 
   // MenuProps for Select components to ensure proper rendering within Dialog
   // Use container: document.body with higher z-index than Dialog (100000) to fix modal stacking issues
@@ -180,22 +182,22 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
 
   const getRoleLabel = (role: string): string => {
     const labels: Record<string, string> = {
-      director: 'Regissør',
-      producer: 'Produsent',
-      content_producer: 'Innholdsprodusent',
-      client_reviewer: 'Klient-revisor',
-      casting_director: 'Casting-ansvarlig',
-      production_manager: 'Produksjonsleder',
-      camera_team: 'Kamera-team',
-      camera_operator: 'Kameramann',
-      camera_assistant: 'Kamera-assistent',
-      gaffer: 'Lysansvarlig',
-      grip: 'Grip',
-      sound_engineer: 'Lydtekniker',
-      makeup_artist: 'Sminkør',
-      wardrobe: 'Kostyme',
-      other: 'Annet',
-      agency: 'Byrå',
+      director: t('castShare.role_director'),
+      producer: t('castShare.role_producer'),
+      content_producer: t('castShare.role_content_producer'),
+      client_reviewer: t('castShare.role_client_reviewer'),
+      casting_director: t('castShare.role_casting_director'),
+      production_manager: t('castShare.role_production_manager'),
+      camera_team: t('castShare.role_camera_team'),
+      camera_operator: t('castShare.role_camera_operator'),
+      camera_assistant: t('castShare.role_camera_assistant'),
+      gaffer: t('castShare.role_gaffer'),
+      grip: t('castShare.role_grip'),
+      sound_engineer: t('castShare.role_sound_engineer'),
+      makeup_artist: t('castShare.role_makeup_artist'),
+      wardrobe: t('castShare.role_wardrobe'),
+      other: t('castShare.role_other'),
+      agency: t('castShare.role_agency'),
     };
     return labels[role] || role;
   };
@@ -214,7 +216,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       setEmailHelperText('');
     } else if (!validateEmail(value)) {
       setEmailError(true);
-      setEmailHelperText('Ugyldig e-post format');
+      setEmailHelperText(t('castShare.invalidEmail'));
     } else {
       setEmailError(false);
       setEmailHelperText('');
@@ -224,13 +226,13 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
   const handleAddUser = async () => {
     if (!newUserEmail.trim()) {
       setEmailError(true);
-      setEmailHelperText('E-post er påkrevd');
+      setEmailHelperText(t('castShare.emailRequired'));
       return;
     }
 
     if (!validateEmail(newUserEmail)) {
       setEmailError(true);
-      setEmailHelperText('Ugyldig e-post format');
+      setEmailHelperText(t('castShare.invalidEmail'));
       return;
     }
 
@@ -247,7 +249,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     } catch (error) {
       console.error('Error adding user:', error);
       setEmailError(true);
-      setEmailHelperText('Feil ved deling med bruker');
+      setEmailHelperText(t('castShare.shareError'));
     }
   };
 
@@ -266,7 +268,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error removing user:', error);
-      toast.showError(branding.tokens.labels.removeUserErrorLabel || 'Feil ved fjerning av bruker');
+      toast.showError(branding.tokens.labels.removeUserErrorLabel || t('castShare.removeUserError'));
     }
   };
 
@@ -287,7 +289,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        toast.showError('Prosjekt ikke funnet');
+        toast.showError(t('castShare.projectNotFound'));
         return;
       }
 
@@ -305,7 +307,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       // Create a new window for printing
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        toast.showError('Kunne ikke åpne print-vindu. Vennligst tillat popups.');
+        toast.showError(t('castShare.printWindowError'));
         return;
       }
 
@@ -320,7 +322,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       setExportDialogOpen(false);
     } catch (error) {
       console.error('Error exporting project:', error);
-      toast.showError('Kunne ikke eksportere prosjekt');
+      toast.showError(t('castShare.exportError'));
     }
   };
 
@@ -1105,9 +1107,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <ShareIcon sx={{ fontSize: '1.5rem', color: 'var(--role-cyan, #00d4ff)' }} />
-            <Typography variant="h6">Del prosjekt</Typography>
+            <Typography variant="h6">{t('castShare.title')}</Typography>
           </Box>
-          <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={onClose} aria-label={t('castShare.closeAria')} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -1117,7 +1119,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
-                Delte brukere ({sharedUsers.length})
+                {t('castShare.sharedUsersHeading', { n: sharedUsers.length })}
               </Typography>
               <Button
                 variant="outlined"
@@ -1129,7 +1131,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                   '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(0,212,255,0.1)' },
                 }}
               >
-                Legg til bruker
+                {t('castShare.addUserBtn')}
               </Button>
             </Box>
 
@@ -1145,7 +1147,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
               >
                 <Stack spacing={2}>
                   <TextField
-                    label="E-post"
+                    label={t('castShare.emailLabel')}
                     fullWidth
                     type="email"
                     inputMode="email"
@@ -1169,11 +1171,11 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }}
                   />
                   <FormControl fullWidth>
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Rolle</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('castShare.roleLabel')}</InputLabel>
                     <Select
                       value={newUserRole}
                       onChange={(e) => setNewUserRole(e.target.value as UserRoleType)}
-                      label="Rolle"
+                      label={t('castShare.roleLabel')}
                       MenuProps={selectMenuProps}
                       sx={{
                         color: '#fff',
@@ -1220,7 +1222,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         '&:hover': { bgcolor: '#00b8e6' },
                       }}
                     >
-                      Legg til
+                      {t('castShare.addBtn')}
                     </Button>
                     <Button
                       variant="outlined"
@@ -1236,7 +1238,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                         color: 'rgba(255,255,255,0.87)',
                       }}
                     >
-                      Avbryt
+                      {t('castShare.cancelBtn')}
                     </Button>
                   </Box>
                 </Stack>
@@ -1252,7 +1254,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                 }}
               >
                 <PersonIcon sx={{ fontSize: 48, mb: 1, opacity: 0.3 }} />
-                <Typography variant="body2">Ingen delte brukere ennå</Typography>
+                <Typography variant="body2">{t('castShare.noSharedUsers')}</Typography>
               </Box>
             ) : (
               <List sx={{ bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
@@ -1299,7 +1301,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
 
           <Box>
             <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>
-              Eksport
+              {t('castShare.exportHeading')}
             </Typography>
             <Button
               variant="outlined"
@@ -1311,14 +1313,14 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                 '&:hover': { borderColor: '#00b8e6', bgcolor: 'rgba(0,212,255,0.1)' },
               }}
             >
-              Eksporter prosjekt (PDF)
+              {t('castShare.exportProjectBtn')}
             </Button>
           </Box>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
         <Button onClick={onClose} startIcon={<CloseIcon />} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-          Lukk
+          {t('castShare.closeBtn')}
         </Button>
       </DialogActions>
 
@@ -1357,14 +1359,14 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <FileDownloadIcon sx={{ fontSize: '1.5rem', color: 'var(--role-cyan, #00d4ff)' }} />
-                <Typography variant="h6">Velg elementer for eksport</Typography>
+                <Typography variant="h6">{t('castShare.exportDialogTitle')}</Typography>
               </Box>
             </DialogTitle>
             <DialogContent sx={{ pt: 3, overflow: 'visible' }}>
               <Stack spacing={3}>
                 <TextField
-                  label="Tittel (valgfri)"
-                  placeholder={projectName || 'Prosjekt tittel'}
+                  label={t('castShare.titleFieldLabel')}
+                  placeholder={projectName || t('castShare.projectTitleFallback')}
                   value={exportTitle}
                   onChange={(e) => setExportTitle(e.target.value)}
                   fullWidth
@@ -1397,7 +1399,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }}
                     variant="outlined"
                   >
-                    Velg alle
+                    {t('castShare.selectAll')}
                   </Button>
                   <Button
                     size="small"
@@ -1409,7 +1411,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }}
                     variant="outlined"
                   >
-                    Fjern alle
+                    {t('castShare.deselectAll')}
                   </Button>
                 </Box>
                 <FormGroup>
@@ -1426,7 +1428,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Prosjekt Oversikt</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optSummary')}</Typography>
                       </Box>
                     }
                   />
@@ -1443,7 +1445,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Roller ({exportCounts.roles})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optRoles', { n: exportCounts.roles })}</Typography>
                       </Box>
                     }
                   />
@@ -1460,7 +1462,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Kandidater ({exportCounts.candidates})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optCandidates', { n: exportCounts.candidates })}</Typography>
                       </Box>
                     }
                   />
@@ -1477,7 +1479,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Timeplan ({exportCounts.schedules})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optSchedules', { n: exportCounts.schedules })}</Typography>
                       </Box>
                     }
                   />
@@ -1494,7 +1496,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Crew ({exportCounts.crew})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optCrew', { n: exportCounts.crew })}</Typography>
                       </Box>
                     }
                   />
@@ -1511,7 +1513,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Lokasjoner ({exportCounts.locations})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optLocations', { n: exportCounts.locations })}</Typography>
                       </Box>
                     }
                   />
@@ -1528,7 +1530,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Rekvisitter ({exportCounts.props})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.optProps', { n: exportCounts.props })}</Typography>
                       </Box>
                     }
                   />
@@ -1545,7 +1547,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#fff' }}>Delte brukere ({sharedUsers.length})</Typography>
+                        <Typography sx={{ color: '#fff' }}>{t('castShare.sharedUsersHeading', { n: sharedUsers.length })}</Typography>
                       </Box>
                     }
                   />
@@ -1558,7 +1560,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                 startIcon={<CancelIcon />}
                 sx={{ color: 'rgba(255,255,255,0.87)' }}
               >
-                Avbryt
+                {t('castShare.cancelBtn')}
               </Button>
               <Button
                 onClick={handleConfirmExport}
@@ -1576,7 +1578,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                   },
                 }}
               >
-                Eksporter
+                {t('castShare.exportBtn')}
               </Button>
             </DialogActions>
           </Dialog>
@@ -1607,22 +1609,22 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             <DeleteIcon sx={{ fontSize: 24, color: '#ff4444' }} />
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {branding.tokens.labels.removeUserLabel || 'Fjern bruker'}
+            {branding.tokens.labels.removeUserLabel || t('castShare.removeUserTitle')}
           </Typography>
         </DialogTitle>
         <DialogContent>
           <Typography sx={{ color: 'rgba(255,255,255,0.85)' }}>
-            {branding.tokens.labels.confirmRemoveUserLabel || 'Er du sikker på at du vil fjerne denne brukeren?'}
+            {branding.tokens.labels.confirmRemoveUserLabel || t('castShare.confirmRemoveUser')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
           <Button onClick={() => setConfirmRemoveUserId(null)} variant="outlined"
             sx={{ color: 'rgba(255,255,255,0.8)', borderColor: 'rgba(255,255,255,0.2)', textTransform: 'none' }}>
-            {branding.tokens.labels.cancelLabel || 'Avbryt'}
+            {branding.tokens.labels.cancelLabel || t('castShare.cancelBtn')}
           </Button>
           <Button onClick={executeRemoveUser} variant="contained" startIcon={<DeleteIcon />}
             sx={{ bgcolor: '#ff4444', color: '#fff', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#ff3333' } }}>
-            {branding.tokens.labels.removeUserLabel || 'Fjern'}
+            {branding.tokens.labels.removeUserLabel || t('castShare.removeBtn')}
           </Button>
         </DialogActions>
       </Dialog>
