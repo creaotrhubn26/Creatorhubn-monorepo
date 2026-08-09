@@ -1,6 +1,6 @@
 ---
 name: documentation-intelligence
-description: Technical intelligence operating layer for authoritative documentation research, repository-aware version/API validation, compatibility solving, project impact analysis, migration planning, evidence traceability, and low-noise release monitoring.
+description: Technical intelligence operating layer for authoritative documentation research, repository-aware version/API validation, compatibility solving, project impact analysis, migration planning, evidence traceability, and low-noise release monitoring. ALSO use for open improvement questions about products with external integrations ("what could make Post Agent better?", "what do new Resolve/Xcode releases enable?") — route them through docs/impact-reports/ product opportunities and the evidence graph, not from memory.
 ---
 
 # Documentation Intelligence v2
@@ -365,6 +365,16 @@ Available contracts:
 - `schemas/project-intelligence.schema.json`
 - `schemas/impact-report.schema.json`
 - `schemas/evidence-graph.schema.json`
+
+## Interaction Rule (interactive sessions)
+
+Before producing analysis for an open question ("what could be improved",
+"what does release X mean for us"), ALWAYS ask 1–3 short focus questions
+first: which system (Post Agent / iPad apps / Role Room / Leadgrid /
+CreatorHub platform / Reknaren / Pondus), which vendor surface, and
+risk-focus vs. opportunity-focus. Depth on the chosen focus beats breadth
+across everything. Skip this only when the user already specified the focus,
+or in autonomous cron/cloud runs (they follow their own prompt).
 
 ## Runtime Notes (Claude Code)
 

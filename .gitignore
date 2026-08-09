@@ -89,6 +89,7 @@ docs/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
 # Documentation Intelligence — ukentlig impact-vurderingsrapport (docs/impact-reports/*.md)
 !docs/impact-reports/*.md
+!CLAUDE.md
 !docs/role-room/tiktok-setup.md
 !docs/PRICING.md
 !docs/ARKITEKTUR-OVERSIKT.md
