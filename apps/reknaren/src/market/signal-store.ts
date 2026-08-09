@@ -30,10 +30,12 @@ function rowToSignal(r: Record<string, unknown>): MarketSignal {
     source: r.source as string, kind: r.kind as string, signalKey: r.signal_key as string,
     value: String(r.value_num), unit: r.unit as string, period: r.period as string,
     publishedAt: (r.published_at as string) ?? undefined, url: (r.url as string) ?? undefined,
+    raw: r.raw ?? undefined,
   };
 }
 
 async function nthSignal(db: Db, kind: string, signalKey: string, offset: number): Promise<MarketSignal | null> {
+  // (kind, signal_key) mapper til nøyaktig én kilde i vår data, så ingen source-filter trengs.
   const r = await db.query(
     `SELECT * FROM market_signals WHERE kind=$1 AND signal_key=$2
      ORDER BY period DESC LIMIT 1 OFFSET $3`,

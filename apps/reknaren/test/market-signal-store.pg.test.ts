@@ -19,5 +19,9 @@ describe('signal-store', () => {
     expect(latest?.value).toBe('4.50');
     expect(latest?.period).toBe('2026-08-14');
     expect(prev?.value).toBe('4.25');
+
+    // Verifiser at idempotent upsert oppdaterer i stedet for å sette inn ny rad
+    const cnt = await db.query("SELECT count(*)::int AS n FROM market_signals WHERE kind='policy_rate' AND signal_key='KPRA'");
+    expect(cnt.rows[0].n).toBe(2);
   });
 });
