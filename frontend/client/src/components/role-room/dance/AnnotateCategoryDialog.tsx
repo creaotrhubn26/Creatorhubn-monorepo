@@ -25,6 +25,7 @@ import Typography from '@mui/material/Typography';
 
 import type { AnnotationCategoryRecord } from './danceAnnotationCatalogService';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
 
 const COLOR_PRESETS = [
   danceFlowColors.lavender, danceFlowColors.successPrimary, danceFlowColors.gold, danceFlowColors.infoLight, danceFlowColors.pinkAccentLight,
@@ -65,6 +66,7 @@ export default function AnnotateCategoryDialog({
   onSave,
   onDelete,
 }: AnnotateCategoryDialogProps): React.ReactElement {
+  const { t } = useT();
   const isEdit = editing != null;
 
   const [name, setName] = React.useState<string>('');
@@ -91,12 +93,12 @@ export default function AnnotateCategoryDialog({
   const handleSubmit = async (): Promise<void> => {
     setError(null);
     const trimmedName = name.trim();
-    if (!trimmedName) { setError('Navn er påkrevd'); return; }
-    if (trimmedName.length > 80) { setError('Navn er for langt (maks 80 tegn)'); return; }
-    if (!HEX_RE.test(color)) { setError('Farge må være hex (#rrggbb eller #rgb)'); return; }
-    if (shortcut && shortcut.length > 8) { setError('Snarvei er for lang'); return; }
+    if (!trimmedName) { setError(t('annotCat.errNameRequired')); return; }
+    if (trimmedName.length > 80) { setError(t('annotCat.errNameTooLong')); return; }
+    if (!HEX_RE.test(color)) { setError(t('annotCat.errHex')); return; }
+    if (shortcut && shortcut.length > 8) { setError(t('annotCat.errShortcutTooLong')); return; }
     if (shortcut && existingShortcuts.includes(shortcut) && shortcut !== editing?.shortcut) {
-      setError(`Snarvei "${shortcut}" er allerede i bruk`);
+      setError(t('annotCat.errShortcutTaken', { shortcut }));
       return;
     }
     setBusy(true);
@@ -108,7 +110,7 @@ export default function AnnotateCategoryDialog({
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke lagre kategori');
+      setError(err instanceof Error ? err.message : t('annotCat.errSaveFailed'));
     } finally {
       setBusy(false);
     }
@@ -117,7 +119,7 @@ export default function AnnotateCategoryDialog({
   const handleDelete = async (): Promise<void> => {
     if (!onDelete) return;
     if (typeof window !== 'undefined' &&
-        !window.confirm(`Slett kategori "${editing?.name}"?\nLabels som er bundet til denne kategorien blir også slettet.`)) {
+        !window.confirm(t('annotCat.confirmDelete', { name: editing?.name ?? '' }))) {
       return;
     }
     setBusy(true);
@@ -125,7 +127,7 @@ export default function AnnotateCategoryDialog({
       await onDelete();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke slette');
+      setError(err instanceof Error ? err.message : t('annotCat.errDeleteFailed'));
     } finally {
       setBusy(false);
     }
@@ -147,16 +149,16 @@ export default function AnnotateCategoryDialog({
       }}
     >
       <DialogTitle sx={{ fontSize: 14, fontWeight: 700, py: 1.5 }}>
-        {isEdit ? 'Rediger kategori' : 'Ny kategori'}
+        {isEdit ? t('annotCat.titleEdit') : t('annotCat.titleNew')}
       </DialogTitle>
       <DialogContent>
         <Stack spacing={1.5} sx={{ mt: 0.5 }}>
           <TextField
             size="small"
-            label="Navn"
+            label={t('annotCat.labelName')}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="F.eks. Floor work"
+            placeholder={t('annotCat.namePlaceholder')}
             autoFocus
             // testid på input slik at Playwright `.fill()` virker direkte
             inputProps={{ maxLength: 80, 'data-testid': 'annotate-category-dialog-name' }}
@@ -164,7 +166,7 @@ export default function AnnotateCategoryDialog({
 
           <Box>
             <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted, mb: 0.5 }}>
-              Farge
+              {t('annotCat.labelColor')}
             </Typography>
             <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
               {COLOR_PRESETS.map((preset) => (
@@ -174,7 +176,7 @@ export default function AnnotateCategoryDialog({
                   type="button"
                   data-testid={`annotate-category-dialog-color-${preset.replace('#', '')}`}
                   onClick={() => setColor(preset)}
-                  aria-label={`Velg farge ${preset}`}
+                  aria-label={t('annotCat.pickColorAria', { preset })}
                   sx={{
                     width: 28, height: 28, borderRadius: '50%',
                     bgcolor: preset,
@@ -190,7 +192,7 @@ export default function AnnotateCategoryDialog({
             </Stack>
             <TextField
               size="small"
-              label="Eller hex"
+              label={t('annotCat.labelHex')}
               value={color}
               onChange={(e) => setColor(e.target.value)}
               data-testid="annotate-category-dialog-color-hex"
@@ -202,7 +204,7 @@ export default function AnnotateCategoryDialog({
 
           <TextField
             size="small"
-            label="Snarvei (1 tegn, valgfri)"
+            label={t('annotCat.labelShortcut')}
             value={shortcut}
             onChange={(e) => setShortcut(e.target.value.slice(0, 8))}
             data-testid="annotate-category-dialog-shortcut"
@@ -231,7 +233,7 @@ export default function AnnotateCategoryDialog({
             data-testid="annotate-category-dialog-delete"
             sx={{ mr: 'auto', textTransform: 'none' }}
           >
-            Slett
+            {t('annotCat.delete')}
           </Button>
         ) : null}
         <Button
@@ -240,7 +242,7 @@ export default function AnnotateCategoryDialog({
           disabled={busy}
           sx={{ textTransform: 'none', color: danceFlowColors.textMuted }}
         >
-          Avbryt
+          {t('annotCat.cancel')}
         </Button>
         <Button
           size="small"
@@ -254,7 +256,7 @@ export default function AnnotateCategoryDialog({
             '&:hover': { bgcolor: danceFlowColors.lavenderDark },
           }}
         >
-          {isEdit ? 'Lagre' : 'Legg til'}
+          {isEdit ? t('annotCat.save') : t('annotCat.add')}
         </Button>
       </DialogActions>
     </Dialog>

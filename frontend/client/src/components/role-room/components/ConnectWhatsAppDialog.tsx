@@ -25,6 +25,7 @@ import {
   roleRoomWhatsAppApi,
   type RoleRoomWhatsAppConfig,
 } from '../services/castingApiService';
+import { useT } from '../../../i18n';
 
 type ConnectWhatsAppDialogProps = {
   open: boolean;
@@ -39,6 +40,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
   onClose,
   onConnected,
 }) => {
+  const { t } = useT();
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [businessAccountId, setBusinessAccountId] = useState('');
@@ -65,11 +67,11 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
 
   const handleSubmit = async () => {
     if (!orgKey) {
-      setError('Mangler bedrifts-nøkkel.');
+      setError(t('connectWA.errMissingOrgKey'));
       return;
     }
     if (!phoneNumberId.trim() || !accessToken.trim() || !displayName.trim() || !businessAccountId.trim()) {
-      setError('Phone Number ID, Business Account ID, Access Token og Display Name er påkrevd.');
+      setError(t('connectWA.errFieldsRequired'));
       return;
     }
     setSubmitting(true);
@@ -86,7 +88,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
       reset();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kobling feilet');
+      setError(err instanceof Error ? err.message : t('connectWA.errConnectFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -96,7 +98,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm" PaperProps={{ sx: { bgcolor: '#0f1729', color: '#f1f5f9', borderRadius: 3 } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#f1f5f9', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <WhatsAppIcon sx={{ color: '#22c55e' }} />
-        <Typography sx={{ flex: 1, fontWeight: 700 }}>Koble til WhatsApp Business</Typography>
+        <Typography sx={{ flex: 1, fontWeight: 700 }}>{t('connectWA.title')}</Typography>
         <IconButton onClick={handleClose} sx={{ color: 'rgba(255,255,255,0.6)' }} disabled={submitting}>
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -106,8 +108,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
         <Stack spacing={2}>
           <Alert severity="info" sx={{ bgcolor: 'rgba(34,197,94,0.08)', color: '#bbf7d0', '& .MuiAlert-icon': { color: '#22c55e' } }}>
             <Typography sx={{ fontSize: '0.85rem', lineHeight: 1.55 }}>
-              Hent verdiene fra <Link href="https://business.facebook.com/wa/manage/phonenumbers" target="_blank" rel="noopener" sx={{ color: '#86efac' }}>Meta WhatsApp Manager</Link>:
-              klikk telefonnummeret ditt → "Phone Number ID" og "WhatsApp Business Account ID" står der. Access Token genererer du under Account → System Users.
+              {t('connectWA.fetchValuesFrom')}<Link href="https://business.facebook.com/wa/manage/phonenumbers" target="_blank" rel="noopener" sx={{ color: '#86efac' }}>Meta WhatsApp Manager</Link>{t('connectWA.fetchValuesAfter')}
             </Typography>
           </Alert>
 
@@ -140,7 +141,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
             placeholder="The Role Room"
             disabled={submitting}
             fullWidth
-            helperText="Vist som avsender i kandidatenes WhatsApp. Må være Meta-godkjent."
+            helperText={t('connectWA.helperDisplayName')}
             FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.55)' } }}
             InputProps={{ sx: { color: '#f1f5f9' } }}
             InputLabelProps={{ sx: { color: 'rgba(255,255,255,0.7)' } }}
@@ -154,7 +155,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
             placeholder="EAA..."
             disabled={submitting}
             fullWidth
-            helperText="Lagres kryptert i database. Aldri synlig i klart etter save."
+            helperText={t('connectWA.helperAccessToken')}
             FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.55)' } }}
             InputProps={{
               sx: { color: '#f1f5f9' },
@@ -177,8 +178,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
 
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
-              Når du klikker <strong>Lagre og verifiser</strong>, kaller vi Meta API for å bekrefte at credentials virker mot phone-nummeret du oppga.
-              Hvis det feiler, kommer feilmeldingen direkte fra Meta så du vet hva som er galt.
+              {t('connectWA.verifyNoteBefore')}<strong>{t('connectWA.saveVerify')}</strong>{t('connectWA.verifyNoteAfter')}
             </Typography>
           </Box>
         </Stack>
@@ -186,7 +186,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
 
       <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
         <Button onClick={handleClose} disabled={submitting} sx={{ color: 'rgba(255,255,255,0.7)' }}>
-          Avbryt
+          {t('connectWA.cancel')}
         </Button>
         <Button
           onClick={handleSubmit}
@@ -195,7 +195,7 @@ const ConnectWhatsAppDialog: FC<ConnectWhatsAppDialogProps> = ({
           startIcon={submitting ? <CircularProgress size={14} sx={{ color: '#0f1729' }} /> : <WhatsAppIcon />}
           sx={{ bgcolor: '#22c55e', color: '#0f1729', fontWeight: 700, '&:hover': { bgcolor: '#34d399' } }}
         >
-          {submitting ? 'Verifiserer mot Meta…' : 'Lagre og verifiser'}
+          {submitting ? t('connectWA.verifying') : t('connectWA.saveVerify')}
         </Button>
       </DialogActions>
     </Dialog>

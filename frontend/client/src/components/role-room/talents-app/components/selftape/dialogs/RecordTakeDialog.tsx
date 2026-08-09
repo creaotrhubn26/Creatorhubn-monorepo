@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { palette, radius } from '../../../theme';
 import { uploadRecordedTake } from '../../../../services/roleRoomSelfTapesService';
+import { useT } from '../../../../../../i18n';
 
 interface Props {
   open: boolean;
@@ -49,6 +50,7 @@ function pickMimeType(): string {
 export default function RecordTakeDialog({
   open, projectId, onClose, onUploaded,
 }: Props) {
+  const { t } = useT();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const supportsMediaRecorder = typeof window !== 'undefined'
@@ -114,11 +116,11 @@ export default function RecordTakeDialog({
       setPhase('preview');
     } catch (err) {
       setError(err instanceof Error
-        ? `Kameratilgang nektet: ${err.message}`
-        : 'Klarte ikke å aktivere kamera');
+        ? t('recTake.cameraDenied', { msg: err.message })
+        : t('recTake.cameraFailed'));
       setPhase('error');
     }
-  }, []);
+  }, [t]);
 
   const startRecording = () => {
     if (!streamRef.current) return;
@@ -173,7 +175,7 @@ export default function RecordTakeDialog({
       reset();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload feilet');
+      setError(err instanceof Error ? err.message : t('recTake.uploadFailed'));
       setPhase('error');
     }
   };
@@ -212,7 +214,7 @@ export default function RecordTakeDialog({
       }}
     >
       <DialogTitle sx={{ pr: 6 }}>
-        <Typography sx={{ fontWeight: 800, fontSize: '1.1rem' }}>Spill inn ny take</Typography>
+        <Typography sx={{ fontWeight: 800, fontSize: '1.1rem' }}>{t('recTake.title')}</Typography>
         <IconButton
           onClick={onClose}
           disabled={phase === 'uploading'}
@@ -226,8 +228,7 @@ export default function RecordTakeDialog({
         {phase === 'idle' ? (
           <Stack alignItems="center" spacing={2.4} sx={{ py: 4 }}>
             <Typography sx={{ color: palette.textSecondary, textAlign: 'center', maxWidth: 420 }}>
-              Vi trenger tilgang til kamera og mikrofon for å spille inn taken din. Opptaket
-              lagres trygt i Cloudflare Stream og du eier alltid filen.
+              {t('recTake.intro')}
             </Typography>
             {supportsMediaRecorder ? (
               <Button
@@ -244,13 +245,12 @@ export default function RecordTakeDialog({
                   '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                 }}
               >
-                Aktiver kamera + mikrofon
+                {t('recTake.activate')}
               </Button>
             ) : (
               <Stack alignItems="center" spacing={1.2}>
                 <Typography sx={{ color: '#fbbf24', fontSize: '0.86rem', textAlign: 'center', maxWidth: 360 }}>
-                  Nettleseren din støtter ikke in-browser opptak. Bruk i stedet
-                  kamera-appen direkte:
+                  {t('recTake.noSupport')}
                 </Typography>
                 <Button
                   component="label"
@@ -266,7 +266,7 @@ export default function RecordTakeDialog({
                     '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                   }}
                 >
-                  Åpne kamera
+                  {t('recTake.openCamera')}
                   <input
                     type="file"
                     accept="video/*"
@@ -290,7 +290,7 @@ export default function RecordTakeDialog({
         {phase === 'permission' ? (
           <Stack alignItems="center" spacing={1.2} sx={{ py: 6 }}>
             <Typography sx={{ color: palette.textMuted }}>
-              Venter på tilgang …
+              {t('recTake.waiting')}
             </Typography>
             <LinearProgress sx={{ width: 220, bgcolor: palette.borderSubtle }} />
           </Stack>
@@ -354,7 +354,7 @@ export default function RecordTakeDialog({
                     '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                   }}
                 >
-                  Start opptak
+                  {t('recTake.startRec')}
                 </Button>
               ) : (
                 <Button
@@ -370,7 +370,7 @@ export default function RecordTakeDialog({
                     '&:hover': { bgcolor: '#dc2626' },
                   }}
                 >
-                  Stopp opptak
+                  {t('recTake.stopRec')}
                 </Button>
               )}
             </Stack>
@@ -397,7 +397,7 @@ export default function RecordTakeDialog({
               />
             </Box>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', textAlign: 'center', mb: 1.4 }}>
-              Lengde: {formattedElapsed} · Sjekk over kvaliteten før du laster opp
+              {t('recTake.reviewHint', { time: formattedElapsed })}
             </Typography>
           </Box>
         ) : null}
@@ -406,7 +406,7 @@ export default function RecordTakeDialog({
         {phase === 'uploading' ? (
           <Box sx={{ py: 4 }}>
             <Typography sx={{ color: palette.textSecondary, mb: 1.4, textAlign: 'center' }}>
-              Laster opp til Cloudflare Stream …
+              {t('recTake.uploading')}
             </Typography>
             <LinearProgress
               variant="determinate"
@@ -432,7 +432,7 @@ export default function RecordTakeDialog({
               onClick={reset}
               sx={{ color: palette.accentBright, textTransform: 'none' }}
             >
-              Prøv igjen
+              {t('recTake.tryAgain')}
             </Button>
           </Box>
         ) : null}
@@ -444,7 +444,7 @@ export default function RecordTakeDialog({
             startIcon={<ReplayOutlinedIcon />}
             sx={{ color: palette.textMuted, textTransform: 'none' }}
           >
-            Spill inn på nytt
+            {t('recTake.retake')}
           </Button>
           <Button
             onClick={handleUpload}
@@ -458,7 +458,7 @@ export default function RecordTakeDialog({
               '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
             }}
           >
-            Last opp som ny take
+            {t('recTake.uploadAsNew')}
           </Button>
         </DialogActions>
       ) : null}

@@ -21,6 +21,7 @@ import {
 } from '@mui/icons-material';
 import { addShotReducer, type AddShotState, type ShotSearchResult } from '../production/types';
 import type { StoryboardSeedCandidate } from '../../services/storyboardLibraryService';
+import { useT } from '../../../../i18n';
 
 // ---- Props ----
 
@@ -54,6 +55,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
   open: externalOpen,
   onClose,
 }) {
+  const { t } = useT();
   const [state, dispatch] = useReducer(addShotReducer, { open: false } as AddShotState);
 
   // Sync external open trigger → FSM
@@ -141,7 +143,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
           <Stack direction="row" spacing={1} alignItems="center">
             <MovieIcon sx={{ color: '#3b82f6' }} />
-            <span>Legg til storyboard shot</span>
+            <span>{t('addShot.title')}</span>
           </Stack>
           {step !== 'chooseMode' && (
             <Button
@@ -149,7 +151,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
               onClick={handleBack}
               sx={{ color: '#6b7280', fontSize: 11 }}
             >
-              ← Tilbake
+              {t('addShot.back')}
             </Button>
           )}
         </Stack>
@@ -160,7 +162,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
           /* ---- Mode Selection ---- */
           <Stack spacing={3}>
             <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-              Velg hvordan du vil legge til et shot til scene {sceneNumber}
+              {t('addShot.chooseModeHint', { scene: sceneNumber ?? '' })}
             </Typography>
             <Stack direction="row" spacing={2}>
               {/* Upload */}
@@ -181,8 +183,8 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                     <line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
                 </Box>
-                <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>Last opp eget bilde</Typography>
-                <Typography sx={{ fontSize: 12, color: '#6b7280' }}>Last opp storyboard eller referansebilde fra din maskin</Typography>
+                <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>{t('addShot.uploadTitle')}</Typography>
+                <Typography sx={{ fontSize: 12, color: '#6b7280' }}>{t('addShot.uploadDesc')}</Typography>
               </Box>
 
               {/* Storyboard */}
@@ -203,9 +205,9 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                       <path d="M7 15l3-3 2 2 5-5"/>
                     </svg>
                   </Box>
-                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>Velg fra storyboard</Typography>
+                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>{t('addShot.storyboardTitle')}</Typography>
                   <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
-                    {storyboardCandidates.length} scene-knyttede storyboardelementer tilgjengelig
+                    {t('addShot.storyboardDesc', { n: storyboardCandidates.length })}
                   </Typography>
                 </Box>
               )}
@@ -227,19 +229,19 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                     <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
                 </Box>
-                <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>Søk referanseshots</Typography>
-                <Typography sx={{ fontSize: 12, color: '#6b7280' }}>Finn inspirasjon fra Shot.cafe, filmer og bildedatabaser</Typography>
+                <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>{t('addShot.searchTitle')}</Typography>
+                <Typography sx={{ fontSize: 12, color: '#6b7280' }}>{t('addShot.searchDesc')}</Typography>
               </Box>
             </Stack>
           </Stack>
         ) : step === 'upload' ? (
           /* ---- Upload Mode ---- */
           <Stack spacing={3}>
-            <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>Last opp et bilde for ditt storyboard shot</Typography>
+            <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>{t('addShot.uploadPrompt')}</Typography>
             {selectedImage ? (
               <Box sx={{ textAlign: 'center' }}>
                 <Box component="img" src={selectedImage} sx={{ maxWidth: '100%', maxHeight: 300, borderRadius: '12px', border: '2px solid #3b82f6' }} />
-                <Button onClick={() => dispatch({ type: 'SET_IMAGE', url: null })} sx={{ mt: 2, color: '#6b7280' }}>Velg annet bilde</Button>
+                <Button onClick={() => dispatch({ type: 'SET_IMAGE', url: null })} sx={{ mt: 2, color: '#6b7280' }}>{t('addShot.chooseOther')}</Button>
               </Box>
             ) : (
               <Box
@@ -257,15 +259,15 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                   <circle cx="8.5" cy="8.5" r="1.5"/>
                   <path d="M21 15l-5-5L5 21"/>
                 </svg>
-                <Typography sx={{ fontSize: 14, color: '#9ca3af', mt: 2 }}>Klikk for å velge bilde</Typography>
-                <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.5 }}>Støtter JPG, PNG, WebP</Typography>
+                <Typography sx={{ fontSize: 14, color: '#9ca3af', mt: 2 }}>{t('addShot.clickToChoose')}</Typography>
+                <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.5 }}>{t('addShot.supports')}</Typography>
               </Box>
             )}
           </Stack>
         ) : step === 'storyboard' ? (
           <Stack spacing={3}>
             <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-              Velg storyboard-element som allerede er koblet til scenen
+              {t('addShot.storyboardPrompt')}
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 1.5, maxHeight: 320, overflow: 'auto', p: 0.5 }}>
               {storyboardCandidates.map((candidate) => {
@@ -309,7 +311,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
             </Box>
             {selectedStoryboardCandidate && (
               <Chip
-                label={`Valgt: ${selectedStoryboardCandidate.shotNumber} · ${selectedStoryboardCandidate.description}`}
+                label={t('addShot.selected', { shot: selectedStoryboardCandidate.shotNumber ?? '', desc: selectedStoryboardCandidate.description ?? '' })}
                 sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(16,185,129,0.14)', color: '#6ee7b7' }}
               />
             )}
@@ -317,11 +319,11 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
         ) : (
           /* ---- Reference Search Mode ---- */
           <Stack spacing={3}>
-            <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>Søk etter referansebilder fra Shot.cafe og andre kilder</Typography>
+            <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>{t('addShot.searchPrompt')}</Typography>
             <Stack direction="row" spacing={1}>
               <TextField
                 fullWidth
-                placeholder="Søk: Blade Runner, cinematographer: Roger Deakins, noir lighting..."
+                placeholder={t('addShot.searchPlaceholder')}
                 value={query}
                 onChange={(e) => dispatch({ type: 'SET_QUERY', query: e.target.value })}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -342,7 +344,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
                 data-testid="pmv-add-shot-search-submit"
                 sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', px: 3, '&:hover': { bgcolor: '#7c3aed' } }}
               >
-                {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Søk'}
+                {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : t('addShot.searchBtn')}
               </Button>
             </Stack>
 
@@ -400,7 +402,7 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={handleClose} sx={{ color: '#9ca3af' }}>Avbryt</Button>
+        <Button onClick={handleClose} sx={{ color: '#9ca3af' }}>{t('addShot.cancel')}</Button>
         {step !== 'chooseMode' && (
           <Button
             onClick={handleCreate}
@@ -417,10 +419,10 @@ const AddShotDialog: FC<AddShotDialogProps> = memo(function AddShotDialog({
             }}
           >
             {step === 'storyboard'
-              ? 'Legg til fra storyboard'
+              ? t('addShot.addFromStoryboard')
               : selectedImage
-                ? 'Legg til med bilde'
-                : 'Legg til uten bilde'}
+                ? t('addShot.addWithImage')
+                : t('addShot.addWithoutImage')}
           </Button>
         )}
       </DialogActions>
