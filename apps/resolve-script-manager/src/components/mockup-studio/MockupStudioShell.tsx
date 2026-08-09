@@ -768,7 +768,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
   };
   return (
     <div>
-      <SectionLabel>Merkevare</SectionLabel>
+      <Collapsible title="Merkevare">
       <Field label="Brand kit">
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <input value={bkName} onChange={(e) => setBkName(e.target.value)} placeholder="Navn på brand kit" style={{ ...textInput, flex: 1 }} />
@@ -802,6 +802,8 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
       <Field label="Accent 2 · sekundær (badges, gradient)">
         <ColorRow value={canvas.accent2} onChange={(v) => patchCanvas({ accent2: v })} />
       </Field>
+      </Collapsible>
+      <Collapsible title="Bakgrunn & stil">
       <Field label="Bakgrunn">
         <Segmented<MockupBackground>
           options={[['light', 'Lys'], ['dark', 'Mørk'], ['brand', 'Merkevare']]}
@@ -885,6 +887,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
       <p style={{ fontSize: FS_SM, color: C.inkSoft, lineHeight: 1.5, marginTop: 14 }}>
         To accent-tokens styrer hele malen. Velg en enhet eller tekst på lerretet for å redigere den.
       </p>
+      </Collapsible>
     </div>
   );
 }
@@ -925,12 +928,12 @@ function IllustrationInspector() {
 
   return (
     <div>
-      <SectionLabel>Illustrasjon</SectionLabel>
+      <Collapsible title="Illustrasjon">
 
       {doc.mindmap ? (
         <div style={{ marginBottom: 14 }}>
           <p style={{ fontSize: FS_SM, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 8px' }}>
-            🧠 Produkt-mind map (Mermaid). Rediger kilden — rendres i merkevarefargene.
+            Produkt-mind map (Mermaid). Rediger kilden — rendres i merkevarefargene.
           </p>
           <textarea
             value={doc.mindmap}
@@ -1027,6 +1030,7 @@ function IllustrationInspector() {
           </div>
         </div>
       ))}
+      </Collapsible>
     </div>
   );
 }
@@ -1353,6 +1357,21 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
 function SectionLabel({ children }: { children: React.ReactNode }) {
   // Skillelinje + luft over hver gruppe → panelet leses som distinkte seksjoner, ikke én vegg av knapper.
   return <div style={{ fontSize: FS_LABEL, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink, opacity: 0.82, marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}`, marginBottom: 10, fontWeight: 700 }}>{children}</div>;
+}
+
+// Kollapsbar seksjon: klikk overskriften for å skjule/vise gruppa → ryddigere, tett inspektør.
+function Collapsible({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', borderTop: `1px solid ${C.border}`, marginTop: 18, paddingTop: 14, paddingBottom: 2, cursor: 'pointer', fontFamily: C.font }}>
+        <span style={{ flex: 1, textAlign: 'left', fontSize: FS_LABEL, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink, opacity: 0.82, fontWeight: 700 }}>{title}</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.inkSoft} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}><path d="M9 6l6 6-6 6" /></svg>
+      </button>
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
