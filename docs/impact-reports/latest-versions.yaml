@@ -29,9 +29,16 @@ vendors:
 
   xcode-apple-sdk:
     product: Xcode / Apple SDK
-    version: "Xcode 27 beta 4 (27A5228h)"
-    source: "https://developer.apple.com/news/releases/rss/releases.rss"
+    channel: stable
+    version: "Xcode 26.6 (17F113)"
+    source: "https://developer.apple.com/news/releases/rss/releases.rss (first Stable/GA title matching /Xcode \\d/, excluding beta/RC per release-monitor/SKILL.md Stable-vs-Preview rule)"
     checked_at: "2026-08-09"
+    preview_channel_note: >
+      Xcode 27 beta 4 (27A5228h) is the current preview build (same feed).
+      Tracked here for awareness only, NOT as the diff-triggering baseline —
+      docs/evidence/2026-07-ios27-fm-symbols.yaml pins the project to the
+      iOS 26 / Xcode 26 FM surface until Xcode 27 ships stable. Promote to
+      the primary `version` field once Xcode 27 leaves beta.
 
   moodle:
     product: Moodle LMS
