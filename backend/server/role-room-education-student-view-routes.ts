@@ -142,6 +142,7 @@ export function createEducationStudentViewRouter(
     const asgRes = cohortId
       ? await pool.query(
           `SELECT a.id, a.title, a.brief, a.learning_goals, a.due_at, a.status,
+                  a.artifact_kind, a.artifact_view,
                   prod.title AS production_title, prod.project_id AS production_project_id,
                   sub.status AS sub_status, sub.grade AS grade, sub.feedback AS feedback,
                   sub.link AS link, sub.submitted_at AS submitted_at, sub.reviewed_at AS reviewed_at
@@ -210,6 +211,8 @@ export function createEducationStudentViewRouter(
         brief: (a.brief as string) ?? null,
         learningGoals: (a.learning_goals as string) ?? null,
         dueAt: isoOrNull(a.due_at),
+        artifactKind: (a.artifact_kind as string) ?? null,
+        artifactView: (a.artifact_view as string) ?? null,
         productionTitle: (a.production_title as string) ?? null,
         productionProjectId: (a.production_project_id as string) ?? null,
         submissionStatus: (a.sub_status as string) ?? "not_started",

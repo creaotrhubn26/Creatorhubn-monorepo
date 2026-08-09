@@ -48,6 +48,7 @@ export interface AssignmentView {
   dueAt: string | null;
   status: string;
   artifactKind: string | null;
+  artifactView: string | null;
   isArbeidskrav: boolean;
   isExam: boolean;
   vurderingsform: string | null;
@@ -105,6 +106,7 @@ function assignmentRowToView(r: Record<string, unknown>): AssignmentView {
     dueAt: isoOrNull(r.due_at),
     status: (r.status as string) ?? "draft",
     artifactKind: (r.artifact_kind as string) ?? null,
+    artifactView: (r.artifact_view as string) ?? null,
     isArbeidskrav: Boolean(r.is_arbeidskrav),
     isExam: Boolean(r.is_exam),
     vurderingsform: (r.vurderingsform as string) ?? null,
@@ -199,6 +201,7 @@ export function createEducationAssignmentsRouter(
     const body = (req.body ?? {}) as {
       title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
       learningGoals?: string; dueAt?: string | null; status?: string; artifactKind?: string | null;
+      artifactView?: string | null;
       isArbeidskrav?: boolean; vurderingsform?: string | null; courseId?: string | null; isExam?: boolean;
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -209,8 +212,8 @@ export function createEducationAssignmentsRouter(
       const id = newEntityId("edassign");
       const r = await pool.query(
         `INSERT INTO role_room_education_assignments
-           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status, artifact_kind, is_arbeidskrav, vurderingsform, course_id, is_exam)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status, artifact_kind, is_arbeidskrav, vurderingsform, course_id, is_exam, artifact_view)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING *, 0 AS submitted_count, 0 AS reviewed_count,
            (SELECT title FROM role_room_education_productions WHERE id = $4) AS production_title,
            (SELECT project_id FROM role_room_education_productions WHERE id = $4) AS production_project_id`,
@@ -219,6 +222,7 @@ export function createEducationAssignmentsRouter(
           body.brief?.trim() || null, body.learningGoals?.trim() || null,
           body.dueAt || null, status, (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null,
           body.isArbeidskrav === true, vurderingsform, body.courseId || null, body.isExam === true,
+          (typeof body.artifactView === "string" && body.artifactView.trim()) ? body.artifactView.trim() : null,
         ],
       );
       res.status(201).json({ assignment: assignmentRowToView(r.rows[0]) });
@@ -232,6 +236,7 @@ export function createEducationAssignmentsRouter(
     const body = (req.body ?? {}) as {
       title?: string; cohortId?: string | null; productionId?: string | null; brief?: string;
       learningGoals?: string; dueAt?: string | null; status?: string; artifactKind?: string | null;
+      artifactView?: string | null;
       isArbeidskrav?: boolean; vurderingsform?: string | null; courseId?: string | null; isExam?: boolean;
     };
     const status = typeof body.status === "string" && ASSIGNMENT_STATUSES.has(body.status) ? body.status : null;
@@ -251,6 +256,7 @@ export function createEducationAssignmentsRouter(
                 vurderingsform = COALESCE($12, vurderingsform),
                 course_id = COALESCE($13, course_id),
                 is_exam = COALESCE($14, is_exam),
+                artifact_view = COALESCE($15, artifact_view),
                 updated_at = now()
           WHERE id = $1 AND owner_user_id = $2
           RETURNING *,
@@ -272,6 +278,7 @@ export function createEducationAssignmentsRouter(
           vurderingsform,
           body.courseId ?? null,
           typeof body.isExam === "boolean" ? body.isExam : null,
+          typeof body.artifactView === "string" ? (body.artifactView.trim() || null) : null,
         ],
       );
       if (r.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
