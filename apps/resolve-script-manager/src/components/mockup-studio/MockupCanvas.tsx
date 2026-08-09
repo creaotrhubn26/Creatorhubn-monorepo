@@ -26,6 +26,7 @@ const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
 const TL_FS = 'clamp(10px, 0.72vw, 12.5px)'; // responsiv transport-tekst (matcher timeline)
 const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(28px, 2.1vw, 40px)', height: 'clamp(28px, 2.1vw, 40px)', borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
+const activeBtn: CSSProperties = { background: '#2563eb', borderColor: '#2563eb', color: '#fff' }; // aktiv tilstand (spiller/loop på)
 const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: TL_FS };
 // Ordentlige SVG-ikoner (ikke emoji) for transport.
 const FPS = 30;
@@ -496,8 +497,8 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         {/* Transport (under preview, ingen overlapp med zoom) */}
         <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', fontWeight: 600, fontSize: TL_FS, fontFamily: 'system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}><IcStart /></button>
-          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? <IcPause /> : <IcPlay />}</button>
-          <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}><IcLoop /></button>
+          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, ...(playing ? activeBtn : { background: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.28)' }) }}>{playing ? <IcPause /> : <IcPlay />}</button>
+          <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, ...(loop ? activeBtn : {}) }}><IcLoop /></button>
           <input type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)} onChange={(e) => scrubTo(Number(e.target.value) / 1000)} title="Dra playhead" style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} />
           <span title="Timecode (m:ss:ff · 30 fps) — , / . steg ett bilde" style={{ minWidth: 62, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{fmtTimecode((playT ?? 0) * tlDur)}</span>
           <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Hastighet" style={motionSel}>
