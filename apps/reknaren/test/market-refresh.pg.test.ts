@@ -94,4 +94,34 @@ describe('refresh + regenerate', () => {
     const signal = await db.query(`SELECT value_num FROM market_signals WHERE kind='fx_rate' AND signal_key='USD'`);
     expect(signal.rows.length).toBeGreaterThan(0);
   });
+
+  it('avvist kort forblir avvist etter en ny regenerering (dismiss overlever refresh)', async () => {
+    const userId = await ensureUser(db, 'dismiss@x.no', 'D');
+    const org = await createOrganization(db, { name: 'D AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    await db.query(
+      `INSERT INTO ledger_accounts (id, organization_id, account_number, name, account_type)
+       VALUES ($1,$2,'2240','Gjeld til kredittinstitusjoner','liability')`,
+      [newId(), org.id],
+    );
+    await postJournalEntry(db, {
+      organizationId: org.id,
+      actor: { userId, role: 'owner' },
+      entryDate: '2026-08-01',
+      description: 'Lån',
+      idempotencyKey: 'refresh-test:dismiss-laan-1',
+      lines: [
+        { accountNumber: '1920', debitMinor: 48000000n, creditMinor: 0n },
+        { accountNumber: '2240', debitMinor: 0n, creditMinor: 48000000n },
+      ],
+    });
+
+    await regenerateInsights(db, sources, org.id);
+    await db.query(`UPDATE insight_cards SET dismissed_at=now() WHERE organization_id=$1 AND kind='rate_debt'`, [org.id]);
+
+    // Kjør regenerering på nytt — samme regel (rate_debt) fyrer igjen med samme tall.
+    await regenerateInsights(db, sources, org.id);
+
+    const row = await db.query(`SELECT dismissed_at FROM insight_cards WHERE organization_id=$1 AND kind='rate_debt'`, [org.id]);
+    expect(row.rows[0].dismissed_at).not.toBeNull();
+  });
 });

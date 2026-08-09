@@ -87,7 +87,7 @@ export function buildInsights(input: {
       body: `Konsumprisene har steget ${pct} % siste 12 måneder. Vurder om egne priser og marginer henger med.`,
       impactMinor: null,
       signalRefs: [{ kind: input.kpi.kind, signalKey: input.kpi.signalKey, period: input.kpi.period }],
-      sources: [{ label: input.kpi.source, url: 'https://www.ssb.no/kpi' }],
+      sources: [{ label: 'SSB', url: 'https://www.ssb.no/kpi' }],
     });
   }
 

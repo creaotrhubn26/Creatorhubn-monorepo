@@ -9,7 +9,7 @@ import { buildInsights, rateTenThousandths, type FxInput } from './engine.js';
 import { getOrgExposure } from './exposure.js';
 import type { KpiSource } from './sources/kpi.js';
 import type { PolicyRateSource } from './sources/policy-rate.js';
-import type { FxWindowSource } from './sources/fx-window.js';
+import type { FxWindowSource, FxWindow } from './sources/fx-window.js';
 import { latestSignal, previousSignal, upsertSignal } from './signal-store.js';
 
 export interface MarketSources {
@@ -34,7 +34,12 @@ export async function refreshMarketSignals(db: Db, sources: MarketSources): Prom
   return { updated };
 }
 
-export async function regenerateInsights(db: Db, sources: MarketSources, organizationId: string): Promise<number> {
+export async function regenerateInsights(
+  db: Db,
+  sources: MarketSources,
+  organizationId: string,
+  fxCache?: Map<string, FxWindow | null>,
+): Promise<number> {
   const [policyRate, policyRatePrev, kpi, exposure] = await Promise.all([
     latestSignal(db, 'policy_rate', 'KPRA'),
     previousSignal(db, 'policy_rate', 'KPRA'),
@@ -47,7 +52,14 @@ export async function regenerateInsights(db: Db, sources: MarketSources, organiz
   const today = new Date().toISOString().slice(0, 10);
   const fx: FxInput[] = [];
   for (const currency of currencies) {
-    const w = await sources.fxWindow.window(currency, today, 90);
+    // Vinduet er org-uavhengig; gjenbruk på tvers av org-er i samme regenerateAllOrgs-kjøring om cache er gitt.
+    let w: FxWindow | null;
+    if (fxCache?.has(currency)) {
+      w = fxCache.get(currency)!;
+    } else {
+      w = await sources.fxWindow.window(currency, today, 90);
+      fxCache?.set(currency, w);
+    }
     if (!w) continue;
     // Persister dagens kurs som signal (periode = observasjonens dato).
     await upsertSignal(db, { source: 'norges_bank', kind: 'fx_rate', signalKey: currency, value: w.latest, unit: 'nok_per_unit', period: w.period });
@@ -70,7 +82,9 @@ export async function regenerateInsights(db: Db, sources: MarketSources, organiz
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    // Behold avviste kort; erstatt de aktive.
+    // Behold avviste kort (også tallene deres); erstatt de aktive. DELETE rammer kun
+    // ikke-avviste rader, så ON CONFLICT-grenen treffer bare fortsatt-avviste kort —
+    // IKKE nullstill dismissed_at der, ellers gjenoppstår avviste kort ved neste kjøring.
     await client.query(`DELETE FROM insight_cards WHERE organization_id=$1 AND dismissed_at IS NULL`, [organizationId]);
     for (const c of cards) {
       await client.query(
@@ -80,7 +94,7 @@ export async function regenerateInsights(db: Db, sources: MarketSources, organiz
            severity=EXCLUDED.severity, title=EXCLUDED.title, body=EXCLUDED.body,
            impact_minor=EXCLUDED.impact_minor, direction=EXCLUDED.direction,
            signal_refs=EXCLUDED.signal_refs, sources=EXCLUDED.sources,
-           valid_until=EXCLUDED.valid_until, dismissed_at=NULL, created_at=now()`,
+           valid_until=EXCLUDED.valid_until, created_at=now()`,
         [organizationId, c.kind, c.severity, c.title, c.body,
          c.impactMinor === null ? null : c.impactMinor.toString(), c.direction,
          JSON.stringify(c.signalRefs), JSON.stringify(c.sources)],
@@ -98,7 +112,8 @@ export async function regenerateInsights(db: Db, sources: MarketSources, organiz
 
 export async function regenerateAllOrgs(db: Db, sources: MarketSources): Promise<{ orgs: number; cards: number }> {
   const orgs = await db.query(`SELECT id FROM organizations`);
+  const fxCache = new Map<string, FxWindow | null>();
   let cards = 0;
-  for (const row of orgs.rows) cards += await regenerateInsights(db, sources, row.id as string);
+  for (const row of orgs.rows) cards += await regenerateInsights(db, sources, row.id as string, fxCache);
   return { orgs: orgs.rowCount ?? 0, cards };
 }

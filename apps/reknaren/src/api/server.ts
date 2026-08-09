@@ -2148,6 +2148,10 @@ export function createApiServer(deps: ApiDeps): express.Express {
     requireOrgPermission('reports.view'),
     async (req: AuthedRequest, res, next) => {
       try {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id ?? '')) {
+          res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Fant ikke kortet.' } });
+          return;
+        }
         await deps.db.query(`UPDATE insight_cards SET dismissed_at=now() WHERE id=$1 AND organization_id=$2`, [
           req.params.id,
           req.params.orgId,
