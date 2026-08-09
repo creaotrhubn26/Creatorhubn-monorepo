@@ -2461,7 +2461,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcases/:id/warmups", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     // Band-oppvarmingsrutiner er en team-/Enterprise-funksjon.
-    if (!(await requireTeamAccess(pool, s.userId, res))) return;
+    if (!(await requireTeamAccess(pool as unknown as import("pg").Pool, s.userId, res))) return;
     const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
     const steps = sanitizeSteps(req.body?.steps);
     if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
@@ -2969,7 +2969,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcases/:id/remind", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     // «Påminn bandet» er en team-/Enterprise-funksjon.
-    if (!(await requireTeamAccess(pool, s.userId, res))) return;
+    if (!(await requireTeamAccess(pool as unknown as import("pg").Pool, s.userId, res))) return;
     const id = str(req.params.id, 64);
     const message = str(req.body?.message, 600);
     if (!message) return res.status(400).json({ error: "message_required" });
