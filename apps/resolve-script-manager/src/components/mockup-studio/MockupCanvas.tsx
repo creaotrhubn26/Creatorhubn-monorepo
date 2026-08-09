@@ -48,6 +48,10 @@ const IcLoop = () => (
     <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
   </svg>
 );
+const IcEnd = () => <Svg><path d="M6 5 13 12 6 19z" /><rect x="14.6" y="5" width="2.4" height="14" rx="1" /></Svg>;
+const chevSvg = { width: '62%', height: '62%', viewBox: '0 0 24 24', fill: 'none', stroke: ICON, strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { display: 'block' } };
+const IcStepBack = () => <svg {...chevSvg}><path d="M14 6l-6 6 6 6" /></svg>;
+const IcStepFwd = () => <svg {...chevSvg}><path d="M10 6l6 6-6 6" /></svg>;
 
 export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const doc = useMockupStudio((s) => s.doc);
@@ -336,6 +340,10 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       // Frame-steg (Resolve: , = ett bilde bak, . = ett bilde fram)
       if (e.key === ',') { e.preventDefault(); stepFrame(-1); return; }
       if (e.key === '.') { e.preventDefault(); stepFrame(1); return; }
+      // Avspiller-hurtigtaster: mellomrom = play/pause, Home/End = start/slutt (stale-fri via playRef)
+      if (e.key === ' ') { if ((document.activeElement as HTMLElement | null)?.tagName === 'BUTTON') return; e.preventDefault(); if (playRef.current != null) stopPlay(); else playTyping(); return; }
+      if (e.key === 'Home') { e.preventDefault(); scrubTo(0); return; }
+      if (e.key === 'End') { e.preventDefault(); scrubTo(1); return; }
 
       const sel = st.selection;
       if (sel.kind !== 'device' && sel.kind !== 'text') return;
@@ -496,8 +504,12 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       <div style={{ height: timelineH, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
         {/* Transport (under preview, ingen overlapp med zoom) */}
         <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', fontWeight: 600, fontSize: TL_FS, fontFamily: 'system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}><IcStart /></button>
-          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, ...(playing ? activeBtn : { background: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.28)' }) }}>{playing ? <IcPause /> : <IcPlay />}</button>
+          <button onClick={() => scrubTo(0)} title="Til start (Home)" style={motionBtn}><IcStart /></button>
+          <button onClick={() => stepFrame(-1)} title="Ett bilde tilbake (,)" style={motionBtn}><IcStepBack /></button>
+          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause (mellomrom)' : 'Spill av (mellomrom)'} style={{ ...motionBtn, ...(playing ? activeBtn : { background: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.28)' }) }}>{playing ? <IcPause /> : <IcPlay />}</button>
+          <button onClick={() => stepFrame(1)} title="Ett bilde fram (.)" style={motionBtn}><IcStepFwd /></button>
+          <button onClick={() => scrubTo(1)} title="Til slutt (End)" style={motionBtn}><IcEnd /></button>
+          <span style={{ width: 1, alignSelf: 'stretch', margin: '2px 2px', background: 'rgba(255,255,255,0.12)' }} />
           <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, ...(loop ? activeBtn : {}) }}><IcLoop /></button>
           <input type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)} onChange={(e) => scrubTo(Number(e.target.value) / 1000)} title="Dra playhead" style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} />
           <span title="Timecode (m:ss:ff · 30 fps) — , / . steg ett bilde" style={{ minWidth: 62, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{fmtTimecode((playT ?? 0) * tlDur)}</span>
