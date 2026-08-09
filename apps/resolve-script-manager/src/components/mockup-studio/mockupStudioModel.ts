@@ -68,6 +68,42 @@ export interface MockupDeviceSlot {
 /** Skrive-animasjon: humanisert tempo + felt-kontekst + payoff. */
 export type MockupFieldStyle = 'plain' | 'search' | 'chat' | 'url' | 'document' | 'code' | 'terminal';
 
+/** Ett klipp på animasjons-timelinen (NLE-blokk på et spor). */
+export interface TimelineClip {
+  id: string;
+  label: string;
+  track: number;                 // rad-indeks (spor)
+  start: number;                 // sekunder fra 0
+  len: number;                   // varighet i sekunder
+  kind: 'type' | 'reveal';       // skrive-animasjon eller inntoning
+  ref?: string;                  // device/text-id klippet styrer
+  ease?: 'linear' | 'smooth' | 'in' | 'out';
+}
+export interface MockupTimeline { duration: number; clips: TimelineClip[]; }
+
+/** Utled default-klipp fra dokumentets animerbare elementer (om ingen timeline). */
+export function deriveTimeline(doc: MockupDoc): MockupTimeline {
+  if (doc.timeline?.clips.length) return doc.timeline;
+  const clips: TimelineClip[] = [];
+  let t = 0;
+  doc.devices.forEach((d, i) => {
+    clips.push({ id: `rev_${d.id}`, label: `${d.variant} inn`, track: 0, start: i * 0.25, len: 0.8, kind: 'reveal', ref: d.id });
+    if (d.typeAnim?.text && d.threeD) {
+      const len = Math.max(1.2, d.typeAnim.text.length * 0.14);
+      clips.push({ id: `type_${d.id}`, label: `skriv: ${d.typeAnim.text.slice(0, 16)}`, track: 1, start: t + 0.6, len, kind: 'type', ref: d.id, ease: 'smooth' });
+      t += len + 0.4;
+    }
+  });
+  if (doc.canvas.scene?.typeAnim?.text) {
+    const len = Math.max(1.2, doc.canvas.scene.typeAnim.text.length * 0.14);
+    clips.push({ id: 'type_scene', label: `skriv: ${doc.canvas.scene.typeAnim.text.slice(0, 16)}`, track: 1, start: 0.4, len, kind: 'type', ref: 'scene', ease: 'smooth' });
+    t = Math.max(t, len + 0.4);
+  }
+  doc.texts.forEach((tx, i) => clips.push({ id: `rev_${tx.id}`, label: 'tekst inn', track: 2, start: 0.8 + i * 0.2, len: 0.7, kind: 'reveal', ref: tx.id }));
+  const duration = Math.max(3, ...clips.map((c) => c.start + c.len)) + 0.5;
+  return { duration, clips };
+}
+
 /** Ett-klikks skrive-scenarier (setter tekst + felt + payoff ferdig). */
 export const TYPE_PRESETS: { id: string; label: string; cfg: TypeAnimCfg }[] = [
   { id: 'search', label: '🔍 Søk → resultat', cfg: { text: 'beste leads i oslo', field: 'search', placeholder: 'Søk…', payoff: true } },
@@ -263,6 +299,8 @@ export interface MockupDoc {
   updatedAt: number;
   /** Prosjektstatus (§ prosjektoversikt). Default 'draft'. */
   status?: MockupProjectStatus;
+  /** Multi-spor animasjons-timeline (NLE): klipp arrangert på spor over tid. */
+  timeline?: MockupTimeline;
   /** Mal-definerte slots (slot-motor): kanonisk geometri + begrensninger. */
   slots?: SlotDef[];
   /**

@@ -16,6 +16,7 @@ import { parseMermaidMindmap } from './mockupMindmap';
 import { deviceHeight, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
+import { MockupTimelinePanel } from './MockupTimelinePanel';
 
 /** Preview-oppløsning (bredde i px). Lavere = raskere re-render ved skriving. */
 const PREVIEW_W = 1200;
@@ -284,6 +285,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const overlayCursor = dragging ? 'grabbing' : 'grab';
 
   return (
+    <>
     <div
       ref={viewportRef}
       onWheel={onWheel}
@@ -422,6 +424,12 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         <button onClick={() => zoomBtn(1.1)} aria-label="Zoom inn" title="Zoom inn (+)" style={zoomBtnStyle}>+</button>
       </div>
     </div>
+    {hasTyping && (
+      <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <MockupTimelinePanel playT={playT} onScrub={scrubTo} />
+      </div>
+    )}
+    </>
   );
 }
 
