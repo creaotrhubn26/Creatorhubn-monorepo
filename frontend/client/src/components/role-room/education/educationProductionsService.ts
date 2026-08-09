@@ -1,14 +1,15 @@
 /**
  * educationProductionsService.ts — studentproduksjoner (lag: Role Room-kobling).
  *
- * En studentproduksjon ER et ekte Role Room-prosjekt. createProduction()
- * oppretter derfor FØRST et ekte casting_projects-prosjekt via den vanlige
- * roleRoomService.createProject-flyten, og lagrer så koblingen (kull ↔ prosjekt)
- * i utdannings-tabellen. Slik gjenbrukes hele Role Room-verktøyet.
+ * En studentproduksjon ER et ekte Role Room-prosjekt. createProduction() poster
+ * KUN til /education/productions (uten projectId) — serveren oppretter da et
+ * ekte casting_projects-prosjekt server-side og lagrer koblingen (kull ↔ prosjekt)
+ * i utdannings-tabellen. (Tidligere kalte klienten roleRoomService.createProject
+ * FØRST via roleRoomFetch, men den leser bare auth-token fra localStorage —
+ * ikke education-sesjonens authSessionService — og feilet derfor med 401.)
  */
 
 import authSessionService from '../services/authSessionService';
-import { createProject } from '../../../services/roleRoomService';
 
 export interface Production {
   id: string;
@@ -45,12 +46,10 @@ export const educationProductionsService = {
     return data.productions ?? [];
   },
   async createProduction(input: { title: string; cohortId?: string }): Promise<Production> {
-    // 1) Ekte Role Room-prosjekt (gjenbruker createProject med all validering/sync).
-    const project = await createProject({ name: input.title });
-    // 2) Lagre kull ↔ prosjekt-koblingen.
+    // Serveren oppretter det ekte casting_projects-prosjektet når projectId er utelatt.
     const data = await req<{ production: Production }>(`${BASE}/productions`, {
       method: 'POST',
-      body: JSON.stringify({ title: input.title, cohortId: input.cohortId || undefined, projectId: project.id }),
+      body: JSON.stringify({ title: input.title, cohortId: input.cohortId || undefined }),
     });
     return data.production;
   },
