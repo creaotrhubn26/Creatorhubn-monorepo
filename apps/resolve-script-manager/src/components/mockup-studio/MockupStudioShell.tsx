@@ -516,7 +516,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Venstre: nettside-capture + legg til */}
         <div style={{ width: 'clamp(190px, 15vw, 300px)', borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
-          <SectionLabel>Oppsett</SectionLabel>
+          <Collapsible title="Oppsett">
           <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Format (flate)</div>
           <select
             value={MOCKUP_FORMATS.find((f) => f.w === doc.canvas.w && f.h === doc.canvas.h)?.id ?? ''}
@@ -548,8 +548,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           </div>
           <button onClick={() => setShowSwitch(true)} style={{ ...listBtn, marginBottom: 8 }} title="Bytt mal — innholdet overføres der det passer">Bytt mal…</button>
 
-          <div style={{ height: 14 }} />
-          <SectionLabel>Fra nettside</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Fra nettside" defaultOpen={false}>
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -611,8 +611,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             </>
           )}
 
-          <div style={{ height: 14 }} />
-          <SectionLabel>Fra simulator</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Fra simulator" defaultOpen={false}>
           <button onClick={() => void findSims()} style={{ ...listBtn, marginBottom: 6 }} title="Fang den kjørende appen fra en bootet iOS-simulator">Finn simulatorer</button>
           {sims.map((s) => (
             <button
@@ -625,25 +625,25 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             </button>
           ))}
 
-          <div style={{ height: 18 }} />
-          <SectionLabel>Legg til enhet</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Legg til enhet">
           {(Object.keys(DEVICE_LABELS) as MockupDeviceVariant[]).map((v) => (
             <button key={v} onClick={() => store.addDevice(v)} style={{ ...listBtn, marginBottom: 6 }}>+ {DEVICE_LABELS[v]}</button>
           ))}
-          <div style={{ height: 16 }} />
-          <SectionLabel>Legg til tekst</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Legg til tekst">
           {(Object.keys(TEXT_ROLE_LABELS) as MockupTextRole[]).map((r) => (
             <button key={r} onClick={() => store.addText(r)} style={{ ...listBtn, marginBottom: 6 }}>+ {TEXT_ROLE_LABELS[r]}</button>
           ))}
 
-          <div style={{ height: 18 }} />
-          <SectionLabel>Elementer</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Elementer">
           {(Object.keys(ELEMENT_LABELS) as MockupElementKind[]).map((k) => (
             <button key={k} onClick={() => store.addTexts(makeElement(k))} style={{ ...listBtn, marginBottom: 6 }} title="Sett inn forhåndsgodkjent modul">+ {ELEMENT_LABELS[k]}</button>
           ))}
 
-          <div style={{ height: 18 }} />
-          <SectionLabel>Kits</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Kits" defaultOpen={false}>
           <input
             value={kitName}
             onChange={(e) => setKitName(e.target.value)}
@@ -660,8 +660,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             </div>
           ))}
 
-          <div style={{ height: 18 }} />
-          <SectionLabel>Versjoner</SectionLabel>
+          </Collapsible>
+          <Collapsible title="Versjoner" defaultOpen={false}>
           <input
             value={versionName}
             onChange={(e) => setVersionName(e.target.value)}
@@ -677,6 +677,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
               <button onClick={() => doDeleteVersion(v.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett versjon" aria-label="Slett versjon">✕</button>
             </div>
           ))}
+          </Collapsible>
         </div>
 
         {/* Midt: lerret */}
