@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useMockupStudio } from './mockupStudioStore';
 import { type LibraryMeta } from './mockupLibraryDb';
 import { ingestImage } from './mockupLibraryIngest';
-import { PRESENTATIONS } from './mockupStudioModel';
+import { PRESENTATIONS, prettyName } from './mockupStudioModel';
 
 const C = { ink: '#eef1f8', inkSoft: '#9aa0b4', border: 'rgba(255,255,255,0.1)', panel: '#171b28', accent: '#22d3ee' };
 const btn: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', border: `1px solid ${C.border}`, borderRadius: 6, padding: '5px 8px', fontSize: 'clamp(11px,0.8vw,13px)', cursor: 'pointer', fontWeight: 600 };
@@ -145,7 +145,7 @@ export function MockupLibraryPanel() {
           <button style={{ ...chip, width: '100%', marginTop: 2, background: 'rgba(34,211,238,0.10)', color: C.accent, borderColor: C.accent, fontWeight: 700 }}
             title="Bygg en komplett one-pager: grid + navn-labels + overskrift + merkevare"
             onClick={() => {
-              const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => ({ assetId: (m as LibraryMeta).id, label: (m as LibraryMeta).name }));
+              const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => ({ assetId: (m as LibraryMeta).id, label: prettyName((m as LibraryMeta).name) }));
               void buildOnePager(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny' });
             }}>✦ Bygg one-pager</button>
           {hoverPreset && (() => {

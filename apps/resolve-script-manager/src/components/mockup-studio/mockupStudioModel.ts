@@ -193,6 +193,13 @@ export interface MockupTextSlot {
   /** Bokstavavstand i px (for eyebrow/tag-caps). */
   tracking: number;
   uppercase: boolean;
+  /** Eid av en galleri-fremvisning (arrangeLibrary pris/navn-label). Ryddes ved neste fremvisning. */
+  genArrange?: boolean;
+}
+
+/** Pen-formater et bibliotek-filnavn til label: «kebab-detroit» → «Kebab Detroit». */
+export function prettyName(s: string): string {
+  return s.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Bakgrunns-modus (§1.3/§6): lys, mørk eller merkevare-tonet. */
@@ -495,6 +502,8 @@ export interface MockupImageSlot {
   fit: 'cover' | 'contain';
   rotation: number;       // grader
   shadow: boolean;
+  /** Eid av en galleri-fremvisning (arrangeLibrary). Ryddes ved neste fremvisning → ingen stabling. */
+  genArrange?: boolean;
 }
 
 export function makeImage(image: string, partial: Partial<MockupImageSlot> = {}): MockupImageSlot {

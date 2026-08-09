@@ -351,9 +351,13 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   arrangeLibrary: async (items, presetId, opts) => {
     if (!items.length) return;
     const preset = PRESENTATIONS.find((pr) => pr.id === presetId) ?? PRESENTATIONS[0];
-    const { canvas } = get().doc;
+    // Rydd forrige galleri-arrangement (genArrange-eide bilder + labels) → ingen stabling ved bytte.
+    const cur = get().doc;
+    get().pushHistory();
+    get().setDocSilent({ ...cur, images: (cur.images ?? []).filter((im) => !im.genArrange), texts: cur.texts.filter((t) => !t.genArrange) });
+    const canvas = get().doc.canvas;
     const cells = preset.layout(items.length, canvas.w, canvas.h, opts);
-    const showLabels = opts?.showLabels ?? items.some((it) => !!it.label); // vis labels om oppgitt
+    const showLabels = opts?.showLabels ?? items.some((it) => !!it.label);
     const labelSize = opts?.labelSize ?? 30;
     const labelH = showLabels ? Math.round(labelSize * 1.35) : 0;
     for (let i = 0; i < items.length; i++) {
@@ -361,12 +365,11 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
       const rotated = c.rotation != null;
       await get().placeLibraryImage(items[i].assetId); // legger fritt bilde + selecter det
       const sel = get().selection;
-      if (sel.kind === 'image') get().patchImage(sel.id, { x: c.x, y: c.y, w: c.w, h: rotated ? c.h : c.h - labelH, radius: opts?.radius ?? 18, shadow: true, fit: 'cover', rotation: c.rotation ?? 0 });
-      // Label (pris) under upright celler; hoppes over på roterte (kollasje = rene foto).
+      if (sel.kind === 'image') get().patchImage(sel.id, { x: c.x, y: c.y, w: c.w, h: rotated ? c.h : c.h - labelH, radius: opts?.radius ?? 18, shadow: true, fit: 'cover', rotation: c.rotation ?? 0, genArrange: true });
       if (!rotated && labelH && items[i].label) {
         get().addText('tag');
         const ts = get().selection;
-        if (ts.kind === 'text') get().patchText(ts.id, { text: items[i].label as string, x: c.x, y: c.y + (c.h - labelH) + 6, w: c.w, size: labelSize, weight: 700, color: opts?.labelColor ?? '#1A1A1A', align: 'left' });
+        if (ts.kind === 'text') get().patchText(ts.id, { text: items[i].label as string, x: c.x, y: c.y + (c.h - labelH) + 6, w: c.w, size: labelSize, weight: 700, color: opts?.labelColor ?? '#1A1A1A', align: 'left', genArrange: true });
       }
     }
     get().select({ kind: 'canvas' });
