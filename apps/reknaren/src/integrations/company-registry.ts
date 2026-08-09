@@ -18,6 +18,7 @@ export interface CompanyProfile {
   deletedDate?: string | null; // slettedato
   foundedDate?: string | null; // stiftelsesdato
   address?: { street?: string; postalCode?: string; city?: string };
+  naceCode?: string | null; // NACE-bransjekode (næringskode1)
 }
 
 export interface CompanyRegistry {
@@ -60,6 +61,7 @@ export class BrregCompanyRegistry implements CompanyRegistry {
         slettedato?: string;
         stiftelsesdato?: string;
         forretningsadresse?: { adresse?: string[]; postnummer?: string; poststed?: string };
+        naeringskode1?: { kode?: string };
       };
       const addr = b.forretningsadresse;
       return {
@@ -73,6 +75,7 @@ export class BrregCompanyRegistry implements CompanyRegistry {
         forcedLiquidation: b.underTvangsavviklingEllerTvangsopplosning === true,
         deletedDate: b.slettedato ?? null,
         foundedDate: b.stiftelsesdato ?? null,
+        naceCode: b.naeringskode1?.kode ?? null,
         ...(addr
           ? {
               address: {
