@@ -24,6 +24,11 @@ CreatorHub-plattformen / Reknaren / Pondus), hvilken vendor-flate, og
 risiko-fokus vs. mulighets-fokus. Ikke lever bred analyse av alt når brukeren
 ville hatt dybde på ett system. (Gjelder ikke autonome cron-/cloud-kjøringer.)
 
+**Modell-disiplin:** mekanisk arbeid = scripts (null modell); henting/
+kondensering per vendor = Haiku-subagenter i parallell; symbol-validering =
+Sonnet; verdikt/migrering/forslag = sterkeste modell. Se Model Tiering i
+skill-pakkens SKILL.md.
+
 **Output-kontrakt:** token-effektivt, null svada. Hvert forslag = hva (ny
 vendor-funksjon m/ kilde) + hvor (system + fil-peker) + hvorfor/gevinst (én
 setning) + størrelse. Mangler en del → dropp forslaget. Analyse = verdikt

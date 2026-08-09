@@ -376,6 +376,23 @@ risk-focus vs. opportunity-focus. Depth on the chosen focus beats breadth
 across everything. Skip this only when the user already specified the focus,
 or in autonomous cron/cloud runs (they follow their own prompt).
 
+## Model Tiering (cost discipline)
+
+Match model to step complexity — light to heavy. When delegating to
+subagents (Agent tool) or choosing a model, use:
+
+| Step | Tier |
+|---|---|
+| Mechanical extraction (versions, tags, RSS, symbol grep, baselines) | **Scripts — no model.** `scripts/` does this; never burn tokens on what grep does |
+| Fetch + condense a release note / doc page per vendor | **Haiku** (cheap fan-out, one subagent per vendor) |
+| api-validator exact-symbol checks against a doc | **Sonnet** |
+| Impact verdict (GO/HOLD), compatibility solving, migration plan, product proposals | **Strongest available** (session model — this is where being wrong costs real money) |
+
+Fan out the cheap steps in parallel; reserve the strong model for synthesis
+and verdicts. The weekly cloud agent runs sonnet-5 end-to-end (quiet runs are
+a handful of tool calls; analysis runs need the reasoning). PR Guardian and
+the release-monitor cron are pure bash — zero model cost by design.
+
 ## Output Contract (token discipline)
 
 Be token-efficient. No filler, no generic advice, no changelog dumps.
