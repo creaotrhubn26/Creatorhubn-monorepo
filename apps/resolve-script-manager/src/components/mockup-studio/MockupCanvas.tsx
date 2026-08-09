@@ -38,18 +38,18 @@ const fmtTimecode = (sec: number): string => {
 };
 const ICON = '#eef1f6';
 const Svg = ({ children }: { children: ReactNode }) => (
-  <svg width="62%" height="62%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
+  <svg width="76%" height="76%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
 );
 const IcStart = () => <Svg><rect x="6" y="5" width="2.4" height="14" rx="1" /><path d="M19 5 10 12l9 7z" /></Svg>;
 const IcPlay = () => <Svg><path d="M8 5v14l11-7z" /></Svg>;
 const IcPause = () => <Svg><rect x="7" y="5" width="3.4" height="14" rx="1" /><rect x="13.6" y="5" width="3.4" height="14" rx="1" /></Svg>;
 const IcLoop = () => (
-  <svg width="62%" height="62%" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+  <svg width="76%" height="76%" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
     <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
   </svg>
 );
 const IcEnd = () => <Svg><path d="M6 5 13 12 6 19z" /><rect x="14.6" y="5" width="2.4" height="14" rx="1" /></Svg>;
-const chevSvg = { width: '62%', height: '62%', viewBox: '0 0 24 24', fill: 'none', stroke: ICON, strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { display: 'block' } };
+const chevSvg = { width: '76%', height: '76%', viewBox: '0 0 24 24', fill: 'none', stroke: ICON, strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { display: 'block' } };
 const IcStepBack = () => <svg {...chevSvg}><path d="M14 6l-6 6 6 6" /></svg>;
 const IcStepFwd = () => <svg {...chevSvg}><path d="M10 6l6 6-6 6" /></svg>;
 
