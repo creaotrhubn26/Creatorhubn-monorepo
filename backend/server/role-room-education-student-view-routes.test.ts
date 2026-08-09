@@ -47,6 +47,10 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
       if (sql.includes("UPDATE role_room_education_student_sessions")) {
         return { rows: sessionStudentId ? [{ student_id: sessionStudentId }] : [] };
       }
+      if (sql.includes("FROM role_room_education_students s") && sql.includes("JOIN users u")) {
+        // resolveEducationStudentByUser: ingen ekte-konto-student-kobling i disse testene.
+        return { rows: [] };
+      }
       if (sql.includes("FROM role_room_education_students s")) {
         return studentOwner === null
           ? { rows: [] }
@@ -144,11 +148,35 @@ describe("education student view + claim routes", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("Bearer uten studentId → 400", async () => {
+  it("Bearer uten studentId, ikke selv en student → 404 no_student_profile", async () => {
     const res = makeRes();
     await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
       { headers: { authorization: "Bearer owner-tok" }, query: {}, params: {} }, res);
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error).toBe("no_student_profile");
+  });
+
+  it("Bearer-ekte-konto-student uten studentId → egen visning m/ canOpenProduction=true", async () => {
+    const sessions2 = new Map([["bear-1", { userId: "u1", email: "s@moodle.a", name: "", role: "user", loginAt: "" }]]);
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("FROM role_room_education_students") && sql.includes("JOIN users u")) return { rows: [{ id: "stud-1" }] };
+      if (sql.includes("FROM role_room_education_students") && sql.includes("WHERE") && !sql.includes("JOIN users")) return { rows: [{ id: "stud-1", name: "Sam", cohort_id: "k1", owner_user_id: "t1", email: "s@moodle.a" }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions2 as any }));
+    const res = makeRes();
+    await runChain(H(rs, "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer bear-1" }, query: {}, params: {} }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.canOpenProduction).toBe(true);
+  });
+
+  it("x-student-token-vei → canOpenProduction=false", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ sessionStudentId: "st1" }).pool), "GET", "/education/student/view"),
+      { headers: { "x-student-token": "stok-1" }, query: {}, params: {} }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.canOpenProduction).toBe(false);
   });
 
   it("ingen auth → 401", async () => {

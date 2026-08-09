@@ -298,23 +298,29 @@ export function createEducationStudentViewRouter(
         if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
         const student = await loadStudent(studentId);
         if (!student) { res.status(404).json({ error: "not_found" }); return; }
-        res.json(await assembleView(student));
+        res.json({ ...(await assembleView(student)), canOpenProduction: false });
         return;
       }
 
-      // Vei 2: Bearer (eier-faglærer / super admin preview) + ?studentId=.
+      // Vei 2: Bearer.
       const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
       const session = await resolveUser(pool, deps.activeSessions, bearer);
       if (!session?.userId) { res.status(401).json({ error: "unauthorized" }); return; }
-      const studentId = typeof req.query.studentId === "string" ? req.query.studentId : "";
-      if (!studentId) { res.status(400).json({ error: "student_id_required" }); return; }
-      const student = await loadStudent(studentId);
-      if (!student) { res.status(404).json({ error: "not_found" }); return; }
-      if (String(student.owner_user_id) !== session.userId && !isSuperAdmin(session)) {
-        res.status(404).json({ error: "not_found" });
+      const queryStudentId = typeof req.query.studentId === "string" ? req.query.studentId : "";
+      if (!queryStudentId) {
+        // Vei 2a: brukeren ER en education-student (ekte konto) → egen visning.
+        const ownId = await resolveEducationStudentByUser(pool, session.userId);
+        if (!ownId) { res.status(404).json({ error: "no_student_profile" }); return; }
+        const ownStudent = await loadStudent(ownId);
+        if (!ownStudent) { res.status(404).json({ error: "not_found" }); return; }
+        res.json({ ...(await assembleView(ownStudent)), canOpenProduction: true });
         return;
       }
-      res.json(await assembleView(student));
+      // Vei 2b: faglærer/super-admin preview (?studentId=) — uendret.
+      const student = await loadStudent(queryStudentId);
+      if (!student) { res.status(404).json({ error: "not_found" }); return; }
+      if (String(student.owner_user_id) !== session.userId && !isSuperAdmin(session)) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ ...(await assembleView(student)), canOpenProduction: false });
     } catch (err) {
       if (isMissingTable(err)) { res.json({ student: null, productions: [], assignments: [] }); return; }
       console.error("[education-student-view] failed:", (err as Error).message);
@@ -328,7 +334,12 @@ export function createEducationStudentViewRouter(
   // token inn i selve casting-planner-API-et (trygt, isolert).
   router.get("/education/student/production/:productionId", async (req, res) => {
     try {
-      const studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      let studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      if (!studentId) {
+        const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+        const session = await resolveUser(pool, deps.activeSessions, bearer);
+        if (session?.userId) studentId = await resolveEducationStudentByUser(pool, session.userId);
+      }
       if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
       const productionId = req.params.productionId;
 
