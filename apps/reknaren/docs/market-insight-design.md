@@ -60,8 +60,13 @@ beregnet kroner-effekt. Eksempler for v1:
   → «Renta opp 0,25 → driftskreditten din koster ~2 400 kr mer/år».
 - **KPI × kostnad:** KPI-/prisvekst × brukerens topp-kostnadskategorier
   → «Prisvekst i din varekost ~4,1 %».
-- **Valuta × eksponering:** valutakurs-endring × eksponering (utenlandsk-valuta-
-  bilag; Norges Bank-kurs brukes allerede) → import/eksport-effekt.
+- **Valuta-timing (fremover):** dagens NOK-kurs mot 90-dagers median. Kronen svak
+  → «Utenlandskjøp i EUR er dyrere nå enn snittet — ikke-hastende innkjøp kan vente
+  (~X kr mer på et typisk månedskjøp)». Kronen sterk → «rimeligere nå».
+- **Valuta-retrospektiv (dine faktiske kjøp):** effektiv kurs betalt på bokførte
+  utenlandskjøp siste 90 dager (fra `original_amount_minor` + bokført NOK) mot Norges
+  Banks snittkurs → «På dine EUR-kjøp betalte du ~X kr mer enn snittet». Eksakt, ikke
+  anslag. Informativt, aldri bebreidende («ingen kan time kursen perfekt»).
 
 Claude brukes **ikke** i v1. Fra v2: kun til å oppsummere/rangere nyheter og
 skrive forklaringsteksten *rundt* de deterministiske tallene — finner aldri opp
@@ -137,7 +142,8 @@ med periode, én sparkline-strek (siste 12 mnd).
 
 - **v1 (trygg kjerne):** offentlig ryggrad (Norges Bank rente + valuta, SSB KPI)
   → deterministiske kort i Framover + Oversikt «Verdt å vite». NACE via Brreg.
-  Tre regler (rente/gjeld, KPI/kostnad, valuta/eksponering). Null KI, null nyhet.
+  Fire regler (rente/gjeld, KPI/kostnad, valuta-timing fremover, valuta-retrospektiv
+  mot faktiske kjøp). FX-vindu fra Norges Bank (90-dager). Null KI, null nyhet.
 - **v2:** E24 RSS + Claude oppsummer/ranger → «Marked»-fane + nyhet i kort.
 - **v3:** veke-digest e-post; Regjeringen RSS skatte-/frist-varsel;
   Finansavisen/DN ved lisens.
