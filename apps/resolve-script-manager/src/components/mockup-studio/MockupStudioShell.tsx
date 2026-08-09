@@ -100,6 +100,10 @@ const C = {
   font: '-apple-system, system-ui, "Segoe UI", sans-serif',
 };
 
+// Browser-test-modus (satt av browserTauriShim når Tauri mangler) — start rett i editoren
+// uten onboarding, så E2E kan teste bibliotek/bilde-element. Umulig i native/prod.
+const IS_BROWSER_TEST = typeof window !== 'undefined' && !!(window as unknown as { __BROWSER_TEST__?: boolean }).__BROWSER_TEST__;
+
 // Responsiv skalering: vw-basert clamp → skalerer kontinuerlig for alle skjermstørrelser
 // (liten laptop → 5K) uten breakpoints eller JS-lyttere. min holder lesbarhet på små
 // skjermer, max hindrer gigantisk tekst på ultrabrede.
@@ -139,7 +143,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [showCapture, setShowCapture] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
-  const [view, setView] = useState<'projects' | 'editor'>('projects');
+  const [view, setView] = useState<'projects' | 'editor'>(IS_BROWSER_TEST ? 'editor' : 'projects');
 
   // URL-capture (P2)
   const [url, setUrl] = useState('');
