@@ -324,6 +324,12 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     const q = req.query as Record<string, string>;
     const openidUrl = typeof q.openid_configuration === "string" ? q.openid_configuration : "";
     const regToken = typeof q.registration_token === "string" ? q.registration_token : "";
+    // LMS-en (Moodle/Canvas) åpner denne URL-en i en iframe → close-siden MÅ
+    // kunne rammes. Backend setter globalt X-Frame-Options: SAMEORIGIN; overstyr
+    // for KUN dette endepunktet (viser bare en close-page + postMessage, ingen
+    // sesjon/PII). Ellers: «refused to connect» i LMS-ens registrerings-iframe.
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
     const errPage = (msg: string) =>
       `<!doctype html><html><body style="font-family:sans-serif;padding:24px"><h3>Registrering feilet</h3><p>${msg}</p></body></html>`;
     try {
