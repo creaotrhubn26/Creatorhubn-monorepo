@@ -416,6 +416,34 @@ pub async fn ios_sim_swipe(udid: String, x1: f64, y1: f64, x2: f64, y2: f64) -> 
     Ok(true)
 }
 
+/// Skriv tekst i det fokuserte feltet i simulatoren via idb (`idb ui text`).
+/// Kombiner med ios_sim_describe (finn feltet) + ios_sim_tap (fokus) for full
+/// interaksjon: appen drives på ekte, og opptaket blir device-skjermen.
+#[tauri::command]
+pub async fn ios_sim_text(udid: String, text: String) -> Result<bool, String> {
+    let idb = find_idb().ok_or("idb er ikke installert (kreves for tekst-input)")?;
+    let out = Command::new(&idb)
+        .args(["ui", "text", "--udid", &udid, &text])
+        .output().map_err(|e| format!("idb text: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("text-input feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(true)
+}
+
+/// Trykk en enkelt-tast i simulatoren (idb keycode) — f.eks. Enter (40) for submit.
+#[tauri::command]
+pub async fn ios_sim_key(udid: String, keycode: u32) -> Result<bool, String> {
+    let idb = find_idb().ok_or("idb er ikke installert (kreves for tastetrykk)")?;
+    let out = Command::new(&idb)
+        .args(["ui", "key", "--udid", &udid, &keycode.to_string()])
+        .output().map_err(|e| format!("idb key: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("key feilet: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(true)
+}
+
 /// Kjør osascript og returner trimmet stdout (eller None ved feil).
 fn osascript(script: &str) -> Option<String> {
     let out = Command::new("/usr/bin/osascript").args(["-e", script]).output().ok()?;

@@ -1077,6 +1077,8 @@ pub fn run() {
             capture_sources::ios_sim_describe,
             capture_sources::ios_sim_tap,
             capture_sources::ios_sim_swipe,
+            capture_sources::ios_sim_text,
+            capture_sources::ios_sim_key,
             broll::higgsfield_account_status,
             blender::render_blender_cinematic,
             broll::generate_broll_clip,
