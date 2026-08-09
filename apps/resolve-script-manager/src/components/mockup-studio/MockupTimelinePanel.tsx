@@ -13,6 +13,7 @@ const TRACK_H = 26;
 const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst'];
 const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed' };
 const tlZoomBtn: CSSProperties = { width: 15, height: 13, lineHeight: '11px', padding: 0, borderRadius: 3, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', cursor: 'pointer', fontSize: 11 };
+const clipBtn: CSSProperties = { padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#d7dbe4', cursor: 'pointer', fontSize: 10, fontWeight: 600 };
 
 export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetOut }: { playT: number | null; onScrub: (t: number) => void; inT: number; outT: number; onSetIn: (v: number) => void; onSetOut: (v: number) => void }) {
   const doc = useMockupStudio((s) => s.doc);
@@ -22,7 +23,9 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
   const railRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);           // horisontal timeline-zoom (1×–8×)
+  const [selClip, setSelClip] = useState<string | null>(null); // valgt klipp (for slett/ripple)
   const nTracks = Math.max(3, ...tl.clips.map((c) => c.track + 1));
+  const sel = tl.clips.find((c) => c.id === selClip) ?? null;
 
   // Cmd/Ctrl + hjul over timelinen → zoom mot cursor (holder punktet under cursor fast).
   const onRailWheel = (e: React.WheelEvent) => {
@@ -113,12 +116,54 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
     window.addEventListener('pointerup', () => ac.abort(), { once: true });
   };
 
+  // Resize venstre kant → flytt start, hold slutt fast (trim inn).
+  const beginClipTrimLeft = (clip: TimelineClip, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const r = railRef.current?.getBoundingClientRect();
+    if (!r) return;
+    pushHistory();
+    const sx = e.clientX, end = clip.start + clip.len, startSt = clip.start;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      const dSec = ((ev.clientX - sx) / r.width) * dur;
+      const rawStart = Math.max(0, Math.min(end - 0.3, startSt + dSec));
+      const st = Math.min(end - 0.3, snap(rawStart, clip.id));
+      const start = Math.round(Math.max(0, st) * 100) / 100;
+      writeClips(tl.clips.map((c) => (c.id === clip.id ? { ...c, start, len: Math.round((end - start) * 100) / 100 } : c)));
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
+
+  // Slett valgt klipp (element animerer ikke lenger); ripple = skyv senere klipp på samme spor venstre.
+  const deleteClip = (ripple: boolean) => {
+    if (!sel) return;
+    pushHistory();
+    let clips = tl.clips.filter((c) => c.id !== sel.id);
+    if (ripple) clips = clips.map((c) => (c.track === sel.track && c.start > sel.start ? { ...c, start: Math.round(Math.max(0, c.start - sel.len) * 100) / 100 } : c));
+    writeClips(clips);
+    setSelClip(null);
+  };
+
   // Tid-ticks (hvert 0.5s).
   const ticks: number[] = [];
   for (let s = 0; s <= dur; s += 0.5) ticks.push(s);
 
   return (
     <div style={{ background: 'rgba(12,15,22,0.92)', borderTop: '1px solid rgba(255,255,255,0.1)', color: '#c7cdd8', font: '600 10px system-ui, sans-serif', userSelect: 'none' }}>
+      {/* Klipp-handlinger (vises når et klipp er valgt) */}
+      <div style={{ height: 22, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8, borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 10 }}>
+        {sel ? (
+          <>
+            <span style={{ opacity: 0.75, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sel.label} · {sel.start.toFixed(1)}–{(sel.start + sel.len).toFixed(1)}s</span>
+            <button onClick={() => deleteClip(false)} title="Fjern klippet (elementet animerer ikke lenger)" style={clipBtn}>Slett</button>
+            <button onClick={() => deleteClip(true)} title="Fjern og skyv senere klipp på sporet til venstre" style={clipBtn}>Ripple-slett</button>
+            <button onClick={() => setSelClip(null)} style={clipBtn}>Fjern valg</button>
+          </>
+        ) : (
+          <span style={{ opacity: 0.4 }}>Velg et klipp for å trimme/slette · dra kant = trim · , / . = frame-steg</span>
+        )}
+      </div>
       <div style={{ display: 'flex' }}>
         {/* Spor-etiketter */}
         <div style={{ width: 66, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
@@ -147,19 +192,25 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
           {tl.clips.map((c) => (
             <div
               key={c.id}
-              onPointerDown={(e) => beginClipDrag(c, e)}
+              onPointerDown={(e) => { setSelClip(c.id); beginClipDrag(c, e); }}
               title={`${c.label} · ${c.start.toFixed(1)}s–${(c.start + c.len).toFixed(1)}s`}
               style={{
                 position: 'absolute', left: `${(c.start / dur) * 100}%`, width: `${(c.len / dur) * 100}%`,
                 top: 16 + c.track * TRACK_H + 3, height: TRACK_H - 6,
-                background: CLIP_COLORS[c.kind], borderRadius: 4, border: '1px solid rgba(255,255,255,0.25)',
-                display: 'flex', alignItems: 'center', paddingLeft: 5, overflow: 'hidden', whiteSpace: 'nowrap',
-                color: '#fff', fontSize: 9, cursor: 'grab', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                background: CLIP_COLORS[c.kind], borderRadius: 4,
+                border: c.id === selClip ? '1.5px solid #fff' : '1px solid rgba(255,255,255,0.25)',
+                display: 'flex', alignItems: 'center', paddingLeft: 8, overflow: 'hidden', whiteSpace: 'nowrap',
+                color: '#fff', fontSize: 9, cursor: 'grab', boxShadow: c.id === selClip ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
               }}
             >
               {c.label}
               <div
-                onPointerDown={(e) => beginClipResize(c, e)}
+                onPointerDown={(e) => { setSelClip(c.id); beginClipTrimLeft(c, e); }}
+                title="Dra for å trimme start"
+                style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.25)' }}
+              />
+              <div
+                onPointerDown={(e) => { setSelClip(c.id); beginClipResize(c, e); }}
                 title="Dra for å endre varighet"
                 style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.25)' }}
               />

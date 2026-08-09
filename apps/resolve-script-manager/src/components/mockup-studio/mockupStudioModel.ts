@@ -60,7 +60,7 @@ export interface MockupDeviceSlot {
     rotX: number; rotY: number; rotZ: number; light?: string; zoom?: number; kbLayout?: 'mac' | 'windows';
     /** Keyframe-graf: property → keyframes (t 0..1 over timeline, v = verdi). Overstyrer
      *  rotX/rotY/rotZ/zoom under avspilling (bezier-aktig smoothstep-interpolasjon). */
-    kf?: Record<string, { t: number; v: number }[]>;
+    kf?: Record<string, Keyframe[]>;
   };
   /**
    * Skrive-animasjon: teksten «skrives» tegn-for-tegn på skjermen mens riktig
@@ -86,8 +86,18 @@ export interface TimelineClip {
 }
 export interface MockupTimeline { duration: number; clips: TimelineClip[]; in?: number; out?: number; }
 
-/** Interpolér en keyframe-kurve ved tid t (0..1) med smoothstep. Null hvis tom. */
-export function sampleKf(kfs: { t: number; v: number }[] | undefined, t: number): number | null {
+/** Per-keyframe retime-modus: interpolasjon på segmentet SOM FORLATER dette keyframet. */
+export type KfEase = 'linear' | 'smooth' | 'in' | 'out' | 'hold';
+export interface Keyframe { t: number; v: number; e?: KfEase }
+const easeSeg = (mode: KfEase | undefined, p: number): number =>
+  mode === 'linear' ? p
+  : mode === 'in' ? p * p
+  : mode === 'out' ? 1 - (1 - p) * (1 - p)
+  : mode === 'hold' ? 0                       // step: hold verdien til neste keyframe
+  : p * p * (3 - 2 * p);                       // smooth (default) = smoothstep
+
+/** Interpolér en keyframe-kurve ved tid t (0..1). Ærer per-keyframe ease. Null hvis tom. */
+export function sampleKf(kfs: Keyframe[] | undefined, t: number): number | null {
   if (!kfs || kfs.length === 0) return null;
   const s = [...kfs].sort((a, b) => a.t - b.t);
   if (t <= s[0].t) return s[0].v;
@@ -95,8 +105,7 @@ export function sampleKf(kfs: { t: number; v: number }[] | undefined, t: number)
   for (let i = 0; i < s.length - 1; i++) {
     if (t >= s[i].t && t <= s[i + 1].t) {
       const p = (t - s[i].t) / Math.max(1e-6, s[i + 1].t - s[i].t);
-      const e = p * p * (3 - 2 * p); // smoothstep (bezier-aktig)
-      return s[i].v + (s[i + 1].v - s[i].v) * e;
+      return s[i].v + (s[i + 1].v - s[i].v) * easeSeg(s[i].e, p);
     }
   }
   return s[s.length - 1].v;
@@ -144,7 +153,7 @@ export const TYPE_PRESETS: { id: string; label: string; cfg: TypeAnimCfg }[] = [
   { id: 'url', label: 'Åpne side', cfg: { text: 'creatorhubn.com', field: 'url', payoff: true } },
   { id: 'code', label: 'Skriv kode', cfg: { text: 'const leads = await api.fetch();', field: 'code', keyPop: true } },
   { id: 'terminal', label: 'Terminal', cfg: { text: 'npm run deploy', field: 'terminal', payoff: true } },
-  { id: 'form', label: '📝 Skriv i felt', cfg: { text: 'daniel@creatorhubn.com', field: 'plain', placeholder: 'E-post', correct: true } },
+  { id: 'form', label: 'Skriv i felt', cfg: { text: 'daniel@creatorhubn.com', field: 'plain', placeholder: 'E-post', correct: true } },
 ];
 export interface TypeAnimCfg {
   text: string;

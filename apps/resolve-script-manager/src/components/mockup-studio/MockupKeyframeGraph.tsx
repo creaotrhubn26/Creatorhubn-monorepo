@@ -6,9 +6,17 @@
  * animerer (roterer/zoomer) over tid.
  */
 import { useRef, useState, type CSSProperties } from 'react';
-import { sampleKf } from './mockupStudioModel';
+import { sampleKf, type Keyframe, type KfEase } from './mockupStudioModel';
 
-type KfMap = Record<string, { t: number; v: number }[]>;
+type KfMap = Record<string, Keyframe[]>;
+const EASES: { id: KfEase; label: string }[] = [
+  { id: 'linear', label: 'Lineær' },
+  { id: 'smooth', label: 'Myk' },
+  { id: 'in', label: 'Inn' },
+  { id: 'out', label: 'Ut' },
+  { id: 'hold', label: 'Hold' },
+];
+const EASE_COLOR: Record<KfEase, string> = { linear: '#38bdf8', smooth: '#eef1f6', in: '#f59e0b', out: '#a855f7', hold: '#ef4444' };
 const PROPS: { id: string; label: string; min: number; max: number }[] = [
   { id: 'rotY', label: 'Snu (rotY)', min: -60, max: 60 },
   { id: 'rotX', label: 'Vipp (rotX)', min: -55, max: 55 },
@@ -19,9 +27,12 @@ const W = 260, H = 120, PAD = 8;
 
 export function MockupKeyframeGraph({ value, playT, onChange }: { value: KfMap | undefined; playT: number | null; onChange: (kf: KfMap | undefined) => void }) {
   const [prop, setProp] = useState('rotY');
+  const [selIdx, setSelIdx] = useState<number | null>(null); // valgt keyframe (for ease/retime)
   const svgRef = useRef<SVGSVGElement>(null);
   const spec = PROPS.find((p) => p.id === prop)!;
   const kfs = (value?.[prop] ?? []).slice().sort((a, b) => a.t - b.t);
+  const selKf = selIdx != null ? kfs[selIdx] : null;
+  const setEase = (mode: KfEase) => { if (selIdx == null) return; write(kfs.map((k, i) => (i === selIdx ? { ...k, e: mode } : k))); };
 
   const gx = (t: number) => PAD + t * (W - PAD * 2);
   const gy = (v: number) => H - PAD - ((v - spec.min) / (spec.max - spec.min)) * (H - PAD * 2);
@@ -43,6 +54,7 @@ export function MockupKeyframeGraph({ value, playT, onChange }: { value: KfMap |
 
   const dragKf = (idx: number, e: React.PointerEvent) => {
     e.stopPropagation();
+    setSelIdx(idx);
     const ac = new AbortController();
     const move = (ev: PointerEvent) => {
       const { px, py } = evtXY(ev);
@@ -85,14 +97,26 @@ export function MockupKeyframeGraph({ value, playT, onChange }: { value: KfMap |
         {playT != null && <line x1={gx(playT)} x2={gx(playT)} y1={0} y2={H} stroke="#f43f5e" strokeWidth="1.2" />}
         {/* keyframe-punkter */}
         {kfs.map((k, i) => (
-          <circle key={i} cx={gx(k.t)} cy={gy(k.v)} r="5" fill="#eef1f6" stroke="#2563eb" strokeWidth="2"
-            style={{ cursor: 'grab' }} onPointerDown={(e) => dragKf(i, e)} onDoubleClick={(e) => { e.stopPropagation(); write(kfs.filter((_, j) => j !== i)); }} />
+          <circle key={i} cx={gx(k.t)} cy={gy(k.v)} r={i === selIdx ? 6 : 5} fill={EASE_COLOR[k.e ?? 'smooth']} stroke={i === selIdx ? '#22c55e' : '#2563eb'} strokeWidth={i === selIdx ? 2.5 : 2}
+            style={{ cursor: 'grab' }} onPointerDown={(e) => dragKf(i, e)} onDoubleClick={(e) => { e.stopPropagation(); setSelIdx(null); write(kfs.filter((_, j) => j !== i)); }} />
         ))}
       </svg>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Klikk = legg til keyframe · dra = flytt · dobbeltklikk = fjern</div>
+      {/* Retime: ease-modus for valgt keyframe (segmentet som forlater det) */}
+      {selKf ? (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, opacity: 0.6 }}>Retime:</span>
+          {EASES.map((es) => (
+            <button key={es.id} onClick={() => setEase(es.id)}
+              style={{ ...easeBtn, background: (selKf.e ?? 'smooth') === es.id ? '#2563eb' : 'rgba(255,255,255,0.06)', color: (selKf.e ?? 'smooth') === es.id ? '#fff' : '#c7cdd8' }}>{es.label}</button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Klikk = legg til · dra = flytt · dobbeltklikk = fjern · velg punkt for retime</div>
+      )}
     </div>
   );
 }
 
 const selStyle: CSSProperties = { flex: 1, background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '4px 6px', fontSize: 12 };
 const clrStyle: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' };
+const easeBtn: CSSProperties = { border: '1px solid rgba(255,255,255,0.14)', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 600, cursor: 'pointer' };
