@@ -137,6 +137,14 @@ async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): P
 // IMS LTI Dynamic Registration: verktøyets selvbeskrivelse (OpenID client
 // registration request + lti-tool-configuration-claim). Delt sannhet for
 // registrerings-flyten. Gjenbruker samme endepunkter/scopes som launchen.
+// Bestemmer hvor en LTI-launch lander. Deep-linket produksjon vinner; ellers
+// ruter student-rollen til student-«Min side», faglærer til lærer-workspacet.
+export function landingMode(educationRole: string, messageType: string, customProject: string): "student" | "education" | "production" {
+  if (messageType !== "LtiDeepLinkingRequest" && customProject) return "production";
+  if (messageType === "LtiDeepLinkingRequest") return "education";
+  return educationRole === "student" ? "student" : "education";
+}
+
 export function buildToolConfiguration(clientName = "The Role Room"): Record<string, unknown> {
   const loginUri = `${TOOL_BASE}/lti/login`;
   const launchUri = `${TOOL_BASE}/lti/launch`;
@@ -565,8 +573,9 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         res.redirect(`${APP_URL}?${dlParams.toString()}`);
         return;
       }
-      // Landing: inn i utdannings-workspacet (launch-kontekst lagret for grade-push).
-      const redirectParams = new URLSearchParams({ mode: "education", lti_launch: launchId });
+      // Landing: student → «Min side», faglærer → utdannings-workspace.
+      const mode = identity.educationRole === "student" ? "student" : "education";
+      const redirectParams = new URLSearchParams({ mode, lti_launch: launchId });
       if (sessionToken) redirectParams.set("rr_session", sessionToken);
       res.redirect(`${APP_URL}?${redirectParams.toString()}`);
     } catch (err) {
