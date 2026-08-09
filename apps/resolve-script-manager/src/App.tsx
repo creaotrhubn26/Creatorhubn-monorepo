@@ -577,7 +577,7 @@ export default function App() {
       return;
     }
     try {
-      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent").replace(/\/$/, "");
       const res = await fetch(`${base}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });

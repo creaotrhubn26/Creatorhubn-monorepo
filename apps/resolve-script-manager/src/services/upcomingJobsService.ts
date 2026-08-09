@@ -46,7 +46,7 @@ export interface UpcomingJobsResponse {
 function getBaseUrl(): string {
   const s = loadSettings();
   // Bytt /api/post-agent til root for Role Room-endepunkter
-  const base = s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent";
+  const base = s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent";
   return base.replace(/\/api\/post-agent\/?$/, "");
 }
 
