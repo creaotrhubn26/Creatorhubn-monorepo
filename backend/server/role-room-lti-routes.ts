@@ -71,6 +71,19 @@ async function ensureNrpsColumn(pool: Pool): Promise<void> {
   nrpsColumnEnsured = true;
 }
 
+// Lat, idempotent selvheler for dynamic-registration-kolonnene (speiler
+// ensureNrpsColumn). Gjør registrering robust uavhengig av om migrasjon 0446
+// alt har kjørt på plattformen (Render auto-migrate kan henge etter en deploy).
+let platformColsEnsured = false;
+async function ensurePlatformCols(pool: Pool): Promise<void> {
+  if (platformColsEnsured) return;
+  await pool.query(`ALTER TABLE role_room_lti_platforms ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'approved'`);
+  await pool.query(`ALTER TABLE role_room_lti_platforms ADD COLUMN IF NOT EXISTS product_family TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_platforms ADD COLUMN IF NOT EXISTS registered_via TEXT`);
+  await pool.query(`ALTER TABLE role_room_lti_platforms ALTER COLUMN owner_user_id DROP NOT NULL`);
+  platformColsEnsured = true;
+}
+
 // Alle plattform-vendte URLer (jwks/token/nrps/ags-lineitems/scores) kommer fra
 // enten admin-registrering ELLER LMS-claims → må valideres før fetch: HTTPS
 // (ingen plaintext-exfil / http-internt) + ikke privat/loopback-host (SSRF-lite).
@@ -339,7 +352,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
     try {
       const cfgRes = await fetchPlatform(openidUrl);
-      if (!cfgRes.ok) { res.status(400).send(errPage("Kunne ikke hente plattformens OpenID-config.")); return; }
+      if (!cfgRes.ok) { res.status(400).send(errPage(`Kunne ikke hente plattformens OpenID-config (HTTP ${cfgRes.status}).`)); return; }
       const cfg = (await cfgRes.json()) as Record<string, unknown>;
       const issuer = String(cfg.issuer ?? "");
       const authUrl = String(cfg.authorization_endpoint ?? "");
@@ -360,13 +373,14 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         },
         body: JSON.stringify(buildToolConfiguration()),
       });
-      if (!regRes.ok) { res.status(400).send(errPage("Plattformen avviste registreringen.")); return; }
+      if (!regRes.ok) { res.status(400).send(errPage(`Plattformen avviste registreringen (HTTP ${regRes.status}).`)); return; }
       const reg = (await regRes.json()) as Record<string, unknown>;
       const clientId = String(reg.client_id ?? "");
       const toolCfg = reg["https://purl.imsglobal.org/spec/lti-tool-configuration"] as { deployment_id?: string } | undefined;
       const deploymentId = toolCfg?.deployment_id ?? null;
       if (!clientId) { res.status(400).send(errPage("Registrerings-svaret manglet client_id.")); return; }
 
+      await ensurePlatformCols(pool);
       await pool.query(
         `INSERT INTO role_room_lti_platforms
            (id, owner_user_id, name, issuer, client_id, deployment_id, auth_login_url, token_url, jwks_url, status, registered_via, product_family)
@@ -392,7 +406,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       );
     } catch (err) {
       console.error("[lti] dynamic registration failed:", (err as Error).message);
-      res.status(400).send(errPage("Uventet feil under registrering."));
+      res.status(400).send(errPage(`Uventet feil under registrering: ${(err as Error).message}`));
     }
   });
 
