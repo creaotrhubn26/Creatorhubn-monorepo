@@ -33,6 +33,8 @@ import {
   resolveBaseBg,
   mixHex,
   hexToRgb,
+  deriveTimeline,
+  clipLocalT,
 } from './mockupStudioModel';
 
 // ── Bilde-lasting (cache per src) ───────────────────────────────────────────
@@ -879,6 +881,11 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   if (!ctx) return canvas;
   ctx.scale(scale, scale);
   const t = opts?.anim?.t;
+  // Multi-spor timeline: hvert elements skrive-klipp gir sin egen lokale t
+  // (klippene styrer timing uavhengig). Null når statisk (ingen animasjon).
+  const tl = t != null ? deriveTimeline(doc) : null;
+  const typeTFor = (ref: string): number | undefined =>
+    tl ? (clipLocalT(tl, ref, 'type', t as number) ?? undefined) : (t ?? undefined);
 
   if (!opts?.transparent) {
     fillBackground(ctx, doc);
@@ -888,7 +895,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
 
   // Lifestyle-scene-modus: fotografisk scene + warpet skjermbilde (tekst/logo over).
   if (doc.canvas.scene?.id) {
-    await drawScene(ctx, doc, t ?? undefined);
+    await drawScene(ctx, doc, doc.canvas.scene?.typeAnim?.text ? typeTFor('scene') : (t ?? undefined));
     doc.texts.forEach((tx) => drawText(ctx, doc, tx));
     await drawLogo(ctx, doc.canvas);
     if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
@@ -914,7 +921,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
       ctx.globalAlpha *= rev.alpha;
       ctx.translate(cx, cy + rev.ty); ctx.scale(rev.scale, rev.scale); ctx.translate(-cx, -cy);
     }
-    await drawDevice(ctx, doc, dev, t ?? undefined);
+    await drawDevice(ctx, doc, dev, dev.typeAnim?.text ? typeTFor(dev.id) : (t ?? undefined));
     ctx.restore();
   }
   doc.texts.forEach((tx, i) => {

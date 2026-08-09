@@ -81,6 +81,18 @@ export interface TimelineClip {
 }
 export interface MockupTimeline { duration: number; clips: TimelineClip[]; }
 
+/**
+ * Lokal, eased progresjon (0..1) for et elements klipp ved global playhead-tid
+ * tGlobal (0..1 over hele timelinen). Null hvis elementet ikke har et slikt klipp.
+ */
+export function clipLocalT(tl: MockupTimeline, ref: string, kind: TimelineClip['kind'], tGlobal: number): number | null {
+  const clip = tl.clips.find((c) => c.ref === ref && c.kind === kind);
+  if (!clip) return null;
+  const local = Math.max(0, Math.min(1, (tGlobal * tl.duration - clip.start) / Math.max(0.01, clip.len)));
+  const e = clip.ease ?? 'linear';
+  return e === 'smooth' ? local * local * (3 - 2 * local) : e === 'in' ? local * local : e === 'out' ? 1 - (1 - local) * (1 - local) : local;
+}
+
 /** Utled default-klipp fra dokumentets animerbare elementer (om ingen timeline). */
 export function deriveTimeline(doc: MockupDoc): MockupTimeline {
   if (doc.timeline?.clips.length) return doc.timeline;
