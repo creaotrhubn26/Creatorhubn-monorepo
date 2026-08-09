@@ -10,7 +10,7 @@
  * for fart; eksporten kjører full oppløsning.
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { rasterizeMockup, measureTextHeight } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { deviceHeight, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
@@ -26,6 +26,18 @@ const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
 const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.08)', color: '#e6e9ef', cursor: 'pointer', fontSize: 12 };
 const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: 11 };
+// Ordentlige SVG-ikoner (ikke emoji) for transport.
+const Svg = ({ children }: { children: ReactNode }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ display: 'block' }}>{children}</svg>
+);
+const IcStart = () => <Svg><rect x="6" y="5" width="2.4" height="14" rx="1" /><path d="M19 5 10 12l9 7z" /></Svg>;
+const IcPlay = () => <Svg><path d="M8 5v14l11-7z" /></Svg>;
+const IcPause = () => <Svg><rect x="7" y="5" width="3.4" height="14" rx="1" /><rect x="13.6" y="5" width="3.4" height="14" rx="1" /></Svg>;
+const IcLoop = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+    <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
+  </svg>
+);
 
 export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const doc = useMockupStudio((s) => s.doc);
@@ -305,42 +317,6 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', background: '#05070c',
       }}
     >
-      {hasTyping && (
-        <div
-          style={{
-            position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5,
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.14)',
-            background: 'rgba(12,15,22,0.86)', color: '#e6e9ef', font: '600 11px system-ui, sans-serif',
-            backdropFilter: 'blur(10px)', boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {/* Transport */}
-          <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}>⏮</button>
-          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? '⏸' : '▶'}</button>
-          <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>🔁</button>
-          {/* Linjal / scrubber m/ playhead */}
-          <input
-            type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)}
-            onChange={(e) => scrubTo(Number(e.target.value) / 1000)}
-            title="Dra playhead — scrub gjennom animasjonen"
-            style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }}
-          />
-          <span style={{ minWidth: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{Math.round((playT ?? 0) * 100)}%</span>
-          {/* Hastighet */}
-          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Avspillings-hastighet" style={motionSel}>
-            {[0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
-          </select>
-          {/* Retime / speed-ramp */}
-          <select value={easing} onChange={(e) => setEasing(e.target.value as typeof easing)} title="Speed-ramp (retime-kurve)" style={motionSel}>
-            <option value="linear">Lineær</option>
-            <option value="smooth">Myk (inn/ut)</option>
-            <option value="in">Akselerér</option>
-            <option value="out">Retardér</option>
-          </select>
-        </div>
-      )}
       <div
         ref={wrapRef}
         onPointerDown={beginPan}
@@ -438,6 +414,20 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     </div>
     {hasTyping && (
       <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* Transport (under preview, ingen overlapp med zoom) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', font: '600 11px system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}><IcStart /></button>
+          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? <IcPause /> : <IcPlay />}</button>
+          <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}><IcLoop /></button>
+          <input type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)} onChange={(e) => scrubTo(Number(e.target.value) / 1000)} title="Dra playhead" style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} />
+          <span style={{ minWidth: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{Math.round((playT ?? 0) * 100)}%</span>
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Hastighet" style={motionSel}>
+            {[0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
+          </select>
+          <select value={easing} onChange={(e) => setEasing(e.target.value as typeof easing)} title="Speed-ramp (retime)" style={motionSel}>
+            <option value="linear">Lineær</option><option value="smooth">Myk</option><option value="in">Akselerér</option><option value="out">Retardér</option>
+          </select>
+        </div>
         <MockupTimelinePanel playT={playT} onScrub={scrubTo} inT={inT} outT={outT} onSetIn={setInT} onSetOut={setOutT} />
       </div>
     )}

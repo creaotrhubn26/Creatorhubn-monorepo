@@ -5,13 +5,14 @@
  * (deriveTimeline). Per-klipp-timing inn i render-motoren er neste steg — nå
  * driver playheaden hele anim.t.
  */
-import { useRef } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { useMockupStudio } from './mockupStudioStore';
 import { deriveTimeline, type TimelineClip, type MockupTimeline } from './mockupStudioModel';
 
 const TRACK_H = 26;
 const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst'];
 const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed' };
+const tlZoomBtn: CSSProperties = { width: 15, height: 13, lineHeight: '11px', padding: 0, borderRadius: 3, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', cursor: 'pointer', fontSize: 11 };
 
 export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetOut }: { playT: number | null; onScrub: (t: number) => void; inT: number; outT: number; onSetIn: (v: number) => void; onSetOut: (v: number) => void }) {
   const doc = useMockupStudio((s) => s.doc);
@@ -19,7 +20,22 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
   const pushHistory = useMockupStudio((s) => s.pushHistory);
   const tl: MockupTimeline = deriveTimeline(doc);
   const railRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);           // horisontal timeline-zoom (1×–8×)
   const nTracks = Math.max(3, ...tl.clips.map((c) => c.track + 1));
+
+  // Cmd/Ctrl + hjul over timelinen → zoom mot cursor (holder punktet under cursor fast).
+  const onRailWheel = (e: React.WheelEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const sc = scrollRef.current; if (!sc) return;
+    const rect = sc.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const frac = (sc.scrollLeft + cursorX) / (rect.width * zoom); // innholds-fraksjon under cursor
+    const nz = Math.max(1, Math.min(8, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    setZoom(nz);
+    requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollLeft = frac * rect.width * nz - cursorX; });
+  };
 
   const dur = tl.duration;
 
@@ -106,13 +122,17 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
       <div style={{ display: 'flex' }}>
         {/* Spor-etiketter */}
         <div style={{ width: 66, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ height: 16 }} />
+          <div style={{ height: 16, display: 'flex', alignItems: 'center', gap: 2, paddingLeft: 4 }}>
+            <button onClick={() => setZoom((z) => Math.max(1, z / 1.4))} title="Zoom ut (timeline)" style={tlZoomBtn}>−</button>
+            <button onClick={() => setZoom((z) => Math.min(8, z * 1.4))} title="Zoom inn (timeline) · Cmd/Ctrl+hjul" style={tlZoomBtn}>+</button>
+          </div>
           {Array.from({ length: nTracks }, (_, i) => (
             <div key={i} style={{ height: TRACK_H, display: 'flex', alignItems: 'center', paddingLeft: 8, opacity: 0.7, fontSize: 10 }}>{TRACK_LABELS[i] ?? `Spor ${i + 1}`}</div>
           ))}
         </div>
-        {/* Rail: linjal + spor + klipp + playhead */}
-        <div ref={railRef} style={{ position: 'relative', flex: 1, cursor: 'text' }} onPointerDown={(e) => { e.stopPropagation(); scrubFromEvent(e.clientX); }}>
+        {/* Rail: linjal + spor + klipp + playhead (zoombar + scrollbar horisontalt) */}
+        <div ref={scrollRef} onWheel={onRailWheel} style={{ flex: 1, overflowX: zoom > 1.001 ? 'auto' : 'hidden', overflowY: 'hidden' }}>
+        <div ref={railRef} style={{ position: 'relative', width: `${zoom * 100}%`, minWidth: '100%', cursor: 'text' }} onPointerDown={(e) => { e.stopPropagation(); scrubFromEvent(e.clientX); }}>
           {/* Linjal */}
           <div style={{ position: 'relative', height: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             {ticks.map((s) => (
@@ -155,6 +175,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
           <div style={{ position: 'absolute', left: `${(playT ?? 0) * 100}%`, top: 0, bottom: 0, width: 1.5, background: '#f43f5e', pointerEvents: 'none', boxShadow: '0 0 6px rgba(244,63,94,0.8)' }}>
             <div style={{ position: 'absolute', top: -1, left: -4, width: 9, height: 7, background: '#f43f5e', clipPath: 'polygon(0 0,100% 0,50% 100%)' }} />
           </div>
+        </div>
         </div>
       </div>
     </div>

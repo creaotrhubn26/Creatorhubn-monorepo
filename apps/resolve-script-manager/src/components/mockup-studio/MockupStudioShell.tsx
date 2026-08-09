@@ -829,8 +829,8 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
             <input type="text" value={ta?.text ?? ''} onChange={(e) => setTa(e.target.value ? { text: e.target.value } : null)} placeholder="Skrive-animasjon på skjermen (valgfritt)" style={{ ...textInput, marginTop: 6 }} />
             {ta?.text && <>
               <select value={ta.field ?? 'plain'} onChange={(e) => setTa({ field: e.target.value as import('./mockupStudioModel').MockupFieldStyle })} style={{ ...textInput, marginTop: 6 }}>
-                <option value="plain">Enkel</option><option value="search">🔍 Søkefelt</option><option value="chat">💬 Chat</option>
-                <option value="url">🌐 URL-linje</option><option value="document">📄 Dokument</option><option value="code">⌨︎ Kode</option><option value="terminal">▸ Terminal</option>
+                <option value="plain">Enkel</option><option value="search">Søkefelt</option><option value="chat">Chat</option>
+                <option value="url">URL-linje</option><option value="document">Dokument</option><option value="code">Kode</option><option value="terminal">Terminal</option>
               </select>
               <input type="text" value={ta.placeholder ?? ''} onChange={(e) => setTa({ placeholder: e.target.value || undefined })} placeholder="Placeholder (valgfri)" style={{ ...textInput, marginTop: 6 }} />
               <label style={chk}><input type="checkbox" checked={!!ta.keyPop} onChange={(e) => setTa({ keyPop: e.target.checked })} /> Tastetrykk-pop</label>
@@ -1065,7 +1065,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
   // Fang skjermen fra en bootet iOS-simulator som device-innhold (ekte app-skjerm).
   const runSimCapture = async () => {
     if (simBusy) return;
-    setSimBusy(true); setSimMsg('📱 Henter fra simulator…');
+    setSimBusy(true); setSimMsg('Henter fra simulator…');
     try {
       const sims = await listSimulators();
       if (sims.length === 0) { setSimMsg('Ingen bootet simulator. Start én i Simulator/Xcode.'); return; }
@@ -1088,7 +1088,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
       <Field label="Skjermbilde">
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onUpload} style={{ ...listBtn, flex: 1 }}>{device.image ? 'Bytt bilde' : 'Last opp'}</button>
-          <button onClick={() => void runSimCapture()} disabled={simBusy} style={{ ...listBtn, flex: 1, opacity: simBusy ? 0.6 : 1 }} title="Fang skjermen fra en bootet iOS-simulator som device-innhold (ekte app-skjerm)">{simBusy ? '📱 …' : '📱 Fra sim'}</button>
+          <button onClick={() => void runSimCapture()} disabled={simBusy} style={{ ...listBtn, flex: 1, opacity: simBusy ? 0.6 : 1 }} title="Fang skjermen fra en bootet iOS-simulator som device-innhold (ekte app-skjerm)">{simBusy ? 'Henter…' : 'Fra sim'}</button>
           {device.image && <button onClick={() => setDeviceImage(device.id, undefined)} style={listBtn} title="Fjern bilde" aria-label="Fjern bilde">✕</button>}
         </div>
         {simMsg && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>{simMsg}</div>}
@@ -1165,7 +1165,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
                 style={{ ...textInput, marginBottom: 6 }}
                 title="Ett-klikks scenario (setter tekst + felt + payoff ferdig)"
               >
-                <option value="">⚡ Scenario…</option>
+                <option value="">Scenario…</option>
                 {TYPE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
               <input
@@ -1181,8 +1181,8 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
             <>
               <Field label="Felt-kontekst">
                 <select value={device.typeAnim.field ?? 'plain'} onChange={(e) => patchDevice(device.id, { typeAnim: { ...device.typeAnim!, field: e.target.value as import('./mockupStudioModel').MockupFieldStyle } })} style={textInput}>
-                  <option value="plain">Enkel</option><option value="search">🔍 Søkefelt</option><option value="chat">💬 Chat</option>
-                  <option value="url">🌐 URL-linje</option><option value="document">📄 Dokument</option><option value="code">⌨︎ Kode</option><option value="terminal">▸ Terminal</option>
+                  <option value="plain">Enkel</option><option value="search">Søkefelt</option><option value="chat">Chat</option>
+                  <option value="url">URL-linje</option><option value="document">Dokument</option><option value="code">Kode</option><option value="terminal">Terminal</option>
                 </select>
               </Field>
               <Field label="Placeholder (valgfri hint-tekst)">
