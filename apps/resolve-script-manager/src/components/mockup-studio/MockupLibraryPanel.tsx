@@ -38,6 +38,7 @@ export function MockupLibraryPanel() {
   const canvas = useMockupStudio((s) => s.doc.canvas);
   const selection = useMockupStudio((s) => s.selection);
   const [hoverPreset, setHoverPreset] = useState<string | null>(null);
+  const [withPrices, setWithPrices] = useState(true);
 
   const [folder, setFolder] = useState<string | null>(null); // null = alle
   const [q, setQ] = useState('');
@@ -142,10 +143,17 @@ export function MockupLibraryPanel() {
               onMouseEnter={() => setHoverPreset(pr.id)}
               onClick={() => { void arrangeLibrary([...sel].map((id) => ({ assetId: id })), pr.id); }}>{pr.label}</button>
           ))}
-          <button style={{ ...chip, width: '100%', marginTop: 2, background: 'rgba(34,211,238,0.10)', color: C.accent, borderColor: C.accent, fontWeight: 700 }}
-            title="Bygg en komplett one-pager: grid + navn-labels + overskrift + merkevare"
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'clamp(10px,0.72vw,12px)', color: C.inkSoft, cursor: 'pointer', width: '100%', marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
+            <input type="checkbox" checked={withPrices} onChange={(e) => setWithPrices(e.target.checked)} /> Med priser (fra pris-feltet i liste-visning)
+          </label>
+          <button style={{ ...chip, width: '100%', background: 'rgba(34,211,238,0.10)', color: C.accent, borderColor: C.accent, fontWeight: 700 }}
+            title="Bygg en komplett one-pager: grid + navn/pris-labels + overskrift + merkevare"
             onClick={() => {
-              const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => ({ assetId: (m as LibraryMeta).id, label: prettyName((m as LibraryMeta).name) }));
+              const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => {
+                const meta = m as LibraryMeta;
+                const label = prettyName(meta.name) + (withPrices && meta.price ? ` · ${meta.price}` : '');
+                return { assetId: meta.id, label };
+              });
               void buildOnePager(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny' });
             }}>✦ Bygg one-pager</button>
           {hoverPreset && (() => {
@@ -186,8 +194,10 @@ export function MockupLibraryPanel() {
             <button key={m.id} draggable onDragStart={(e) => e.dataTransfer.setData('application/x-mockup-lib', m.id)} onClick={(e) => { const multi = e.shiftKey || e.metaKey || e.ctrlKey; toggleSel(m.id, e); if (!multi) place(m); }} onMouseEnter={() => setHover(m)} onMouseLeave={() => setHover((h) => (h?.id === m.id ? null : h))}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 4, border: sel.has(m.id) ? `1px solid ${C.accent}` : `1px solid transparent`, borderRadius: 6, background: 'rgba(255,255,255,0.03)', cursor: 'grab', textAlign: 'left' }}>
               <img src={m.thumb} alt={m.name} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'clamp(11px,0.8vw,13px)', color: C.ink }}>{m.name}</span>
-              <span style={{ fontSize: 'clamp(9px,0.64vw,11px)', color: C.inkSoft, fontVariantNumeric: 'tabular-nums' }}>{m.w}×{m.h}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'clamp(11px,0.8vw,13px)', color: C.ink }}>{prettyName(m.name)}</span>
+              <input value={m.price ?? ''} placeholder="pris" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => void patchLibraryMeta(m.id, { price: e.target.value })}
+                style={{ width: 52, flexShrink: 0, background: 'rgba(255,255,255,0.06)', color: C.ink, border: `1px solid ${C.border}`, borderRadius: 4, padding: '2px 5px', fontSize: 'clamp(9px,0.64vw,11px)', fontVariantNumeric: 'tabular-nums' }} />
             </button>
           ))}
         </div>

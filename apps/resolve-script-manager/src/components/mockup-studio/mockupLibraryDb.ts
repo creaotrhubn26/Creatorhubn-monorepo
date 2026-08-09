@@ -26,6 +26,7 @@ export interface LibraryMeta {
   addedAt: number;
   thumb: string;         // liten dataURL (~240px) for grid
   source?: string;       // opprinnelse: 'import' | 'capture:<url>' | 'ai'
+  price?: string;        // valgfri pris/tekst → «Bygg one-pager» legger den i labelen
 }
 
 function open(): Promise<IDBDatabase> {
