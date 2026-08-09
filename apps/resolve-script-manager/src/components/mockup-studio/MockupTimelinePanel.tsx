@@ -13,7 +13,7 @@ const TRACK_H = 26;
 const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst'];
 const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed' };
 
-export function MockupTimelinePanel({ playT, onScrub }: { playT: number | null; onScrub: (t: number) => void }) {
+export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetOut }: { playT: number | null; onScrub: (t: number) => void; inT: number; outT: number; onSetIn: (v: number) => void; onSetOut: (v: number) => void }) {
   const doc = useMockupStudio((s) => s.doc);
   const setDocSilent = useMockupStudio((s) => s.setDocSilent);
   const pushHistory = useMockupStudio((s) => s.pushHistory);
@@ -41,6 +41,21 @@ export function MockupTimelinePanel({ playT, onScrub }: { playT: number | null; 
     const r = railRef.current?.getBoundingClientRect();
     if (!r) return;
     onScrub(Math.max(0, Math.min(1, (clientX - r.left) / r.width)));
+  };
+
+  // Dra inn/ut-merke.
+  const beginMark = (which: 'in' | 'out', e: React.PointerEvent) => {
+    e.stopPropagation();
+    const r = railRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      const v = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+      if (which === 'in') onSetIn(Math.min(v, outT - 0.02));
+      else onSetOut(Math.max(v, inT + 0.02));
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
   };
 
   const beginClipDrag = (clip: TimelineClip, e: React.PointerEvent) => {
@@ -130,6 +145,12 @@ export function MockupTimelinePanel({ playT, onScrub }: { playT: number | null; 
               />
             </div>
           ))}
+          {/* Inn/ut-region: mørkne utenfor [inT, outT] */}
+          {inT > 0 && <div style={{ position: 'absolute', left: 0, width: `${inT * 100}%`, top: 16, bottom: 0, background: 'rgba(0,0,0,0.5)', pointerEvents: 'none' }} />}
+          {outT < 1 && <div style={{ position: 'absolute', left: `${outT * 100}%`, right: 0, top: 16, bottom: 0, background: 'rgba(0,0,0,0.5)', pointerEvents: 'none' }} />}
+          {/* Inn/ut-merker (dra) */}
+          <div onPointerDown={(e) => beginMark('in', e)} title="Inn-merke" style={{ position: 'absolute', left: `calc(${inT * 100}% - 4px)`, top: 0, width: 8, height: 16, background: '#22c55e', cursor: 'ew-resize', borderRadius: 2, zIndex: 3 }} />
+          <div onPointerDown={(e) => beginMark('out', e)} title="Ut-merke" style={{ position: 'absolute', left: `calc(${outT * 100}% - 4px)`, top: 0, width: 8, height: 16, background: '#22c55e', cursor: 'ew-resize', borderRadius: 2, zIndex: 3 }} />
           {/* Playhead */}
           <div style={{ position: 'absolute', left: `${(playT ?? 0) * 100}%`, top: 0, bottom: 0, width: 1.5, background: '#f43f5e', pointerEvents: 'none', boxShadow: '0 0 6px rgba(244,63,94,0.8)' }}>
             <div style={{ position: 'absolute', top: -1, left: -4, width: 9, height: 7, background: '#f43f5e', clipPath: 'polygon(0 0,100% 0,50% 100%)' }} />

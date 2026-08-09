@@ -46,9 +46,15 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);          // 0.5×–2× hastighet
   const [easing, setEasing] = useState<'linear' | 'smooth' | 'in' | 'out'>('smooth');
+  const [inT, setInT] = useState(0);              // inn-merke (0..1)
+  const [outT, setOutT] = useState(1);            // ut-merke
+  const [loop, setLoop] = useState(false);
   const playRef = useRef<number | null>(null);
   const speedRef = useRef(speed); speedRef.current = speed;
   const easeRef = useRef(easing); easeRef.current = easing;
+  const inRef = useRef(inT); inRef.current = inT;
+  const outRef = useRef(outT); outRef.current = outT;
+  const loopRef = useRef(loop); loopRef.current = loop;
   const hasTyping = doc.devices.some((d) => !!d.typeAnim?.text && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
   // Speed-ramp: mapper lineær tids-progresjon p → eased t.
   const applyEase = (p: number, e: string): number =>
@@ -61,15 +67,20 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const playTyping = () => {
     if (playRef.current) cancelAnimationFrame(playRef.current);
     setPlaying(true);
-    const from = playT != null && playT < 1 ? playT : 0; // fortsett fra scrubber-posisjon
+    const a = inRef.current, b = Math.max(a + 0.02, outRef.current); // inn/ut-region
+    let from = playT != null && playT >= a && playT < b ? playT : a;  // fortsett fra playhead om innenfor
     let start: number | null = null;
     const step = (ts: number) => {
       if (start == null) start = ts;
       const dur = baseDur() / Math.max(0.1, speedRef.current);
-      const p = Math.min(1, from + (ts - start) / dur);
+      const p = from + (ts - start) / dur;                            // rå progresjon (timeline-skala)
+      if (p >= b) {
+        if (loopRef.current) { start = ts; from = a; setPlayT(applyEase(a, easeRef.current)); playRef.current = requestAnimationFrame(step); return; }
+        playRef.current = null; setPlaying(false); setPlayT(applyEase(b, easeRef.current));
+        window.setTimeout(() => setPlayT((v) => (v != null && v >= b - 0.001 ? null : v)), 800); return;
+      }
       setPlayT(applyEase(p, easeRef.current));
-      if (p < 1) playRef.current = requestAnimationFrame(step);
-      else { playRef.current = null; setPlaying(false); window.setTimeout(() => setPlayT((v) => (v != null && v >= 0.999 ? null : v)), 800); }
+      playRef.current = requestAnimationFrame(step);
     };
     playRef.current = requestAnimationFrame(step);
   };
@@ -308,6 +319,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           {/* Transport */}
           <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}>⏮</button>
           <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? '⏸' : '▶'}</button>
+          <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>🔁</button>
           {/* Linjal / scrubber m/ playhead */}
           <input
             type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)}
@@ -426,7 +438,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     </div>
     {hasTyping && (
       <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <MockupTimelinePanel playT={playT} onScrub={scrubTo} />
+        <MockupTimelinePanel playT={playT} onScrub={scrubTo} inT={inT} outT={outT} onSetIn={setInT} onSetOut={setOutT} />
       </div>
     )}
     </>
