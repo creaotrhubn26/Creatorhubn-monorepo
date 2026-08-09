@@ -34,6 +34,7 @@ export function MockupLibraryPanel() {
   const placeLibraryImage = useMockupStudio((s) => s.placeLibraryImage);
   const arrangeLibrary = useMockupStudio((s) => s.arrangeLibrary);
   const buildOnePager = useMockupStudio((s) => s.buildOnePager);
+  const setArrangeShowPrices = useMockupStudio((s) => s.setArrangeShowPrices);
   const docName = useMockupStudio((s) => s.doc.name);
   const canvas = useMockupStudio((s) => s.doc.canvas);
   const selection = useMockupStudio((s) => s.selection);
@@ -144,17 +145,16 @@ export function MockupLibraryPanel() {
               onClick={() => { void arrangeLibrary([...sel].map((id) => ({ assetId: id })), pr.id); }}>{pr.label}</button>
           ))}
           <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'clamp(10px,0.72vw,12px)', color: C.inkSoft, cursor: 'pointer', width: '100%', marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
-            <input type="checkbox" checked={withPrices} onChange={(e) => setWithPrices(e.target.checked)} /> Med priser (fra pris-feltet i liste-visning)
+            <input type="checkbox" checked={withPrices} onChange={(e) => { setWithPrices(e.target.checked); setArrangeShowPrices(e.target.checked); }} /> Med priser (live av/på)
           </label>
           <button style={{ ...chip, width: '100%', background: 'rgba(34,211,238,0.10)', color: C.accent, borderColor: C.accent, fontWeight: 700 }}
             title="Bygg en komplett one-pager: grid + navn/pris-labels + overskrift + merkevare"
             onClick={() => {
               const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => {
                 const meta = m as LibraryMeta;
-                const label = prettyName(meta.name) + (withPrices && meta.price ? ` · ${meta.price}` : '');
-                return { assetId: meta.id, label };
+                return { assetId: meta.id, label: prettyName(meta.name), price: meta.price };
               });
-              void buildOnePager(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny' });
+              void buildOnePager(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny', showPrices: withPrices });
             }}>✦ Bygg one-pager</button>
           {hoverPreset && (() => {
             const pr = PRESENTATIONS.find((x) => x.id === hoverPreset)!;

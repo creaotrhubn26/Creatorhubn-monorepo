@@ -195,6 +195,9 @@ export interface MockupTextSlot {
   uppercase: boolean;
   /** Eid av en galleri-fremvisning (arrangeLibrary pris/navn-label). Ryddes ved neste fremvisning. */
   genArrange?: boolean;
+  /** For arrange-labels: navn og pris lagret separat → «Med priser»-bryteren kan skru pris av/på live. */
+  baseText?: string;
+  priceText?: string;
 }
 
 /** Pen-formater et bibliotek-filnavn til label: «kebab-detroit» → «Kebab Detroit». */

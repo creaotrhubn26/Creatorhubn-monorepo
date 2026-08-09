@@ -119,11 +119,13 @@ interface MockupStudioState {
   /** Last full-res fra IDB → tildel valgt enhet, sett bakgrunn, ellers frittstående bilde (evt. på drop-posisjon). */
   placeLibraryImage: (id: string, target?: 'device' | 'background', at?: { x: number; y: number }) => Promise<void>;
   /** Legg flere bibliotek-bilder på lerretet i en valgt fremvisning (galleri): rutenett/rad/hero/kollasje/historie. */
-  arrangeLibrary: (items: { assetId: string; label?: string }[], presetId: string, opts?: GridOpts & { radius?: number; showLabels?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
+  arrangeLibrary: (items: { assetId: string; label?: string; price?: string }[], presetId: string, opts?: GridOpts & { radius?: number; showLabels?: boolean; showPrices?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
   /** Snarvei: fremvisning 'grid' (bakoverkompatibel). */
-  arrangeLibraryGrid: (items: { assetId: string; label?: string }[], opts?: GridOpts & { radius?: number; showLabels?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
+  arrangeLibraryGrid: (items: { assetId: string; label?: string; price?: string }[], opts?: GridOpts & { radius?: number; showLabels?: boolean; showPrices?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
   /** Ett-klikk: bygg en komplett one-pager (grid m/ labels + overskrift + brand) fra valgte bilder. */
-  buildOnePager: (items: { assetId: string; label?: string }[], opts?: { title?: string; eyebrow?: string; accent?: string; titleColor?: string; labelColor?: string }) => Promise<void>;
+  buildOnePager: (items: { assetId: string; label?: string; price?: string }[], opts?: { title?: string; eyebrow?: string; accent?: string; titleColor?: string; labelColor?: string; showPrices?: boolean }) => Promise<void>;
+  /** Live av/på for pris-delen i alle arrange-labels (uten å bygge på nytt). */
+  setArrangeShowPrices: (on: boolean) => void;
 }
 
 function initialDoc(): MockupDoc {
@@ -357,7 +359,8 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     get().setDocSilent({ ...cur, images: (cur.images ?? []).filter((im) => !im.genArrange), texts: cur.texts.filter((t) => !t.genArrange) });
     const canvas = get().doc.canvas;
     const cells = preset.layout(items.length, canvas.w, canvas.h, opts);
-    const showLabels = opts?.showLabels ?? items.some((it) => !!it.label);
+    const showLabels = opts?.showLabels ?? items.some((it) => !!it.label || !!it.price);
+    const showPrices = opts?.showPrices ?? true;
     const labelSize = opts?.labelSize ?? 30;
     const labelH = showLabels ? Math.round(labelSize * 1.35) : 0;
     for (let i = 0; i < items.length; i++) {
@@ -366,21 +369,31 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
       await get().placeLibraryImage(items[i].assetId); // legger fritt bilde + selecter det
       const sel = get().selection;
       if (sel.kind === 'image') get().patchImage(sel.id, { x: c.x, y: c.y, w: c.w, h: rotated ? c.h : c.h - labelH, radius: opts?.radius ?? 18, shadow: true, fit: 'cover', rotation: c.rotation ?? 0, genArrange: true });
-      if (!rotated && labelH && items[i].label) {
+      const base = items[i].label, price = items[i].price;
+      if (!rotated && labelH && (base || price)) {
+        const text = (base ?? '') + (showPrices && price ? ` · ${price}` : '');
         get().addText('tag');
         const ts = get().selection;
-        if (ts.kind === 'text') get().patchText(ts.id, { text: items[i].label as string, x: c.x, y: c.y + (c.h - labelH) + 6, w: c.w, size: labelSize, weight: 700, color: opts?.labelColor ?? '#1A1A1A', align: 'left', genArrange: true });
+        if (ts.kind === 'text') get().patchText(ts.id, { text, baseText: base, priceText: price, x: c.x, y: c.y + (c.h - labelH) + 6, w: c.w, size: labelSize, weight: 700, color: opts?.labelColor ?? '#1A1A1A', align: 'left', genArrange: true });
       }
     }
     get().select({ kind: 'canvas' });
   },
   arrangeLibraryGrid: (items, opts) => get().arrangeLibrary(items, 'grid', opts),
 
+  // Live av/på for pris-delen i alle arrange-labels (bruker lagret baseText/priceText).
+  setArrangeShowPrices: (on) => commit(set, (d) => ({
+    ...d,
+    texts: d.texts.map((t) => (t.genArrange && t.baseText != null
+      ? { ...t, text: t.baseText + (on && t.priceText ? ` · ${t.priceText}` : '') }
+      : t)),
+  })),
+
   // Ett-klikk one-pager: brand + grid m/ pris-labels + eyebrow + tittel.
   buildOnePager: async (items, opts) => {
     const H = get().doc.canvas.h;
     get().patchCanvas(opts?.accent ? { background: 'light', accent: opts.accent } : { background: 'light' });
-    await get().arrangeLibrary(items, 'grid', { top: Math.round(H * 0.22), showLabels: true, labelColor: opts?.labelColor ?? '#1A1A1A' });
+    await get().arrangeLibrary(items, 'grid', { top: Math.round(H * 0.22), showLabels: true, showPrices: opts?.showPrices ?? true, labelColor: opts?.labelColor ?? '#1A1A1A' });
     if (opts?.eyebrow) {
       get().addText('eyebrow');
       const s = get().selection;
