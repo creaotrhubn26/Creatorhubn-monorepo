@@ -26,8 +26,10 @@ ville hatt dybde på ett system. (Gjelder ikke autonome cron-/cloud-kjøringer.)
 
 **Modell-disiplin:** mekanisk arbeid = scripts (null modell); henting/
 kondensering per vendor = Haiku-subagenter i parallell; symbol-validering =
-Sonnet; verdikt/migrering/forslag = sterkeste modell. Se Model Tiering i
-skill-pakkens SKILL.md.
+Sonnet; verdikt/migrering/forslag = sterkeste modell. SI FRA om valget med
+begrunnelse («her bruker vi Fable 5 fordi …», «her holder Opus/Sonnet») —
+stille modellvalg er ikke lov for verdikt med produksjonskonsekvens. Se
+Model Tiering i skill-pakkens SKILL.md.
 
 **Output-kontrakt:** token-effektivt, null svada. Hvert forslag = hva (ny
 vendor-funksjon m/ kilde) + hvor (system + fil-peker) + hvorfor/gevinst (én

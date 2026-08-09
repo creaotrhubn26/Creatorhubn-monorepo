@@ -393,6 +393,18 @@ and verdicts. The weekly cloud agent runs sonnet-5 end-to-end (quiet runs are
 a handful of tool calls; analysis runs need the reasoning). PR Guardian and
 the release-monitor cron are pure bash — zero model cost by design.
 
+**Announce the choice.** At the start of a doc-intel task, state the model
+plan in one or two lines WITH the reason, and flag when the task deserves
+escalation or de-escalation. Examples:
+
+> «Vendor-henting: 3 Haiku-subagenter (ren kondensering). Verdikt: Fable 5 —
+> dette rører billing-migrering, feil verdikt koster produksjon.»
+
+> «Dette er rutinemessig symbolsjekk — Sonnet holder, Fable er sløsing her.»
+
+The user decides on disagreement; silent model choice is not allowed for
+verdicts with production consequences.
+
 ## Output Contract (token discipline)
 
 Be token-efficient. No filler, no generic advice, no changelog dumps.
