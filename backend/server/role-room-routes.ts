@@ -22,6 +22,7 @@ import {
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
 import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
 import { canAccessProjectAds, readProjectAccessUser } from './role-room-project-access.js';
 import { getAssistantAreas } from './role-room-assistant-access.js';
@@ -12043,7 +12044,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          ORDER BY cp.updated_at DESC`,
         [userId]
       );
-      res.json(result.rows.map((row) => buildCastingProjectResponse(row)));
+
+      const rows = result.rows;
+      const bridgeProjectIds = await listEducationProductionProjectIds(pool, userId);
+      const missingBridgeIds = bridgeProjectIds.filter(
+        (id) => !rows.some((row) => row.id === id),
+      );
+      if (missingBridgeIds.length) {
+        const bridgeResult = await pool.query<CastingProjectRow>(
+          `SELECT
+             cp.*,
+             COALESCE(
+               NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), ''),
+               NULLIF(u.username, ''),
+               NULLIF(u.email, ''),
+               NULLIF(cp.created_by, '')
+             ) AS created_by_label
+           FROM casting_projects cp
+           LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
+           WHERE cp.id = ANY($1::text[])
+           ORDER BY cp.updated_at DESC`,
+          [missingBridgeIds],
+        );
+        rows.push(...bridgeResult.rows);
+      }
+
+      res.json(rows.map((row) => buildCastingProjectResponse(row)));
     } catch (err) {
       console.error('Fetch projects error:', err);
       res.status(500).json({ error: 'Kunne ikke hente prosjekter' });
@@ -12098,6 +12124,29 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          WHERE cp.id = $1 AND ($3::boolean OR cp.created_by = $2 OR cur.user_id IS NOT NULL)`,
         [req.params.id, getUserId(req), requireScope(req, 'admin')]
       );
+      if (!result.rows.length) {
+        // Ikke eier/admin/medlem — sjekk utdannings-broen før 404: en
+        // education-student kan være tildelt denne produksjonen via
+        // role_room_education_production_members uten å stå i casting_user_roles.
+        const bridgeRole = await resolveEducationProductionRole(pool, getUserId(req), String(req.params.id));
+        if (bridgeRole) {
+          const bridgeResult = await pool.query<CastingProjectRow>(
+            `SELECT
+               cp.*,
+               COALESCE(
+                 NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), ''),
+                 NULLIF(u.username, ''),
+                 NULLIF(u.email, ''),
+                 NULLIF(cp.created_by, '')
+               ) AS created_by_label
+             FROM casting_projects cp
+             LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
+             WHERE cp.id = $1`,
+            [req.params.id],
+          );
+          result.rows = bridgeResult.rows;
+        }
+      }
       if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
