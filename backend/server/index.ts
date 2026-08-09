@@ -2034,6 +2034,11 @@ const KNOWN_ORIGINS = new Set([
   'tauri://localhost',
   'http://tauri.localhost',
   'https://tauri.localhost',
+  // `npm run tauri dev`: webview laster fra vite dev-server (strictPort 1420),
+  // så webview-origin er http://localhost:1420 — IKKE tauri://localhost. Uten
+  // denne får dev-innlogging «TypeError: Load failed» (200 uten CORS-header).
+  'http://localhost:1420',
+  'http://127.0.0.1:1420',
 ]);
 app.use(helmet({
   // API-only backend — no HTML served, so CSP is not needed

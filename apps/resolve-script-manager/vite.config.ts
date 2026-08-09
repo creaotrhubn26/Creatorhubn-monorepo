@@ -17,7 +17,10 @@ export default defineConfig(async () => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    // 5001 er allowlistet backend-CORS-origin (index.ts KNOWN_ORIGINS). Dev-
+    // webview-fetch mot /api/post-agent/pairing/* trenger en allowlistet origin
+    // ellers «TypeError: Load failed». (1420 er nå også lagt til backend-lista.)
+    port: 5001,
     strictPort: true,
     host: host || false,
     hmr: host
