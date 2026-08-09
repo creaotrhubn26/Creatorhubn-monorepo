@@ -18,6 +18,8 @@ import {
   type MockupAnnotationKind,
   makeDevice,
   makeText,
+  makeImage,
+  type MockupImageSlot,
   makeAnnotation,
   uid,
   buildTemplate,
@@ -40,7 +42,8 @@ import { type LibraryMeta, idbAllMeta, idbDelete, idbPatchMeta, idbGetFull } fro
 export type Selection =
   | { kind: 'canvas' }
   | { kind: 'device'; id: string }
-  | { kind: 'text'; id: string };
+  | { kind: 'text'; id: string }
+  | { kind: 'image'; id: string };
 
 interface MockupStudioState {
   doc: MockupDoc;
@@ -87,8 +90,14 @@ interface MockupStudioState {
   removeText: (id: string) => void;
   duplicateText: (id: string) => void;
 
+  // Frittstående bilde-elementer
+  addImage: (image: string, partial?: Partial<MockupImageSlot>) => void;
+  patchImage: (id: string, patch: Partial<MockupImageSlot>) => void;
+  removeImage: (id: string) => void;
+  duplicateImage: (id: string) => void;
+
   // Lag-rekkefølge (z): tegner i array-rekkefølge — flytt et element fram/bak.
-  reorderElement: (kind: 'device' | 'text', id: string, dir: 'up' | 'down') => void;
+  reorderElement: (kind: 'device' | 'text' | 'image', id: string, dir: 'up' | 'down') => void;
   duplicateSelected: () => void;
 
   // Illustrasjons-lag (callout/lupe/markør)
@@ -250,15 +259,36 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     set({ selection: { kind: 'text', id: copy.id } });
   },
 
+  // Frittstående bilde-elementer
+  addImage: (image, partial) => {
+    const n = get().doc.images?.length ?? 0;
+    const off = (n % 8) * 36; // cascade så flere plasseringer ikke stables oppå hverandre
+    const im = makeImage(image, { x: 200 + off, y: 200 + off, ...partial });
+    commit(set, (d) => ({ ...d, images: [...(d.images ?? []), im] }));
+    set({ selection: { kind: 'image', id: im.id } });
+  },
+  patchImage: (id, patch) => commit(set, (d) => ({ ...d, images: (d.images ?? []).map((im) => (im.id === id ? { ...im, ...patch } : im)) })),
+  removeImage: (id) => { commit(set, (d) => ({ ...d, images: (d.images ?? []).filter((im) => im.id !== id) })); set({ selection: { kind: 'canvas' } }); },
+  duplicateImage: (id) => {
+    const src = get().doc.images?.find((im) => im.id === id);
+    if (!src) return;
+    const copy = { ...src, id: uid('img'), x: src.x + 32, y: src.y + 32 };
+    commit(set, (d) => ({ ...d, images: [...(d.images ?? []), copy] }));
+    set({ selection: { kind: 'image', id: copy.id } });
+  },
+
   reorderElement: (kind, id, dir) => commit(set, (d) =>
     kind === 'device'
       ? { ...d, devices: reorder(d.devices, id, dir) }
-      : { ...d, texts: reorder(d.texts, id, dir) }),
+      : kind === 'image'
+        ? { ...d, images: reorder(d.images ?? [], id, dir) }
+        : { ...d, texts: reorder(d.texts, id, dir) }),
 
   duplicateSelected: () => {
     const s = get().selection;
     if (s.kind === 'device') get().duplicateDevice(s.id);
     else if (s.kind === 'text') get().duplicateText(s.id);
+    else if (s.kind === 'image') get().duplicateImage(s.id);
   },
 
   addAnnotation: (kind, deviceId) => {
@@ -304,7 +334,8 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     const full = await idbGetFull(id);
     if (!full) return;
     const sel = get().selection;
-    if (target === 'background' || sel.kind !== 'device') get().patchCanvas({ bgImage: full });
-    else get().setDeviceImage(sel.id, full);
+    if (target === 'background') get().patchCanvas({ bgImage: full });
+    else if (sel.kind === 'device') get().setDeviceImage(sel.id, full);
+    else get().addImage(full); // frittstående bilde-element (mat-foto/collage på lerretet)
   },
 }));

@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { rasterizeMockup, measureTextHeight, annRect } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
-import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot, type MockupAnnotation } from './mockupStudioModel';
+import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot, type MockupImageSlot, type MockupAnnotation } from './mockupStudioModel';
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
 import { MockupTimelinePanel } from './MockupTimelinePanel';
@@ -64,7 +64,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const viewportRef = useRef<HTMLDivElement>(null); // ytre klippboks
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ kind: 'device' | 'text'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; rot?: { rx: number; ry: number } } | null>(null);
+  const dragRef = useRef<{ kind: 'device' | 'text' | 'image'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; rot?: { rx: number; ry: number } } | null>(null);
   const dragAbort = useRef<AbortController | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
@@ -172,7 +172,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     return () => { alive = false; };
   }, [doc, playT]);
 
-  const selId = (s: Selection): string | null => (s.kind === 'device' || s.kind === 'text' ? s.id : null);
+  const selId = (s: Selection): string | null => (s.kind === 'device' || s.kind === 'text' || s.kind === 'image' ? s.id : null);
   const selectedId = selId(selection);
   const W = doc.canvas.w, H = doc.canvas.h;
   const pct = (v: number, base: number) => `${(v / base) * 100}%`;
@@ -200,16 +200,20 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     window.addEventListener('pointerup', () => ac.abort(), { once: true });
   };
 
-  const boxOf = (kind: 'device' | 'text', el: MockupDeviceSlot | MockupTextSlot): Box =>
+  const boxOf = (kind: 'device' | 'text' | 'image', el: MockupDeviceSlot | MockupTextSlot | MockupImageSlot): Box =>
     kind === 'device'
       ? { x: el.x, y: el.y, w: (el as MockupDeviceSlot).w, h: deviceHeight(el as MockupDeviceSlot) }
-      : { x: el.x, y: el.y, w: (el as MockupTextSlot).w, h: measureTextHeight(el as MockupTextSlot) };
+      : kind === 'image'
+        ? { x: el.x, y: el.y, w: (el as MockupImageSlot).w, h: (el as MockupImageSlot).h }
+        : { x: el.x, y: el.y, w: (el as MockupTextSlot).w, h: measureTextHeight(el as MockupTextSlot) };
 
   // ── Flytt utvalgt element (delt av dra + tastatur) ───────────────────────
-  const moveTo = (base: MockupDoc, kind: 'device' | 'text', id: string, nx: number, ny: number): MockupDoc =>
+  const moveTo = (base: MockupDoc, kind: 'device' | 'text' | 'image', id: string, nx: number, ny: number): MockupDoc =>
     kind === 'device'
       ? { ...base, devices: base.devices.map((d) => (d.id === id ? { ...d, x: nx, y: ny } : d)) }
-      : { ...base, texts: base.texts.map((t) => (t.id === id ? { ...t, x: nx, y: ny } : t)) };
+      : kind === 'image'
+        ? { ...base, images: (base.images ?? []).map((im) => (im.id === id ? { ...im, x: nx, y: ny } : im)) }
+        : { ...base, texts: base.texts.map((t) => (t.id === id ? { ...t, x: nx, y: ny } : t)) };
 
   // 3D-orbit: oppdater device.threeD.rotX/rotY (beholder rotZ/light).
   const rotateTo = (base: MockupDoc, id: string, rotX: number, rotY: number): MockupDoc =>
@@ -226,11 +230,13 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   };
 
   // ── Dra (pointer) ────────────────────────────────────────────────────────
-  const beginDrag = (kind: 'device' | 'text', id: string, e: React.PointerEvent) => {
+  const beginDrag = (kind: 'device' | 'text' | 'image', id: string, e: React.PointerEvent) => {
     e.stopPropagation();
     select({ kind, id });
     const st = useMockupStudio.getState();
-    const el = kind === 'device' ? st.doc.devices.find((d) => d.id === id) : st.doc.texts.find((t) => t.id === id);
+    const el = kind === 'device' ? st.doc.devices.find((d) => d.id === id)
+      : kind === 'image' ? st.doc.images?.find((im) => im.id === id)
+      : st.doc.texts.find((t) => t.id === id);
     if (!el) return;
     // 3D-enhet: dra = orbit (roter). Flytt via numerisk/piltaster.
     const dev3d = kind === 'device' ? (el as MockupDoc['devices'][number]).threeD : undefined;
@@ -252,7 +258,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 3) return; // liten terskel = klikk, ikke dra
     if (!d.moved) { d.moved = true; setDragging(true); useMockupStudio.getState().pushHistory(); }
     const st = useMockupStudio.getState();
-    const el = d.kind === 'device' ? st.doc.devices.find((x) => x.id === d.id) : st.doc.texts.find((x) => x.id === d.id);
+    const el = d.kind === 'device' ? st.doc.devices.find((x) => x.id === d.id)
+      : d.kind === 'image' ? st.doc.images?.find((x) => x.id === d.id)
+      : st.doc.texts.find((x) => x.id === d.id);
     if (!el) return;
     // 3D-orbit: horisontal dra → snu (rotY), vertikal → vipp (rotX).
     if (d.rot) {
@@ -346,13 +354,13 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       if (e.key === 'End') { e.preventDefault(); scrubTo(1); return; }
 
       const sel = st.selection;
-      if (sel.kind !== 'device' && sel.kind !== 'text') return;
+      if (sel.kind !== 'device' && sel.kind !== 'text' && sel.kind !== 'image') return;
 
       if ((e.key === 'd' || e.key === 'D') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); st.duplicateSelected(); return; }
       if (e.key === 'Escape') { select({ kind: 'canvas' }); return; }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        if (sel.kind === 'device') st.removeDevice(sel.id); else st.removeText(sel.id);
+        if (sel.kind === 'device') st.removeDevice(sel.id); else if (sel.kind === 'image') st.removeImage(sel.id); else st.removeText(sel.id);
         return;
       }
       const step = e.shiftKey ? NUDGE_BIG : NUDGE;
@@ -363,7 +371,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       else if (e.key === 'ArrowDown') dy = step;
       else return;
       e.preventDefault();
-      const el = sel.kind === 'device' ? st.doc.devices.find((d) => d.id === sel.id) : st.doc.texts.find((t) => t.id === sel.id);
+      const el = sel.kind === 'device' ? st.doc.devices.find((d) => d.id === sel.id)
+        : sel.kind === 'image' ? st.doc.images?.find((im) => im.id === sel.id)
+        : st.doc.texts.find((t) => t.id === sel.id);
       if (!el) return;
       st.pushHistory();
       st.setDocSilent(moveTo(st.doc, sel.kind, sel.id, el.x + dx, el.y + dy));
@@ -395,6 +405,27 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         }}
       >
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
+
+        {/* Frittstående bilde-elementer — dra for å flytte (nederst i overlay-stacken) */}
+        {doc.images?.map((im) => {
+          const active = selectedId === im.id;
+          return (
+            <button
+              key={im.id}
+              onPointerDown={(e) => beginDrag('image', im.id, e)}
+              onFocus={() => select({ kind: 'image', id: im.id })}
+              aria-label={`Bilde${active ? ' (valgt)' : ''} — dra for å flytte, piltaster nudger, Delete fjerner`}
+              aria-pressed={active}
+              title="Bilde · dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner"
+              style={{
+                position: 'absolute', left: pct(im.x, W), top: pct(im.y, H), width: pct(im.w, W), height: pct(im.h, H),
+                transform: `rotate(${im.rotation}deg)`, transformOrigin: 'center',
+                background: 'transparent', border: active ? '2px solid #22d3ee' : '2px solid transparent',
+                borderRadius: 8, padding: 0, cursor: overlayCursor, touchAction: 'none',
+              }}
+            />
+          );
+        })}
 
         {/* Enheter — dra for å flytte */}
         {doc.devices.map((dev) => {

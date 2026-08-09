@@ -86,7 +86,7 @@ export function MockupLibraryPanel() {
   const bulkDelete = () => { if (sel.size && confirm(`Slett ${sel.size} bilde(r) fra biblioteket? Kan ikke angres.`)) { void removeLibraryAssets([...sel]); setSel(new Set()); } };
   const bulkMove = () => { if (!sel.size) return; const to = prompt('Flytt til mappe (f.eks. meny/pizza):', folder ?? ''); if (to == null) return; for (const id of sel) void patchLibraryMeta(id, { folder: to.trim() || '/' }); setSel(new Set()); };
 
-  const place = (m: LibraryMeta) => void placeLibraryImage(m.id, selection.kind === 'device' ? 'device' : 'background');
+  const place = (m: LibraryMeta) => void placeLibraryImage(m.id);
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -164,7 +164,7 @@ export function MockupLibraryPanel() {
       )}
 
       <div style={{ fontSize: 'clamp(9px,0.64vw,11px)', color: 'rgba(255,255,255,0.4)' }}>
-        Klikk = plasser på {selection.kind === 'device' ? 'valgt enhet' : 'lerret-bakgrunn'} · Shift/Cmd-klikk = multi-select
+        Klikk = plasser på {selection.kind === 'device' ? 'valgt enhet' : 'lerretet (fritt bilde)'} · Shift/Cmd-klikk = multi-select
       </div>
     </div>
   );

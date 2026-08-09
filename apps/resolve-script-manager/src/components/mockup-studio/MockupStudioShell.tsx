@@ -185,6 +185,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   const selectedDevice = selection.kind === 'device' ? doc.devices.find((d) => d.id === selection.id) ?? null : null;
   const selectedText = selection.kind === 'text' ? doc.texts.find((t) => t.id === selection.id) ?? null : null;
+  const selectedImage = selection.kind === 'image' ? doc.images?.find((im) => im.id === selection.id) ?? null : null;
 
   const triggerUpload = (deviceId: string) => {
     setPendingDeviceId(deviceId);
@@ -699,6 +700,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             <DeviceInspector device={selectedDevice} onUpload={() => triggerUpload(selectedDevice.id)} advanced={advanced} />
           ) : selectedText ? (
             <TextInspector text={selectedText} advanced={advanced} />
+          ) : selectedImage ? (
+            <ImageInspector image={selectedImage} />
           ) : (
             <>
               <BrandingInspector onUploadLogo={triggerLogoUpload} />
@@ -1059,15 +1062,48 @@ function NumberBox({ label, value, onChange }: { label: string; value: number; o
   );
 }
 
-/** Lag-rad: dupliser + z-rekkefølge (delt av enhet/tekst-inspektør). */
-function ArrangeRow({ kind, id }: { kind: 'device' | 'text'; id: string }) {
+/** Frittstående bilde-element: størrelse, radius, tilpasning, rotasjon, skygge, lag, slett. */
+function ImageInspector({ image }: { image: import('./mockupStudioModel').MockupImageSlot }) {
+  const patchImage = useMockupStudio((s) => s.patchImage);
+  const removeImage = useMockupStudio((s) => s.removeImage);
+  return (
+    <div>
+      <SectionLabel>Bilde</SectionLabel>
+      <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+      <Field label="Størrelse (px)">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <NumberBox label="B" value={Math.round(image.w)} onChange={(n) => patchImage(image.id, { w: Math.max(20, n) })} />
+          <NumberBox label="H" value={Math.round(image.h)} onChange={(n) => patchImage(image.id, { h: Math.max(20, n) })} />
+        </div>
+      </Field>
+      <Field label={`Hjørne-radius (${Math.round(image.radius)}px)`}>
+        <input type="range" min={0} max={120} value={image.radius} onChange={(e) => patchImage(image.id, { radius: Number(e.target.value) })} style={{ width: '100%' }} />
+      </Field>
+      <Field label="Tilpasning">
+        <Segmented<'cover' | 'contain'> options={[['cover', 'Fyll'], ['contain', 'Hele bildet']]} value={image.fit} onChange={(v) => patchImage(image.id, { fit: v })} />
+      </Field>
+      <Field label={`Rotasjon (${Math.round(image.rotation)}°)`}>
+        <input type="range" min={-45} max={45} value={image.rotation} onChange={(e) => patchImage(image.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
+      </Field>
+      <label style={checkRow}><input type="checkbox" checked={image.shadow} onChange={(e) => patchImage(image.id, { shadow: e.target.checked })} /> Skygge</label>
+      <div style={{ height: 8 }} />
+      <ArrangeRow kind="image" id={image.id} />
+      <button onClick={() => removeImage(image.id)} style={{ ...dangerBtn, marginTop: 8 }}>Slett bilde</button>
+    </div>
+  );
+}
+
+/** Lag-rad: dupliser + z-rekkefølge (delt av enhet/tekst/bilde-inspektør). */
+function ArrangeRow({ kind, id }: { kind: 'device' | 'text' | 'image'; id: string }) {
   const dupDevice = useMockupStudio((s) => s.duplicateDevice);
   const dupText = useMockupStudio((s) => s.duplicateText);
+  const dupImage = useMockupStudio((s) => s.duplicateImage);
   const reorder = useMockupStudio((s) => s.reorderElement);
+  const dup = () => (kind === 'device' ? dupDevice(id) : kind === 'image' ? dupImage(id) : dupText(id));
   return (
     <Field label="Lag">
       <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={() => (kind === 'device' ? dupDevice(id) : dupText(id))} style={{ ...listBtn, flex: 1 }} title="Dupliser (Cmd/Ctrl+D)">⧉ Dupliser</button>
+        <button onClick={dup} style={{ ...listBtn, flex: 1 }} title="Dupliser (Cmd/Ctrl+D)">⧉ Dupliser</button>
         <button onClick={() => reorder(kind, id, 'up')} style={{ ...listBtn, width: 36, textAlign: 'center' }} title="Flytt fram (tegnes over)" aria-label="Flytt fram">↑</button>
         <button onClick={() => reorder(kind, id, 'down')} style={{ ...listBtn, width: 36, textAlign: 'center' }} title="Flytt bak" aria-label="Flytt bak">↓</button>
       </div>

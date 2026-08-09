@@ -624,6 +624,25 @@ export function measureTextHeight(t: MockupTextSlot): number {
   return hardLines * t.size * t.lineHeight;
 }
 
+/** Frittstående bilde-element (mat-foto/collage): avrundet, fit cover/contain, valgfri skygge + rotasjon. */
+async function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudioModel').MockupImageSlot): Promise<void> {
+  const img = await loadImage(im.image).catch(() => null);
+  if (!img) return;
+  ctx.save();
+  if (im.rotation) { const cx = im.x + im.w / 2, cy = im.y + im.h / 2; ctx.translate(cx, cy); ctx.rotate((im.rotation * Math.PI) / 180); ctx.translate(-cx, -cy); }
+  if (im.shadow) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = Math.max(12, im.w * 0.05); ctx.shadowOffsetY = im.h * 0.03;
+    ctx.fillStyle = '#000'; roundRectPath(ctx, im.x, im.y, im.w, im.h, im.radius); ctx.fill();
+    ctx.restore();
+  }
+  roundRectPath(ctx, im.x, im.y, im.w, im.h, im.radius);
+  ctx.save(); ctx.clip();
+  drawFitted(ctx, img, im.x, im.y, im.w, im.h, im.fit);
+  ctx.restore();
+  ctx.restore();
+}
+
 // ── Illustrasjons-lag (callout / lupe / markør) ─────────────────────────────
 
 /** Skjerm-hullets rektangel for en enhet i lerret-px (der callouts festes). */
@@ -921,6 +940,9 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     await drawLogo(ctx, doc.canvas);
     return canvas;
   }
+
+  // Frittstående bilde-elementer (bak enheter/tekst — mat-foto/collage-lag).
+  if (doc.images?.length) { for (const im of doc.images) await drawImageSlot(ctx, im); }
 
   // Enheter i dokument-rekkefølge (senere = øverst), animert avsløring om t satt.
   for (let i = 0; i < doc.devices.length; i++) {

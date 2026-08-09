@@ -333,6 +333,8 @@ export interface MockupDoc {
   canvas: MockupCanvasSpec;
   devices: MockupDeviceSlot[];
   texts: MockupTextSlot[];
+  /** Frittstående bilde-elementer (mat-foto/collage rett på lerretet, uten enhet-ramme). */
+  images?: MockupImageSlot[];
   /** Illustrasjons-lag (callout/lupe/markør). Valgfri — tomt/udefinert = ingen. */
   annotations?: MockupAnnotation[];
   /** Produkt-mind map (Mermaid `mindmap`-syntaks). Satt → lerretet er en mind
@@ -475,6 +477,24 @@ export function makeDevice(variant: MockupDeviceVariant, partial: Partial<Mockup
     shadow: true,
     ...partial,
   };
+}
+
+/** Frittstående bilde-element (mat-foto/collage direkte på lerretet). */
+export interface MockupImageSlot {
+  id: string;
+  image: string;          // dataURL
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  radius: number;         // hjørne-radius (lerret-px)
+  fit: 'cover' | 'contain';
+  rotation: number;       // grader
+  shadow: boolean;
+}
+
+export function makeImage(image: string, partial: Partial<MockupImageSlot> = {}): MockupImageSlot {
+  return { id: uid('img'), image, x: 200, y: 200, w: 520, h: 360, radius: 18, fit: 'cover', rotation: 0, shadow: true, ...partial };
 }
 
 export function makeText(role: MockupTextRole, partial: Partial<MockupTextSlot> = {}): MockupTextSlot {
