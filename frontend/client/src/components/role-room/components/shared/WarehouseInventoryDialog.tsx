@@ -493,11 +493,10 @@ export function WarehouseInventoryDialog({
 
     const qrUrl = getQrImageUrl(item, 360);
     const qrPayload = getQrValue(item);
-    // i18n-exempt: exported/printed label document content, not in-app UI
     printWindow.document.write(`
       <html>
         <head>
-          <title>QR-etikett: ${item.name}</title>
+          <title>${t('warehouse.button.qrLabel')}: ${item.name}</title>
           <style>
             body {
               margin: 0;
@@ -550,10 +549,10 @@ export function WarehouseInventoryDialog({
           <section class="label">
             <h2>${item.name}</h2>
             <p class="meta">
-              Type: ${item.itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt'} • Antall: ${item.quantity}
+              ${t('warehouse.qrTypeLabel', { type: item.itemType === 'equipment' ? t('warehouse.itemType.equipment') : t('warehouse.itemType.prop') })} • ${t('warehouse.qrQuantityLabel', { n: item.quantity })}
             </p>
             <div class="qr-wrap">
-              <img src="${qrUrl}" alt="QR-kode for ${item.name}" />
+              <img src="${qrUrl}" alt="${t('warehouse.qrAltText', { name: item.name })}" />
             </div>
             <p class="payload">${qrPayload}</p>
           </section>

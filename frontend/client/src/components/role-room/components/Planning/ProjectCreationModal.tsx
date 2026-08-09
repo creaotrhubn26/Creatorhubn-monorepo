@@ -367,109 +367,103 @@ const PROJECT_TYPE_CATEGORIES = {
 const WEDDING_CULTURES = PROJECT_TYPE_CATEGORIES.wedding.cultures;
 
 // Cultural day explanations for dialog system
-const CULTURAL_DAY_EXPLANATIONS: Record<string, Record<string, string>> = {
+const buildCulturalDayExplanations = (t: ReturnType<typeof useT>['t']): Record<string, Record<string, string>> => ({
   sikh: {
-    'Chooda & Haldi':'Chooda er en seremoni hvor bruden får røde armbånd og Haldi innebærer å smøre gurkemeie på brudeparet for renselse og velsignelser.','Sangeet':'En musikkfylt feiring med dans og sanger der familiene forbereder seg til bryllupet med glede og tradisjonelle opptredener.','Anand Karaj & Reception' : 'Anand Karaj er den hellige Sikh vielsesseremonien i Gurdwara, fulgt av resepsjon med mat og feiring.'
+    'Chooda & Haldi': t('projCreate.cde.sikh.0'),
+    'Sangeet': t('projCreate.cde.sikh.1'),
+    'Anand Karaj & Reception': t('projCreate.cde.sikh.2'),
   },
   indisk: {
-    'Ganesh Puja & Haldi':'Ganesh Puja ber om velsignelser fra Ganeshas for å fjerne hindringer og Haldi påføres brudeparet for å rense og beskytte.','Mehendi':'Kunstferdig hennamaling påføres brudens hender og føtter i komplekse mønstre som symboliserer glede, åndelig oppvåkning og tilbud.','Sangeet':'En livlig feiring med tradisjonelle sanger, dans og musikk der begge familier deltar i opptredener og konkurranser.','Vielse & Reception' : 'Den hellige Hindu vielsesseremonien med Saptapadi (syv skritt) og Mangalsutra, fulgt av festmiddag og tradisjonelle ritualer.'
+    'Ganesh Puja & Haldi': t('projCreate.cde.indisk.0'),
+    'Mehendi': t('projCreate.cde.indisk.1'),
+    'Sangeet': t('projCreate.cde.indisk.2'),
+    'Vielse & Reception': t('projCreate.cde.indisk.3'),
   },
   pakistansk: {
-    'Mehndi & Sangeet':'Mehndi feiring hvor bruden får henna påført mens familie og venner synger tradisjonelle pakistanske bryllupssanger med tradisjonell musikk og dans.','Baraat & Nikkah':'Baraat er brudgommens entre til bryllupet, og Nikkah er den religiøse islamske vielsesseremonien med signering av nikah-kontrakt.','Walima resepsjon' : 'Walima er den tradisjonelle resepsjonen arrangert av brudgommens familie for å feire det nye ekteskapet med mat og glede.'
+    'Mehndi & Sangeet': t('projCreate.cde.pakistansk.0'),
+    'Baraat & Nikkah': t('projCreate.cde.pakistansk.1'),
+    'Walima resepsjon': t('projCreate.cde.pakistansk.2'),
   },
   tyrkisk: {
-    'Kına Gecesi (Henna)':'En tradisjonsrik kveld hvor bruden får henna påført hendene mens kvinnelige gjester synger sorgtunge sanger om å forlate barndomshjemmet.','Düğün (Bryllup)' : 'Den offisielle bryllupsdagen med sivil eller religiøs seremoni, fulgt av stor feiring med tradisjonell tyrkisk mat, musikk og dans.'
+    'Kına Gecesi (Henna)': t('projCreate.cde.tyrkisk.0'),
+    'Düğün (Bryllup)': t('projCreate.cde.tyrkisk.1'),
   },
   arabisk: {
-    'Nikah vielse':'Den islamske vielsesseremonien hvor nikah-kontrakten signeres i nærvær av vitner og familie, ofte fulgt av duaa og bønner.','Zaffe & Walima' : 'Zaffe er en spektakulær prosesjon med musikk og dans som leder brudeparet til festen, fulgt av Walima resepsjon.'
+    'Nikah vielse': t('projCreate.cde.arabisk.0'),
+    'Zaffe & Walima': t('projCreate.cde.arabisk.1'),
   },
   somalisk: {
-    'Nikah seremoni':'Den religiøse islamske vielsen med recitasjon av Koranen, nikah-kontrakt og duaa i nærvær av familie og samfunn.','Aroos feiring' : 'Tradisjonell somalisk bryllupsfeiring med autentisk mat, kulturdans, poesi og musikk som feirer det nye ekteskapet.'
+    'Nikah seremoni': t('projCreate.cde.somalisk.0'),
+    'Aroos feiring': t('projCreate.cde.somalisk.1'),
   },
   etiopisk: {
-    'Telosh seremoni':'En tradisjonell etiopisk førbryllups-seremoni med velsignelser, bønner og familiesamling før den offisielle vielsen.','Kulturell resepsjon' : 'Storslått feiring med tradisjonell etiopisk kaffe-seremoni, injera mat, kulturell musikk og dans som feirer den nye familien.'
+    'Telosh seremoni': t('projCreate.cde.etiopisk.0'),
+    'Kulturell resepsjon': t('projCreate.cde.etiopisk.1'),
   },
   nigeriansk: {
-    'White Wedding':'Vestlig-stil bryllup i kirke eller seremoni-lokale med hvit kjole og tradisjonelle europeiske bryllupstradisjoner.','Traditional Wedding' : 'Autentisk nigeriansk kulturell seremoni med tradisjonelle klær, ritualer, maten og musikk spesifikk for familiens stamme eller region.'
+    'White Wedding': t('projCreate.cde.nigeriansk.0'),
+    'Traditional Wedding': t('projCreate.cde.nigeriansk.1'),
   },
   muslimsk: {
-    'Mehendi kveld':'En intim feiring hvor bruden og kvinnelige gjester får henna påført i vakre mønstre mens de synger tradisjonelle sanger.','Nikkah & Walima' : 'Nikkah er den offisielle islamske vielsesseremonien med kontraktsignering, fulgt av Walima resepsjon for å feire ekteskapet.'
+    'Mehendi kveld': t('projCreate.cde.muslimsk.0'),
+    'Nikkah & Walima': t('projCreate.cde.muslimsk.1'),
   },
   libanesisk: {
-    'Henna Party':'En livlig feiring hvor bruden får henna påført av eldre kvinnelige slektninger mens gjester deltar i tradisjonell libanesisk musikk.','Zaffe & Reception' : 'Spektakulær Zaffe innmarsj med trommer og ululating, fulgt av resepsjon med autentisk libanesisk mat og tradisjonell dabke dans.'
-  }
-};
+    'Henna Party': t('projCreate.cde.libanesisk.0'),
+    'Zaffe & Reception': t('projCreate.cde.libanesisk.1'),
+  },
+});
 
 // Cultural day worklog tips and suggestions
-const CULTURAL_DAY_WORKLOG_TIPS: Record<string, Record<string, {
+const buildCulturalDayWorklogTips = (t: ReturnType<typeof useT>['t']): Record<string, Record<string, {
   tasks: string[];
   considerations: string[];
   timeManagement: string;
   keyContacts: string[];
   equipment: string[];
-}>> = {
+}>> => ({
   sikh: {
     'Chooda & Haldi': {
-      tasks: [
-        "Møte med familiene for å diskutere tidsplan","Undersøke ceremoni-lokalet og lysforhold","Planlegge foto-øyeblikk for Chooda-seremonien","Koordinere med andre fotografer/videografer","Sjekke tradisjonelle klær og farger for bedre bildekvalitet"
-      ],
-      considerations: [
-        "Haldi kan gjøre klær gule - planlegg utstyr deretter","Respekter hellige øyeblikk - ikke all fotografering er tillatt","Kvinner og menn kan ha separate seremonier","Røde Chooda-armbånd er meget viktige - få nærbilder","Familietradisjoner kan variere - spør alltid først"
-      ],
-      timeManagement: "Start tidlig på dagen, ceremoni kan ta 3-4 timer",
-      keyContacts: ["Brudgens familie","Religiøs leder","Event coordinator"],
-      equipment: ["85mm linse for portretter","Rask autofokus for bevegelse","Backup minnekort"]
+      tasks: [t('projCreate.cwt.sikh.0.tasks.0'), t('projCreate.cwt.sikh.0.tasks.1'), t('projCreate.cwt.sikh.0.tasks.2'), t('projCreate.cwt.sikh.0.tasks.3'), t('projCreate.cwt.sikh.0.tasks.4')],
+      considerations: [t('projCreate.cwt.sikh.0.cons.0'), t('projCreate.cwt.sikh.0.cons.1'), t('projCreate.cwt.sikh.0.cons.2'), t('projCreate.cwt.sikh.0.cons.3'), t('projCreate.cwt.sikh.0.cons.4')],
+      timeManagement: t('projCreate.cwt.sikh.0.time'),
+      keyContacts: [t('projCreate.cwt.sikh.0.contacts.0'), t('projCreate.cwt.sikh.0.contacts.1'), t('projCreate.cwt.sikh.0.contacts.2')],
+      equipment: [t('projCreate.cwt.sikh.0.equip.0'), t('projCreate.cwt.sikh.0.equip.1'), t('projCreate.cwt.sikh.0.equip.2')],
     },
     'Sangeet': {
-      tasks: [
-        "Planlegge bevegelige kameraposisjoner for dans","Teste lydnivå for video-opptak","Koordinere med DJ/musikere","Identifisere VIP-gjester som må fotograferes","Planlegge gruppefoto-øyeblikk"
-      ],
-      considerations: [
-        "Sangeet er en gledesfull begivenhet - fang energien","Dans og musikk - høy ISO og fast lukkertid nødvendig","Fargerike outfits - juster hvitbalanse","Begge familier deltar - få balansert dekning","Kan være sent på kvelden - planlegg belysning"
-      ],
-      timeManagement: "Lang kveld, 6-8 timer med pauser",
-      keyContacts: ["Event planner","DJ/musikere","Begge familier"],
-      equipment: ["70-200mm for scenefoto","Flash for indoors","Ekstra batterier"]
+      tasks: [t('projCreate.cwt.sikh.1.tasks.0'), t('projCreate.cwt.sikh.1.tasks.1'), t('projCreate.cwt.sikh.1.tasks.2'), t('projCreate.cwt.sikh.1.tasks.3'), t('projCreate.cwt.sikh.1.tasks.4')],
+      considerations: [t('projCreate.cwt.sikh.1.cons.0'), t('projCreate.cwt.sikh.1.cons.1'), t('projCreate.cwt.sikh.1.cons.2'), t('projCreate.cwt.sikh.1.cons.3'), t('projCreate.cwt.sikh.1.cons.4')],
+      timeManagement: t('projCreate.cwt.sikh.1.time'),
+      keyContacts: [t('projCreate.cwt.sikh.1.contacts.0'), t('projCreate.cwt.sikh.1.contacts.1'), t('projCreate.cwt.sikh.1.contacts.2')],
+      equipment: [t('projCreate.cwt.sikh.1.equip.0'), t('projCreate.cwt.sikh.1.equip.1'), t('projCreate.cwt.sikh.1.equip.2')],
     },
     'Anand Karaj & Reception': {
-      tasks: [
-        "Lære Sikh vielsesritualer på forhånd","Planlegge diskret fotografering i Gurdwara","Koordinere med Granthi (religiøs leder)","Identifisere Saptapadi (syv skritt) øyeblikk","Planlegge resepsjons-fotografering"
-      ],
-      considerations: [
-        "Sko må av i Gurdwara - planlegg utstyr transport","Hellig sted - vær meget respektfull","Fire runder rundt Guru Granth Sahib er viktige","Langar (gratis måltid) er tradisjon","Kirpan (seremonieschwert) er hellig gjenstand"
-      ],
-      timeManagement: "Vielse 2-3 timer, resepsjon 4-5 timer",
-      keyContacts: ["Granthi","Gurdwara komité","Begge familier"],
-      equipment: ["24-70mm zoom","Silent shooting mode","Respektfulle klær"]
-  }
-},
+      tasks: [t('projCreate.cwt.sikh.2.tasks.0'), t('projCreate.cwt.sikh.2.tasks.1'), t('projCreate.cwt.sikh.2.tasks.2'), t('projCreate.cwt.sikh.2.tasks.3'), t('projCreate.cwt.sikh.2.tasks.4')],
+      considerations: [t('projCreate.cwt.sikh.2.cons.0'), t('projCreate.cwt.sikh.2.cons.1'), t('projCreate.cwt.sikh.2.cons.2'), t('projCreate.cwt.sikh.2.cons.3'), t('projCreate.cwt.sikh.2.cons.4')],
+      timeManagement: t('projCreate.cwt.sikh.2.time'),
+      keyContacts: [t('projCreate.cwt.sikh.2.contacts.0'), t('projCreate.cwt.sikh.2.contacts.1'), t('projCreate.cwt.sikh.2.contacts.2')],
+      equipment: [t('projCreate.cwt.sikh.2.equip.0'), t('projCreate.cwt.sikh.2.equip.1'), t('projCreate.cwt.sikh.2.equip.2')],
+    },
+  },
   indisk: {
     'Ganesh Puja & Haldi': {
-      tasks: [
-        "Lære om Ganesh Puja ritualer på forhånd","Planlegge ceremonifotografering uten å forstyrre","Undersøke tradisjonelle elementer å fokusere på","Koordinere med prest/religiøs leder","Planlegge familiegruppefoto etter seremoni"
-      ],
-      considerations: [
-        "Ganesh Puja er hellig - vær respektfull og diskret","Haldi-pasta gjør alt gult - beskytt utstyr","Mange ritualer krever stillhet","Blomster og offerings er viktige detaljer","Eldre familiemedlemmer kan ha spesielle roller"
-      ],
-      timeManagement: "Hellig seremoni 2-3 timer, deretter Haldi 1-2 timer",
-      keyContacts: ["Hindu prest","Brudens familie","Brudgommens familie"],
-      equipment: ["50mm for intimitet","Makro linse for detaljer","Stille kamera-modus"]
-  }
-},
+      tasks: [t('projCreate.cwt.indisk.0.tasks.0'), t('projCreate.cwt.indisk.0.tasks.1'), t('projCreate.cwt.indisk.0.tasks.2'), t('projCreate.cwt.indisk.0.tasks.3'), t('projCreate.cwt.indisk.0.tasks.4')],
+      considerations: [t('projCreate.cwt.indisk.0.cons.0'), t('projCreate.cwt.indisk.0.cons.1'), t('projCreate.cwt.indisk.0.cons.2'), t('projCreate.cwt.indisk.0.cons.3'), t('projCreate.cwt.indisk.0.cons.4')],
+      timeManagement: t('projCreate.cwt.indisk.0.time'),
+      keyContacts: [t('projCreate.cwt.indisk.0.contacts.0'), t('projCreate.cwt.indisk.0.contacts.1'), t('projCreate.cwt.indisk.0.contacts.2')],
+      equipment: [t('projCreate.cwt.indisk.0.equip.0'), t('projCreate.cwt.indisk.0.equip.1'), t('projCreate.cwt.indisk.0.equip.2')],
+    },
+  },
   pakistansk: {
     'Mehndi & Sangeet': {
-      tasks: [
-        "Planlegge hennamaling close-up fotografering","Koordinere med henna-artisten","Identifisere familiesanger som skal fanges","Planlegge gruppefoto av kvinnelige gjester","Teste fargebalanse for gul/orange belysning"
-      ],
-      considerations: [
-        "Mehndi er ofte kun for kvinner - mann-fotograf kan ha begrenset tilgang","Intrikate henna-mønstre krever makro-fotografering","Tradisjonelle pakistanske sanger - ta lydopptak","Sari og lehenga har vakre detaljer","Kan være formiddags eller kveld - sjekk tidsplan"
-      ],
-      timeManagement: "Mehndi 3-4 timer, musikk og dans 2-3 timer",
-      keyContacts: ["Henna artist","Brudens søstre/kusiner","Musikere"],
-      equipment: ["Macro linse 100mm","Ring light for henna","Audio recorder"]
-  }
-}
-};
+      tasks: [t('projCreate.cwt.pakistansk.0.tasks.0'), t('projCreate.cwt.pakistansk.0.tasks.1'), t('projCreate.cwt.pakistansk.0.tasks.2'), t('projCreate.cwt.pakistansk.0.tasks.3'), t('projCreate.cwt.pakistansk.0.tasks.4')],
+      considerations: [t('projCreate.cwt.pakistansk.0.cons.0'), t('projCreate.cwt.pakistansk.0.cons.1'), t('projCreate.cwt.pakistansk.0.cons.2'), t('projCreate.cwt.pakistansk.0.cons.3'), t('projCreate.cwt.pakistansk.0.cons.4')],
+      timeManagement: t('projCreate.cwt.pakistansk.0.time'),
+      keyContacts: [t('projCreate.cwt.pakistansk.0.contacts.0'), t('projCreate.cwt.pakistansk.0.contacts.1'), t('projCreate.cwt.pakistansk.0.contacts.2')],
+      equipment: [t('projCreate.cwt.pakistansk.0.equip.0'), t('projCreate.cwt.pakistansk.0.equip.1'), t('projCreate.cwt.pakistansk.0.equip.2')],
+    },
+  },
+});
 
 // Project phases for worklog organization
 const PROJECT_PHASES: Record<string, { name: string; description: string; color: string; categories: string[] }> = {
@@ -773,6 +767,7 @@ const DYNAMIC_WORKLOG_TEMPLATES = {
 
 // Template generation engine - intelligently creates worklog entries with dynamic pricing
 const generateWorklogTemplate = (
+  t: ReturnType<typeof useT>['t'],
   profession: string, 
   phase: string, 
   category: string, 
@@ -799,10 +794,10 @@ const generateWorklogTemplate = (
 
   // Add cultural context if relevant
   if (culture && culture !== 'norsk' && profession === 'photographer') {
-    const culturalTips = CULTURAL_DAY_WORKLOG_TIPS[culture];
+    const culturalTips = buildCulturalDayWorklogTips(t)[culture];
     if (culturalTips && Object.keys(culturalTips).length > 0) {
       // Add cultural considerations to description
-      const culturalContext = `\n\n🌍 Kulturelle hensyn for ${culture}:\n${Object.values(culturalTips)[0]?.considerations?.slice(0, 3).map(c => `• ${c}`).join('\n') || 'Spesielle kulturelle hensyn må tas'}`;
+      const culturalContext = `\n\n🌍 ${t('projCreate.worklog.culturalConsiderations', { culture })}:\n${Object.values(culturalTips)[0]?.considerations?.slice(0, 3).map(c => `• ${c}`).join('\n') || t('projCreate.worklog.specialCulturalNote')}`;
       template.description += culturalContext;
   }
 }
@@ -1073,6 +1068,8 @@ export default function ProjectCreationWithMemoryCards({
     iransk: t('projCreate.culture.iransk'),
     annet: t('projCreate.culture.annet'),
   }), [t]);
+  const CULTURAL_DAY_EXPLANATIONS = useMemo(() => buildCulturalDayExplanations(t), [t]);
+  const CULTURAL_DAY_WORKLOG_TIPS = useMemo(() => buildCulturalDayWorklogTips(t), [t]);
 
   // Create auth headers for API requests
   const auth = {
@@ -3813,6 +3810,7 @@ useEffect(() => {
                     onClick={() => {
                       setWorklogFormData(prev => ({ ...prev, category: cat }));
                       const template = generateWorklogTemplate(
+                        t,
                         userProfession,
                         worklogFormData.projectPhase,
                         cat,

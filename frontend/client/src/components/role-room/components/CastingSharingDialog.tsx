@@ -362,24 +362,24 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
   const getStatusLabel = (status: string, type: 'role' | 'candidate' | 'schedule'): string => {
     const labels: Record<string, Record<string, string>> = {
       role: {
-        draft: 'Utkast',
-        open: 'Åpen',
-        casting: 'Casting',
-        filled: 'Fylt',
-        cancelled: 'Avlyst',
+        draft: t('castShare.status.role.draft'),
+        open: t('castShare.status.role.open'),
+        casting: t('castShare.status.role.casting'),
+        filled: t('castShare.status.role.filled'),
+        cancelled: t('castShare.status.role.cancelled'),
       },
       candidate: {
-        pending: 'Venter',
-        requested: 'Forespurt',
-        shortlist: 'Shortlist',
-        selected: 'Valgt',
-        confirmed: 'Bekreftet',
-        rejected: 'Avvist',
+        pending: t('castShare.status.candidate.pending'),
+        requested: t('castShare.status.candidate.requested'),
+        shortlist: t('castShare.status.candidate.shortlist'),
+        selected: t('castShare.status.candidate.selected'),
+        confirmed: t('castShare.status.candidate.confirmed'),
+        rejected: t('castShare.status.candidate.rejected'),
       },
       schedule: {
-        scheduled: 'Planlagt',
-        completed: 'Fullført',
-        cancelled: 'Avlyst',
+        scheduled: t('castShare.status.schedule.scheduled'),
+        completed: t('castShare.status.schedule.completed'),
+        cancelled: t('castShare.status.schedule.cancelled'),
       },
     };
     return labels[type]?.[status] || status;
@@ -479,7 +479,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${customTitle || project.name} - Casting Prosjekt</title>
+  <title>${customTitle || project.name} - ${t('castShare.pdf.docType')}</title>
   <style>
     @page {
       margin: 0;
@@ -766,45 +766,45 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
   <div class="page">
     <div class="header">
       <div class="title">${customTitle || project.name}</div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('castShare.pdf.exported')}: ${dateStr}</div>
     </div>
 
     ${project.description ? `<div class="description">${project.description}</div>` : ''}
 
     <div class="summary">
-      <div class="summary-title">Prosjekt Oversikt</div>
+      <div class="summary-title">${t('castShare.pdf.overview')}</div>
       <div class="summary-grid">
         <div class="summary-item">
           <div class="summary-item-icon">${getIconSVG('assignment', 32)}</div>
           <span class="summary-number">${totalRoles}</span>
-          <span class="summary-label">Roller totalt</span>
+          <span class="summary-label">${t('castShare.pdf.rolesTotal')}</span>
           ${totalRoles > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width: ${rolesFilledPercent}%"></div></div>` : ''}
         </div>
         <div class="summary-item">
           <div class="summary-item-icon">${getIconSVG('assignment', 32)}</div>
           <span class="summary-number">${openRoles}</span>
-          <span class="summary-label">Åpne roller</span>
+          <span class="summary-label">${t('castShare.pdf.rolesOpen')}</span>
         </div>
         <div class="summary-item">
           <div class="summary-item-icon">${getIconSVG('assignment', 32)}</div>
           <span class="summary-number">${filledRoles}</span>
-          <span class="summary-label">Fylte roller</span>
+          <span class="summary-label">${t('castShare.pdf.rolesFilled')}</span>
         </div>
         <div class="summary-item">
           <div class="summary-item-icon">${getIconSVG('person', 32)}</div>
           <span class="summary-number">${totalCandidates}</span>
-          <span class="summary-label">Kandidater</span>
+          <span class="summary-label">${t('castShare.pdf.candidates')}</span>
           ${totalCandidates > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width: ${candidatesConfirmedPercent}%"></div></div>` : ''}
         </div>
         <div class="summary-item">
           <div class="summary-item-icon">${getIconSVG('person', 32)}</div>
           <span class="summary-number">${confirmedCandidates}</span>
-          <span class="summary-label">Bekreftet</span>
+          <span class="summary-label">${t('castShare.pdf.confirmed')}</span>
         </div>
         <div class="summary-item">
           <div class="summary-item-icon">${getIconSVG('calendar', 32)}</div>
           <span class="summary-number">${totalSchedules}</span>
-          <span class="summary-label">Planlagte møter</span>
+          <span class="summary-label">${t('castShare.pdf.schedulesPlanned')}</span>
           ${totalSchedules > 0 ? `<div class="progress-bar"><div class="progress-fill" style="width: ${schedulesCompletedPercent}%"></div></div>` : ''}
         </div>
       </div>
@@ -815,7 +815,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${getIconSVG('assignment', 24)}</span>
-          Roller
+          ${t('castShare.pdf.secRoles')}
         </div>
         <div class="section-count">${roles.length}</div>
       </div>
@@ -824,9 +824,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Navn</th>
-                <th>Status</th>
-                <th>Beskrivelse</th>
+                <th>${t('castShare.pdf.thName')}</th>
+                <th>${t('castShare.pdf.thStatus')}</th>
+                <th>${t('castShare.pdf.thDescription')}</th>
               </tr>
             </thead>
             <tbody>
@@ -843,7 +843,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             </tbody>
           </table>
         </div>
-      ` : '<div class="section-content"><div class="empty-state">Ingen roller registrert</div></div>'}
+      ` : `<div class="section-content"><div class="empty-state">${t('castShare.pdf.emptyRoles')}</div></div>`}
     </div>
     ` : ''}
 
@@ -852,7 +852,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${getIconSVG('person', 24)}</span>
-          Kandidater
+          ${t('castShare.pdf.secCandidates')}
         </div>
         <div class="section-count">${candidates.length}</div>
       </div>
@@ -861,10 +861,10 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Navn</th>
-                <th>E-post</th>
-                <th>Telefon</th>
-                <th>Status</th>
+                <th>${t('castShare.pdf.thName')}</th>
+                <th>${t('castShare.pdf.thEmail')}</th>
+                <th>${t('castShare.pdf.thPhone')}</th>
+                <th>${t('castShare.pdf.thStatus')}</th>
               </tr>
             </thead>
             <tbody>
@@ -882,7 +882,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             </tbody>
           </table>
         </div>
-      ` : '<div class="section-content"><div class="empty-state">Ingen kandidater registrert</div></div>'}
+      ` : `<div class="section-content"><div class="empty-state">${t('castShare.pdf.emptyCandidates')}</div></div>`}
     </div>
     ` : ''}
 
@@ -891,7 +891,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${getIconSVG('calendar', 24)}</span>
-          Timeplan
+          ${t('castShare.pdf.secSchedules')}
         </div>
         <div class="section-count">${schedules.length}</div>
       </div>
@@ -900,10 +900,10 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Dato</th>
-                <th>Tid</th>
-                <th>Lokasjon</th>
-                <th>Status</th>
+                <th>${t('castShare.pdf.thDate')}</th>
+                <th>${t('castShare.pdf.thTime')}</th>
+                <th>${t('castShare.pdf.thLocation')}</th>
+                <th>${t('castShare.pdf.thStatus')}</th>
               </tr>
             </thead>
             <tbody>
@@ -921,7 +921,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             </tbody>
           </table>
         </div>
-      ` : '<div class="section-content"><div class="empty-state">Ingen timeplaner registrert</div></div>'}
+      ` : `<div class="section-content"><div class="empty-state">${t('castShare.pdf.emptySchedules')}</div></div>`}
     </div>
     ` : ''}
 
@@ -930,7 +930,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${getIconSVG('users', 24)}</span>
-          Crew
+          ${t('castShare.pdf.secCrew')}
         </div>
         <div class="section-count">${crew.length}</div>
       </div>
@@ -939,10 +939,10 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Navn</th>
-                <th>Rolle</th>
-                <th>E-post</th>
-                <th>Telefon</th>
+                <th>${t('castShare.pdf.thName')}</th>
+                <th>${t('castShare.pdf.thRole')}</th>
+                <th>${t('castShare.pdf.thEmail')}</th>
+                <th>${t('castShare.pdf.thPhone')}</th>
               </tr>
             </thead>
             <tbody>
@@ -957,7 +957,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
             </tbody>
           </table>
         </div>
-      ` : '<div class="section-content"><div class="empty-state">Ingen crew-medlemmer registrert</div></div>'}
+      ` : `<div class="section-content"><div class="empty-state">${t('castShare.pdf.emptyCrew')}</div></div>`}
     </div>
     ` : ''}
 
@@ -966,7 +966,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
         <div class="section-header">
           <div class="section-title">
             <span class="section-icon">${getIconSVG('location', 24)}</span>
-            Lokasjoner
+            ${t('castShare.pdf.secLocations')}
           </div>
           <div class="section-count">${locations.length}</div>
         </div>
@@ -974,8 +974,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Navn</th>
-                <th>Adresse</th>
+                <th>${t('castShare.pdf.thName')}</th>
+                <th>${t('castShare.pdf.thAddress')}</th>
               </tr>
             </thead>
             <tbody>
@@ -996,7 +996,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
         <div class="section-header">
           <div class="section-title">
             <span class="section-icon">${getIconSVG('package', 24)}</span>
-            Rekvisitter
+            ${t('castShare.pdf.secProps')}
           </div>
           <div class="section-count">${props.length}</div>
         </div>
@@ -1004,8 +1004,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Navn</th>
-                <th>Beskrivelse</th>
+                <th>${t('castShare.pdf.thName')}</th>
+                <th>${t('castShare.pdf.thDescription')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1026,7 +1026,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
         <div class="section-header">
           <div class="section-title">
             <span class="section-icon">${getIconSVG('share', 24)}</span>
-            Delte brukere
+            ${t('castShare.pdf.secSharedUsers')}
           </div>
           <div class="section-count">${sharedUsers.length}</div>
         </div>
@@ -1034,8 +1034,8 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
           <table>
             <thead>
               <tr>
-                <th>Bruker</th>
-                <th>Rolle</th>
+                <th>${t('castShare.pdf.thUser')}</th>
+                <th>${t('castShare.pdf.thRole')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1059,7 +1059,7 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
       <span>ID: ${project.id.substring(0, 8)}</span>
     </div>
     <div class="footer-right">
-      <span class="page-number">Side </span>
+      <span class="page-number">${t('castShare.pdf.page')} </span>
       <span>|</span>
       <span>${dateStr}</span>
     </div>

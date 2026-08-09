@@ -73,28 +73,28 @@ interface MerchCooperationDialogProps {
   confirmedEntity?: ConfirmedCustomerEntity | null;
 }
 
-function draftToMarkdown(d: MerchCooperationDraft, partnerName: string): string {
+function draftToMarkdown(d: MerchCooperationDraft, partnerName: string, t: ReturnType<typeof useT>['t']): string {
   const sections: string[] = [
     `# ${d.dealHeadline}`,
     ``,
     d.openingPitch,
     ``,
-    `## Vi tilbyr ${partnerName}`,
+    `## ${t('merchCoop.md.weOffer', { partner: partnerName })}`,
     ...d.weProposeToOffer.map((x) => `- ${x}`),
     ``,
-    `## ${partnerName} tilbyr oss`,
+    `## ${t('merchCoop.md.theyOffer', { partner: partnerName })}`,
     ...d.theyOffer.map((x) => `- ${x}`),
     ``,
-    `## Kommersiell ramme`,
+    `## ${t('merchCoop.md.commercialFrame')}`,
     d.commercialFraming,
     ``,
-    `## Avtaleutkast`,
+    `## ${t('merchCoop.md.draftAgreement')}`,
     ...d.draftAgreementParagraphs.map((p, i) => `${i + 1}. ${p}`),
     ``,
-    `## Risiko å sjekke før signering`,
+    `## ${t('merchCoop.md.risks')}`,
     ...d.riskNotes.map((x) => `- ${x}`),
     ``,
-    `## Neste steg`,
+    `## ${t('merchCoop.md.nextSteps')}`,
     ...d.nextSteps.map((x) => `- ${x}`),
   ];
   return sections.join('\n');
@@ -293,9 +293,9 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   const mailto = useMemo(() => {
     if (!draft) return null;
     const subject = encodeURIComponent(draft.dealHeadline);
-    const body = encodeURIComponent(draftToMarkdown(draft, partnerName));
+    const body = encodeURIComponent(draftToMarkdown(draft, partnerName, t));
     return `mailto:?subject=${subject}&body=${body}`;
-  }, [draft, partnerName]);
+  }, [draft, partnerName, t]);
 
   // Slice 7a: when the picked partner has a scraped contact email, build
   // a direct mailto with the recipient pre-filled. Producer can hit
@@ -303,9 +303,9 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   const mailtoDirect = useMemo(() => {
     if (!draft || !partnerEmail) return null;
     const subject = encodeURIComponent(draft.dealHeadline);
-    const body = encodeURIComponent(draftToMarkdown(draft, partnerName));
+    const body = encodeURIComponent(draftToMarkdown(draft, partnerName, t));
     return `mailto:${encodeURIComponent(partnerEmail)}?subject=${subject}&body=${body}`;
-  }, [draft, partnerEmail, partnerName]);
+  }, [draft, partnerEmail, partnerName, t]);
 
   // Slice 7b — backend send-and-log via Gmail SMTP. Distinct from mailto
   // because this records the send in role_room_merch_partner_emails so
@@ -322,7 +322,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
         partnerEmail,
         producerCcEmail: null,
         subject: draft.dealHeadline,
-        bodyMarkdown: draftToMarkdown(draft, partnerName),
+        bodyMarkdown: draftToMarkdown(draft, partnerName, t),
       });
       if (r.ok) {
         setSendResult({
@@ -605,7 +605,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                   <Button
                     size="small"
                     startIcon={copied === 'all' ? <CheckIcon /> : <CopyIcon />}
-                    onClick={() => void handleCopy('all', draftToMarkdown(draft, partnerName))}
+                    onClick={() => void handleCopy('all', draftToMarkdown(draft, partnerName, t))}
                     variant="outlined"
                     sx={{ textTransform: 'none' }}
                   >
