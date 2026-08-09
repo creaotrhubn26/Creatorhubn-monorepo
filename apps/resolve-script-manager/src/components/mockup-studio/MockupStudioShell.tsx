@@ -11,6 +11,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
+import { MockupLibraryPanel } from './MockupLibraryPanel';
+import { ingestImage } from './mockupLibraryIngest';
 import { MockupKeyframeGraph } from './MockupKeyframeGraph';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
@@ -235,7 +237,10 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         autoFill(list);
         const host = hostnameOf(url);
         if (host && (doc.name === 'Ny mockup' || !doc.name.trim())) store.setName(host);
-        setCaptureNote(`✓ ${list.length} skjermbilder hentet og fordelt på enhetene.`);
+        // Auto-mappestruktur: pipeline legger fangsten i biblioteket under fangst/<host>
+        const libFolder = `fangst/${host || 'nettside'}`;
+        void Promise.all(list.map((s) => ingestImage(s.label || s.viewport, s.dataUrl, libFolder, `capture:${host}`).then(store.addLibraryMeta).catch((e) => console.error('[mockup-studio] lib-ingest', e))));
+        setCaptureNote(`✓ ${list.length} skjermbilder hentet, fordelt på enhetene + lagt i biblioteket (${libFolder}).`);
       }
     } catch (e) {
       console.error('[mockup-studio] capture', e);
@@ -548,6 +553,9 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           </div>
           <button onClick={() => setShowSwitch(true)} style={{ ...listBtn, marginBottom: 8 }} title="Bytt mal — innholdet overføres der det passer">Bytt mal…</button>
 
+          </Collapsible>
+          <Collapsible title="Bibliotek">
+            <MockupLibraryPanel />
           </Collapsible>
           <Collapsible title="Fra nettside" defaultOpen={false}>
           <input

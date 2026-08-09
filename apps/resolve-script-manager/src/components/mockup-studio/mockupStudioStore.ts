@@ -34,6 +34,7 @@ import {
 } from './mockupStudioModel';
 import { computeSmartFocus } from './mockupSmartCrop';
 import { reorder } from './mockupArrange';
+import { type LibraryMeta, idbAllMeta, idbDelete, idbPatchMeta, idbGetFull } from './mockupLibraryDb';
 
 /** Hva som er valgt i editoren (styrer inspektør-panelet). */
 export type Selection =
@@ -96,6 +97,16 @@ interface MockupStudioState {
   removeAnnotation: (id: string) => void;
   setAnnotations: (anns: MockupAnnotation[]) => void;
   setMindmap: (src: string | undefined) => void;
+
+  // Prosjekt-bibliotek (media pool, IndexedDB-backet)
+  library: LibraryMeta[];
+  libraryLoaded: boolean;
+  loadLibrary: () => Promise<void>;
+  addLibraryMeta: (meta: LibraryMeta) => void;
+  removeLibraryAssets: (ids: string[]) => Promise<void>;
+  patchLibraryMeta: (id: string, patch: Partial<LibraryMeta>) => Promise<void>;
+  /** Last full-res fra IDB → tildel valgt enhet sin skjerm, ellers sett som lerret-bakgrunn. */
+  placeLibraryImage: (id: string, target?: 'device' | 'background') => Promise<void>;
 }
 
 function initialDoc(): MockupDoc {
@@ -271,4 +282,29 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   setAnnotations: (anns) => commit(set, (d) => ({ ...d, annotations: anns })),
 
   setMindmap: (src) => commit(set, (d) => ({ ...d, mindmap: src && src.trim() ? src : undefined })),
+
+  // ── Prosjekt-bibliotek ─────────────────────────────────────────────────────
+  library: [],
+  libraryLoaded: false,
+  loadLibrary: async () => {
+    if (get().libraryLoaded) return;
+    try { const metas = await idbAllMeta(); set({ library: metas, libraryLoaded: true }); }
+    catch (e) { console.error('[mockup-studio] loadLibrary', e); set({ libraryLoaded: true }); }
+  },
+  addLibraryMeta: (meta) => set((s) => ({ library: [meta, ...s.library.filter((m) => m.id !== meta.id)] })),
+  removeLibraryAssets: async (ids) => {
+    set((s) => ({ library: s.library.filter((m) => !ids.includes(m.id)) }));
+    try { await idbDelete(ids); } catch (e) { console.error('[mockup-studio] removeLibraryAssets', e); }
+  },
+  patchLibraryMeta: async (id, patch) => {
+    set((s) => ({ library: s.library.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
+    try { await idbPatchMeta(id, patch); } catch (e) { console.error('[mockup-studio] patchLibraryMeta', e); }
+  },
+  placeLibraryImage: async (id, target) => {
+    const full = await idbGetFull(id);
+    if (!full) return;
+    const sel = get().selection;
+    if (target === 'background' || sel.kind !== 'device') get().patchCanvas({ bgImage: full });
+    else get().setDeviceImage(sel.id, full);
+  },
 }));
