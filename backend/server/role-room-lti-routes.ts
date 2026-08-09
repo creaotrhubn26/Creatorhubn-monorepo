@@ -12,6 +12,7 @@
 
 import crypto from "crypto";
 import { Router, type NextFunction, type Request, type Response, type Router as ExpressRouter } from "express";
+import rateLimit from "express-rate-limit";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession, persistAuthSession } from "./auth-session-store.js";
 import { newEntityId } from "./_shared-ids.js";
@@ -25,6 +26,26 @@ import {
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 const APP_URL = process.env.LTI_APP_URL?.trim() || "https://www.theroleroom.com/";
 const TOOL_BASE = process.env.LTI_TOOL_BASE?.trim() || "https://www.theroleroom.com/api/role-room";
+
+// Rate-limit for det UAUTENTISERTE dynamic-registration-endepunktet: hindrer at
+// noen spammer pending-rader + utgående fetches (side-effekt-forsterkning).
+// 20 per IP per 10 min er rikelig for legitim registrering (evt. re-forsøk).
+// ponytail: in-memory per-prosess (holder for én Render-instans; flytt til
+// delt store hvis vi skalerer ut).
+const registerLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: false, // ingen ip-varsler i test/mock-miljø
+  keyGenerator: (req) => req.ip ?? "global",
+  handler: (_req, res) => {
+    res.status(429).send(
+      `<!doctype html><html><body style="font-family:sans-serif;padding:24px"><h3>For mange forsøk</h3>` +
+      `<p>For mange registrerings-forsøk. Prøv igjen om noen minutter.</p></body></html>`,
+    );
+  },
+});
 
 interface SessionData { userId: string; email: string; name: string; role: string; loginAt: string; [k: string]: unknown; }
 function isSuperAdmin(s: SessionData | null): boolean {
@@ -123,6 +144,9 @@ export function buildToolConfiguration(clientName = "The Role Room"): Record<str
   return {
     application_type: "web",
     client_name: clientName,
+    // Logo vises som verktøy-ikon i LMS-en (kvadratisk app-ikon, ekte PNG på
+    // frontend-roten). Uten denne får verktøyet et generisk placeholder-ikon.
+    logo_uri: `${APP_URL}theroleroom-app-icon-1024.png`,
     grant_types: ["client_credentials", "implicit"],
     response_types: ["id_token"],
     token_endpoint_auth_method: "private_key_jwt",
@@ -133,6 +157,7 @@ export function buildToolConfiguration(clientName = "The Role Room"): Record<str
     "https://purl.imsglobal.org/spec/lti-tool-configuration": {
       domain: new URL(TOOL_BASE).host,
       target_link_uri: launchUri,
+      description: "Studentproduksjoner, oppgaver, rubrikker og vurdering — med karakter tilbake i LMS.",
       claims: ["sub", "iss", "name", "email", "given_name", "family_name", "roles"],
       messages: [
         { type: "LtiResourceLinkRequest", target_link_uri: launchUri, label: clientName },
@@ -333,7 +358,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
   // Vi henter plattformens config, POST-er verktøy-registrering tilbake, lagrer
   // en PENDING plattform (super-admin må godkjenne før launch), og returnerer en
   // close-page. All URL-henting via fetchPlatform (SSRF-vakt + timeout).
-  router.get("/lti/register", async (req, res) => {
+  router.get("/lti/register", registerLimiter, async (req, res) => {
     const q = req.query as Record<string, string>;
     const openidUrl = typeof q.openid_configuration === "string" ? q.openid_configuration : "";
     const regToken = typeof q.registration_token === "string" ? q.registration_token : "";
@@ -388,7 +413,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
          ON CONFLICT (issuer, client_id) DO UPDATE SET
            deployment_id=EXCLUDED.deployment_id, auth_login_url=EXCLUDED.auth_login_url,
            token_url=EXCLUDED.token_url, jwks_url=EXCLUDED.jwks_url,
-           product_family=EXCLUDED.product_family, registered_via='dynamic',
+           product_family=EXCLUDED.product_family,
            status=CASE WHEN role_room_lti_platforms.status='approved' THEN 'approved' ELSE 'pending' END,
            updated_at=now()`,
         [newEntityId("ltiplat"), null, productFamily ? `${productFamily} · ${issuer}` : issuer,
@@ -401,7 +426,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         `<h3>The Role Room er registrert</h3>` +
         `<p>Institusjonen venter på godkjenning fra The Role Room før verktøyet kan brukes.</p>` +
         `<script>(function(){var m={subject:"org.imsglobal.lti.close"};` +
-        `(window.opener||window.parent).postMessage(m,"*");})();</script>` +
+        `(window.parent.opener||window.opener||window.parent).postMessage(m,"*");})();</script>` +
         `</body></html>`,
       );
     } catch (err) {
