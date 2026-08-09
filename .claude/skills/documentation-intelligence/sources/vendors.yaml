@@ -1,0 +1,138 @@
+# Pinned authoritative sources per vendor (Tier 1/2 per shared/SOURCE_POLICY.md).
+# Use these BEFORE searching the open web. Add vendors as new integrations land.
+# drift_watch: pages whose silent changes have bitten us or are likely to.
+
+vendors:
+  blackmagic-resolve:
+    product: DaVinci Resolve (scripting API)
+    used_by: [apps/resolve-script-manager, Post Agent]
+    tier1:
+      - https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion
+      - "Local: 'Developer/Scripting/README.txt' inside the Resolve app bundle — the ONLY full scripting API reference; version-matched to the installed app"
+    tier2:
+      - https://forum.blackmagicdesign.com/viewforum.php?f=21
+    drift_watch:
+      - Scripting README between point releases (API additions are undocumented online)
+
+  adobe-uxp:
+    product: Photoshop UXP / batchPlay
+    used_by: [Post Agent Photoshop bridge (145 photoshop_* tools), UXP plugin]
+    tier1:
+      - https://developer.adobe.com/photoshop/uxp/2022/
+      - https://developer.adobe.com/photoshop/uxp/2022/ps_reference/
+      - https://developer.adobe.com/photoshop/uxp/2022/guides/uxp_guide/
+    tier2:
+      - https://forums.creativeclouddeveloper.com/
+      - "Alchemist plugin (batchPlay descriptor recorder) — ground truth for descriptors"
+    drift_watch:
+      - UDT app name/path (Adobe renamed 'Adobe UXP Developer Tool' → 'Tools' without notice; bit us 2026-08)
+      - UXP manifest version requirements per Photoshop release
+
+  ims-lti:
+    product: LTI 1.3 Advantage (Core, AGS, NRPS, Dynamic Registration)
+    used_by: [backend LTI routes, Moodle/Canvas integration]
+    tier1:
+      - https://www.imsglobal.org/spec/lti/v1p3
+      - https://www.imsglobal.org/spec/lti-ags/v2p0
+      - https://www.imsglobal.org/spec/lti-nrps/v2p0
+      - https://www.imsglobal.org/spec/lti-dr/v1p0
+    tier2:
+      - https://saltire.lti.app/ (reference test platform)
+
+  moodle:
+    product: Moodle LMS
+    used_by: [LTI dynamic registration + launch]
+    tier1:
+      - https://moodledev.io/docs
+      - https://moodle.org/security/
+      - https://moodledev.io/general/releases
+    drift_watch:
+      - X-Frame-Options / iframe policy changes (blocked our registration iframe; bit us 2026-08)
+      - LTI plugin behavior per major release
+
+  canvas:
+    product: Instructure Canvas
+    used_by: [LTI target platform, NRPS roster]
+    tier1:
+      - https://canvas.instructure.com/doc/api/
+      - https://community.canvaslms.com/t5/Release-Notes/tkb-p/canvas-release
+    tier2:
+      - https://github.com/instructure/canvas-lms
+
+  apple-sdk:
+    product: iOS/iPadOS SDK, FoundationModels, Vision, Metal, PencilKit
+    used_by: [ipad/LeadMapApp, ipad/CaptureApp, ipad/StageOne]
+    tier1:
+      - https://developer.apple.com/documentation/foundationmodels
+      - https://developer.apple.com/documentation/vision
+      - https://developer.apple.com/documentation/
+      - https://developer.apple.com/news/releases/ (Xcode/SDK releases)
+    drift_watch:
+      - "Symbol availability vs installed Xcode SDK: iOS 27 FM symbols absent from Xcode 26 SDK (bit us 2026-07) — 'documented' ≠ 'compilable here'"
+
+  google-apis:
+    product: Google Workspace APIs + OAuth scopes
+    used_by: [Sheets, YouTube Analytics, Drive Activity, OAuth verification]
+    tier1:
+      - https://developers.google.com/identity/protocols/oauth2/scopes
+      - https://developers.google.com/sheets/api
+      - https://developers.google.com/youtube/analytics
+      - https://developers.google.com/drive/activity/v2
+    drift_watch:
+      - Scope classification changes (sensitive/restricted) during OAuth verification
+
+  stripe:
+    product: Stripe Billing
+    used_by: [backend billing, casting seat billing]
+    tier1:
+      - https://docs.stripe.com/api
+      - https://docs.stripe.com/upgrades
+      - https://docs.stripe.com/changelog
+    drift_watch:
+      - API version bumps (pinned per-account; upgrade is an explicit event)
+
+  higgsfield-fal:
+    product: Higgsfield / fal.ai generative models
+    used_by: [Demo Studio AI video, Pondus Akademi, mockup pipeline]
+    tier1:
+      - https://docs.higgsfield.ai/
+      - https://fal.ai/models
+    drift_watch:
+      - Model deprecations/renames and credit pricing (no changelog discipline; verify model id before batch spend)
+
+  blender:
+    product: Blender headless (bpy, Cycles)
+    used_by: [mockup-studio cinematic export]
+    tier1:
+      - https://docs.blender.org/api/current/
+      - https://developer.blender.org/docs/release_notes/
+    drift_watch:
+      - bpy API breaking changes between LTS and current
+
+  netlify:
+    product: Netlify hosting (per-brand frontends)
+    tier1:
+      - https://docs.netlify.com/
+      - https://www.netlifystatus.com/
+    drift_watch:
+      - Redirect/edge behavior (apex 301→www broke WebKit fetch; bit us 2026-08)
+
+  neon:
+    product: Neon Postgres
+    tier1:
+      - https://neon.tech/docs
+      - https://neonstatus.com/
+
+  render:
+    product: Render (backend hosting)
+    tier1:
+      - https://render.com/docs
+      - https://status.render.com/
+
+  sikt-feide:
+    product: Feide OIDC / FS-Canvas integration (Sikt)
+    tier1:
+      - https://docs.feide.no/
+      - https://sikt.no/tjenester/feide
+    drift_watch:
+      - FS↔Canvas event-based integration rollout (pilot spring 2026; pure upside for our LTI surface)

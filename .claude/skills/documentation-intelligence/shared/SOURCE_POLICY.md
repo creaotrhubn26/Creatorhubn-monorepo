@@ -196,3 +196,18 @@ Insufficient evidence.
 
 ### Contradicted
 Relevant authoritative evidence conflicts with the claim.
+
+## Freshness Rule
+
+A claim MUST be re-fetched from a live Tier 1/2 source — never answered from
+model memory — when any of the following holds:
+
+1. it concerns a version, release, price, model id, or behavior newer than the
+   model's knowledge cutoff
+2. it concerns a surface with recorded drift (`sources/vendors.yaml` →
+   `drift_watch`, or a matching class in `docs/evidence/`)
+3. it will be marked **Verified**
+
+Model memory alone can never produce Verified — at best Probable.
+For Apple SDK symbols, Verified additionally requires a compile check against
+the installed SDK (see `docs/evidence/2026-07-ios27-fm-symbols.yaml`).

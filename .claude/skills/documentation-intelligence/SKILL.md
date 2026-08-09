@@ -366,6 +366,21 @@ Available contracts:
 - `schemas/impact-report.schema.json`
 - `schemas/evidence-graph.schema.json`
 
+## Runtime Notes (Claude Code)
+
+- Only this umbrella file is auto-registered as a skill. Child skills are NOT
+  discovered separately — load them with Read on the paths above
+  (e.g. `api-validator/SKILL.md`) when routing selects them.
+- `sources/vendors.yaml` — pinned Tier 1/2 sources + `drift_watch` per vendor.
+  Consult it BEFORE open web search.
+- `scripts/build-baseline.mjs` and `scripts/grep-symbols.sh` — mechanical layer
+  for repo-intelligence (dependency baseline + external-API usage map). Run
+  them instead of hand-collecting.
+- Evidence persistence: `docs/evidence/` at repo root (convention in its
+  README). Seed cases there are calibration data for the Freshness Rule in
+  `shared/SOURCE_POLICY.md`.
+- `examples/eval.md` — smoke eval; run after editing this pack.
+
 ## Final Objective
 
 Documentation Intelligence v2 should behave less like a search skill and more like a technical intelligence control plane for AI engineering agents.

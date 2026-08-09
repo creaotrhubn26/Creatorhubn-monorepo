@@ -50,3 +50,20 @@ Affected file: src/integration/export.ts
 Recommended action: use documented API Z or raise the project baseline after compatibility review.
 Evidence: [official API reference]
 ```
+
+## Calibration (false-positive guard)
+
+Agent findings are frequently wrong on first pass. A **BLOCK** verdict for
+HALLUCINATED_API requires ALL of:
+
+1. exact-symbol search failed in official version-matched docs (Tier 1)
+2. a second independent check failed: vendor type definitions in the repo
+   (node_modules types, SDK headers) OR exact-symbol search in the official
+   vendor repository
+3. the symbol is not already used, working, in the project (a working call
+   site beats documentation absence — many vendor APIs are underdocumented,
+   e.g. DaVinci Resolve scripting)
+
+If only check 1 fails: downgrade to WARN with confidence Unverified.
+Track overturned BLOCKs; two overturned BLOCKs on the same vendor means that
+vendor's docs are incomplete — add a note in `sources/vendors.yaml`.
