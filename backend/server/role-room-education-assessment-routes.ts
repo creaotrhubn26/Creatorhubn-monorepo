@@ -44,6 +44,7 @@ export interface AssessmentItemView {
   studentName: string;
   studentEmail: string | null;
   productionProjectId: string | null;
+  deliverableId: string | null;
   status: string;
   grade: string | null;
   feedback: string | null;
@@ -71,6 +72,7 @@ function rowToItem(r: Record<string, unknown>): AssessmentItemView {
     studentName: (r.student_name as string) ?? "",
     studentEmail: (r.student_email as string) ?? null,
     productionProjectId: (r.production_project_id as string) ?? null,
+    deliverableId: (r.deliverable_id as string) ?? null,
     status: (r.status as string) ?? "submitted",
     grade: (r.grade as string) ?? null,
     feedback: (r.feedback as string) ?? null,
@@ -137,6 +139,7 @@ export function createEducationAssessmentRouter(
     const r = await pool.query(
       `SELECT s.id AS submission_id, s.assignment_id, s.student_id, s.status,
               s.grade, s.feedback, s.link, s.submitted_at, s.reviewed_at,
+              s.deliverable_id AS deliverable_id,
               st.name AS student_name, st.email AS student_email,
               a.title AS assignment_title, a.learning_goals, a.cohort_id,
               a.is_arbeidskrav, a.is_exam, a.vurderingsform,

@@ -19,6 +19,7 @@ export interface AssessmentItem {
   studentName: string;
   studentEmail: string | null;
   productionProjectId: string | null;
+  deliverableId?: string | null;
   status: 'submitted' | 'reviewed';
   grade: string | null;
   feedback: string | null;
