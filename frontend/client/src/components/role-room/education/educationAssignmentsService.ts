@@ -22,6 +22,7 @@ export interface Assignment {
   dueAt: string | null;
   status: AssignmentStatus;
   artifactKind: string | null;
+  artifactView: string | null;
   isArbeidskrav: boolean;
   isExam: boolean;
   vurderingsform: string | null;
@@ -69,6 +70,7 @@ export interface AssignmentInput {
   dueAt?: string | null;
   status?: AssignmentStatus;
   artifactKind?: string | null;
+  artifactView?: string | null;
   isArbeidskrav?: boolean;
   isExam?: boolean;
   vurderingsform?: string | null;
