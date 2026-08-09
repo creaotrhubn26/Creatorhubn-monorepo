@@ -313,7 +313,7 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
 
   setMindmap: (src) => commit(set, (d) => ({ ...d, mindmap: src && src.trim() ? src : undefined })),
 
-  // ── Prosjekt-bibliotek ─────────────────────────────────────────────────────
+  // ── Prosjekt-bibliotek ─────────────────────────────────────────────────────  // (test-modus-eksponering nederst i fila)
   library: [],
   libraryLoaded: false,
   loadLibrary: async () => {
@@ -339,3 +339,9 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     else get().addImage(full, at ? { x: Math.round(at.x - 260), y: Math.round(at.y - 180) } : undefined); // frittstående (senter på drop-punkt)
   },
 }));
+
+// Test-modus: eksponer storen for Playwright-E2E (programmatisk oppbygging av dokumenter).
+// Umulig i native/prod (browserTauriShim setter aldri __BROWSER_TEST__ der ekte Tauri finnes).
+if (typeof window !== 'undefined' && (window as unknown as { __BROWSER_TEST__?: boolean }).__BROWSER_TEST__) {
+  (window as unknown as { __mockupStore?: typeof useMockupStudio }).__mockupStore = useMockupStudio;
+}

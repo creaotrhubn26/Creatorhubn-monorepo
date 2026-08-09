@@ -29,6 +29,7 @@ const ARRAY_CMDS = new Set(['get_run_history', 'list_simulators', 'list_recent_m
 function mockInvoke(cmd: string): Promise<unknown> {
   if (cmd in MOCKS) return Promise.resolve(MOCKS[cmd]);
   if (cmd.startsWith('plugin:event|')) return Promise.resolve(0); // event-plugin (listen/unlisten)
+  if (cmd.includes('updater')) return Promise.resolve(null); // ingen auto-oppdatering i test-modus (unngår modal)
   if (ARRAY_CMDS.has(cmd)) return Promise.resolve([]);
   return Promise.resolve({});
 }
