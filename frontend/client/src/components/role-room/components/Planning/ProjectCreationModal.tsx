@@ -465,33 +465,33 @@ const buildCulturalDayWorklogTips = (t: ReturnType<typeof useT>['t']): Record<st
   },
 });
 
-// Project phases for worklog organization
-const PROJECT_PHASES: Record<string, { name: string; description: string; color: string; categories: string[] }> = {
+// Project phases for worklog organization - i18n builder
+const buildProjectPhases = (t: ReturnType<typeof useT>['t']): Record<string, { name: string; description: string; color: string; categories: string[] }> => ({
   pre_production: {
-    name: 'Pre-production',
-    description: 'Planlegging, research, møter, forberedelser',
+    name: t('projCreate.phase.pre_production.name'),
+    description: t('projCreate.phase.pre_production.desc'),
     color: '#2196f3',
     categories: ['planning','client_meeting','cultural_research','equipment_prep','location_scouting']
   },
   production: {
-    name: 'Production',
-    description: 'Selve fotografering, filming, opptak',
+    name: t('projCreate.phase.production.name'),
+    description: t('projCreate.phase.production.desc'),
     color: '#4caf50',
     categories: ['shooting','filming','recording','directing','on_set_coordination']
   },
   post_production: {
-    name: 'Post-production',
-    description: 'Redigering, fargekorrigering, levering',
+    name: t('projCreate.phase.post_production.name'),
+    description: t('projCreate.phase.post_production.desc'),
     color: '#9333ea',
     categories: ['editing','color_grading','sound_design','delivery','client_review']
   },
   business: {
-    name: 'Business',
-    description: 'Fakturering, markedsføring, oppfølging',
+    name: t('projCreate.phase.business.name'),
+    description: t('projCreate.phase.business.desc'),
     color: '#9c27b0',
     categories: ['invoicing','marketing','client_follow_up','portfolio_update','social_media']
   }
-};
+});
 
 // Dynamic Phase-Specific Worklog Templates - i18n builder
 const buildDynamicWorklogTemplates = (t: ReturnType<typeof useT>['t']) => ({
@@ -1069,6 +1069,7 @@ export default function ProjectCreationWithMemoryCards({
     iransk: t('projCreate.culture.iransk'),
     annet: t('projCreate.culture.annet'),
   }), [t]);
+  const PROJECT_PHASES = useMemo(() => buildProjectPhases(t), [t]);
   const CULTURAL_DAY_EXPLANATIONS = useMemo(() => buildCulturalDayExplanations(t), [t]);
   const CULTURAL_DAY_WORKLOG_TIPS = useMemo(() => buildCulturalDayWorklogTips(t), [t]);
 

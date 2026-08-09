@@ -8377,5 +8377,13 @@ export const no = {
   'projCreate.wlt.fallbackDesc': 'Arbeid relatert til {category} i {phase}-fasen.',
   'projCreate.wlt.albumNote': '\n\n🎼 Album-prosjekt: Tar hensyn til konseptuell sammenheng og konsistent lydprofil.',
   'projCreate.wlt.commercialNote': '\n\n📺 Kommersielt prosjekt: Fokus på teknisk kvalitet og deadline-levering.',
+  'projCreate.phase.pre_production.name': 'Pre-production',
+  'projCreate.phase.pre_production.desc': 'Planlegging, research, møter, forberedelser',
+  'projCreate.phase.production.name': 'Production',
+  'projCreate.phase.production.desc': 'Selve fotografering, filming, opptak',
+  'projCreate.phase.post_production.name': 'Post-production',
+  'projCreate.phase.post_production.desc': 'Redigering, fargekorrigering, levering',
+  'projCreate.phase.business.name': 'Business',
+  'projCreate.phase.business.desc': 'Fakturering, markedsføring, oppfølging',
 
 } as const;

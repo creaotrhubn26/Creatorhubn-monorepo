@@ -8378,5 +8378,13 @@ export const en: Record<keyof typeof no, string> = {
   'projCreate.wlt.fallbackDesc': 'Work related to {category} in the {phase} phase.',
   'projCreate.wlt.albumNote': '\n\n🎼 Album project: Accounts for conceptual coherence and a consistent sound profile.',
   'projCreate.wlt.commercialNote': '\n\n📺 Commercial project: Focus on technical quality and on-deadline delivery.',
+  'projCreate.phase.pre_production.name': 'Pre-production',
+  'projCreate.phase.pre_production.desc': 'Planning, research, meetings, preparations',
+  'projCreate.phase.production.name': 'Production',
+  'projCreate.phase.production.desc': 'The actual photography, filming, recording',
+  'projCreate.phase.post_production.name': 'Post-production',
+  'projCreate.phase.post_production.desc': 'Editing, color grading, delivery',
+  'projCreate.phase.business.name': 'Business',
+  'projCreate.phase.business.desc': 'Invoicing, marketing, follow-up',
 
 };
