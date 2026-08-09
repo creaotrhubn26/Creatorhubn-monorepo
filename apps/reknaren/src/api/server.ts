@@ -51,6 +51,7 @@ import { buildDashboard } from '../ledger/dashboard.js';
 import { getActivationStatus } from '../ledger/onboarding.js';
 import { ingestForwardedEmail } from '../ingestion/inbound-email.js';
 import { ingestResendEmail, verifyResendSignature, type ResendReceivedEvent } from '../ingestion/resend-inbound.js';
+import { parseSendgridMultipart, ingestSendgridEmail } from '../ingestion/sendgrid-inbound.js';
 import { createAgreement, listAgreements, reviewAgreements } from '../invoicing/agreements.js';
 import { buildAiDisclosure } from '../ai/disclosure.js';
 import {
@@ -2179,6 +2180,33 @@ export function createApiServer(deps: ApiDeps): express.Express {
         return;
       }
       const result = await ingestResendEmail(deps.db, deps.storage, { apiKey: deps.resendApiKey }, event);
+      res.json(toJson(result));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // SendGrid Inbound Parse-webhook: SendGrid POST-er en multipart/form-data når det
+  // kommer e-post til en virksomhets bilag-adresse. Autentiseres med ?token= i URL-en
+  // (SendGrid signerer ikke). Vi ruter på mottakeren og lagrer vedleggene.
+  app.post('/api/inbound/sendgrid', async (req, res, next) => {
+    try {
+      if (!deps.inboundSecret) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Inn-e-post er ikke konfigurert.' } });
+        return;
+      }
+      const provided = Buffer.from(String(req.query.token ?? ''));
+      const expected = Buffer.from(deps.inboundSecret);
+      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+        res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Ugyldig token.' } });
+        return;
+      }
+      if (!deps.storage) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Objektlager mangler.' } });
+        return;
+      }
+      const parsed = await parseSendgridMultipart(req);
+      const result = await ingestSendgridEmail(deps.db, deps.storage, parsed);
       res.json(toJson(result));
     } catch (err) {
       next(err);
