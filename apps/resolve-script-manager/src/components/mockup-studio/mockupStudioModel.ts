@@ -335,6 +335,9 @@ export interface MockupDoc {
   texts: MockupTextSlot[];
   /** Frittstående bilde-elementer (mat-foto/collage rett på lerretet, uten enhet-ramme). */
   images?: MockupImageSlot[];
+  /** Gjeldende layout-variant: er komposisjonen speilvendt? (styrer reversibel speiling av
+   *  frie elementer som ikke har slot-sone). */
+  mirrored?: boolean;
   /** Illustrasjons-lag (callout/lupe/markør). Valgfri — tomt/udefinert = ingen. */
   annotations?: MockupAnnotation[];
   /** Produkt-mind map (Mermaid `mindmap`-syntaks). Satt → lerretet er en mind
@@ -758,12 +761,17 @@ export function applyLayout(doc: MockupDoc, id: LayoutVariantId): MockupDoc {
       ? { ...d, x: W - z.x - d.w, y: z.y, rotation: z.rotation != null ? -z.rotation : d.rotation }
       : { ...d, x: z.x, y: z.y, rotation: z.rotation ?? d.rotation };
   });
+  // Frie elementer (uten slot-sone) speiles kun når mirror-TILSTANDEN endres → reversibelt,
+  // og forblir konsistente med slot-baserte enheter/tekst uansett bytte-rekkefølge.
+  const wantMirror = id === 'mirror';
+  const flipFree = !!doc.mirrored !== wantMirror;
   const texts = doc.texts.map((t) => {
     const z = zoneOf(t.slotId);
-    if (!z) return t;
-    return id === 'mirror' ? { ...t, x: W - z.x - t.w, y: z.y } : { ...t, x: z.x, y: z.y };
+    if (!z) return flipFree ? { ...t, x: W - t.x - t.w } : t; // fritt tekst-element (f.eks. pris-label)
+    return wantMirror ? { ...t, x: W - z.x - t.w, y: z.y } : { ...t, x: z.x, y: z.y };
   });
-  return { ...doc, devices, texts };
+  const images = (doc.images ?? []).map((im) => (flipFree ? { ...im, x: W - im.x - im.w } : im));
+  return { ...doc, devices, texts, images, mirrored: wantMirror };
 }
 
 export interface MalbytteReport {
@@ -953,6 +961,12 @@ function captureLayout(doc: MockupDoc): Record<string, SlotPlacement> {
  */
 export function applyFormat(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
   let next = reflowAuto(doc, fmt);
+  // Frittstående bilder har ingen slot-sone → skaler proporsjonalt med canvas-endringen
+  // (fra doc.canvas til fmt) så de holder plassen relativt til komposisjonen.
+  if (doc.images?.length) {
+    const sx = fmt.w / doc.canvas.w, sy = fmt.h / doc.canvas.h;
+    next = { ...next, images: doc.images.map((im) => ({ ...im, x: Math.round(im.x * sx), y: Math.round(im.y * sy), w: Math.round(im.w * sx), h: Math.round(im.h * sy) })) };
+  }
   const saved = doc.formatLayouts?.[fmt.id];
   if (saved) {
     next = {
