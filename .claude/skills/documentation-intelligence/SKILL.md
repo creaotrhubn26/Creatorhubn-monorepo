@@ -376,6 +376,20 @@ risk-focus vs. opportunity-focus. Depth on the chosen focus beats breadth
 across everything. Skip this only when the user already specified the focus,
 or in autonomous cron/cloud runs (they follow their own prompt).
 
+## Output Contract (token discipline)
+
+Be token-efficient. No filler, no generic advice, no changelog dumps.
+
+Every improvement proposal MUST have exactly these parts, compactly:
+1. **What**: the new vendor function/API (with source)
+2. **Where**: system + file pointer it improves
+3. **Why/benefit**: one sentence — what the user concretely gets
+4. **Size**: rough estimate (hours/days)
+
+A proposal missing any part is noise — drop it. Analysis output follows
+Impact-First (above): lead with the verdict and the N project-relevant items;
+never reproduce vendor release notes wholesale.
+
 ## Runtime Notes (Claude Code)
 
 - Only this umbrella file is auto-registered as a skill. Child skills are NOT
