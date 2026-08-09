@@ -1362,10 +1362,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // Kollapsbar seksjon: klikk overskriften for å skjule/vise gruppa → ryddigere, tett inspektør.
 function Collapsible({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const key = `mockup.sect.${title}`;
+  const [open, setOpen] = useState(() => {
+    try { const v = localStorage.getItem(key); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
+  });
+  const toggle = () => setOpen((o) => { const n = !o; try { localStorage.setItem(key, n ? '1' : '0'); } catch { /* private mode */ } return n; });
   return (
     <div>
-      <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
+      <button onClick={toggle} aria-expanded={open}
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', borderTop: `1px solid ${C.border}`, marginTop: 18, paddingTop: 14, paddingBottom: 2, cursor: 'pointer', fontFamily: C.font }}>
         <span style={{ flex: 1, textAlign: 'left', fontSize: FS_LABEL, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink, opacity: 0.82, fontWeight: 700 }}>{title}</span>
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.inkSoft} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}><path d="M9 6l6 6-6 6" /></svg>
