@@ -221,3 +221,5 @@ ipad/LeadMapApp/LeadMapWidget/Generated
 ipad/CaptureApp/CaptureApp/Resources/_MG_9300.CR2
 ipad/CaptureApp/CaptureAppTests/Resources/_MG_9300.CR2
 ipad/LeadMapApp/qa-galleri/
+!.claude/skills/
+!.claude/skills/**
