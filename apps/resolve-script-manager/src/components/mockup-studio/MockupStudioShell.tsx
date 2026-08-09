@@ -673,10 +673,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Midt: lerret */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12, overflow: 'auto', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
-          <div style={{ width: '100%', maxWidth: 1800 }}>
-            <MockupCanvas safeArea={safeArea} />
-          </div>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 12, overflow: 'hidden', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
+          <MockupCanvas safeArea={safeArea} />
         </div>
 
         {/* Høyre: inspektør */}

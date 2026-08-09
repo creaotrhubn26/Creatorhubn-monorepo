@@ -66,6 +66,15 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const [playT, setPlayT] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);          // 0.5×–2× hastighet
+  const [timelineH, setTimelineH] = useState(200); // brukerjusterbar timeline-høyde
+  const beginTimelineResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const sy = e.clientY, sh = timelineH;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => setTimelineH(Math.max(130, Math.min(600, sh + (sy - ev.clientY)))); // dra opp = høyere
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
   const [easing, setEasing] = useState<'linear' | 'smooth' | 'in' | 'out'>('smooth');
   const [inT, setInT] = useState(() => doc.timeline?.in ?? 0);   // inn-merke (0..1)
   const [outT, setOutT] = useState(() => doc.timeline?.out ?? 1); // ut-merke
@@ -333,12 +342,14 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const overlayCursor = dragging ? 'grabbing' : 'grab';
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    {/* Preview-region: fyller tilgjengelig plass; boksen fit-containes (høyde-drevet) */}
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <div
       ref={viewportRef}
       onWheel={onWheel}
       style={{
-        position: 'relative', width: '100%', aspectRatio: `${W} / ${H}`, maxHeight: '100%',
+        position: 'relative', height: '100%', width: 'auto', aspectRatio: `${W} / ${H}`, maxWidth: '100%', maxHeight: '100%',
         borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', background: '#05070c',
       }}
     >
@@ -437,10 +448,14 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         <button onClick={() => zoomBtn(1.1)} aria-label="Zoom inn" title="Zoom inn (+)" style={zoomBtnStyle}>+</button>
       </div>
     </div>
+    </div>
     {hasTyping && (
-      <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <>
+        {/* Drabar deler: dra opp/ned for å endre timeline-høyde */}
+        <div onPointerDown={beginTimelineResize} title="Dra for å endre timeline-høyde" style={gripStyle}><div style={gripBar} /></div>
+      <div style={{ height: timelineH, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
         {/* Transport (under preview, ingen overlapp med zoom) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', font: '600 11px system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', font: '600 11px system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}><IcStart /></button>
           <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? <IcPause /> : <IcPlay />}</button>
           <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}><IcLoop /></button>
@@ -453,10 +468,13 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
             <option value="linear">Lineær</option><option value="smooth">Myk</option><option value="in">Akselerér</option><option value="out">Retardér</option>
           </select>
         </div>
-        <MockupTimelinePanel playT={playT} onScrub={scrubTo} inT={inT} outT={outT} onSetIn={setInT} onSetOut={setOutT} />
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <MockupTimelinePanel playT={playT} onScrub={scrubTo} inT={inT} outT={outT} onSetIn={setInT} onSetOut={setOutT} />
+        </div>
       </div>
+      </>
     )}
-    </>
+    </div>
   );
 }
 
@@ -464,5 +482,7 @@ const zoomBtnStyle: React.CSSProperties = {
   width: 26, height: 26, display: 'grid', placeItems: 'center', background: 'transparent',
   color: '#e6e8ee', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 15, lineHeight: 1,
 };
+const gripStyle: CSSProperties = { height: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'row-resize', touchAction: 'none' };
+const gripBar: CSSProperties = { width: 46, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)' };
 
 export default MockupCanvas;
