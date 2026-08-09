@@ -444,9 +444,17 @@ export function createEducationStudentViewRouter(
       const productionProjectId = asg.rows[0].production_project_id ? String(asg.rows[0].production_project_id) : null;
       const assignmentTitle = String(asg.rows[0].title ?? "Oppgave");
 
-      // Opprett/oppdater ekte leveranse KUN for ekte-konto-student m/ bro-rolle.
-      let deliverableId: string | null = null;
-      if (usersId && productionProjectId) {
+      // Gjenbruk ev. leveranse fra en tidligere innsending (re-submit MÅ IKKE
+      // duplisere leveransen og foreldreløs-gjøre lærerens vurdering, spec §59).
+      const prevSub = await pool.query(
+        `SELECT deliverable_id FROM role_room_education_submissions WHERE assignment_id = $1 AND student_id = $2`,
+        [req.params.assignmentId, studentId],
+      );
+      let deliverableId: string | null = prevSub.rows[0]?.deliverable_id ? String(prevSub.rows[0].deliverable_id) : null;
+
+      // Opprett ekte leveranse KUN for ekte-konto-student m/ bro-rolle, og KUN
+      // når det ikke alt finnes en leveranse fra en tidligere innsending.
+      if (!deliverableId && usersId && productionProjectId) {
         const role = await resolveEducationProductionRole(pool, usersId, productionProjectId);
         if (role) {
           const d = await createDeliverable(pool, {

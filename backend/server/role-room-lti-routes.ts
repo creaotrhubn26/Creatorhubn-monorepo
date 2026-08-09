@@ -574,7 +574,9 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         return;
       }
       // Landing: student → «Min side», faglærer → utdannings-workspace.
-      const mode = identity.educationRole === "student" ? "student" : "education";
+      // (Deep-link/produksjon er allerede returnert over; landingMode faller
+      // her tilbake til samme student/education-avgjørelse som ternary-en.)
+      const mode = landingMode(identity.educationRole, messageType, customProject);
       const redirectParams = new URLSearchParams({ mode, lti_launch: launchId });
       if (sessionToken) redirectParams.set("rr_session", sessionToken);
       res.redirect(`${APP_URL}?${redirectParams.toString()}`);
