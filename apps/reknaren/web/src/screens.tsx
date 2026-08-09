@@ -183,7 +183,10 @@ function KomIGang({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: strin
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2 style={{ marginTop: 0 }}>Kom i gang</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="/reknaren-mark.png" width={40} height={40} alt="" style={{ borderRadius: 8, flexShrink: 0, display: 'block' }} />
+          <h2 style={{ margin: 0 }}>Kom i gang</h2>
+        </div>
         <span className="confidence high">{done} av {steps.length} fullført</span>
       </div>
       <p className="subtitle" style={{ marginTop: 0 }}>Noen steg til regnskapet ditt går av seg selv.</p>
@@ -223,6 +226,49 @@ function KomIGang({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: strin
   );
 }
 
+type InsightCard = {
+  id: string; kind: string; severity: 'signal' | 'opportunity' | 'watch';
+  title: string; body: string; impact_minor: string | null;
+  direction: 'cost' | 'benefit' | 'neutral';
+  sources: { label: string; url?: string }[];
+};
+
+function MarketInsightCard({ c }: { c: InsightCard }) {
+  const cls = c.severity === 'opportunity' ? 'icard opp' : c.severity === 'watch' ? 'icard watch' : 'icard';
+  const impact = c.impact_minor !== null ? kr(c.impact_minor) : null;
+  const sign = c.direction === 'benefit' ? '−' : c.direction === 'cost' ? '+' : '';
+  return (
+    <div className={cls}>
+      <div className="tag"><span className="sq" />{c.severity === 'opportunity' ? 'Mulighet' : c.severity === 'watch' ? 'Fortjener oppmerksomhet' : 'Signal'}</div>
+      {impact && <div className={`impact num ${c.direction === 'benefit' ? 'pos' : c.direction === 'cost' ? 'neg' : ''}`}>{sign}{impact}{c.direction !== 'neutral' ? '/år' : ''}</div>}
+      <div className="body" style={{ fontWeight: impact ? 400 : 600 }}>{c.title}. {c.body}</div>
+      <div className="foot">
+        {c.sources[0] && (c.sources[0].url
+          ? <a className="chip" href={c.sources[0].url} target="_blank" rel="noreferrer">{c.sources[0].label}</a>
+          : <span className="chip">{c.sources[0].label}</span>)}
+        <span className="discl">Ikke finansiell rådgivning</span>
+      </div>
+    </div>
+  );
+}
+
+function useMarketInsights(orgId: string) {
+  return useLoad(() => api<{ cards: InsightCard[] }>('GET', `/api/organizations/${orgId}/market/insights`), [orgId]);
+}
+
+function VerdtÅVite({ orgId }: { orgId: string }) {
+  const ins = useMarketInsights(orgId);
+  const cards = ins.data?.cards ?? [];
+  if (!cards.length) return null;
+  return (
+    <div className="panel">
+      <div className="panel-head"><h2 style={{ marginTop: 0 }}>Verdt å vite</h2></div>
+      <p className="subtitle" style={{ marginTop: 0 }}>Markedet, tolket mot dine egne tall.</p>
+      <div className="cards">{cards.slice(0, 3).map((c) => <MarketInsightCard key={c.id} c={c} />)}</div>
+    </div>
+  );
+}
+
 export function OverviewScreen({
   orgId,
   onOpenDocument,
@@ -242,6 +288,7 @@ export function OverviewScreen({
         <p className="subtitle">Alt på ett sted — hva som er bra, og hva som trenger deg.</p>
       </div>
       <KomIGang orgId={orgId} onNavigate={onNavigate} />
+      <VerdtÅVite orgId={orgId} />
       {dash.error && <div className="error">{dash.error}</div>}
       {dash.loading || !d ? (
         <>
@@ -3108,6 +3155,8 @@ function LiquidityChart({ liq, cashNow }: { liq: Forecast['likviditet']; cashNow
 export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigate?: (s: string) => void }) {
   const fc = useLoad(() => api<Forecast>('GET', `/api/organizations/${orgId}/planning`), [orgId]);
   const f = fc.data;
+  const ins = useMarketInsights(orgId);
+  const topInsight = ins.data?.cards[0];
   return (
     <div>
       <div className="page-head">
@@ -3116,6 +3165,7 @@ export function PlanningScreen({ orgId, onNavigate }: { orgId: string; onNavigat
           Hva som kommer: forventet MVA og skatt, likviditet, ubetalte fakturaer, kommende kostnader og hva som mangler.
         </p>
       </div>
+      {topInsight && <div className="cards" style={{ marginBottom: 4 }}><MarketInsightCard c={topInsight} /></div>}
       {fc.error && <div className="error">{fc.error}</div>}
       {fc.loading ? (
         <div className="cards">
