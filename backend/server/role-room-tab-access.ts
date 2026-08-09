@@ -102,7 +102,7 @@ async function resolve(pool: Pool, projectId: string, viewerId: string): Promise
   // Utdannings-bro: student tildelt via education-workspacet får fane-RBAC
   // mappet fra education-rollen (viewer/contributor/lead). Kjøres etter leder/
   // eksplisitte overstyringer, så en leders delegering vinner fortsatt.
-  const eduRole = await resolveEducationProductionRole(pool, projectId, viewerId);
+  const eduRole = await resolveEducationProductionRole(pool, viewerId, projectId);
   if (eduRole) return { kind: "map", map: { ...EDU_TAB_ACCESS[eduRole] } };
 
   return { kind: "none" };
