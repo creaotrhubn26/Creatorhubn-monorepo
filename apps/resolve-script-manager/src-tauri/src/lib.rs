@@ -8,6 +8,7 @@ mod cull;
 mod folder_watcher;
 mod history;
 mod autonomous_demo;
+mod blender;
 mod broll;
 mod capture_sources;
 mod demo_capture;
@@ -1077,6 +1078,7 @@ pub fn run() {
             capture_sources::ios_sim_tap,
             capture_sources::ios_sim_swipe,
             broll::higgsfield_account_status,
+            blender::render_blender_cinematic,
             broll::generate_broll_clip,
             broll::generate_broll_clip_fal,
             broll::generate_presenter_clip,
