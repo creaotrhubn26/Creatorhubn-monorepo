@@ -394,7 +394,7 @@ export function setupPhotographerMiscRoutes(
           message: 'Mangler Google Drive-tilgang. Koble til Google på nytt og godkjenn Drive-scope.',
         });
       }
-      res.status(500).json({ error: 'setup_failed', message: String("internal_error" ?? '').slice(0, 200) });
+      res.status(500).json({ error: 'setup_failed', message: 'internal_error' });
     }
   });
   app.get("/api/photographer/worklog/summary", async (req, res) => {
