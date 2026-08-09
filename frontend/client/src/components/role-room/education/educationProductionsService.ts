@@ -59,18 +59,34 @@ export const educationProductionsService = {
 };
 
 /**
- * Åpner det ekte Role Room-prosjektet i en NY fane (production-modus + deep-link
+ * Åpner det ekte Role Room-prosjektet (production-modus + deep-link
  * ?project=<id>). URL-param `mode` vinner over lagret education-modus, så
  * utdannings-fanen blir uberørt.
+ *
+ * Default: ny fane (faglærer/produsent-bruk — AssessmentTab, AssignmentsTab,
+ * ProductionsTab). Når `opts.asStudent` er satt (StudentWorkspace — «Min
+ * side») navigerer vi i SAMME fane og setter `?edu=1` slik at produksjons-
+ * headeren kan vise en «Min side»-knapp tilbake. Uten dette har studenten
+ * ingen vei tilbake til oppgavene sine på iPad/iPhone (ingen ny-fane-støtte
+ * der de kan bytte tilbake).
  */
-export function openProductionInRoleRoom(projectId: string, tab?: string): void {
+export function openProductionInRoleRoom(
+  projectId: string,
+  tab?: string,
+  opts?: { asStudent?: boolean },
+): void {
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('mode', 'production');
     url.searchParams.set('project', projectId);
     if (tab) url.searchParams.set('tab', tab);
     else url.searchParams.delete('tab');
-    window.open(url.toString(), '_blank', 'noopener');
+    if (opts?.asStudent) {
+      url.searchParams.set('edu', '1');
+      window.location.assign(url.toString());
+    } else {
+      window.open(url.toString(), '_blank', 'noopener');
+    }
   } catch {
     /* no-op */
   }
