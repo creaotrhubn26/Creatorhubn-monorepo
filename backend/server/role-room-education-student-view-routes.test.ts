@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createEducationStudentViewRouter } from "./role-room-education-student-view-routes.js";
+import { createEducationStudentViewRouter, resolveEducationStudentByUser } from "./role-room-education-student-view-routes.js";
 
 function mountHandlers(router: any) {
   const out: Array<{ method: string; path: string; stack: any[] }> = [];
@@ -80,6 +80,25 @@ const sessions = new Map<string, any>([
 ]);
 const R = (pool: any) => mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions as any }));
 const H = (rs: any[], method: string, path: string) => rs.find((x) => x.method === method && x.path === path)!.stack;
+
+describe("resolveEducationStudentByUser", () => {
+  it("returnerer student-id når users.email = students.email", async () => {
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      if (sql.includes("FROM role_room_education_students") && sql.includes("users")) {
+        // matcher kun for riktig userId
+        return params[0] === "u1" ? { rows: [{ id: "stud-1" }] } : { rows: [] };
+      }
+      return { rows: [] };
+    }) };
+    expect(await resolveEducationStudentByUser(pool, "u1")).toBe("stud-1");
+    expect(await resolveEducationStudentByUser(pool, "u-annen")).toBeNull();
+  });
+  it("tom userId → null (ingen query)", async () => {
+    const pool: any = { query: vi.fn() };
+    expect(await resolveEducationStudentByUser(pool, "")).toBeNull();
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+});
 
 describe("education student view + claim routes", () => {
   // ── Preview-vei (Bearer) ─────────────────────────────────────────────────

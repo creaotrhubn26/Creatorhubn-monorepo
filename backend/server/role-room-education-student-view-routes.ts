@@ -80,6 +80,32 @@ async function resolveStudentSession(pool: Pool, token: string | undefined): Pro
   return r.rows[0] ? String(r.rows[0].student_id) : null;
 }
 
+/**
+ * En ekte-konto-education-student: matcher innlogget brukers users.email mot
+ * education-studentens e-post. Returnerer student-id, ellers null (ingen kobling
+ * / feil). Fail-closed. Gjør at en LTI-student (ekte Bearer-sesjon, ingen
+ * x-student-token) kan se SIN EGEN «Min side».
+ */
+export async function resolveEducationStudentByUser(pool: Pool, userId: string): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const r = await pool.query(
+      `SELECT s.id
+         FROM role_room_education_students s
+         JOIN users u ON lower(u.email) = lower(s.email)
+        WHERE u.id = $1
+        ORDER BY s.created_at DESC
+        LIMIT 1`,
+      [userId],
+    );
+    return r.rows[0] ? String(r.rows[0].id) : null;
+  } catch (err) {
+    if (isMissingTable(err)) return null;
+    console.error("[education-student-view] resolveByUser failed (fail-closed):", (err as Error).message);
+    return null;
+  }
+}
+
 function isMissingTable(err: unknown): boolean {
   return (err as { code?: string })?.code === "42P01";
 }
