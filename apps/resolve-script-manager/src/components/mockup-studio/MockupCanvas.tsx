@@ -27,14 +27,15 @@ const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
 const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.08)', color: '#e6e9ef', cursor: 'pointer', fontSize: 12 };
 const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: 11 };
 // Ordentlige SVG-ikoner (ikke emoji) for transport.
+const ICON = '#eef1f6';
 const Svg = ({ children }: { children: ReactNode }) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ display: 'block' }}>{children}</svg>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
 );
 const IcStart = () => <Svg><rect x="6" y="5" width="2.4" height="14" rx="1" /><path d="M19 5 10 12l9 7z" /></Svg>;
 const IcPlay = () => <Svg><path d="M8 5v14l11-7z" /></Svg>;
 const IcPause = () => <Svg><rect x="7" y="5" width="3.4" height="14" rx="1" /><rect x="13.6" y="5" width="3.4" height="14" rx="1" /></Svg>;
 const IcLoop = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
     <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
   </svg>
 );
