@@ -27,6 +27,8 @@ import {
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { newEntityId } from "./_shared-ids.js";
+import { createDeliverable } from "./role-room-deliverables.js";
+import { resolveEducationProductionRole } from "./role-room-education-production-access.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 
@@ -416,32 +418,64 @@ export function createEducationStudentViewRouter(
   // ── Student leverer (isolert sesjon) ─────────────────────────────────────
   router.put("/education/student/assignment/:assignmentId/submit", async (req, res) => {
     try {
-      const studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      // Resolve student (x-student-token ELLER Bearer-ekte-konto).
+      let studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      let usersId: string | null = null;
+      if (!studentId) {
+        const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+        const session = await resolveUser(pool, deps.activeSessions, bearer);
+        if (session?.userId) { usersId = session.userId; studentId = await resolveEducationStudentByUser(pool, session.userId); }
+      }
       if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
       const student = await loadStudent(studentId);
       if (!student) { res.status(404).json({ error: "not_found" }); return; }
       const body = (req.body ?? {}) as { link?: string; note?: string };
       const link = typeof body.link === "string" ? body.link.trim() || null : null;
       const note = typeof body.note === "string" ? body.note.trim() || null : null;
-      // Oppgaven MÅ tilhøre studentens kull + være publisert.
-      const ok = await pool.query(
-        `SELECT 1 FROM role_room_education_assignments WHERE id = $1 AND cohort_id = $2 AND status = 'published'`,
+      // Oppgave MÅ tilhøre kullet + være publisert; hent koblet produksjon + tittel.
+      const asg = await pool.query(
+        `SELECT a.title,
+                (SELECT project_id FROM role_room_education_productions WHERE id = a.production_id) AS production_project_id
+           FROM role_room_education_assignments a
+          WHERE a.id = $1 AND a.cohort_id = $2 AND a.status = 'published'`,
         [req.params.assignmentId, student.cohort_id],
       );
-      if (ok.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      if (asg.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const productionProjectId = asg.rows[0].production_project_id ? String(asg.rows[0].production_project_id) : null;
+      const assignmentTitle = String(asg.rows[0].title ?? "Oppgave");
+
+      // Opprett/oppdater ekte leveranse KUN for ekte-konto-student m/ bro-rolle.
+      let deliverableId: string | null = null;
+      if (usersId && productionProjectId) {
+        const role = await resolveEducationProductionRole(pool, usersId, productionProjectId);
+        if (role) {
+          const d = await createDeliverable(pool, {
+            projectId: productionProjectId,
+            title: assignmentTitle,
+            assigneeUserId: usersId,
+            assigneeLabel: String(student.name ?? ""),
+            status: "internal_review",
+            phase: "postproduction",
+            createdByUserId: usersId,
+          });
+          deliverableId = d?.id ?? null;
+        }
+      }
+
       const id = newEntityId("edsub");
       const r = await pool.query(
         `INSERT INTO role_room_education_submissions
-           (id, assignment_id, student_id, owner_user_id, status, link, note, submitted_at)
-         VALUES ($1,$2,$3,$4,'submitted',$5,$6, now())
+           (id, assignment_id, student_id, owner_user_id, status, link, note, deliverable_id, submitted_at)
+         VALUES ($1,$2,$3,$4,'submitted',$5,$6,$7, now())
          ON CONFLICT (assignment_id, student_id)
          DO UPDATE SET status = CASE WHEN role_room_education_submissions.status = 'reviewed' THEN 'reviewed' ELSE 'submitted' END,
                        link = EXCLUDED.link,
                        note = COALESCE(EXCLUDED.note, role_room_education_submissions.note),
+                       deliverable_id = COALESCE(EXCLUDED.deliverable_id, role_room_education_submissions.deliverable_id),
                        submitted_at = COALESCE(role_room_education_submissions.submitted_at, EXCLUDED.submitted_at),
                        updated_at = now()
          RETURNING status, link`,
-        [id, req.params.assignmentId, studentId, student.owner_user_id, link, note],
+        [id, req.params.assignmentId, studentId, student.owner_user_id, link, note, deliverableId],
       );
       res.json({ status: (r.rows[0]?.status as string) ?? "submitted", link: (r.rows[0]?.link as string) ?? null });
     } catch (err) {
