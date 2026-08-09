@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type SyntheticEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, type SyntheticEvent } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -25,6 +25,7 @@ import {
 import authSessionService from '../services/authSessionService';
 import { TeamIcon as GroupsIcon } from './icons/CastingIcons';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useT } from '../../../i18n';
 
 export type CastingProfessionCategory = 'foto' | 'video' | 'felles' | 'admin';
 export type CastingProfessionSelection = {
@@ -37,71 +38,76 @@ interface CastingProfessionDialogProps {
   onSelect: (selection: CastingProfessionSelection) => void;
 }
 
-const professionCategories = [
-  {
-    id: 'admin' as const,
-    name: 'Admin',
-    description: 'Administrasjon og ledelse',
-    logo: '/role-admin.png',
-    icon: SettingsIcon,
-    color: '#ef4444',
-    gradient: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%)',
-    glowColor: 'rgba(239, 68, 68, 0.4)',
-    roles: [
-      { id: 'owner', label: 'Eier', description: 'Full tilgang til alt', icon: SupervisorAccountIcon },
-      { id: 'admin', label: 'Administrator', description: 'Brukeradministrasjon og innstillinger', icon: SettingsIcon },
-    ],
-  },
-  {
-    id: 'foto' as const,
-    name: 'Foto',
-    description: 'Stillbilder og fotoprosjekter',
-    logo: '/role-foto.png',
-    icon: PhotoCameraIcon,
-    color: '#10b981',
-    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)',
-    glowColor: 'rgba(16, 185, 129, 0.4)',
-    roles: [
-      { id: 'photographer', label: 'Fotograf', description: 'Leder fotoshoots', icon: PhotoCameraIcon },
-      { id: 'film_photographer', label: 'Innholdsprodusent', description: 'Storyboard, manus og leveranser', icon: MovieIcon },
-      { id: 'photo_director', label: 'Fotodirektør', description: 'Kreativ ledelse for foto', icon: CameraAltIcon },
-      { id: 'photo_assistant', label: 'Fotoassistent', description: 'Støttefunksjon', icon: PersonIcon },
-    ],
-  },
-  {
-    id: 'video' as const,
-    name: 'Video',
-    description: 'Film og videoproduksjon',
-    logo: '/role-video.png',
-    icon: VideocamIcon,
-    color: 'var(--role-violet, #8b5cf6)',
-    gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%)',
-    glowColor: 'rgba(139, 92, 246, 0.4)',
-    roles: [
-      { id: 'director', label: 'Regissør', description: 'Kreativ ledelse for video', icon: MovieIcon },
-      { id: 'producer', label: 'Produsent', description: 'Prosjektledelse og budsjett', icon: SupervisorAccountIcon },
-      { id: 'casting_director', label: 'Casting Director', description: 'Ansvarlig for casting-prosessen', icon: GroupsIcon },
-      { id: 'camera_operator', label: 'Kameraoperatør', description: 'Teknisk utførelse', icon: VideocamIcon },
-    ],
-  },
-  {
-    id: 'felles' as const,
-    name: 'Felles/Andre',
-    description: 'Talent, agenter og klienter',
-    logo: '/role-felles.png',
-    icon: GroupsIcon,
-    color: '#f59e0b',
-    gradient: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%)',
-    glowColor: 'rgba(245, 158, 11, 0.4)',
-    roles: [
-      { id: 'talent', label: 'Talent/Modell', description: 'De som castes', icon: FaceIcon },
-      { id: 'agent', label: 'Agent', description: 'Representerer talent', icon: PersonIcon },
-      { id: 'client', label: 'Klient', description: 'Oppdragsgiver/merkevare', icon: BusinessIcon },
-    ],
-  },
-];
+// Category/role display copy is translated; ids below are backend enum values and stay as-is.
+function buildProfessionCategories(t: ReturnType<typeof useT>['t']) {
+  return [
+    {
+      id: 'admin' as const,
+      name: 'Admin',
+      description: t('castProf.categories.admin.description'),
+      logo: '/role-admin.png',
+      icon: SettingsIcon,
+      color: '#ef4444',
+      gradient: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%)',
+      glowColor: 'rgba(239, 68, 68, 0.4)',
+      roles: [
+        { id: 'owner', label: t('castProf.categories.admin.roles.owner.label'), description: t('castProf.categories.admin.roles.owner.description'), icon: SupervisorAccountIcon },
+        { id: 'admin', label: 'Administrator', description: t('castProf.categories.admin.roles.admin.description'), icon: SettingsIcon },
+      ],
+    },
+    {
+      id: 'foto' as const,
+      name: t('castProf.categories.foto.name'),
+      description: t('castProf.categories.foto.description'),
+      logo: '/role-foto.png',
+      icon: PhotoCameraIcon,
+      color: '#10b981',
+      gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)',
+      glowColor: 'rgba(16, 185, 129, 0.4)',
+      roles: [
+        { id: 'photographer', label: t('castProf.categories.foto.roles.photographer.label'), description: t('castProf.categories.foto.roles.photographer.description'), icon: PhotoCameraIcon },
+        { id: 'film_photographer', label: t('castProf.categories.foto.roles.filmPhotographer.label'), description: t('castProf.categories.foto.roles.filmPhotographer.description'), icon: MovieIcon },
+        { id: 'photo_director', label: t('castProf.categories.foto.roles.photoDirector.label'), description: t('castProf.categories.foto.roles.photoDirector.description'), icon: CameraAltIcon },
+        { id: 'photo_assistant', label: t('castProf.categories.foto.roles.photoAssistant.label'), description: t('castProf.categories.foto.roles.photoAssistant.description'), icon: PersonIcon },
+      ],
+    },
+    {
+      id: 'video' as const,
+      name: 'Video',
+      description: t('castProf.categories.video.description'),
+      logo: '/role-video.png',
+      icon: VideocamIcon,
+      color: 'var(--role-violet, #8b5cf6)',
+      gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%)',
+      glowColor: 'rgba(139, 92, 246, 0.4)',
+      roles: [
+        { id: 'director', label: t('castProf.categories.video.roles.director.label'), description: t('castProf.categories.video.roles.director.description'), icon: MovieIcon },
+        { id: 'producer', label: t('castProf.categories.video.roles.producer.label'), description: t('castProf.categories.video.roles.producer.description'), icon: SupervisorAccountIcon },
+        { id: 'casting_director', label: 'Casting Director', description: t('castProf.categories.video.roles.castingDirector.description'), icon: GroupsIcon },
+        { id: 'camera_operator', label: t('castProf.categories.video.roles.cameraOperator.label'), description: t('castProf.categories.video.roles.cameraOperator.description'), icon: VideocamIcon },
+      ],
+    },
+    {
+      id: 'felles' as const,
+      name: t('castProf.categories.felles.name'),
+      description: t('castProf.categories.felles.description'),
+      logo: '/role-felles.png',
+      icon: GroupsIcon,
+      color: '#f59e0b',
+      gradient: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%)',
+      glowColor: 'rgba(245, 158, 11, 0.4)',
+      roles: [
+        { id: 'talent', label: t('castProf.categories.felles.roles.talent.label'), description: t('castProf.categories.felles.roles.talent.description'), icon: FaceIcon },
+        { id: 'agent', label: 'Agent', description: t('castProf.categories.felles.roles.agent.description'), icon: PersonIcon },
+        { id: 'client', label: t('castProf.categories.felles.roles.client.label'), description: t('castProf.categories.felles.roles.client.description'), icon: BusinessIcon },
+      ],
+    },
+  ];
+}
 
 export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDialogProps) {
+  const { t } = useT();
+  const professionCategories = useMemo(() => buildProfessionCategories(t), [t]);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [hoveredRole, setHoveredRole] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
@@ -214,17 +220,17 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
                   mb: 1,
                 }}
               >
-                Velg din rolle
+                {t('castProf.title')}
               </Typography>
-              <Typography 
-                variant="body1" 
-                sx={{ 
+              <Typography
+                variant="body1"
+                sx={{
                   color: 'rgba(255,255,255,0.87)',
                   maxWidth: 400,
                   mx: 'auto',
                 }}
               >
-                Velg en kategori og deretter din spesifikke rolle
+                {t('castProf.subtitle')}
               </Typography>
             </motion.div>
           </DialogTitle>
@@ -435,7 +441,7 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
                   },
                 }}
               />
-              Klikk på en kategori for å se roller
+              {t('castProf.footerHint')}
             </Typography>
           </Box>
         </Box>

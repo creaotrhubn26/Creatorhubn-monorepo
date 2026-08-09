@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useT } from '../../../../i18n';
 import {
   Box,
   Typography,
@@ -46,6 +47,7 @@ export default function SplitSheetSongFlowIntegration({
   splitSheetId,
   onLinkCreated
 }: SplitSheetSongFlowIntegrationProps) {
+  const { t } = useT();
   const queryClient = useQueryClient();
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [songflowTrackId, setSongflowTrackId] = useState('');
@@ -99,7 +101,7 @@ export default function SplitSheetSongFlowIntegration({
 
   const handleLink = () => {
     if (!songflowTrackId && !songflowProjectId) {
-      alert('Vennligst oppgi enten SongFlow track ID eller project ID');
+      alert(t('splitSong.missingIdAlert'));
       return;
     }
     linkMutation.mutate({
@@ -109,7 +111,7 @@ export default function SplitSheetSongFlowIntegration({
   };
 
   const handleUnlink = (link: SplitSheetSongFlowLink) => {
-    if (window.confirm('Er du sikker på at du vil fjerne koblingen til SongFlow?')) {
+    if (window.confirm(t('splitSong.confirmUnlink'))) {
       unlinkMutation.mutate({
         songflow_track_id: link.songflow_track_id || undefined,
         songflow_project_id: link.songflow_project_id || undefined
@@ -125,10 +127,10 @@ export default function SplitSheetSongFlowIntegration({
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <MusicIcon sx={{ color: '#9f7aea' }} />
-                SongFlow Integrasjon
+                {t('splitSong.title')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Koble split sheet til SongFlow tracks eller prosjekter
+                {t('splitSong.subtitle')}
               </Typography>
             </Box>
             <Button
@@ -136,13 +138,13 @@ export default function SplitSheetSongFlowIntegration({
               startIcon={<LinkIcon />}
               onClick={() => setShowLinkDialog(true)}
             >
-              Koble til SongFlow
+              {t('splitSong.connectToSongflow')}
             </Button>
           </Stack>
 
           {links.length === 0 ? (
             <Alert severity="info">
-              Ingen SongFlow-koblinger. Koble til en SongFlow track eller prosjekt for å synkronisere data.
+              {t('splitSong.noLinks')}
             </Alert>
           ) : (
             <List>
@@ -153,24 +155,24 @@ export default function SplitSheetSongFlowIntegration({
                       primary={
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Chip
-                            label={link.link_type === 'track' ? 'Track' : 'Prosjekt'}
+                            label={link.link_type === 'track' ? t('splitSong.chipTrack') : t('splitSong.chipProject')}
                             size="small"
                             color="primary"
                             variant="outlined"
                           />
                           {link.songflow_track_id && (
                             <Typography variant="body2">
-                              Track ID: {link.songflow_track_id}
+                              {t('splitSong.trackIdLabel', { id: link.songflow_track_id })}
                             </Typography>
                           )}
                           {link.songflow_project_id && (
                             <Typography variant="body2">
-                              Prosjekt ID: {link.songflow_project_id}
+                              {t('splitSong.projectIdLabel', { id: link.songflow_project_id })}
                             </Typography>
                           )}
                           {link.auto_created && (
                             <Chip
-                              label="Auto-opprettet"
+                              label={t('splitSong.autoCreated')}
                               size="small"
                               color="success"
                               variant="outlined"
@@ -180,12 +182,12 @@ export default function SplitSheetSongFlowIntegration({
                       }
                       secondary={
                         link.linked_at
-                          ? `Koblet: ${new Date(link.linked_at).toLocaleDateString('no-NO')}`
+                          ? t('splitSong.linkedAt', { date: new Date(link.linked_at).toLocaleDateString('no-NO') })
                           : undefined
                       }
                     />
                     <ListItemSecondaryAction>
-                      <Tooltip title="Fjern kobling">
+                      <Tooltip title={t('splitSong.removeLink')}>
                         <IconButton
                           edge="end"
                           onClick={() => handleUnlink(link)}
@@ -215,28 +217,28 @@ export default function SplitSheetSongFlowIntegration({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Koble til SongFlow</DialogTitle>
+        <DialogTitle>{t('splitSong.connectToSongflow')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Alert severity="info">
-              Oppgi enten SongFlow track ID eller prosjekt ID for å koble til split sheet.
+              {t('splitSong.dialogInfo')}
             </Alert>
             <TextField
-              label="SongFlow Track ID (valgfritt)"
+              label={t('splitSong.trackIdFieldLabel')}
               value={songflowTrackId}
               onChange={(e) => setSongflowTrackId(e.target.value)}
               fullWidth
-              placeholder="f.eks. track_123"
+              placeholder={t('splitSong.trackIdPlaceholder')}
             />
             <TextField
-              label="SongFlow Prosjekt ID (valgfritt)"
+              label={t('splitSong.projectIdFieldLabel')}
               value={songflowProjectId}
               onChange={(e) => setSongflowProjectId(e.target.value)}
               fullWidth
-              placeholder="f.eks. project_456"
+              placeholder={t('splitSong.projectIdPlaceholder')}
             />
             <Alert severity="warning">
-              Du må oppgi minst én ID (track eller prosjekt).
+              {t('splitSong.dialogWarning')}
             </Alert>
           </Stack>
         </DialogContent>
@@ -246,7 +248,7 @@ export default function SplitSheetSongFlowIntegration({
             setSongflowTrackId(', ');
             setSongflowProjectId('');
           }}>
-            Avbryt
+            {t('splitSong.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -254,7 +256,7 @@ export default function SplitSheetSongFlowIntegration({
             disabled={linkMutation.isPending || (!songflowTrackId && !songflowProjectId)}
             sx={{ bgcolor: '#9f7aea' }}
           >
-            {linkMutation.isPending ? 'Kobler...' : 'Koble til'}
+            {linkMutation.isPending ? t('splitSong.connecting') : t('splitSong.connect')}
           </Button>
         </DialogActions>
       </Dialog>

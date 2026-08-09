@@ -5,6 +5,7 @@ import { FileUpload as FileUploadIcon, CheckCircle as CheckCircleIcon, Error as 
 import type { ManuscriptExport } from "../models/casting";
 import { manuscriptService } from "../services/manuscriptService";
 import { useToast } from "./ToastStack";
+import { useT } from '../../../i18n';
 
 interface ImportManuscriptDialogProps {
   open: boolean;
@@ -19,6 +20,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
   onClose,
   onImportComplete,
 }) => {
+  const { t } = useT();
   const { showSuccess, showError, showWarning } = useToast();
   const [step, setStep] = useState<ImportStep>('upload');
   const [file, setFile] = useState<File | null>(null);
@@ -39,10 +41,10 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
       setFile(selectedFile);
       setImportData(result.data);
       setStep('preview');
-      showSuccess('Fil lastet inn - Kontroller data før import');
+      showSuccess(t('importMs.fileLoadedToast'));
     } else {
-      setErrors([result.error || 'Ukjent feil']);
-      showError(result.error || 'Kunne ikke lese JSON-fil');
+      setErrors([result.error || t('importMs.unknownErrorFallback')]);
+      showError(result.error || t('importMs.readJsonErrorFallback'));
     }
 
     setIsLoading(false);
@@ -69,7 +71,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
 
       setImportData(updatedData);
       setStep('confirm');
-      showSuccess('Manuskript importert med nye ID-er');
+      showSuccess(t('importMs.importSuccessToast'));
       
       if (onImportComplete) {
         onImportComplete(updatedData);
@@ -82,7 +84,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
         setImportData(null);
       }, 1500);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Import feilet';
+      const errorMsg = error instanceof Error ? error.message : t('importMs.importFailedFallback');
       setErrors([errorMsg]);
       showError(errorMsg);
       setStep('preview');
@@ -93,13 +95,13 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Importer Manuskript fra JSON</DialogTitle>
+      <DialogTitle>{t('importMs.dialogTitle')}</DialogTitle>
       <DialogContent>
         {/* Upload Step */}
         {step === 'upload' && (
           <Stack spacing={3} sx={{ mt: 2 }}>
             <Alert severity="info" icon={<InfoIcon />}>
-              Last opp en JSON-fil eksportert fra Manuskript-systemet.
+              {t('importMs.uploadInfo')}
             </Alert>
 
             <Paper
@@ -127,10 +129,10 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
               />
               <FileUploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
               <Typography variant="body1" sx={{ mb: 1 }}>
-                Klikk for å velge fil eller dra fil hit
+                {t('importMs.dropzoneText')}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                .json format (JSON)
+                {t('importMs.dropzoneFormat')}
               </Typography>
             </Paper>
 
@@ -143,7 +145,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
           <Stack spacing={3} sx={{ mt: 2 }}>
             {errors.length > 0 && (
               <Alert severity="error">
-                <Typography variant="subtitle2">Feil ved validering:</Typography>
+                <Typography variant="subtitle2">{t('importMs.validationErrorsTitle')}</Typography>
                 <ul style={{ margin: '8px 0' }}>
                   {errors.map((err, i) => (
                     <li key={i}>{err}</li>
@@ -155,19 +157,19 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
             {errors.length === 0 && (
               <>
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                  JSON-fil validert og klar for import
+                  {t('importMs.validSuccess')}
                 </Alert>
 
                 {/* Metadata */}
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="h6" sx={{ mb: 2 }}>
-                      Metadata
+                      {t('importMs.metadataHeading')}
                     </Typography>
                     <Stack spacing={1}>
                       <Box display="flex" justifyContent="space-between">
                         <Typography variant="body2" color="text.secondary">
-                          Tittel:
+                          {t('importMs.titleLabel')}
                         </Typography>
                         <Typography variant="body2" fontWeight="medium">
                           {importData.metadata.title}
@@ -175,7 +177,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                       </Box>
                       <Box display="flex" justifyContent="space-between">
                         <Typography variant="body2" color="text.secondary">
-                          Forfatter:
+                          {t('importMs.authorLabel')}
                         </Typography>
                         <Typography variant="body2" fontWeight="medium">
                           {importData.metadata.author || '-'}
@@ -183,7 +185,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                       </Box>
                       <Box display="flex" justifyContent="space-between">
                         <Typography variant="body2" color="text.secondary">
-                          Format:
+                          {t('importMs.formatLabel')}
                         </Typography>
                         <Typography variant="body2" fontWeight="medium">
                           {importData.metadata.format}
@@ -191,7 +193,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                       </Box>
                       <Box display="flex" justifyContent="space-between">
                         <Typography variant="body2" color="text.secondary">
-                          Eksportert:
+                          {t('importMs.exportedLabel')}
                         </Typography>
                         <Typography variant="body2" fontWeight="medium">
                           {new Date(importData.exportedAt).toLocaleDateString()}
@@ -205,46 +207,46 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="h6" sx={{ mb: 2 }}>
-                      Innhold
+                      {t('importMs.contentHeading')}
                     </Typography>
                     <TableContainer>
                       <Table size="small">
                         <TableBody>
                           <TableRow>
-                            <TableCell>Scener</TableCell>
+                            <TableCell>{t('importMs.scenesLabel')}</TableCell>
                             <TableCell align="right">
                               <Chip label={importData.statistics.sceneCount} size="small" />
                             </TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell>Akter</TableCell>
+                            <TableCell>{t('importMs.actsLabel')}</TableCell>
                             <TableCell align="right">
                               <Chip label={importData.acts.length} size="small" />
                             </TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell>Karakterer</TableCell>
+                            <TableCell>{t('importMs.charactersLabel')}</TableCell>
                             <TableCell align="right">
                               <Chip label={importData.statistics.characterCount} size="small" />
                             </TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell>Dialogue linjer</TableCell>
+                            <TableCell>{t('importMs.dialogueLinesLabel')}</TableCell>
                             <TableCell align="right">
                               <Chip label={importData.dialogueLines.length} size="small" />
                             </TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell>Revisions</TableCell>
+                            <TableCell>{t('importMs.revisionsLabel')}</TableCell>
                             <TableCell align="right">
                               <Chip label={importData.revisions.length} size="small" />
                             </TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell>Estimert runtime</TableCell>
+                            <TableCell>{t('importMs.estimatedRuntimeLabel')}</TableCell>
                             <TableCell align="right">
                               <Chip
-                                label={`${Math.round(importData.statistics.estimatedRuntime)} min`}
+                                label={t('importMs.runtimeMinutes', { minutes: Math.round(importData.statistics.estimatedRuntime) })}
                                 size="small"
                               />
                             </TableCell>
@@ -256,8 +258,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                 </Card>
 
                 <Alert severity="warning" icon={<InfoIcon />}>
-                  Nye ID-er vil genereres for alle elementer for å unngå konflikter.
-                  De originale ID-ene bevares i historikken.
+                  {t('importMs.newIdsWarning')}
                 </Alert>
               </>
             )}
@@ -271,7 +272,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
           <Stack spacing={2} sx={{ mt: 2, textAlign: 'center' }}>
             <LinearProgress />
             <Typography variant="body2" color="text.secondary">
-              Importerer manuskript...
+              {t('importMs.importingText')}
             </Typography>
           </Stack>
         )}
@@ -280,9 +281,9 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
         {step === 'confirm' && (
           <Stack spacing={2} sx={{ mt: 2, textAlign: 'center' }}>
             <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main' }} />
-            <Typography variant="h6">Importering fullført!</Typography>
+            <Typography variant="h6">{t('importMs.importCompleteHeading')}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Manuskriptet er klar for bruk. Lukk dialogen for å fortsette.
+              {t('importMs.importCompleteBody')}
             </Typography>
           </Stack>
         )}
@@ -290,29 +291,29 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
 
       <DialogActions>
         {step === 'upload' && (
-          <Button onClick={onClose}>Avbryt</Button>
+          <Button onClick={onClose}>{t('importMs.cancelButton')}</Button>
         )}
 
         {step === 'preview' && errors.length === 0 && (
           <>
             <Button onClick={() => { setStep('upload'); setFile(null); setImportData(null); setErrors([]); }}>
-              Velg annen fil
+              {t('importMs.chooseAnotherFile')}
             </Button>
             <Button onClick={handleImport} variant="contained" disabled={isLoading}>
-              Importer
+              {t('importMs.importButton')}
             </Button>
           </>
         )}
 
         {step === 'preview' && errors.length > 0 && (
           <Button onClick={() => { setStep('upload'); setFile(null); setImportData(null); setErrors([]); }}>
-            Avbryt
+            {t('importMs.cancelButton')}
           </Button>
         )}
 
         {step === 'confirm' && (
           <Button onClick={onClose} variant="contained">
-            Lukk
+            {t('importMs.closeButton')}
           </Button>
         )}
       </DialogActions>

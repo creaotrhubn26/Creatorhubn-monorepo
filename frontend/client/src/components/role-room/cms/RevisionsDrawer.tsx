@@ -29,6 +29,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import RestoreIcon from '@mui/icons-material/Restore';
 import BlockRenderer from './BlockRenderer';
 import { isBlockArray, type Block } from './blockSchema';
+import { useT } from '../../../i18n';
 
 interface Revision {
   id: number;
@@ -48,11 +49,13 @@ interface RevisionsDrawerProps {
 }
 
 export default function RevisionsDrawer({ open, onClose, slug, onRevert }: RevisionsDrawerProps) {
+  const { t } = useT();
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [reverting, setReverting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -76,21 +79,23 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
 
   const handleRevert = async () => {
     if (!selected) return;
-    if (!confirm(`Rull tilbake til revisjon fra ${formatDate(selected.created_at)}? Nåværende innhold lagres som ny revisjon før revert.`)) {
+    if (!confirm(t('cmsRev.confirmRevert', { date: formatDate(selected.created_at) }))) {
       return;
     }
     setReverting(true);
     setFeedback(null);
+    setFeedbackError(false);
     try {
       const res = await fetch(`/api/admin/cms/pages/${slug}/revert/${selected.id}`, {
         method: 'POST',
         credentials: 'same-origin',
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setFeedback('Revert OK — last sida på nytt for å se endringen.');
+      setFeedback(t('cmsRev.revertSuccess'));
       onRevert();
     } catch (err) {
-      setFeedback(`Feil: ${(err as Error).message}`);
+      setFeedback(t('cmsRev.revertError', { message: (err as Error).message ?? '' }));
+      setFeedbackError(true);
     } finally {
       setReverting(false);
     }
@@ -113,9 +118,9 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
         <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
           <HistoryIcon sx={{ color: '#a78bfa' }} />
           <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1rem', flex: 1 }}>
-            Versjonshistorikk · /{slug}
+            {t('cmsRev.title', { slug })}
           </Typography>
-          <IconButton size="small" onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(203,213,225,0.78)' }}>
+          <IconButton size="small" onClick={onClose} aria-label={t('cmsRev.close')} sx={{ color: 'rgba(203,213,225,0.78)' }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -127,7 +132,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
         ) : revisions.length === 0 ? (
           <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, p: 4 }}>
             <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.9rem' }}>
-              Ingen revisjoner. Hver lagring lager en ny revisjon framover.
+              {t('cmsRev.empty')}
             </Typography>
           </Stack>
         ) : (
@@ -162,7 +167,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                     <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.4 }}>
                       <Chip
                         size="small"
-                        label={i === 0 ? 'Nyeste' : `#${revisions.length - i}`}
+                        label={i === 0 ? t('cmsRev.latest') : `#${revisions.length - i}`}
                         sx={{
                           bgcolor: i === 0 ? 'rgba(34,197,94,0.16)' : 'rgba(148,163,184,0.16)',
                           color: i === 0 ? '#86efac' : '#cbd5e1',
@@ -174,7 +179,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                       {r.published ? (
                         <Chip size="small" label="live" sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: '#86efac', height: 20, fontSize: '0.66rem' }} />
                       ) : (
-                        <Chip size="small" label="utkast" sx={{ bgcolor: 'rgba(249,115,22,0.12)', color: '#fdba74', height: 20, fontSize: '0.66rem' }} />
+                        <Chip size="small" label={t('cmsRev.draft')} sx={{ bgcolor: 'rgba(249,115,22,0.12)', color: '#fdba74', height: 20, fontSize: '0.66rem' }} />
                       )}
                     </Stack>
                     <Typography sx={{ color: '#f8fafc', fontSize: '0.82rem', fontWeight: 600 }}>
@@ -202,7 +207,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                   >
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Valgt revisjon
+                        {t('cmsRev.selectedRevision')}
                       </Typography>
                       <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.92rem' }}>
                         {formatDate(selected.created_at)}{selected.created_by ? ` · ${selected.created_by}` : ''}
@@ -222,16 +227,16 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                         '&:hover': { bgcolor: '#c4b5fd' },
                       }}
                     >
-                      {reverting ? 'Rullerer ...' : 'Revert til denne'}
+                      {reverting ? t('cmsRev.rollingBack') : t('cmsRev.revertToThis')}
                     </Button>
                   </Stack>
                   {feedback ? (
                     <Alert
-                      severity={feedback.startsWith('Feil') ? 'error' : 'success'}
+                      severity={feedbackError ? 'error' : 'success'}
                       sx={{
                         m: 1.5,
-                        bgcolor: feedback.startsWith('Feil') ? 'rgba(239,68,68,0.10)' : 'rgba(34,197,94,0.10)',
-                        color: feedback.startsWith('Feil') ? '#fca5a5' : '#86efac',
+                        bgcolor: feedbackError ? 'rgba(239,68,68,0.10)' : 'rgba(34,197,94,0.10)',
+                        color: feedbackError ? '#fca5a5' : '#86efac',
                       }}
                     >
                       {feedback}
@@ -244,7 +249,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
               ) : (
                 <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, p: 4 }}>
                   <Typography sx={{ color: 'rgba(203,213,225,0.65)', fontSize: '0.9rem' }}>
-                    Velg en revisjon i listen for å se innholdet.
+                    {t('cmsRev.selectPrompt')}
                   </Typography>
                 </Stack>
               )}

@@ -23,6 +23,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon, OpenInNew as OpenInNewIcon } from '@mui/icons-material';
 import { apiRequest } from '../../../lib/queryClient';
+import { useT } from '../../../i18n';
 
 interface BillingItem {
   itemId: string;
@@ -59,6 +60,7 @@ interface Props {
 const ACCENT = '#a030c0';
 
 export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
+  const { t } = useT();
   const [data, setData] = useState<BillingOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,13 +81,13 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
         }
       } catch (e: any) {
         if (!cancelled) {
-          setError(e?.message || 'Kunne ikke laste abonnementene');
+          setError(e?.message || t('billOverview.loadError'));
           setLoading(false);
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, t]);
 
   async function openPortal() {
     setPortalBusy(true);
@@ -100,9 +102,9 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
         window.location.href = json.url;
         return;
       }
-      setError(json?.detail || json?.error || 'Kunne ikke åpne billing-portalen');
+      setError(json?.detail || json?.error || t('billOverview.portalError'));
     } catch (e: any) {
-      setError(e?.message || 'Nettverksfeil');
+      setError(e?.message || t('billOverview.networkError'));
     } finally {
       setPortalBusy(false);
     }
@@ -113,7 +115,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
-        Mine abonnementer
+        {t('billOverview.title')}
         <IconButton onClick={onClose} sx={{ position: 'absolute', right: 8, top: 8 }}>
           <CloseIcon />
         </IconButton>
@@ -131,7 +133,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
         )}
         {!loading && !error && subs.length === 0 && (
           <Box sx={{ p: 3 }}>
-            <Alert severity="info">Du har ingen aktive abonnementer ennå.</Alert>
+            <Alert severity="info">{t('billOverview.empty')}</Alert>
           </Box>
         )}
         {!loading && !error && subs.length > 0 && (
@@ -139,14 +141,14 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
             {/* Summary header */}
             <Box sx={{ p: 2.5, background: `linear-gradient(135deg, rgba(160,48,192,0.10), rgba(110,63,199,0.04))`, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: 1, color: 'text.secondary' }}>
-                Total per måned
+                {t('billOverview.totalPerMonth')}
               </Typography>
               <Typography variant="h4" sx={{ fontWeight: 800, color: ACCENT, lineHeight: 1.1 }}>
                 {data?.totalMonthlyNok?.toLocaleString('nb-NO')} {data?.currency || 'NOK'}
               </Typography>
               {data?.mixedCurrencies && (
                 <Typography variant="caption" color="text.secondary">
-                  ⚠ Du har abonnementer i flere valutaer — totalen viser kun NOK-andelen
+                  {t('billOverview.mixedCurrenciesWarning')}
                 </Typography>
               )}
             </Box>
@@ -164,7 +166,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
                     }}
                   />
                   {sub.cancelAtPeriodEnd && (
-                    <Chip size="small" label="Avsluttes ved periode-slutt" sx={{ bgcolor: 'rgba(239,79,111,0.15)', color: '#c63152', fontWeight: 600 }} />
+                    <Chip size="small" label={t('billOverview.endsAtPeriodEnd')} sx={{ bgcolor: 'rgba(239,79,111,0.15)', color: '#c63152', fontWeight: 600 }} />
                   )}
                 </Stack>
                 {sub.items.map((it) => (
@@ -177,7 +179,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
                       </Typography>
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700, ml: 2, whiteSpace: 'nowrap' }}>
-                      {Math.round(it.monthlyEquivalent).toLocaleString('nb-NO')} {it.currency}/mnd
+                      {Math.round(it.monthlyEquivalent).toLocaleString('nb-NO')} {it.currency}{t('billOverview.perMonthSuffix')}
                     </Typography>
                   </Box>
                 ))}
@@ -187,7 +189,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
         )}
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose}>Lukk</Button>
+        <Button onClick={onClose}>{t('billOverview.close')}</Button>
         <Button
           variant="contained"
           startIcon={<OpenInNewIcon />}
@@ -195,7 +197,7 @@ export const BillingOverviewDialog: React.FC<Props> = ({ open, onClose }) => {
           onClick={openPortal}
           sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#b94dd6' } }}
         >
-          {portalBusy ? 'Åpner…' : 'Administrer i Stripe'}
+          {portalBusy ? t('billOverview.opening') : t('billOverview.manageInStripe')}
         </Button>
       </DialogActions>
     </Dialog>

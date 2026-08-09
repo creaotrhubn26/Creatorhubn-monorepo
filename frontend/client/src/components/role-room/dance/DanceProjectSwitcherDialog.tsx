@@ -27,6 +27,7 @@ import {
 
 import { getCastingProjectsFromDb } from '../services/castingDbService';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
 
 interface ProjectRow {
   id: string;
@@ -49,6 +50,7 @@ export default function DanceProjectSwitcherDialog({
   onClose,
   onSwitch,
 }: DanceProjectSwitcherDialogProps): React.ReactElement {
+  const { t } = useT();
   const [projects, setProjects] = React.useState<ProjectRow[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -79,7 +81,7 @@ export default function DanceProjectSwitcherDialog({
         setLoading(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Kunne ikke laste prosjekter');
+        setError(err instanceof Error ? err.message : t('danceSwitch.loadError'));
         setLoading(false);
       });
   }, [open]);
@@ -118,9 +120,9 @@ export default function DanceProjectSwitcherDialog({
         }}
       >
         <Typography component="span" sx={{ flex: 1, fontWeight: 700, fontSize: 14 }}>
-          Bytt prosjekt
+          {t('danceSwitch.title')}
         </Typography>
-        <IconButton onClick={onClose} size="small" aria-label="Lukk" data-testid="dance-project-switcher-close">
+        <IconButton onClick={onClose} size="small" aria-label={t('danceSwitch.close')} data-testid="dance-project-switcher-close">
           <CloseIcon sx={{ color: danceFlowColors.textMuted }} />
         </IconButton>
       </DialogTitle>
@@ -140,7 +142,7 @@ export default function DanceProjectSwitcherDialog({
           <InputBase
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søk prosjekt…"
+            placeholder={t('danceSwitch.searchPlaceholder')}
             data-testid="dance-project-switcher-search"
             autoFocus
             sx={{
@@ -175,11 +177,11 @@ export default function DanceProjectSwitcherDialog({
           ) : filtered.length === 0 ? (
             <Box sx={{ px: 3, py: 3, textAlign: 'center' }}>
               <Typography sx={{ fontSize: 13, color: danceFlowColors.textMuted, mb: 0.5 }}>
-                {projects.length === 0 ? 'Ingen prosjekter ennå' : `Ingen matchet «${search}»`}
+                {projects.length === 0 ? t('danceSwitch.emptyNoProjects') : t('danceSwitch.emptyNoMatch', { query: search })}
               </Typography>
               {projects.length === 0 ? (
                 <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled }}>
-                  Opprett et prosjekt i Role Room først.
+                  {t('danceSwitch.emptyHint')}
                 </Typography>
               ) : null}
             </Box>

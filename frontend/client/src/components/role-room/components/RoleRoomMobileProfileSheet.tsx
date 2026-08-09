@@ -46,6 +46,7 @@ import { AvailabilityCalendar } from './AvailabilityCalendar';
 import RoleRoomStoragePanel from './RoleRoomStoragePanel';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type { RoleRoomMemberProfile } from '../services/roleRoomMemberProfileService';
+import { useT } from '../../../i18n';
 
 interface ProfileWorkspaceSummary {
   companyName?: string | null;
@@ -87,6 +88,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   onLogout,
   isAdmin,
 }) => {
+  const { t } = useT();
   const usePopover =
     mode === 'tabletPortrait' || mode === 'tabletLandscape' || mode === 'desktop';
   const showWorkspace = Boolean(
@@ -129,7 +131,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         </Avatar>
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography variant="subtitle1" fontWeight={700} noWrap>
-            {memberProfile?.displayName || displayName || email || 'Bruker'}
+            {memberProfile?.displayName || displayName || email || t('mobProfile.userFallback')}
           </Typography>
           {email ? (
             <Typography variant="body2" color="text.secondary" noWrap>
@@ -177,7 +179,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             fontWeight: 600,
           }}
         >
-          Rediger profil
+          {t('mobProfile.editProfile')}
         </Button>
         <Button
           fullWidth
@@ -193,7 +195,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             fontWeight: 600,
           }}
         >
-          Finn medlemmer
+          {t('mobProfile.findMembers')}
         </Button>
         <Button
           fullWidth
@@ -209,7 +211,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
             fontWeight: 600,
           }}
         >
-          Min tilgjengelighet
+          {t('mobProfile.myAvailability')}
         </Button>
       </Stack>
 
@@ -218,19 +220,19 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           <Divider />
           <Stack spacing={0.5}>
             <Typography variant="overline" color="text.secondary">
-              Arbeidsområde
+              {t('mobProfile.workspace')}
             </Typography>
             {workspaceSummary?.companyName ? (
               <Typography variant="body2">{workspaceSummary.companyName}</Typography>
             ) : null}
             {workspaceSummary?.planName ? (
               <Typography variant="caption" color="text.secondary">
-                Plan: {workspaceSummary.planName}
+                {t('mobProfile.plan', { plan: workspaceSummary.planName })}
               </Typography>
             ) : null}
             {workspaceSummary?.statusLabel ? (
               <Typography variant="caption" color="text.secondary">
-                Status: {workspaceSummary.statusLabel}
+                {t('mobProfile.status', { status: workspaceSummary.statusLabel })}
               </Typography>
             ) : null}
           </Stack>
@@ -242,7 +244,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           <Divider />
           <Stack spacing={1}>
             <Typography variant="overline" color="text.secondary">
-              Profesjonsmodus (admin)
+              {t('mobProfile.professionModeAdmin')}
             </Typography>
             <Button
               fullWidth
@@ -258,7 +260,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
                 fontWeight: 600,
               }}
             >
-              Bytt modus (nå: {activeProfessionMode})
+              {t('mobProfile.switchMode', { mode: activeProfessionMode })}
             </Button>
           </Stack>
         </>
@@ -279,7 +281,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           fontWeight: 600,
         }}
       >
-        Lagring (1 GB gratis · BYO støttet)
+        {t('mobProfile.storageLabel')}
       </Button>
 
       {onLogout ? (
@@ -301,7 +303,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
                 justifyContent: 'flex-start',
               }}
             >
-              Logg ut
+              {t('mobProfile.logout')}
             </Button>
           </Box>
         </>
@@ -316,12 +318,12 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       maxWidth="md"
       fullWidth
     >
-      <DialogTitle>Bytt profesjonsmodus</DialogTitle>
+      <DialogTitle>{t('mobProfile.switchProfessionModeTitle')}</DialogTitle>
       <DialogContent dividers>
         <ProfessionModeSwitcher />
       </DialogContent>
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button onClick={() => setModeSwitcherOpen(false)}>Lukk</Button>
+        <Button onClick={() => setModeSwitcherOpen(false)}>{t('mobProfile.close')}</Button>
       </Box>
     </Dialog>
   ) : null;
@@ -351,15 +353,14 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        Min tilgjengelighet
+        {t('mobProfile.myAvailability')}
         <MuiIconButton onClick={() => setAvailabilityOpen(false)} sx={{ color: '#c4b5fd' }}>
           <CloseIcon />
         </MuiIconButton>
       </DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ color: 'rgba(245,243,255,0.7)', mb: 2 }}>
-          Mal inn dagene du er ledig, opptatt eller tentativ. Produksjonsteam ser dette
-          direkte når de setter sammen crew i The Role Room.
+          {t('mobProfile.availabilityHelp')}
         </Typography>
         <AvailabilityCalendar editable months={2} />
       </DialogContent>
@@ -375,7 +376,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
     >
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        Lagring
+        {t('mobProfile.storage')}
         <MuiIconButton onClick={() => setStorageOpen(false)} sx={{ color: '#c4b5fd' }}>
           <CloseIcon />
         </MuiIconButton>
@@ -442,11 +443,11 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           }}
         >
           <Typography variant="h6" fontWeight={700}>
-            Profil
+            {t('mobProfile.profileTitle')}
           </Typography>
           <IconButton
             onClick={onClose}
-            aria-label="Lukk profil"
+            aria-label={t('mobProfile.closeProfile')}
             sx={{
               width: 'var(--rr-touch-target-min, 44px)',
               height: 'var(--rr-touch-target-min, 44px)',

@@ -12,6 +12,7 @@ import { useState } from 'react';
 
 import { palette, radius } from '../../../theme';
 import { createProject } from '../../../../services/roleRoomSelfTapesService';
+import { useT } from '../../../../../../i18n';
 
 interface Props {
   open: boolean;
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
+  const { t } = useT();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [name, setName] = useState('');
@@ -37,7 +39,7 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      setError('Navn er påkrevd');
+      setError(t('stNewProj.nameRequired'));
       return;
     }
     setSaving(true);
@@ -54,7 +56,7 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
       onClose();
       await onCreated(project.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å opprette prosjekt');
+      setError(err instanceof Error ? err.message : t('stNewProj.createError'));
     } finally {
       setSaving(false);
     }
@@ -76,11 +78,11 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
         },
       }}
     >
-      <DialogTitle sx={{ fontWeight: 800 }}>Nytt self-tape-prosjekt</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 800 }}>{t('stNewProj.title')}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField
-            label="Prosjektnavn *"
+            label={t('stNewProj.nameLabel')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             fullWidth
@@ -89,25 +91,25 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
             sx={inputSx}
           />
           <TextField
-            label="Rolle"
+            label={t('stNewProj.roleLabel')}
             value={roleName}
             onChange={(e) => setRoleName(e.target.value)}
             fullWidth
-            placeholder="f.eks. Anna, hovedrolle"
+            placeholder={t('stNewProj.rolePlaceholder')}
             InputLabelProps={{ sx: { color: palette.textMuted } }}
             sx={inputSx}
           />
           <TextField
-            label="Scene-merke"
+            label={t('stNewProj.sceneLabel')}
             value={sceneLabel}
             onChange={(e) => setSceneLabel(e.target.value)}
             fullWidth
-            placeholder="f.eks. Scene 14B"
+            placeholder={t('stNewProj.scenePlaceholder')}
             InputLabelProps={{ sx: { color: palette.textMuted } }}
             sx={inputSx}
           />
           <TextField
-            label="Antall sider"
+            label={t('stNewProj.pagesLabel')}
             type="number"
             value={sidesPages}
             onChange={(e) => setSidesPages(e.target.value === '' ? '' : Number(e.target.value))}
@@ -117,14 +119,14 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
             sx={inputSx}
           />
           <TextField
-            label="Manus / dialog"
+            label={t('stNewProj.contentLabel')}
             value={sidesContent}
             onChange={(e) => setSidesContent(e.target.value)}
             fullWidth
             multiline
             minRows={4}
             maxRows={10}
-            placeholder="**ANNA**\nDialogen din her ..."
+            placeholder={t('stNewProj.contentPlaceholder')}
             InputLabelProps={{ sx: { color: palette.textMuted } }}
             sx={inputSx}
           />
@@ -135,7 +137,7 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-          Avbryt
+          {t('stNewProj.cancel')}
         </Button>
         <Button
           onClick={handleCreate}
@@ -150,7 +152,7 @@ export default function NewProjectDialog({ open, onClose, onCreated }: Props) {
             '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.6)' },
           }}
         >
-          {saving ? 'Oppretter …' : 'Opprett prosjekt'}
+          {saving ? t('stNewProj.creating') : t('stNewProj.create')}
         </Button>
       </DialogActions>
     </Dialog>

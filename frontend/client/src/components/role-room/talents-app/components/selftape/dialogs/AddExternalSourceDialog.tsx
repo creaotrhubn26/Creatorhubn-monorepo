@@ -17,6 +17,7 @@ import { useState } from 'react';
 
 import { palette, radius } from '../../../theme';
 import { addExternalTake } from '../../../../services/roleRoomSelfTapesService';
+import { useT } from '../../../../../../i18n';
 
 interface Props {
   open: boolean;
@@ -28,6 +29,7 @@ interface Props {
 export default function AddExternalSourceDialog({
   open, projectId, onClose, onAdded,
 }: Props) {
+  const { t } = useT();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [url, setUrl] = useState('');
@@ -44,7 +46,7 @@ export default function AddExternalSourceDialog({
       onClose();
       await onAdded();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å lagre lenken');
+      setError(err instanceof Error ? err.message : t('addExtSrc.saveError'));
     } finally {
       setSaving(false);
     }
@@ -72,7 +74,7 @@ export default function AddExternalSourceDialog({
     >
       <DialogTitle sx={{ pr: 6 }}>
         <Typography sx={{ fontWeight: 800, fontSize: '1.1rem' }}>
-          Lenke til ekstern video
+          {t('addExtSrc.title')}
         </Typography>
         <IconButton
           onClick={onClose}
@@ -85,9 +87,7 @@ export default function AddExternalSourceDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.88rem' }}>
-            Hvis du allerede har self-tapen på YouTube (unlisted), Google Drive eller
-            Vimeo — lim inn lenken her. Vi bygger en sikker embed-visning som
-            byråene kan se uten å laste filen.
+            {t('addExtSrc.description')}
           </Typography>
 
           <Stack direction="row" spacing={1.4} sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -97,7 +97,7 @@ export default function AddExternalSourceDialog({
           </Stack>
 
           <TextField
-            label="Video-lenke"
+            label={t('addExtSrc.urlLabel')}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             fullWidth
@@ -122,13 +122,13 @@ export default function AddExternalSourceDialog({
             }}
           >
             <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', mb: 0.4 }}>
-              Hva eksterne lenker IKKE gir deg
+              {t('addExtSrc.limitationsHeading')}
             </Typography>
             <Box component="ul" sx={{ pl: 2, m: 0, '& li': { mb: 0.4, fontSize: '0.82rem' } }}>
-              <li>AI-feedback (Claude Opus 4.7 trenger video-tilgang)</li>
-              <li>Watermark + signed URLs (vi kan ikke kontrollere YouTube/Drive)</li>
-              <li>Detaljert view-audit (kun spilte-i-vår-app teller)</li>
-              <li>YouTubes/Googles vilkår gjelder for filen din</li>
+              <li>{t('addExtSrc.limitationAiFeedback')}</li>
+              <li>{t('addExtSrc.limitationWatermark')}</li>
+              <li>{t('addExtSrc.limitationViewAudit')}</li>
+              <li>{t('addExtSrc.limitationTerms')}</li>
             </Box>
           </Alert>
 
@@ -137,7 +137,7 @@ export default function AddExternalSourceDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={saving} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-          Avbryt
+          {t('addExtSrc.cancel')}
         </Button>
         <Button
           onClick={handleAdd}
@@ -152,7 +152,7 @@ export default function AddExternalSourceDialog({
             '&.Mui-disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.6)' },
           }}
         >
-          {saving ? 'Lagrer …' : 'Bruk denne videoen'}
+          {saving ? t('addExtSrc.saving') : t('addExtSrc.useVideo')}
         </Button>
       </DialogActions>
     </Dialog>
