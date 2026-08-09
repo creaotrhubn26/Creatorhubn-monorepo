@@ -94,14 +94,19 @@ function rssTitle(feedUrl: string, filter: RegExp): ReleaseWatchDef["run"] {
   };
 }
 
-function pageRegex(pageUrl: string, pattern: RegExp, prefix: string): ReleaseWatchDef["run"] {
+/** Blackmagics offisielle versjons-API (Tier 1, verifisert 2026-08-09):
+ *  GET /api/support/latest-stable-version/{product}/{os} → {"{os}":{major,minor,releaseNum,build}} */
+function bmdLatestStable(product: string, os: string, infoUrl: string): ReleaseWatchDef["run"] {
   return async (fetchImpl) => {
-    const res = await timedFetch(fetchImpl, pageUrl);
-    if (res.status !== 200) throw new Error(`Side HTTP ${res.status}`);
-    const html = await res.text();
-    const m = pattern.exec(html);
-    if (!m?.[1]) throw new Error("versjonsmønster ikke funnet på siden (mulig JS-rendret/endret layout)");
-    return { version: `${prefix}${m[1]}`, url: pageUrl };
+    const res = await timedFetch(
+      fetchImpl,
+      `https://www.blackmagicdesign.com/api/support/latest-stable-version/${product}/${os}`,
+    );
+    if (res.status !== 200) throw new Error(`BMD version-API HTTP ${res.status}`);
+    const body = (await res.json()) as Record<string, { major?: number; minor?: number; releaseNum?: number }>;
+    const v = body[os];
+    if (v?.major == null || v.minor == null) throw new Error("uventet respons-form fra BMD version-API");
+    return { version: `${v.major}.${v.minor}.${v.releaseNum ?? 0}`, url: infoUrl };
   };
 }
 
@@ -111,10 +116,10 @@ const WATCHES: ReleaseWatchDef[] = [
   {
     key: "resolve",
     label: "DaVinci Resolve",
-    run: pageRegex(
+    run: bmdLatestStable(
+      "davinci-resolve",
+      "mac",
       "https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion",
-      /DaVinci Resolve (\d+\.\d+(?:\.\d+)?)/,
-      "",
     ),
   },
   {

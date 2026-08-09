@@ -28,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+
       - name: POST /api/control-center/release-monitor/run
         env:
           CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
@@ -62,4 +64,34 @@ jobs:
           if [ "$ERRORS" != "0" ] && [ -n "$ERRORS" ]; then
             echo "::warning::$ERRORS vakt(er) feilet henting/ekstraksjon — sjekk mønstre/kilder."
           fi
+          echo "$BODY" > /tmp/release-monitor-body.json
           echo "::notice::Release-monitor ferdig"
+
+      # Stale-detektor: ny release for en vendor → flagg evidensfiler/beslutninger
+      # i docs/evidence/ som kan være blitt stale. Ren tekst-match, ingen AI.
+      - name: Stale-sjekk mot docs/evidence
+        run: |
+          BODY=$(cat /tmp/release-monitor-body.json 2>/dev/null || echo '{}')
+          UPDATED_KEYS=$(echo "$BODY" | jq -r '.results[]? | select(.status=="updated") | .key' 2>/dev/null)
+          [ -z "$UPDATED_KEYS" ] && { echo "Ingen nye releaser — ingen stale-sjekk nødvendig."; exit 0; }
+          # vakt-nøkkel → grep-termer for vendor i evidensfilene
+          terms_for() {
+            case "$1" in
+              resolve)     echo "Blackmagic|Resolve" ;;
+              xcode)       echo "Apple|Xcode|iOS" ;;
+              moodle)      echo "Moodle" ;;
+              blender)     echo "Blender" ;;
+              stripe-node) echo "Stripe" ;;
+              *)           echo "$1" ;;
+            esac
+          }
+          for KEY in $UPDATED_KEYS; do
+            VERSION=$(echo "$BODY" | jq -r ".results[] | select(.key==\"$KEY\") | .version")
+            TERMS=$(terms_for "$KEY")
+            HITS=$(grep -liE "$TERMS" docs/evidence/*.yaml 2>/dev/null || true)
+            for F in $HITS; do
+              EXTRA=""
+              grep -q "valid_to" "$F" && EXTRA=" (har valid_to — livssyklus-bundet beslutning)"
+              echo "::warning file=$F::Ny release $KEY $VERSION — beslutningen i $F kan være stale$EXTRA. Re-vurder med documentation-intelligence."
+            done
+          done

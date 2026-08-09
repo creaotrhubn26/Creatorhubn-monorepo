@@ -1,0 +1,48 @@
+name: Doc-intel baselines
+
+# Ukentlig mekanisk baseline (Documentation Intelligence repo-intelligence-laget):
+# avhengighets-baseline per app + ekstern-API-bruksmap, committet til
+# docs/baselines/. Gjør impact-spørsmål diff-bare («ny release X — hvilke av
+# VÅRE symboler rører den») og gir git-historikk over egen API-flate.
+
+on:
+  schedule:
+    - cron: '47 5 * * 1'   # mandager ~05:47 UTC (før release-monitor 06:23)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: doc-intel-baselines
+  cancel-in-progress: false
+
+jobs:
+  build-baselines:
+    name: Bygg baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generer baselines + symbolkart
+        run: |
+          mkdir -p docs/baselines
+          SKILL=.claude/skills/documentation-intelligence
+          for APP in backend frontend apps/resolve-script-manager; do
+            SLUG=$(echo "$APP" | tr '/' '-')
+            node "$SKILL/scripts/build-baseline.mjs" "$APP" > "docs/baselines/$SLUG.yaml"
+          done
+          sh "$SKILL/scripts/grep-symbols.sh" all . > docs/baselines/external-api-usage.txt
+
+      - name: Commit ved endring
+        run: |
+          git add docs/baselines
+          if git diff --cached --quiet; then
+            echo "Ingen baseline-endringer."
+            exit 0
+          fi
+          git config user.name "doc-intel-baselines[bot]"
+          git config user.email "noreply@creatorhubn.com"
+          git commit -m "chore(doc-intel): ukentlig baseline-oppdatering [skip ci]"
+          git push
