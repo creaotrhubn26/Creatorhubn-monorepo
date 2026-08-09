@@ -114,8 +114,8 @@ interface MockupStudioState {
   addLibraryMeta: (meta: LibraryMeta) => void;
   removeLibraryAssets: (ids: string[]) => Promise<void>;
   patchLibraryMeta: (id: string, patch: Partial<LibraryMeta>) => Promise<void>;
-  /** Last full-res fra IDB → tildel valgt enhet sin skjerm, ellers sett som lerret-bakgrunn. */
-  placeLibraryImage: (id: string, target?: 'device' | 'background') => Promise<void>;
+  /** Last full-res fra IDB → tildel valgt enhet, sett bakgrunn, ellers frittstående bilde (evt. på drop-posisjon). */
+  placeLibraryImage: (id: string, target?: 'device' | 'background', at?: { x: number; y: number }) => Promise<void>;
 }
 
 function initialDoc(): MockupDoc {
@@ -330,12 +330,12 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     set((s) => ({ library: s.library.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
     try { await idbPatchMeta(id, patch); } catch (e) { console.error('[mockup-studio] patchLibraryMeta', e); }
   },
-  placeLibraryImage: async (id, target) => {
+  placeLibraryImage: async (id, target, at) => {
     const full = await idbGetFull(id);
     if (!full) return;
     const sel = get().selection;
     if (target === 'background') get().patchCanvas({ bgImage: full });
-    else if (sel.kind === 'device') get().setDeviceImage(sel.id, full);
-    else get().addImage(full); // frittstående bilde-element (mat-foto/collage på lerretet)
+    else if (!at && sel.kind === 'device') get().setDeviceImage(sel.id, full);
+    else get().addImage(full, at ? { x: Math.round(at.x - 260), y: Math.round(at.y - 180) } : undefined); // frittstående (senter på drop-punkt)
   },
 }));

@@ -134,9 +134,9 @@ export function MockupLibraryPanel() {
       {view === 'grid' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 6 }}>
           {shown.map((m) => (
-            <button key={m.id} onClick={(e) => { toggleSel(m.id, e); place(m); }} onMouseEnter={() => setHover(m)} onMouseLeave={() => setHover((h) => (h?.id === m.id ? null : h))}
-              title={`${m.name} · ${m.w}×${m.h} · ${m.folder}`}
-              style={{ position: 'relative', padding: 0, border: sel.has(m.id) ? `2px solid ${C.accent}` : `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', background: C.panel, aspectRatio: '1 / 1' }}>
+            <button key={m.id} draggable onDragStart={(e) => e.dataTransfer.setData('application/x-mockup-lib', m.id)} onClick={(e) => { toggleSel(m.id, e); place(m); }} onMouseEnter={() => setHover(m)} onMouseLeave={() => setHover((h) => (h?.id === m.id ? null : h))}
+              title={`${m.name} · ${m.w}×${m.h} · ${m.folder} — klikk eller dra til lerretet`}
+              style={{ position: 'relative', padding: 0, border: sel.has(m.id) ? `2px solid ${C.accent}` : `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', cursor: 'grab', background: C.panel, aspectRatio: '1 / 1' }}>
               <img src={m.thumb} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
             </button>
           ))}
@@ -144,8 +144,8 @@ export function MockupLibraryPanel() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {shown.map((m) => (
-            <button key={m.id} onClick={(e) => { toggleSel(m.id, e); place(m); }} onMouseEnter={() => setHover(m)} onMouseLeave={() => setHover((h) => (h?.id === m.id ? null : h))}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 4, border: sel.has(m.id) ? `1px solid ${C.accent}` : `1px solid transparent`, borderRadius: 6, background: 'rgba(255,255,255,0.03)', cursor: 'pointer', textAlign: 'left' }}>
+            <button key={m.id} draggable onDragStart={(e) => e.dataTransfer.setData('application/x-mockup-lib', m.id)} onClick={(e) => { toggleSel(m.id, e); place(m); }} onMouseEnter={() => setHover(m)} onMouseLeave={() => setHover((h) => (h?.id === m.id ? null : h))}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 4, border: sel.has(m.id) ? `1px solid ${C.accent}` : `1px solid transparent`, borderRadius: 6, background: 'rgba(255,255,255,0.03)', cursor: 'grab', textAlign: 'left' }}>
               <img src={m.thumb} alt={m.name} style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'clamp(11px,0.8vw,13px)', color: C.ink }}>{m.name}</span>
               <span style={{ fontSize: 'clamp(9px,0.64vw,11px)', color: C.inkSoft, fontVariantNumeric: 'tabular-nums' }}>{m.w}×{m.h}</span>

@@ -37,6 +37,17 @@ const fmtTimecode = (sec: number): string => {
   return `${m}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
 };
 const ICON = '#eef1f6';
+// Resize-håndtak-posisjoner for bilde-element (8 kanter/hjørner).
+const IMG_HANDLES: { h: string; pos: CSSProperties; cursor: string }[] = [
+  { h: 'nw', pos: { left: -6, top: -6 }, cursor: 'nwse-resize' },
+  { h: 'ne', pos: { right: -6, top: -6 }, cursor: 'nesw-resize' },
+  { h: 'sw', pos: { left: -6, bottom: -6 }, cursor: 'nesw-resize' },
+  { h: 'se', pos: { right: -6, bottom: -6 }, cursor: 'nwse-resize' },
+  { h: 'n', pos: { left: 'calc(50% - 6px)', top: -6 }, cursor: 'ns-resize' },
+  { h: 's', pos: { left: 'calc(50% - 6px)', bottom: -6 }, cursor: 'ns-resize' },
+  { h: 'w', pos: { left: -6, top: 'calc(50% - 6px)' }, cursor: 'ew-resize' },
+  { h: 'e', pos: { right: -6, top: 'calc(50% - 6px)' }, cursor: 'ew-resize' },
+];
 const Svg = ({ children }: { children: ReactNode }) => (
   <svg width="88%" height="88%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
 );
@@ -58,6 +69,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const selection = useMockupStudio((s) => s.selection);
   const select = useMockupStudio((s) => s.select);
   const patchText = useMockupStudio((s) => s.patchText);
+  const placeLibraryImage = useMockupStudio((s) => s.placeLibraryImage);
   const setDocSilent = useMockupStudio((s) => s.setDocSilent);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);     // stage (transformert)
@@ -176,6 +188,47 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const selectedId = selId(selection);
   const W = doc.canvas.w, H = doc.canvas.h;
   const pct = (v: number, base: number) => `${(v / base) * 100}%`;
+
+  // Drop fra bibliotek → frittstående bilde på drop-posisjonen (lerret-px via wrapRef).
+  const LIB_MIME = 'application/x-mockup-lib';
+  const onLibDrop = (e: React.DragEvent) => {
+    const id = e.dataTransfer.getData(LIB_MIME);
+    if (!id) return;
+    e.preventDefault();
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    void placeLibraryImage(id, undefined, { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) });
+  };
+
+  // Resize-håndtak for frittstående bilde-element (dra en kant/hjørne).
+  const beginImageResize = (im: MockupImageSlot, handle: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    select({ kind: 'image', id: im.id });
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const sx = e.clientX, sy = e.clientY, o = { x: im.x, y: im.y, w: im.w, h: im.h };
+    const ratio = o.w / Math.max(1, o.h);
+    let moved = false;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      const dxC = (ev.clientX - sx) * (W / rect.width), dyC = (ev.clientY - sy) * (H / rect.height);
+      if (!moved) { moved = true; useMockupStudio.getState().pushHistory(); }
+      let { x, y, w, h } = o;
+      if (handle.includes('e')) w = Math.max(40, o.w + dxC);
+      if (handle.includes('s')) h = Math.max(40, o.h + dyC);
+      if (handle.includes('w')) { w = Math.max(40, o.w - dxC); x = o.x + (o.w - w); }
+      if (handle.includes('n')) { h = Math.max(40, o.h - dyC); y = o.y + (o.h - h); }
+      if (ev.shiftKey && handle.length === 2) { // hjørne + shift = lås sideforhold
+        h = w / ratio;
+        if (handle.includes('n')) y = o.y + (o.h - h);
+        if (handle.includes('w')) x = o.x + (o.w - w);
+      }
+      const st = useMockupStudio.getState();
+      st.setDocSilent({ ...st.doc, images: (st.doc.images ?? []).map((g) => (g.id === im.id ? { ...g, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) } : g)) });
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
 
   // Dra en annotasjons anker (fx/fy) direkte på lerretet (før: kun X/Y-slidere i høyrepanelet).
   const beginAnnDrag = (a: MockupAnnotation, e: React.PointerEvent) => {
@@ -391,6 +444,8 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     <div
       ref={viewportRef}
       onWheel={onWheel}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes(LIB_MIME)) e.preventDefault(); }}
+      onDrop={onLibDrop}
       style={{
         position: 'relative', height: '100%', width: 'auto', aspectRatio: `${W} / ${H}`, maxWidth: '100%', maxHeight: '100%',
         borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', background: '#05070c',
@@ -423,7 +478,12 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
                 background: 'transparent', border: active ? '2px solid #22d3ee' : '2px solid transparent',
                 borderRadius: 8, padding: 0, cursor: overlayCursor, touchAction: 'none',
               }}
-            />
+            >
+              {active && IMG_HANDLES.map((hh) => (
+                <div key={hh.h} onPointerDown={(e) => beginImageResize(im, hh.h, e)} title="Dra for å endre størrelse (Shift = lås sideforhold)"
+                  style={{ position: 'absolute', width: 12, height: 12, background: '#22d3ee', border: '2px solid #fff', borderRadius: 3, cursor: hh.cursor, touchAction: 'none', ...hh.pos }} />
+              ))}
+            </button>
           );
         })}
 
