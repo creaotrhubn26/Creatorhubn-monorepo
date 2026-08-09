@@ -10,7 +10,7 @@
  * for fart; eksporten kjører full oppløsning.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { rasterizeMockup, measureTextHeight } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { deviceHeight, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
@@ -23,6 +23,8 @@ const NUDGE = 6;        // piltast-steg (base-px)
 const NUDGE_BIG = 48;   // med Shift
 const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
+const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.08)', color: '#e6e9ef', cursor: 'pointer', fontSize: 12 };
+const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: 11 };
 
 export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const doc = useMockupStudio((s) => s.doc);
@@ -38,25 +40,40 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const dragAbort = useRef<AbortController | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
-  // ── Skrive-animasjon: avspilling (rAF ramper anim.t 0→1) ─────────────────
+  // ── Skrive-animasjon: timeline (scrubber + hastighet + easing/speed-ramp) ──
   const [playT, setPlayT] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);          // 0.5×–2× hastighet
+  const [easing, setEasing] = useState<'linear' | 'smooth' | 'in' | 'out'>('smooth');
   const playRef = useRef<number | null>(null);
+  const speedRef = useRef(speed); speedRef.current = speed;
+  const easeRef = useRef(easing); easeRef.current = easing;
   const hasTyping = doc.devices.some((d) => !!d.typeAnim?.text && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
-  const playTyping = () => {
-    if (playRef.current) cancelAnimationFrame(playRef.current);
+  // Speed-ramp: mapper lineær tids-progresjon p → eased t.
+  const applyEase = (p: number, e: string): number =>
+    e === 'smooth' ? p * p * (3 - 2 * p) : e === 'in' ? p * p : e === 'out' ? 1 - (1 - p) * (1 - p) : p;
+  const baseDur = () => {
     const lens = doc.devices.filter((d) => d.typeAnim?.text).map((d) => d.typeAnim!.text.length);
     if (doc.canvas.scene?.typeAnim?.text) lens.push(doc.canvas.scene.typeAnim.text.length);
-    const dur = 900 + Math.max(1, ...lens) * 120; // ~120ms per tegn + innledning
+    return 900 + Math.max(1, ...lens) * 120;
+  };
+  const playTyping = () => {
+    if (playRef.current) cancelAnimationFrame(playRef.current);
+    setPlaying(true);
+    const from = playT != null && playT < 1 ? playT : 0; // fortsett fra scrubber-posisjon
     let start: number | null = null;
     const step = (ts: number) => {
       if (start == null) start = ts;
-      const t = Math.min(1, (ts - start) / dur);
-      setPlayT(t);
-      if (t < 1) playRef.current = requestAnimationFrame(step);
-      else { playRef.current = null; window.setTimeout(() => setPlayT(null), 700); } // hold slutt, så statisk
+      const dur = baseDur() / Math.max(0.1, speedRef.current);
+      const p = Math.min(1, from + (ts - start) / dur);
+      setPlayT(applyEase(p, easeRef.current));
+      if (p < 1) playRef.current = requestAnimationFrame(step);
+      else { playRef.current = null; setPlaying(false); window.setTimeout(() => setPlayT((v) => (v != null && v >= 0.999 ? null : v)), 800); }
     };
     playRef.current = requestAnimationFrame(step);
   };
+  const stopPlay = () => { if (playRef.current) { cancelAnimationFrame(playRef.current); playRef.current = null; } setPlaying(false); };
+  const scrubTo = (v: number) => { stopPlay(); setPlayT(v); }; // manuell scrubbing
   useEffect(() => () => { if (playRef.current) cancelAnimationFrame(playRef.current); }, []);
 
   // ── Visning (zoom/pan) ───────────────────────────────────────────────────
@@ -276,21 +293,39 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       }}
     >
       {hasTyping && (
-        <button
-          onClick={() => playTyping()}
-          disabled={playT != null}
-          title="Spill av skrive-animasjonen i forhåndsvisningen"
+        <div
           style={{
-            position: 'absolute', top: 12, left: 12, zIndex: 5,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '7px 12px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)',
-            background: playT != null ? 'rgba(37,99,235,0.9)' : 'rgba(15,18,26,0.82)', color: '#fff',
-            font: '600 12px system-ui, sans-serif', cursor: playT != null ? 'default' : 'pointer',
-            backdropFilter: 'blur(8px)',
+            position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5,
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.14)',
+            background: 'rgba(12,15,22,0.86)', color: '#e6e9ef', font: '600 11px system-ui, sans-serif',
+            backdropFilter: 'blur(10px)', boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
           }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
-          {playT != null ? `Skriver… ${Math.round(playT * 100)}%` : '▶ Spill av skriving'}
-        </button>
+          {/* Transport */}
+          <button onClick={() => scrubTo(0)} title="Til start" style={motionBtn}>⏮</button>
+          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? '⏸' : '▶'}</button>
+          {/* Linjal / scrubber m/ playhead */}
+          <input
+            type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)}
+            onChange={(e) => scrubTo(Number(e.target.value) / 1000)}
+            title="Dra playhead — scrub gjennom animasjonen"
+            style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }}
+          />
+          <span style={{ minWidth: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{Math.round((playT ?? 0) * 100)}%</span>
+          {/* Hastighet */}
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Avspillings-hastighet" style={motionSel}>
+            {[0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
+          </select>
+          {/* Retime / speed-ramp */}
+          <select value={easing} onChange={(e) => setEasing(e.target.value as typeof easing)} title="Speed-ramp (retime-kurve)" style={motionSel}>
+            <option value="linear">Lineær</option>
+            <option value="smooth">Myk (inn/ut)</option>
+            <option value="in">Akselerér</option>
+            <option value="out">Retardér</option>
+          </select>
+        </div>
       )}
       <div
         ref={wrapRef}
