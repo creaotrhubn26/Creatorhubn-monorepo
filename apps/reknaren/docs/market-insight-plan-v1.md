@@ -485,7 +485,7 @@ git commit -m "feat(market): SSB KPI 12-mnd-kilde (port + stub)"
   - `async function getOrgExposure(db: Db, registry: CompanyRegistry, organizationId: string): Promise<OrgExposure>`
 
 **Detaljer:**
-- **Rentebærende gjeld:** saldo på kontoklasse 22xx–24xx (langsiktig gjeld til kredittinstitusjoner + kassekreditt), norsk standard kontoplan. Saldo = `SUM(credit_minor - debit_minor)` (gjeld har kredittsaldo).
+- **Rentebærende gjeld:** saldo på 2200–2290 (langsiktig gjeld til kredittinstitusjoner o.l.) + 2380–2399 (kassekreditt/byggelån), norsk standard kontoplan. **Ekskluderer 2400 leverandørgjeld og 2600+ (skatt/mva/lønn)** — ikke rentebærende. Saldo = `SUM(credit_minor - debit_minor)` (gjeld har kredittsaldo).
 - **Valutaeksponering:** distinkte valutaer i `journal_lines` der `original_currency` er satt og ≠ 'NOK'. *(Sjekk kolonnenavn i steg 1 — `journal_lines` har `original_amount_minor`; finn tilhørende valutakolonne med `grep -n "currency" migrations/0001*.sql`. Hvis ingen valutakolonne finnes, returner tom liste og noter det.)*
 - **FX-innkjøpsvolum (`fxSpend`):** driver kroner-estimatet i `fx_timing`-regelen (Task 6). Per valuta: median av månedlig NOK-innkjøp (debet-linjer med utenlandsk `original_currency`). Median via `percentile_cont(0.5)`. Hvis valutakolonnen ikke finnes → tom liste (graceful; `fx_timing` viser da kort uten kroner-estimat).
 - **NACE:** `organizations.org_number` → `registry.lookup(orgNumber)` → `profile.naceCode`.
@@ -558,14 +558,17 @@ export interface OrgExposure {
 }
 
 export async function getOrgExposure(db: Db, registry: CompanyRegistry, organizationId: string): Promise<OrgExposure> {
-  // Rentebærende gjeld: kontoklasse 2200–2499, kredittsaldo.
+  // Rentebærende gjeld: 2200–2290 (langsiktig gjeld til kredittinstitusjoner o.l.)
+  // + 2380–2399 (kassekreditt/byggelån). Ekskluderer 2400 leverandørgjeld + 2600+
+  // (skatt/mva/lønn) — ikke rentebærende. Kredittsaldo.
   const debt = await db.query(
     `SELECT COALESCE(SUM(l.credit_minor - l.debit_minor), 0)::TEXT AS net
        FROM journal_lines l
        JOIN journal_entries e ON e.id = l.entry_id AND e.status = 'posted'
       WHERE l.organization_id = $1
         AND l.account_number ~ '^[0-9]{4}$'
-        AND l.account_number::int BETWEEN 2200 AND 2499`,
+        AND (l.account_number::int BETWEEN 2200 AND 2290
+             OR l.account_number::int BETWEEN 2380 AND 2399)`,
     [organizationId],
   );
   const interestBearingDebtMinor = BigInt(debt.rows[0]?.net ?? '0');
