@@ -51,6 +51,7 @@ import { timingSafeEqual } from "crypto";
 import { runCanaries, getCanaryStatus } from "./control-center-canary.js";
 import { runSecretWatch, getSecretStatus } from "./control-center-secret-watch.js";
 import { runAnomalyScan, getAnomalyView } from "./control-center-anomaly.js";
+import { runReleaseMonitor, getReleaseStatus } from "./control-center-release-monitor.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -739,6 +740,30 @@ export function setupControlCenterRoutes(deps: Deps): void {
     } catch (err) {
       console.error("[control-center/anomaly/run] failed:", (err as Error).message);
       return res.status(500).json({ ok: false, error: "anomaly_scan_failed" });
+    }
+  });
+
+  // ── Release-vakt: leverandør-releaser med drift-historikk ─────────────────
+  app.get("/api/control-center/releases", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const view = await getReleaseStatus(pool);
+      return res.json(view);
+    } catch (err) {
+      console.warn("[control-center/releases] failed:", (err as Error).message);
+      return res.json({ releases: [], generatedAt: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/control-center/release-monitor/run", async (req, res) => {
+    if (!verifyCronToken(req)) return res.status(401).json({ error: "unauthorized" });
+    try {
+      const summary = await runReleaseMonitor(pool);
+      return res.json({ ...summary, ok: true });
+    } catch (err) {
+      console.error("[control-center/release-monitor/run] failed:", (err as Error).message);
+      return res.status(500).json({ ok: false, error: "release_monitor_failed" });
     }
   });
 }

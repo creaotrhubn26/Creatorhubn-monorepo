@@ -1,0 +1,32 @@
+from:
+  photoshop: "26.x"
+  uxp: "8.x"
+
+to:
+  photoshop: "27.x"
+  uxp: "9.x"
+
+strategy: compatibility_bridge
+
+phases:
+  - name: prepare
+    changes:
+      - Validate deprecated API replacements.
+      - Add compatibility adapter for old/new host behavior.
+      - Expand integration tests.
+
+  - name: cutover
+    changes:
+      - Raise host requirement.
+      - Update UXP dependency and manifest if required.
+      - Enable new path behind feature flag.
+
+  - name: validate
+    gates:
+      - Export workflow passes on macOS arm64.
+      - Export workflow passes on Windows x86_64.
+      - No permission regressions.
+
+rollback:
+  classification: conditional
+  boundary: Before removing the old compatibility adapter.

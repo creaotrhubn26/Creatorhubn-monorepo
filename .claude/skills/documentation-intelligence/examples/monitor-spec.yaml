@@ -1,0 +1,54 @@
+monitor:
+  project: Example Production Platform
+  baseline_file: project-baseline.yaml
+
+  cadence: daily
+
+  components:
+    - name: Adobe Photoshop / UXP
+      channels:
+        - stable
+      events:
+        - release
+        - security
+        - breaking_change
+        - deprecation
+        - removal
+        - api_change
+        - compatibility
+        - known_issue
+
+    - name: DaVinci Resolve
+      channels:
+        - stable
+      events:
+        - release
+        - fix
+        - breaking_change
+        - api_change
+        - compatibility
+        - known_issue
+
+    - name: Backblaze B2
+      channels:
+        - stable
+      events:
+        - security
+        - api_change
+        - deprecation
+        - eol
+
+  notify_when:
+    - affects_current_version
+    - affects_target_version
+    - affects_used_api
+    - affects_supported_os
+    - requires_migration
+    - requires_security_action
+    - fixes_tracked_issue
+
+  suppress:
+    - unrelated_vendor_news
+    - marketing_announcements
+    - preview_without_project_relevance
+    - duplicate_release_notice

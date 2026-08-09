@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project Impact Report",
+  "type": "object",
+  "required": [
+    "event",
+    "findings"
+  ],
+  "properties": {
+    "event": {
+      "type": "object"
+    },
+    "verdict": {
+      "enum": [
+        "GO",
+        "GO_WITH_TESTS",
+        "HOLD",
+        "NO_GO",
+        "INFORMATIONAL"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "summary",
+          "severity",
+          "confidence"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low",
+              "None"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "Verified",
+              "Strong evidence",
+              "Probable",
+              "Unverified",
+              "Contradicted"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "test_gates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "non_impacting_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

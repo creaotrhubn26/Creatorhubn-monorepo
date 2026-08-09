@@ -1,0 +1,38 @@
+event:
+  product: DaVinci Resolve
+  version: "20.3"
+  type: release
+
+verdict: GO_WITH_TESTS
+
+findings:
+  - summary: Render queue scripting behavior changed for an API used by Post Agent.
+    severity: High
+    confidence: Verified
+    files:
+      - services/resolve/render.ts
+    features:
+      - post_agent_render
+    actions:
+      - VALIDATE_API
+      - TEST
+    evidence_refs:
+      - evidence:resolve-20.3-render-change
+
+  - summary: A tracked timeline marker defect is fixed.
+    severity: Medium
+    confidence: Verified
+    files:
+      - agents/post-agent/timeline.ts
+    features:
+      - timeline_markers
+    actions:
+      - REMOVE_WORKAROUND
+      - TEST
+
+non_impacting_count: 138
+
+test_gates:
+  - Render one known project through the automated queue.
+  - Validate marker creation/update on an existing timeline.
+  - Compare produced render metadata against baseline.

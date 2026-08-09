@@ -1,0 +1,41 @@
+project: Example Production Platform
+updated: 2026-08-09
+
+components:
+  - vendor: Adobe
+    product: Photoshop
+    version: "26.x"
+    role: host_application
+
+  - vendor: Adobe
+    product: UXP
+    version: "8.x"
+    role: plugin_sdk
+
+  - vendor: Blackmagic Design
+    product: DaVinci Resolve
+    version: "20.x"
+    role: host_application
+
+  - vendor: Backblaze
+    product: B2
+    version: "current_api"
+    role: object_storage
+
+  - vendor: OpenJS
+    product: Node.js
+    version: "22"
+    role: runtime
+
+targets:
+  operating_systems:
+    - macOS
+    - Windows
+  architectures:
+    - arm64
+    - x86_64
+
+policies:
+  require_api_validation_for_unfamiliar_symbols: true
+  prefer_exact_version_docs: true
+  treat_preview_as_production_ready: false

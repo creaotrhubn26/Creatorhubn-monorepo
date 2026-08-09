@@ -1,0 +1,25 @@
+claim: >
+  Moodle loads the LTI dynamic-registration endpoint in an iframe; a tool
+  sending X-Frame-Options deny/sameorigin breaks registration inside Moodle
+  even though the same header does not break launch (302 redirect path).
+source_type: official_docs
+source: "https://moodledev.io/docs + empirical E2E against sandbox.moodledemo.net (Moodle 5.2)"
+authority_tier: 1
+vendor: Moodle
+product: Moodle LMS
+version_scope: "Moodle 5.2 (likely all 4.x/5.x)"
+publication_date: "2026-08-09"
+evidence_summary: >
+  E2E against a real Moodle sandbox caught the failure; unit tests could not.
+  Fix: removeHeader on /lti/register only. Launch needed no fix (redirect).
+interpretation: Host embedding policy is a compatibility constraint separate from the LTI spec itself.
+project_impact: LTI dynamic registration (PR #1967/#1969/#1971).
+confidence: verified
+decision: >
+  Per-route header exceptions for endpoints designed to be embedded;
+  E2E against a real host instance is required for LMS integration claims.
+affected:
+  - backend LTI routes (/lti/register)
+lesson: >
+  Spec-compliance is not host-compatibility. compatibility-solver must include
+  the embedding context (iframe/redirect) as a constraint dimension.

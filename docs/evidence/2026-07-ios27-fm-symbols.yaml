@@ -1,0 +1,30 @@
+claim: >
+  FoundationModels APIs announced for iOS 27 (LanguageModel/LanguageModelExecutor
+  protocols, third-party model backing) are documented by Apple but absent from
+  the Xcode 26.x SDK — code referencing them does not compile locally.
+source_type: api_reference
+source: "https://developer.apple.com/documentation/foundationmodels + local Xcode 26.6 / iOS 26.5 SDK compile attempts"
+authority_tier: 1
+vendor: Apple
+product: FoundationModels (iOS SDK)
+version_scope: "documented for iOS 27; absent in Xcode 26.6 / iOS 26.5 SDK"
+publication_date: "2026-07-27"
+valid_from: "2026-06"
+valid_to: "until Xcode 27 ships"
+evidence_summary: >
+  Xcode 26.6 SDK contains iOS 26 FM symbols (compiles + runs); iOS 27-only
+  symbols are missing. Verified by compiling, not by reading docs.
+interpretation: >
+  API availability has two axes: documented-for-OS-version AND present-in-installed-SDK.
+  api-validator must check both.
+project_impact: >
+  LeadMapApp/CaptureApp Apple Intelligence plan targets iOS 26 FM now;
+  iOS 27 features deferred until Xcode 27.
+confidence: verified
+decision: Pin to iOS 26 FM surface; backend-Claude fallback stays default.
+affected:
+  - ipad/LeadMapApp (TranscriptIntelligence)
+  - ipad/CaptureApp (notes AI)
+lesson: >
+  "Documented" ≠ "compilable here". For Apple surfaces, Verified requires a
+  compile check against the exact installed SDK, not a docs link.

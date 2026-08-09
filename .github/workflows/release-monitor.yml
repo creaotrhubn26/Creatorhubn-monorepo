@@ -1,0 +1,65 @@
+name: Control Center release-monitor
+
+# Release-vakt (Documentation Intelligence, mekanisk lag): ukentlig sjekk av
+# siste release for leverandør-flater med drift-historikk (Resolve, Xcode,
+# Moodle, Blender, Stripe-SDK). Varsler super_admin kun ved versjons-transisjon;
+# impact-vurderingen gjøres etterpå med skill-pakken.
+#
+# Endepunkt: POST /api/control-center/release-monitor/run
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'   # mandager ~06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-monitor
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-release-monitor:
+    name: Sjekk leverandør-releaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/control-center/release-monitor/run
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/control-center/release-monitor/run")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          UPDATED=$(echo "$BODY" | jq -r '.updated // 0' 2>/dev/null || echo 0)
+          ERRORS=$(echo "$BODY" | jq -r '.errors // 0' 2>/dev/null || echo 0)
+          if [ "$UPDATED" != "0" ] && [ -n "$UPDATED" ]; then
+            echo "::warning::$UPDATED ny(e) leverandør-release(r) — kjør impact-vurdering (documentation-intelligence)."
+          fi
+          if [ "$ERRORS" != "0" ] && [ -n "$ERRORS" ]; then
+            echo "::warning::$ERRORS vakt(er) feilet henting/ekstraksjon — sjekk mønstre/kilder."
+          fi
+          echo "::notice::Release-monitor ferdig"

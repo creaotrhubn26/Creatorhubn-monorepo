@@ -1,0 +1,25 @@
+claim: >
+  Adobe renamed/relocated the UXP Developer Tool app from
+  "Adobe UXP Developer Tool.app" (singular) to "...Tools/...Tools.app"
+  (plural, nested) without any release note or notice.
+source_type: official_repository
+source: "Empirical: installed app path on macOS; no vendor announcement found"
+authority_tier: 2
+vendor: Adobe
+product: UXP Developer Tool
+version_scope: "UDT installs after ~2026-07"
+publication_date: "2026-08-02"
+evidence_summary: >
+  Post Agent's Photoshop-bridge wizard probed the old path, reported
+  "not installed" although UDT was installed. No changelog entry existed.
+interpretation: Documentation/installation drift without a versioned release.
+project_impact: >
+  Photoshop bridge onboarding broke silently. Fixed in PR #1840 with
+  UDT_APP_CANDIDATES probing multiple paths.
+confidence: verified
+decision: Probe a candidate list of paths, never a single hardcoded vendor path.
+affected:
+  - apps/resolve-script-manager (Post Agent UXP wizard)
+lesson: >
+  Vendor-controlled filesystem/app-name surfaces are drift-prone even when
+  the API is stable. Treat install paths as Unverified until probed.
