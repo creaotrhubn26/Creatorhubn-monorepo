@@ -108,7 +108,7 @@ ALTER TABLE role_room_education_assignments ADD COLUMN IF NOT EXISTS artifact_vi
 - Produces: en tynn, ikke-blokkerende kontekst-stripe (oppgavetittel/brief/frist + «Min side» + «Lever») over produksjonsverktøyet for bro-studenter.
 
 - [ ] **Step 1: Kontekst-signal** — når student launcher til en artefakt-oppgave, bær oppgave-id i URL (`&assignment=<id>`) fra `openProductionInRoleRoom` (utvid opts m/ `assignmentId?`; Task 2/4 sender den). Ankomst-stripa henter oppgave-detalj (tittel/brief/frist) via student-view-servicen.
-- [ ] **Step 2: Implementer stripa per design-doc** — sticky, 3px lila venstrekant, «Min side»-knapp (gjenbruk #1982-navigasjon) + «Lever» (åpner `AssignmentSubmit` i bunn-`Drawer`). Scroll-minimerer til én-linjes pill. Kun når `edu=1` + `assignment`-param. `prefers-reduced-motion`.
+- [ ] **Step 2: Implementer stripa per design-doc (Impeccable-korrigert)** — sticky, bruk **RailTips-mønsteret** (1px hairline + low-alpha lila wash, `_eduUi.tsx:40`) — IKKE en 3px venstrekant (Impeccable Absolute Ban: side-stripe). «Min side»-knapp (gjenbruk #1982-navigasjon) + «Lever» (åpner `AssignmentSubmit` i bunn-`Drawer`). Ikke-farge-avhengig status (tekst+ikon på overtid/levert), `tabular-nums` på dato/tellere. Scroll-minimerer til én-linjes pill. Kun når `edu=1` + `assignment`-param. `prefers-reduced-motion`. **Følg design-docens Flate C nøyaktig (inkl. Impeccable-callouts).**
 - [ ] **Step 3: scoped tsc rent. Commit.**
 `feat(role-room/education): student ankomst-stripe (oppgavekontekst + Min side/Lever) i produksjons-modus`
 
