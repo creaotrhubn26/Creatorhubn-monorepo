@@ -1346,7 +1346,8 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
 // ── Små UI-primitiver ────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: C.inkSoft, marginBottom: 10, fontWeight: 700 }}>{children}</div>;
+  // Skillelinje + luft over hver gruppe → panelet leses som distinkte seksjoner, ikke én vegg av knapper.
+  return <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink, opacity: 0.82, marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}`, marginBottom: 10, fontWeight: 700 }}>{children}</div>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

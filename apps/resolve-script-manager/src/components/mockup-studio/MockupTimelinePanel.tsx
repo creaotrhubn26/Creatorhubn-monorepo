@@ -9,7 +9,7 @@ import { useRef, useState, type CSSProperties } from 'react';
 import { useMockupStudio } from './mockupStudioStore';
 import { deriveTimeline, type TimelineClip, type MockupTimeline } from './mockupStudioModel';
 
-const TRACK_H = 26;
+const TRACK_H = 32;
 const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst'];
 const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed' };
 const tlZoomBtn: CSSProperties = { width: 15, height: 13, lineHeight: '11px', padding: 0, borderRadius: 3, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#c7cdd8', cursor: 'pointer', fontSize: 11 };
@@ -172,7 +172,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
             <button onClick={() => setZoom((z) => Math.min(8, z * 1.4))} title="Zoom inn (timeline) · Cmd/Ctrl+hjul" style={tlZoomBtn}>+</button>
           </div>
           {Array.from({ length: nTracks }, (_, i) => (
-            <div key={i} style={{ height: TRACK_H, display: 'flex', alignItems: 'center', paddingLeft: 8, opacity: 0.7, fontSize: 10 }}>{TRACK_LABELS[i] ?? `Spor ${i + 1}`}</div>
+            <div key={i} style={{ height: TRACK_H, display: 'flex', alignItems: 'center', paddingLeft: 8, color: '#c7cdd8', fontSize: 11 }}>{TRACK_LABELS[i] ?? `Spor ${i + 1}`}</div>
           ))}
         </div>
         {/* Rail: linjal + spor + klipp + playhead (zoombar + scrollbar horisontalt) */}
@@ -200,7 +200,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
                 background: CLIP_COLORS[c.kind], borderRadius: 4,
                 border: c.id === selClip ? '1.5px solid #fff' : '1px solid rgba(255,255,255,0.25)',
                 display: 'flex', alignItems: 'center', paddingLeft: 8, overflow: 'hidden', whiteSpace: 'nowrap',
-                color: '#fff', fontSize: 9, cursor: 'grab', boxShadow: c.id === selClip ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
+                color: '#fff', fontSize: 10, cursor: 'grab', boxShadow: c.id === selClip ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
               }}
             >
               {c.label}
