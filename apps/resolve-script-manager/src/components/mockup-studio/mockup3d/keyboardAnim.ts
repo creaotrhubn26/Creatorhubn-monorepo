@@ -154,6 +154,39 @@ function fieldText(x: CanvasRenderingContext2D, text: string, tx: number, ty: nu
   x.restore();
 }
 
+const CODE_KW = new Set(['const', 'let', 'var', 'function', 'func', 'fn', 'return', 'if', 'else', 'for', 'while', 'import', 'export', 'from', 'new', 'await', 'async', 'class', 'struct', 'enum', 'extends', 'true', 'false', 'null', 'nil', 'undefined', 'type', 'interface', 'def', 'print', 'guard']);
+
+/** Enkel tokenizer for syntaks-farging (Catppuccin-aktige farger på mørkt felt). */
+function tokenizeCode(s: string): { t: string; c: string }[] {
+  const out: { t: string; c: string }[] = [];
+  const re = /("[^"]*"?|'[^']*'?|`[^`]*`?|\d[\d.]*|[A-Za-z_$][\w$]*|\s+|[^\s\w])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) {
+    const t = m[0];
+    let c = '#e6e6f0';
+    if (/^["'`]/.test(t)) c = '#a6e3a1';            // streng
+    else if (/^\d/.test(t)) c = '#fab387';          // tall
+    else if (CODE_KW.has(t)) c = '#cba6f7';         // nøkkelord
+    else if (/^[A-Za-z_$]/.test(t)) c = '#89b4fa';  // identifikator
+    else if (!/^\s/.test(t)) c = '#94a3b8';         // tegnsetting
+    out.push({ t, c });
+  }
+  return out;
+}
+
+/** Tegn farget kode med horisontal overflow-scroll + caret. Font settes av kaller. */
+function drawCodeText(x: CanvasRenderingContext2D, s: string, tx: number, ty: number, innerW: number, caret: boolean, fh: number): void {
+  const spans = tokenizeCode(s);
+  const total = spans.reduce((w, sp) => w + x.measureText(sp.t).width, 0);
+  const off = total > innerW ? innerW - total : 0;
+  x.save();
+  x.beginPath(); x.rect(tx, ty - fh, innerW + fh, fh * 2); x.clip();
+  let cx = tx + off;
+  for (const sp of spans) { x.fillStyle = sp.c; x.fillText(sp.t, cx, ty); cx += x.measureText(sp.t).width; }
+  if (caret) { x.fillStyle = '#e6e6f0'; x.fillRect(cx + 2, ty - fh * 0.46, Math.max(2, fh * 0.06), fh * 0.92); }
+  x.restore();
+}
+
 /**
  * Tegn skrive-feltet i valgt kontekst-stil (search/chat/url/document/code/terminal)
  * med overflow-scroll, placeholder og payoff-øyeblikk. y0 = topp-fraksjon (0..1).
@@ -184,7 +217,9 @@ export function drawField(x: CanvasRenderingContext2D, W: number, H: number, st:
     x.fillStyle = style === 'terminal' ? '#6ee7a8' : '#7f849c';
     x.fillText(prompt, fx + pad * 0.4, ty);
     const px0 = fx + pad * 0.4 + x.measureText(prompt).width;
-    fieldText(x, shown, px0, ty, fw - (px0 - fx) - pad * 0.4, empty ? 'rgba(255,255,255,0.3)' : (style === 'terminal' ? '#c7f9cc' : '#e6e6f0'), st.caret, style === 'terminal' ? '#6ee7a8' : '#e6e6f0', fh);
+    const innerW = fw - (px0 - fx) - pad * 0.4;
+    if (style === 'code' && !empty) drawCodeText(x, shown, px0, ty, innerW, st.caret, fh); // syntaks-farging
+    else fieldText(x, shown, px0, ty, innerW, empty ? 'rgba(255,255,255,0.3)' : (style === 'terminal' ? '#c7f9cc' : '#e6e6f0'), st.caret, style === 'terminal' ? '#6ee7a8' : '#e6e6f0', fh);
     if (st.payoff > 0) { x.globalAlpha = st.payoff; x.fillStyle = '#6ee7a8'; x.fillText(style === 'terminal' ? '✓ ok' : '✓ done', fx + pad * 0.4, ty + fieldH); }
     x.restore(); return;
   }

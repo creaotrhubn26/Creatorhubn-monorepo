@@ -67,6 +67,16 @@ export interface MockupDeviceSlot {
 
 /** Skrive-animasjon: humanisert tempo + felt-kontekst + payoff. */
 export type MockupFieldStyle = 'plain' | 'search' | 'chat' | 'url' | 'document' | 'code' | 'terminal';
+
+/** Ett-klikks skrive-scenarier (setter tekst + felt + payoff ferdig). */
+export const TYPE_PRESETS: { id: string; label: string; cfg: TypeAnimCfg }[] = [
+  { id: 'search', label: '🔍 Søk → resultat', cfg: { text: 'beste leads i oslo', field: 'search', placeholder: 'Søk…', payoff: true } },
+  { id: 'message', label: '💬 Send melding', cfg: { text: 'Hei! Klar for møtet? 🚀', field: 'chat', payoff: true, keyPop: true } },
+  { id: 'url', label: '🌐 Åpne side', cfg: { text: 'creatorhubn.com', field: 'url', payoff: true } },
+  { id: 'code', label: '⌨︎ Skriv kode', cfg: { text: 'const leads = await api.fetch();', field: 'code', keyPop: true } },
+  { id: 'terminal', label: '▸ Terminal', cfg: { text: 'npm run deploy', field: 'terminal', payoff: true } },
+  { id: 'form', label: '📝 Skriv i felt', cfg: { text: 'daniel@creatorhubn.com', field: 'plain', placeholder: 'E-post', correct: true } },
+];
 export interface TypeAnimCfg {
   text: string;
   keyPop?: boolean;

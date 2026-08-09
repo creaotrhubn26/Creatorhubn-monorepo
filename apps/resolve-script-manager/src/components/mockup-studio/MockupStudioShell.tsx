@@ -54,6 +54,7 @@ import {
   type MockupTypographyId,
   type MockupDecor,
   buildMindmapDoc,
+  TYPE_PRESETS,
 } from './mockupStudioModel';
 import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
@@ -1158,6 +1159,15 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           )}
           {device.threeD && (
             <Field label="Skrive-animasjon (tekst «skrives» på skjermen)">
+              <select
+                value=""
+                onChange={(e) => { const p = TYPE_PRESETS.find((x) => x.id === e.target.value); if (p) patchDevice(device.id, { typeAnim: { ...p.cfg } }); e.currentTarget.selectedIndex = 0; }}
+                style={{ ...textInput, marginBottom: 6 }}
+                title="Ett-klikks scenario (setter tekst + felt + payoff ferdig)"
+              >
+                <option value="">⚡ Scenario…</option>
+                {TYPE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
               <input
                 type="text"
                 value={device.typeAnim?.text ?? ''}
