@@ -18,6 +18,7 @@ import {
 } from '@mui/icons-material';
 import { Logout as LogoutIcon, ArrowBack as BackIcon, Groups as TeamIcon, Upload as UploadIcon } from '@mui/icons-material';
 import { useSuperAdminGate } from '../components/admin/useSuperAdminGate';
+import authSessionService from '../services/authSessionService';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { openProductionInRoleRoom } from './educationProductionsService';
 import {
@@ -70,7 +71,10 @@ function formatDate(iso: string | null): string | null {
 
 export function StudentWorkspace() {
   const { isSuperAdmin, ready } = useSuperAdminGate();
-  const loggedIn = hasStudentSession();
+  // Ekte-konto-student (Bearer, ingen isolert x-student-token) skal også se MyStudentView —
+  // getSessionTokenSync() leser token-mirroret synkront (localStorage/window), uavhengig av
+  // om authSessionService.loadSession() er ferdig hydrert.
+  const loggedIn = hasStudentSession() || !!authSessionService.getSessionTokenSync();
 
   if (!ready && !loggedIn) {
     return <Box sx={{ minHeight: '100vh', bgcolor: '#0a0a0a', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
@@ -114,6 +118,9 @@ function MyStudentView() {
   }, []);
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress sx={{ color: ACCENT }} /></Box>;
+  // Ekte-konto-bruker uten student-profil (t.d. faglærer/annen rolle innlogget via Bearer,
+  // ingen isolert studentsesjon) → samme placeholder som «ikke innlogget», ikke feilmelding.
+  if (error === 'no_student_profile') return <StudentPlaceholder />;
   if (error) return <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => { clearStudentSession(); window.location.reload(); }}>Logg inn på nytt</Button>}>{error}</Alert>;
   if (!view?.student) return <StudentPlaceholder />;
   return <StudentViewContent view={view} studentMode />;
@@ -234,7 +241,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                     <Chip size="small" label={MEMBER_ROLE_LABELS[p.role as MemberRole] ?? p.role} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
                   </Stack>
                   <Button fullWidth variant="outlined" startIcon={<OpenIcon />}
-                    onClick={() => (studentMode ? setOpenProd(p) : openProductionInRoleRoom(p.projectId))}
+                    onClick={() => (!studentMode || view.canOpenProduction ? openProductionInRoleRoom(p.projectId) : setOpenProd(p))}
                     sx={{ mt: 1.5, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
                     {studentMode ? 'Åpne produksjon' : 'Åpne i Role Room'}
                   </Button>
