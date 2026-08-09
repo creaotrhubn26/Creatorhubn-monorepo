@@ -54,4 +54,46 @@ describe('getOrgExposure', () => {
     expect(exp.interestBearingDebtMinor).toBe(30000000n);
     expect(exp.naceCode).toBe('62.010');
   });
+
+  it('rapporterer valutaeksponering (fxCurrencies/fxSpend/fxPurchases)', async () => {
+    const userId = await ensureUser(db, 'fx@x.no', 'Fx');
+    const org = await createOrganization(db, {
+      name: 'Fx AS',
+      orgForm: 'AS',
+      vatStatus: 'registered',
+      orgNumber: '923609016',
+      createdByUserId: userId,
+    });
+    // USD-programvarekostnad: 100 USD à kurs 11 = 1 100 kr.
+    const today = new Date().toISOString().slice(0, 10);
+    await postJournalEntry(db, {
+      organizationId: org.id,
+      actor: { userId, role: 'owner' },
+      entryDate: today,
+      description: 'Programvare (USD)',
+      idempotencyKey: 'exposure-test:fx-1',
+      lines: [
+        {
+          accountNumber: '6810',
+          debitMinor: 110000n,
+          creditMinor: 0n,
+          originalCurrency: 'USD',
+          originalAmountMinor: 10000n,
+          exchangeRate: '11',
+          exchangeRateSource: 'test',
+        },
+        { accountNumber: '1920', debitMinor: 0n, creditMinor: 110000n },
+      ],
+    });
+    const registry = new StaticCompanyRegistryStub({});
+    const exp = await getOrgExposure(db, registry, org.id);
+    expect(exp.fxCurrencies).toContain('USD');
+    expect(exp.fxSpend).toContainEqual({ currency: 'USD', medianMonthlyMinor: 110000n });
+    expect(exp.fxPurchases).toContainEqual({
+      currency: 'USD',
+      purchaseCount: 1,
+      totalForeignMinor: 10000n,
+      actualNokMinor: 110000n,
+    });
+  });
 });

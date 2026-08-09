@@ -20,14 +20,17 @@ export async function getOrgExposure(
   registry: CompanyRegistry,
   organizationId: string,
 ): Promise<OrgExposure> {
-  // Rentebærende gjeld: kontoklasse 2200–2499, kredittsaldo.
+  // Rentebærende gjeld: 2200–2290 (langsiktig gjeld til kredittinstitusjoner) +
+  // 2380–2399 (kassekreditt/byggelån), kredittsaldo. Ekskluderer 2400 leverandørgjeld
+  // (ikke rentebærende) og 2600+ skatt/mva/lønn.
   const debt = await db.query(
     `SELECT COALESCE(SUM(l.credit_minor - l.debit_minor), 0)::TEXT AS net
        FROM journal_lines l
        JOIN journal_entries e ON e.id = l.entry_id AND e.status = 'posted'
       WHERE l.organization_id = $1
         AND l.account_number ~ '^[0-9]{4}$'
-        AND l.account_number::int BETWEEN 2200 AND 2499`,
+        AND (l.account_number::int BETWEEN 2200 AND 2290
+             OR l.account_number::int BETWEEN 2380 AND 2399)`,
     [organizationId],
   );
   const interestBearingDebtMinor = BigInt(debt.rows[0]?.net ?? '0');
