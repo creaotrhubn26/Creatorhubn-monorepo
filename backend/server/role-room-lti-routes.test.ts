@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore, buildToolConfiguration } from "./role-room-lti-routes.js";
+import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore, buildToolConfiguration, landingMode } from "./role-room-lti-routes.js";
 
 describe("gradeToScore (fri-tekst-karakter → AGS-tallscore)", () => {
   it("bestått/godkjent → 1/1, ikke bestått → 0/1", () => {
@@ -65,6 +65,21 @@ describe("extractLtiIdentity (LTI id_token → identitet + rolle)", () => {
   it("uten e-post-claim → email null (uautentisert landing)", () => {
     const id = extractLtiIdentity({ [ROLES]: [] });
     expect(id.email).toBeNull();
+  });
+});
+
+describe("landingMode (LTI-landing-ruting)", () => {
+  it("student-rolle → student", () => {
+    expect(landingMode("student", "LtiResourceLinkRequest", "")).toBe("student");
+  });
+  it("faglærer → education", () => {
+    expect(landingMode("faglærer", "LtiResourceLinkRequest", "")).toBe("education");
+  });
+  it("deep-linket produksjon → production (uansett rolle)", () => {
+    expect(landingMode("student", "LtiResourceLinkRequest", "proj-1")).toBe("production");
+  });
+  it("deep linking-request → education (plukker)", () => {
+    expect(landingMode("student", "LtiDeepLinkingRequest", "")).toBe("education");
   });
 });
 

@@ -294,6 +294,12 @@ export function AssessmentTab() {
                           Åpne produksjon
                         </Button>
                       )}
+                      {it.deliverableId && it.productionProjectId && (
+                        <Button size="small" variant="outlined" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(it.productionProjectId as string, 'delivery')}
+                          sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
+                          Åpne leveranse
+                        </Button>
+                      )}
                     </Stack>
 
                     {goals.length > 0 && (

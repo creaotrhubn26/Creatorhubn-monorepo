@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createEducationStudentViewRouter } from "./role-room-education-student-view-routes.js";
+import { createEducationStudentViewRouter, resolveEducationStudentByUser } from "./role-room-education-student-view-routes.js";
 
 function mountHandlers(router: any) {
   const out: Array<{ method: string; path: string; stack: any[] }> = [];
@@ -47,6 +47,10 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
       if (sql.includes("UPDATE role_room_education_student_sessions")) {
         return { rows: sessionStudentId ? [{ student_id: sessionStudentId }] : [] };
       }
+      if (sql.includes("FROM role_room_education_students s") && sql.includes("JOIN users u")) {
+        // resolveEducationStudentByUser: ingen ekte-konto-student-kobling i disse testene.
+        return { rows: [] };
+      }
       if (sql.includes("FROM role_room_education_students s")) {
         return studentOwner === null
           ? { rows: [] }
@@ -58,8 +62,10 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
       if (sql.includes("FROM role_room_education_rubric_criteria c")) {
         return { rows: rubric ?? [] };
       }
-      if (sql.includes("FROM role_room_education_assignments WHERE id")) {
-        return { rows: assignmentInCohort ? [{ n: 1 }] : [] };
+      if (sql.includes("FROM role_room_education_assignments a") && sql.includes("a.cohort_id = $2")) {
+        // Submit-endepunktets oppgave-spørring (m/ koblet produksjon); skilles fra
+        // assembleView-spørringen som bruker "a.cohort_id = $1".
+        return { rows: assignmentInCohort ? [{ title: "Oppg", production_project_id: null }] : [] };
       }
       if (sql.includes("INSERT INTO role_room_education_submissions")) {
         return { rows: [{ status: "submitted", link: params[4] }] };
@@ -80,6 +86,25 @@ const sessions = new Map<string, any>([
 ]);
 const R = (pool: any) => mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions as any }));
 const H = (rs: any[], method: string, path: string) => rs.find((x) => x.method === method && x.path === path)!.stack;
+
+describe("resolveEducationStudentByUser", () => {
+  it("returnerer student-id når users.email = students.email", async () => {
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      if (sql.includes("FROM role_room_education_students") && sql.includes("users")) {
+        // matcher kun for riktig userId
+        return params[0] === "u1" ? { rows: [{ id: "stud-1" }] } : { rows: [] };
+      }
+      return { rows: [] };
+    }) };
+    expect(await resolveEducationStudentByUser(pool, "u1")).toBe("stud-1");
+    expect(await resolveEducationStudentByUser(pool, "u-annen")).toBeNull();
+  });
+  it("tom userId → null (ingen query)", async () => {
+    const pool: any = { query: vi.fn() };
+    expect(await resolveEducationStudentByUser(pool, "")).toBeNull();
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+});
 
 describe("education student view + claim routes", () => {
   // ── Preview-vei (Bearer) ─────────────────────────────────────────────────
@@ -125,11 +150,35 @@ describe("education student view + claim routes", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("Bearer uten studentId → 400", async () => {
+  it("Bearer uten studentId, ikke selv en student → 404 no_student_profile", async () => {
     const res = makeRes();
     await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
       { headers: { authorization: "Bearer owner-tok" }, query: {}, params: {} }, res);
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error).toBe("no_student_profile");
+  });
+
+  it("Bearer-ekte-konto-student uten studentId → egen visning m/ canOpenProduction=true", async () => {
+    const sessions2 = new Map([["bear-1", { userId: "u1", email: "s@moodle.a", name: "", role: "user", loginAt: "" }]]);
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("FROM role_room_education_students") && sql.includes("JOIN users u")) return { rows: [{ id: "stud-1" }] };
+      if (sql.includes("FROM role_room_education_students") && sql.includes("WHERE") && !sql.includes("JOIN users")) return { rows: [{ id: "stud-1", name: "Sam", cohort_id: "k1", owner_user_id: "t1", email: "s@moodle.a" }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions2 as any }));
+    const res = makeRes();
+    await runChain(H(rs, "GET", "/education/student/view"),
+      { headers: { authorization: "Bearer bear-1" }, query: {}, params: {} }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.canOpenProduction).toBe(true);
+  });
+
+  it("x-student-token-vei → canOpenProduction=false", async () => {
+    const res = makeRes();
+    await runChain(H(R(makePool({ sessionStudentId: "st1" }).pool), "GET", "/education/student/view"),
+      { headers: { "x-student-token": "stok-1" }, query: {}, params: {} }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.canOpenProduction).toBe(false);
   });
 
   it("ingen auth → 401", async () => {
@@ -160,6 +209,56 @@ describe("education student view + claim routes", () => {
     await runChain(H(R(makePool({ sessionStudentId: "st1", assignmentInCohort: false }).pool), "PUT", "/education/student/assignment/:assignmentId/submit"),
       { headers: { "x-student-token": "stok" }, body: { link: "x" }, params: { assignmentId: "a-x" }, query: {} }, res);
     expect(res.statusCode).toBe(404);
+  });
+
+  it("Bearer-student leverer oppgave m/ produksjon → oppretter deliverable + lagrer deliverable_id", async () => {
+    const sessions3 = new Map([["bear-1", { userId: "u1", email: "s@moodle.a", name: "Sam", role: "user", loginAt: "" }]]);
+    const calls: any[] = [];
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      calls.push({ sql, params });
+      // Bro-rolle (resolveEducationProductionRole) MÅ sjekkes før den generiske
+      // "JOIN users u"-sjekken, siden begge spørringene inneholder det mønsteret.
+      if (sql.includes("role_room_education_production_members")) return { rows: [{ role: "contributor" }] }; // bro-rolle
+      if (sql.includes("JOIN users u")) return { rows: [{ id: "stud-1" }] };            // resolveEducationStudentByUser
+      if (sql.includes("FROM role_room_education_students") && sql.includes("cohort_name")) return { rows: [{ id: "stud-1", name: "Sam", cohort_id: "k1", email: "s@moodle.a" }] }; // loadStudent
+      if (sql.includes("FROM role_room_education_assignments") && sql.includes("production")) return { rows: [{ ok: 1, production_project_id: "proj-1", title: "Manus" }] }; // oppgave m/ produksjon
+      if (sql.includes("FROM role_room_education_assignments")) return { rows: [{ "?column?": 1 }] };
+      if (sql.includes("INSERT INTO role_room_deliverables")) return { rows: [{ id: "deliv-1", project_id: "proj-1", title: "Manus" }] };
+      if (sql.includes("INSERT INTO role_room_education_submissions")) return { rows: [{ id: "sub-1" }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions3 as any }));
+    const res = makeRes();
+    await runChain(H(rs, "PUT", "/education/student/assignment/:assignmentId/submit"),
+      { headers: { authorization: "Bearer bear-1" }, params: { assignmentId: "a1" }, body: { link: "https://x", note: "ferdig" }, query: {} }, res);
+    expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_deliverables"))).toBe(true);
+    const subInsert = calls.find((c) => c.sql.includes("INSERT INTO role_room_education_submissions"));
+    expect(subInsert.sql).toContain("deliverable_id");
+  });
+
+  it("Bearer-student leverer PÅ NYTT (re-submit) → gjenbruker eksisterende deliverable_id, oppretter IKKE ny leveranse", async () => {
+    const sessions4 = new Map([["bear-1", { userId: "u1", email: "s@moodle.a", name: "Sam", role: "user", loginAt: "" }]]);
+    const calls: any[] = [];
+    const pool: any = { query: vi.fn(async (sql: string, params: any[]) => {
+      calls.push({ sql, params });
+      // Tidligere innsending har allerede en deliverable_id → skal gjenbrukes.
+      if (sql.includes("SELECT deliverable_id FROM role_room_education_submissions")) return { rows: [{ deliverable_id: "deliv-existing" }] };
+      if (sql.includes("role_room_education_production_members")) return { rows: [{ role: "contributor" }] }; // bro-rolle
+      if (sql.includes("JOIN users u")) return { rows: [{ id: "stud-1" }] };            // resolveEducationStudentByUser
+      if (sql.includes("FROM role_room_education_students") && sql.includes("cohort_name")) return { rows: [{ id: "stud-1", name: "Sam", cohort_id: "k1", email: "s@moodle.a" }] }; // loadStudent
+      if (sql.includes("FROM role_room_education_assignments") && sql.includes("production")) return { rows: [{ ok: 1, production_project_id: "proj-1", title: "Manus" }] }; // oppgave m/ produksjon
+      if (sql.includes("FROM role_room_education_assignments")) return { rows: [{ "?column?": 1 }] };
+      if (sql.includes("INSERT INTO role_room_deliverables")) return { rows: [{ id: "deliv-NY", project_id: "proj-1", title: "Manus" }] };
+      if (sql.includes("INSERT INTO role_room_education_submissions")) return { rows: [{ id: "sub-1" }] };
+      return { rows: [] };
+    }) };
+    const rs = mountHandlers(createEducationStudentViewRouter(pool, { activeSessions: sessions4 as any }));
+    const res = makeRes();
+    await runChain(H(rs, "PUT", "/education/student/assignment/:assignmentId/submit"),
+      { headers: { authorization: "Bearer bear-1" }, params: { assignmentId: "a1" }, body: { link: "https://x-v2", note: "revidert" }, query: {} }, res);
+    expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_deliverables"))).toBe(false);
+    const subInsert = calls.find((c) => c.sql.includes("INSERT INTO role_room_education_submissions"));
+    expect(subInsert.params).toContain("deliv-existing");
   });
 
   it("levering uten student-token → 401", async () => {

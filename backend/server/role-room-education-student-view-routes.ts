@@ -27,6 +27,8 @@ import {
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { newEntityId } from "./_shared-ids.js";
+import { createDeliverable } from "./role-room-deliverables.js";
+import { resolveEducationProductionRole } from "./role-room-education-production-access.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 
@@ -78,6 +80,32 @@ async function resolveStudentSession(pool: Pool, token: string | undefined): Pro
     [t],
   );
   return r.rows[0] ? String(r.rows[0].student_id) : null;
+}
+
+/**
+ * En ekte-konto-education-student: matcher innlogget brukers users.email mot
+ * education-studentens e-post. Returnerer student-id, ellers null (ingen kobling
+ * / feil). Fail-closed. Gjør at en LTI-student (ekte Bearer-sesjon, ingen
+ * x-student-token) kan se SIN EGEN «Min side».
+ */
+export async function resolveEducationStudentByUser(pool: Pool, userId: string): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const r = await pool.query(
+      `SELECT s.id
+         FROM role_room_education_students s
+         JOIN users u ON lower(u.email) = lower(s.email)
+        WHERE u.id = $1
+        ORDER BY s.created_at DESC
+        LIMIT 1`,
+      [userId],
+    );
+    return r.rows[0] ? String(r.rows[0].id) : null;
+  } catch (err) {
+    if (isMissingTable(err)) return null;
+    console.error("[education-student-view] resolveByUser failed (fail-closed):", (err as Error).message);
+    return null;
+  }
 }
 
 function isMissingTable(err: unknown): boolean {
@@ -272,23 +300,29 @@ export function createEducationStudentViewRouter(
         if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
         const student = await loadStudent(studentId);
         if (!student) { res.status(404).json({ error: "not_found" }); return; }
-        res.json(await assembleView(student));
+        res.json({ ...(await assembleView(student)), canOpenProduction: false });
         return;
       }
 
-      // Vei 2: Bearer (eier-faglærer / super admin preview) + ?studentId=.
+      // Vei 2: Bearer.
       const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
       const session = await resolveUser(pool, deps.activeSessions, bearer);
       if (!session?.userId) { res.status(401).json({ error: "unauthorized" }); return; }
-      const studentId = typeof req.query.studentId === "string" ? req.query.studentId : "";
-      if (!studentId) { res.status(400).json({ error: "student_id_required" }); return; }
-      const student = await loadStudent(studentId);
-      if (!student) { res.status(404).json({ error: "not_found" }); return; }
-      if (String(student.owner_user_id) !== session.userId && !isSuperAdmin(session)) {
-        res.status(404).json({ error: "not_found" });
+      const queryStudentId = typeof req.query.studentId === "string" ? req.query.studentId : "";
+      if (!queryStudentId) {
+        // Vei 2a: brukeren ER en education-student (ekte konto) → egen visning.
+        const ownId = await resolveEducationStudentByUser(pool, session.userId);
+        if (!ownId) { res.status(404).json({ error: "no_student_profile" }); return; }
+        const ownStudent = await loadStudent(ownId);
+        if (!ownStudent) { res.status(404).json({ error: "not_found" }); return; }
+        res.json({ ...(await assembleView(ownStudent)), canOpenProduction: true });
         return;
       }
-      res.json(await assembleView(student));
+      // Vei 2b: faglærer/super-admin preview (?studentId=) — uendret.
+      const student = await loadStudent(queryStudentId);
+      if (!student) { res.status(404).json({ error: "not_found" }); return; }
+      if (String(student.owner_user_id) !== session.userId && !isSuperAdmin(session)) { res.status(404).json({ error: "not_found" }); return; }
+      res.json({ ...(await assembleView(student)), canOpenProduction: false });
     } catch (err) {
       if (isMissingTable(err)) { res.json({ student: null, productions: [], assignments: [] }); return; }
       console.error("[education-student-view] failed:", (err as Error).message);
@@ -302,7 +336,12 @@ export function createEducationStudentViewRouter(
   // token inn i selve casting-planner-API-et (trygt, isolert).
   router.get("/education/student/production/:productionId", async (req, res) => {
     try {
-      const studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      let studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      if (!studentId) {
+        const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+        const session = await resolveUser(pool, deps.activeSessions, bearer);
+        if (session?.userId) studentId = await resolveEducationStudentByUser(pool, session.userId);
+      }
       if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
       const productionId = req.params.productionId;
 
@@ -379,32 +418,72 @@ export function createEducationStudentViewRouter(
   // ── Student leverer (isolert sesjon) ─────────────────────────────────────
   router.put("/education/student/assignment/:assignmentId/submit", async (req, res) => {
     try {
-      const studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      // Resolve student (x-student-token ELLER Bearer-ekte-konto).
+      let studentId = await resolveStudentSession(pool, req.headers["x-student-token"] as string | undefined);
+      let usersId: string | null = null;
+      if (!studentId) {
+        const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+        const session = await resolveUser(pool, deps.activeSessions, bearer);
+        if (session?.userId) { usersId = session.userId; studentId = await resolveEducationStudentByUser(pool, session.userId); }
+      }
       if (!studentId) { res.status(401).json({ error: "unauthorized" }); return; }
       const student = await loadStudent(studentId);
       if (!student) { res.status(404).json({ error: "not_found" }); return; }
       const body = (req.body ?? {}) as { link?: string; note?: string };
       const link = typeof body.link === "string" ? body.link.trim() || null : null;
       const note = typeof body.note === "string" ? body.note.trim() || null : null;
-      // Oppgaven MÅ tilhøre studentens kull + være publisert.
-      const ok = await pool.query(
-        `SELECT 1 FROM role_room_education_assignments WHERE id = $1 AND cohort_id = $2 AND status = 'published'`,
+      // Oppgave MÅ tilhøre kullet + være publisert; hent koblet produksjon + tittel.
+      const asg = await pool.query(
+        `SELECT a.title,
+                (SELECT project_id FROM role_room_education_productions WHERE id = a.production_id) AS production_project_id
+           FROM role_room_education_assignments a
+          WHERE a.id = $1 AND a.cohort_id = $2 AND a.status = 'published'`,
         [req.params.assignmentId, student.cohort_id],
       );
-      if (ok.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      if (asg.rows.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+      const productionProjectId = asg.rows[0].production_project_id ? String(asg.rows[0].production_project_id) : null;
+      const assignmentTitle = String(asg.rows[0].title ?? "Oppgave");
+
+      // Gjenbruk ev. leveranse fra en tidligere innsending (re-submit MÅ IKKE
+      // duplisere leveransen og foreldreløs-gjøre lærerens vurdering, spec §59).
+      const prevSub = await pool.query(
+        `SELECT deliverable_id FROM role_room_education_submissions WHERE assignment_id = $1 AND student_id = $2`,
+        [req.params.assignmentId, studentId],
+      );
+      let deliverableId: string | null = prevSub.rows[0]?.deliverable_id ? String(prevSub.rows[0].deliverable_id) : null;
+
+      // Opprett ekte leveranse KUN for ekte-konto-student m/ bro-rolle, og KUN
+      // når det ikke alt finnes en leveranse fra en tidligere innsending.
+      if (!deliverableId && usersId && productionProjectId) {
+        const role = await resolveEducationProductionRole(pool, usersId, productionProjectId);
+        if (role) {
+          const d = await createDeliverable(pool, {
+            projectId: productionProjectId,
+            title: assignmentTitle,
+            assigneeUserId: usersId,
+            assigneeLabel: String(student.name ?? ""),
+            status: "internal_review",
+            phase: "postproduction",
+            createdByUserId: usersId,
+          });
+          deliverableId = d?.id ?? null;
+        }
+      }
+
       const id = newEntityId("edsub");
       const r = await pool.query(
         `INSERT INTO role_room_education_submissions
-           (id, assignment_id, student_id, owner_user_id, status, link, note, submitted_at)
-         VALUES ($1,$2,$3,$4,'submitted',$5,$6, now())
+           (id, assignment_id, student_id, owner_user_id, status, link, note, deliverable_id, submitted_at)
+         VALUES ($1,$2,$3,$4,'submitted',$5,$6,$7, now())
          ON CONFLICT (assignment_id, student_id)
          DO UPDATE SET status = CASE WHEN role_room_education_submissions.status = 'reviewed' THEN 'reviewed' ELSE 'submitted' END,
                        link = EXCLUDED.link,
                        note = COALESCE(EXCLUDED.note, role_room_education_submissions.note),
+                       deliverable_id = COALESCE(EXCLUDED.deliverable_id, role_room_education_submissions.deliverable_id),
                        submitted_at = COALESCE(role_room_education_submissions.submitted_at, EXCLUDED.submitted_at),
                        updated_at = now()
          RETURNING status, link`,
-        [id, req.params.assignmentId, studentId, student.owner_user_id, link, note],
+        [id, req.params.assignmentId, studentId, student.owner_user_id, link, note, deliverableId],
       );
       res.json({ status: (r.rows[0]?.status as string) ?? "submitted", link: (r.rows[0]?.link as string) ?? null });
     } catch (err) {

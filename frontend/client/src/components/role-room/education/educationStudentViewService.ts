@@ -40,6 +40,7 @@ export interface StudentView {
   student: { id: string; name: string; cohortId: string | null; cohortName: string | null } | null;
   productions: StudentViewProduction[];
   assignments: StudentViewAssignment[];
+  canOpenProduction?: boolean;
 }
 
 export interface StudentProductionHub {
@@ -90,15 +91,15 @@ export const educationStudentViewService = {
     return (await res.json()) as StudentView;
   },
 
-  /** Innlogget student: egen visning via isolert studentsesjon-token. */
+  /** Innlogget student: egen visning — isolert studentsesjon-token, ellers ekte-konto Bearer. */
   async getMyView(): Promise<StudentView> {
     const token = getStudentToken();
-    if (!token) throw new Error('Ingen studentsesjon');
-    const res = await fetch(`${BASE}/student/view`, {
-      headers: { 'Content-Type': 'application/json', 'x-student-token': token },
-    });
-    if (res.status === 401) { clearStudentSession(); throw new Error('Sesjonen er utløpt'); }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const headers: Record<string, string> = token
+      ? { 'x-student-token': token }
+      : { ...authHeaders() };
+    const res = await fetch(`${BASE}/student/view`, { headers });
+    if (res.status === 401 && token) { clearStudentSession(); throw new Error('Sesjonen er utløpt'); }
+    if (!res.ok) throw new Error(res.status === 404 ? 'no_student_profile' : `HTTP ${res.status}`);
     return (await res.json()) as StudentView;
   },
 
