@@ -68,7 +68,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const inRef = useRef(inT); inRef.current = inT;
   const outRef = useRef(outT); outRef.current = outT;
   const loopRef = useRef(loop); loopRef.current = loop;
-  const hasTyping = doc.devices.some((d) => !!d.typeAnim?.text && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
+  const hasTyping = doc.devices.some((d) => (!!d.typeAnim?.text || !!d.threeD?.kf) && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
   // Speed-ramp: mapper lineær tids-progresjon p → eased t.
   const applyEase = (p: number, e: string): number =>
     e === 'smooth' ? p * p * (3 - 2 * p) : e === 'in' ? p * p : e === 'out' ? 1 - (1 - p) * (1 - p) : p;

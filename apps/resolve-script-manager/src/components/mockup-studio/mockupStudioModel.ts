@@ -56,7 +56,12 @@ export interface MockupDeviceSlot {
   /** Ren status-bar (09:41 + signal/wifi/batteri) over skjermbildet (kun telefoner). */
   cleanStatusBar?: boolean;
   /** Ekte 3D-render (WebGL, bakt til 2D-lag). Kun iphone/android i fase 1. Default av. */
-  threeD?: { rotX: number; rotY: number; rotZ: number; light?: string; zoom?: number; kbLayout?: 'mac' | 'windows' };
+  threeD?: {
+    rotX: number; rotY: number; rotZ: number; light?: string; zoom?: number; kbLayout?: 'mac' | 'windows';
+    /** Keyframe-graf: property → keyframes (t 0..1 over timeline, v = verdi). Overstyrer
+     *  rotX/rotY/rotZ/zoom under avspilling (bezier-aktig smoothstep-interpolasjon). */
+    kf?: Record<string, { t: number; v: number }[]>;
+  };
   /**
    * Skrive-animasjon: teksten «skrives» tegn-for-tegn på skjermen mens riktig
    * tast trykkes (laptop = fysisk dekk; telefon/tablet = on-screen-tastatur).
@@ -80,6 +85,22 @@ export interface TimelineClip {
   ease?: 'linear' | 'smooth' | 'in' | 'out';
 }
 export interface MockupTimeline { duration: number; clips: TimelineClip[]; }
+
+/** Interpolér en keyframe-kurve ved tid t (0..1) med smoothstep. Null hvis tom. */
+export function sampleKf(kfs: { t: number; v: number }[] | undefined, t: number): number | null {
+  if (!kfs || kfs.length === 0) return null;
+  const s = [...kfs].sort((a, b) => a.t - b.t);
+  if (t <= s[0].t) return s[0].v;
+  if (t >= s[s.length - 1].t) return s[s.length - 1].v;
+  for (let i = 0; i < s.length - 1; i++) {
+    if (t >= s[i].t && t <= s[i + 1].t) {
+      const p = (t - s[i].t) / Math.max(1e-6, s[i + 1].t - s[i].t);
+      const e = p * p * (3 - 2 * p); // smoothstep (bezier-aktig)
+      return s[i].v + (s[i + 1].v - s[i].v) * e;
+    }
+  }
+  return s[s.length - 1].v;
+}
 
 /**
  * Lokal, eased progresjon (0..1) for et elements klipp ved global playhead-tid

@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
+import { MockupKeyframeGraph } from './MockupKeyframeGraph';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
 import { DesignGallery } from './DesignGallery';
@@ -1147,6 +1148,11 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           {device.threeD && (
             <Field label={`3D-størrelse: ${Math.round((device.threeD.zoom ?? 1) * 100)}%`}>
               <input type="range" min={0.7} max={1.6} step={0.05} value={device.threeD.zoom ?? 1} onChange={(e) => patchDevice(device.id, { threeD: { ...device.threeD!, zoom: Number(e.target.value) } })} style={{ width: '100%' }} />
+            </Field>
+          )}
+          {device.threeD && (
+            <Field label="Keyframe-animasjon (kurve over tid)">
+              <MockupKeyframeGraph value={device.threeD.kf} playT={null} onChange={(kf) => patchDevice(device.id, { threeD: { ...device.threeD!, kf } })} />
             </Field>
           )}
           {device.threeD && device.variant === 'macbook' && (

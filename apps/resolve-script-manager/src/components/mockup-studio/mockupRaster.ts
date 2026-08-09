@@ -35,6 +35,7 @@ import {
   hexToRgb,
   deriveTimeline,
   clipLocalT,
+  sampleKf,
 } from './mockupStudioModel';
 
 // ── Bilde-lasting (cache per src) ───────────────────────────────────────────
@@ -418,7 +419,7 @@ function drawReflection(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement,
   ctx.drawImage(tmp, x, y + h, w, h);
 }
 
-async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot, t?: number): Promise<void> {
+async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot, t?: number, gt?: number): Promise<void> {
   const w = dev.w;
   const h = deviceHeight(dev);
   const cx = dev.x + w / 2;
@@ -445,12 +446,17 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
       const typeArg = ta?.text ? { text: ta.text, progress: t ?? 1, keyPop: ta.keyPop, field: ta.field, placeholder: ta.placeholder, payoff: ta.payoff, correct: ta.correct } : undefined;
       const typeKey = typeArg ? `${typeArg.text.length}:${typeArg.progress.toFixed(3)}:${typeArg.keyPop ? 1 : 0}:${ta!.field ?? ''}:${ta!.payoff ? 1 : 0}:${ta!.correct ? 1 : 0}` : '';
       const zoom = dev.threeD.zoom ?? 1;
-      const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', zoom, dev.threeD.kbLayout ?? 'mac', Math.round(w), (dev.image ?? '').length, typeKey]);
+      // Keyframe-nøkkel: når kurver er aktive, gjør baken avhengig av playhead (gt).
+      const kfKey = dev.threeD.kf && gt != null ? `kf${gt.toFixed(3)}` : '';
+      const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', zoom, dev.threeD.kbLayout ?? 'mac', Math.round(w), (dev.image ?? '').length, typeKey, kfKey]);
       let baked = _bakeCache.get(key);
       if (!baked) {
         // Bake-oppløsning skalerer med zoom → skarpere skjerm + tastatur ved innzooming.
         const px = Math.max(256, Math.round(w * 2 * Math.max(1, Math.min(2, zoom))));
-        baked = await render3dDevice({ variant: dev.variant, shot: dev.image, rotX: dev.threeD.rotX, rotY: dev.threeD.rotY, rotZ: dev.threeD.rotZ, light: dev.threeD.light, zoom, kbLayout: dev.threeD.kbLayout, w: px, h: Math.round(px * (h / w)), type: typeArg });
+        // Keyframe-graf: overstyr rot/zoom fra kurvene ved global playhead (gt).
+        const kf = dev.threeD.kf;
+        const kfv = (prop: string, def: number) => (kf && gt != null ? (sampleKf(kf[prop], gt) ?? def) : def);
+        baked = await render3dDevice({ variant: dev.variant, shot: dev.image, rotX: kfv('rotX', dev.threeD.rotX), rotY: kfv('rotY', dev.threeD.rotY), rotZ: kfv('rotZ', dev.threeD.rotZ), light: dev.threeD.light, zoom: kfv('zoom', zoom), kbLayout: dev.threeD.kbLayout, w: px, h: Math.round(px * (h / w)), type: typeArg });
         if (_bakeCache.size > 40) _bakeCache.clear();
         _bakeCache.set(key, baked);
       }
@@ -927,7 +933,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
       ctx.globalAlpha *= rev.alpha;
       ctx.translate(cx, cy + rev.ty); ctx.scale(rev.scale, rev.scale); ctx.translate(-cx, -cy);
     }
-    await drawDevice(ctx, doc, dev, dev.typeAnim?.text ? typeTFor(dev.id) : (t ?? undefined));
+    await drawDevice(ctx, doc, dev, dev.typeAnim?.text ? typeTFor(dev.id) : (t ?? undefined), t ?? undefined);
     ctx.restore();
   }
   doc.texts.forEach((tx, i) => {
