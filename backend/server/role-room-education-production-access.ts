@@ -91,3 +91,31 @@ export async function resolveEducationProductionRole(
     return null;
   }
 }
+
+/**
+ * Alle casting_projects.id-er brukeren kan nå VIA utdannings-broen (på tvers av
+ * alle produksjoner de er tildelt, uansett rolle). Brukes av /projects-listen
+ * for å slå sammen bro-prosjekter med eide/medlemsprosjekter. Fail-closed ([]).
+ */
+export async function listEducationProductionProjectIds(
+  pool: Pool,
+  userId: string,
+): Promise<string[]> {
+  if (!userId) return [];
+  try {
+    const r = await pool.query(
+      `SELECT DISTINCT p.project_id
+         FROM role_room_education_productions p
+         JOIN role_room_education_production_members m ON m.production_id = p.id
+         JOIN role_room_education_students s ON s.id = m.student_id
+         JOIN users u ON lower(u.email) = lower(s.email)
+        WHERE u.id = $1`,
+      [userId],
+    );
+    return r.rows.map((row) => row.project_id as string).filter(Boolean);
+  } catch (err) {
+    if (isMissingTable(err)) return [];
+    console.error("[edu-production-access] list failed (fail-closed):", (err as Error).message);
+    return [];
+  }
+}

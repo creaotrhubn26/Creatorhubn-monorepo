@@ -88,6 +88,7 @@ import {
   Login as LoginIcon,
   Logout as LogoutIcon,
   SwapHoriz as SwapHorizIcon,
+  Backpack as StudentHomeIcon,
   School as TutorialIcon,
   Folder,
   Timeline as TimelineIcon,
@@ -760,6 +761,20 @@ export function CastingPlannerPanel({
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const useCompactHeaderLayout = isTablet;
+  // Fanger «?edu=1» ÉN gang ved første render (lazy useState-initializer,
+  // kjører før SPA-en ev. skriver om URL-en via pushState og dropper
+  // parameteret). Signalet betyr: en education-student åpnet produksjonen
+  // fra «Min side» (openProductionInRoleRoom med asStudent) → vis en «Min
+  // side»-knapp i headeren så de har en vei tilbake (viktig på iPad/iPhone
+  // der ny-fane-navigasjon ikke brukes for dem).
+  const [isEduStudentSession] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return new URLSearchParams(window.location.search).get('edu') === '1';
+    } catch {
+      return false;
+    }
+  });
   // Utvidet fra max-width 1720 til 1920 i Sprint 6.7 — dense-header
   // (Flere handlinger-meny i stedet for individuelle ikoner) gjelder nå
   // på alle vanlige desktop-størrelser inkludert 1080p og 1440p. Kun
@@ -9379,6 +9394,22 @@ type RoleRoomProjectWorkspaceState = {
                 </IconButton>
               ) : (
                 <>
+                  {isEduStudentSession && (
+                    <IconButton
+                      onClick={() => window.location.assign(`${window.location.origin}/?mode=student`)}
+                      aria-label="Min side"
+                      title="Min side"
+                      sx={{
+                        color: '#8b5cf6',
+                        width: safeHeaderActionButtonSizePx,
+                        height: safeHeaderActionButtonSizePx,
+                        p: 0,
+                        '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                      }}
+                    >
+                      <StudentHomeIcon sx={{ fontSize: navIconSizePx }} />
+                    </IconButton>
+                  )}
                   {canSwitchRoleRoomRole && (
                     <IconButton
                       onClick={openProfessionDialog}
@@ -9501,6 +9532,18 @@ type RoleRoomProjectWorkspaceState = {
                 },
               }}
             >
+              {isEduStudentSession ? (
+                <MenuItem
+                  onClick={() => {
+                    handleCloseHeaderToolsMenu();
+                    window.location.assign(`${window.location.origin}/?mode=student`);
+                  }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                >
+                  <StudentHomeIcon sx={{ fontSize: 18, color: '#8b5cf6' }} />
+                  Min side
+                </MenuItem>
+              ) : null}
               {canSwitchRoleRoomRole ? (
                 <MenuItem
                   onClick={() => {

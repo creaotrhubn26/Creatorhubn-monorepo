@@ -241,7 +241,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                     <Chip size="small" label={MEMBER_ROLE_LABELS[p.role as MemberRole] ?? p.role} sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(139,92,246,0.22)', color: '#e9d5ff' }} />
                   </Stack>
                   <Button fullWidth variant="outlined" startIcon={<OpenIcon />}
-                    onClick={() => (!studentMode || view.canOpenProduction ? openProductionInRoleRoom(p.projectId) : setOpenProd(p))}
+                    onClick={() => (!studentMode || view.canOpenProduction ? openProductionInRoleRoom(p.projectId, undefined, { asStudent: studentMode }) : setOpenProd(p))}
                     sx={{ mt: 1.5, borderColor: 'rgba(139,92,246,0.5)', color: '#e9d5ff', textTransform: 'none', '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(139,92,246,0.08)' } }}>
                     {studentMode ? 'Åpne produksjon' : 'Åpne i Role Room'}
                   </Button>
@@ -279,7 +279,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                         {a.brief && <Typography sx={{ fontSize: 12.5, color: 'text.secondary', mt: 0.75 }}>{a.brief}</Typography>}
                       </Box>
                       {a.productionProjectId && (
-                        <Button size="small" variant="text" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(a.productionProjectId as string)}
+                        <Button size="small" variant="text" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(a.productionProjectId as string, undefined, { asStudent: studentMode })}
                           sx={{ color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap' }}>
                           Åpne
                         </Button>
