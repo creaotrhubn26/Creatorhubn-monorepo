@@ -25,7 +25,7 @@ const NUDGE_BIG = 48;   // med Shift
 const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
 const TL_FS = 'clamp(10px, 0.72vw, 12.5px)'; // responsiv transport-tekst (matcher timeline)
-const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(36px, 2.6vw, 50px)', height: 'clamp(36px, 2.6vw, 50px)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
+const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(32px, 2.3vw, 44px)', height: 'clamp(32px, 2.3vw, 44px)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
 const activeBtn: CSSProperties = { background: '#2563eb', borderColor: '#2563eb', color: '#fff' }; // aktiv tilstand (spiller/loop på)
 const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: TL_FS };
 // Ordentlige SVG-ikoner (ikke emoji) for transport.
