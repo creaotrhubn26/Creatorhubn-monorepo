@@ -493,277 +493,277 @@ const PROJECT_PHASES: Record<string, { name: string; description: string; color:
   }
 };
 
-// Dynamic Phase-Specific Worklog Templates - Comprehensive template system
-const DYNAMIC_WORKLOG_TEMPLATES = {
+// Dynamic Phase-Specific Worklog Templates - i18n builder
+const buildDynamicWorklogTemplates = (t: ReturnType<typeof useT>['t']) => ({
   photographer: {
     pre_production: {
       planning: {
-        title: "Prosjektplanlegging og research",
-        description: "Detaljert planlegging av, fotograferingsoppdraget:\n\n• Gjennomgå kundens ønsker og forventninger\n• Research lokasjon og lysforhold\n• Planlegge utstyrsliste basert på prosjekttype\n• Koordinere med andre leverandører",
+        title: t('projCreate.wlt.photographer.pre_production.planning.title'),
+        description: t('projCreate.wlt.photographer.pre_production.planning.desc'),
         timeEstimate: 3,
-        checklistItems: ["Kundemøte gjennomført","Lokasjon bekreftet","Utstyr sjekket","Backup-plan etablert"]
-    },
+        checklistItems: [t('projCreate.wlt.photographer.pre_production.planning.check.0'), t('projCreate.wlt.photographer.pre_production.planning.check.1'), t('projCreate.wlt.photographer.pre_production.planning.check.2'), t('projCreate.wlt.photographer.pre_production.planning.check.3')]
+      },
       client_meeting: {
-        title: "Kundemøte og briefing",
-        description: "Møte med kunde for å avklare, detaljer:\n\n• Gjennomgå ønskeliste og forventninger\n• Diskutere tidsplan og logistikk\n• Avklare leveringsformat og tidsfrist\n• Signere kontrakt og bekrefte booking",
+        title: t('projCreate.wlt.photographer.pre_production.client_meeting.title'),
+        description: t('projCreate.wlt.photographer.pre_production.client_meeting.desc'),
         timeEstimate: 2,
-        checklistItems: ["Kontrakt signert","Ønskeliste dokumentert","Tidsplan bekreftet","Betalingsbetingelser avklart"]
-    },
+        checklistItems: [t('projCreate.wlt.photographer.pre_production.client_meeting.check.0'), t('projCreate.wlt.photographer.pre_production.client_meeting.check.1'), t('projCreate.wlt.photographer.pre_production.client_meeting.check.2'), t('projCreate.wlt.photographer.pre_production.client_meeting.check.3')]
+      },
       cultural_research: {
-        title: "Kulturell research og forberedelser",
-        description: "Research av kulturelle elementer og, tradisjoner:\n\n• Studere kulturspesifikke øyeblikk som må fanges\n• Koordinere med kulturelle rådgivere\n• Planlegge teknisk tilnærming for spesielle seremonier\n• Forberede respektfull tilnærming til hellige øyeblikk",
+        title: t('projCreate.wlt.photographer.pre_production.cultural_research.title'),
+        description: t('projCreate.wlt.photographer.pre_production.cultural_research.desc'),
         timeEstimate: 2,
-        checklistItems: ["Kulturelle tradisjoner research","Viktige øyeblikk identifisert","Respektfull tilnærming planlagt","Kommunikasjon med familie avklart"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.photographer.pre_production.cultural_research.check.0'), t('projCreate.wlt.photographer.pre_production.cultural_research.check.1'), t('projCreate.wlt.photographer.pre_production.cultural_research.check.2'), t('projCreate.wlt.photographer.pre_production.cultural_research.check.3')]
+      }
+    },
     production: {
       shooting: {
-        title: "Hovedfotografering",
-        description: "Utførelse av, fotograferingsoppdraget:\n\n• Ankomst og rigge utstyr\n• Fange planlagte øyeblikk og spontane situasjoner\n• Overvåke teknisk kvalitet kontinuerlig\n• Koordinere med andre leverandører på stedet",
+        title: t('projCreate.wlt.photographer.production.shooting.title'),
+        description: t('projCreate.wlt.photographer.production.shooting.desc'),
         timeEstimate: 8,
-        checklistItems: ["Utstyr rigget","Test-bilder tatt","Backup-system aktivt","Kommunikasjon med koordinator etablert"]
-    },
+        checklistItems: [t('projCreate.wlt.photographer.production.shooting.check.0'), t('projCreate.wlt.photographer.production.shooting.check.1'), t('projCreate.wlt.photographer.production.shooting.check.2'), t('projCreate.wlt.photographer.production.shooting.check.3')]
+      },
       directing: {
-        title: "Regi og koordinering",
-        description: "Dirigere og koordinere fotograferingsøkten:\n\n• Lede posisjoner og gruppering\n• Koordinere med andre fotografer\n• Sikre at alle viktige øyeblikk fanges\n• Opprettholde energi og positiv stemning",
+        title: t('projCreate.wlt.photographer.production.directing.title'),
+        description: t('projCreate.wlt.photographer.production.directing.desc'),
         timeEstimate: 4,
-        checklistItems: ["Posisjoner planlagt","Gruppefoto koordinert","Candid moments fanget","Alle viktige personer inkludert"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.photographer.production.directing.check.0'), t('projCreate.wlt.photographer.production.directing.check.1'), t('projCreate.wlt.photographer.production.directing.check.2'), t('projCreate.wlt.photographer.production.directing.check.3')]
+      }
+    },
     post_production: {
       editing: {
-        title: "Bilderedigering og seleksjon",
-        description: "Redigering og finpuss av, bilder:\n\n• Selektere beste bilder fra dagens fotografering\n• Utføre fargekorrigering og teknisk optimalisering\n• Retusjering og kreativ bearbeiding\n• Forberede bilder for levering",
+        title: t('projCreate.wlt.photographer.post_production.editing.title'),
+        description: t('projCreate.wlt.photographer.post_production.editing.desc'),
         timeEstimate: 12,
-        checklistItems: ["Seleksjon gjennomført","Fargekorrigering utført","Retusjering fullført","Leveringsformat forberedt"]
-    },
+        checklistItems: [t('projCreate.wlt.photographer.post_production.editing.check.0'), t('projCreate.wlt.photographer.post_production.editing.check.1'), t('projCreate.wlt.photographer.post_production.editing.check.2'), t('projCreate.wlt.photographer.post_production.editing.check.3')]
+      },
       client_review: {
-        title: "Kundegodkjenning og revisjoner",
-        description: "Presentasjon for kunde og eventuelle, justeringer:\n\n• Presentere utvalgte og redigerte bilder\n• Motta feedback og ønsker om justeringer\n• Utføre nødvendige revisjoner\n• Finalisere bildeutvalg for leveranse",
+        title: t('projCreate.wlt.photographer.post_production.client_review.title'),
+        description: t('projCreate.wlt.photographer.post_production.client_review.desc'),
         timeEstimate: 3,
-        checklistItems: ["Bilder presentert","Feedback mottatt","Revisjoner utført","Final godkjenning mottatt"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.photographer.post_production.client_review.check.0'), t('projCreate.wlt.photographer.post_production.client_review.check.1'), t('projCreate.wlt.photographer.post_production.client_review.check.2'), t('projCreate.wlt.photographer.post_production.client_review.check.3')]
+      }
+    },
     business: {
       invoicing: {
-        title: "Fakturering og oppgjør",
-        description: "Håndtering av betaling og, dokumentasjon:\n\n• Sende faktura basert på avtalt pris\n• Følge opp betaling\n• Arkivere kontrakt og dokumentasjon\n• Oppdatere økonomisystem",
+        title: t('projCreate.wlt.photographer.business.invoicing.title'),
+        description: t('projCreate.wlt.photographer.business.invoicing.desc'),
         timeEstimate: 1,
-        checklistItems: ["Faktura sendt","Betaling mottatt","Dokumentasjon arkivert","Regnskap oppdatert"]
-    },
+        checklistItems: [t('projCreate.wlt.photographer.business.invoicing.check.0'), t('projCreate.wlt.photographer.business.invoicing.check.1'), t('projCreate.wlt.photographer.business.invoicing.check.2'), t('projCreate.wlt.photographer.business.invoicing.check.3')]
+      },
       portfolio_update: {
-        title: "Portefølje og markedsføring",
-        description: "Oppdatering av portefølje og, markedsmateriell:\n\n• Velge beste bilder for portefølje\n• Oppdatere hjemmeside med nye arbeider\n• Publisere på sosiale medier (med tillatelse)\n• Be om anbefalinger fra fornøyde kunder",
+        title: t('projCreate.wlt.photographer.business.portfolio_update.title'),
+        description: t('projCreate.wlt.photographer.business.portfolio_update.desc'),
         timeEstimate: 2,
-        checklistItems: ["Porteføljebilder valgt","Hjemmeside oppdatert","Sosiale medier oppdatert","Kundeanbefalinger mottatt"]
+        checklistItems: [t('projCreate.wlt.photographer.business.portfolio_update.check.0'), t('projCreate.wlt.photographer.business.portfolio_update.check.1'), t('projCreate.wlt.photographer.business.portfolio_update.check.2'), t('projCreate.wlt.photographer.business.portfolio_update.check.3')]
+      }
     }
-  }
-},
+  },
   music_producer: {
     pre_production: {
       planning: {
-        title: "Prosjektplanlegging og konsept",
-        description: "Detaljert planlegging av musikk-produksjonsprosjektet:\n\n• Definere kunstnerisk visjon og sjanger\n• Planlegge studiobooking og budsjett\n• Koordinere med musikere og sangere\n• Forberede teknisk setup og lyddesign",
+        title: t('projCreate.wlt.music_producer.pre_production.planning.title'),
+        description: t('projCreate.wlt.music_producer.pre_production.planning.desc'),
         timeEstimate: 4,
-        checklistItems: ["Kunstnerisk konsept definert","Studiobooking bekreftet","Musikere koordinert","Teknisk plan etablert"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.pre_production.planning.check.0'), t('projCreate.wlt.music_producer.pre_production.planning.check.1'), t('projCreate.wlt.music_producer.pre_production.planning.check.2'), t('projCreate.wlt.music_producer.pre_production.planning.check.3')]
+      },
       client_meeting: {
-        title: "Kunstnermøte og kreativ briefing",
-        description: "Møte med artist for å avklare kreative, retning:\n\n• Diskutere kunstnerisk visjon og målgruppe\n• Gjennomgå referanser og inspirasjon\n• Planlegge innspillingsplan og deadlines\n• Avklare roller og ansvar i produksjonen",
+        title: t('projCreate.wlt.music_producer.pre_production.client_meeting.title'),
+        description: t('projCreate.wlt.music_producer.pre_production.client_meeting.desc'),
         timeEstimate: 2,
-        checklistItems: ["Kreativ retning avklart","Referanser gjennomgått","Tidsplan bekreftet","Roller definert"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.pre_production.client_meeting.check.0'), t('projCreate.wlt.music_producer.pre_production.client_meeting.check.1'), t('projCreate.wlt.music_producer.pre_production.client_meeting.check.2'), t('projCreate.wlt.music_producer.pre_production.client_meeting.check.3')]
+      },
       equipment_prep: {
-        title: "Studioforberedelse og utstyrsjekk",
-        description: "Forberedelse av studio og teknisk, utstyr:\n\n• Kalibrere monitorer og akustikk\n• Teste mikrofoner og forforsterkere\n• Forberede software og plugins\n• Sette opp multispor og routing",
+        title: t('projCreate.wlt.music_producer.pre_production.equipment_prep.title'),
+        description: t('projCreate.wlt.music_producer.pre_production.equipment_prep.desc'),
         timeEstimate: 3,
-        checklistItems: ["Studio kalibrert","Utstyr testet","Software forberedt","Routing etablert"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.music_producer.pre_production.equipment_prep.check.0'), t('projCreate.wlt.music_producer.pre_production.equipment_prep.check.1'), t('projCreate.wlt.music_producer.pre_production.equipment_prep.check.2'), t('projCreate.wlt.music_producer.pre_production.equipment_prep.check.3')]
+      }
+    },
     production: {
       recording: {
-        title: "Innspilling og opptak",
-        description: "Hovedinnspillingssesjon i, studio:\n\n• Sette opp mikrofoner og instrumenter\n• Ta opp basisspor (trommer, bass, rytmegitar)\n• Spille inn hovedvokal og harmonier\n• Fange spontane ideer og alternativer",
+        title: t('projCreate.wlt.music_producer.production.recording.title'),
+        description: t('projCreate.wlt.music_producer.production.recording.desc'),
         timeEstimate: 10,
-        checklistItems: ["Setup fullført","Basisspor innspilt","Vokal innspilt","Alternativer dokumentert"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.production.recording.check.0'), t('projCreate.wlt.music_producer.production.recording.check.1'), t('projCreate.wlt.music_producer.production.recording.check.2'), t('projCreate.wlt.music_producer.production.recording.check.3')]
+      },
       directing: {
-        title: "Produksjonsregi og kunstnerisk ledelse",
-        description: "Lede den kreative prosessen under, innspilling:\n\n• Veilede artistens prestasjon\n• Foreslå arrangementsideer\n• Koordinere mellom musikerne\n• Sikre høy kunstnerisk kvalitet",
+        title: t('projCreate.wlt.music_producer.production.directing.title'),
+        description: t('projCreate.wlt.music_producer.production.directing.desc'),
         timeEstimate: 6,
-        checklistItems: ["Artistisk ledelse utført","Arrangement optimalisert","Musikerkoordinering fullført","Kvalitetskontroll utført"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.production.directing.check.0'), t('projCreate.wlt.music_producer.production.directing.check.1'), t('projCreate.wlt.music_producer.production.directing.check.2'), t('projCreate.wlt.music_producer.production.directing.check.3')]
+      },
       on_set_coordination: {
-        title: "Studiokokordinering og kommunikasjon",
-        description: "Koordinere alle aspekter av studiomiljøet:\n\n• Opprettholde kreativ atmosfære\n• Koordinere pauser og måltider\n• Dokumentere kreative beslutninger\n• Administrere studiets tidsplan",
+        title: t('projCreate.wlt.music_producer.production.on_set_coordination.title'),
+        description: t('projCreate.wlt.music_producer.production.on_set_coordination.desc'),
         timeEstimate: 4,
-        checklistItems: ["Atmosfære opprettholdt","Pauser koordinert","Beslutninger dokumentert","Tidsplan overholdt"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.music_producer.production.on_set_coordination.check.0'), t('projCreate.wlt.music_producer.production.on_set_coordination.check.1'), t('projCreate.wlt.music_producer.production.on_set_coordination.check.2'), t('projCreate.wlt.music_producer.production.on_set_coordination.check.3')]
+      }
+    },
     post_production: {
       editing: {
-        title: "Lydmiksing og bearbeiding",
-        description: "Detaljert miksing av innspilt, materiale:\n\n• Redigere og rense opptak\n• Balansere nivåer og panorering\n• Tillegge effekter og processing\n• Skape dynamisk og engasjerende lydbilde",
+        title: t('projCreate.wlt.music_producer.post_production.editing.title'),
+        description: t('projCreate.wlt.music_producer.post_production.editing.desc'),
         timeEstimate: 15,
-        checklistItems: ["Opptak redigert","Nivåer balansert","Effekter tillagt","Lydbilde optimalisert"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.post_production.editing.check.0'), t('projCreate.wlt.music_producer.post_production.editing.check.1'), t('projCreate.wlt.music_producer.post_production.editing.check.2'), t('projCreate.wlt.music_producer.post_production.editing.check.3')]
+      },
       sound_design: {
-        title: "Lyddesign og kreativ bearbeiding",
-        description: "Kreativ utvikling av lydens, karakter:\n\n• Design av unike lyder og teksturer\n• Eksperimentere med kreative effekter\n• Utvikle signaturlyd for prosjektet\n• Tillegge atmosfære og stemning",
+        title: t('projCreate.wlt.music_producer.post_production.sound_design.title'),
+        description: t('projCreate.wlt.music_producer.post_production.sound_design.desc'),
         timeEstimate: 8,
-        checklistItems: ["Lyddesign utført","Kreative effekter tillagt","Signaturlyd utviklet","Atmosfære skapt"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.post_production.sound_design.check.0'), t('projCreate.wlt.music_producer.post_production.sound_design.check.1'), t('projCreate.wlt.music_producer.post_production.sound_design.check.2'), t('projCreate.wlt.music_producer.post_production.sound_design.check.3')]
+      },
       client_review: {
-        title: "Artistgodkjenning og revisjoner",
-        description: "Presentasjon av miks for artist og, justeringer:\n\n• Presentere foreløpig miks for feedback\n• Motta kunstneriske ønsker og justeringer\n• Implementere endringer og refinere\n• Finalisere miks før mastering",
+        title: t('projCreate.wlt.music_producer.post_production.client_review.title'),
+        description: t('projCreate.wlt.music_producer.post_production.client_review.desc'),
         timeEstimate: 4,
-        checklistItems: ["Miks presentert","Feedback implementert","Justeringer utført","Final miks godkjent"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.music_producer.post_production.client_review.check.0'), t('projCreate.wlt.music_producer.post_production.client_review.check.1'), t('projCreate.wlt.music_producer.post_production.client_review.check.2'), t('projCreate.wlt.music_producer.post_production.client_review.check.3')]
+      }
+    },
     business: {
       invoicing: {
-        title: "Fakturering og TONO/GRAMO registrering",
-        description: "Håndtering av betaling og musikk-rettigheter:\n\n• Sende faktura til artist eller plateselskap\n• Registrere verk i TONO for komponist-rettigheter\n• Registrere innspilling i GRAMO for utøver-rettigheter\n• Dokumentere produsentandeler og kontrakter",
+        title: t('projCreate.wlt.music_producer.business.invoicing.title'),
+        description: t('projCreate.wlt.music_producer.business.invoicing.desc'),
         timeEstimate: 2,
-        checklistItems: ["Faktura sendt","TONO registrering utført","GRAMO registrering utført","Kontrakter arkivert"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.business.invoicing.check.0'), t('projCreate.wlt.music_producer.business.invoicing.check.1'), t('projCreate.wlt.music_producer.business.invoicing.check.2'), t('projCreate.wlt.music_producer.business.invoicing.check.3')]
+      },
       marketing: {
-        title: "Promotering og markedsføring",
-        description: "Markedsføring av produksjon og produsent-profil:\n\n• Lage produksjon-credits og press-kit\n• Publisere på streaming-tjenester med credits\n• Dele prosess-innhold på sosiale medier\n• Bygge produsent-merkenavn og referanser",
+        title: t('projCreate.wlt.music_producer.business.marketing.title'),
+        description: t('projCreate.wlt.music_producer.business.marketing.desc'),
         timeEstimate: 3,
-        checklistItems: ["Credits dokumentert","Streaming publisert","Sosiale medier oppdatert","Referanser sikret"]
-    },
+        checklistItems: [t('projCreate.wlt.music_producer.business.marketing.check.0'), t('projCreate.wlt.music_producer.business.marketing.check.1'), t('projCreate.wlt.music_producer.business.marketing.check.2'), t('projCreate.wlt.music_producer.business.marketing.check.3')]
+      },
       client_follow_up: {
-        title: "Oppfølging og framtidige prosjekter",
-        description: "Opprettholde forhold og sikre framtidige, samarbeid:\n\n• Følge opp artistens tilfredshet\n• Diskutere framtidige prosjekter\n• Be om anbefalinger til andre artister\n• Opprettholde profesjonelt nettverk",
+        title: t('projCreate.wlt.music_producer.business.client_follow_up.title'),
+        description: t('projCreate.wlt.music_producer.business.client_follow_up.desc'),
         timeEstimate: 1,
-        checklistItems: ["Tilfredshet bekreftet","Framtidige prosjekter diskutert","Anbefalinger mottatt","Nettverk utviklet"]
+        checklistItems: [t('projCreate.wlt.music_producer.business.client_follow_up.check.0'), t('projCreate.wlt.music_producer.business.client_follow_up.check.1'), t('projCreate.wlt.music_producer.business.client_follow_up.check.2'), t('projCreate.wlt.music_producer.business.client_follow_up.check.3')]
+      }
     }
-  }
-},
+  },
   videographer: {
     pre_production: {
       planning: {
-        title: "Produksjonsplanlegging og konsept",
-        description: "Omfattende planlegging av, videoproduksjonen:\n\n• Utvikle kreativt konsept og narrative struktur\n• Planlegge shot list og filming schedule\n• Koordinere crew og utstyr\n• Rekognosere lokasjoner og planlegge logistikk",
+        title: t('projCreate.wlt.videographer.pre_production.planning.title'),
+        description: t('projCreate.wlt.videographer.pre_production.planning.desc'),
         timeEstimate: 5,
-        checklistItems: ["Konsept utviklet","Shot list planlagt","Crew koordinert","Lokasjoner rekognoscert"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.pre_production.planning.check.0'), t('projCreate.wlt.videographer.pre_production.planning.check.1'), t('projCreate.wlt.videographer.pre_production.planning.check.2'), t('projCreate.wlt.videographer.pre_production.planning.check.3')]
+      },
       client_meeting: {
-        title: "Klientbriefing og kreativ workshop",
-        description: "Detaljert møte for å definere prosjektets, retning:\n\n• Gjennomgå kundens visjon og målsetting\n• Diskutere target audience og distribusjon\n• Planlegge timeline og leverables\n• Etablere kommunikasjonsrutiner under produksjonen",
+        title: t('projCreate.wlt.videographer.pre_production.client_meeting.title'),
+        description: t('projCreate.wlt.videographer.pre_production.client_meeting.desc'),
         timeEstimate: 2,
-        checklistItems: ["Visjon definert","Målgruppe identifisert","Timeline etablert","Kommunikasjon planlagt"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.pre_production.client_meeting.check.0'), t('projCreate.wlt.videographer.pre_production.client_meeting.check.1'), t('projCreate.wlt.videographer.pre_production.client_meeting.check.2'), t('projCreate.wlt.videographer.pre_production.client_meeting.check.3')]
+      },
       location_scouting: {
-        title: "Lokasjonsscouting og teknisk planlegging",
-        description: "Utforskning og evaluering av, innspillingslokasjoner:\n\n• Besøke potensielle lokasjoner\n• Vurdere lysforhold og akustikk\n• Planlegge kameraplasseringer og bevegelser\n• Koordinere tillatelser og logistikk",
+        title: t('projCreate.wlt.videographer.pre_production.location_scouting.title'),
+        description: t('projCreate.wlt.videographer.pre_production.location_scouting.desc'),
         timeEstimate: 4,
-        checklistItems: ["Lokasjoner evaluert","Lysforhold kartlagt","Kameraplasseringer planlagt","Tillatelser sikret"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.videographer.pre_production.location_scouting.check.0'), t('projCreate.wlt.videographer.pre_production.location_scouting.check.1'), t('projCreate.wlt.videographer.pre_production.location_scouting.check.2'), t('projCreate.wlt.videographer.pre_production.location_scouting.check.3')]
+      }
+    },
     production: {
       filming: {
-        title: "Hovedfilming og regi",
-        description: "Gjennomføring av, videoinnspilingen:\n\n• Rigge utstyr og etablere setup\n• Filme planlagte sekvenser og cutaways\n• Dirigere talent og koordinere crew\n• Sikre teknisk kvalitet og kontinuitet",
+        title: t('projCreate.wlt.videographer.production.filming.title'),
+        description: t('projCreate.wlt.videographer.production.filming.desc'),
         timeEstimate: 12,
-        checklistItems: ["Utstyr rigget","Sekvenser filmet","Talent dirigert","Kvalitet sikret"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.production.filming.check.0'), t('projCreate.wlt.videographer.production.filming.check.1'), t('projCreate.wlt.videographer.production.filming.check.2'), t('projCreate.wlt.videographer.production.filming.check.3')]
+      },
       directing: {
-        title: "Kreativ ledelse og artistisk regi",
-        description: "Lede den kreative prosessen på, settet:\n\n• Kommunisere visjonen til crew og talent\n• Ta kreative beslutninger i sanntid\n• Sikre narrativ kontinuitet\n• Opprettholde energi og fokus på settet",
+        title: t('projCreate.wlt.videographer.production.directing.title'),
+        description: t('projCreate.wlt.videographer.production.directing.desc'),
         timeEstimate: 8,
-        checklistItems: ["Visjon kommunisert","Kreative beslutninger tatt","Kontinuitet sikret","Set-energi opprettholdt"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.production.directing.check.0'), t('projCreate.wlt.videographer.production.directing.check.1'), t('projCreate.wlt.videographer.production.directing.check.2'), t('projCreate.wlt.videographer.production.directing.check.3')]
+      },
       on_set_coordination: {
-        title: "Set-koordinering og produksjonsledelse",
-        description: "Administrere alle aspekter av, produksjonen:\n\n• Koordinere crew og utstyr\n• Overvåke tidsskjema og budsjett\n• Løse tekniske og logistiske utfordringer\n• Dokumentere produksjonsbeslutninger",
+        title: t('projCreate.wlt.videographer.production.on_set_coordination.title'),
+        description: t('projCreate.wlt.videographer.production.on_set_coordination.desc'),
         timeEstimate: 6,
-        checklistItems: ["Crew koordinert","Tidsplan overholdt","Utfordringer løst","Beslutninger dokumentert"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.videographer.production.on_set_coordination.check.0'), t('projCreate.wlt.videographer.production.on_set_coordination.check.1'), t('projCreate.wlt.videographer.production.on_set_coordination.check.2'), t('projCreate.wlt.videographer.production.on_set_coordination.check.3')]
+      }
+    },
     post_production: {
       editing: {
-        title: "Videoredigering og postproduksjon",
-        description: "Sammensetting og finpuss av, videomateriale:\n\n• Importere og organisere opptak\n• Utføre rough cut og fine cut\n• Tillegge overganger og effekter\n• Optimalisere pacing og narrativ flyt",
+        title: t('projCreate.wlt.videographer.post_production.editing.title'),
+        description: t('projCreate.wlt.videographer.post_production.editing.desc'),
         timeEstimate: 20,
-        checklistItems: ["Materiale organisert","Cuts utført","Effekter tillagt","Pacing optimalisert"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.post_production.editing.check.0'), t('projCreate.wlt.videographer.post_production.editing.check.1'), t('projCreate.wlt.videographer.post_production.editing.check.2'), t('projCreate.wlt.videographer.post_production.editing.check.3')]
+      },
       color_grading: {
-        title: "Fargekorrigering og grading",
-        description: "Kreativ fargejustering og visuell, stemning:\n\n• Korrigere eksponering og hvitbalanse\n• Skape konsistent look gjennom prosjektet\n• Tillegge kreativ fargepalett\n• Optimalisere for forskjellige plattformer",
+        title: t('projCreate.wlt.videographer.post_production.color_grading.title'),
+        description: t('projCreate.wlt.videographer.post_production.color_grading.desc'),
         timeEstimate: 8,
-        checklistItems: ["Eksponering korrigert","Konsistent look etablert","Kreativ grading utført","Plattform-optimalisering fullført"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.post_production.color_grading.check.0'), t('projCreate.wlt.videographer.post_production.color_grading.check.1'), t('projCreate.wlt.videographer.post_production.color_grading.check.2'), t('projCreate.wlt.videographer.post_production.color_grading.check.3')]
+      },
       sound_design: {
-        title: "Lyddesign og audio post",
-        description: "Utvikling av komplett, lydlandskap:\n\n• Rense og optimalisere dialog\n• Tillegge musikk og lydeffekter\n• Balansere lydnivåer og dynamikk\n• Skape immersive audio experience",
+        title: t('projCreate.wlt.videographer.post_production.sound_design.title'),
+        description: t('projCreate.wlt.videographer.post_production.sound_design.desc'),
         timeEstimate: 10,
-        checklistItems: ["Dialog optimalisert","Musikk og SFX tillagt","Nivåer balansert","Audio experience fullført"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.videographer.post_production.sound_design.check.0'), t('projCreate.wlt.videographer.post_production.sound_design.check.1'), t('projCreate.wlt.videographer.post_production.sound_design.check.2'), t('projCreate.wlt.videographer.post_production.sound_design.check.3')]
+      }
+    },
     business: {
       invoicing: {
-        title: "Fakturering og kontraktsadministrasjon",
-        description: "Håndtering av betaling og juridiske, aspekter:\n\n• Sende detaljert faktura basert på avtale\n• Følge opp betaling og kontrakter\n• Arkivere produksjonsdokumentasjon\n• Administrere opphavsrett og usage rights",
+        title: t('projCreate.wlt.videographer.business.invoicing.title'),
+        description: t('projCreate.wlt.videographer.business.invoicing.desc'),
         timeEstimate: 2,
-        checklistItems: ["Faktura sendt","Kontrakter administrert","Dokumentasjon arkivert","Rights administrert"]
-    },
+        checklistItems: [t('projCreate.wlt.videographer.business.invoicing.check.0'), t('projCreate.wlt.videographer.business.invoicing.check.1'), t('projCreate.wlt.videographer.business.invoicing.check.2'), t('projCreate.wlt.videographer.business.invoicing.check.3')]
+      },
       portfolio_update: {
-        title: "Porteføljeutvikling og markedsføring",
-        description: "Bruke prosjekt til profesjonell, utvikling:\n\n• Velge beste klipp for demo reel\n• Oppdatere hjemmeside og portfolio\n• Lage case study av produksjonen\n• Dele prosess-innhold for markedsføring",
+        title: t('projCreate.wlt.videographer.business.portfolio_update.title'),
+        description: t('projCreate.wlt.videographer.business.portfolio_update.desc'),
         timeEstimate: 3,
-        checklistItems: ["Demo reel oppdatert","Portfolio utviklet","Case study laget","Markedsføring utført"]
+        checklistItems: [t('projCreate.wlt.videographer.business.portfolio_update.check.0'), t('projCreate.wlt.videographer.business.portfolio_update.check.1'), t('projCreate.wlt.videographer.business.portfolio_update.check.2'), t('projCreate.wlt.videographer.business.portfolio_update.check.3')]
+      }
     }
-  }
-},
+  },
   vendor: {
     pre_production: {
       planning: {
-        title: "Produktplanlegging og markedsanalyse",
-        description: "Strategisk planlegging av, produktlansering:\n\n• Analysere målmarked og konkurrenter\n• Definere produktposisjonering og USP\n• Planlegge pricing strategi og margins\n• Koordinere med leverandører og produsenter",
+        title: t('projCreate.wlt.vendor.pre_production.planning.title'),
+        description: t('projCreate.wlt.vendor.pre_production.planning.desc'),
         timeEstimate: 4,
-        checklistItems: ["Markedsanalyse utført","Posisjonering definert","Pricing etablert","Leverandører koordinert"]
-    },
+        checklistItems: [t('projCreate.wlt.vendor.pre_production.planning.check.0'), t('projCreate.wlt.vendor.pre_production.planning.check.1'), t('projCreate.wlt.vendor.pre_production.planning.check.2'), t('projCreate.wlt.vendor.pre_production.planning.check.3')]
+      },
       client_meeting: {
-        title: "Klientmøte og behovsanalyse",
-        description: "Møte med potensielle kunder for å forstå, behov:\n\n• Kartlegge kundens krav og ønsker\n• Presentere relevante produktløsninger\n• Diskutere customization muligheter\n• Etablere tidslinje og leveringsbetingelser",
+        title: t('projCreate.wlt.vendor.pre_production.client_meeting.title'),
+        description: t('projCreate.wlt.vendor.pre_production.client_meeting.desc'),
         timeEstimate: 2,
-        checklistItems: ["Behov kartlagt","Løsninger presentert","Customization diskutert","Betingelser etablert"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.vendor.pre_production.client_meeting.check.0'), t('projCreate.wlt.vendor.pre_production.client_meeting.check.1'), t('projCreate.wlt.vendor.pre_production.client_meeting.check.2'), t('projCreate.wlt.vendor.pre_production.client_meeting.check.3')]
+      }
+    },
     production: {
       filming: {
-        title: "Produktdemonstrasjon og innholdsproduksjon",
-        description: "Skape markedsføringsinnhold for, produkter:\n\n• Filme produktdemonstrasjoner\n• Lage instruksjonsvideoer og tutorials\n• Fotografere produkter for katalog\n• Dokumentere installasjons- og bruksprosesser",
+        title: t('projCreate.wlt.vendor.production.filming.title'),
+        description: t('projCreate.wlt.vendor.production.filming.desc'),
         timeEstimate: 6,
-        checklistItems: ["Demo filmet","Tutorials laget","Produktfoto tatt","Prosesser dokumentert"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.vendor.production.filming.check.0'), t('projCreate.wlt.vendor.production.filming.check.1'), t('projCreate.wlt.vendor.production.filming.check.2'), t('projCreate.wlt.vendor.production.filming.check.3')]
+      }
+    },
     post_production: {
       editing: {
-        title: "Markedsføringsmateriell og dokumentasjon",
-        description: "Produsere ferdig markedsføringsinnhold:\n\n• Redigere produktvideoer og tutorials\n• Lage produktbrosjyrer og datablad\n• Utvikle online produktkataloger\n• Produsere installasjonsmanualer",
+        title: t('projCreate.wlt.vendor.post_production.editing.title'),
+        description: t('projCreate.wlt.vendor.post_production.editing.desc'),
         timeEstimate: 8,
-        checklistItems: ["Videoer redigert","Brosjyrer laget","Kataloger utviklet","Manualer produsert"]
-    }
-  },
+        checklistItems: [t('projCreate.wlt.vendor.post_production.editing.check.0'), t('projCreate.wlt.vendor.post_production.editing.check.1'), t('projCreate.wlt.vendor.post_production.editing.check.2'), t('projCreate.wlt.vendor.post_production.editing.check.3')]
+      }
+    },
     business: {
       invoicing: {
-        title: "Salgs- og faktureringsprosess",
-        description: "Administrere salgs- og, betalingsprosesser:\n\n• Generere tilbud og kontrakter\n• Prosessere bestillinger og fakturering\n• Koordinere levering og installasjon\n• Følge opp betaling og kundetilfredshet",
+        title: t('projCreate.wlt.vendor.business.invoicing.title'),
+        description: t('projCreate.wlt.vendor.business.invoicing.desc'),
         timeEstimate: 3,
-        checklistItems: ["Tilbud generert","Bestillinger prosessert","Levering koordinert","Oppfølging utført"]
-    },
+        checklistItems: [t('projCreate.wlt.vendor.business.invoicing.check.0'), t('projCreate.wlt.vendor.business.invoicing.check.1'), t('projCreate.wlt.vendor.business.invoicing.check.2'), t('projCreate.wlt.vendor.business.invoicing.check.3')]
+      },
       marketing: {
-        title: "Produktmarkedsføring og salgsfremmende tiltak",
-        description: "Aktivt markedsføre produkter og, tjenester:\n\n• Implementere digitale markedsføringskampanjer\n• Delta på messer og bransjearrangementer\n• Utvikle partnerskap og distribusjonskanaler\n• Analysere salgsdata og optimalisere strategi",
+        title: t('projCreate.wlt.vendor.business.marketing.title'),
+        description: t('projCreate.wlt.vendor.business.marketing.desc'),
         timeEstimate: 5,
-        checklistItems: ["Kampanjer implementert","Arrangementer deltatt","Partnerskap utviklet","Analyse utført"]
+        checklistItems: [t('projCreate.wlt.vendor.business.marketing.check.0'), t('projCreate.wlt.vendor.business.marketing.check.1'), t('projCreate.wlt.vendor.business.marketing.check.2'), t('projCreate.wlt.vendor.business.marketing.check.3')]
+      }
     }
   }
-}
-};
+});
 
 // Template generation engine - intelligently creates worklog entries with dynamic pricing
 const generateWorklogTemplate = (
@@ -775,12 +775,13 @@ const generateWorklogTemplate = (
   culture?: string,
   pricingData?: any
 ) => {
+  const DYNAMIC_WORKLOG_TEMPLATES = buildDynamicWorklogTemplates(t);
   // Get base template
   const baseTemplate = (DYNAMIC_WORKLOG_TEMPLATES as Record<string, Record<string, Record<string, { title: string; description: string; timeEstimate: number; checklistItems: string[] }>>>)[profession]?.[phase]?.[category];
   if (!baseTemplate) {
     return {
       title: `${category.replace('_,', ', ').replace(/\b\w/g, l => l.toUpperCase())} - ${phase.replace('_',', ')}`,
-      description: `Arbeid relatert til ${category.replace('_',', ')} i ${phase.replace('_', ', ')}-fasen.`,
+      description: t('projCreate.wlt.fallbackDesc', { category: category.replace('_',', '), phase: phase.replace('_', ', ') }),
       timeEstimate: getDynamicTimeEstimate(profession, phase, category, pricingData),
       checklistItems: []
     };
@@ -806,9 +807,9 @@ const generateWorklogTemplate = (
   if (projectType && profession === 'music_producer') {
     if (projectType === 'album') {
       template.timeEstimate = Math.ceil(template.timeEstimate * 1.5); // Album projects take longer
-      template.description += "\n\n🎼 Album-prosjekt: Tar hensyn til konseptuell sammenheng og konsistent lydprofil.";
+      template.description += t('projCreate.wlt.albumNote');
   } else if (projectType === 'commercial') {
-      template.description += "\n\n📺 Kommersielt prosjekt: Fokus på teknisk kvalitet og deadline-levering.";
+      template.description += t('projCreate.wlt.commercialNote');
   }
 }
 
