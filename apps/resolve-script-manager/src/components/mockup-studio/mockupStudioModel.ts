@@ -84,7 +84,7 @@ export interface TimelineClip {
   ref?: string;                  // device/text-id klippet styrer
   ease?: 'linear' | 'smooth' | 'in' | 'out';
 }
-export interface MockupTimeline { duration: number; clips: TimelineClip[]; }
+export interface MockupTimeline { duration: number; clips: TimelineClip[]; in?: number; out?: number; }
 
 /** Interpolér en keyframe-kurve ved tid t (0..1) med smoothstep. Null hvis tom. */
 export function sampleKf(kfs: { t: number; v: number }[] | undefined, t: number): number | null {

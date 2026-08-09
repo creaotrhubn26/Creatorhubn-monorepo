@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { rasterizeMockup, measureTextHeight } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
-import { deviceHeight, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
+import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
 import { MockupTimelinePanel } from './MockupTimelinePanel';
@@ -27,6 +27,13 @@ const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
 const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.08)', color: '#e6e9ef', cursor: 'pointer', fontSize: 12 };
 const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: 11 };
 // Ordentlige SVG-ikoner (ikke emoji) for transport.
+const FPS = 30;
+const fmtTimecode = (sec: number): string => {
+  const f = Math.round((sec % 1) * FPS) % FPS;
+  const s = Math.floor(sec) % 60;
+  const m = Math.floor(sec / 60);
+  return `${m}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
+};
 const ICON = '#eef1f6';
 const Svg = ({ children }: { children: ReactNode }) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
@@ -45,6 +52,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const selection = useMockupStudio((s) => s.selection);
   const select = useMockupStudio((s) => s.select);
   const patchText = useMockupStudio((s) => s.patchText);
+  const setDocSilent = useMockupStudio((s) => s.setDocSilent);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);     // stage (transformert)
   const viewportRef = useRef<HTMLDivElement>(null); // ytre klippboks
@@ -59,8 +67,14 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);          // 0.5×–2× hastighet
   const [easing, setEasing] = useState<'linear' | 'smooth' | 'in' | 'out'>('smooth');
-  const [inT, setInT] = useState(0);              // inn-merke (0..1)
-  const [outT, setOutT] = useState(1);            // ut-merke
+  const [inT, setInT] = useState(() => doc.timeline?.in ?? 0);   // inn-merke (0..1)
+  const [outT, setOutT] = useState(() => doc.timeline?.out ?? 1); // ut-merke
+  // Persister inn/ut i doc.timeline så GIF/video-eksporten ærer regionen.
+  useEffect(() => {
+    const tl = deriveTimeline(doc);
+    if ((tl.in ?? 0) !== inT || (tl.out ?? 1) !== outT) setDocSilent({ ...doc, timeline: { ...tl, in: inT, out: outT } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inT, outT]);
   const [loop, setLoop] = useState(false);
   const playRef = useRef<number | null>(null);
   const speedRef = useRef(speed); speedRef.current = speed;
@@ -69,6 +83,13 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const outRef = useRef(outT); outRef.current = outT;
   const loopRef = useRef(loop); loopRef.current = loop;
   const hasTyping = doc.devices.some((d) => (!!d.typeAnim?.text || !!d.threeD?.kf) && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
+  const tlDur = deriveTimeline(doc).duration; // timeline-varighet (sek) for timecode + frame-steg
+  const tlDurRef = useRef(tlDur);
+  tlDurRef.current = tlDur; // onKey-closure er stale (deps [select]) → les dur via ref
+  const stepFrame = (dir: number) => {
+    stopPlay();
+    setPlayT((v) => Math.max(0, Math.min(1, (v ?? 0) + dir / Math.max(1, tlDurRef.current * FPS))));
+  };
   // Speed-ramp: mapper lineær tids-progresjon p → eased t.
   const applyEase = (p: number, e: string): number =>
     e === 'smooth' ? p * p * (3 - 2 * p) : e === 'in' ? p * p : e === 'out' ? 1 - (1 - p) * (1 - p) : p;
@@ -278,6 +299,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       if ((e.key === '0') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); resetView(); return; }
       if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBtn(1.1); return; }
       if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBtn(1 / 1.1); return; }
+      // Frame-steg (Resolve: , = ett bilde bak, . = ett bilde fram)
+      if (e.key === ',') { e.preventDefault(); stepFrame(-1); return; }
+      if (e.key === '.') { e.preventDefault(); stepFrame(1); return; }
 
       const sel = st.selection;
       if (sel.kind !== 'device' && sel.kind !== 'text') return;
@@ -421,7 +445,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause' : 'Spill av'} style={{ ...motionBtn, background: playing ? '#2563eb' : 'rgba(255,255,255,0.08)' }}>{playing ? <IcPause /> : <IcPlay />}</button>
           <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, background: loop ? '#2563eb' : 'rgba(255,255,255,0.08)' }}><IcLoop /></button>
           <input type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)} onChange={(e) => scrubTo(Number(e.target.value) / 1000)} title="Dra playhead" style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} />
-          <span style={{ minWidth: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{Math.round((playT ?? 0) * 100)}%</span>
+          <span title="Timecode (m:ss:ff · 30 fps) — , / . steg ett bilde" style={{ minWidth: 62, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{fmtTimecode((playT ?? 0) * tlDur)}</span>
           <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Hastighet" style={motionSel}>
             {[0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
           </select>

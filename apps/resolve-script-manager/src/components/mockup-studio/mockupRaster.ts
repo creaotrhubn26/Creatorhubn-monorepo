@@ -953,10 +953,14 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
 export async function renderMotionFrames(doc: MockupDoc, cfg: { seconds: number; fps: number }, scale = 1, onProgress?: (done: number, total: number) => void): Promise<HTMLCanvasElement[]> {
   const total = Math.max(2, Math.round(cfg.seconds * cfg.fps));
   const hold = 0.12; // andel av tiden som holder ferdig bilde
+  // Eksporten ærer inn/ut-regionen: 0..1-progresjonen mappes til [in, out].
+  const _tl = deriveTimeline(doc);
+  const iv = _tl.in ?? 0, ov = _tl.out ?? 1;
   const frames: HTMLCanvasElement[] = [];
   for (let f = 0; f < total; f++) {
     const prog = f / (total - 1);
-    const t = prog <= 1 - hold ? prog / (1 - hold) : 1;
+    const raw = prog <= 1 - hold ? prog / (1 - hold) : 1;
+    const t = iv + raw * (ov - iv);
     frames.push(await rasterizeMockup(doc, scale, { anim: { t } }));
     onProgress?.(f + 1, total);
   }
