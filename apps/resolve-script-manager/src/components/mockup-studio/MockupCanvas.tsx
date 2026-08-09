@@ -11,9 +11,9 @@
  */
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { rasterizeMockup, measureTextHeight } from './mockupRaster';
+import { rasterizeMockup, measureTextHeight, annRect } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
-import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
+import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot, type MockupAnnotation } from './mockupStudioModel';
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
 import { MockupTimelinePanel } from './MockupTimelinePanel';
@@ -170,6 +170,29 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const selectedId = selId(selection);
   const W = doc.canvas.w, H = doc.canvas.h;
   const pct = (v: number, base: number) => `${(v / base) * 100}%`;
+
+  // Dra en annotasjons anker (fx/fy) direkte på lerretet (før: kun X/Y-slidere i høyrepanelet).
+  const beginAnnDrag = (a: MockupAnnotation, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const s = annRect(doc, a);
+    const sx = e.clientX, sy = e.clientY, f0x = a.fx, f0y = a.fy;
+    let moved = false;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
+      if (!moved) { moved = true; useMockupStudio.getState().pushHistory(); }
+      const dxC = (ev.clientX - sx) * (W / rect.width);   // skjerm-delta → lerret-px (kompenserer zoom)
+      const dyC = (ev.clientY - sy) * (H / rect.height);
+      useMockupStudio.getState().patchAnnotation(a.id, {
+        fx: Math.max(0, Math.min(1, f0x + dxC / s.w)),
+        fy: Math.max(0, Math.min(1, f0y + dyC / s.h)),
+      });
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
 
   const boxOf = (kind: 'device' | 'text', el: MockupDeviceSlot | MockupTextSlot): Box =>
     kind === 'device'
@@ -412,6 +435,21 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
               aria-pressed={active}
               title="Dra for å flytte · dobbeltklikk = rediger · piltaster nudger"
               style={{ ...box, background: active ? 'rgba(34,211,238,0.08)' : 'transparent', border: active ? '2px solid #22d3ee' : '2px dashed transparent', borderRadius: 6, padding: 0, cursor: overlayCursor, touchAction: 'none' }}
+            />
+          );
+        })}
+
+        {/* Annotasjons-anker — dra ringen for å flytte callout/markør/lupe direkte på lerretet */}
+        {doc.annotations?.map((a) => {
+          const s = annRect(doc, a);
+          const ax = s.x + a.fx * s.w, ay = s.y + a.fy * s.h;
+          return (
+            <button
+              key={`ann_${a.id}`}
+              onPointerDown={(e) => beginAnnDrag(a, e)}
+              aria-label={`Annotasjon-anker: ${a.label ?? a.kind} — dra for å flytte`}
+              title="Dra ankeret for å flytte callout/markør/lupe (før: kun X/Y i høyrepanelet)"
+              style={{ position: 'absolute', left: pct(ax, W), top: pct(ay, H), transform: 'translate(-50%, -50%)', width: 22, height: 22, borderRadius: '50%', background: 'rgba(34,211,238,0.18)', border: '2px solid #22d3ee', cursor: overlayCursor, padding: 0, touchAction: 'none', boxShadow: '0 0 0 2px rgba(0,0,0,0.35)' }}
             />
           );
         })}

@@ -639,7 +639,7 @@ export function deviceScreenRect(dev: MockupDeviceSlot): { x: number; y: number;
 }
 
 /** Referanse-rektangel for en annotasjon (enhetens skjerm, ellers hele lerretet). */
-function annRect(doc: MockupDoc, a: MockupAnnotation): { x: number; y: number; w: number; h: number } {
+export function annRect(doc: MockupDoc, a: MockupAnnotation): { x: number; y: number; w: number; h: number } {
   const dev = a.deviceId ? doc.devices.find((d) => d.id === a.deviceId) : undefined;
   return dev ? deviceScreenRect(dev) : { x: 0, y: 0, w: doc.canvas.w, h: doc.canvas.h };
 }
