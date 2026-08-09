@@ -501,6 +501,33 @@ export function makeImage(image: string, partial: Partial<MockupImageSlot> = {})
   return { id: uid('img'), image, x: 200, y: 200, w: 520, h: 360, radius: 18, fit: 'cover', rotation: 0, shadow: true, ...partial };
 }
 
+export interface GridOpts {
+  cols?: number;    // default: ~kvadratisk (ceil(sqrt(n)))
+  margin?: number;  // ytre marg (default 3.7% av bredden)
+  gap?: number;     // mellomrom mellom celler (default 1.9% av bredden)
+  top?: number;     // topp-forskyvning (plass til overskrift; default = margin)
+  bottom?: number;  // bunn-forskyvning (default = margin)
+}
+
+/** Ren grid-matte: n celler jevnt fordelt på lerretet. Én celle per element (x/y/w/h). */
+export function gridCells(n: number, canvasW: number, canvasH: number, opts: GridOpts = {}): { x: number; y: number; w: number; h: number }[] {
+  if (n <= 0) return [];
+  const cols = Math.max(1, opts.cols ?? Math.ceil(Math.sqrt(n)));
+  const rows = Math.ceil(n / cols);
+  const m = opts.margin ?? Math.round(canvasW * 0.037);
+  const gap = opts.gap ?? Math.round(canvasW * 0.019);
+  const top = opts.top ?? m;
+  const bottom = opts.bottom ?? m;
+  const cw = (canvasW - 2 * m - gap * (cols - 1)) / cols;
+  const ch = (canvasH - top - bottom - gap * (rows - 1)) / rows;
+  const cells: { x: number; y: number; w: number; h: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const c = i % cols, r = Math.floor(i / cols);
+    cells.push({ x: Math.round(m + c * (cw + gap)), y: Math.round(top + r * (ch + gap)), w: Math.round(cw), h: Math.round(ch) });
+  }
+  return cells;
+}
+
 export function makeText(role: MockupTextRole, partial: Partial<MockupTextSlot> = {}): MockupTextSlot {
   const presets: Record<MockupTextRole, Partial<MockupTextSlot>> = {
     eyebrow: { size: 26, weight: 700, color: 'accent', tracking: 3, uppercase: true, lineHeight: 1.2 },
