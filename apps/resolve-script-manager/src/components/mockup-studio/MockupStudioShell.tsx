@@ -98,6 +98,13 @@ const C = {
   font: '-apple-system, system-ui, "Segoe UI", sans-serif',
 };
 
+// Responsiv skalering: vw-basert clamp → skalerer kontinuerlig for alle skjermstørrelser
+// (liten laptop → 5K) uten breakpoints eller JS-lyttere. min holder lesbarhet på små
+// skjermer, max hindrer gigantisk tekst på ultrabrede.
+const FS = 'clamp(12px, 0.9vw, 15px)';          // knapp / input body
+const FS_SM = 'clamp(11px, 0.8vw, 13.5px)';     // felt-label / hjelpetekst
+const FS_LABEL = 'clamp(10px, 0.75vw, 12.5px)'; // seksjons-label (uppercase)
+
 const DEVICE_LABELS: Record<MockupDeviceVariant, string> = {
   macbook: 'MacBook',
   ipad: 'iPad',
@@ -465,8 +472,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om" aria-label="Gjør om">↷</button>
         <span style={{ fontSize: 11, color: C.inkSoft, whiteSpace: 'nowrap' }} title="Alt lagres automatisk lokalt ved hver endring">✓ Lagret{store.past.length ? ` · ${store.past.length} angre` : ''}</span>
         <div style={{ flex: 1 }} />
-        {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
-        {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
+        {exportMsg && <span style={{ fontSize: FS_SM, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
+        {!exportMsg && missingShots > 0 && <span style={{ fontSize: FS_SM, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
         <select
           onChange={(e) => { const c = e.target.value; e.target.selectedIndex = 0; const l = LOCALIZE_LANGS.find((x) => x.code === c); if (l) void runLocalize(l.code, l.label); }}
           disabled={videoBusy || !localizeAvailable()}
@@ -508,7 +515,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       {/* Kropp: verktøy · lerret · inspektør */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Venstre: nettside-capture + legg til */}
-        <div style={{ width: 220, borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
+        <div style={{ width: 'clamp(190px, 15vw, 300px)', borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
           <SectionLabel>Oppsett</SectionLabel>
           <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Format (flate)</div>
           <select
@@ -678,7 +685,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Høyre: inspektør */}
-        <div style={{ width: 300, borderLeft: `1px solid ${C.border}`, padding: 16, overflowY: 'auto', flexShrink: 0, background: C.panel }}>
+        <div style={{ width: 'clamp(250px, 19vw, 360px)', borderLeft: `1px solid ${C.border}`, padding: 16, overflowY: 'auto', flexShrink: 0, background: C.panel }}>
           {selectedDevice ? (
             <DeviceInspector device={selectedDevice} onUpload={() => triggerUpload(selectedDevice.id)} advanced={advanced} />
           ) : selectedText ? (
@@ -694,7 +701,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Bunnbar (§ editorens bunnbar) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '6px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0, fontSize: 12, color: C.inkSoft }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '6px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0, fontSize: FS_SM, color: C.inkSoft }}>
         <span>{doc.canvas.w}×{doc.canvas.h}</span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <input type="checkbox" checked={safeArea} onChange={(e) => setSafeArea(e.target.checked)} /> Vis trygt område
@@ -823,7 +830,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
         {canvas.scene?.id && canvas.scene.shot && (() => {
           const sc = canvas.scene!; const ta = sc.typeAnim;
           const setTa = (patch: Partial<import('./mockupStudioModel').TypeAnimCfg> | null) => patchCanvas({ scene: { id: sc.id, shot: sc.shot, typeAnim: patch === null ? undefined : { ...ta, text: ta?.text ?? '', ...patch } } });
-          const chk = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, marginTop: 6, cursor: 'pointer' } as const;
+          const chk = { display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginTop: 6, cursor: 'pointer' } as const;
           return <>
             <input type="text" value={ta?.text ?? ''} onChange={(e) => setTa(e.target.value ? { text: e.target.value } : null)} placeholder="Skrive-animasjon på skjermen (valgfritt)" style={{ ...textInput, marginTop: 6 }} />
             {ta?.text && <>
@@ -872,10 +879,10 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           {(Object.keys(DECOR_LABELS) as MockupDecor[]).map((id) => <option key={id} value={id}>{DECOR_LABELS[id]}</option>)}
         </select>
       </Field>
-      <div style={{ fontSize: 12, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
+      <div style={{ fontSize: FS_SM, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
         {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)
       </div>
-      <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, marginTop: 14 }}>
+      <p style={{ fontSize: FS_SM, color: C.inkSoft, lineHeight: 1.5, marginTop: 14 }}>
         To accent-tokens styrer hele malen. Velg en enhet eller tekst på lerretet for å redigere den.
       </p>
     </div>
@@ -922,7 +929,7 @@ function IllustrationInspector() {
 
       {doc.mindmap ? (
         <div style={{ marginBottom: 14 }}>
-          <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 8px' }}>
+          <p style={{ fontSize: FS_SM, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 8px' }}>
             🧠 Produkt-mind map (Mermaid). Rediger kilden — rendres i merkevarefargene.
           </p>
           <textarea
@@ -940,7 +947,7 @@ function IllustrationInspector() {
           </p>
         </div>
       ) : (
-        <p style={{ fontSize: 12, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 10px' }}>
+        <p style={{ fontSize: FS_SM, color: C.inkSoft, lineHeight: 1.5, margin: '0 0 10px' }}>
           Forklar produktet: callouts som peker på UI, en zoom-lupe på detaljen, eller en markør-ramme.
           <br /><span style={{ opacity: 0.8 }}>Tips: «🧠 Produkt-mind map fra URL» (Fra nettside) lager en mind map-slide.</span>
         </p>
@@ -968,12 +975,12 @@ function IllustrationInspector() {
         <button onClick={() => addAnnotation('marker', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Markør</button>
       </div>
 
-      {anns.length === 0 && <p style={{ fontSize: 12, color: C.inkSoft }}>Ingen annotasjoner ennå.</p>}
+      {anns.length === 0 && <p style={{ fontSize: FS_SM, color: C.inkSoft }}>Ingen annotasjoner ennå.</p>}
 
       {anns.map((a) => (
         <div key={a.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, marginBottom: 8, background: C.panelSoft }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700 }}>{a.kind === 'callout' ? `${a.n}. ` : ''}{KIND_LABEL[a.kind]}</span>
+            <span style={{ fontSize: FS, fontWeight: 700 }}>{a.kind === 'callout' ? `${a.n}. ` : ''}{KIND_LABEL[a.kind]}</span>
             <span style={{ fontSize: 11, color: C.inkSoft }}>· {devName(a.deviceId)}</span>
             <button onClick={() => removeAnnotation(a.id)} style={{ ...listBtn, marginLeft: 'auto', width: 28, textAlign: 'center', padding: '4px 0' }} title="Slett annotasjon" aria-label="Slett annotasjon">✕</button>
           </div>
@@ -1345,13 +1352,13 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   // Skillelinje + luft over hver gruppe → panelet leses som distinkte seksjoner, ikke én vegg av knapper.
-  return <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink, opacity: 0.82, marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}`, marginBottom: 10, fontWeight: 700 }}>{children}</div>;
+  return <div style={{ fontSize: FS_LABEL, letterSpacing: 1.2, textTransform: 'uppercase', color: C.ink, opacity: 0.82, marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.border}`, marginBottom: 10, fontWeight: 700 }}>{children}</div>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 12, color: C.inkSoft, marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: FS_SM, color: C.inkSoft, marginBottom: 5 }}>{label}</div>
       {children}
     </div>
   );
@@ -1367,26 +1374,26 @@ function ColorRow({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 const textInput: React.CSSProperties = {
-  background: C.panelSoft, color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', fontSize: 13, fontFamily: C.font, width: '100%', boxSizing: 'border-box',
+  background: C.panelSoft, color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', fontSize: FS, fontFamily: C.font, width: '100%', boxSizing: 'border-box',
 };
 const ghostBtn: React.CSSProperties = {
-  background: 'transparent', color: C.inkSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 12px', fontSize: 13, cursor: 'pointer', fontFamily: C.font,
+  background: 'transparent', color: C.inkSoft, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 12px', fontSize: FS, cursor: 'pointer', fontFamily: C.font,
 };
 const primaryBtn: React.CSSProperties = {
-  background: C.accent, color: C.accentInk, border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: C.font,
+  background: C.accent, color: C.accentInk, border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: FS, fontWeight: 700, cursor: 'pointer', fontFamily: C.font,
 };
 // Sekundær handlingsfarge: teal-omriss (ikke solid fyll) → underordnet Eksporter, men tydelig handling.
 const actionBtn: React.CSSProperties = {
-  background: 'rgba(34,211,238,0.10)', color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: C.font,
+  background: 'rgba(34,211,238,0.10)', color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 8, padding: '8px 16px', fontSize: FS, fontWeight: 700, cursor: 'pointer', fontFamily: C.font,
 };
 const listBtn: React.CSSProperties = {
-  background: C.panelSoft, color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: C.font,
+  background: C.panelSoft, color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', fontSize: FS, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: C.font,
 };
 const dangerBtn: React.CSSProperties = {
-  background: 'rgba(220,60,60,0.12)', color: '#f0a0a0', border: '1px solid rgba(220,60,60,0.3)', borderRadius: 8, padding: '8px 10px', fontSize: 13, cursor: 'pointer', width: '100%', fontFamily: C.font,
+  background: 'rgba(220,60,60,0.12)', color: '#f0a0a0', border: '1px solid rgba(220,60,60,0.3)', borderRadius: 8, padding: '8px 10px', fontSize: FS, cursor: 'pointer', width: '100%', fontFamily: C.font,
 };
 const checkRow: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.ink, cursor: 'pointer', marginBottom: 4,
+  display: 'flex', alignItems: 'center', gap: 8, fontSize: FS, color: C.ink, cursor: 'pointer', marginBottom: 4,
 };
 
 // Ekte SVG-ikoner i stedet for emoji (arver knappefargen via currentColor).
