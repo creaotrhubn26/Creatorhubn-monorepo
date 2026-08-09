@@ -110,7 +110,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
         brief: f.brief.trim() || undefined, learningGoals: f.learningGoals.trim() || undefined,
         dueAt: f.dueAt || null, status: 'published',
         artifactKind: (f.productionId && f.artifactKind) ? f.artifactKind : undefined,
-        artifactView: (f.artifactKind === 'story-arc' && f.artifactView) ? f.artifactView : undefined,
+        artifactView: (f.productionId && f.artifactKind === 'story-arc' && f.artifactView) ? f.artifactView : undefined,
         isArbeidskrav: f.isArbeidskrav,
         isExam: f.isExam,
         vurderingsform: f.vurderingsform || undefined,

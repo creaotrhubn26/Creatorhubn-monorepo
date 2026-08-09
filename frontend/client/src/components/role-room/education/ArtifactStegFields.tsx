@@ -92,8 +92,15 @@ export function ArtifactStegFields({
         <TextField
           size="small" select label="Steg" value={artifactView}
           onChange={(e) => onArtifactViewChange(e.target.value)}
+          disabled={disabled}
           helperText={!artifactView ? 'Lander studenten i studio-hubben' : undefined}
-          sx={{ minWidth: 150, whiteSpace: 'nowrap', '& .MuiInputBase-root': { minHeight: { xs: 44 } }, ...ringSx }}
+          sx={{
+            minWidth: 150, whiteSpace: 'nowrap',
+            opacity: showSteg ? 1 : 0,
+            transition: reduceMotion ? 'none' : 'opacity 180ms ease-out',
+            '& .MuiInputBase-root': { minHeight: { xs: 44 } },
+            ...ringSx,
+          }}
         >
           {STEG_OPTIONS.map((o) => <MenuItem key={o.key || 'all'} value={o.key}>{o.label}</MenuItem>)}
         </TextField>
