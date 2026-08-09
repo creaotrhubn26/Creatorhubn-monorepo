@@ -26,7 +26,7 @@ type FetchLike = (url: string, init?: { signal?: AbortSignal; headers?: Record<s
 const BASE = 'https://data.norges-bank.no/api/data/EXR';
 
 /** Flytter desimalpunktet n plasser til venstre (deler på 10^n) — eksakt, uten flyttall. */
-function shiftDecimalLeft(dec: string, n: number): string {
+export function shiftDecimalLeft(dec: string, n: number): string {
   if (n <= 0) return dec;
   const neg = dec.startsWith('-');
   let s = neg ? dec.slice(1) : dec;
@@ -43,7 +43,7 @@ function shiftDecimalLeft(dec: string, n: number): string {
   return neg ? `-${out}` : out;
 }
 
-function addDaysIso(iso: string, days: number): string {
+export function addDaysIso(iso: string, days: number): string {
   const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
