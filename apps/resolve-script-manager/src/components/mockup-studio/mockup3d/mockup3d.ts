@@ -31,12 +31,12 @@ function loadGltfScene(url: string): Promise<THREE.Group> {
 }
 
 /** Bygg fra Blender-glb: klon kroppen, mål bbox, legg skjerm på +Z-fronten (app-frame). */
-async function buildDeviceGltf(url: string, shot?: string): Promise<THREE.Group> {
+async function buildDeviceGltf(url: string, shot: string | undefined, variant: Device3DVariant): Promise<THREE.Group> {
   const body = (await loadGltfScene(url)).clone(true);
   const box = new THREE.Box3().setFromObject(body);
   const size = new THREE.Vector3(); box.getSize(size);
   const ctr = new THREE.Vector3(); box.getCenter(ctr);
-  const mat = await screenMat(shot);
+  const mat = await screenMat(shot, variant);
   const inset = size.x * 0.05;
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(size.x - inset * 2, size.y - inset * 2), mat);
   screen.position.set(ctr.x, ctr.y, box.max.z + 0.002);
@@ -80,12 +80,33 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 
 const bodyMat = () => new THREE.MeshStandardMaterial({ color: 0x1b1d22, metalness: 0.9, roughness: 0.32, envMapIntensity: 0.9 });
 
+/** Tegn notch/hole-punch øverst på skjerm-canvaset (moderne telefon-look). */
+function drawNotch(cx: CanvasRenderingContext2D, w: number, h: number, variant?: Device3DVariant): void {
+  cx.fillStyle = '#000';
+  if (variant === 'iphone') {
+    // Dynamic Island: avrundet pille, topp-senter.
+    const iw = w * 0.30, ih = h * 0.020, ix = (w - iw) / 2, iy = h * 0.016;
+    cx.beginPath();
+    if (typeof cx.roundRect === 'function') cx.roundRect(ix, iy, iw, ih, ih / 2);
+    else cx.rect(ix, iy, iw, ih);
+    cx.fill();
+  } else if (variant === 'android') {
+    // Hole-punch: liten sirkel topp-senter.
+    cx.beginPath(); cx.arc(w / 2, h * 0.028, Math.min(w, h) * 0.014, 0, Math.PI * 2); cx.fill();
+  }
+}
+
 /** Selv-lyst (unlit) skjerm-materiale — skjermbilde i sanne farger uansett lys. */
-async function screenMat(shot?: string): Promise<THREE.Material> {
+async function screenMat(shot?: string, variant?: Device3DVariant): Promise<THREE.Material> {
   if (shot) {
     try {
       const img = await loadImg(shot);
-      const tex = new THREE.CanvasTexture(img);
+      const cv = document.createElement('canvas');
+      cv.width = img.naturalWidth || img.width; cv.height = img.naturalHeight || img.height;
+      const cx = cv.getContext('2d');
+      let tex: THREE.Texture;
+      if (cx) { cx.drawImage(img, 0, 0); drawNotch(cx, cv.width, cv.height, variant); tex = new THREE.CanvasTexture(cv); }
+      else tex = new THREE.CanvasTexture(img);
       tex.colorSpace = THREE.SRGBColorSpace;
       return new THREE.MeshBasicMaterial({ map: tex });
     } catch { /* svart skjerm */ }
@@ -96,7 +117,7 @@ async function screenMat(shot?: string): Promise<THREE.Material> {
 async function buildDevice(variant: Device3DVariant, shot?: string): Promise<THREE.Group> {
   const d = deviceDims(variant);
   const g = new THREE.Group();
-  const mat = await screenMat(shot);
+  const mat = await screenMat(shot, variant);
 
   if (d.kind === 'clamshell') {
     // Laptop: flat base (tastatur-dekk) + skjerm-plate hengslet ved bakre kant.
@@ -138,7 +159,7 @@ export async function render3dDevice(opts: { variant: Device3DVariant; shot?: st
   const prev = s.getObjectByName('device');
   if (prev) { s.remove(prev); }
   const glb = DEVICE_GLB[opts.variant];
-  const dev = glb ? await buildDeviceGltf(glb, opts.shot) : await buildDevice(opts.variant, opts.shot);
+  const dev = glb ? await buildDeviceGltf(glb, opts.shot, opts.variant) : await buildDevice(opts.variant, opts.shot);
   dev.name = 'device';
   dev.rotation.set(THREE.MathUtils.degToRad(opts.rotX), THREE.MathUtils.degToRad(opts.rotY), THREE.MathUtils.degToRad(opts.rotZ));
   s.add(dev);
