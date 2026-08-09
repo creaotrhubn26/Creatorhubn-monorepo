@@ -509,24 +509,72 @@ export interface GridOpts {
   bottom?: number;  // bunn-forskyvning (default = margin)
 }
 
-/** Ren grid-matte: n celler jevnt fordelt på lerretet. Én celle per element (x/y/w/h). */
-export function gridCells(n: number, canvasW: number, canvasH: number, opts: GridOpts = {}): { x: number; y: number; w: number; h: number }[] {
+export interface LayoutCell { x: number; y: number; w: number; h: number; rotation?: number }
+type LayoutFn = (n: number, canvasW: number, canvasH: number, opts?: GridOpts) => LayoutCell[];
+
+const bounds = (W: number, _H: number, o: GridOpts) => {
+  const m = o.margin ?? Math.round(W * 0.037), gap = o.gap ?? Math.round(W * 0.019);
+  return { m, gap, top: o.top ?? m, bottom: o.bottom ?? m };
+};
+
+/** Rutenett: n celler jevnt fordelt (auto ~kvadratisk, eller opts.cols). */
+export const gridCells: LayoutFn = (n, W, H, opts = {}) => {
   if (n <= 0) return [];
+  const { m, gap, top, bottom } = bounds(W, H, opts);
   const cols = Math.max(1, opts.cols ?? Math.ceil(Math.sqrt(n)));
   const rows = Math.ceil(n / cols);
-  const m = opts.margin ?? Math.round(canvasW * 0.037);
-  const gap = opts.gap ?? Math.round(canvasW * 0.019);
-  const top = opts.top ?? m;
-  const bottom = opts.bottom ?? m;
-  const cw = (canvasW - 2 * m - gap * (cols - 1)) / cols;
-  const ch = (canvasH - top - bottom - gap * (rows - 1)) / rows;
-  const cells: { x: number; y: number; w: number; h: number }[] = [];
-  for (let i = 0; i < n; i++) {
+  const cw = (W - 2 * m - gap * (cols - 1)) / cols;
+  const ch = (H - top - bottom - gap * (rows - 1)) / rows;
+  return Array.from({ length: n }, (_, i) => {
     const c = i % cols, r = Math.floor(i / cols);
-    cells.push({ x: Math.round(m + c * (cw + gap)), y: Math.round(top + r * (ch + gap)), w: Math.round(cw), h: Math.round(ch) });
-  }
+    return { x: Math.round(m + c * (cw + gap)), y: Math.round(top + r * (ch + gap)), w: Math.round(cw), h: Math.round(ch) };
+  });
+};
+
+/** Rad: én horisontal rekke, full høyde (filmstrip). */
+export const rowCells: LayoutFn = (n, W, H, opts = {}) => {
+  if (n <= 0) return [];
+  const { m, gap, top, bottom } = bounds(W, H, opts);
+  const cw = (W - 2 * m - gap * (n - 1)) / n, ch = H - top - bottom;
+  return Array.from({ length: n }, (_, i) => ({ x: Math.round(m + i * (cw + gap)), y: Math.round(top), w: Math.round(cw), h: Math.round(ch) }));
+};
+
+/** Historie: vertikal stabel, full bredde (story/portrett). */
+export const columnCells: LayoutFn = (n, W, H, opts = {}) => {
+  if (n <= 0) return [];
+  const { m, gap, top, bottom } = bounds(W, H, opts);
+  const ch = (H - top - bottom - gap * (n - 1)) / n, cw = W - 2 * m;
+  return Array.from({ length: n }, (_, i) => ({ x: Math.round(m), y: Math.round(top + i * (ch + gap)), w: Math.round(cw), h: Math.round(ch) }));
+};
+
+/** Hero + galleri: første bilde stort til venstre, resten i kolonne til høyre. */
+export const heroCells: LayoutFn = (n, W, H, opts = {}) => {
+  if (n <= 0) return [];
+  if (n === 1) return gridCells(1, W, H, opts);
+  const { m, gap, top, bottom } = bounds(W, H, opts);
+  const heroW = Math.round((W - 2 * m - gap) * 0.62), restW = W - 2 * m - gap - heroW;
+  const rest = n - 1, rch = (H - top - bottom - gap * (rest - 1)) / rest;
+  const cells: LayoutCell[] = [{ x: m, y: top, w: heroW, h: H - top - bottom }];
+  for (let i = 0; i < rest; i++) cells.push({ x: Math.round(m + heroW + gap), y: Math.round(top + i * (rch + gap)), w: Math.round(restW), h: Math.round(rch) });
   return cells;
-}
+};
+
+/** Kollasje: rutenett med lett rotasjon + krymp (oppslåtte foto-look). Deterministisk. */
+export const collageCells: LayoutFn = (n, W, H, opts = {}) => {
+  return gridCells(n, W, H, opts).map((c, i) => {
+    const sh = Math.round(Math.min(c.w, c.h) * 0.06); // krymp så roterte hjørner ikke klippes
+    return { x: c.x + sh, y: c.y + sh, w: c.w - sh * 2, h: c.h - sh * 2, rotation: ((i * 53) % 11) - 5 };
+  });
+};
+
+/** Registry av fremvisninger (galleri). */
+export const PRESENTATIONS: { id: string; label: string; layout: LayoutFn; rotated?: boolean }[] = [
+  { id: 'grid', label: 'Rutenett', layout: gridCells },
+  { id: 'row', label: 'Rad', layout: rowCells },
+  { id: 'hero', label: 'Hero', layout: heroCells },
+  { id: 'collage', label: 'Kollasje', layout: collageCells, rotated: true },
+  { id: 'story', label: 'Historie', layout: columnCells },
+];
 
 export function makeText(role: MockupTextRole, partial: Partial<MockupTextSlot> = {}): MockupTextSlot {
   const presets: Record<MockupTextRole, Partial<MockupTextSlot>> = {

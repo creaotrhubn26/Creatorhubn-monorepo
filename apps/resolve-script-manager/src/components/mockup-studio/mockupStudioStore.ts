@@ -19,7 +19,7 @@ import {
   makeDevice,
   makeText,
   makeImage,
-  gridCells,
+  PRESENTATIONS,
   type GridOpts,
   type MockupImageSlot,
   makeAnnotation,
@@ -118,7 +118,9 @@ interface MockupStudioState {
   patchLibraryMeta: (id: string, patch: Partial<LibraryMeta>) => Promise<void>;
   /** Last full-res fra IDB → tildel valgt enhet, sett bakgrunn, ellers frittstående bilde (evt. på drop-posisjon). */
   placeLibraryImage: (id: string, target?: 'device' | 'background', at?: { x: number; y: number }) => Promise<void>;
-  /** Legg flere bibliotek-bilder i et grid på lerretet, med valgfri pris/tekst-label under hvert. */
+  /** Legg flere bibliotek-bilder på lerretet i en valgt fremvisning (galleri): rutenett/rad/hero/kollasje/historie. */
+  arrangeLibrary: (items: { assetId: string; label?: string }[], presetId: string, opts?: GridOpts & { radius?: number; showLabels?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
+  /** Snarvei: fremvisning 'grid' (bakoverkompatibel). */
   arrangeLibraryGrid: (items: { assetId: string; label?: string }[], opts?: GridOpts & { radius?: number; showLabels?: boolean; labelSize?: number; labelColor?: string }) => Promise<void>;
 }
 
@@ -343,20 +345,23 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     else get().addImage(full, at ? { x: Math.round(at.x - 260), y: Math.round(at.y - 180) } : undefined); // frittstående (senter på drop-punkt)
   },
 
-  // Legg N bibliotek-bilder i et grid (én linje = det E2E-en gjorde, nå gjenbrukbart).
-  arrangeLibraryGrid: async (items, opts) => {
+  // Legg N bibliotek-bilder på lerretet i en valgt fremvisning (galleri). Ett kall bygger alt.
+  arrangeLibrary: async (items, presetId, opts) => {
     if (!items.length) return;
+    const preset = PRESENTATIONS.find((pr) => pr.id === presetId) ?? PRESENTATIONS[0];
     const { canvas } = get().doc;
-    const cells = gridCells(items.length, canvas.w, canvas.h, opts);
-    const showLabels = opts?.showLabels !== false;
+    const cells = preset.layout(items.length, canvas.w, canvas.h, opts);
+    const showLabels = opts?.showLabels ?? items.some((it) => !!it.label); // vis labels om oppgitt
     const labelSize = opts?.labelSize ?? 30;
     const labelH = showLabels ? Math.round(labelSize * 1.35) : 0;
     for (let i = 0; i < items.length; i++) {
-      const c = cells[i];
+      const c = cells[i]; if (!c) continue;
+      const rotated = c.rotation != null;
       await get().placeLibraryImage(items[i].assetId); // legger fritt bilde + selecter det
       const sel = get().selection;
-      if (sel.kind === 'image') get().patchImage(sel.id, { x: c.x, y: c.y, w: c.w, h: c.h - labelH, radius: opts?.radius ?? 18, shadow: true, fit: 'cover' });
-      if (labelH && items[i].label) {
+      if (sel.kind === 'image') get().patchImage(sel.id, { x: c.x, y: c.y, w: c.w, h: rotated ? c.h : c.h - labelH, radius: opts?.radius ?? 18, shadow: true, fit: 'cover', rotation: c.rotation ?? 0 });
+      // Label (pris) under upright celler; hoppes over på roterte (kollasje = rene foto).
+      if (!rotated && labelH && items[i].label) {
         get().addText('tag');
         const ts = get().selection;
         if (ts.kind === 'text') get().patchText(ts.id, { text: items[i].label as string, x: c.x, y: c.y + (c.h - labelH) + 6, w: c.w, size: labelSize, weight: 700, color: opts?.labelColor ?? '#1A1A1A', align: 'left' });
@@ -364,6 +369,7 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     }
     get().select({ kind: 'canvas' });
   },
+  arrangeLibraryGrid: (items, opts) => get().arrangeLibrary(items, 'grid', opts),
 }));
 
 // Test-modus: eksponer storen for Playwright-E2E (programmatisk oppbygging av dokumenter).
