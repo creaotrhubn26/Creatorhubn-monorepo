@@ -550,16 +550,16 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             placeholder="leadgrid.no"
             style={{ ...textInput, marginBottom: 6 }}
           />
-          <button onClick={() => void runCapture()} disabled={capturing || !url.trim()} style={{ ...primaryBtn, width: '100%', opacity: capturing || !url.trim() ? 0.6 : 1 }}>
+          <button onClick={() => void runCapture()} disabled={capturing || !url.trim()} style={{ ...actionBtn, width: '100%', opacity: capturing || !url.trim() ? 0.6 : 1 }}>
             {capturing ? 'Henter…' : 'Hent skjermbilder'}
           </button>
           <button
             onClick={() => void runAiCompose()}
             disabled={capturing || !url.trim() || !aiAvailable()}
-            style={{ ...primaryBtn, width: '100%', marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
+            style={{ ...actionBtn, width: '100%', marginTop: 6, opacity: capturing || !url.trim() || !aiAvailable() ? 0.6 : 1 }}
             title={aiAvailable() ? 'Full flyt: skjermbilder + hero-tekst + merkevare-farger + callouts som forklarer produktet — alt fra URL-en' : 'Krever innlogget AI (RR-token i Innstillinger)'}
           >
-            ✨ Full AI-illustrasjon fra URL
+            Full AI-illustrasjon fra URL
           </button>
           <button
             onClick={() => void runAiDraft()}
@@ -599,7 +599,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               <button onClick={() => autoFill(shots)} style={{ ...listBtn, marginTop: 8 }}>Auto-fyll enheter</button>
-              <button onClick={() => void applyBrandLook()} style={{ ...primaryBtn, marginTop: 6, width: '100%' }} title="Generér en unik palett + typografi + dekor fra merkevarens egne farger">✨ Generér merkevare-look</button>
+              <button onClick={() => void applyBrandLook()} style={{ ...actionBtn, marginTop: 6, width: '100%' }} title="Generér en unik palett + typografi + dekor fra merkevarens egne farger">Generér merkevare-look</button>
               <button onClick={() => void applyAccentFromSite()} style={{ ...listBtn, marginTop: 6 }}>Bruk kun sidefargen som accent</button>
             </>
           )}
@@ -673,8 +673,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Midt: lerret */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28, overflow: 'auto', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
-          <div style={{ width: '100%', maxWidth: 1000 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18, overflow: 'auto', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
+          <div style={{ width: '100%', maxWidth: 1400 }}>
             <MockupCanvas safeArea={safeArea} />
           </div>
         </div>
@@ -950,10 +950,10 @@ function IllustrationInspector() {
       <button
         onClick={() => void runAiIllustrate()}
         disabled={aiBusy || !hasScreen}
-        style={{ ...primaryBtn, width: '100%', marginBottom: 6, opacity: aiBusy || !hasScreen ? 0.55 : 1 }}
+        style={{ ...actionBtn, width: '100%', marginBottom: 6, opacity: aiBusy || !hasScreen ? 0.55 : 1 }}
         title={hasScreen ? 'La AI finne UI-regioner og skrive funksjonstekst fra produktskjermen' : 'Legg inn en produktskjerm i en enhet først'}
       >
-        {aiBusy ? 'Illustrerer…' : '✨ AI-illustrer produktskjermen'}
+        {aiBusy ? 'Illustrerer…' : 'AI-illustrer produktskjermen'}
       </button>
       {aiMsg && <p style={{ fontSize: 11.5, color: C.inkSoft, margin: '0 0 10px' }}>{aiMsg}</p>}
       {doc.devices.length > 1 && (
@@ -1376,6 +1376,10 @@ const ghostBtn: React.CSSProperties = {
 };
 const primaryBtn: React.CSSProperties = {
   background: C.accent, color: C.accentInk, border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: C.font,
+};
+// Sekundær handlingsfarge: teal-omriss (ikke solid fyll) → underordnet Eksporter, men tydelig handling.
+const actionBtn: React.CSSProperties = {
+  background: 'rgba(34,211,238,0.10)', color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: C.font,
 };
 const listBtn: React.CSSProperties = {
   background: C.panelSoft, color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: C.font,
