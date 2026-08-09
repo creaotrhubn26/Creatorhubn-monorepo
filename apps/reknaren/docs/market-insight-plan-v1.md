@@ -481,12 +481,13 @@ git commit -m "feat(market): SSB KPI 12-mnd-kilde (port + stub)"
 **Interfaces:**
 - Consumes: `Db`, `CompanyRegistry` fra `company-registry.js`, `journal_lines`-skjema.
 - Produces:
-  - `interface OrgExposure { interestBearingDebtMinor: bigint; fxCurrencies: string[]; naceCode: string | null }`
+  - `interface OrgExposure { interestBearingDebtMinor: bigint; fxCurrencies: string[]; fxSpend: {...}[]; fxPurchases: {...}[]; naceCode: string | null }` (full form i implementasjonen under)
   - `async function getOrgExposure(db: Db, registry: CompanyRegistry, organizationId: string): Promise<OrgExposure>`
 
 **Detaljer:**
 - **Rentebærende gjeld:** saldo på kontoklasse 22xx–24xx (langsiktig gjeld til kredittinstitusjoner + kassekreditt), norsk standard kontoplan. Saldo = `SUM(credit_minor - debit_minor)` (gjeld har kredittsaldo).
 - **Valutaeksponering:** distinkte valutaer i `journal_lines` der `original_currency` er satt og ≠ 'NOK'. *(Sjekk kolonnenavn i steg 1 — `journal_lines` har `original_amount_minor`; finn tilhørende valutakolonne med `grep -n "currency" migrations/0001*.sql`. Hvis ingen valutakolonne finnes, returner tom liste og noter det.)*
+- **FX-innkjøpsvolum (`fxSpend`):** driver kroner-estimatet i `fx_timing`-regelen (Task 6). Per valuta: median av månedlig NOK-innkjøp (debet-linjer med utenlandsk `original_currency`). Median via `percentile_cont(0.5)`. Hvis valutakolonnen ikke finnes → tom liste (graceful; `fx_timing` viser da kort uten kroner-estimat).
 - **NACE:** `organizations.org_number` → `registry.lookup(orgNumber)` → `profile.naceCode`.
 
 - [ ] **Step 1: Utvid `CompanyProfile` med NACE**
@@ -550,6 +551,9 @@ import type { CompanyRegistry } from '../integrations/company-registry.js';
 export interface OrgExposure {
   interestBearingDebtMinor: bigint;
   fxCurrencies: string[];
+  fxSpend: { currency: string; medianMonthlyMinor: bigint }[]; // median månedlig NOK-innkjøp per utenlandsk valuta (fx_timing)
+  // Faktiske utenlandskjøp siste 90 dager per valuta (fx_retro). totalForeignMinor = sum original_amount_minor.
+  fxPurchases: { currency: string; purchaseCount: number; totalForeignMinor: bigint; actualNokMinor: bigint }[];
   naceCode: string | null;
 }
 
@@ -575,6 +579,45 @@ export async function getOrgExposure(db: Db, registry: CompanyRegistry, organiza
   ).catch(() => ({ rows: [] as { cur: string }[] }));
   const fxCurrencies = fx.rows.map((r) => r.cur).filter(Boolean);
 
+  // FX-innkjøpsvolum: median månedlig NOK-innkjøp (debet-linjer) per utenlandsk valuta.
+  const spend = await db.query(
+    `SELECT currency, percentile_cont(0.5) WITHIN GROUP (ORDER BY monthly)::bigint::text AS median
+       FROM (
+         SELECT l.original_currency AS currency,
+                date_trunc('month', e.entry_date) AS m,
+                SUM(l.debit_minor) AS monthly
+           FROM journal_lines l
+           JOIN journal_entries e ON e.id = l.entry_id AND e.status = 'posted'
+          WHERE l.organization_id = $1
+            AND l.original_currency IS NOT NULL AND l.original_currency <> 'NOK'
+            AND l.debit_minor > 0
+          GROUP BY currency, m
+       ) t
+      GROUP BY currency`,
+    [organizationId],
+  ).catch(() => ({ rows: [] as { currency: string; median: string }[] }));
+  const fxSpend = spend.rows.map((r) => ({ currency: r.currency, medianMonthlyMinor: BigInt(r.median ?? '0') }));
+
+  // Faktiske utenlandskjøp siste 90 dager per valuta (fx_retro): antall, sum utenlandsk-beløp, sum bokført NOK.
+  const purch = await db.query(
+    `SELECT l.original_currency AS currency,
+            COUNT(*)::int AS cnt,
+            COALESCE(SUM(l.original_amount_minor), 0)::text AS foreign_sum,
+            COALESCE(SUM(l.debit_minor), 0)::text AS nok_sum
+       FROM journal_lines l
+       JOIN journal_entries e ON e.id = l.entry_id AND e.status = 'posted'
+      WHERE l.organization_id = $1
+        AND l.original_currency IS NOT NULL AND l.original_currency <> 'NOK'
+        AND l.debit_minor > 0 AND l.original_amount_minor IS NOT NULL AND l.original_amount_minor > 0
+        AND e.entry_date >= (CURRENT_DATE - INTERVAL '90 days')
+      GROUP BY l.original_currency`,
+    [organizationId],
+  ).catch(() => ({ rows: [] as { currency: string; cnt: number; foreign_sum: string; nok_sum: string }[] }));
+  const fxPurchases = purch.rows.map((r) => ({
+    currency: r.currency, purchaseCount: r.cnt,
+    totalForeignMinor: BigInt(r.foreign_sum ?? '0'), actualNokMinor: BigInt(r.nok_sum ?? '0'),
+  }));
+
   // NACE fra Brreg via org.nr.
   const orgRow = await db.query(`SELECT org_number FROM organizations WHERE id = $1`, [organizationId]);
   const orgNumber = orgRow.rows[0]?.org_number as string | undefined;
@@ -582,10 +625,10 @@ export async function getOrgExposure(db: Db, registry: CompanyRegistry, organiza
   if (orgNumber && /^\d{9}$/.test(orgNumber)) {
     try { naceCode = (await registry.lookup(orgNumber)).naceCode ?? null; } catch { naceCode = null; }
   }
-  return { interestBearingDebtMinor, fxCurrencies, naceCode };
+  return { interestBearingDebtMinor, fxCurrencies, fxSpend, fxPurchases, naceCode };
 }
 ```
-*(Juster `organizations`-kolonnen `org_number` og `journal_lines`-valutakolonnen til faktiske navn funnet i steg 1/migrasjon 0001.)*
+*(Juster `organizations`-kolonnen `org_number` og `journal_lines`-valutakolonnen til faktiske navn funnet i steg 1/migrasjon 0001. Hvis ingen valutakolonne finnes: `fxCurrencies=[]` og `fxSpend=[]` — `fx_timing` degraderes grasiøst.)*
 
 - [ ] **Step 5: Kjør testen — forvent PASS.** Så `npx tsc --noEmit`.
 
@@ -608,12 +651,20 @@ git commit -m "feat(market): org-eksponering (rentebærende gjeld + valuta + NAC
 - Consumes: `MarketSignal` (signal-store), `OrgExposure` (exposure).
 - Produces:
   - `interface GeneratedCard { kind: string; severity: 'signal'|'opportunity'|'watch'; title: string; body: string; impactMinor: bigint | null; direction: 'cost'|'benefit'|'neutral'; signalRefs: {kind:string; signalKey:string; period:string}[]; sources: {label:string; url?:string}[] }`
-  - `function buildInsights(input: { policyRate?: MarketSignal|null; policyRatePrev?: MarketSignal|null; kpi?: MarketSignal|null; exposure: OrgExposure }): GeneratedCard[]`
+  - `interface FxInput { currency: string; latestRate: string; medianRate: string; period: string; medianMonthlySpendMinor: bigint | null }`
+  - `function buildInsights(input: { policyRate?: MarketSignal|null; policyRatePrev?: MarketSignal|null; kpi?: MarketSignal|null; fx?: FxInput[]; exposure: OrgExposure }): GeneratedCard[]`
 
 **Regler v1:**
 1. **rate_debt** — `severity='watch'`, `direction='cost'`. Bare hvis Δrente ≠ 0 og gjeld > 0. `impactMinor = round(|Δrentedesimal| * gjeld)` (årlig kroner). Δ = (siste − forrige) styringsrente i prosentpoeng; desimal = Δ/100.
 2. **kpi_cost** — `severity='signal'`, `direction='neutral'`, `impactMinor=null`. Bare hvis KPI-signal finnes. Body nevner prosenten.
-3. *(FX-regel er v1-valgfri; hopp over hvis `fxCurrencies` er tom. Ikke implementer full valutabeløps-effekt i v1 — krever fremtidige innkjøpsdata. La en placeholder-fri `fx`-regel stå ute til v2.)*
+3. **fx_timing** — for hver `FxInput` (én per valuta virksomheten importerer i). Avvik = (latestRate − medianRate) / medianRate mot 90-dagers median. Terskel **3 %**:
+   - Avvik ≥ +3 % (kronen svak, valutaen dyrere): `severity='watch'`, `direction='cost'`. Body: «Kronen er ~X % svakere mot {valuta} enn snittet siste 90 dager. Utenlandskjøp i {valuta} er dyrere nå enn normalt — ikke-hastende innkjøp kan lønne seg å vente.»
+   - Avvik ≤ −3 % (kronen sterk): `severity='opportunity'`, `direction='benefit'`. Body: «…rimeligere nå.»
+   - Ellers: intet kort.
+   - `impactMinor`: hvis `medianMonthlySpendMinor` finnes → `spend * |avvik|` (anslått kr mer/mindre på et typisk månedskjøp), ellers `null`. Alle mellomregninger i bigint via ti-tusendeler (`rate × 10000`) — ingen flyttall i kronetallet. Terskel/prosent-visning kan bruke `Number` (kun heuristikk/tekst).
+   - `kind='fx_timing'` er **ikke** unik per valuta — men `insight_cards` har `UNIQUE(org, kind)`. Løsning: bruk `kind='fx_timing:{valuta}'` så hver valuta får eget kort. (Motoren setter `kind` slik; regel-id-en er prefikset `fx_timing`.)
+4. **fx_retro** — retrospektiv: dine faktiske utenlandskjøp mot snittkursen. Kun hvis `retro` finnes og `purchaseCount > 0`. `delta = retro.actualNokMinor − retro.medianNokMinor` (+ = du betalte mer enn 90-dagers snittkurs; − = du kom bedre ut). Vis kun hvis `|delta| ≥ 100 000 øre` (1 000 kr — unngå støy). `severity='signal'`, `direction='neutral'`, `impactMinor=delta` (med fortegn). `kind='fx_retro:{valuta}'`. Body er **informativ, ikke bebreidende** — «du kunne ikke time perfekt»; ramme som «verdt å følge kursen ved neste kjøp», aldri «du gjorde en feil».
+   - `retro.medianNokMinor` beregnes i refresh (Task 7): `totalForeignMinor × medianRate` — hva kjøpene ville kostet på snittkursen. `actualNokMinor` = faktisk bokført NOK. Krever at hovedboka lagrer `original_amount_minor` + `original_currency` (bekreftet: `journal_lines` 0001:189–190).
 
 - [ ] **Step 1: Skriv testen**
 
@@ -623,7 +674,7 @@ import { describe, expect, it } from 'vitest';
 import { buildInsights } from '../src/market/engine.js';
 import type { OrgExposure } from '../src/market/exposure.js';
 
-const exposure: OrgExposure = { interestBearingDebtMinor: 48000000n, fxCurrencies: [], naceCode: '62.010' };
+const exposure: OrgExposure = { interestBearingDebtMinor: 48000000n, fxCurrencies: [], fxSpend: [], naceCode: '62.010' };
 
 describe('buildInsights', () => {
   it('rate_debt: renta opp 0,25 på 480 000 kr gjeld → +1 200 kr/år kost', () => {
@@ -658,6 +709,48 @@ describe('buildInsights', () => {
     expect(kpi?.impactMinor).toBeNull();
     expect(kpi?.body).toContain('3,4');
   });
+
+  it('fx_timing: kronen svak mot EUR (>3%) → watch + kroner-estimat', () => {
+    const cards = buildInsights({
+      fx: [{ currency: 'EUR', latestRate: '12.00', medianRate: '11.50', period: '2026-08-14', medianMonthlySpendMinor: 5000000n, retro: null }],
+      exposure,
+    });
+    const fx = cards.find((c) => c.kind === 'fx_timing:EUR');
+    expect(fx?.severity).toBe('watch');
+    expect(fx?.direction).toBe('cost');
+    // avvik = (120000-115000)/115000 = 4,35 %; impact = 5 000 000 * 5000 / 115000 = 217 391 (trunkert)
+    expect(fx?.impactMinor).toBe(217391n);
+    expect(fx?.body).toContain('EUR');
+  });
+
+  it('fx_timing: lite avvik (<3%) → intet kort', () => {
+    const cards = buildInsights({
+      fx: [{ currency: 'USD', latestRate: '10.20', medianRate: '10.10', period: '2026-08-14', medianMonthlySpendMinor: null, retro: null }],
+      exposure,
+    });
+    expect(cards.find((c) => c.kind?.startsWith('fx_timing'))).toBeUndefined();
+  });
+
+  it('fx_retro: betalte mer enn snittkursen på faktiske kjøp → signal-kort med positivt delta', () => {
+    const cards = buildInsights({
+      fx: [{ currency: 'EUR', latestRate: '11.50', medianRate: '11.50', period: '2026-08-14', medianMonthlySpendMinor: null,
+             retro: { purchaseCount: 3, actualNokMinor: 5200000n, medianNokMinor: 5000000n } }],
+      exposure,
+    });
+    const retro = cards.find((c) => c.kind === 'fx_retro:EUR');
+    expect(retro?.severity).toBe('signal');
+    expect(retro?.impactMinor).toBe(200000n); // 52 000 − 50 000 = 2 000 kr mer enn snittet
+    expect(retro?.body).toContain('EUR');
+  });
+
+  it('fx_retro: under støy-terskel (<1 000 kr) → intet kort', () => {
+    const cards = buildInsights({
+      fx: [{ currency: 'EUR', latestRate: '11.50', medianRate: '11.50', period: '2026-08-14', medianMonthlySpendMinor: null,
+             retro: { purchaseCount: 2, actualNokMinor: 5005000n, medianNokMinor: 5000000n } }],
+      exposure,
+    });
+    expect(cards.find((c) => c.kind?.startsWith('fx_retro'))).toBeUndefined();
+  });
 });
 ```
 
@@ -681,6 +774,16 @@ export interface GeneratedCard {
   sources: { label: string; url?: string }[];
 }
 
+export interface FxInput {
+  currency: string;
+  latestRate: string;   // NOK per 1 enhet, dagens
+  medianRate: string;   // NOK per 1 enhet, 90-dagers median
+  period: string;       // dato latestRate gjelder
+  medianMonthlySpendMinor: bigint | null; // median månedlig NOK-innkjøp i valutaen (null = ukjent)
+  // Retrospektiv (dine faktiske kjøp siste 90 dager), null hvis ingen kjøp / manglende original-beløp:
+  retro: { purchaseCount: number; actualNokMinor: bigint; medianNokMinor: bigint } | null;
+}
+
 /** '4.50' - '4.25' = 25 (basispunkt-styrke i hundredeler prosentpoeng, heltall). */
 function deltaHundredths(a: string, b: string): bigint {
   const toH = (s: string): bigint => {
@@ -691,12 +794,20 @@ function deltaHundredths(a: string, b: string): bigint {
   return toH(a) - toH(b);
 }
 
-/** 1200 (øre? nei — kroner-øre) → '1 200' med tusenskille. Rene tall til norsk visning gjøres i UI; her holder vi bigint. */
+/** Valutakurs-streng → ti-tusendeler som bigint (eksakt, ingen flyttall i kronetallet). '11.62' → 116200n. Eksportert: refresh gjenbruker den til retro-median. */
+export function rateTenThousandths(s: string): bigint {
+  const neg = s.startsWith('-');
+  const [i, f = ''] = (neg ? s.slice(1) : s).split('.');
+  const frac = (f + '0000').slice(0, 4);
+  const v = BigInt(i || '0') * 10000n + BigInt(frac || '0');
+  return neg ? -v : v;
+}
 
 export function buildInsights(input: {
   policyRate?: MarketSignal | null;
   policyRatePrev?: MarketSignal | null;
   kpi?: MarketSignal | null;
+  fx?: FxInput[];
   exposure: OrgExposure;
 }): GeneratedCard[] {
   const cards: GeneratedCard[] = [];
@@ -741,17 +852,66 @@ export function buildInsights(input: {
     });
   }
 
+  // Regel 3 + 4: fx_timing (framover) + fx_retro (retrospektiv) per importvaluta
+  const FX_URL = 'https://www.norges-bank.no/tema/Statistikk/valutakurser/';
+  for (const f of input.fx ?? []) {
+    const latestTT = rateTenThousandths(f.latestRate);
+    const medianTT = rateTenThousandths(f.medianRate);
+    if (medianTT > 0n) {
+      const diffTT = latestTT - medianTT;              // + = kronen svak (valutaen dyrere)
+      const absDiffTT = diffTT < 0n ? -diffTT : diffTT;
+      const deviationPct = (Number(absDiffTT) / Number(medianTT)) * 100;
+      if (deviationPct >= 3) {
+        const weak = diffTT > 0n;                       // kronen svakere enn snittet
+        const pct = deviationPct.toLocaleString('nb-NO', { maximumFractionDigits: 1 });
+        const impact = f.medianMonthlySpendMinor === null ? null : (f.medianMonthlySpendMinor * absDiffTT) / medianTT;
+        cards.push({
+          kind: `fx_timing:${f.currency}`,
+          severity: weak ? 'watch' : 'opportunity',
+          direction: weak ? 'cost' : 'benefit',
+          title: `Kronen ${weak ? 'svakere' : 'sterkere'} mot ${f.currency}`,
+          body: weak
+            ? `Kronen er ~${pct} % svakere mot ${f.currency} enn snittet siste 90 dager. Utenlandskjøp i ${f.currency} er dyrere nå enn normalt — ikke-hastende innkjøp kan lønne seg å vente.`
+            : `Kronen er ~${pct} % sterkere mot ${f.currency} enn snittet siste 90 dager. Utenlandskjøp i ${f.currency} er rimeligere nå enn normalt.`,
+          impactMinor: impact,
+          signalRefs: [{ kind: 'fx_rate', signalKey: f.currency, period: f.period }],
+          sources: [{ label: `Norges Bank (${f.period})`, url: FX_URL }],
+        });
+      }
+    }
+    // Regel 4: fx_retro — dine faktiske kjøp mot snittkursen (informativ, ikke bebreidende)
+    if (f.retro && f.retro.purchaseCount > 0) {
+      const delta = f.retro.actualNokMinor - f.retro.medianNokMinor; // + = betalte mer enn snittkursen
+      const absDelta = delta < 0n ? -delta : delta;
+      if (absDelta >= 100000n) { // ≥ 1 000 kr — unngå støy
+        const paidMore = delta > 0n;
+        cards.push({
+          kind: `fx_retro:${f.currency}`,
+          severity: 'signal',
+          direction: 'neutral',
+          title: `Dine ${f.currency}-kjøp mot snittkursen`,
+          body: paidMore
+            ? `På ${f.retro.purchaseCount} ${f.currency}-kjøp siste 90 dager betalte du mer enn Norges Banks snittkurs. Ingen kan time kursen perfekt — men det er verdt å følge kursen ved neste kjøp.`
+            : `På ${f.retro.purchaseCount} ${f.currency}-kjøp siste 90 dager kom du bedre ut enn snittkursen. God timing.`,
+          impactMinor: delta, // fortegn: + = betalte mer, − = spart mot snittet
+          signalRefs: [{ kind: 'fx_rate', signalKey: f.currency, period: f.period }],
+          sources: [{ label: `Norges Bank (${f.period})`, url: FX_URL }],
+        });
+      }
+    }
+  }
+
   return cards;
 }
 ```
 
-- [ ] **Step 4: Kjør testen — forvent PASS.** Verifiser at `impactMinor` er nøyaktig `120000n` i første test. Så `npx tsc --noEmit`.
+- [ ] **Step 4: Kjør testen — forvent PASS.** Verifiser eksakte bigint-tall: `120000n` (rate_debt), `217391n` (fx_timing), `200000n` (fx_retro). Så `npx tsc --noEmit`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/market/engine.ts test/market-engine.test.ts
-git commit -m "feat(market): deterministisk innsikts-motor (rate_debt + kpi_cost)"
+git commit -m "feat(market): deterministisk innsikts-motor (rate_debt + kpi_cost + fx_timing + fx_retro)"
 ```
 
 ---
@@ -759,15 +919,18 @@ git commit -m "feat(market): deterministisk innsikts-motor (rate_debt + kpi_cost
 ### Task 7: Orkestrering — refresh + regenerering
 
 **Files:**
+- Create: `src/market/sources/fx-window.ts` (Norges Bank FX 90-dagers vindu → siste + median)
+- Modify: `src/integrations/fx-rates.ts` (eksporter `shiftDecimalLeft` + `addDaysIso` for gjenbruk)
 - Create: `src/market/refresh.ts`
 - Test: `test/market-refresh.pg.test.ts`
 
 **Interfaces:**
-- Consumes: signal-store, kilder (`PolicyRateSource`, `KpiSource`, `FxRateSource`), `getOrgExposure`, `buildInsights`.
+- Consumes: signal-store, kilder (`PolicyRateSource`, `KpiSource`, `FxWindowSource`), `getOrgExposure`, `buildInsights` (inkl. `FxInput`).
 - Produces:
-  - `interface MarketSources { policyRate: PolicyRateSource; kpi: KpiSource; registry: CompanyRegistry }`
+  - `interface FxWindow { currency: string; latest: string; median: string; period: string }` + `interface FxWindowSource { window(currency: string, endIsoDate: string, days: number): Promise<FxWindow | null> }` + `NorgesBankFxWindow` + `StaticFxWindowStub` (i `fx-window.ts`).
+  - `interface MarketSources { policyRate: PolicyRateSource; kpi: KpiSource; fxWindow: FxWindowSource; registry: CompanyRegistry }`
   - `async function refreshMarketSignals(db: Db, sources: MarketSources): Promise<{ updated: string[] }>` — henter alle kilder, upserter signaler.
-  - `async function regenerateInsights(db: Db, sources: MarketSources, organizationId: string): Promise<number>` — leser signaler + eksponering, kjører motoren, skriver `insight_cards` (DELETE eksisterende ikke-avviste + INSERT nye i én transaksjon; behold avviste). Returnerer antall kort.
+  - `async function regenerateInsights(db: Db, sources: MarketSources, organizationId: string): Promise<number>` — leser signaler + eksponering, bygger `fx: FxInput[]` (se Step 3b), kjører motoren, skriver `insight_cards` (DELETE ikke-avviste + INSERT nye i én transaksjon; behold avviste). Returnerer antall kort.
   - `async function regenerateAllOrgs(db: Db, sources: MarketSources): Promise<{ orgs: number; cards: number }>`.
 
 - [ ] **Step 1: Skriv testen**
@@ -779,6 +942,7 @@ import type { Db } from '../src/db/pool.js';
 import { StaticCompanyRegistryStub } from '../src/integrations/company-registry.js';
 import { StaticPolicyRateStub } from '../src/market/sources/policy-rate.js';
 import { StaticKpiStub } from '../src/market/sources/kpi.js';
+import { StaticFxWindowStub } from '../src/market/sources/fx-window.js';
 import { refreshMarketSignals, regenerateInsights } from '../src/market/refresh.js';
 import { upsertSignal } from '../src/market/signal-store.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
@@ -792,6 +956,7 @@ afterAll(async () => { await db.end(); });
 const sources = {
   policyRate: new StaticPolicyRateStub('4.50', '2026-08-14'),
   kpi: new StaticKpiStub('3.4', '2026-07'),
+  fxWindow: new StaticFxWindowStub({}), // ingen FX-eksponering i denne testen
   registry: new StaticCompanyRegistryStub({ '910000004': { found: true, orgNumber: '910000004', naceCode: '62.010' } }),
 };
 
@@ -817,21 +982,89 @@ describe('refresh + regenerate', () => {
 
 - [ ] **Step 2: Kjør testen — forvent FAIL.**
 
-- [ ] **Step 3: Implementer**
+- [ ] **Step 3a: FX-vindu-kilde** (`src/market/sources/fx-window.ts`)
+
+Speiler SDMX-parsingen i `src/integrations/fx-rates.ts`, men henter HELE 90-dagers-serien og returnerer siste + median. Eksporter først `shiftDecimalLeft` og `addDaysIso` fra `fx-rates.ts` (endre `function` → `export function`) og gjenbruk dem her.
+
+```typescript
+// src/market/sources/fx-window.ts
+import { addDaysIso, shiftDecimalLeft } from '../../integrations/fx-rates.js';
+
+export interface FxWindow { currency: string; latest: string; median: string; period: string }
+export interface FxWindowSource { window(currency: string, endIsoDate: string, days: number): Promise<FxWindow | null> }
+
+type FetchLike = (url: string, init?: { signal?: AbortSignal; headers?: Record<string, string> }) => Promise<{
+  status: number; ok: boolean; json(): Promise<unknown>;
+}>;
+const BASE = 'https://data.norges-bank.no/api/data/EXR';
+
+export class NorgesBankFxWindow implements FxWindowSource {
+  constructor(private readonly fetchImpl: FetchLike = fetch as unknown as FetchLike, private readonly timeoutMs = 8000) {}
+  async window(currency: string, endIsoDate: string, days: number): Promise<FxWindow | null> {
+    const cur = currency.toUpperCase();
+    if (cur === 'NOK' || !/^[A-Z]{3}$/.test(cur)) return null;
+    const from = addDaysIso(endIsoDate, -days);
+    const url = `${BASE}/B.${cur}.NOK.SP?format=sdmx-json&startPeriod=${from}&endPeriod=${endIsoDate}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await this.fetchImpl(url, { signal: controller.signal, headers: { accept: 'application/json' } });
+      if (!res.ok) return null;
+      const body = (await res.json()) as any;
+      const struct = body?.data?.structure;
+      const dataset = body?.data?.dataSets?.[0];
+      if (!struct || !dataset?.series) return null;
+      const seriesAttrs: { id: string; values: { id: string }[] }[] = struct.attributes?.series ?? [];
+      const umPos = seriesAttrs.findIndex((a) => a.id === 'UNIT_MULT');
+      const obsDates: { id: string }[] = struct.dimensions?.observation?.[0]?.values ?? [];
+      const seriesKey = Object.keys(dataset.series)[0];
+      if (!seriesKey) return null;
+      const series = dataset.series[seriesKey];
+      const unitMult = umPos >= 0 ? Number(seriesAttrs[umPos]!.values[series.attributes[umPos]]?.id ?? '0') : 0;
+
+      const obs: { date: string; value: string }[] = [];
+      for (const idx of Object.keys(series.observations ?? {})) {
+        const date = obsDates[Number(idx)]?.id ?? '';
+        const raw = String(series.observations[idx]?.[0] ?? '');
+        if (date && /^\d+(\.\d+)?$/.test(raw)) obs.push({ date, value: shiftDecimalLeft(raw, unitMult) });
+      }
+      if (!obs.length) return null;
+      obs.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      const latestObs = obs[obs.length - 1]!;
+      // Median: sorter numerisk, ta midterste (partall → nedre midtre; ingen flyttall-artefakt).
+      const byValue = [...obs].sort((a, b) => Number(a.value) - Number(b.value));
+      const median = byValue[Math.floor((byValue.length - 1) / 2)]!.value;
+      return { currency: cur, latest: latestObs.value, median, period: latestObs.date };
+    } catch { return null; } finally { clearTimeout(timer); }
+  }
+}
+
+export class StaticFxWindowStub implements FxWindowSource {
+  constructor(private readonly data: Record<string, { latest: string; median: string; period: string }>) {}
+  async window(currency: string): Promise<FxWindow | null> {
+    const d = this.data[currency.toUpperCase()];
+    return d ? { currency: currency.toUpperCase(), ...d } : null;
+  }
+}
+```
+
+- [ ] **Step 3: Implementer refresh**
 
 ```typescript
 // src/market/refresh.ts
 import type { Db } from '../db/pool.js';
 import type { CompanyRegistry } from '../integrations/company-registry.js';
-import { buildInsights } from './engine.js';
+import { buildInsights, rateTenThousandths, type FxInput } from './engine.js';
 import { getOrgExposure } from './exposure.js';
 import type { KpiSource } from './sources/kpi.js';
 import type { PolicyRateSource } from './sources/policy-rate.js';
+import type { FxWindowSource } from './sources/fx-window.js';
 import { latestSignal, previousSignal, upsertSignal } from './signal-store.js';
 
 export interface MarketSources {
   policyRate: PolicyRateSource;
   kpi: KpiSource;
+  fxWindow: FxWindowSource;
   registry: CompanyRegistry;
 }
 
@@ -857,7 +1090,31 @@ export async function regenerateInsights(db: Db, sources: MarketSources, organiz
     latestSignal(db, 'kpi_yoy', 'KPI'),
     getOrgExposure(db, sources.registry, organizationId),
   ]);
-  const cards = buildInsights({ policyRate, policyRatePrev, kpi, exposure });
+
+  // Bygg FX-inputs per importvaluta (union av handlede valutaer + kjøpsvaluter).
+  const currencies = Array.from(new Set([...exposure.fxCurrencies, ...exposure.fxPurchases.map((p) => p.currency)]));
+  const today = new Date().toISOString().slice(0, 10);
+  const fx: FxInput[] = [];
+  for (const currency of currencies) {
+    const w = await sources.fxWindow.window(currency, today, 90);
+    if (!w) continue;
+    // Persister dagens kurs som signal (periode = observasjonens dato).
+    await upsertSignal(db, { source: 'norges_bank', kind: 'fx_rate', signalKey: currency, value: w.latest, unit: 'nok_per_unit', period: w.period });
+    const spend = exposure.fxSpend.find((s) => s.currency === currency);
+    const purch = exposure.fxPurchases.find((p) => p.currency === currency);
+    // retro.medianNokMinor = hva kjøpene ville kostet på snittkursen. original_amount_minor antas i
+    // valutaens minor-enheter (2 desimaler); NOK-øre = totalForeign × rate = totalForeign × (rateTT/10000).
+    const retro = purch
+      ? { purchaseCount: purch.purchaseCount, actualNokMinor: purch.actualNokMinor,
+          medianNokMinor: (purch.totalForeignMinor * rateTenThousandths(w.median)) / 10000n }
+      : null;
+    fx.push({
+      currency, latestRate: w.latest, medianRate: w.median, period: w.period,
+      medianMonthlySpendMinor: spend?.medianMonthlyMinor ?? null, retro,
+    });
+  }
+
+  const cards = buildInsights({ policyRate, policyRatePrev, kpi, fx, exposure });
 
   const client = await db.connect();
   try {
@@ -902,8 +1159,8 @@ export async function regenerateAllOrgs(db: Db, sources: MarketSources): Promise
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/market/refresh.ts test/market-refresh.pg.test.ts
-git commit -m "feat(market): refresh + regenerering (signaler → kort per org)"
+git add src/market/refresh.ts src/market/sources/fx-window.ts src/integrations/fx-rates.ts test/market-refresh.pg.test.ts
+git commit -m "feat(market): refresh + FX-vindu + regenerering (signaler + fx → kort per org)"
 ```
 
 ---
@@ -977,8 +1234,9 @@ app.post('/api/organizations/:orgId/market/insights/:id/dismiss', /* org-auth */
 ```typescript
 import { NorgesBankPolicyRate } from '../market/sources/policy-rate.js';
 import { SsbKpi } from '../market/sources/kpi.js';
+import { NorgesBankFxWindow } from '../market/sources/fx-window.js';
 // deps:
-marketSources: { policyRate: new NorgesBankPolicyRate(), kpi: new SsbKpi(), registry: /* eksisterende BrregCompanyRegistry-instans */ },
+marketSources: { policyRate: new NorgesBankPolicyRate(), kpi: new SsbKpi(), fxWindow: new NorgesBankFxWindow(), registry: /* eksisterende BrregCompanyRegistry-instans */ },
 ```
 
 - [ ] **Step 5: Skriv API-testen** (bygg app via samme testoppsett som andre `*-api`/server-tester; kall cron med gyldig token + les tilbake):
@@ -1097,7 +1355,7 @@ git commit -m "feat(market): innsikts-kort i Oversikt (Verdt å vite) + Framover
 **Spec-dekning:**
 - Offentlig ryggrad (Norges Bank rente + valuta, SSB KPI) → Tasks 3, 4 (+ FX-kilde finnes; persisteres via refresh om ønsket i v2). ✔
 - NACE via Brreg → Task 5. ✔
-- Tre regler → Task 6 dekker rate_debt + kpi_cost; FX-regel bevisst utsatt til v2 (krever fremtidige innkjøpsdata for kroner-effekt) — notert, ikke placeholder. ⚠ (bevisst v1-avgrensning)
+- Fire regler → Task 6 dekker rate_debt + kpi_cost + fx_timing (framover) + fx_retro (retrospektiv, mot faktiske kjøp). FX-vindu (Norges Bank 90-dager) i Task 7; eksponering (fxSpend + fxPurchases) i Task 5. ✔
 - Framover + Oversikt «Verdt å vite» → Task 9. ✔
 - Deterministisk, null KI → hele v1. ✔
 - Disclosure + kildeattribusjon på hvert kort → Task 6 (sources) + Task 9 («Ikke finansiell rådgivning»). ✔
