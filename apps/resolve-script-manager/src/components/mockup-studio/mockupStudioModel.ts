@@ -56,7 +56,13 @@ export interface MockupDeviceSlot {
   /** Ren status-bar (09:41 + signal/wifi/batteri) over skjermbildet (kun telefoner). */
   cleanStatusBar?: boolean;
   /** Ekte 3D-render (WebGL, bakt til 2D-lag). Kun iphone/android i fase 1. Default av. */
-  threeD?: { rotX: number; rotY: number; rotZ: number; light?: string };
+  threeD?: { rotX: number; rotY: number; rotZ: number; light?: string; zoom?: number; kbLayout?: 'mac' | 'windows' };
+  /**
+   * Skrive-animasjon: teksten «skrives» tegn-for-tegn på skjermen mens riktig
+   * tast trykkes (laptop = fysisk dekk; telefon/tablet = on-screen-tastatur).
+   * Drives av animasjons-tidslinjen (anim.t). Tom/udefinert = ingen animasjon.
+   */
+  typeAnim?: { text: string; keyPop?: boolean };
 }
 
 export type MockupTextRole = 'eyebrow' | 'title' | 'body' | 'tag';
@@ -138,8 +144,9 @@ export interface MockupCanvasSpec {
   decor?: MockupDecor;
   /** Valgfri AI-generert bakgrunnsbilde (data-URL, cover-fylt bak dekor). */
   bgImage?: string;
-  /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad. */
-  scene?: { id: string; shot?: string };
+  /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad.
+   * typeAnim = valgfri skrive-animasjon komponert på skjermbildet (on-screen-tastatur). */
+  scene?: { id: string; shot?: string; typeAnim?: { text: string; keyPop?: boolean } };
   /** Valgfri logo. */
   logo?: MockupLogo;
 }

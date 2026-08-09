@@ -81,6 +81,7 @@ import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { exportAndSaveGif } from './mockupGifExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
+import { exportCinematic } from './mockupCinematicExport';
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -327,6 +328,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     } finally { setVideoBusy(false); }
   };
 
+  const runExportCinematic = async () => {
+    if (videoBusy) return;
+    setVideoBusy(true);
+    try {
+      const out = await exportCinematic(doc, 36, (m) => setExportMsg(m));
+      setExportMsg(out ? '✓ Cinematic MP4 lagret (Blender/Cycles).' : null);
+    } catch (e) {
+      console.error('[mockup-studio] cinematic', e);
+      setExportMsg(`Cinematic gikk ikke: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setVideoBusy(false);
+    }
+  };
+
   const runExportGif = async (cfg: MotionConfig) => {
     if (videoBusy) return;
     setVideoBusy(true);
@@ -479,6 +494,12 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             {MOTION_PRESETS.map((p) => <option key={`gif-${p.id}`} value={`gif:${p.id}`}>🎞️ {p.label}</option>)}
           </optgroup>
         </select>
+        <button
+          onClick={() => void runExportCinematic()}
+          disabled={videoBusy}
+          style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy ? 0.5 : 1 }}
+          title="Fotoreal Blender-render (Cycles) av 3D-enheten i et studio-environment → MP4. Krever Blender installert. ~1–3 min."
+        >🎥 Cinematic</button>
         <button onClick={() => setShowExport(true)} style={primaryBtn} title="Kvalitetssjekk → format → eksport (PNG/PDF/PSD)">Eksporter</button>
       </div>
 
@@ -799,7 +820,22 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
             }} />
           </label>
         )}
-        {canvas.scene?.id && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Skjermbildet warpes i perspektiv inn i scenens skjerm. Tekst legges oppå.</div>}
+        {canvas.scene?.id && canvas.scene.shot && (
+          <input
+            type="text"
+            value={canvas.scene.typeAnim?.text ?? ''}
+            onChange={(e) => patchCanvas({ scene: { id: canvas.scene!.id, shot: canvas.scene!.shot, typeAnim: e.target.value ? { text: e.target.value, keyPop: canvas.scene!.typeAnim?.keyPop } : undefined } })}
+            placeholder="Skrive-animasjon på skjermen (valgfritt)"
+            style={{ ...textInput, marginTop: 6 }}
+          />
+        )}
+        {canvas.scene?.typeAnim?.text && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!canvas.scene.typeAnim?.keyPop} onChange={(e) => patchCanvas({ scene: { id: canvas.scene!.id, shot: canvas.scene!.shot, typeAnim: { text: canvas.scene!.typeAnim!.text, keyPop: e.target.checked } } })} />
+            Tastetrykk-pop (tast svever opp)
+          </label>
+        )}
+        {canvas.scene?.id && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Skjermbildet warpes i perspektiv inn i scenens skjerm. Skriv inn tekst for on-screen-tastatur-animasjon. Tekst-lag legges oppå.</div>}
       </Field>
       <Field label="AI-bakgrunn">
         <input value={bgPrompt} onChange={(e) => setBgPrompt(e.target.value)} placeholder="Beskriv scene (tomt = fra palett)" style={{ ...textInput, marginBottom: 6 }} />
@@ -1085,6 +1121,36 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
               <input type="range" min={-45} max={45} value={device.threeD![axis]} onChange={(e) => patchDevice(device.id, { threeD: { ...device.threeD!, [axis]: Number(e.target.value) } })} style={{ width: '100%' }} />
             </Field>
           ))}
+          {device.threeD && (
+            <Field label={`3D-størrelse: ${Math.round((device.threeD.zoom ?? 1) * 100)}%`}>
+              <input type="range" min={0.7} max={1.6} step={0.05} value={device.threeD.zoom ?? 1} onChange={(e) => patchDevice(device.id, { threeD: { ...device.threeD!, zoom: Number(e.target.value) } })} style={{ width: '100%' }} />
+            </Field>
+          )}
+          {device.threeD && device.variant === 'macbook' && (
+            <Field label="Tastatur-layout">
+              <select value={device.threeD.kbLayout ?? 'mac'} onChange={(e) => patchDevice(device.id, { threeD: { ...device.threeD!, kbLayout: e.target.value as 'mac' | 'windows' } })} style={textInput}>
+                <option value="mac">Mac (⌘ ⌥ ⌃)</option>
+                <option value="windows">Windows (Ctrl ⊞ Alt)</option>
+              </select>
+            </Field>
+          )}
+          {device.threeD && (
+            <Field label="Skrive-animasjon (tekst «skrives» på skjermen)">
+              <input
+                type="text"
+                value={device.typeAnim?.text ?? ''}
+                onChange={(e) => patchDevice(device.id, { typeAnim: e.target.value ? { text: e.target.value, keyPop: device.typeAnim?.keyPop } : undefined })}
+                placeholder="F.eks. Hei verden — tastene trykkes"
+                style={textInput}
+              />
+            </Field>
+          )}
+          {device.threeD && device.typeAnim?.text && (
+            <label style={checkRow}>
+              <input type="checkbox" checked={!!device.typeAnim?.keyPop} onChange={(e) => patchDevice(device.id, { typeAnim: { text: device.typeAnim!.text, keyPop: e.target.checked } })} />
+              Tastetrykk-pop (tast svever opp)
+            </label>
+          )}
         </>
       )}
       <label style={checkRow}>

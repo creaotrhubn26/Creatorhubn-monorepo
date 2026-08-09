@@ -38,6 +38,27 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const dragAbort = useRef<AbortController | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
+  // ── Skrive-animasjon: avspilling (rAF ramper anim.t 0→1) ─────────────────
+  const [playT, setPlayT] = useState<number | null>(null);
+  const playRef = useRef<number | null>(null);
+  const hasTyping = doc.devices.some((d) => !!d.typeAnim?.text && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
+  const playTyping = () => {
+    if (playRef.current) cancelAnimationFrame(playRef.current);
+    const lens = doc.devices.filter((d) => d.typeAnim?.text).map((d) => d.typeAnim!.text.length);
+    if (doc.canvas.scene?.typeAnim?.text) lens.push(doc.canvas.scene.typeAnim.text.length);
+    const dur = 900 + Math.max(1, ...lens) * 120; // ~120ms per tegn + innledning
+    let start: number | null = null;
+    const step = (ts: number) => {
+      if (start == null) start = ts;
+      const t = Math.min(1, (ts - start) / dur);
+      setPlayT(t);
+      if (t < 1) playRef.current = requestAnimationFrame(step);
+      else { playRef.current = null; window.setTimeout(() => setPlayT(null), 700); } // hold slutt, så statisk
+    };
+    playRef.current = requestAnimationFrame(step);
+  };
+  useEffect(() => () => { if (playRef.current) cancelAnimationFrame(playRef.current); }, []);
+
   // ── Visning (zoom/pan) ───────────────────────────────────────────────────
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
   const panRef = useRef<{ sx: number; sy: number; tx: number; ty: number } | null>(null);
@@ -56,7 +77,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         ? 'Mind map-kilden er tom eller ugyldig — sjekk Mermaid-syntaksen (rot-node + innrykkede grener).'
         : null);
     }
-    rasterizeMockup(doc, scale).then((off) => {
+    rasterizeMockup(doc, scale, playT != null ? { anim: { t: playT } } : undefined).then((off) => {
       if (!alive) return;
       const cv = canvasRef.current;
       if (!cv) return;
@@ -71,7 +92,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       setRenderError('Kunne ikke tegne forhåndsvisningen — sjekk innholdet/kilden.');
     });
     return () => { alive = false; };
-  }, [doc]);
+  }, [doc, playT]);
 
   const selId = (s: Selection): string | null => (s.kind === 'device' || s.kind === 'text' ? s.id : null);
   const selectedId = selId(selection);
@@ -254,6 +275,23 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', background: '#05070c',
       }}
     >
+      {hasTyping && (
+        <button
+          onClick={() => playTyping()}
+          disabled={playT != null}
+          title="Spill av skrive-animasjonen i forhåndsvisningen"
+          style={{
+            position: 'absolute', top: 12, left: 12, zIndex: 5,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 12px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)',
+            background: playT != null ? 'rgba(37,99,235,0.9)' : 'rgba(15,18,26,0.82)', color: '#fff',
+            font: '600 12px system-ui, sans-serif', cursor: playT != null ? 'default' : 'pointer',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          {playT != null ? `Skriver… ${Math.round(playT * 100)}%` : '▶ Spill av skriving'}
+        </button>
+      )}
       <div
         ref={wrapRef}
         onPointerDown={beginPan}

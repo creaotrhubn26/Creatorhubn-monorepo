@@ -7,6 +7,8 @@
 
 import sceneDesk from './scenes/scene_desk.jpg';
 import sceneHand from './scenes/scene_hand.jpg';
+import sceneField from './scenes/scene_field.jpg';
+import sceneOffice from './scenes/scene_office.jpg';
 import type { Quad } from './mockupSceneWarp';
 
 export interface MockupScene {
@@ -26,6 +28,15 @@ export const MOCKUP_SCENES: MockupScene[] = [
   {
     id: 'scene_hand', label: 'Hånd-holdt (vinklet)', src: sceneHand, aspect: 1122 / 1402,
     screen: [[0.3226, 0.1498], [0.6373, 0.1369], [0.7184, 0.6912], [0.3939, 0.7083]],
+  },
+  {
+    // Auto-detektert quad (scripts/detect-scene-quad.py). Higgsfield-generert, ingen lisens.
+    id: 'scene_field', label: 'Arbeidsfelt (håndholdt)', src: sceneField, aspect: 1122 / 1496,
+    screen: [[0.2325, 0.1914], [0.8, 0.2233], [0.84, 0.7824], [0.215, 0.8105]],
+  },
+  {
+    id: 'scene_office', label: 'Kontor (håndholdt)', src: sceneOffice, aspect: 1122 / 1496,
+    screen: [[0.2025, 0.3396], [0.785, 0.349], [0.7925, 0.728], [0.2725, 0.7411]],
   },
 ];
 

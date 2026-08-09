@@ -17,6 +17,7 @@ import { revealFor, type Reveal } from './mockupMotion';
 import { matrixFor, tiltsLeft } from './mockupPerspective';
 import { render3dDevice, webglAvailable } from './mockup3d/mockup3d';
 import { cacheKey, is3dVariant } from './mockup3d/deviceGeometry';
+import { typedState, drawTextField, drawOnScreenKeyboard, drawKeyPop } from './mockup3d/keyboardAnim';
 import { sceneById } from './mockupScenes';
 import { drawImageQuad, type Quad } from './mockupSceneWarp';
 import {
@@ -147,8 +148,31 @@ function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
   glow(w * 0.18, h * 0.9, w * 0.45, c.accent2, light ? 0.13 : 0.22);
 }
 
+/**
+ * Komponer skrive-animasjon (on-screen-tastatur + tekstfelt + pop) på scene-
+ * skjermbildet før warp. Returnerer et canvas, eller original-bildet uendret.
+ */
+function composeSceneShot(img: HTMLImageElement, typeAnim: { text: string; keyPop?: boolean } | undefined, t?: number): HTMLImageElement | HTMLCanvasElement {
+  if (!typeAnim?.text) return img;
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+  if (!x) return img;
+  x.drawImage(img, 0, 0);
+  const text = typeAnim.text, n = text.length, prog = t ?? 1;
+  const { typed, pressed } = typedState(text, prog);
+  const kbTop = drawOnScreenKeyboard(x, W, H, pressed);
+  const caret = Math.floor(prog * Math.max(1, n) * 2) % 2 === 0;
+  drawTextField(x, W, H, typed, kbTop - 0.11, caret);
+  if (typeAnim.keyPop && n > 0 && prog < 1) {
+    const pn = prog * n, idx = Math.floor(pn);
+    if (idx < n && text[idx] !== ' ') drawKeyPop(x, W, H, text[idx], pn - idx, 0.58);
+  }
+  return cv;
+}
+
 /** Lifestyle-scene: fotografisk bakgrunn cover-fylt + skjermbilde warpet i quad. */
-async function drawScene(ctx: CanvasRenderingContext2D, doc: MockupDoc): Promise<void> {
+async function drawScene(ctx: CanvasRenderingContext2D, doc: MockupDoc, t?: number): Promise<void> {
   const sc = sceneById(doc.canvas.scene?.id);
   if (!sc) return;
   const W = doc.canvas.w, H = doc.canvas.h;
@@ -163,7 +187,10 @@ async function drawScene(ctx: CanvasRenderingContext2D, doc: MockupDoc): Promise
   const dw = iw * scale, dh = ih * scale, ox = (W - dw) / 2, oy = (H - dh) / 2;
   const px = (p: [number, number]): [number, number] => [ox + p[0] * dw, oy + p[1] * dh];
   const quad = sc.screen.map(px) as Quad;
-  try { drawImageQuad(ctx, await loadImage(shot), quad); } catch { /* behold svart skjerm */ }
+  try {
+    const shotImg = await loadImage(shot);
+    drawImageQuad(ctx, composeSceneShot(shotImg, doc.canvas.scene?.typeAnim, t), quad);
+  } catch { /* behold svart skjerm */ }
 }
 
 /** AI-generert bakgrunnsbilde: cover-fyll hele lerretet (bak dekor). Best-effort. */
@@ -394,7 +421,7 @@ function drawReflection(ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement,
   ctx.drawImage(tmp, x, y + h, w, h);
 }
 
-async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot): Promise<void> {
+async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot, t?: number): Promise<void> {
   const w = dev.w;
   const h = deviceHeight(dev);
   const cx = dev.x + w / 2;
@@ -416,11 +443,16 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   // Ekte 3D (WebGL) bakt til 2D-lag — erstatter 2D-ramme + 2.5D-perspektiv.
   if (dev.threeD && is3dVariant(dev.variant) && webglAvailable()) {
     try {
-      const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', Math.round(w), (dev.image ?? '').length]);
+      // Skrive-animasjon: teksten skrives ved anim.t (fallback 1 = ferdig skrevet i statisk visning).
+      const typeArg = dev.typeAnim?.text ? { text: dev.typeAnim.text, progress: t ?? 1, keyPop: dev.typeAnim.keyPop } : undefined;
+      const typeKey = typeArg ? `${typeArg.text.length}:${typeArg.progress.toFixed(3)}:${typeArg.keyPop ? 1 : 0}` : '';
+      const zoom = dev.threeD.zoom ?? 1;
+      const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', zoom, dev.threeD.kbLayout ?? 'mac', Math.round(w), (dev.image ?? '').length, typeKey]);
       let baked = _bakeCache.get(key);
       if (!baked) {
-        const px = Math.max(256, Math.round(w * 2));
-        baked = await render3dDevice({ variant: dev.variant, shot: dev.image, rotX: dev.threeD.rotX, rotY: dev.threeD.rotY, rotZ: dev.threeD.rotZ, light: dev.threeD.light, w: px, h: Math.round(px * (h / w)) });
+        // Bake-oppløsning skalerer med zoom → skarpere skjerm + tastatur ved innzooming.
+        const px = Math.max(256, Math.round(w * 2 * Math.max(1, Math.min(2, zoom))));
+        baked = await render3dDevice({ variant: dev.variant, shot: dev.image, rotX: dev.threeD.rotX, rotY: dev.threeD.rotY, rotZ: dev.threeD.rotZ, light: dev.threeD.light, zoom, kbLayout: dev.threeD.kbLayout, w: px, h: Math.round(px * (h / w)), type: typeArg });
         if (_bakeCache.size > 40) _bakeCache.clear();
         _bakeCache.set(key, baked);
       }
@@ -860,7 +892,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
 
   // Lifestyle-scene-modus: fotografisk scene + warpet skjermbilde (tekst/logo over).
   if (doc.canvas.scene?.id) {
-    await drawScene(ctx, doc);
+    await drawScene(ctx, doc, t ?? undefined);
     doc.texts.forEach((tx) => drawText(ctx, doc, tx));
     await drawLogo(ctx, doc.canvas);
     if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
@@ -886,7 +918,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
       ctx.globalAlpha *= rev.alpha;
       ctx.translate(cx, cy + rev.ty); ctx.scale(rev.scale, rev.scale); ctx.translate(-cx, -cy);
     }
-    await drawDevice(ctx, doc, dev);
+    await drawDevice(ctx, doc, dev, t ?? undefined);
     ctx.restore();
   }
   doc.texts.forEach((tx, i) => {
