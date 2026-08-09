@@ -25,7 +25,7 @@ const NUDGE_BIG = 48;   // med Shift
 const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
 const TL_FS = 'clamp(10px, 0.72vw, 12.5px)'; // responsiv transport-tekst (matcher timeline)
-const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(28px, 2.1vw, 40px)', height: 'clamp(28px, 2.1vw, 40px)', borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
+const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(36px, 2.6vw, 50px)', height: 'clamp(36px, 2.6vw, 50px)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
 const activeBtn: CSSProperties = { background: '#2563eb', borderColor: '#2563eb', color: '#fff' }; // aktiv tilstand (spiller/loop på)
 const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: TL_FS };
 // Ordentlige SVG-ikoner (ikke emoji) for transport.
@@ -38,18 +38,18 @@ const fmtTimecode = (sec: number): string => {
 };
 const ICON = '#eef1f6';
 const Svg = ({ children }: { children: ReactNode }) => (
-  <svg width="76%" height="76%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
+  <svg width="88%" height="88%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
 );
 const IcStart = () => <Svg><rect x="6" y="5" width="2.4" height="14" rx="1" /><path d="M19 5 10 12l9 7z" /></Svg>;
 const IcPlay = () => <Svg><path d="M8 5v14l11-7z" /></Svg>;
 const IcPause = () => <Svg><rect x="7" y="5" width="3.4" height="14" rx="1" /><rect x="13.6" y="5" width="3.4" height="14" rx="1" /></Svg>;
 const IcLoop = () => (
-  <svg width="76%" height="76%" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+  <svg width="88%" height="88%" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
     <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
   </svg>
 );
 const IcEnd = () => <Svg><path d="M6 5 13 12 6 19z" /><rect x="14.6" y="5" width="2.4" height="14" rx="1" /></Svg>;
-const chevSvg = { width: '76%', height: '76%', viewBox: '0 0 24 24', fill: 'none', stroke: ICON, strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { display: 'block' } };
+const chevSvg = { width: '88%', height: '88%', viewBox: '0 0 24 24', fill: 'none', stroke: ICON, strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { display: 'block' } };
 const IcStepBack = () => <svg {...chevSvg}><path d="M14 6l-6 6 6 6" /></svg>;
 const IcStepFwd = () => <svg {...chevSvg}><path d="M10 6l6 6-6 6" /></svg>;
 
