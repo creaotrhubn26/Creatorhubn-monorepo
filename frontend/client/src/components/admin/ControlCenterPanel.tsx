@@ -207,6 +207,23 @@ interface SecretsResponse {
   generatedAt: string;
 }
 
+type ReleaseWatchStatus = 'ok' | 'updated' | 'error' | 'unknown';
+
+interface ReleaseStatusView {
+  key: string;
+  label: string;
+  status: ReleaseWatchStatus;
+  version: string | null;
+  url: string | null;
+  message: string | null;
+  checkedAt: string | null;
+}
+
+interface ReleasesResponse {
+  releases: ReleaseStatusView[];
+  generatedAt: string;
+}
+
 interface NewErrorAnomaly {
   fingerprint: string;
   message: string;
@@ -340,6 +357,7 @@ const SUBTABS = [
   { id: 'incidents', label: 'Hendelser' },
   { id: 'canary', label: 'Canary' },
   { id: 'secrets', label: 'Nøkler' },
+  { id: 'releases', label: 'Releases' },
   { id: 'anomaly', label: 'Anomali' },
   { id: 'health', label: 'Helse' },
   { id: 'ai-margin', label: 'AI-margin' },
@@ -478,6 +496,13 @@ const ControlCenterPanel: React.FC = () => {
     enabled: subTab === 'secrets',
   });
 
+  const releases = useQuery<ReleasesResponse>({
+    queryKey: ['/api/control-center/releases'],
+    queryFn: () => apiRequest('/api/control-center/releases'),
+    refetchInterval: POLL_MS,
+    enabled: subTab === 'releases',
+  });
+
   const anomaly = useQuery<AnomalyResponse>({
     queryKey: ['/api/control-center/anomalies'],
     queryFn: () => apiRequest('/api/control-center/anomalies'),
@@ -577,6 +602,7 @@ const ControlCenterPanel: React.FC = () => {
       )}
       {subTab === 'canary' && <CanarySection canary={canary} />}
       {subTab === 'secrets' && <SecretsSection secrets={secrets} />}
+      {subTab === 'releases' && <ReleasesSection releases={releases} />}
       {subTab === 'anomaly' && <AnomalySection anomaly={anomaly} />}
       {subTab === 'health' && <HealthSection health={health} />}
       {subTab === 'ai-margin' && <AiMarginSection aiMargin={aiMargin} />}
@@ -1073,6 +1099,88 @@ const SecretsSection: React.FC<{ secrets: ReturnType<typeof useQuery<SecretsResp
         Daglig probe av plattform-nøklenes gyldighet (GitHub-PAT også utløpsdato via API-header).
         Ugyldig/utløpende nøkkel bygger en hendelse + e-post til super_admin ved forverring/gjenoppretting.
         «Ikke koblet» = env ikke satt. Sist oppdatert {relTime(generatedAt)}.
+      </Typography>
+    </Box>
+  );
+};
+
+// ─── Releases (leverandør-release-vakt) ──────────────────────────────────────
+
+const RELEASE_STATUS_META: Record<ReleaseWatchStatus, { label: string; color: string }> = {
+  ok: { label: 'Uendret', color: '#3dd68c' },
+  updated: { label: 'Ny release', color: '#f5a623' },
+  error: { label: 'Hentefeil', color: '#8b8b8b' },
+  unknown: { label: 'Aldri sjekket', color: '#6b6b6b' },
+};
+
+const ReleasesSection: React.FC<{ releases: ReturnType<typeof useQuery<ReleasesResponse>> }> = ({ releases }) => {
+  if (releases.isLoading) return <Loading />;
+  if (releases.isError || !releases.data) return <ErrorLine msg="Kunne ikke hente release-status." />;
+
+  const { releases: rows, generatedAt } = releases.data;
+  const updatedCount = rows.filter((r) => r.status === 'updated').length;
+  const trackedCount = rows.filter((r) => r.status !== 'unknown').length;
+
+  return (
+    <Box sx={{ display: 'grid', gap: 2 }}>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <KpiCard
+          label="Nye releaser"
+          value={String(updatedCount)}
+          hint="Siden forrige kjøring"
+          accent={updatedCount > 0 ? '#f5a623' : '#3dd68c'}
+        />
+        <KpiCard label="Vakter med baseline" value={`${trackedCount}/${rows.length}`} hint="Leverandør-flater overvåket" />
+      </Stack>
+
+      <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.08)' } }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ color: 'text.secondary' }}>Leverandør</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Status</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Siste versjon</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>Detalj</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }} align="right">Sist sjekket</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((r) => {
+            const meta = RELEASE_STATUS_META[r.status] ?? RELEASE_STATUS_META.unknown;
+            return (
+              <TableRow key={r.key}>
+                <TableCell sx={{ fontSize: 12.5, fontWeight: 600 }}>{r.label}</TableCell>
+                <TableCell>
+                  <Chip size="small" label={meta.label} sx={{ height: 18, fontSize: 10, bgcolor: meta.color, color: '#fff' }} />
+                </TableCell>
+                <TableCell sx={{ fontSize: 11.5 }}>
+                  {r.version ? (
+                    r.url ? (
+                      <a href={r.url} target="_blank" rel="noreferrer" style={{ color: '#4c6ef5' }}>
+                        {r.version}
+                      </a>
+                    ) : (
+                      r.version
+                    )
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
+                <TableCell sx={{ fontSize: 11, color: 'text.disabled', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.message ?? '—'}
+                </TableCell>
+                <TableCell align="right" sx={{ fontSize: 11, color: 'text.disabled' }}>
+                  {r.checkedAt ? relTime(r.checkedAt) : 'aldri'}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>
+        Ukentlig deteksjon av nye leverandør-releaser for flater med drift-historikk. Varsel til super_admin
+        kun ved versjons-transisjon; impact-vurdering kjøres etterpå med documentation-intelligence-skillen.
+        «Hentefeil» er ærlig-inkonklusiv (kilde nede/endret) og varsler aldri. Sist oppdatert {relTime(generatedAt)}.
       </Typography>
     </Box>
   );

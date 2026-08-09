@@ -1,0 +1,93 @@
+name: PR Guardian (warn-only)
+
+# Documentation Intelligence PR Guardian, mekanisk lag: når en PR rører
+# integrasjonsflater, ekstraher nye eksterne API-symboler fra diffen og post
+# én sticky-kommentar med funn + sjekkliste-lenke. VARSLER KUN — blokkerer
+# aldri (kalibrering før evt. gate; jf. policies/PR_GUARDIAN.md i skill-pakken).
+
+on:
+  pull_request:
+    paths:
+      - 'backend/server/**lti**'
+      - 'backend/server/**oauth**'
+      - 'backend/server/**stripe**'
+      - 'backend/server/control-center-*.ts'
+      - 'apps/resolve-script-manager/python/**'
+      - 'apps/resolve-script-manager/resolve-plugin/**'
+      - 'apps/resolve-photoshop-bridge/**'
+      - 'ipad/**/Intelligence/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-guardian-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Sjekk nye eksterne symboler
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ekstraher nye eksterne API-symboler fra diffen
+        id: extract
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          # Kun tilførte linjer; mønstre = eksterne API-klasser vi har brent oss på
+          ADDED=$(git diff "$BASE".."$HEAD" --unified=0 -- \
+              backend/server apps/resolve-script-manager apps/resolve-photoshop-bridge ipad 2>/dev/null \
+            | grep -E '^\+[^+]' | cut -c2- || true)
+          FOUND=$(echo "$ADDED" | grep -ohE \
+            'batchPlay|executeAsModal|photoshop_[a-z_]+|\.(GetResolve|AddRenderJob|AppendToTimeline|ImportMedia|SetRenderSettings|CreateEmptyTimeline|GetItemListInTrack|GetClipProperty)\(|https://[a-z0-9.-]+\.(googleapis|stripe|adobe|blackmagicdesign|imsglobal)\.[a-z]+[^"'"'"' ]*|scope[s]?[=:][^ ]*googleapis|LanguageModelSession|FoundationModels|fetchPlatform\(' \
+            | sort -u | head -30 || true)
+          if [ -z "$FOUND" ]; then
+            echo "found=" >> "$GITHUB_OUTPUT"
+            echo "Ingen nye eksterne symboler i diffen."
+          else
+            {
+              echo "found<<EOF"
+              echo "$FOUND"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post/oppdater sticky-kommentar
+        if: steps.extract.outputs.found != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOUND: ${{ steps.extract.outputs.found }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          BODY=$(cat <<EOF
+          <!-- pr-guardian -->
+          ## 🛡️ PR Guardian (warn-only)
+
+          Diffen legger til eksterne API-symboler/endepunkter på en integrasjonsflate:
+
+          \`\`\`
+          $FOUND
+          \`\`\`
+
+          **Sjekkliste før merge** (\`.claude/skills/documentation-intelligence/policies/PR_GUARDIAN.md\`):
+          - [ ] Symbolene verifisert mot versjons-matchet offisiell doc (\`api-validator\`) — husk kalibreringsregelen: fungerende call-site i repoet trumfer manglende doc
+          - [ ] Kompatibilitet sjekket hvis støttet stack endres
+          - [ ] Nødvendige scopes/permissions på plass
+          - [ ] Langhale-beslutning? → skriv \`docs/evidence/\`-fil
+
+          _Mekanisk ekstraksjon — falske positiver forventes. Varsler kun, blokkerer aldri._
+          EOF
+          )
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/$PR/comments" \
+            --jq '.[] | select(.body | startswith("<!-- pr-guardian -->")) | .id' | head -1)
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
+          else
+            gh api "repos/${{ github.repository }}/issues/$PR/comments" -f body="$BODY" >/dev/null
+          fi

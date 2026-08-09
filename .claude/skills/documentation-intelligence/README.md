@@ -239,3 +239,14 @@ Documentation
 ```
 
 rather than letting a coding model jump directly from search results to implementation.
+
+## Packaging as a standalone plugin (future)
+
+The pack is self-contained under this directory: umbrella `SKILL.md` + child
+skills + `shared/` + `policies/` + `schemas/` + `scripts/` + `sources/`.
+To reuse outside this monorepo: copy the directory into the target repo's
+`.claude/skills/`, keep relative paths, and re-point the two repo-specific
+parts — `sources/vendors.yaml` (vendor list) and the `docs/evidence/`
+convention (repo-root path referenced in SKILL.md Runtime Notes). No code
+changes required; the Control Center release-monitor integration is
+monorepo-specific and stays behind.
