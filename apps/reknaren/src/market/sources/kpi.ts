@@ -22,9 +22,14 @@ type FetchLike = (
   json(): Promise<unknown>;
 }>;
 
-const ENDPOINT = 'https://data.ssb.no/api/v0/no/table/03014/';
+// Tabell 03013: KPI etter måned. Bruker Tolvmanedersendring (12-mnd endring i prosent).
+// Gir månedsdata (YYYYM01 etc), ikke årlig som 03014.
+const ENDPOINT = 'https://data.ssb.no/api/v0/no/table/03013/';
 const QUERY = {
-  query: [{ code: 'ContentsCode', selection: { filter: 'item', values: ['Aarsendring'] } }],
+  query: [
+    { code: 'ContentsCode', selection: { filter: 'item', values: ['Tolvmanedersendring'] } },
+    { code: 'Konsumgrp', selection: { filter: 'item', values: ['TOTAL'] } },
+  ],
   response: { format: 'json-stat2' },
 };
 
@@ -66,7 +71,7 @@ export class SsbKpi implements KpiSource {
       return {
         value: String(raw),
         period: normPeriod(lastPeriod),
-        source: `SSB tabell 03014 (${normPeriod(lastPeriod)})`,
+        source: `SSB tabell 03013 (${normPeriod(lastPeriod)})`,
       };
     } catch {
       return null;
