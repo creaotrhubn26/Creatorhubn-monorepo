@@ -58,12 +58,18 @@ function windowFor(kind: RevealKind, i: number, total: number): [number, number]
 /** Beregn avsløring for et element ved fremdrift t. */
 export function revealFor(kind: RevealKind, i: number, total: number, t: number): Reveal {
   const [s, e] = windowFor(kind, i, total);
-  const local = clamp01((t - s) / Math.max(0.0001, e - s));
+  return revealFromLocal(kind, (t - s) / Math.max(0.0001, e - s));
+}
+
+/** Samme inntoning som revealFor, men fra en direkte lokal progresjon (0..1) —
+ *  brukes av multi-spor timelinen (hvert element følger sitt reveal-klipp). */
+export function revealFromLocal(kind: RevealKind, local: number): Reveal {
+  local = clamp01(local);
   const pop = kind === 'callout' || kind === 'loupe';
   const eased = pop ? easeOutBack(local) : easeOutCubic(local);
   const alpha = clamp01(local * 1.15); // litt raskere opasitet enn bevegelse
   if (kind === 'callout' || kind === 'loupe' || kind === 'marker' || kind === 'mindmap') {
-    const from = kind === 'callout' ? 0.4 : kind === 'loupe' ? 0.55 : kind === 'mindmap' ? 0.9 : 0.9;
+    const from = kind === 'callout' ? 0.4 : kind === 'loupe' ? 0.55 : 0.9;
     return { p: local, alpha, ty: 0, scale: from + (1 - from) * eased };
   }
   // device / text: glir opp + svak skalering

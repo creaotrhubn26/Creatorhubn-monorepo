@@ -26,6 +26,17 @@ export function MockupTimelinePanel({ playT, onScrub }: { playT: number | null; 
   // Persister timeline-endring (dra klipp).
   const writeClips = (clips: TimelineClip[]) => setDocSilent({ ...doc, timeline: { duration: dur, clips } });
 
+  // Snapping: klipp-kanter fester til andre klipp-kanter, playhead og heltalls-sek.
+  const snap = (sec: number, selfId: string): number => {
+    const targets = [0, dur, (playT ?? 0) * dur];
+    for (let s = 0; s <= dur; s++) targets.push(s);
+    tl.clips.forEach((c) => { if (c.id !== selfId) { targets.push(c.start); targets.push(c.start + c.len); } });
+    const thr = dur * 0.012; // snap-terskel
+    let best = sec, bd = thr;
+    for (const tg of targets) { const d = Math.abs(sec - tg); if (d < bd) { bd = d; best = tg; } }
+    return best;
+  };
+
   const scrubFromEvent = (clientX: number) => {
     const r = railRef.current?.getBoundingClientRect();
     if (!r) return;
@@ -41,8 +52,31 @@ export function MockupTimelinePanel({ playT, onScrub }: { playT: number | null; 
     const ac = new AbortController();
     const move = (ev: PointerEvent) => {
       const dSec = ((ev.clientX - sx) / r.width) * dur;
-      const ns = Math.max(0, Math.min(dur - clip.len, startSec + dSec));
-      writeClips(tl.clips.map((c) => (c.id === clip.id ? { ...c, start: Math.round(ns * 100) / 100 } : c)));
+      const raw = Math.max(0, Math.min(dur - clip.len, startSec + dSec));
+      const snapStart = snap(raw, clip.id);                    // venstre kant
+      const snapEnd = snap(raw + clip.len, clip.id) - clip.len; // høyre kant
+      const ns = Math.abs(snapEnd - raw) < Math.abs(snapStart - raw) ? snapEnd : snapStart;
+      const clamped = Math.max(0, Math.min(dur - clip.len, ns));
+      writeClips(tl.clips.map((c) => (c.id === clip.id ? { ...c, start: Math.round(clamped * 100) / 100 } : c)));
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
+
+  // Resize høyre kant → endre varighet (med snapping).
+  const beginClipResize = (clip: TimelineClip, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const r = railRef.current?.getBoundingClientRect();
+    if (!r) return;
+    pushHistory();
+    const sx = e.clientX, startLen = clip.len;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      const dSec = ((ev.clientX - sx) / r.width) * dur;
+      const rawEnd = clip.start + Math.max(0.3, startLen + dSec);
+      const end = Math.min(dur, snap(rawEnd, clip.id));
+      const len = Math.round(Math.max(0.3, end - clip.start) * 100) / 100;
+      writeClips(tl.clips.map((c) => (c.id === clip.id ? { ...c, len } : c)));
     };
     window.addEventListener('pointermove', move, { signal: ac.signal });
     window.addEventListener('pointerup', () => ac.abort(), { once: true });
@@ -87,7 +121,14 @@ export function MockupTimelinePanel({ playT, onScrub }: { playT: number | null; 
                 display: 'flex', alignItems: 'center', paddingLeft: 5, overflow: 'hidden', whiteSpace: 'nowrap',
                 color: '#fff', fontSize: 9, cursor: 'grab', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
               }}
-            >{c.label}</div>
+            >
+              {c.label}
+              <div
+                onPointerDown={(e) => beginClipResize(c, e)}
+                title="Dra for å endre varighet"
+                style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.25)' }}
+              />
+            </div>
           ))}
           {/* Playhead */}
           <div style={{ position: 'absolute', left: `${(playT ?? 0) * 100}%`, top: 0, bottom: 0, width: 1.5, background: '#f43f5e', pointerEvents: 'none', boxShadow: '0 0 6px rgba(244,63,94,0.8)' }}>

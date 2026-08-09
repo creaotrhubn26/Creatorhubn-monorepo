@@ -13,7 +13,7 @@
 
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
 import { parseMermaidMindmap } from './mockupMindmap';
-import { revealFor, type Reveal } from './mockupMotion';
+import { revealFor, revealFromLocal, type Reveal } from './mockupMotion';
 import { matrixFor, tiltsLeft } from './mockupPerspective';
 import { render3dDevice, webglAvailable } from './mockup3d/mockup3d';
 import { cacheKey, is3dVariant } from './mockup3d/deviceGeometry';
@@ -886,6 +886,12 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   const tl = t != null ? deriveTimeline(doc) : null;
   const typeTFor = (ref: string): number | undefined =>
     tl ? (clipLocalT(tl, ref, 'type', t as number) ?? undefined) : (t ?? undefined);
+  // Reveal per-klipp om timelinen har et reveal-klipp for elementet; ellers global stagger.
+  const revealOf = (ref: string, kind: 'device' | 'text', i: number, total: number): Reveal | null => {
+    if (t == null) return null;
+    if (tl) { const lt = clipLocalT(tl, ref, 'reveal', t); if (lt != null) return revealFromLocal(kind, lt); }
+    return revealFor(kind, i, total, t);
+  };
 
   if (!opts?.transparent) {
     fillBackground(ctx, doc);
@@ -913,7 +919,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   // Enheter i dokument-rekkefølge (senere = øverst), animert avsløring om t satt.
   for (let i = 0; i < doc.devices.length; i++) {
     const dev = doc.devices[i];
-    const rev = t != null ? revealFor('device', i, doc.devices.length, t) : null;
+    const rev = revealOf(dev.id, 'device', i, doc.devices.length);
     if (rev && rev.alpha <= 0.001) continue;
     ctx.save();
     if (rev) {
@@ -925,7 +931,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     ctx.restore();
   }
   doc.texts.forEach((tx, i) => {
-    const rev = t != null ? revealFor('text', i, doc.texts.length, t) : null;
+    const rev = revealOf(tx.id, 'text', i, doc.texts.length);
     withReveal(ctx, rev, tx.x + tx.w / 2, tx.y + measureTextHeight(tx) / 2, () => drawText(ctx, doc, tx));
   });
   await drawLogo(ctx, doc.canvas);
