@@ -623,6 +623,16 @@ export const diagonalCells: LayoutFn = (n, W, H, opts = {}) => {
   return Array.from({ length: n }, (_, i) => ({ x: Math.round(m + i * stepX), y: Math.round(m + i * stepY), w: Math.round(size), h: Math.round(size), rotation: ((i * 47) % 9) - 4 }));
 };
 
+/** Kanal-formater for «én design → alle kanaler». */
+export const CHANNEL_FORMATS: { id: string; label: string; w: number; h: number }[] = [
+  { id: 'ig-feed', label: 'IG feed 4:5', w: 1080, h: 1350 },
+  { id: 'ig-story', label: 'Story/Reel/TikTok 9:16', w: 1080, h: 1920 },
+  { id: 'fb-event', label: 'FB event', w: 1920, h: 1005 },
+  { id: 'square', label: 'Kvadrat 1:1', w: 1080, h: 1080 },
+];
+/** Velg antall kolonner ut fra lerret-aspekt (bredt = 3, ellers 2). */
+export const colsForAspect = (w: number, h: number): number => (w > h * 1.25 ? 3 : 2);
+
 /** Registry av fremvisninger (galleri). */
 export const PRESENTATIONS: { id: string; label: string; layout: LayoutFn; rotated?: boolean }[] = [
   { id: 'grid', label: 'Rutenett', layout: gridCells },

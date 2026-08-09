@@ -18,6 +18,9 @@ const btn: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#c7cd
 const chip: CSSProperties = { ...btn, padding: '3px 8px', fontSize: 'clamp(10px,0.72vw,12px)' };
 
 const dirOf = (rel: string): string => { const p = (rel || '').split('/'); p.pop(); return p.join('/') || '/'; };
+function downloadDataUrl(dataUrl: string, name: string): void {
+  const a = document.createElement('a'); a.href = dataUrl; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
 
 function readDataUrl(f: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
@@ -35,6 +38,9 @@ export function MockupLibraryPanel() {
   const arrangeLibrary = useMockupStudio((s) => s.arrangeLibrary);
   const buildOnePager = useMockupStudio((s) => s.buildOnePager);
   const setArrangeShowPrices = useMockupStudio((s) => s.setArrangeShowPrices);
+  const renderChannelSet = useMockupStudio((s) => s.renderChannelSet);
+  const hasImages = useMockupStudio((s) => (s.doc.images?.length ?? 0) > 0);
+  const [exporting, setExporting] = useState(false);
   const docName = useMockupStudio((s) => s.doc.name);
   const canvas = useMockupStudio((s) => s.doc.canvas);
   const selection = useMockupStudio((s) => s.selection);
@@ -172,6 +178,19 @@ export function MockupLibraryPanel() {
             );
           })()}
         </div>
+      )}
+
+      {/* Én design → alle kanaler: eksporter gjeldende design som PNG per sosial flate */}
+      {hasImages && (
+        <button style={{ ...btn, width: '100%', marginTop: 2 }} disabled={exporting}
+          title="Reflow gjeldende design til IG-feed/story/reel/TikTok/FB + kvadrat og last ned som PNG"
+          onClick={async () => {
+            setExporting(true);
+            try {
+              const set = await renderChannelSet();
+              for (const c of set) { downloadDataUrl(c.dataUrl, `holycrust-${c.id}.png`); await new Promise((r) => setTimeout(r, 350)); }
+            } catch (e) { console.error('[mockup-studio] channel-export', e); } finally { setExporting(false); }
+          }}>{exporting ? 'Eksporterer…' : '⬇ Alle kanaler (PNG)'}</button>
       )}
 
       {busy > 0 && <div style={{ fontSize: 11, color: C.accent }}>Importerer… ({busy} igjen)</div>}
