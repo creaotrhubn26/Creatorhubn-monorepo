@@ -84,7 +84,7 @@ def mat_screen():
         nt.nodes.remove(n)
     out = nt.nodes.new('ShaderNodeOutputMaterial')
     emis = nt.nodes.new('ShaderNodeEmission')
-    emis.inputs['Strength'].default_value = 1.4
+    emis.inputs['Strength'].default_value = 1.8  # lyssterk skjerm → glød via bloom-kompositor
     # Skrive-animasjon: last første frame-skjerm, ref beholdes for per-frame-bytte.
     first = os.path.join(SCREENDIR, 'screen_0001.png') if SCREENDIR else None
     src = first if (first and os.path.exists(first)) else (SHOT if (SHOT and os.path.exists(SHOT)) else None)
@@ -228,6 +228,10 @@ area('rim', (-1.5, 4, 3), 500, 5)
 
 # ---- kamera + orbit-animasjon ----------------------------------------------
 cam_data = bpy.data.cameras.new('Cam'); cam_data.lens = 85
+# Depth of field: fokus på enheten, myk uskarp bakgrunn (kino-look).
+cam_data.dof.use_dof = True
+cam_data.dof.focus_object = body
+cam_data.dof.aperture_fstop = 2.4
 cam = bpy.data.objects.new('Cam', cam_data); scene.collection.objects.link(cam)
 scene.camera = cam
 # Clamshell er høy (skjerm + base) → sikt mot midt-høyde + større avstand.
@@ -263,6 +267,9 @@ if DECKDIR and _deck_img is not None:
             _deck_img.filepath = p
             _deck_img.reload()
     bpy.app.handlers.frame_change_pre.append(_swap_deck)
+
+# Skjerm-glød kommer fra sterk emission (1.8) + ekte GI. (Bloom via Glare-node
+# er en egen oppgave: i Blender 5.2 flyttet Glare-parametrene til input-sockets.)
 
 # ---- render PNG-sekvens -----------------------------------------------------
 scene.render.image_settings.file_format = 'PNG'
