@@ -364,6 +364,7 @@ export interface SlotPlacement {
   w?: number;
   rotation?: number;
   size?: number; // for tekst
+  h?: number;    // for frie bilde-element
 }
 
 // ── Slot-motor (§1.1 struktur før frihet) ───────────────────────────────────
@@ -952,6 +953,9 @@ function captureLayout(doc: MockupDoc): Record<string, SlotPlacement> {
   const out: Record<string, SlotPlacement> = {};
   doc.devices.forEach((d) => { if (d.slotId) out[d.slotId] = { x: d.x, y: d.y, w: d.w, rotation: d.rotation }; });
   doc.texts.forEach((t) => { if (t.slotId) out[t.slotId] = { x: t.x, y: t.y, w: t.w, size: t.size }; });
+  // Frie elementer (uten slot): id-nøklet så per-format-layout kan gjenopprette dem eksakt.
+  (doc.images ?? []).forEach((im) => { out[`img:${im.id}`] = { x: im.x, y: im.y, w: im.w, h: im.h }; });
+  doc.texts.forEach((t) => { if (!t.slotId) out[`txt:${t.id}`] = { x: t.x, y: t.y, w: t.w, size: t.size }; });
   return out;
 }
 
@@ -976,8 +980,13 @@ export function applyFormat(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
         return p ? { ...d, x: p.x, y: p.y, w: p.w ?? d.w, rotation: p.rotation ?? d.rotation } : d;
       }),
       texts: next.texts.map((t) => {
-        const p = t.slotId ? saved[t.slotId] : undefined;
+        const p = (t.slotId ? saved[t.slotId] : saved[`txt:${t.id}`]);
         return p ? { ...t, x: p.x, y: p.y, w: p.w ?? t.w, size: p.size ?? t.size } : t;
+      }),
+      // Frie bilder: gjenopprett eksakt lagret plassering (overstyrer proporsjonal skalering).
+      images: (next.images ?? []).map((im) => {
+        const p = saved[`img:${im.id}`];
+        return p ? { ...im, x: p.x, y: p.y, w: p.w ?? im.w, h: p.h ?? im.h } : im;
       }),
     };
   }
