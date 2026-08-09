@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: doc-intel-baselines
@@ -35,7 +36,11 @@ jobs:
           done
           sh "$SKILL/scripts/grep-symbols.sh" all . > docs/baselines/external-api-usage.txt
 
-      - name: Commit ved endring
+      # main er beskyttet (required checks) → branch + PR, aldri direkte push.
+      # Fast grennavn = én stående PR som oppdateres (force-push), ikke ukentlig PR-spam.
+      - name: Commit til baseline-gren + PR ved endring
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git add docs/baselines
           if git diff --cached --quiet; then
@@ -44,5 +49,11 @@ jobs:
           fi
           git config user.name "doc-intel-baselines[bot]"
           git config user.email "noreply@creatorhubn.com"
-          git commit -m "chore(doc-intel): ukentlig baseline-oppdatering [skip ci]"
-          git push
+          git checkout -B chore/doc-intel-baselines
+          git commit -m "chore(doc-intel): ukentlig baseline-oppdatering"
+          git push -f origin chore/doc-intel-baselines
+          if ! gh pr list --head chore/doc-intel-baselines --state open --json number --jq '.[0].number' | grep -q .; then
+            gh pr create --base main --head chore/doc-intel-baselines \
+              --title "chore(doc-intel): ukentlig baseline-oppdatering" \
+              --body "Automatisk generert av doc-intel-baselines-workflowen: \`build-baseline.mjs\` (backend/frontend/resolve-script-manager) + \`grep-symbols.sh all\` → \`docs/baselines/\`. Diffen ER innholdet — endret ekstern API-flate siden sist."
+          fi
