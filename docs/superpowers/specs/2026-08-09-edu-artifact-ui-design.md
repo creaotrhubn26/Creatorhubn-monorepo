@@ -351,6 +351,8 @@ Story Logic-view med oppgave-kontekst:
 
 Stripen er **aldri en feiltilstand**: mangler `artifactView`, lander studenten i studio-hubben og stripen sier fortsatt «Oppgave · {tittel}». Robusthet over presisjon (spec §Feilhåndtering).
 
+> **Impeccable (color-and-contrast.md + typography.md):** ingen statustilstand hviler på farge alene (WCAG 1.4.1). «Overtid» bæres av teksten «{n} dager på overtid» + et lite `AccessTime`/varsel-ikon, ikke bare av rosa. «Levert» er en emerald *chip med ordet «Levert»* + hake-ikon, ikke en naken grønn prikk. Frist- og overtid-tall (og evt. teller) får `font-variant-numeric: tabular-nums` så sifrene ikke rykker når dagstallet endres — hierarkiet i den flate 14/12.5-skalaen bæres av vekt (tittel 14/700) og tall-stabilitet, ikke av størrelse.
+
 ### 3.5 Typografi og spacing
 
 - Stripe-høyde collapsed: ~68px (to tekstlinjer + handlingsrad). Bevisst tynn — verktøyet eier skjermen.
@@ -398,7 +400,7 @@ Stripen er **aldri en feiltilstand**: mangler `artifactView`, lander studenten i
 - Primærknapp: `Publiser til Canvas` / arbeid: `Publiserer…`
 - Bekreftelses-hint: `Studenten lander rett i Story Logic.` / `Studenten lander i Story Arc-studio.` / `Studenten åpner produksjonen.`
 - Tom-tilstand: `Ingen produksjoner ennå. Opprett en for å starte.`
-- Feil: `Kunne ikke publisere: {årsak}. Ingenting ble lagt til i Canvas.`
+- Feil: `Kunne ikke publisere: {årsak}. Ingenting ble lagt til i Canvas. Sjekk at produksjon og kull er valgt, og prøv igjen.` (tredelt: hva → tilstand → hva nå; `{årsak}` menneskelesbar)
 
 **Flate C — Student-ankomst**
 - Stripe-etikett: `Oppgave · {tittel}`
@@ -425,13 +427,19 @@ Farger (fra _eduUi.tsx + AssignmentsTab, ikke nye):
   sky #38bdf8 · amber #f59e0b · rosa #ec4899 · emerald #10b981
 
 Radius:  Panel 3 (24px) · felt/knapp/chip 2 (16px)   — ett system
-Motion:  ease-out cubic-bezier(0.23,1,0.32,1)  (enter/exit UI)
+Type:    hierarki via VEKT (tittel 14/700, body 12.5, chip 10.5), ikke via skala
+         font-variant-numeric: tabular-nums på frist/overtid/tellere (ikke-rykk)
+Motion:  ease-out cubic-bezier(0.23,1,0.32,1)  (enter/exit UI; = Impeccable-familien)
          drawer  cubic-bezier(0.32,0.72,0,1)   (ankomst/drawer)
-         enter 200-260ms · exit 140-160ms · trykk 120ms scale(0.97)
+         enter 220-260ms · exit = ~75% av enter (165ms) · trykk 120ms scale(0.97)
+         blur-krysstoning = materiale (tilstandsbytte), ikke pynt
          alt gated bak prefers-reduced-motion → opacity/instant
 Touch:   ≥ 44×44 på xs · safe-area-inset-bottom på sticky/drawer
 A11y:    synlig fokusring bevart · flytende label (ingen placeholder-as-label)
          · aria-label på ikon-knapper (chevron: «Vis mer», Min side, Lever)
+         · status ALDRI kun via farge (tekst + ikon følger; WCAG 1.4.1)
+Bans:    INGEN side-stripe (>1px farget venstre/høyre-kant) — full ring + vask
+         (arver ekte RailTips _eduUi.tsx:40). Ingen gradient-tekst, ingen glass.
 
 Delte options (én kilde, gjenbrukt av Flate A + B):
   STEG_OPTIONS = [
@@ -460,4 +468,9 @@ Delte options (én kilde, gjenbrukt av Flate A + B):
 - [x] Ingen fremmed designsystem; alt arvet fra `_eduUi.tsx`
 - [x] Progressiv avdekking i stedet for felt-vegg (Steg, «Flere valg», stripe-ekspander)
 - [x] Ingen blokkerende modal på studentens arbeidsflate
+- [x] **Impeccable Absolute Bans rene:** ingen side-stripe (stripe + Flate A-xs bruker full ring + vask), ingen gradient-tekst, ingen dekorativ glass, `outline` alltid erstattet
+- [x] **Hierarki via vekt + tabular-nums** (flat product-skala, ingen fluid type)
+- [x] **Status ikke farge-avhengig** (tekst + ikon på overtid/levert/vurdert)
+- [x] **Feilcopy tredelt** (hva → tilstand → hva nå), ingen utropstegn
+- [x] **Motion:** exit = ~75% enter, ease-out-eksponential, blur som materiale
 ```
