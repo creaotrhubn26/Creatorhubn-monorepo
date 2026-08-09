@@ -17,7 +17,7 @@ import { revealFor, type Reveal } from './mockupMotion';
 import { matrixFor, tiltsLeft } from './mockupPerspective';
 import { render3dDevice, webglAvailable } from './mockup3d/mockup3d';
 import { cacheKey, is3dVariant } from './mockup3d/deviceGeometry';
-import { typedState, drawTextField, drawOnScreenKeyboard, drawKeyPop } from './mockup3d/keyboardAnim';
+import { typedState, drawField, drawOnScreenKeyboard, drawKeyPop } from './mockup3d/keyboardAnim';
 import { sceneById } from './mockupScenes';
 import { drawImageQuad, type Quad } from './mockupSceneWarp';
 import {
@@ -152,22 +152,17 @@ function fillBackground(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
  * Komponer skrive-animasjon (on-screen-tastatur + tekstfelt + pop) på scene-
  * skjermbildet før warp. Returnerer et canvas, eller original-bildet uendret.
  */
-function composeSceneShot(img: HTMLImageElement, typeAnim: { text: string; keyPop?: boolean } | undefined, t?: number): HTMLImageElement | HTMLCanvasElement {
+function composeSceneShot(img: HTMLImageElement, typeAnim: import('./mockupStudioModel').TypeAnimCfg | undefined, t?: number): HTMLImageElement | HTMLCanvasElement {
   if (!typeAnim?.text) return img;
   const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const x = cv.getContext('2d');
   if (!x) return img;
   x.drawImage(img, 0, 0);
-  const text = typeAnim.text, n = text.length, prog = t ?? 1;
-  const { typed, pressed } = typedState(text, prog);
-  const kbTop = drawOnScreenKeyboard(x, W, H, pressed);
-  const caret = Math.floor(prog * Math.max(1, n) * 2) % 2 === 0;
-  drawTextField(x, W, H, typed, kbTop - 0.11, caret);
-  if (typeAnim.keyPop && n > 0 && prog < 1) {
-    const pn = prog * n, idx = Math.floor(pn);
-    if (idx < n && text[idx] !== ' ') drawKeyPop(x, W, H, text[idx], pn - idx, 0.58);
-  }
+  const st = typedState(typeAnim.text, t ?? 1, { payoff: typeAnim.payoff, correct: typeAnim.correct });
+  const kbTop = drawOnScreenKeyboard(x, W, H, st.pressed);
+  drawField(x, W, H, st, kbTop - 0.13, { style: typeAnim.field, placeholder: typeAnim.placeholder });
+  if (typeAnim.keyPop && st.next && st.next !== ' ' && !st.done) drawKeyPop(x, W, H, st.next, st.sub, 0.58);
   return cv;
 }
 
@@ -444,8 +439,9 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
   if (dev.threeD && is3dVariant(dev.variant) && webglAvailable()) {
     try {
       // Skrive-animasjon: teksten skrives ved anim.t (fallback 1 = ferdig skrevet i statisk visning).
-      const typeArg = dev.typeAnim?.text ? { text: dev.typeAnim.text, progress: t ?? 1, keyPop: dev.typeAnim.keyPop } : undefined;
-      const typeKey = typeArg ? `${typeArg.text.length}:${typeArg.progress.toFixed(3)}:${typeArg.keyPop ? 1 : 0}` : '';
+      const ta = dev.typeAnim;
+      const typeArg = ta?.text ? { text: ta.text, progress: t ?? 1, keyPop: ta.keyPop, field: ta.field, placeholder: ta.placeholder, payoff: ta.payoff, correct: ta.correct } : undefined;
+      const typeKey = typeArg ? `${typeArg.text.length}:${typeArg.progress.toFixed(3)}:${typeArg.keyPop ? 1 : 0}:${ta!.field ?? ''}:${ta!.payoff ? 1 : 0}:${ta!.correct ? 1 : 0}` : '';
       const zoom = dev.threeD.zoom ?? 1;
       const key = cacheKey([dev.variant, dev.threeD.rotX, dev.threeD.rotY, dev.threeD.rotZ, dev.threeD.light ?? '', zoom, dev.threeD.kbLayout ?? 'mac', Math.round(w), (dev.image ?? '').length, typeKey]);
       let baked = _bakeCache.get(key);

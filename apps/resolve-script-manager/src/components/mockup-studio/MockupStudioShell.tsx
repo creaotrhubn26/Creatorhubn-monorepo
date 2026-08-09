@@ -820,21 +820,24 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
             }} />
           </label>
         )}
-        {canvas.scene?.id && canvas.scene.shot && (
-          <input
-            type="text"
-            value={canvas.scene.typeAnim?.text ?? ''}
-            onChange={(e) => patchCanvas({ scene: { id: canvas.scene!.id, shot: canvas.scene!.shot, typeAnim: e.target.value ? { text: e.target.value, keyPop: canvas.scene!.typeAnim?.keyPop } : undefined } })}
-            placeholder="Skrive-animasjon på skjermen (valgfritt)"
-            style={{ ...textInput, marginTop: 6 }}
-          />
-        )}
-        {canvas.scene?.typeAnim?.text && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
-            <input type="checkbox" checked={!!canvas.scene.typeAnim?.keyPop} onChange={(e) => patchCanvas({ scene: { id: canvas.scene!.id, shot: canvas.scene!.shot, typeAnim: { text: canvas.scene!.typeAnim!.text, keyPop: e.target.checked } } })} />
-            Tastetrykk-pop (tast svever opp)
-          </label>
-        )}
+        {canvas.scene?.id && canvas.scene.shot && (() => {
+          const sc = canvas.scene!; const ta = sc.typeAnim;
+          const setTa = (patch: Partial<import('./mockupStudioModel').TypeAnimCfg> | null) => patchCanvas({ scene: { id: sc.id, shot: sc.shot, typeAnim: patch === null ? undefined : { ...ta, text: ta?.text ?? '', ...patch } } });
+          const chk = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, marginTop: 6, cursor: 'pointer' } as const;
+          return <>
+            <input type="text" value={ta?.text ?? ''} onChange={(e) => setTa(e.target.value ? { text: e.target.value } : null)} placeholder="Skrive-animasjon på skjermen (valgfritt)" style={{ ...textInput, marginTop: 6 }} />
+            {ta?.text && <>
+              <select value={ta.field ?? 'plain'} onChange={(e) => setTa({ field: e.target.value as import('./mockupStudioModel').MockupFieldStyle })} style={{ ...textInput, marginTop: 6 }}>
+                <option value="plain">Enkel</option><option value="search">🔍 Søkefelt</option><option value="chat">💬 Chat</option>
+                <option value="url">🌐 URL-linje</option><option value="document">📄 Dokument</option><option value="code">⌨︎ Kode</option><option value="terminal">▸ Terminal</option>
+              </select>
+              <input type="text" value={ta.placeholder ?? ''} onChange={(e) => setTa({ placeholder: e.target.value || undefined })} placeholder="Placeholder (valgfri)" style={{ ...textInput, marginTop: 6 }} />
+              <label style={chk}><input type="checkbox" checked={!!ta.keyPop} onChange={(e) => setTa({ keyPop: e.target.checked })} /> Tastetrykk-pop</label>
+              <label style={chk}><input type="checkbox" checked={!!ta.payoff} onChange={(e) => setTa({ payoff: e.target.checked })} /> Payoff (Enter → resultat)</label>
+              <label style={chk}><input type="checkbox" checked={!!ta.correct} onChange={(e) => setTa({ correct: e.target.checked })} /> Korreksjon (typo → rett)</label>
+            </>}
+          </>;
+        })()}
         {canvas.scene?.id && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>Skjermbildet warpes i perspektiv inn i scenens skjerm. Skriv inn tekst for on-screen-tastatur-animasjon. Tekst-lag legges oppå.</div>}
       </Field>
       <Field label="AI-bakgrunn">
@@ -1139,17 +1142,27 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
               <input
                 type="text"
                 value={device.typeAnim?.text ?? ''}
-                onChange={(e) => patchDevice(device.id, { typeAnim: e.target.value ? { text: e.target.value, keyPop: device.typeAnim?.keyPop } : undefined })}
+                onChange={(e) => patchDevice(device.id, { typeAnim: e.target.value ? { ...device.typeAnim, text: e.target.value } : undefined })}
                 placeholder="F.eks. Hei verden — tastene trykkes"
                 style={textInput}
               />
             </Field>
           )}
           {device.threeD && device.typeAnim?.text && (
-            <label style={checkRow}>
-              <input type="checkbox" checked={!!device.typeAnim?.keyPop} onChange={(e) => patchDevice(device.id, { typeAnim: { text: device.typeAnim!.text, keyPop: e.target.checked } })} />
-              Tastetrykk-pop (tast svever opp)
-            </label>
+            <>
+              <Field label="Felt-kontekst">
+                <select value={device.typeAnim.field ?? 'plain'} onChange={(e) => patchDevice(device.id, { typeAnim: { ...device.typeAnim!, field: e.target.value as import('./mockupStudioModel').MockupFieldStyle } })} style={textInput}>
+                  <option value="plain">Enkel</option><option value="search">🔍 Søkefelt</option><option value="chat">💬 Chat</option>
+                  <option value="url">🌐 URL-linje</option><option value="document">📄 Dokument</option><option value="code">⌨︎ Kode</option><option value="terminal">▸ Terminal</option>
+                </select>
+              </Field>
+              <Field label="Placeholder (valgfri hint-tekst)">
+                <input type="text" value={device.typeAnim.placeholder ?? ''} onChange={(e) => patchDevice(device.id, { typeAnim: { ...device.typeAnim!, placeholder: e.target.value || undefined } })} placeholder="F.eks. Søk…" style={textInput} />
+              </Field>
+              <label style={checkRow}><input type="checkbox" checked={!!device.typeAnim.keyPop} onChange={(e) => patchDevice(device.id, { typeAnim: { ...device.typeAnim!, keyPop: e.target.checked } })} /> Tastetrykk-pop (tast svever opp)</label>
+              <label style={checkRow}><input type="checkbox" checked={!!device.typeAnim.payoff} onChange={(e) => patchDevice(device.id, { typeAnim: { ...device.typeAnim!, payoff: e.target.checked } })} /> Payoff (Enter → resultat)</label>
+              <label style={checkRow}><input type="checkbox" checked={!!device.typeAnim.correct} onChange={(e) => patchDevice(device.id, { typeAnim: { ...device.typeAnim!, correct: e.target.checked } })} /> Korreksjon (typo → rett)</label>
+            </>
           )}
         </>
       )}

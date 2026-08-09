@@ -62,7 +62,22 @@ export interface MockupDeviceSlot {
    * tast trykkes (laptop = fysisk dekk; telefon/tablet = on-screen-tastatur).
    * Drives av animasjons-tidslinjen (anim.t). Tom/udefinert = ingen animasjon.
    */
-  typeAnim?: { text: string; keyPop?: boolean };
+  typeAnim?: TypeAnimCfg;
+}
+
+/** Skrive-animasjon: humanisert tempo + felt-kontekst + payoff. */
+export type MockupFieldStyle = 'plain' | 'search' | 'chat' | 'url' | 'document' | 'code' | 'terminal';
+export interface TypeAnimCfg {
+  text: string;
+  keyPop?: boolean;
+  /** Felt-kontekst (søkefelt/chat/URL/dokument/kode/terminal). Default 'plain'. */
+  field?: MockupFieldStyle;
+  /** Grå placeholder-tekst før skriving. */
+  placeholder?: string;
+  /** Payoff-øyeblikk etter skriving (Enter → resultat). */
+  payoff?: boolean;
+  /** Menneskelig korreksjon (typo → slett → korriger). */
+  correct?: boolean;
 }
 
 export type MockupTextRole = 'eyebrow' | 'title' | 'body' | 'tag';
@@ -146,7 +161,7 @@ export interface MockupCanvasSpec {
   bgImage?: string;
   /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad.
    * typeAnim = valgfri skrive-animasjon komponert på skjermbildet (on-screen-tastatur). */
-  scene?: { id: string; shot?: string; typeAnim?: { text: string; keyPop?: boolean } };
+  scene?: { id: string; shot?: string; typeAnim?: TypeAnimCfg };
   /** Valgfri logo. */
   logo?: MockupLogo;
 }

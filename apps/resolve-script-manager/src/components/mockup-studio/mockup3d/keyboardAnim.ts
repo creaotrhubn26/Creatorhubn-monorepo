@@ -4,14 +4,56 @@
  * (on-screen QWERTY tegnet nederst på skjermen). Ren, testbar (ingen Three-avh.).
  */
 
-/** Tilstand ved progresjon t∈[0,1]: hvor mye er skrevet + hvilken tast trykkes nå. */
-export function typedState(text: string, t: number): { typed: string; pressed: string | null } {
+/**
+ * Per-tegn «kostnad» (relativ varighet) → humanisert rytme. Deterministisk (ingen
+ * random, så Three.js + Blender/PIL matcher): pauser på mellomrom/tegnsetting,
+ * ease-in på de første tegnene, og en liten indeks-basert jitter.
+ */
+function charWeight(ch: string, i: number): number {
+  let w = 1;
+  if (ch === ' ') w = 2.4;
+  else if ('.!?'.includes(ch)) w = 3.2;
+  else if (',;:'.includes(ch)) w = 1.9;
+  if (i < 3) w *= 1.35;                 // ease-in (nøler i starten)
+  w *= 0.82 + 0.36 * (((i * 2654435761) % 97) / 97); // deterministisk jitter
+  return w;
+}
+
+/** Kumulativ normalisert tidslinje for skriving (0..1 per tegn-grense). */
+function schedule(text: string): number[] {
+  const cum: number[] = [0];
+  let s = 0;
+  for (let i = 0; i < text.length; i++) { s += charWeight(text[i], i); cum.push(s); }
+  const total = s || 1;
+  return cum.map((c) => c / total);
+}
+
+/**
+ * Skrive-tilstand ved progresjon t∈[0,1]. `payoff` reserverer siste ~28% til et
+ * resultat-øyeblikk (typing fullføres tidligere). `correct` fletter inn en
+ * typo→slett→korriger på ett ord (menneskelig). Returnerer alt renderen trenger.
+ */
+export interface TypeState { typed: string; pressed: string | null; next: string | null; sub: number; caret: boolean; done: boolean; payoff: number; }
+export function typedState(text: string, t: number, opts?: { payoff?: boolean; correct?: boolean }): TypeState {
   const n = text.length;
-  if (n === 0) return { typed: '', pressed: null };
-  const pos = Math.max(0, Math.min(1, t)) * n;
-  const count = Math.max(0, Math.min(n, Math.floor(pos + 0.5)));
-  const pressed = t < 1 && count > 0 ? text[count - 1] : null;
-  return { typed: text.slice(0, count), pressed };
+  if (n === 0) return { typed: '', pressed: null, next: null, sub: 1, caret: false, done: true, payoff: 0 };
+  const typeEnd = opts?.payoff ? 0.72 : 0.96;
+  const tt = Math.max(0, Math.min(1, t));
+  const payoff = opts?.payoff && tt > typeEnd ? (tt - typeEnd) / (1 - typeEnd) : 0;
+  const localT = Math.min(1, tt / typeEnd); // 0..1 over skrive-fasen
+  const cum = schedule(text);
+  let count = 0;
+  while (count < n && cum[count + 1] <= localT) count++;
+  const next = count < n ? text[count] : null; // tegnet som skrives NÅ
+  const sub = count < n ? Math.max(0, Math.min(1, (localT - cum[count]) / Math.max(1e-6, cum[count + 1] - cum[count]))) : 1;
+  // Korreksjon: nær ~55% vis ett feil tegn kort før det «slettes» og korrigeres.
+  let typed = text.slice(0, count);
+  if (opts?.correct && n > 4) {
+    const g = Math.floor(n * 0.55);
+    if (count === g && sub < 0.5) typed = text.slice(0, g) + 'x';
+  }
+  const caret = (Math.floor(localT * n * 2) % 2 === 0) && payoff === 0;
+  return { typed, pressed: next, next, sub, caret, done: count >= n, payoff };
 }
 
 
@@ -93,28 +135,104 @@ export function drawKeyPop(x: CanvasRenderingContext2D, W: number, H: number, ch
 /** On-screen-tastatur-rader (iOS-stil). */
 const OSK_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 
-/**
- * Tegn et tekstfelt (skrevet tekst + caret) på skjerm-canvaset.
- * y0 = topp-fraksjon der feltet begynner (0..1). Skala relativt til W.
- */
-export function drawTextField(x: CanvasRenderingContext2D, W: number, H: number, typed: string, y0: number, blinkOn: boolean): void {
-  const pad = W * 0.05, fh = Math.max(28, H * 0.045);
-  const fy = y0 * H, fw = W - pad * 2, fx = pad;
+export type FieldStyle = 'plain' | 'search' | 'chat' | 'url' | 'document' | 'code' | 'terminal';
+
+function rr(x: CanvasRenderingContext2D, a: number, b: number, w: number, h: number, r: number): void {
+  x.beginPath();
+  if (typeof x.roundRect === 'function') x.roundRect(a, b, w, h, r);
+  else { x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h, r); x.arcTo(a + w, b + h, a, b + h, r); x.arcTo(a, b + h, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); }
+}
+
+/** Tekst m/ horisontal overflow-scroll (halen + caret holdes i syne). */
+function fieldText(x: CanvasRenderingContext2D, text: string, tx: number, ty: number, innerW: number, color: string, caret: boolean, caretColor: string, fh: number): void {
+  const full = x.measureText(text).width;
+  const off = full > innerW ? innerW - full : 0; // scroll når teksten er lengre enn feltet
   x.save();
-  x.fillStyle = 'rgba(255,255,255,0.92)';
-  if (typeof x.roundRect === 'function') { x.beginPath(); x.roundRect(fx, fy, fw, fh * 1.5, fh * 0.3); x.fill(); }
-  else x.fillRect(fx, fy, fw, fh * 1.5);
-  x.fillStyle = '#0b1220';
-  x.font = `500 ${Math.round(fh)}px -apple-system, "SF Pro Text", system-ui, sans-serif`;
+  x.beginPath(); x.rect(tx, ty - fh, innerW + fh, fh * 2); x.clip();
+  x.fillStyle = color; x.fillText(text, tx + off, ty);
+  if (caret) { x.fillStyle = caretColor; x.fillRect(tx + off + full + 2, ty - fh * 0.46, Math.max(2, fh * 0.06), fh * 0.92); }
+  x.restore();
+}
+
+/**
+ * Tegn skrive-feltet i valgt kontekst-stil (search/chat/url/document/code/terminal)
+ * med overflow-scroll, placeholder og payoff-øyeblikk. y0 = topp-fraksjon (0..1).
+ */
+export function drawField(x: CanvasRenderingContext2D, W: number, H: number, st: TypeState, y0: number, opts?: { style?: FieldStyle; placeholder?: string }): void {
+  const style = opts?.style ?? 'plain';
+  const pad = W * 0.05, fh = Math.max(28, H * 0.045);
+  const fy = y0 * H, fw = W - pad * 2, fx = pad, fieldH = fh * 1.6;
+  const empty = st.typed.length === 0;
+  const shown = empty && opts?.placeholder ? opts.placeholder : st.typed;
+  const mono = `500 ${Math.round(fh)}px ui-monospace, "SF Mono", Menlo, monospace`;
+  const sans = `500 ${Math.round(fh)}px -apple-system, "SF Pro Text", system-ui, sans-serif`;
+  x.save();
   x.textBaseline = 'middle'; x.textAlign = 'left';
-  const tx = fx + pad * 0.5, ty = fy + fh * 0.75;
-  x.fillText(typed, tx, ty);
-  if (blinkOn) {
-    const cw = x.measureText(typed).width;
-    x.fillStyle = '#2563eb';
-    x.fillRect(tx + cw + 2, fy + fh * 0.28, Math.max(2, W * 0.004), fh * 0.94);
+  const ty = fy + fieldH / 2;
+
+  if (style === 'document') {
+    x.font = sans;
+    fieldText(x, shown, fx, ty, fw, empty ? 'rgba(15,23,42,0.35)' : '#0b1220', st.caret, '#2563eb', fh);
+    if (st.payoff > 0) { x.globalAlpha = st.payoff; x.fillStyle = '#16a34a'; x.font = `700 ${Math.round(fh)}px ${sans}`; x.fillText('✓', fx + fw - fh, ty + fieldH); }
+    x.restore(); return;
+  }
+  if (style === 'code' || style === 'terminal') {
+    const dark = style === 'terminal' ? '#0b0f0b' : '#1e1e2e';
+    x.fillStyle = dark; rr(x, fx, fy, fw, fieldH, fh * 0.18); x.fill();
+    x.font = mono;
+    const prompt = style === 'terminal' ? '$ ' : '1  ';
+    x.fillStyle = style === 'terminal' ? '#6ee7a8' : '#7f849c';
+    x.fillText(prompt, fx + pad * 0.4, ty);
+    const px0 = fx + pad * 0.4 + x.measureText(prompt).width;
+    fieldText(x, shown, px0, ty, fw - (px0 - fx) - pad * 0.4, empty ? 'rgba(255,255,255,0.3)' : (style === 'terminal' ? '#c7f9cc' : '#e6e6f0'), st.caret, style === 'terminal' ? '#6ee7a8' : '#e6e6f0', fh);
+    if (st.payoff > 0) { x.globalAlpha = st.payoff; x.fillStyle = '#6ee7a8'; x.fillText(style === 'terminal' ? '✓ ok' : '✓ done', fx + pad * 0.4, ty + fieldH); }
+    x.restore(); return;
+  }
+  // Pille-baserte stiler (plain/search/chat/url).
+  const bg = style === 'url' ? '#e9edf3' : 'rgba(255,255,255,0.95)';
+  x.fillStyle = bg; rr(x, fx, fy, fw, fieldH, fieldH * 0.5); x.fill();
+  let tx = fx + pad * 0.55;
+  if (style === 'search') { // forstørrelsesglass
+    const cxi = fx + fh * 0.75, cyi = ty, rad = fh * 0.32;
+    x.strokeStyle = '#64748b'; x.lineWidth = Math.max(2, fh * 0.09);
+    x.beginPath(); x.arc(cxi, cyi, rad, 0, Math.PI * 2); x.stroke();
+    x.beginPath(); x.moveTo(cxi + rad * 0.7, cyi + rad * 0.7); x.lineTo(cxi + rad * 1.4, cyi + rad * 1.4); x.stroke();
+    tx = cxi + rad * 1.6;
+  } else if (style === 'url') { // hengelås
+    x.fillStyle = '#64748b'; const lx = fx + fh * 0.7, ly = ty;
+    rr(x, lx - fh * 0.18, ly - fh * 0.04, fh * 0.36, fh * 0.3, fh * 0.06); x.fill();
+    x.strokeStyle = '#64748b'; x.lineWidth = Math.max(2, fh * 0.07); x.beginPath(); x.arc(lx, ly - fh * 0.1, fh * 0.13, Math.PI, 0); x.stroke();
+    tx = lx + fh * 0.5;
+  }
+  x.font = sans;
+  const innerW = fw - (tx - fx) - (style === 'chat' ? fieldH : pad * 0.5);
+  fieldText(x, shown, tx, ty, innerW, empty ? 'rgba(15,23,42,0.38)' : '#0b1220', st.caret, '#2563eb', fh);
+  if (style === 'chat') { // send-knapp
+    const sc = fx + fw - fieldH * 0.62, sr = fieldH * 0.4;
+    x.fillStyle = st.typed ? '#2563eb' : '#c7d0dc'; x.beginPath(); x.arc(sc, ty, sr, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = '#fff'; x.lineWidth = Math.max(2, fh * 0.09); x.beginPath();
+    x.moveTo(sc - sr * 0.35, ty); x.lineTo(sc + sr * 0.35, ty); x.moveTo(sc + sr * 0.05, ty - sr * 0.3); x.lineTo(sc + sr * 0.35, ty); x.lineTo(sc + sr * 0.05, ty + sr * 0.3); x.stroke();
+  }
+  // Payoff: chat → sendt boble + svar-prikker; search/url → resultat-/loading-hint.
+  if (st.payoff > 0) {
+    x.globalAlpha = Math.min(1, st.payoff * 1.4);
+    if (style === 'chat') {
+      const bw = Math.min(fw * 0.7, x.measureText(st.typed).width + pad), bx = fx + fw - bw, byy = fy - fieldH * 1.2;
+      x.fillStyle = '#2563eb'; rr(x, bx, byy, bw, fieldH, fieldH * 0.4); x.fill();
+      x.fillStyle = '#fff'; x.font = sans; x.fillText(st.typed, bx + pad * 0.5, byy + fieldH / 2);
+      if (st.payoff > 0.5) { const dy = byy + fieldH * 1.4; x.fillStyle = '#cbd5e1'; for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(fx + fh * 0.6 + i * fh * 0.5, dy + fieldH / 2, fh * 0.14, 0, Math.PI * 2); x.fill(); } }
+    } else if (style === 'search') {
+      for (let i = 0; i < 3; i++) { const ry = fy + fieldH * (1.25 + i * 0.85); x.fillStyle = 'rgba(255,255,255,0.9)'; rr(x, fx, ry, fw * (0.9 - i * 0.12), fieldH * 0.7, fh * 0.2); x.fill(); }
+    } else if (style === 'url') {
+      x.fillStyle = '#2563eb'; x.fillRect(fx, fy + fieldH + 4, fw * Math.min(1, st.payoff * 1.6), Math.max(3, fh * 0.12));
+    }
   }
   x.restore();
+}
+
+/** Bakover-kompat: enkel hvit felt-stil (brukes av eldre kall). */
+export function drawTextField(x: CanvasRenderingContext2D, W: number, H: number, typed: string, y0: number, blinkOn: boolean): void {
+  drawField(x, W, H, { typed, pressed: null, next: null, sub: 1, caret: blinkOn, done: false, payoff: 0 }, y0);
 }
 
 /**

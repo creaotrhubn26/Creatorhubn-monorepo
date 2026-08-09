@@ -21,12 +21,14 @@ FRAMES = int(arg('--frames', '36'))
 DEVICE = arg('--device', 'ipad')
 SHOT = arg('--shot', None)
 SCREENDIR = arg('--screendir', None)  # skrive-animasjon: screen_<frame>.png per bilde
+DECKDIR = arg('--deckdir', None)      # laptop-tastatur: deck_<frame>.png per bilde
 ROTX = float(arg('--rotx', '0'))  # app «vipp» (grader)
 ROTY = float(arg('--roty', '0'))  # app «snu» (turntable, grader)
 ROTZ = float(arg('--rotz', '0'))  # app «rull» (grader)
 os.makedirs(OUT, exist_ok=True)
 
 _screen_img = None  # bpy-image-datablock som byttes per frame (skrive-animasjon)
+_deck_img = None    # bpy-image-datablock for tastatur-dekket (byttes per frame)
 
 # Enhets-proporsjoner (bredde, høyde, tykkelse i BU) + skjerm-innfelling.
 DIMS = {
@@ -98,33 +100,100 @@ def mat_screen():
     return m
 
 
-# ---- enhet: avrundet kropp + skjerm-plan ------------------------------------
-bpy.ops.mesh.primitive_cube_add(size=1)
-body = bpy.context.active_object
-body.scale = (W / 2, H / 2, D / 2)
-bpy.ops.object.transform_apply(scale=True)
-bev = body.modifiers.new('bev', 'BEVEL')
-bev.width = min(W, H) * 0.06; bev.segments = 6
-bpy.ops.object.shade_smooth()
-body.data.materials.append(mat_metal())
+# ---- deck-materiale (laptop-tastatur) ---------------------------------------
+def mat_deck():
+    global _deck_img
+    m = bpy.data.materials.new('Deck'); m.use_nodes = True
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    bsdf.inputs['Roughness'].default_value = 0.5
+    first = os.path.join(DECKDIR, 'deck_0001.png') if DECKDIR else None
+    if first and os.path.exists(first):
+        img = nt.nodes.new('ShaderNodeTexImage'); img.image = bpy.data.images.load(first)
+        _deck_img = img.image
+        nt.links.new(img.outputs['Color'], bsdf.inputs['Base Color'])
+    else:
+        bsdf.inputs['Base Color'].default_value = (0.09, 0.09, 0.1, 1)
+    nt.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
+    return m
 
-# Skjerm-plan på +Z-front, litt over flaten.
-bpy.ops.mesh.primitive_plane_add(size=1)
-screen = bpy.context.active_object
-screen.scale = ((W - INSET * 2) / 2, (H - INSET * 2) / 2, 1)
-screen.location = (0, 0, D / 2 + 0.002)
-bpy.ops.object.transform_apply(scale=True)
-screen.data.materials.append(mat_screen())
 
-# Pose: base 3/4-look, justert av app-rotasjonen. «vipp» endrer reisning,
-# «snu» = turntable (Z), «rull» = roll. Bakt inn i enheten så kamera holder seg
-# rolig (subtil orbit for liv) og brukerens valgte vinkel dominerer.
-base_tilt = max(35, min(90, 72 - ROTX * 0.4))
-for o in (body, screen):
-    o.rotation_euler = (math.radians(base_tilt), math.radians(ROTZ), math.radians(18 + ROTY))
+body = None
+if DEVICE == 'macbook':
+    # ---- clamshell: base (tastatur-dekk) + hengslet skjerm-panel --------------
+    baseTh, baseDepth, panelTh = 0.05, W * 0.68, 0.04
+    # Base (fremkant nær kamera ved -Y, hengsel bak ved +Y).
+    # (size=1-cube/plane spenner ±0.5 → skaler med FULL dimensjon, ikke /2.)
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    base = bpy.context.active_object
+    base.scale = (W, baseDepth, baseTh)
+    bpy.ops.object.transform_apply(scale=True)
+    base.location = (0, 0, baseTh / 2)
+    base.modifiers.new('bev', 'BEVEL').width = 0.01
+    base.data.materials.append(mat_metal())
+    # Tastatur-dekk på topp av basen (peker +Z opp).
+    bpy.ops.mesh.primitive_plane_add(size=1)
+    deck = bpy.context.active_object
+    deck.scale = (W * 0.985, baseDepth * 0.985, 1)
+    bpy.ops.object.transform_apply(scale=True)
+    deck.location = (0, 0, baseTh + 0.001)
+    deck.data.materials.append(mat_deck())
+    # Skjerm-panel, hengslet ved bakkant (+Y), lent bakover.
+    hinge = math.radians(102)
+    panel = bpy.data.objects.new('panel_empty', None)
+    scene.collection.objects.link(panel)
+    panel.location = (0, baseDepth / 2, baseTh)  # bakre kant, ved dekk-nivå (kobler til tastaturet)
+    panel.rotation_euler = (-(hinge - math.radians(90)), 0, 0)  # len bakover fra loddrett
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    plate = bpy.context.active_object
+    plate.scale = (W, H, panelTh)
+    bpy.ops.object.transform_apply(scale=True)
+    plate.rotation_euler = (math.radians(90), 0, 0)  # reis platen loddrett (høyde langs Z)
+    plate.location = (0, 0, H / 2)
+    plate.data.materials.append(mat_metal())
+    plate.parent = panel
+    # Skjerm-plan på panelets front (-Y, mot kamera).
+    bpy.ops.mesh.primitive_plane_add(size=1)
+    screen = bpy.context.active_object
+    screen.scale = (W - INSET * 2, H - INSET * 2, 1)
+    bpy.ops.object.transform_apply(scale=True)
+    screen.rotation_euler = (math.radians(90), 0, 0)
+    screen.location = (0, -panelTh / 2 - 0.002, H / 2)
+    screen.data.materials.append(mat_screen())
+    screen.parent = panel
+    # Turntable (ROTY) om Z: parent alt til én rot-empty ved origo og roter den
+    # (så base + panel roterer om SAMME pivot — ellers glir de fra hverandre).
+    root = bpy.data.objects.new('laptop_root', None); scene.collection.objects.link(root)
+    for o in (base, deck, panel):
+        o.parent = root
+    root.rotation_euler = (0, 0, math.radians(ROTY))
+    body = base  # kamera-mål
+else:
+    # ---- slab (telefon/tablet): avrundet kropp + skjerm-plan -----------------
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    body = bpy.context.active_object
+    body.scale = (W / 2, H / 2, D / 2)
+    bpy.ops.object.transform_apply(scale=True)
+    bev = body.modifiers.new('bev', 'BEVEL')
+    bev.width = min(W, H) * 0.06; bev.segments = 6
+    bpy.ops.object.shade_smooth()
+    body.data.materials.append(mat_metal())
+    bpy.ops.mesh.primitive_plane_add(size=1)
+    screen = bpy.context.active_object
+    screen.scale = ((W - INSET * 2) / 2, (H - INSET * 2) / 2, 1)
+    screen.location = (0, 0, D / 2 + 0.002)
+    bpy.ops.object.transform_apply(scale=True)
+    screen.data.materials.append(mat_screen())
+    base_tilt = max(35, min(90, 72 - ROTX * 0.4))
+    for o in (body, screen):
+        o.rotation_euler = (math.radians(base_tilt), math.radians(ROTZ), math.radians(18 + ROTY))
 
 # ---- studio: gulv + gradient-verden + 3-punkts area-lys ---------------------
-bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, -H * 0.55))
+_floor_z = -0.012 if DEVICE == 'macbook' else -H * 0.55  # clamshell står på gulvet
+bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, _floor_z))
 floor = bpy.context.active_object
 fm = bpy.data.materials.new('Floor'); fm.use_nodes = True
 fb = fm.node_tree.nodes['Principled BSDF']
@@ -161,9 +230,15 @@ area('rim', (-1.5, 4, 3), 500, 5)
 cam_data = bpy.data.cameras.new('Cam'); cam_data.lens = 85
 cam = bpy.data.objects.new('Cam', cam_data); scene.collection.objects.link(cam)
 scene.camera = cam
-track = cam.constraints.new('TRACK_TO'); track.target = body
-
-R, Z = 5.2, 1.9
+# Clamshell er høy (skjerm + base) → sikt mot midt-høyde + større avstand.
+if DEVICE == 'macbook':
+    tgt = bpy.data.objects.new('camtgt', None); scene.collection.objects.link(tgt)
+    tgt.location = (0, 0, H * 0.42)
+    track = cam.constraints.new('TRACK_TO'); track.target = tgt
+    R, Z = 4.6, 3.2
+else:
+    track = cam.constraints.new('TRACK_TO'); track.target = body
+    R, Z = 5.2, 1.9
 scene.frame_start = 1; scene.frame_end = FRAMES
 for f in range(1, FRAMES + 1):
     a = math.radians(-7 + 14 * (f - 1) / max(1, FRAMES - 1))  # subtil svai ±7° (brukerens vinkel dominerer)
@@ -179,6 +254,15 @@ if SCREENDIR and _screen_img is not None:
             _screen_img.filepath = p
             _screen_img.reload()
     bpy.app.handlers.frame_change_pre.append(_swap_screen)
+
+if DECKDIR and _deck_img is not None:
+    def _swap_deck(scn):
+        f = scn.frame_current
+        p = os.path.join(DECKDIR, 'deck_%04d.png' % f)
+        if os.path.exists(p):
+            _deck_img.filepath = p
+            _deck_img.reload()
+    bpy.app.handlers.frame_change_pre.append(_swap_deck)
 
 # ---- render PNG-sekvens -----------------------------------------------------
 scene.render.image_settings.file_format = 'PNG'

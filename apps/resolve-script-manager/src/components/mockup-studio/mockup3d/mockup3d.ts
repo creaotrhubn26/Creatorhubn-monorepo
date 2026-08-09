@@ -12,12 +12,12 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { deviceDims, type Device3DVariant } from './deviceGeometry';
-import { deckRows, type KbLayout, drawTextField, drawOnScreenKeyboard, drawKeyPop, typedState } from './keyboardAnim';
+import { deckRows, type KbLayout, type TypeState, type FieldStyle, drawField, drawOnScreenKeyboard, drawKeyPop, typedState } from './keyboardAnim';
 import iphoneGlb from './deviceMeshes/iphone.glb';
 import ipadGlb from './deviceMeshes/ipad.glb';
 
 /** Skrive-animasjons-tilstand for ett bake-bilde. */
-type ScreenAnim = { typed: string; pressed: string | null; onScreenKb: boolean; caret: boolean; pop?: { char: string; rise: number } };
+type ScreenAnim = { st: TypeState; onScreenKb: boolean; pop?: { char: string; rise: number }; style?: FieldStyle; placeholder?: string };
 
 /**
  * Egne Blender-genererte device-KROPPER (glb; scripts/gen-device-glb.py). Kroppen
@@ -228,11 +228,12 @@ function composeScreen(img: HTMLImageElement | null, W: number, H: number, varia
   else { x.fillStyle = '#0b0d12'; x.fillRect(bez, bez, W - bez * 2, H - bez * 2); }
   // Skrive-animasjon: tekstfelt (+ on-screen-tastatur på telefon/tablet).
   if (anim) {
+    const fo = { style: anim.style, placeholder: anim.placeholder };
     if (anim.onScreenKb) {
-      const kbTop = drawOnScreenKeyboard(x, W, H, anim.pressed);
-      drawTextField(x, W, H, anim.typed, kbTop - 0.11, anim.caret);
+      const kbTop = drawOnScreenKeyboard(x, W, H, anim.st.pressed);
+      drawField(x, W, H, anim.st, kbTop - 0.13, fo);
     } else {
-      drawTextField(x, W, H, anim.typed, 0.44, anim.caret);
+      drawField(x, W, H, anim.st, 0.42, fo);
     }
     // Taste-pop: tegnet svever opp fra tastatur-området.
     if (anim.pop) drawKeyPop(x, W, H, anim.pop.char, anim.pop.rise, anim.onScreenKb ? 0.58 : 0.40);
@@ -289,7 +290,7 @@ async function buildDevice(variant: Device3DVariant, shot?: string, anim?: Scree
     // Tastatur-dekk (key-grid + trackpad) på topp-flaten av basen.
     const deck = new THREE.Mesh(
       new THREE.PlaneGeometry(d.bodyW * 0.985, baseDepth * 0.985),
-      new THREE.MeshBasicMaterial({ map: deckTexture(anim?.pressed, kbLayout, deckRes) }),
+      new THREE.MeshBasicMaterial({ map: deckTexture(anim?.st.pressed, kbLayout, deckRes) }),
     );
     deck.rotation.x = -Math.PI / 2; // legg flatt (peker +Y opp)
     deck.position.set(0, 0.0012, baseDepth / 2); // rett over topp-flaten
@@ -326,7 +327,7 @@ async function buildDevice(variant: Device3DVariant, shot?: string, anim?: Scree
  * rendrer en halvbygd/tom scene → 3D-enheten «forsvinner» ved justering.
  * Kjeden garanterer at kun ÉN bake rører scenen om gangen.
  */
-type Render3dOpts = { variant: Device3DVariant; shot?: string; rotX: number; rotY: number; rotZ: number; light?: string; w: number; h: number; zoom?: number; kbLayout?: KbLayout; type?: { text: string; progress: number; keyPop?: boolean } };
+type Render3dOpts = { variant: Device3DVariant; shot?: string; rotX: number; rotY: number; rotZ: number; light?: string; w: number; h: number; zoom?: number; kbLayout?: KbLayout; type?: { text: string; progress: number; keyPop?: boolean; field?: FieldStyle; placeholder?: string; payoff?: boolean; correct?: boolean } };
 let _bakeChain: Promise<unknown> = Promise.resolve();
 export function render3dDevice(opts: Render3dOpts): Promise<HTMLCanvasElement> {
   const run = () => _render3dNow(opts);
@@ -342,20 +343,15 @@ async function _render3dNow(opts: Render3dOpts): Promise<HTMLCanvasElement> {
   c.aspect = aspect; c.updateProjectionMatrix();
   const prev = s.getObjectByName('device');
   if (prev) { s.remove(prev); }
-  // Skrive-animasjons-tilstand (om aktiv): typed/pressed + on-screen-tastatur for slab.
+  // Skrive-animasjons-tilstand (om aktiv): humanisert typing + felt-kontekst.
   let anim: ScreenAnim | undefined;
   if (opts.type && opts.type.text) {
-    const text = opts.type.text, progress = opts.type.progress, n = text.length;
-    const { typed, pressed } = typedState(text, progress);
+    const ty = opts.type;
+    const st = typedState(ty.text, ty.progress, { payoff: ty.payoff, correct: ty.correct });
     const onScreenKb = deviceDims(opts.variant).kind !== 'clamshell';
-    const caret = Math.floor(progress * Math.max(1, n) * 2) % 2 === 0;
-    // Taste-pop: tegnet ved posisjon floor(progress*n) svever opp (rise = frac).
-    let pop: { char: string; rise: number } | undefined;
-    if (opts.type.keyPop && n > 0 && progress < 1) {
-      const pn = progress * n, idx = Math.floor(pn);
-      if (idx < n && text[idx] !== ' ') pop = { char: text[idx], rise: pn - idx };
-    }
-    anim = { typed, pressed, onScreenKb, caret, pop };
+    // Taste-pop: tegnet som skrives nå svever opp (rise = sub-progresjon).
+    const pop = ty.keyPop && st.next && st.next !== ' ' && !st.done ? { char: st.next, rise: st.sub } : undefined;
+    anim = { st, onScreenKb, pop, style: ty.field, placeholder: ty.placeholder };
   }
   const glb = DEVICE_GLB[opts.variant];
   const deckRes = Math.max(1, Math.min(2.5, opts.zoom ?? 1)); // høyere zoom → skarpere dekk-tekstur

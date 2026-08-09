@@ -36,6 +36,8 @@ export async function exportCinematic(doc: MockupDoc, frames = 36, onMsg?: (m: s
     rotX: dev.threeD?.rotX ?? 0,
     rotY: dev.threeD?.rotY ?? 0,
     rotZ: dev.threeD?.rotZ ?? 0,
+    keyPop: dev.typeAnim?.keyPop ?? false,
+    kbLayout: dev.threeD?.kbLayout ?? 'mac',
   });
   void openPath(out).catch(() => {});
   return out;

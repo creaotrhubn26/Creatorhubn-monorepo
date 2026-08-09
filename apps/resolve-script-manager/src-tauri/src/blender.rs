@@ -86,6 +86,8 @@ pub async fn render_blender_cinematic(
     rot_x: Option<f64>,
     rot_y: Option<f64>,
     rot_z: Option<f64>,
+    key_pop: Option<bool>,
+    kb_layout: Option<String>,
 ) -> Result<String, String> {
     let blender = find_blender().ok_or(
         "Blender ikke funnet. Installer Blender 3.6+ (brew install --cask blender).",
@@ -130,11 +132,30 @@ pub async fn render_blender_cinematic(
             ];
             if let Some(sp) = &shot_path { a.push("--base".into()); a.push(sp.to_string_lossy().into()); }
             if device != "macbook" { a.push("--osk".into()); } // on-screen-tastatur for telefon/tablet
+            if key_pop.unwrap_or(false) { a.push("--keypop".into()); }
             let ok = Command::new(&py).args(&a).status().map(|s| s.success()).unwrap_or(false);
             if ok && sd.join("screen_0001.png").is_file() { Some(sd) } else { None }
         }
         _ => None,
     };
+
+    // 0b) Laptop fysisk tastatur-dekk: pre-generer per-frame dekk-bilder (macbook).
+    let layout = if kb_layout.as_deref() == Some("windows") { "windows" } else { "mac" };
+    let deckdir: Option<PathBuf> = if device == "macbook" {
+        match type_text.as_deref() {
+            Some(t) if !t.trim().is_empty() => find_python_pil().and_then(|py| {
+                let dd = work.join("deck");
+                std::fs::create_dir_all(&dd).ok();
+                let ok = Command::new(&py).args([
+                    sdir.join("gen-deck-frames.py").to_string_lossy().as_ref(),
+                    "--text", t, "--frames", &n.to_string(),
+                    "--out", &dd.to_string_lossy(), "--layout", layout,
+                ]).status().map(|s| s.success()).unwrap_or(false);
+                if ok && dd.join("deck_0001.png").is_file() { Some(dd) } else { None }
+            }),
+            _ => None,
+        }
+    } else { None };
 
     // 1) Blender headless render → PNG-sekvens.
     let mut args: Vec<String> = vec![
@@ -154,6 +175,10 @@ pub async fn render_blender_cinematic(
     if let Some(sd) = &screendir {
         args.push("--screendir".into());
         args.push(sd.to_string_lossy().into());
+    }
+    if let Some(dd) = &deckdir {
+        args.push("--deckdir".into());
+        args.push(dd.to_string_lossy().into());
     }
     let out = Command::new(&blender).args(&args).output()
         .map_err(|e| format!("blender-kjøring feilet: {e}"))?;
