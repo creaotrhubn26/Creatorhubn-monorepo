@@ -998,7 +998,13 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   }
   doc.texts.forEach((tx, i) => {
     const rev = revealOf(tx.id, 'text', i, doc.texts.length);
-    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y + measureTextHeight(tx) / 2, () => drawText(ctx, doc, tx));
+    // Pris-count-up: tall teller 0→pris under reveal (kun genArrange-labels m/ synlig numerisk pris).
+    let drawTx = tx;
+    if (t != null && tx.genArrange && tx.baseText != null && tx.priceText && /^\d+$/.test(tx.priceText) && tx.text.endsWith(tx.priceText)) {
+      const prog = rev ? rev.p : 1;
+      drawTx = { ...tx, text: `${tx.baseText} · ${Math.round(Number(tx.priceText) * prog)}` };
+    }
+    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y + measureTextHeight(tx) / 2, () => drawText(ctx, doc, drawTx));
   });
   await drawLogo(ctx, doc.canvas);
   if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);

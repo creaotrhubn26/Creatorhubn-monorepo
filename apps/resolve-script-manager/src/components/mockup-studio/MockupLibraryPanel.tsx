@@ -37,6 +37,7 @@ export function MockupLibraryPanel() {
   const placeLibraryImage = useMockupStudio((s) => s.placeLibraryImage);
   const arrangeLibrary = useMockupStudio((s) => s.arrangeLibrary);
   const buildOnePager = useMockupStudio((s) => s.buildOnePager);
+  const buildCraveableReel = useMockupStudio((s) => s.buildCraveableReel);
   const setArrangeShowPrices = useMockupStudio((s) => s.setArrangeShowPrices);
   const renderChannelSet = useMockupStudio((s) => s.renderChannelSet);
   const hasImages = useMockupStudio((s) => (s.doc.images?.length ?? 0) > 0);
@@ -162,6 +163,15 @@ export function MockupLibraryPanel() {
               });
               void buildOnePager(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny', showPrices: withPrices });
             }}>✦ Bygg one-pager</button>
+          <button style={{ ...chip, width: '100%', background: 'rgba(244,114,54,0.14)', color: '#f4a24a', borderColor: '#e07a2a', fontWeight: 700 }}
+            title="9:16 reel: craveable motion (warmth + push-in + beat-punch + stagger-reveal + pris-count-up). Trykk Play → eksporter GIF/video."
+            onClick={() => {
+              const items = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean).map((m) => {
+                const meta = m as LibraryMeta;
+                return { assetId: meta.id, label: prettyName(meta.name), price: withPrices ? meta.price : undefined };
+              });
+              void buildCraveableReel(items, { title: docName && docName !== 'Ny mockup' ? docName : 'Meny', showPrices: withPrices });
+            }}>🎬 Craveable Reel (9:16)</button>
           {hoverPreset && (() => {
             const pr = PRESENTATIONS.find((x) => x.id === hoverPreset)!;
             const metas = [...sel].map((id) => library.find((m) => m.id === id)).filter(Boolean) as LibraryMeta[];

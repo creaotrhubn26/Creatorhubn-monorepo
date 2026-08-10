@@ -130,6 +130,8 @@ interface MockupStudioState {
   buildOnePager: (items: { assetId: string; label?: string; price?: string }[], opts?: { title?: string; eyebrow?: string; accent?: string; titleColor?: string; labelColor?: string; showPrices?: boolean }) => Promise<void>;
   /** Live av/på for pris-delen i alle arrange-labels (uten å bygge på nytt). */
   setArrangeShowPrices: (on: boolean) => void;
+  /** Ett-klikk «Craveable Reel»: 9:16 + warmth + push-in + beat-punch + 2-kol grid m/ pris-count-up. */
+  buildCraveableReel: (items: { assetId: string; label?: string; price?: string }[], opts?: { title?: string; eyebrow?: string; accent?: string; titleColor?: string; labelColor?: string; showPrices?: boolean; bpm?: number }) => Promise<void>;
   /** «Én design → alle kanaler»: re-layout gjeldende design per kanal-format → PNG-dataURL per kanal. */
   renderChannelSet: () => Promise<{ id: string; label: string; w: number; h: number; dataUrl: string }[]>;
 }
@@ -435,6 +437,25 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
     get().addText('title');
     const st = get().selection;
     if (st.kind === 'text') get().patchText(st.id, { text: opts?.title ?? 'Meny', x: 60, y: Math.round(H * 0.10), w: 1200, size: 88, weight: 800, color: opts?.titleColor ?? '#1A1A1A' });
+    get().select({ kind: 'canvas' });
+  },
+
+  // Ett-klikk «Craveable Reel»: 9:16 + craveable motion-resept + 2-kol grid m/ pris-count-up.
+  buildCraveableReel: async (items, opts) => {
+    if (!items.length) return;
+    const story = MOCKUP_FORMATS.find((f) => f.id === 'story') ?? { id: 'story', label: 'Story', w: 1080, h: 1920 };
+    get().applyFormat(story);
+    const W = get().doc.canvas.w, H = get().doc.canvas.h;
+    get().patchCanvas({ background: 'light', warmth: 0.6, pushIn: 0.5, bpm: opts?.bpm ?? 120, beatPunch: 0.6, ...(opts?.accent ? { accent: opts.accent } : {}) });
+    await get().arrangeLibrary(items, 'grid', { cols: 2, top: Math.round(H * 0.16), showLabels: true, showPrices: opts?.showPrices ?? true, labelColor: opts?.labelColor ?? '#1A1A1A' });
+    if (opts?.eyebrow) {
+      get().addText('eyebrow');
+      const s = get().selection;
+      if (s.kind === 'text') get().patchText(s.id, { text: opts.eyebrow, x: Math.round(W * 0.05), y: Math.round(H * 0.05), w: Math.round(W * 0.85), size: 34, color: 'accent' });
+    }
+    get().addText('title');
+    const st = get().selection;
+    if (st.kind === 'text') get().patchText(st.id, { text: opts?.title ?? 'Meny', x: Math.round(W * 0.05), y: Math.round(H * 0.085), w: Math.round(W * 0.9), size: Math.round(W * 0.095), weight: 800, color: opts?.titleColor ?? '#1A1A1A' });
     get().select({ kind: 'canvas' });
   },
 }));
