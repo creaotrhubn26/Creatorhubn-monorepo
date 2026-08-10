@@ -354,7 +354,9 @@ def render_final(
         scene.render.filepath = prev[3]
         if prev[4] is not None and hasattr(scene, "cycles"):
             scene.cycles.samples = prev[4]
-    return {"rendered": path, "resolution": resolution, "samples": samples, "engine": "CYCLES"}
+    # Post-hook (§36): final render leveres aldri uten QA vedlagt.
+    return {"rendered": path, "resolution": resolution, "samples": samples,
+            "engine": "CYCLES", "qa": validate_scene()}
 
 
 def undo_push(label: str = "AI step") -> dict:
@@ -401,25 +403,25 @@ def _set_principled_input(mat, parameter: str, value) -> None:
 # Én kilde for HTTP-serveren OG MCP tools/list. description vises til Claude.
 
 TOOLS: dict[str, dict] = {
-    "get_scene": {"fn": get_scene, "description": "Scene-oversikt: tellinger, objekter, aktiv kamera, render-engine.", "mutates": False},
-    "get_selection": {"fn": get_selection, "description": "Gjeldende mode, aktivt objekt og selection.", "mutates": False},
-    "inspect_object": {"fn": inspect_object, "description": "Detaljer om ett objekt (transform, materialer, lys-/kamera-data). Args: name.", "mutates": False},
-    "validate_scene": {"fn": validate_scene, "description": "Enkel scene-QA: unapplied scale, manglende teksturer, aktiv kamera.", "mutates": False},
-    "create_object": {"fn": create_object, "description": "Lag primitiv: kind=cube|sphere|cylinder|plane|empty, name?, location?[x,y,z].", "mutates": True},
-    "delete_object": {"fn": delete_object, "description": "Slett objekt ved navn. DESTRUKTIVT.", "mutates": True},
-    "set_transform": {"fn": set_transform, "description": "Sett location/rotation_euler_deg/scale på objekt. Args: name + valgfrie [x,y,z].", "mutates": True},
-    "create_material": {"fn": create_material, "description": "Nytt Principled-materiale. Args: name, base_color?[r,g,b], metallic?, roughness?.", "mutates": True},
-    "set_material_parameter": {"fn": set_material_parameter, "description": "Sett Principled-input ved navn (f.eks. 'Metallic', 0.8). Args: material, parameter, value.", "mutates": True},
-    "assign_material": {"fn": assign_material, "description": "Tildel materiale til objekt. Args: object_name, material.", "mutates": True},
-    "create_light": {"fn": create_light, "description": "Nytt lys: type=POINT|SUN|SPOT|AREA, name?, location?, energy?, color?[r,g,b].", "mutates": True},
-    "configure_light": {"fn": configure_light, "description": "Endre lys: energy?, color?, size? (area), spot_size_deg? (spot). Args: name + felter.", "mutates": True},
-    "create_camera": {"fn": create_camera, "description": "Nytt kamera: name?, location?, focal_length_mm?, make_active (default true).", "mutates": True},
-    "point_camera_at": {"fn": point_camera_at, "description": "Sikt kamera mot objekt. Args: camera, target.", "mutates": True},
-    "configure_camera": {"fn": configure_camera, "description": "Endre kamera: focal_length_mm?, dof_enabled?, dof_focus_object?, f_stop?. Args: name + felter.", "mutates": True},
-    "render_preview": {"fn": render_preview, "description": "Rask EEVEE-preview til PNG. Args: filepath? (default temp), resolution? (default 512). Returnerer filsti — les bildet for visuell inspeksjon.", "mutates": False},
-    "render_final": {"fn": render_final, "description": "Cycles-render i full kvalitet (default 1920px/128 samples). Bruk ETTER preview-loopen. Args: filepath?, resolution?, samples?.", "mutates": False},
-    "undo_push": {"fn": undo_push, "description": "Marker starten på en AI-transaksjon i undo-historikken. Args: label.", "mutates": False},
-    "undo": {"fn": undo, "description": "Angre siste steg.", "mutates": True},
+    "get_scene": {"level": "safe", "fn": get_scene, "description": "Scene-oversikt: tellinger, objekter, aktiv kamera, render-engine.", "mutates": False},
+    "get_selection": {"level": "safe", "fn": get_selection, "description": "Gjeldende mode, aktivt objekt og selection.", "mutates": False},
+    "inspect_object": {"level": "safe", "fn": inspect_object, "description": "Detaljer om ett objekt (transform, materialer, lys-/kamera-data). Args: name.", "mutates": False},
+    "validate_scene": {"level": "safe", "fn": validate_scene, "description": "Enkel scene-QA: unapplied scale, manglende teksturer, aktiv kamera.", "mutates": False},
+    "create_object": {"level": "safe", "fn": create_object, "description": "Lag primitiv: kind=cube|sphere|cylinder|plane|empty, name?, location?[x,y,z].", "mutates": True},
+    "delete_object": {"level": "destructive", "fn": delete_object, "description": "Slett objekt ved navn. DESTRUKTIVT.", "mutates": True},
+    "set_transform": {"level": "modify", "fn": set_transform, "description": "Sett location/rotation_euler_deg/scale på objekt. Args: name + valgfrie [x,y,z].", "mutates": True},
+    "create_material": {"level": "safe", "fn": create_material, "description": "Nytt Principled-materiale. Args: name, base_color?[r,g,b], metallic?, roughness?.", "mutates": True},
+    "set_material_parameter": {"level": "modify", "fn": set_material_parameter, "description": "Sett Principled-input ved navn (f.eks. 'Metallic', 0.8). Args: material, parameter, value.", "mutates": True},
+    "assign_material": {"level": "modify", "fn": assign_material, "description": "Tildel materiale til objekt. Args: object_name, material.", "mutates": True},
+    "create_light": {"level": "safe", "fn": create_light, "description": "Nytt lys: type=POINT|SUN|SPOT|AREA, name?, location?, energy?, color?[r,g,b].", "mutates": True},
+    "configure_light": {"level": "modify", "fn": configure_light, "description": "Endre lys: energy?, color?, size? (area), spot_size_deg? (spot). Args: name + felter.", "mutates": True},
+    "create_camera": {"level": "safe", "fn": create_camera, "description": "Nytt kamera: name?, location?, focal_length_mm?, make_active (default true).", "mutates": True},
+    "point_camera_at": {"level": "safe", "fn": point_camera_at, "description": "Sikt kamera mot objekt. Args: camera, target.", "mutates": True},
+    "configure_camera": {"level": "modify", "fn": configure_camera, "description": "Endre kamera: focal_length_mm?, dof_enabled?, dof_focus_object?, f_stop?. Args: name + felter.", "mutates": True},
+    "render_preview": {"level": "safe", "fn": render_preview, "description": "Rask EEVEE-preview til PNG. Args: filepath? (default temp), resolution? (default 512). Returnerer filsti — les bildet for visuell inspeksjon.", "mutates": False},
+    "render_final": {"level": "safe", "fn": render_final, "description": "Cycles-render i full kvalitet (default 1920px/128 samples). Bruk ETTER preview-loopen. Args: filepath?, resolution?, samples?.", "mutates": False},
+    "undo_push": {"level": "safe", "fn": undo_push, "description": "Marker starten på en AI-transaksjon i undo-historikken. Args: label.", "mutates": False},
+    "undo": {"level": "safe", "fn": undo, "description": "Angre siste steg.", "mutates": True},
 }
 
 

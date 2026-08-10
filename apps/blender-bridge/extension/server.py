@@ -18,7 +18,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import bpy
 
-from . import core, resources
+try:
+    from . import core, permissions, resources
+except ImportError:  # flat import i headless-testene
+    import core, permissions, resources
 
 HOST = "127.0.0.1"
 PORT = 7717  # ponytail: fast port; gjør konfigurerbar når behovet oppstår
@@ -41,12 +44,37 @@ def _drain_commands():
             elif cmd["tool"] == "__resource__":
                 cmd["result"] = resources.resolve(cmd["args"]["uri"])
             else:
+                level = core.TOOLS.get(cmd["tool"], {}).get("level", "safe")
+                if permissions.requires_approval(level):
+                    approval_id = permissions.create_pending(cmd["tool"], cmd["args"])
+                    cmd["result"] = {
+                        "approval_required": True,
+                        "approval_id": approval_id,
+                        "level": level,
+                        "message": "Venter på godkjenning i Blender-panelet. "
+                                   "Kall check_approval med approval_id for status/resultat.",
+                    }
+                    cmd["ok"] = True
+                    cmd["event"].set()
+                    continue
                 cmd["result"] = core.call_tool(cmd["tool"], cmd["args"])
+                permissions.log(cmd["tool"], True)
             cmd["ok"] = True
         except Exception as exc:  # noqa: BLE001 — feilen skal til klienten
             cmd["ok"] = False
             cmd["error"] = str(exc)
+            permissions.log(cmd["tool"], False, str(exc))
         cmd["event"].set()
+
+    # kjør godkjente ventende kommandoer (godkjent via panel-klikk)
+    for entry in permissions.approved_ready():
+        try:
+            result = core.call_tool(entry["tool"], entry["args"])
+            permissions.set_status(entry["id"], "done", result=result)
+            permissions.log(entry["tool"], True, "godkjent av bruker")
+        except Exception as exc:  # noqa: BLE001
+            permissions.set_status(entry["id"], "failed", error=str(exc))
+            permissions.log(entry["tool"], False, str(exc))
     return 0.05
 
 
@@ -84,10 +112,28 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond(200, {"resources": cmd.get("result", [])})
         elif self.path == "/tools":
             tools = [
-                {"name": name, "description": t["description"], "mutates": t["mutates"]}
+                {"name": name, "description": t["description"], "mutates": t["mutates"],
+                 "level": t.get("level", "safe")}
                 for name, t in core.TOOLS.items()
             ]
+            tools.append({
+                "name": "check_approval",
+                "description": "Sjekk status/resultat for et kall som venter på godkjenning "
+                               "i Blender-panelet. Args: approval_id.",
+                "mutates": False, "level": "safe",
+            })
             self._respond(200, {"tools": tools})
+        elif self.path.startswith("/approval/"):
+            entry = permissions.get(self.path[len("/approval/"):])
+            if entry is None:
+                self._respond(404, {"ok": False, "error": "ukjent approval_id"})
+            else:
+                self._respond(200, {"ok": True, "result": {
+                    "status": entry["status"], "result": entry["result"],
+                    "error": entry["error"], "tool": entry["tool"],
+                }})
+        elif self.path == "/log":
+            self._respond(200, {"log": permissions.log_tail(20)})
         else:
             self._respond(404, {"ok": False, "error": "not_found"})
 
@@ -102,6 +148,13 @@ class _Handler(BaseHTTPRequestHandler):
         tool = payload.get("tool")
         if not isinstance(tool, str):
             return self._respond(400, {"ok": False, "error": "tool_mangler"})
+        if tool == "check_approval":
+            entry = permissions.get((payload.get("args") or {}).get("approval_id", ""))
+            if entry is None:
+                return self._respond(422, {"ok": False, "error": "ukjent approval_id"})
+            return self._respond(200, {"ok": True, "result": {
+                "status": entry["status"], "result": entry["result"], "error": entry["error"],
+            }})
         cmd = {
             "tool": tool,
             "args": payload.get("args") or {},
