@@ -14,6 +14,9 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { rasterizeMockup, measureTextHeight, annRect } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot, type MockupImageSlot, type MockupAnnotation } from './mockupStudioModel';
+import { convertFileSrc } from '../../api';
+// Robust: convertFileSrc krever Tauri; i browser-test-modus faller vi tilbake til rå sti/URL.
+const safeFileSrc = (p: string): string => { try { return p.startsWith('data:') || p.startsWith('http') ? p : convertFileSrc(p); } catch { return p; } };
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
 import { MockupTimelinePanel } from './MockupTimelinePanel';
@@ -463,6 +466,12 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         }}
       >
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
+
+        {/* Seedance-klipp: spilles i posisjon over poster-bildet (preview). Eksport bruker poster. */}
+        {doc.images?.filter((im) => im.video).map((im) => (
+          <video key={`vid_${im.id}`} src={safeFileSrc(im.video as string)} autoPlay loop muted playsInline
+            style={{ position: 'absolute', left: pct(im.x, W), top: pct(im.y, H), width: pct(im.w, W), height: pct(im.h, H), transform: `rotate(${im.rotation}deg)`, transformOrigin: 'center', objectFit: im.fit === 'contain' ? 'contain' : 'cover', borderRadius: pct(im.radius, W), pointerEvents: 'none' }} />
+        ))}
 
         {/* Frittstående bilde-elementer — dra for å flytte (nederst i overlay-stacken) */}
         {doc.images?.map((im) => {

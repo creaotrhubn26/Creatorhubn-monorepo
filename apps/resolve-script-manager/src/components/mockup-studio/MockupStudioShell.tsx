@@ -79,6 +79,7 @@ import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
 import { aiLocalizeTexts, localizeAvailable, LOCALIZE_LANGS } from './mockupAiLocalize';
 import { PERSPECTIVE_PRESETS, type MockupPerspective } from './mockupPerspective';
 import { generateSceneBackground, aiBackgroundAvailable } from './mockupAiBackground';
+import { SEEDANCE_PROMPTS, generateCraveClip, seedanceCreditEstimate } from './mockupSeedance';
 import { MOCKUP_SCENES } from './mockupScenes';
 import { is3dVariant } from './mockup3d/deviceGeometry';
 import { aiProductMindmap } from './mockupMindmap';
@@ -1094,6 +1095,16 @@ function NumberBox({ label, value, onChange }: { label: string; value: number; o
 function ImageInspector({ image }: { image: import('./mockupStudioModel').MockupImageSlot }) {
   const patchImage = useMockupStudio((s) => s.patchImage);
   const removeImage = useMockupStudio((s) => s.removeImage);
+  const [seedPrompt, setSeedPrompt] = useState('cheese-pull');
+  const [seedBusy, setSeedBusy] = useState(false);
+  const [seedErr, setSeedErr] = useState<string | null>(null);
+  const runSeedance = async () => {
+    setSeedErr(null); setSeedBusy(true);
+    try {
+      const path = await generateCraveClip({ imageDataUrl: image.image, promptId: seedPrompt, refId: image.id, resolution: '720p' });
+      patchImage(image.id, { video: path });
+    } catch (e) { setSeedErr(String(e instanceof Error ? e.message : e)); } finally { setSeedBusy(false); }
+  };
   return (
     <div>
       <SectionLabel>Bilde</SectionLabel>
@@ -1114,6 +1125,18 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         <input type="range" min={-45} max={45} value={image.rotation} onChange={(e) => patchImage(image.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>
       <label style={checkRow}><input type="checkbox" checked={image.shadow} onChange={(e) => patchImage(image.id, { shadow: e.target.checked })} /> Skygge</label>
+      <Field label="Animer (Seedance i2v — craveable)">
+        <select value={seedPrompt} onChange={(e) => setSeedPrompt(e.target.value)} style={textInput}>
+          {SEEDANCE_PROMPTS.map((pr) => <option key={pr.id} value={pr.id}>{pr.label}</option>)}
+        </select>
+        <button onClick={() => void runSeedance()} disabled={seedBusy || !aiAvailable()}
+          style={{ ...actionBtn, width: '100%', marginTop: 6, opacity: seedBusy || !aiAvailable() ? 0.6 : 1 }}
+          title={aiAvailable() ? `Seedance i2v fra dette fotoet → craveable klipp · ~${seedanceCreditEstimate('720p', 3)} kreditter (3s 720p)` : 'Krever innlogget AI (RR-token) + kreditter'}>
+          {seedBusy ? 'Genererer klipp…' : image.video ? '↻ Regenerer klipp' : '🎬 Animer'}
+        </button>
+        {image.video && <div style={{ fontSize: FS_SM, color: '#4ade80', marginTop: 4 }}>✓ Klipp koblet — spilles i preview{'. '}<button onClick={() => patchImage(image.id, { video: undefined })} style={{ background: 'none', border: 'none', color: C.inkSoft, cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: FS_SM }}>fjern</button></div>}
+        {seedErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 4 }}>{seedErr}</div>}
+      </Field>
       <div style={{ height: 8 }} />
       <ArrangeRow kind="image" id={image.id} />
       <button onClick={() => removeImage(image.id)} style={{ ...dangerBtn, marginTop: 8 }}>Slett bilde</button>

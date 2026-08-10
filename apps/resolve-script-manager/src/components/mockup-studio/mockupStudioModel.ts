@@ -506,7 +506,10 @@ export function makeDevice(variant: MockupDeviceVariant, partial: Partial<Mockup
 /** Frittstående bilde-element (mat-foto/collage direkte på lerretet). */
 export interface MockupImageSlot {
   id: string;
-  image: string;          // dataURL
+  image: string;          // dataURL (også poster/first-frame når video er satt)
+  /** Seedance i2v-klipp (mp4-sti): craveable bevegelse (cheese-pull/damp) generert FRA `image`.
+   *  Preview spiller klippet i posisjon; statisk render/eksport bruker `image` som poster. */
+  video?: string;
   x: number;
   y: number;
   w: number;
