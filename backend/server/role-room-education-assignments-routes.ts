@@ -139,6 +139,11 @@ function isMissingTable(err: unknown): boolean {
   return (err as { code?: string })?.code === "42P01";
 }
 
+// Aksepterer Pool ELLER PoolClient (begge har bare .query som brukes her) —
+// slik at kallere kan kjøre denne inni en transaksjon (BEGIN på en client)
+// uten en egen overload. Speiler PgQueryRunner-mønsteret i index.ts.
+type Queryable = Pick<Pool, "query">;
+
 /**
  * Kjernen i POST /education/assignments — trukket ut slik at andre ruter
  * (LTI deep-link-response) kan opprette en oppgave-rad uten å duplisere
@@ -146,7 +151,7 @@ function isMissingTable(err: unknown): boolean {
  * cohortId/productionId); denne funksjonen setter bare inn raden.
  */
 export async function insertEducationAssignmentRow(
-  pool: Pool,
+  pool: Queryable,
   ownerId: string,
   input: {
     title: string; cohortId?: string | null; productionId?: string | null; brief?: string | null;

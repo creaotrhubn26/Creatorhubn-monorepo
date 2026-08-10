@@ -85,6 +85,11 @@ function isMissingTable(err: unknown): boolean {
   return (err as { code?: string })?.code === "42P01";
 }
 
+// Aksepterer Pool ELLER PoolClient (begge har bare .query som brukes her) —
+// slik at kallere kan kjøre denne inni en transaksjon (BEGIN på en client)
+// uten en egen overload. Speiler PgQueryRunner-mønsteret i index.ts.
+type Queryable = Pick<Pool, "query">;
+
 /**
  * Kjernen i POST /education/productions — trukket ut slik at andre ruter
  * (LTI deep-link-response) kan opprette en ekte produksjon uten å duplisere
@@ -93,7 +98,7 @@ function isMissingTable(err: unknown): boolean {
  * (kaster "project_not_found" ellers).
  */
 export async function createEducationProductionRow(
-  pool: Pool,
+  pool: Queryable,
   ownerId: string,
   input: { title: string; cohortId?: string | null; projectId?: string },
 ): Promise<Record<string, unknown>> {

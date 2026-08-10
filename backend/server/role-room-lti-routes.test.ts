@@ -367,21 +367,24 @@ describe("POST /lti/launches/:id/deep-link-response", () => {
 
   // Fake-pool i samme stil som resten av fila: matcher SQL på delstreng, alle
   // launches/toolkey-oppslag er felles boilerplate → gjemt her, testene styrer
-  // resten via `extra`.
+  // resten via `extra`. `connect()` gir en fake client (samme query-logikk +
+  // release()) slik at createProduction-transaksjonen (BEGIN/COMMIT/ROLLBACK
+  // på en client) har noe å kjøre mot.
   function basePool(extra: (sql: string, params: any[]) => any) {
     const calls: Array<{ sql: string; params: any[] }> = [];
-    const pool: any = {
-      query: vi.fn(async (sql: string, params: any[] = []) => {
-        calls.push({ sql, params });
-        if (sql.includes("SELECT kid, private_pem")) return { rows: [] };
-        if (sql.includes("INSERT INTO role_room_lti_tool_keys")) return { rows: [] };
-        if (sql.includes("FROM role_room_lti_launches l JOIN role_room_lti_platforms p")) {
-          return { rows: [{ deep_link_return_url: "https://canvas.example/return", deep_link_data: "d1", client_id: "cid", issuer: "https://canvas", deployment_id: "dep1" }] };
-        }
-        return extra(sql, params);
-      }),
-    };
-    return { pool, calls };
+    const query = vi.fn(async (sql: string, params: any[] = []) => {
+      calls.push({ sql, params });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("SELECT kid, private_pem")) return { rows: [] };
+      if (sql.includes("INSERT INTO role_room_lti_tool_keys")) return { rows: [] };
+      if (sql.includes("FROM role_room_lti_launches l JOIN role_room_lti_platforms p")) {
+        return { rows: [{ deep_link_return_url: "https://canvas.example/return", deep_link_data: "d1", client_id: "cid", issuer: "https://canvas", deployment_id: "dep1" }] };
+      }
+      return extra(sql, params);
+    });
+    const release = vi.fn();
+    const pool: any = { query, connect: vi.fn(async () => ({ query, release })) };
+    return { pool, calls, release };
   }
   function contentItemOf(res: any): any {
     const claims = jwt.decode(res.body.jwt) as any;
@@ -420,9 +423,9 @@ describe("POST /lti/launches/:id/deep-link-response", () => {
     expect(insertCall.params).toContain("edprod-1");
   });
 
-  it("createProduction=true → oppretter ekte produksjon (casting_projects + education-rad) og bruker dens project_id i custom", async () => {
+  it("createProduction=true → oppretter ekte produksjon (casting_projects + education-rad) og bruker dens project_id i custom, ALT i én BEGIN..COMMIT", async () => {
     let createdProjectId = "";
-    const { pool } = basePool((sql, params) => {
+    const { pool, calls, release } = basePool((sql, params) => {
       if (sql.includes("FROM role_room_education_cohorts")) return { rows: [{ id: "cohort-1" }] };
       if (sql.includes("INSERT INTO casting_projects")) { createdProjectId = params[0]; return { rows: [] }; }
       if (sql.includes("INSERT INTO role_room_education_productions")) return { rows: [{ id: "edprod-new", project_id: createdProjectId }] };
@@ -436,6 +439,33 @@ describe("POST /lti/launches/:id/deep-link-response", () => {
     expect(item.custom.production_id).toBe(createdProjectId);
     expect(item.custom.assignment_id).toBe("edassign-2");
     expect(item.custom.artifact_kind).toBeUndefined(); // ingen artefakt oppgitt → utelates
+    // Transaksjon: BEGIN før produksjon/oppgave, COMMIT etter, client alltid released.
+    const sqls = calls.map((c) => c.sql);
+    const beginIdx = sqls.indexOf("BEGIN");
+    const commitIdx = sqls.indexOf("COMMIT");
+    expect(beginIdx).toBeGreaterThanOrEqual(0);
+    expect(commitIdx).toBeGreaterThan(beginIdx);
+    expect(sqls.findIndex((s) => s.includes("INSERT INTO casting_projects"))).toBeGreaterThan(beginIdx);
+    expect(sqls.findIndex((s) => s.includes("INSERT INTO role_room_education_assignments"))).toBeLessThan(commitIdx);
+    expect(sqls).not.toContain("ROLLBACK");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("createProduction=true, oppgave-insert kaster → ROLLBACK, ingen orphan-produksjon, ingen JWT", async () => {
+    const { pool, calls, release } = basePool((sql) => {
+      if (sql.includes("FROM role_room_education_cohorts")) return { rows: [{ id: "cohort-1" }] };
+      if (sql.includes("INSERT INTO casting_projects")) return { rows: [] };
+      if (sql.includes("INSERT INTO role_room_education_productions")) return { rows: [{ id: "edprod-new", project_id: "proj-x" }] };
+      if (sql.includes("INSERT INTO role_room_education_assignments")) throw new Error("db_blew_up");
+      return { rows: [] };
+    });
+    const res = await post(pool, { title: "Ny produksjon-oppgave", cohortId: "cohort-1", createProduction: true });
+    expect(res.statusCode).toBe(500); // fail cleanly — ingen halv-committed JWT
+    expect(res.body.jwt).toBeUndefined();
+    const sqls = calls.map((c) => c.sql);
+    expect(sqls).toContain("ROLLBACK");
+    expect(sqls).not.toContain("COMMIT");
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("gammelt payload (kun projectId) → INGEN assignment-rad, custom har KUN production_id (bakoverkompatibelt)", async () => {

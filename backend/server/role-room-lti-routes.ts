@@ -744,10 +744,35 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         );
         if (cohortOwn.rows.length === 0) { res.status(400).json({ error: "cohort_not_found" }); return; }
 
+        const artifactKind = (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null;
+        const artifactView = (typeof body.artifactView === "string" && body.artifactView.trim()) ? body.artifactView.trim() : null;
+        const assignmentInput = {
+          title, cohortId,
+          brief: body.brief, learningGoals: body.learningGoals, dueAt: body.dueAt,
+          status: "published", artifactKind, artifactView,
+          isArbeidskrav: body.isArbeidskrav === true, isExam: body.isExam === true,
+          vurderingsform: body.vurderingsform,
+        };
+
         let productionRow: Record<string, unknown>;
+        let assignmentRow: Record<string, unknown>;
         if (body.createProduction === true) {
-          // Gjenbruker /education/productions' create-logikk (casting_projects + education-rad).
-          productionRow = await createEducationProductionRow(pool, uid, { title, cohortId });
+          // To skriv (produksjon + oppgave) må stå/falle SAMMEN — ellers kan en
+          // produksjon bli opprettet uten at noen oppgave/JWT noensinne kommer
+          // ut (foreldreløs produksjon). BEGIN/COMMIT rundt begge på én client.
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            // Gjenbruker /education/productions' create-logikk (casting_projects + education-rad).
+            productionRow = await createEducationProductionRow(client, uid, { title, cohortId });
+            assignmentRow = await insertEducationAssignmentRow(client, uid, { ...assignmentInput, productionId: String(productionRow.id) });
+            await client.query("COMMIT");
+          } catch (e) {
+            await client.query("ROLLBACK");
+            throw e;
+          } finally {
+            client.release();
+          }
         } else {
           const productionId = typeof body.productionId === "string" ? body.productionId.trim() : "";
           if (!productionId) { res.status(400).json({ error: "production_required" }); return; }
@@ -758,17 +783,9 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
           );
           if (prodOwn.rows.length === 0) { res.status(400).json({ error: "production_not_found" }); return; }
           productionRow = prodOwn.rows[0];
+          // Ett enkelt INSERT er allerede atomisk — ingen transaksjon nødvendig her.
+          assignmentRow = await insertEducationAssignmentRow(pool, uid, { ...assignmentInput, productionId: String(productionRow.id) });
         }
-
-        const artifactKind = (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null;
-        const artifactView = (typeof body.artifactView === "string" && body.artifactView.trim()) ? body.artifactView.trim() : null;
-        const assignmentRow = await insertEducationAssignmentRow(pool, uid, {
-          title, cohortId, productionId: String(productionRow.id),
-          brief: body.brief, learningGoals: body.learningGoals, dueAt: body.dueAt,
-          status: "published", artifactKind, artifactView,
-          isArbeidskrav: body.isArbeidskrav === true, isExam: body.isExam === true,
-          vurderingsform: body.vurderingsform,
-        });
 
         projectId = String(assignmentRow.production_project_id ?? productionRow.project_id ?? "");
         custom = { production_id: projectId, assignment_id: String(assignmentRow.id) };
