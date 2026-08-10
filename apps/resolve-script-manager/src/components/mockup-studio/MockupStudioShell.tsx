@@ -897,6 +897,20 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           {(Object.keys(DECOR_LABELS) as MockupDecor[]).map((id) => <option key={id} value={id}>{DECOR_LABELS[id]}</option>)}
         </select>
       </Field>
+      <Field label="Motion & grad (craveable)">
+        <label style={checkRow}>
+          <input type="checkbox" checked={(canvas.warmth ?? 0) > 0} onChange={(e) => patchCanvas({ warmth: e.target.checked ? 0.6 : 0 })} /> Warmth-grad (ost glinser)
+        </label>
+        {(canvas.warmth ?? 0) > 0 && (
+          <input type="range" min={0.1} max={1} step={0.05} value={canvas.warmth ?? 0.6} onChange={(e) => patchCanvas({ warmth: Number(e.target.value) })} style={{ width: '100%', accentColor: C.accent }} />
+        )}
+        <label style={checkRow}>
+          <input type="checkbox" checked={(canvas.pushIn ?? 0) > 0} onChange={(e) => patchCanvas({ pushIn: e.target.checked ? 0.6 : 0 })} /> Push-in (zoom under avspilling)
+        </label>
+        {(canvas.pushIn ?? 0) > 0 && (
+          <input type="range" min={0.1} max={1} step={0.05} value={canvas.pushIn ?? 0.6} onChange={(e) => patchCanvas({ pushIn: Number(e.target.value) })} style={{ width: '100%', accentColor: C.accent }} />
+        )}
+      </Field>
       <div style={{ fontSize: FS_SM, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
         {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)
       </div>

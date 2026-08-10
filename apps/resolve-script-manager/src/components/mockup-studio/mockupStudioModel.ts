@@ -257,6 +257,10 @@ export interface MockupCanvasSpec {
   typography?: MockupTypographyId;
   /** Dekor-lag bak innholdet. Default 'none'. */
   decor?: MockupDecor;
+  /** Warmth-grade (0..1): varm WB + metnings-løft → craveable mat-look (statisk synlig). */
+  warmth?: number;
+  /** Push-in (0..1): global kamera-zoom under avspilling → kinematisk hero-inntoning. */
+  pushIn?: number;
   /** Valgfri AI-generert bakgrunnsbilde (data-URL, cover-fylt bak dekor). */
   bgImage?: string;
   /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad.

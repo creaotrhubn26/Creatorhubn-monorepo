@@ -896,6 +896,21 @@ function hexToRgba(hex: string, a: number): string {
  * (1 = full eksport-oppløsning; < 1 for rask preview). Async fordi ramme-PNG-er
  * og skjermbilder lastes on-demand.
  */
+/** Warmth-grade post-pass (device-piksler, upåvirket av push-in/scale): varm glød + løft. */
+function applyWarmth(ctx: CanvasRenderingContext2D, canvasEl: HTMLCanvasElement, warmth?: number): void {
+  if (!warmth) return;
+  const W = canvasEl.width, H = canvasEl.height;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'soft-light';       // varm glød (ost glinser, skorpe gløder)
+  ctx.globalAlpha = Math.min(0.6, warmth * 0.55);
+  ctx.fillStyle = '#ff8a2b'; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'multiply';          // svært lett varme i skyggene
+  ctx.globalAlpha = Math.min(0.18, warmth * 0.16);
+  ctx.fillStyle = '#fff0dd'; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
 export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean; anim?: { t: number }; transparent?: boolean }): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(doc.canvas.w * scale);
@@ -904,6 +919,11 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   if (!ctx) return canvas;
   ctx.scale(scale, scale);
   const t = opts?.anim?.t;
+  // Push-in: global kamera-zoom under avspilling (kinematisk inntoning mot innholdet).
+  if (t != null && doc.canvas.pushIn) {
+    const z = 1 + doc.canvas.pushIn * 0.12 * Math.min(1, t);
+    ctx.translate(doc.canvas.w / 2, doc.canvas.h / 2); ctx.scale(z, z); ctx.translate(-doc.canvas.w / 2, -doc.canvas.h / 2);
+  }
   // Multi-spor timeline: hvert elements skrive-klipp gir sin egen lokale t
   // (klippene styrer timing uavhengig). Null når statisk (ingen animasjon).
   const tl = t != null ? deriveTimeline(doc) : null;
@@ -928,6 +948,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     doc.texts.forEach((tx) => drawText(ctx, doc, tx));
     await drawLogo(ctx, doc.canvas);
     if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
+    applyWarmth(ctx, canvas, doc.canvas.warmth);
     return canvas;
   }
 
@@ -936,6 +957,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     const rev = t != null ? revealFor('mindmap', 0, 1, t) : null;
     withReveal(ctx, rev, doc.canvas.w / 2, doc.canvas.h * 0.52, () => drawMindmap(ctx, doc));
     await drawLogo(ctx, doc.canvas);
+    applyWarmth(ctx, canvas, doc.canvas.warmth);
     return canvas;
   }
 
@@ -972,6 +994,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   });
   await drawLogo(ctx, doc.canvas);
   if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
+  applyWarmth(ctx, canvas, doc.canvas.warmth);
   return canvas;
 }
 
