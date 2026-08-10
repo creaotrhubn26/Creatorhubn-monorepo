@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import jwt from "jsonwebtoken";
 
 import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore, buildToolConfiguration, landingMode } from "./role-room-lti-routes.js";
+import { generateToolKeypair } from "./role-room-lti-service.js";
 
 describe("gradeToScore (fri-tekst-karakter → AGS-tallscore)", () => {
   it("bestått/godkjent → 1/1, ikke bestått → 0/1", () => {
@@ -271,6 +272,87 @@ describe("POST /lti/launch approval gate", () => {
     await run(H(rs, "POST", "/lti/launch"), { body: { id_token: fakeJwt, state: "st" } }, res);
     expect(res.statusCode).toBe(403);
     expect(String(res.sent)).toContain("platform_not_approved");
+  });
+});
+
+describe("POST /lti/launch (custom.production_id → åpner artefakt-view)", () => {
+  const ISSUER = "https://moodle.example.edu";
+  const CLIENT_ID = "C1";
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  // Ekte RSA-nøkkelpar + signert id_token (RS256), akkurat som en ekte LMS ville
+  // sendt — så launchen går gjennom ekte JWKS-oppslag + signatur-verifisering,
+  // ikke bare mockes forbi. fetchPlatform() bruker global fetch → mocket her.
+  function launchPool(custom?: Record<string, unknown>) {
+    const key = generateToolKeypair();
+    const nonce = "nonce-1";
+    const now = Math.floor(Date.now() / 1000);
+    const payload: Record<string, unknown> = {
+      iss: ISSUER, aud: CLIENT_ID, sub: "stu-1", iat: now, exp: now + 300, nonce,
+      email: "elev@skole.no", name: "Elev Elevsen",
+      [ROLES]: ["http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"],
+      "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiResourceLinkRequest",
+      "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    };
+    if (custom) payload["https://purl.imsglobal.org/spec/lti/claim/custom"] = custom;
+    const idToken = jwt.sign(payload, key.privatePem, { algorithm: "RS256", keyid: key.kid });
+    globalThis.fetch = vi.fn(async (url: any) => {
+      if (String(url).includes("/certs")) return { ok: true, json: async () => ({ keys: [key.publicJwk] }) } as any;
+      return { ok: false, json: async () => ({}) } as any;
+    }) as any;
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("DELETE FROM role_room_lti_states")) return { rows: [{ nonce, platform_id: "p1" }] };
+      if (sql.includes("SELECT * FROM role_room_lti_platforms")) {
+        return { rows: [{ id: "p1", status: "approved", issuer: ISSUER, client_id: CLIENT_ID, jwks_url: `${ISSUER}/certs`, deployment_id: null }] };
+      }
+      if (sql.includes("INSERT INTO users")) return { rows: [{ id: "u1", role: "user" }] };
+      return { rows: [] };
+    }) };
+    return { pool, idToken };
+  }
+
+  it("custom.production_id + artifact_kind + artifact_view + assignment_id → redirect m/ tab+view+edu=1+assignment (+ rr_session)", async () => {
+    const { pool, idToken } = launchPool({
+      production_id: "proj-1", artifact_kind: "story-arc", artifact_view: "story-logic", assignment_id: "edassign-1",
+    });
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    expect(res.redirectedTo).toBeTruthy();
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("mode")).toBe("production");
+    expect(u.searchParams.get("project")).toBe("proj-1");
+    expect(u.searchParams.get("tab")).toBe("story-arc-studio");
+    expect(u.searchParams.get("view")).toBe("story-logic");
+    expect(u.searchParams.get("edu")).toBe("1");
+    expect(u.searchParams.get("assignment")).toBe("edassign-1");
+    expect(u.searchParams.get("rr_session")).toBeTruthy();
+  });
+
+  it("ukjent artifact_kind → artifactToTab faller tilbake til identity (fail-closed, aldri feil)", async () => {
+    const { pool, idToken } = launchPool({ production_id: "proj-2", artifact_kind: "mystery-kind" });
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("tab")).toBe("mystery-kind");
+    expect(u.searchParams.get("edu")).toBe("1");
+  });
+
+  it("kun production_id, INGEN artifact-custom → dagens oppførsel uendret (ingen tab/view/edu/assignment)", async () => {
+    const { pool, idToken } = launchPool({ production_id: "proj-3" });
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("mode")).toBe("production");
+    expect(u.searchParams.get("project")).toBe("proj-3");
+    expect(u.searchParams.has("tab")).toBe(false);
+    expect(u.searchParams.has("view")).toBe(false);
+    expect(u.searchParams.has("edu")).toBe(false);
+    expect(u.searchParams.has("assignment")).toBe(false);
+    expect(u.searchParams.get("rr_session")).toBeTruthy();
   });
 });
 

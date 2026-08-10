@@ -147,6 +147,27 @@ export function landingMode(educationRole: string, messageType: string, customPr
   return educationRole === "student" ? "student" : "education";
 }
 
+// artifact_kind → CastingPlannerPanel sin SPA-tab-slug (`?tab=`).
+// keep in sync with artifactToTab in educationProductionsService.ts (ONE SOURCE OF TRUTH there)
+const ARTIFACT_KIND_TO_TAB_SLUG: Record<string, string> = {
+  "story-arc": "story-arc-studio",
+  roles: "roller",
+  candidates: "kandidater",
+  selection: "utvelgelse",
+  locations: "lokasjoner",
+  callsheet: "produksjonsplan",
+  crew: "team",
+  equipment: "rekvisitter",
+  workspace: "producer-media",
+  economy: "producer-okonomi",
+  timeline: "producer-tidslinje",
+  approval: "producer-reviews",
+  delivery: "producer-eksport",
+};
+function artifactToTab(artifactKind: string): string {
+  return ARTIFACT_KIND_TO_TAB_SLUG[artifactKind] ?? artifactKind;
+}
+
 export function buildToolConfiguration(clientName = "The Role Room"): Record<string, unknown> {
   const loginUri = `${TOOL_BASE}/lti/login`;
   const launchUri = `${TOOL_BASE}/lti/launch`;
@@ -563,6 +584,19 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       const customProject = custom ? String(custom.production_id ?? "").trim() : "";
       if (messageType !== "LtiDeepLinkingRequest" && customProject) {
         const pParams = new URLSearchParams({ mode: "production", project: customProject });
+        // Task 6-content item kan bære artifact_kind/artifact_view/assignment_id
+        // (DeepLinkPicker-oppgave) → åpne rett fane/view i stedet for bare
+        // produksjonen. Uten artifact_kind er dette et gammelt/rent produksjons-
+        // deep-link → uendret oppførsel (kun mode+project+rr_session).
+        const artifactKind = custom ? String(custom.artifact_kind ?? "").trim() : "";
+        const artifactView = custom ? String(custom.artifact_view ?? "").trim() : "";
+        const assignmentId = custom ? String(custom.assignment_id ?? "").trim() : "";
+        if (artifactKind) {
+          pParams.set("tab", artifactToTab(artifactKind));
+          pParams.set("edu", "1");
+        }
+        if (artifactView) pParams.set("view", artifactView);
+        if (assignmentId) pParams.set("assignment", assignmentId);
         if (sessionToken) pParams.set("rr_session", sessionToken);
         res.redirect(`${APP_URL}?${pParams.toString()}`);
         return;
