@@ -22,13 +22,16 @@ Claude (MCP) → mcp/blender_mcp_server.py → HTTP :7717 → kommando-kø
    ```
 3. Blender må kjøre med extensionen aktiv når verktøyene brukes.
 
-## Verktøy (19)
+## Verktøy (27)
 
 Observer: `get_scene` `get_selection` `inspect_object` `validate_scene`
 Executor: `create_object` `delete_object` `set_transform` `create_material`
 `set_material_parameter` `assign_material` `create_light` `configure_light`
 `create_camera` `point_camera_at` `configure_camera` `render_preview`
 `render_final` `undo_push` `undo`
+Geometry Nodes: `create_geometry_nodes` `gn_add_node` `gn_connect`
+`gn_set_input` `gn_expose_parameter` `gn_set_parameter` `gn_get_graph`
+`gn_evaluated_stats`
 
 Katalogen bor i `extension/core.py` (`TOOLS`) — én kilde for både HTTP
 (`GET /tools`) og MCP `tools/list`.
@@ -79,5 +82,5 @@ pek plugin dit): `blender-core` (loopen + sikkerhet), `blender-scene-inspector`
 
 ## Ikke enda (kommer)
 
-Geometry Nodes, subagents, stil-skills (apple-product, automotive, …),
+Subagents, stil-skills (apple-product, automotive, …),
 «Angre hele AI-oppgaven»-knapp (undo-steg pushes per mutasjon i dag).

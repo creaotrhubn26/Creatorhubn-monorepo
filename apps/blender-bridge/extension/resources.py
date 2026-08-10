@@ -34,6 +34,10 @@ def list_resources() -> list[dict]:
         resources.append({"uri": f"blender://object/{obj.name}", "name": f"{obj.type}: {obj.name}"})
     for mat in bpy.data.materials:
         resources.append({"uri": f"blender://material/{mat.name}", "name": f"Materiale: {mat.name}"})
+    for tree in bpy.data.node_groups:
+        if tree.bl_idname == "GeometryNodeTree":
+            resources.append({"uri": f"blender://geometry-nodes/{tree.name}",
+                              "name": f"Geometry Nodes: {tree.name}"})
     for coll in bpy.data.collections:
         resources.append({"uri": f"blender://collection/{coll.name}", "name": f"Collection: {coll.name}"})
     return resources
@@ -57,6 +61,12 @@ def resolve(uri: str) -> dict:
         return core.inspect_object(path[len("camera/"):])
     if path.startswith("material/"):
         return get_material(path[len("material/"):])
+    if path.startswith("geometry-nodes/"):
+        try:
+            from . import geometry_nodes
+        except ImportError:
+            import geometry_nodes
+        return geometry_nodes.get_node_graph(path[len("geometry-nodes/"):])
     if path.startswith("collection/"):
         return get_collection(path[len("collection/"):])
     raise ValueError(f"ukjent ressurs '{uri}'")
