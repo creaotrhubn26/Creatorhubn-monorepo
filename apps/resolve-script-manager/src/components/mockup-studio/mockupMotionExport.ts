@@ -58,6 +58,21 @@ export async function exportMotionWebm(
   rctx.drawImage(frames[0], 0, 0); // unngå blank første frame
 
   const stream = rec.captureStream(cfg.fps);
+  // Lyd-spor: legg et audio-track på streamen (muxes inn i WebM). Kun fanget, ikke hørbart
+  // (kobles bare til MediaStreamDestination, ikke til høyttalerne).
+  let audioEl: HTMLAudioElement | null = null;
+  let audioCtx: AudioContext | null = null;
+  if (doc.canvas.audio?.src) {
+    try {
+      audioEl = new Audio(doc.canvas.audio.src);
+      audioEl.loop = true; audioEl.crossOrigin = 'anonymous';
+      audioCtx = new AudioContext();
+      const srcNode = audioCtx.createMediaElementSource(audioEl);
+      const dest = audioCtx.createMediaStreamDestination();
+      srcNode.connect(dest);
+      dest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+    } catch (e) { console.error('[mockup-studio] audio-track', e); audioEl = null; }
+  }
   const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
     .find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
   const chunks: BlobPart[] = [];
@@ -70,6 +85,7 @@ export async function exportMotionWebm(
   });
 
   mr.start();
+  if (audioEl) { try { await audioCtx?.resume(); void audioEl.play(); } catch { /* ignorer */ } }
   const frameMs = 1000 / cfg.fps;
   await new Promise<void>((resolve) => {
     let i = 0;
@@ -88,6 +104,7 @@ export async function exportMotionWebm(
   mr.stop();
 
   const blob = await stopped;
+  if (audioEl) { audioEl.pause(); void audioCtx?.close(); } // stopp + frigi lyd
   stream.getTracks().forEach((t) => t.stop()); // frigi capture-stream
   const buf = await blob.arrayBuffer();
   onProgress?.('Ferdig', 1);

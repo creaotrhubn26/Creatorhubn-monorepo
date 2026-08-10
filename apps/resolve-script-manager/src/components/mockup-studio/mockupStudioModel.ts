@@ -265,6 +265,8 @@ export interface MockupCanvasSpec {
   bpm?: number;
   /** Zoom-punch (0..1): rask skala-puls på hver beat → retention-rytme synket til musikk. */
   beatPunch?: number;
+  /** Lyd-spor (mp3/m4a dataURL eller sti) → muxes inn i MP4-eksporten (musicPath). Sett BPM = sporets tempo for beat-synk. */
+  audio?: { src: string; name?: string };
   /** Valgfri AI-generert bakgrunnsbilde (data-URL, cover-fylt bak dekor). */
   bgImage?: string;
   /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad.

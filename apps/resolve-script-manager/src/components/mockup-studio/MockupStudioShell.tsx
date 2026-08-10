@@ -921,6 +921,21 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
             <input type="range" min={0.1} max={1} step={0.05} value={canvas.beatPunch ?? 0.6} onChange={(e) => patchCanvas({ beatPunch: Number(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
           </div>
         )}
+        {/* Lyd-spor → muxes inn i MP4-eksport (musicPath). Sett BPM = sporets tempo for beat-synk. */}
+        {canvas.audio ? (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, fontSize: FS_SM, color: C.inkSoft }}>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🎵 {canvas.audio.name ?? 'lyd-spor'}</span>
+            <button onClick={() => patchCanvas({ audio: undefined })} style={{ ...listBtn, width: 'auto', padding: '4px 8px' }}>Fjern</button>
+          </div>
+        ) : (
+          <label style={{ ...listBtn, display: 'block', textAlign: 'center', cursor: 'pointer', marginTop: 6 }}>
+            🎵 Legg til lyd-spor (mux i MP4)
+            <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => {
+              const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+              const r = new FileReader(); r.onload = () => patchCanvas({ audio: { src: String(r.result), name: f.name } }); r.readAsDataURL(f);
+            }} />
+          </label>
+        )}
       </Field>
       <div style={{ fontSize: FS_SM, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
         {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)
