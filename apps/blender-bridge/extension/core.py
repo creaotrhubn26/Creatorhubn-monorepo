@@ -489,6 +489,11 @@ try:
 except ImportError:
     import studio_kit as _studio
 TOOLS.update(_studio.STUDIO_TOOLS)
+try:
+    from . import export_pipeline as _export
+except ImportError:
+    import export_pipeline as _export
+TOOLS.update(_export.EXPORT_TOOLS)
 
 
 def call_tool(name: str, args: dict | None = None) -> dict:
