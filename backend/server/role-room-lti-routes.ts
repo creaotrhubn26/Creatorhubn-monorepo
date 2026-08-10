@@ -22,6 +22,8 @@ import {
   signDeepLinkingResponse, groupStudentsBySection, isStudentRole,
   type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
+import { createEducationProductionRow } from "./role-room-education-productions-routes.js";
+import { insertEducationAssignmentRow } from "./role-room-education-assignments-routes.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 const APP_URL = process.env.LTI_APP_URL?.trim() || "https://www.theroleroom.com/";
@@ -143,6 +145,27 @@ export function landingMode(educationRole: string, messageType: string, customPr
   if (messageType !== "LtiDeepLinkingRequest" && customProject) return "production";
   if (messageType === "LtiDeepLinkingRequest") return "education";
   return educationRole === "student" ? "student" : "education";
+}
+
+// artifact_kind → CastingPlannerPanel sin SPA-tab-slug (`?tab=`).
+// keep in sync with artifactToTab in educationProductionsService.ts (ONE SOURCE OF TRUTH there)
+const ARTIFACT_KIND_TO_TAB_SLUG: Record<string, string> = {
+  "story-arc": "story-arc-studio",
+  roles: "roller",
+  candidates: "kandidater",
+  selection: "utvelgelse",
+  locations: "lokasjoner",
+  callsheet: "produksjonsplan",
+  crew: "team",
+  equipment: "rekvisitter",
+  workspace: "producer-media",
+  economy: "producer-okonomi",
+  timeline: "producer-tidslinje",
+  approval: "producer-reviews",
+  delivery: "producer-eksport",
+};
+function artifactToTab(artifactKind: string): string {
+  return ARTIFACT_KIND_TO_TAB_SLUG[artifactKind] ?? artifactKind;
 }
 
 export function buildToolConfiguration(clientName = "The Role Room"): Record<string, unknown> {
@@ -561,6 +584,22 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       const customProject = custom ? String(custom.production_id ?? "").trim() : "";
       if (messageType !== "LtiDeepLinkingRequest" && customProject) {
         const pParams = new URLSearchParams({ mode: "production", project: customProject });
+        // Task 6-content item kan bære artifact_kind/artifact_view/assignment_id
+        // (DeepLinkPicker-oppgave) → åpne rett fane/view i stedet for bare
+        // produksjonen. Uten artifact_kind er dette et gammelt/rent produksjons-
+        // deep-link → uendret oppførsel (kun mode+project+rr_session).
+        const artifactKind = custom ? String(custom.artifact_kind ?? "").trim() : "";
+        const artifactView = custom ? String(custom.artifact_view ?? "").trim() : "";
+        const assignmentId = custom ? String(custom.assignment_id ?? "").trim() : "";
+        if (artifactKind) {
+          pParams.set("tab", artifactToTab(artifactKind));
+          // Kun studenter skal se «Min side»-knappen (student-ankomst-stripen
+          // selv-skjuler for ikke-studenter, men edu=1 driver også knappen) —
+          // en faglærer som forhåndsviser egen artefakt-lenke skal IKKE få den.
+          if (identity.educationRole === "student") pParams.set("edu", "1");
+        }
+        if (artifactView) pParams.set("view", artifactView);
+        if (assignmentId) pParams.set("assignment", assignmentId);
         if (sessionToken) pParams.set("rr_session", sessionToken);
         res.redirect(`${APP_URL}?${pParams.toString()}`);
         return;
@@ -693,11 +732,41 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
   });
 
-  // ── Deep Linking-respons: lærer valgte/opprettet produksjon → signert JWT ─
-  // tilbake til Canvas (ltiResourceLink som launcher produksjonen). Frontend
-  // auto-poster {jwt} til deep_link_return_url.
+  // ── Deep Linking-respons: lærer valgte/opprettet produksjon (evt. + en full
+  // oppgave m/ artefakt-targeting) → signert JWT tilbake til Canvas
+  // (ltiResourceLink som launcher produksjonen). Frontend auto-poster {jwt}
+  // til deep_link_return_url.
+  //
+  // To payload-former:
+  //  - GAMMEL (bakoverkompatibel): { projectId } — INGEN tittel → velger kun
+  //    en eksisterende produksjon, ingen oppgave opprettes. custom bærer kun
+  //    production_id (og projectId MÅ være reell — vi signerer aldri en JWT
+  //    med et tomt production_id, se guard under).
+  //  - RIK (Task 7-plukkeren): { title, cohortId, productionId?|createProduction,
+  //    artifactKind?, artifactView?, brief?, learningGoals?, dueAt?,
+  //    isArbeidskrav?, isExam?, vurderingsform? } — oppretter en publisert
+  //    role_room_education_assignments-rad, custom bærer production_id +
+  //    artifact_kind + artifact_view + assignment_id.
+  //
+  // Bryteren mellom disse er TITTEL (autorerings-intensjon), ikke cohortId.
+  // (Task 7-review: en cohortId-basert bryter lot faglærer fylle ut
+  // tittel/brief/artefakt, glemme kull, og trykke Publiser → alt rikt
+  // innhold ble stille forkastet, og med «opprett ny produksjon» aktiv fikk
+  // Canvas et content item med custom.production_id: "" — et ødelagt
+  // deep link. Nå: tittel → rik sti, som KREVER kull eksplisitt (400
+  // cohort_required, ingen stille fallback); ingen tittel → gammel sti, som
+  // KREVER en reell projectId (400 production_required, aldri tomt production_id).)
   router.post("/lti/launches/:id/deep-link-response", requireSession, async (req, res) => {
-    const body = (req.body ?? {}) as { projectId?: string; title?: string };
+    const body = (req.body ?? {}) as {
+      projectId?: string; title?: string;
+      cohortId?: string; productionId?: string; createProduction?: boolean;
+      artifactKind?: string; artifactView?: string; brief?: string; learningGoals?: string;
+      dueAt?: string; isArbeidskrav?: boolean; isExam?: boolean; vurderingsform?: string;
+    };
+    const uid = (req as Request & { userId: string }).userId;
+    const cohortId = typeof body.cohortId === "string" ? body.cohortId.trim() : "";
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const isRichPayload = !!title;
     try {
       const lr = await pool.query(
         `SELECT l.deep_link_return_url, l.deep_link_data, p.client_id, p.issuer, p.deployment_id
@@ -708,15 +777,87 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       const launch = lr.rows[0];
       if (!launch) { res.status(404).json({ error: "not_found" }); return; }
       if (!launch.deep_link_return_url) { res.status(400).json({ error: "not_a_deep_link_launch" }); return; }
+
+      let contentTitle: string;
+      let projectId: string;
+      let custom: Record<string, unknown>;
+
+      if (isRichPayload) {
+        // Tittel finnes → faglærer autorerer en ekte oppgave. Kull er PÅKREVD
+        // her — ALDRI en stille fallback til gammel sti (se kommentar over).
+        if (!cohortId) { res.status(400).json({ error: "cohort_required" }); return; }
+        // Eierskap: faglærer-sesjonen MÅ eie kullet (samme mønster som education-cohorts-routes).
+        const cohortOwn = await pool.query(
+          `SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`,
+          [cohortId, uid],
+        );
+        if (cohortOwn.rows.length === 0) { res.status(400).json({ error: "cohort_not_found" }); return; }
+
+        const artifactKind = (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null;
+        const artifactView = (typeof body.artifactView === "string" && body.artifactView.trim()) ? body.artifactView.trim() : null;
+        const assignmentInput = {
+          title, cohortId,
+          brief: body.brief, learningGoals: body.learningGoals, dueAt: body.dueAt,
+          status: "published", artifactKind, artifactView,
+          isArbeidskrav: body.isArbeidskrav === true, isExam: body.isExam === true,
+          vurderingsform: body.vurderingsform,
+        };
+
+        let productionRow: Record<string, unknown>;
+        let assignmentRow: Record<string, unknown>;
+        if (body.createProduction === true) {
+          // To skriv (produksjon + oppgave) må stå/falle SAMMEN — ellers kan en
+          // produksjon bli opprettet uten at noen oppgave/JWT noensinne kommer
+          // ut (foreldreløs produksjon). BEGIN/COMMIT rundt begge på én client.
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            // Gjenbruker /education/productions' create-logikk (casting_projects + education-rad).
+            productionRow = await createEducationProductionRow(client, uid, { title, cohortId });
+            assignmentRow = await insertEducationAssignmentRow(client, uid, { ...assignmentInput, productionId: String(productionRow.id) });
+            await client.query("COMMIT");
+          } catch (e) {
+            await client.query("ROLLBACK");
+            throw e;
+          } finally {
+            client.release();
+          }
+        } else {
+          const productionId = typeof body.productionId === "string" ? body.productionId.trim() : "";
+          if (!productionId) { res.status(400).json({ error: "production_required" }); return; }
+          // Eierskap: faglærer-sesjonen MÅ eie produksjonen (samme mønster som productions-create).
+          const prodOwn = await pool.query(
+            `SELECT * FROM role_room_education_productions WHERE id = $1 AND owner_user_id = $2`,
+            [productionId, uid],
+          );
+          if (prodOwn.rows.length === 0) { res.status(400).json({ error: "production_not_found" }); return; }
+          productionRow = prodOwn.rows[0];
+          // Ett enkelt INSERT er allerede atomisk — ingen transaksjon nødvendig her.
+          assignmentRow = await insertEducationAssignmentRow(pool, uid, { ...assignmentInput, productionId: String(productionRow.id) });
+        }
+
+        contentTitle = title;
+        projectId = String(assignmentRow.production_project_id ?? productionRow.project_id ?? "");
+        custom = { production_id: projectId, assignment_id: String(assignmentRow.id) };
+        if (artifactKind) custom.artifact_kind = artifactKind;
+        if (artifactView) custom.artifact_view = artifactView;
+      } else {
+        // Gammel sti: ingen tittel = ingen autorerings-intensjon, bare velg
+        // en eksisterende produksjon. Krever en REELL projectId — vi signerer
+        // aldri en JWT med et tomt production_id (halvt/ødelagt content item).
+        projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+        if (!projectId) { res.status(400).json({ error: "production_required" }); return; }
+        contentTitle = "The Role Room-produksjon";
+        custom = { production_id: projectId };
+      }
+
       const key = await ensureToolKey(pool);
-      const title = (typeof body.title === "string" && body.title.trim()) ? body.title.trim() : "The Role Room-produksjon";
-      const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
       // ltiResourceLink → neste launch bærer custom.production_id og åpner produksjonen.
       const contentItems: Record<string, unknown>[] = [{
         type: "ltiResourceLink",
-        title,
+        title: contentTitle,
         url: `${TOOL_BASE}/lti/launch`,
-        custom: { production_id: projectId },
+        custom,
       }];
       const jwtStr = signDeepLinkingResponse({
         clientId: String(launch.client_id), issuer: String(launch.issuer), deploymentId: launch.deployment_id ?? null,

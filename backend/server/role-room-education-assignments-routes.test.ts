@@ -35,8 +35,8 @@ function makePool(opts: { ownsAssignment?: boolean; ownsStudent?: boolean; assig
   const pool: any = {
     query: vi.fn(async (sql: string, params: any[]) => {
       if (sql.includes("INSERT INTO role_room_education_assignments")) {
-        const [id, owner, cohortId, productionId, title] = params;
-        const row = { id, owner_user_id: owner, cohort_id: cohortId, production_id: productionId, title, brief: null, learning_goals: null, due_at: null, status: "draft", submitted_count: 0, reviewed_count: 0, production_title: null, production_project_id: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+        const [id, owner, cohortId, productionId, title, , , , , artifactKind, , , , , artifactView] = params;
+        const row = { id, owner_user_id: owner, cohort_id: cohortId, production_id: productionId, title, brief: null, learning_goals: null, due_at: null, status: "draft", artifact_kind: artifactKind, artifact_view: artifactView, submitted_count: 0, reviewed_count: 0, production_title: null, production_project_id: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
         inserts.push({ type: "assignment", row });
         return { rows: [row] };
       }
@@ -77,6 +77,14 @@ describe("education assignments routes", () => {
     expect(inserts[0].row.owner_user_id).toBe("inst-1");
   });
 
+  it("POST /education/assignments m/ artifactView lagrer + returnerer den", async () => {
+    const { pool } = makePool();
+    const res = makeRes();
+    await runChain(H(R(pool), "POST", "/education/assignments"), authed({ title: "Kortfilm", cohortId: "c1", artifactKind: "story-arc", artifactView: "story-logic" }), res);
+    expect(res.statusCode).toBe(201);
+    expect(res.body.assignment).toMatchObject({ artifactKind: "story-arc", artifactView: "story-logic" });
+  });
+
   it("POST /education/assignments uten tittel → 400", async () => {
     const { pool } = makePool();
     const res = makeRes();
@@ -92,11 +100,11 @@ describe("education assignments routes", () => {
   });
 
   it("GET /education/assignments lister med teller", async () => {
-    const { pool } = makePool({ assignments: [{ id: "a1", title: "A", cohort_id: "c1", owner_user_id: "inst-1", status: "published", submitted_count: 2, reviewed_count: 1, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }] });
+    const { pool } = makePool({ assignments: [{ id: "a1", title: "A", cohort_id: "c1", owner_user_id: "inst-1", status: "published", artifact_kind: "story-arc", artifact_view: "story-logic", submitted_count: 2, reviewed_count: 1, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }] });
     const res = makeRes();
     await runChain(H(R(pool), "GET", "/education/assignments"), authed(), res);
     expect(res.body.assignments).toHaveLength(1);
-    expect(res.body.assignments[0]).toMatchObject({ submittedCount: 2, reviewedCount: 1 });
+    expect(res.body.assignments[0]).toMatchObject({ submittedCount: 2, reviewedCount: 1, artifactKind: "story-arc", artifactView: "story-logic" });
   });
 
   it("PUT submission på egen oppgave+student → 200; ugyldig status → 400", async () => {

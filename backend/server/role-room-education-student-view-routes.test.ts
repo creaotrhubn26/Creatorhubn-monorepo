@@ -71,7 +71,7 @@ function makePool(opts: { studentOwner?: string | null; invite?: any; sessionStu
         return { rows: [{ status: "submitted", link: params[4] }] };
       }
       if (sql.includes("FROM role_room_education_assignments a")) {
-        return { rows: [{ id: "a1", title: "Oppg", brief: null, learning_goals: null, due_at: null, status: "published", production_title: "Kortfilm", production_project_id: "proj-1", sub_status: "submitted", grade: "B", feedback: "Bra", submitted_at: new Date(0).toISOString(), reviewed_at: null }] };
+        return { rows: [{ id: "a1", title: "Oppg", brief: null, learning_goals: null, due_at: null, status: "published", artifact_kind: "story-arc", artifact_view: "story-logic", production_title: "Kortfilm", production_project_id: "proj-1", sub_status: "submitted", grade: "B", feedback: "Bra", submitted_at: new Date(0).toISOString(), reviewed_at: null }] };
       }
       return { rows: [] };
     }),
@@ -113,7 +113,7 @@ describe("education student view + claim routes", () => {
     await runChain(H(R(makePool().pool), "GET", "/education/student/view"),
       { headers: { authorization: "Bearer owner-tok" }, query: { studentId: "st1" }, params: {} }, res);
     expect(res.body.student).toMatchObject({ id: "st1", name: "Kari" });
-    expect(res.body.assignments[0]).toMatchObject({ submissionStatus: "submitted", grade: "B" });
+    expect(res.body.assignments[0]).toMatchObject({ submissionStatus: "submitted", grade: "B", artifactKind: "story-arc", artifactView: "story-logic" });
   });
 
   it("rubrikk-nedbrytning vises når scoret (pct fra nivåer)", async () => {

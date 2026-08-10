@@ -27,19 +27,7 @@ import { educationCoursesService, type Course } from './educationCoursesService'
 import { educationAssignmentsService, type Assignment, type AssignmentStatus } from './educationAssignmentsService';
 import { ASSIGNMENT_TEMPLATES } from './educationTemplates';
 import { ACCENT, Panel, T } from './_eduUi';
-
-// Produksjons-artefakt en oppgave kan peke på (fane-nøkkel i produksjonsverktøyet).
-const ARTIFACT_OPTIONS: { key: string; label: string }[] = [
-  { key: '', label: 'Fri leveranse' },
-  { key: 'story-arc', label: 'Story Arc' },
-  { key: 'storyboard', label: 'Storyboard' },
-  { key: 'shotlist', label: 'Shot list' },
-  { key: 'callsheet', label: 'Call sheet' },
-  { key: 'roles', label: 'Roller' },
-  { key: 'candidates', label: 'Kandidater' },
-  { key: 'delivery', label: 'Levering' },
-];
-const artifactLabel = (k: string | null) => ARTIFACT_OPTIONS.find((o) => o.key === k)?.label ?? null;
+import { ArtifactStegFields, artifactLabel, stegLabel } from './ArtifactStegFields';
 
 const VURDERINGSFORM_OPTIONS: { key: string; label: string }[] = [
   { key: '', label: 'Ikke satt' },
@@ -76,7 +64,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, isExam: false, vurderingsform: '', courseId: '' });
+  const [f, setF] = useState({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', artifactView: '', isArbeidskrav: false, isExam: false, vurderingsform: '', courseId: '' });
   const setField = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const [query, setQuery] = useState('');
@@ -122,12 +110,13 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
         brief: f.brief.trim() || undefined, learningGoals: f.learningGoals.trim() || undefined,
         dueAt: f.dueAt || null, status: 'published',
         artifactKind: (f.productionId && f.artifactKind) ? f.artifactKind : undefined,
+        artifactView: (f.productionId && f.artifactKind === 'story-arc' && f.artifactView) ? f.artifactView : undefined,
         isArbeidskrav: f.isArbeidskrav,
         isExam: f.isExam,
         vurderingsform: f.vurderingsform || undefined,
         courseId: f.courseId || undefined,
       });
-      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', isArbeidskrav: false, isExam: false, vurderingsform: '', courseId: '' });
+      setF({ title: '', cohortId: '', productionId: '', brief: '', learningGoals: '', dueAt: '', artifactKind: '', artifactView: '', isArbeidskrav: false, isExam: false, vurderingsform: '', courseId: '' });
       setCreating(false); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Kunne ikke opprette oppgave'); }
     finally { setBusy(false); }
@@ -216,9 +205,13 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
                 <MenuItem value="">Ingen</MenuItem>
                 {productions.map((p) => <MenuItem key={p.id} value={p.id}>{p.title}</MenuItem>)}
               </TextField>
-              <TextField size="small" select label="Artefakt" value={f.artifactKind} onChange={(e) => setField('artifactKind', e.target.value)} disabled={!f.productionId} helperText={!f.productionId ? 'Velg produksjon først' : undefined} sx={{ minWidth: 150 }}>
-                {ARTIFACT_OPTIONS.map((o) => <MenuItem key={o.key || 'free'} value={o.key}>{o.label}</MenuItem>)}
-              </TextField>
+              <ArtifactStegFields
+                artifactKind={f.artifactKind}
+                artifactView={f.artifactView}
+                disabled={!f.productionId}
+                onArtifactKindChange={(v) => setField('artifactKind', v)}
+                onArtifactViewChange={(v) => setField('artifactView', v)}
+              />
             </Stack>
             <TextField size="small" label="Brief" value={f.brief} onChange={(e) => setField('brief', e.target.value)} multiline minRows={2} fullWidth />
             <TextField size="small" label="Læringsmål (kunnskap / ferdigheter / generell kompetanse)" value={f.learningGoals} onChange={(e) => setField('learningGoals', e.target.value)} fullWidth />
@@ -299,6 +292,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
                   {a.isExam && <Chip label="Eksamen" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(236,72,153,0.18)', color: '#ec4899', flexShrink: 0 }} />}
                   {vurderingsformLabel(a.vurderingsform) && <Chip label={vurderingsformLabel(a.vurderingsform)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 600, bgcolor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)', flexShrink: 0 }} />}
                   {artifactLabel(a.artifactKind) && <Chip label={artifactLabel(a.artifactKind)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.18)', color: '#c4b5fd', flexShrink: 0 }} />}
+                  {a.artifactView && stegLabel(a.artifactView) && <Chip label={stegLabel(a.artifactView)} size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 700, bgcolor: 'rgba(139,92,246,0.10)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.28)', flexShrink: 0 }} />}
                 </Stack>
                 <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mt: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.productionTitle ? `Produksjon · ${a.productionTitle}` : (a.brief || 'Oppgave')}</Typography>
               </Box>
@@ -310,7 +304,7 @@ export function AssignmentsTab({ prefillProductionId, onPrefillConsumed }: { pre
                 <LinearProgress variant="determinate" value={pct} sx={{ height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: ACCENT } }} />
               </Box>
               <Stack direction="row" alignItems="center" spacing={0.5} justifyContent="flex-end">
-                <Button size="small" variant="outlined" startIcon={<OpenIcon sx={{ fontSize: '14px !important' }} />} onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId, a.artifactKind || undefined)} disabled={!a.productionProjectId} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>Åpne</Button>
+                <Button size="small" variant="outlined" startIcon={<OpenIcon sx={{ fontSize: '14px !important' }} />} onClick={() => a.productionProjectId && openProductionInRoleRoom(a.productionProjectId, a.artifactKind || undefined, { view: a.artifactView || undefined })} disabled={!a.productionProjectId} sx={{ borderColor: 'rgba(255,255,255,0.15)', color: '#fff', textTransform: 'none', borderRadius: 2, fontSize: 12, whiteSpace: 'nowrap' }}>Åpne</Button>
                 <IconButton size="small" onClick={() => handleDelete(a.id)} sx={{ color: 'rgba(255,255,255,0.3)' }}><DeleteIcon fontSize="small" /></IconButton>
               </Stack>
             </Box>

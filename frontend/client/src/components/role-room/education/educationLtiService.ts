@@ -63,10 +63,19 @@ export const educationLtiService = {
   },
 
   /**
-   * Deep Linking-respons: sender valgt produksjon tilbake til Canvas. Returnerer
-   * { returnUrl, jwt } — kalleren auto-poster JWT-en til returnUrl (skjema-POST).
+   * Deep Linking-respons: sender enten (a) gammel sti — kun valgt produksjon
+   * (`projectId`) — eller (b) rikt payload — full oppgave-autorering
+   * (`cohortId` + `title` trigger Task 6 sin rike gren: produksjon/kull/
+   * artefakt+steg/brief/frist/læringsmål/arbeidskrav/eksamen/vurderingsform)
+   * — tilbake til Canvas/Moodle. Returnerer { returnUrl, jwt } — kalleren
+   * auto-poster JWT-en til returnUrl (skjema-POST).
    */
-  async deepLinkResponse(launchId: string, input: { projectId: string; title?: string }): Promise<{ returnUrl: string; jwt: string }> {
+  async deepLinkResponse(launchId: string, input: {
+    projectId?: string; title?: string;
+    cohortId?: string; productionId?: string; createProduction?: boolean;
+    artifactKind?: string; artifactView?: string; brief?: string; learningGoals?: string;
+    dueAt?: string; isArbeidskrav?: boolean; isExam?: boolean; vurderingsform?: string;
+  }): Promise<{ returnUrl: string; jwt: string }> {
     const res = await fetch(`/api/role-room/lti/launches/${encodeURIComponent(launchId)}/deep-link-response`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },

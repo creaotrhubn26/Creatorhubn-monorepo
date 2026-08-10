@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import jwt from "jsonwebtoken";
 
 import { createLtiRouter, pushScore, extractLtiIdentity, gradeToScore, buildToolConfiguration, landingMode } from "./role-room-lti-routes.js";
+import { generateToolKeypair } from "./role-room-lti-service.js";
 
 describe("gradeToScore (fri-tekst-karakter → AGS-tallscore)", () => {
   it("bestått/godkjent → 1/1, ikke bestått → 0/1", () => {
@@ -273,6 +275,101 @@ describe("POST /lti/launch approval gate", () => {
   });
 });
 
+describe("POST /lti/launch (custom.production_id → åpner artefakt-view)", () => {
+  const ISSUER = "https://moodle.example.edu";
+  const CLIENT_ID = "C1";
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  // Ekte RSA-nøkkelpar + signert id_token (RS256), akkurat som en ekte LMS ville
+  // sendt — så launchen går gjennom ekte JWKS-oppslag + signatur-verifisering,
+  // ikke bare mockes forbi. fetchPlatform() bruker global fetch → mocket her.
+  function launchPool(custom?: Record<string, unknown>, roles: string[] = ["http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"]) {
+    const key = generateToolKeypair();
+    const nonce = "nonce-1";
+    const now = Math.floor(Date.now() / 1000);
+    const payload: Record<string, unknown> = {
+      iss: ISSUER, aud: CLIENT_ID, sub: "stu-1", iat: now, exp: now + 300, nonce,
+      email: "elev@skole.no", name: "Elev Elevsen",
+      [ROLES]: roles,
+      "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiResourceLinkRequest",
+      "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    };
+    if (custom) payload["https://purl.imsglobal.org/spec/lti/claim/custom"] = custom;
+    const idToken = jwt.sign(payload, key.privatePem, { algorithm: "RS256", keyid: key.kid });
+    globalThis.fetch = vi.fn(async (url: any) => {
+      if (String(url).includes("/certs")) return { ok: true, json: async () => ({ keys: [key.publicJwk] }) } as any;
+      return { ok: false, json: async () => ({}) } as any;
+    }) as any;
+    const pool: any = { query: vi.fn(async (sql: string) => {
+      if (sql.includes("DELETE FROM role_room_lti_states")) return { rows: [{ nonce, platform_id: "p1" }] };
+      if (sql.includes("SELECT * FROM role_room_lti_platforms")) {
+        return { rows: [{ id: "p1", status: "approved", issuer: ISSUER, client_id: CLIENT_ID, jwks_url: `${ISSUER}/certs`, deployment_id: null }] };
+      }
+      if (sql.includes("INSERT INTO users")) return { rows: [{ id: "u1", role: "user" }] };
+      return { rows: [] };
+    }) };
+    return { pool, idToken };
+  }
+
+  it("custom.production_id + artifact_kind + artifact_view + assignment_id → redirect m/ tab+view+edu=1+assignment (+ rr_session)", async () => {
+    const { pool, idToken } = launchPool({
+      production_id: "proj-1", artifact_kind: "story-arc", artifact_view: "story-logic", assignment_id: "edassign-1",
+    });
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    expect(res.redirectedTo).toBeTruthy();
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("mode")).toBe("production");
+    expect(u.searchParams.get("project")).toBe("proj-1");
+    expect(u.searchParams.get("tab")).toBe("story-arc-studio");
+    expect(u.searchParams.get("view")).toBe("story-logic");
+    expect(u.searchParams.get("edu")).toBe("1");
+    expect(u.searchParams.get("assignment")).toBe("edassign-1");
+    expect(u.searchParams.get("rr_session")).toBeTruthy();
+  });
+
+  it("ukjent artifact_kind → artifactToTab faller tilbake til identity (fail-closed, aldri feil)", async () => {
+    const { pool, idToken } = launchPool({ production_id: "proj-2", artifact_kind: "mystery-kind" });
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("tab")).toBe("mystery-kind");
+    expect(u.searchParams.get("edu")).toBe("1");
+  });
+
+  it("faglærer (Instructor) launcher artefakt-lenke → tab/view SATT men INGEN edu=1 (unngår student-'Min side'-knapp på faglærer-preview)", async () => {
+    const { pool, idToken } = launchPool(
+      { production_id: "proj-4", artifact_kind: "story-arc", artifact_view: "story-logic" },
+      ["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"],
+    );
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("tab")).toBe("story-arc-studio");
+    expect(u.searchParams.get("view")).toBe("story-logic");
+    expect(u.searchParams.has("edu")).toBe(false);
+  });
+
+  it("kun production_id, INGEN artifact-custom → dagens oppførsel uendret (ingen tab/view/edu/assignment)", async () => {
+    const { pool, idToken } = launchPool({ production_id: "proj-3" });
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("mode")).toBe("production");
+    expect(u.searchParams.get("project")).toBe("proj-3");
+    expect(u.searchParams.has("tab")).toBe(false);
+    expect(u.searchParams.has("view")).toBe(false);
+    expect(u.searchParams.has("edu")).toBe(false);
+    expect(u.searchParams.has("assignment")).toBe(false);
+    expect(u.searchParams.get("rr_session")).toBeTruthy();
+  });
+});
+
 describe("LTI admin: approve/reject platforms", () => {
   const admin = { headers: { authorization: "Bearer admin" }, params: {}, body: {}, query: {} };
   const deps = { activeSessions: adminSessions as any };
@@ -358,5 +455,179 @@ describe("pushScore (AGS grade-passback)", () => {
     globalThis.fetch = vi.fn(async () => ({ ok: false, json: async () => ({}) }) as any) as any;
     const r = await pushScore(pool, "l1", { scoreGiven: 1, scoreMaximum: 2 });
     expect(r).toMatchObject({ ok: false, error: "token_failed" });
+  });
+});
+
+describe("POST /lti/launches/:id/deep-link-response", () => {
+  const facultySessions = new Map([["fac", { userId: "u1", email: "l@skole.no", name: "Lærer", role: "user", loginAt: "" }]]);
+
+  // Fake-pool i samme stil som resten av fila: matcher SQL på delstreng, alle
+  // launches/toolkey-oppslag er felles boilerplate → gjemt her, testene styrer
+  // resten via `extra`. `connect()` gir en fake client (samme query-logikk +
+  // release()) slik at createProduction-transaksjonen (BEGIN/COMMIT/ROLLBACK
+  // på en client) har noe å kjøre mot.
+  function basePool(extra: (sql: string, params: any[]) => any) {
+    const calls: Array<{ sql: string; params: any[] }> = [];
+    const query = vi.fn(async (sql: string, params: any[] = []) => {
+      calls.push({ sql, params });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("SELECT kid, private_pem")) return { rows: [] };
+      if (sql.includes("INSERT INTO role_room_lti_tool_keys")) return { rows: [] };
+      if (sql.includes("FROM role_room_lti_launches l JOIN role_room_lti_platforms p")) {
+        return { rows: [{ deep_link_return_url: "https://canvas.example/return", deep_link_data: "d1", client_id: "cid", issuer: "https://canvas", deployment_id: "dep1" }] };
+      }
+      return extra(sql, params);
+    });
+    const release = vi.fn();
+    const pool: any = { query, connect: vi.fn(async () => ({ query, release })) };
+    return { pool, calls, release };
+  }
+  function contentItemOf(res: any): any {
+    const claims = jwt.decode(res.body.jwt) as any;
+    return claims["https://purl.imsglobal.org/spec/lti-dl/claim/content_items"][0];
+  }
+  async function post(pool: any, body: any) {
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: facultySessions as any }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launches/:id/deep-link-response"), {
+      headers: { authorization: "Bearer fac" }, params: { id: "l1" }, body,
+    }, res);
+    return res;
+  }
+
+  it("rikt payload m/ eksisterende produksjon → assignment-rad opprettes + JWT-custom bærer production_id+artifact_kind+artifact_view+assignment_id", async () => {
+    const { pool, calls } = basePool((sql) => {
+      if (sql.includes("FROM role_room_education_cohorts")) return { rows: [{ id: "cohort-1" }] };
+      if (sql.includes("INSERT INTO role_room_education_assignments")) return { rows: [{ id: "edassign-1", production_project_id: "proj-real-1" }] };
+      if (sql.includes("FROM role_room_education_productions WHERE id")) return { rows: [{ id: "edprod-1", project_id: "proj-real-1" }] };
+      return { rows: [] };
+    });
+    const res = await post(pool, {
+      title: "Skriv en Story Logic", cohortId: "cohort-1", productionId: "edprod-1",
+      artifactKind: "story-arc", artifactView: "beat-sheet", brief: "Lag en historie",
+      learningGoals: "Forstå struktur", dueAt: "2026-09-01", isArbeidskrav: true, vurderingsform: "bestatt",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.returnUrl).toBe("https://canvas.example/return");
+    expect(contentItemOf(res).custom).toEqual({
+      production_id: "proj-real-1", assignment_id: "edassign-1", artifact_kind: "story-arc", artifact_view: "beat-sheet",
+    });
+    // assignment opprettes som publisert, tied til kull + produksjon.
+    const insertCall = calls.find((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))!;
+    expect(insertCall.params).toContain("published");
+    expect(insertCall.params).toContain("cohort-1");
+    expect(insertCall.params).toContain("edprod-1");
+  });
+
+  it("createProduction=true → oppretter ekte produksjon (casting_projects + education-rad) og bruker dens project_id i custom, ALT i én BEGIN..COMMIT", async () => {
+    let createdProjectId = "";
+    const { pool, calls, release } = basePool((sql, params) => {
+      if (sql.includes("FROM role_room_education_cohorts")) return { rows: [{ id: "cohort-1" }] };
+      if (sql.includes("INSERT INTO casting_projects")) { createdProjectId = params[0]; return { rows: [] }; }
+      if (sql.includes("INSERT INTO role_room_education_productions")) return { rows: [{ id: "edprod-new", project_id: createdProjectId }] };
+      if (sql.includes("INSERT INTO role_room_education_assignments")) return { rows: [{ id: "edassign-2", production_project_id: createdProjectId }] };
+      return { rows: [] };
+    });
+    const res = await post(pool, { title: "Ny produksjon-oppgave", cohortId: "cohort-1", createProduction: true });
+    expect(res.statusCode).toBe(200);
+    const item = contentItemOf(res);
+    expect(createdProjectId).toBeTruthy();
+    expect(item.custom.production_id).toBe(createdProjectId);
+    expect(item.custom.assignment_id).toBe("edassign-2");
+    expect(item.custom.artifact_kind).toBeUndefined(); // ingen artefakt oppgitt → utelates
+    // Transaksjon: BEGIN før produksjon/oppgave, COMMIT etter, client alltid released.
+    const sqls = calls.map((c) => c.sql);
+    const beginIdx = sqls.indexOf("BEGIN");
+    const commitIdx = sqls.indexOf("COMMIT");
+    expect(beginIdx).toBeGreaterThanOrEqual(0);
+    expect(commitIdx).toBeGreaterThan(beginIdx);
+    expect(sqls.findIndex((s) => s.includes("INSERT INTO casting_projects"))).toBeGreaterThan(beginIdx);
+    expect(sqls.findIndex((s) => s.includes("INSERT INTO role_room_education_assignments"))).toBeLessThan(commitIdx);
+    expect(sqls).not.toContain("ROLLBACK");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("createProduction=true, oppgave-insert kaster → ROLLBACK, ingen orphan-produksjon, ingen JWT", async () => {
+    const { pool, calls, release } = basePool((sql) => {
+      if (sql.includes("FROM role_room_education_cohorts")) return { rows: [{ id: "cohort-1" }] };
+      if (sql.includes("INSERT INTO casting_projects")) return { rows: [] };
+      if (sql.includes("INSERT INTO role_room_education_productions")) return { rows: [{ id: "edprod-new", project_id: "proj-x" }] };
+      if (sql.includes("INSERT INTO role_room_education_assignments")) throw new Error("db_blew_up");
+      return { rows: [] };
+    });
+    const res = await post(pool, { title: "Ny produksjon-oppgave", cohortId: "cohort-1", createProduction: true });
+    expect(res.statusCode).toBe(500); // fail cleanly — ingen halv-committed JWT
+    expect(res.body.jwt).toBeUndefined();
+    const sqls = calls.map((c) => c.sql);
+    expect(sqls).toContain("ROLLBACK");
+    expect(sqls).not.toContain("COMMIT");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("gammelt payload (kun projectId, INGEN tittel) → INGEN assignment-rad, custom har KUN production_id (bakoverkompatibelt)", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, { projectId: "proj-old-1" });
+    expect(res.statusCode).toBe(200);
+    expect(contentItemOf(res).custom).toEqual({ production_id: "proj-old-1" });
+    expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))).toBe(false);
+    expect(calls.some((c) => c.sql.includes("role_room_education_cohorts"))).toBe(false);
+  });
+
+  it("ingen tittel, ingen projectId (kun productionId) → 400 production_required, ingen JWT, ingen stille tomt production_id (Task 7-review)", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, { cohortId: "cohort-1", productionId: "edprod-1" });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "production_required" });
+    expect(res.body.jwt).toBeUndefined();
+    expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))).toBe(false);
+  });
+
+  it("gammel sti helt uten projectId → 400 production_required, aldri en JWT med tomt production_id (Task 7-review)", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, {});
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "production_required" });
+    expect(res.body.jwt).toBeUndefined();
+    expect(calls.some((c) => c.sql.includes("role_room_lti_tool_keys"))).toBe(false); // stopper FØR JWT-signering
+  });
+
+  it("rikt payload (tittel finnes) UTEN kull → 400 cohort_required, ingen stille fallback til gammel sti (Task 7-review)", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, { title: "Skriv en Story Logic", productionId: "edprod-1" });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "cohort_required" });
+    expect(res.body.jwt).toBeUndefined();
+    expect(calls.some((c) => c.sql.includes("role_room_education_cohorts"))).toBe(false); // aldri spør — kull mangler helt
+    expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))).toBe(false);
+  });
+
+  it("rikt payload (tittel + kull) med createProduction=true men UTEN kull ville ellers gitt tomt production_id — kull-guarden fanger dette FØR opprettelse", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, { title: "Ny produksjon-oppgave", createProduction: true });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "cohort_required" });
+    expect(calls.some((c) => c.sql.includes("INSERT INTO casting_projects"))).toBe(false); // ingen foreldreløs produksjon
+  });
+
+  it("productionId ikke eid av faglærer-sesjonen → 400 production_not_found, ingen JWT", async () => {
+    const { pool } = basePool((sql) => {
+      if (sql.includes("FROM role_room_education_cohorts")) return { rows: [{ id: "cohort-1" }] };
+      if (sql.includes("FROM role_room_education_productions WHERE id")) return { rows: [] }; // ikke min
+      return { rows: [] };
+    });
+    const res = await post(pool, { title: "X", cohortId: "cohort-1", productionId: "not-mine" });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "production_not_found" });
+    expect(res.body.jwt).toBeUndefined();
+  });
+
+  it("cohortId ikke eid av faglærer-sesjonen → 400 cohort_not_found", async () => {
+    const { pool } = basePool((sql) => {
+      if (sql.includes("FROM role_room_education_cohorts")) return { rows: [] }; // ikke min
+      return { rows: [] };
+    });
+    const res = await post(pool, { title: "X", cohortId: "not-mine", productionId: "edprod-1" });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "cohort_not_found" });
   });
 });
