@@ -484,6 +484,11 @@ try:
 except ImportError:
     import assets as _assets
 TOOLS.update(_assets.ASSET_TOOLS)
+try:
+    from . import studio_kit as _studio
+except ImportError:
+    import studio_kit as _studio
+TOOLS.update(_studio.STUDIO_TOOLS)
 
 
 def call_tool(name: str, args: dict | None = None) -> dict:

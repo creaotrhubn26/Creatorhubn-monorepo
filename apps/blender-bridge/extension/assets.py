@@ -182,7 +182,17 @@ def set_material_texture(material: str, parameter: str, image_path: str) -> dict
     return {"material": material, "parameter": parameter, "image": os.path.basename(image_path)}
 
 
+def save_blend(filepath: str) -> dict:
+    """Lagre .blend — Blender-fila er master source for asset-biblioteket."""
+    if not filepath.endswith(".blend"):
+        raise ValueError("filepath må ende på .blend")
+    core._undo_push("save_blend")
+    bpy.ops.wm.save_as_mainfile(filepath=filepath)
+    return {"saved": filepath}
+
+
 ASSET_TOOLS = {
+    "save_blend": {"level": "modify", "fn": save_blend, "description": "Lagre scenen som .blend (master-fila for asset-biblioteket). Args: filepath.", "mutates": False},
     "import_asset": {"level": "safe", "fn": import_asset, "description": "Importer 3D-asset (glb/gltf/fbx/obj/usd/usdz). Args: filepath, name_prefix?. Returnerer nye objektnavn.", "mutates": True},
     "add_modifier": {"level": "modify", "fn": add_modifier, "description": "Legg semantisk modifier: type=bevel(width,segments)|subdivision(viewport_levels,render_levels)|solidify(thickness)|mirror|smooth(factor,iterations). Args: object_name, type, params?, name?. Bevel+shade_smooth = premium-kanter.", "mutates": True},
     "apply_modifier": {"level": "destructive", "fn": apply_modifier, "description": "Bak modifieren inn i meshen. DESTRUKTIVT — krever godkjenning. Args: object_name, modifier_name.", "mutates": True},
