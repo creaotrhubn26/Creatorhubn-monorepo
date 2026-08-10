@@ -49,6 +49,12 @@ def main() -> None:
     assert os.path.exists(result["rendered"]), result
     assert os.path.getsize(result["rendered"]) > 0
 
+    # final render (Cycles, bittesmå verdier for CI-fart)
+    final = core.render_final(
+        filepath=os.path.join(tempfile.gettempdir(), "bridge_selftest_final.png"),
+        resolution=64, samples=4)
+    assert os.path.getsize(final["rendered"]) > 0 and final["engine"] == "CYCLES", final
+
     # validate: Hero har unapplied scale (satt over) → warning forventes
     qa = core.validate_scene()
     assert any("Hero" in w for w in qa["warnings"]), qa

@@ -22,13 +22,13 @@ Claude (MCP) → mcp/blender_mcp_server.py → HTTP :7717 → kommando-kø
    ```
 3. Blender må kjøre med extensionen aktiv når verktøyene brukes.
 
-## Verktøy (18)
+## Verktøy (19)
 
 Observer: `get_scene` `get_selection` `inspect_object` `validate_scene`
 Executor: `create_object` `delete_object` `set_transform` `create_material`
 `set_material_parameter` `assign_material` `create_light` `configure_light`
 `create_camera` `point_camera_at` `configure_camera` `render_preview`
-`undo_push` `undo`
+`render_final` `undo_push` `undo`
 
 Katalogen bor i `extension/core.py` (`TOOLS`) — én kilde for både HTTP
 (`GET /tools`) og MCP `tools/list`.
@@ -59,9 +59,16 @@ blender --background --python apps/blender-bridge/tests/run_headless_server.py
 curl http://127.0.0.1:7717/health
 ```
 
-## Ikke i fase 1 (kommer)
+## Skills-biblioteket (fase 3–4)
 
-Vision-korreksjonssløyfe som skill,
-permissions-nivåer/hooks (delete er eneste destruktive verktøy nå — undo-steg
-pushes før hver mutasjon), Geometry Nodes, subagents, skills-biblioteket
-(`skills/blender-core` er starten).
+`skills/` — last inn i Claude (kopier/symlink til `.claude/skills/` eller
+pek plugin dit): `blender-core` (loopen + sikkerhet), `blender-scene-inspector`
+(read-only vurdering), `blender-lighting` (visuell korreksjonssløyfe),
+`blender-materials` (PBR-verdier), `blender-camera` (brennvidde/DOF/komposisjon),
+`blender-product-render` (orkestrering), `blender-scene-qa` (aldri «done» uten).
+
+## Ikke enda (kommer)
+
+Permissions-nivåer/hooks (delete er eneste destruktive verktøy nå — undo-steg
+pushes før hver mutasjon), Geometry Nodes, subagents, stil-skills
+(apple-product, automotive, …).

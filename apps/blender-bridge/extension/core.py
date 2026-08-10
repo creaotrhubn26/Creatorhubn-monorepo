@@ -319,6 +319,44 @@ def render_preview(filepath: str | None = None, resolution: int = 512) -> dict:
     return {"rendered": path, "resolution": resolution}
 
 
+def render_final(
+    filepath: str | None = None,
+    resolution: int = 1920,
+    samples: int = 128,
+) -> dict:
+    """Cycles-render i full kvalitet — bruk ETTER at preview-loopen er ferdig."""
+    import os
+    import tempfile
+
+    scene = bpy.context.scene
+    if scene.camera is None:
+        raise ValueError("ingen aktiv kamera — kall create_camera først")
+    path = filepath or os.path.join(tempfile.gettempdir(), "blender_bridge_final.png")
+    prev = (
+        scene.render.engine,
+        scene.render.resolution_x,
+        scene.render.resolution_y,
+        scene.render.filepath,
+        scene.cycles.samples if hasattr(scene, "cycles") else None,
+    )
+    try:
+        scene.render.engine = "CYCLES"
+        scene.cycles.samples = samples
+        aspect = prev[2] / prev[1] if prev[1] else 9 / 16
+        scene.render.resolution_x = resolution
+        scene.render.resolution_y = max(1, int(resolution * aspect))
+        scene.render.filepath = path
+        bpy.ops.render.render(write_still=True)
+    finally:
+        scene.render.engine = prev[0]
+        scene.render.resolution_x = prev[1]
+        scene.render.resolution_y = prev[2]
+        scene.render.filepath = prev[3]
+        if prev[4] is not None and hasattr(scene, "cycles"):
+            scene.cycles.samples = prev[4]
+    return {"rendered": path, "resolution": resolution, "samples": samples, "engine": "CYCLES"}
+
+
 def undo_push(label: str = "AI step") -> dict:
     _undo_push(label)
     return {"pushed": label}
@@ -379,6 +417,7 @@ TOOLS: dict[str, dict] = {
     "point_camera_at": {"fn": point_camera_at, "description": "Sikt kamera mot objekt. Args: camera, target.", "mutates": True},
     "configure_camera": {"fn": configure_camera, "description": "Endre kamera: focal_length_mm?, dof_enabled?, dof_focus_object?, f_stop?. Args: name + felter.", "mutates": True},
     "render_preview": {"fn": render_preview, "description": "Rask EEVEE-preview til PNG. Args: filepath? (default temp), resolution? (default 512). Returnerer filsti — les bildet for visuell inspeksjon.", "mutates": False},
+    "render_final": {"fn": render_final, "description": "Cycles-render i full kvalitet (default 1920px/128 samples). Bruk ETTER preview-loopen. Args: filepath?, resolution?, samples?.", "mutates": False},
     "undo_push": {"fn": undo_push, "description": "Marker starten på en AI-transaksjon i undo-historikken. Args: label.", "mutates": False},
     "undo": {"fn": undo, "description": "Angre siste steg.", "mutates": True},
 }
