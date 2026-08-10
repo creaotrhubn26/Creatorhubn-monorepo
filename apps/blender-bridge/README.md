@@ -22,7 +22,7 @@ Claude (MCP) → mcp/blender_mcp_server.py → HTTP :7717 → kommando-kø
    ```
 3. Blender må kjøre med extensionen aktiv når verktøyene brukes.
 
-## Verktøy (38)
+## Verktøy (49)
 
 Observer: `get_scene` `get_selection` `inspect_object` `validate_scene`
 Executor: `create_object` `delete_object` `set_transform` `create_material`

@@ -182,6 +182,27 @@ def set_material_texture(material: str, parameter: str, image_path: str) -> dict
     return {"material": material, "parameter": parameter, "image": os.path.basename(image_path)}
 
 
+def configure_render(exposure: float | None = None, view_transform: str | None = None,
+                     look: str | None = None, film_transparent: bool | None = None) -> dict:
+    """Fargestyring/eksponering — AgX (default i Blender 5) håndterer høylys
+    fotografisk; exposure justerer i stops."""
+    core._undo_push("configure_render")
+    scene = bpy.context.scene
+    if exposure is not None:
+        scene.view_settings.exposure = exposure
+    if view_transform is not None:
+        scene.view_settings.view_transform = view_transform  # "AgX"/"Filmic"/"Standard"
+    if look is not None:
+        scene.view_settings.look = look  # f.eks. "AgX - Punchy"
+    if film_transparent is not None:
+        scene.render.film_transparent = film_transparent
+    return {
+        "exposure": scene.view_settings.exposure,
+        "view_transform": scene.view_settings.view_transform,
+        "look": scene.view_settings.look,
+    }
+
+
 def save_blend(filepath: str) -> dict:
     """Lagre .blend — Blender-fila er master source for asset-biblioteket."""
     if not filepath.endswith(".blend"):
@@ -192,6 +213,7 @@ def save_blend(filepath: str) -> dict:
 
 
 ASSET_TOOLS = {
+    "configure_render": {"level": "modify", "fn": configure_render, "description": "Fargestyring: exposure (stops), view_transform (AgX|Filmic|Standard), look (f.eks. 'AgX - Punchy'), film_transparent?. Fotografisk høylys-håndtering.", "mutates": True},
     "save_blend": {"level": "modify", "fn": save_blend, "description": "Lagre scenen som .blend (master-fila for asset-biblioteket). Args: filepath.", "mutates": False},
     "import_asset": {"level": "safe", "fn": import_asset, "description": "Importer 3D-asset (glb/gltf/fbx/obj/usd/usdz). Args: filepath, name_prefix?. Returnerer nye objektnavn.", "mutates": True},
     "add_modifier": {"level": "modify", "fn": add_modifier, "description": "Legg semantisk modifier: type=bevel(width,segments)|subdivision(viewport_levels,render_levels)|solidify(thickness)|mirror|smooth(factor,iterations). Args: object_name, type, params?, name?. Bevel+shade_smooth = premium-kanter.", "mutates": True},
