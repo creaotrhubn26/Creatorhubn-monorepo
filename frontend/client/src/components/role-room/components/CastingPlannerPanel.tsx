@@ -7,7 +7,7 @@ import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/access
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { useT } from '../../../i18n';
+import { useT, LanguageSwitcher } from '../../../i18n';
 import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
@@ -9659,6 +9659,7 @@ type RoleRoomProjectWorkspaceState = {
             mode={currentWorkspaceMode}
             tooltip={currentWorkspaceModeTooltip}
           />
+          <LanguageSwitcher />
         </Box>
       )}
 

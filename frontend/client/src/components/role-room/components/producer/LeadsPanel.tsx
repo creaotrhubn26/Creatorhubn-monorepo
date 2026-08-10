@@ -19,23 +19,25 @@ import CtaCard from './CtaCard';
 import InsightsCard from './InsightsCard';
 import ConnectionPicker from './ConnectionPicker';
 import { LoadingSkeleton, PanelHeader, ErrorAlert } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
-const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
-  { key: 'varm', label: 'Varme', hint: 'Vil kontaktes nå', campaign: 'Book en gratis vurdering denne uken', color: '#ef4444' },
-  { key: 'lunken', label: 'Lunkne', hint: 'Trenger mer info', campaign: 'Du spurte om behandling – her er hva som skjer videre', color: '#f59e0b' },
-  { key: 'kald', label: 'Kalde', hint: 'Lastet ned guide / viste interesse', campaign: 'Kundeeksempel: slik fikk kunden resultatet sitt', color: '#38bdf8' },
-  { key: 'tapt', label: 'Tapte', hint: 'Svarte ikke / kjøpte ikke', campaign: 'Vi er her når du er klar – kort oppfølging', color: '#94a3b8' },
-];
+const buildSEGMENTS = (t: TFn): { key: Segment; label: string; hint: string; campaign: string; color: string }[] => ([
+  { key: 'varm', label: t('leads.s057'), hint: t('leads.s063'), campaign: t('leads.s004'), color: '#ef4444' },
+  { key: 'lunken', label: t('leads.s037'), hint: t('leads.s056'), campaign: t('leads.s009'), color: '#f59e0b' },
+  { key: 'kald', label: t('leads.s022'), hint: t('leads.s034'), campaign: t('leads.s025'), color: '#38bdf8' },
+  { key: 'tapt', label: t('leads.s054'), hint: t('leads.s052'), campaign: t('leads.s061'), color: '#94a3b8' },
+]);
 
 // Conversion stage for the ROI funnel: answered → booked → became customer → lost.
 type Stage = 'svart' | 'booket' | 'kunde' | 'tapt';
-const STAGES: { key: Stage; label: string; color: string }[] = [
-  { key: 'svart', label: 'Svarte', color: '#38bdf8' },
-  { key: 'booket', label: 'Booket møte', color: '#a78bfa' },
-  { key: 'kunde', label: 'Ble kunde', color: '#22c55e' },
-  { key: 'tapt', label: 'Tapt', color: '#94a3b8' },
-];
+const buildSTAGES = (t: TFn): { key: Stage; label: string; color: string }[] => ([
+  { key: 'svart', label: t('leads.s051'), color: '#38bdf8' },
+  { key: 'booket', label: t('leads.s005'), color: '#a78bfa' },
+  { key: 'kunde', label: t('leads.s003'), color: '#22c55e' },
+  { key: 'tapt', label: t('leads.s053'), color: '#94a3b8' },
+]);
 
 interface RoiSummary {
   success: boolean;
@@ -98,6 +100,9 @@ function fmt(iso: string | null): string {
 }
 
 export default function LeadsPanel() {
+  const { t } = useT();
+  const SEGMENTS = useMemo(() => buildSEGMENTS(t), [t]);
+  const STAGES = useMemo(() => buildSTAGES(t), [t]);
   const [connectionId, setConnectionId] = useState('');
   const [formId, setFormId] = useState('');
 
@@ -138,13 +143,13 @@ export default function LeadsPanel() {
       }),
     onSuccess: (data) => {
       if (data && data.success === false) {
-        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre segmentet.' });
+        setFollowupMsg({ severity: 'error', text: data.error || t('leads.s028') });
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
     },
     onError: (err) =>
-      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre segmentet.' }),
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : t('leads.s028') }),
   });
   const autoSegment = useMutation<{ success: boolean; applied?: unknown[]; error?: string }, Error, void>({
     mutationFn: async () =>
@@ -189,13 +194,13 @@ export default function LeadsPanel() {
       }),
     onSuccess: (data) => {
       if (data && data.success === false) {
-        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre status.' });
+        setFollowupMsg({ severity: 'error', text: data.error || t('leads.s029') });
         return;
       }
       invalidateRoi();
     },
     onError: (err) =>
-      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre status.' }),
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : t('leads.s029') }),
   });
   const setSpend = useMutation<{ success?: boolean; error?: string }, Error, number>({
     mutationFn: async (spendKr: number) =>
@@ -205,13 +210,13 @@ export default function LeadsPanel() {
       }),
     onSuccess: (data) => {
       if (data && data.success === false) {
-        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre annonsekostnaden.' });
+        setFollowupMsg({ severity: 'error', text: data.error || t('leads.s027') });
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] });
     },
     onError: (err) =>
-      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre annonsekostnaden.' }),
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : t('leads.s027') }),
   });
   // Local spend input, seeded from the saved summary; saved on blur.
   const [spendInput, setSpendInput] = useState('');
@@ -248,14 +253,14 @@ export default function LeadsPanel() {
       }),
     onSuccess: (data) => {
       if (!data || data.success !== true) {
-        setFollowupMsg({ severity: 'error', text: data?.error || 'Kunne ikke sende oppfølging.' });
+        setFollowupMsg({ severity: 'error', text: data?.error || t('leads.s030') });
         return;
       }
-      setFollowupMsg({ severity: 'success', text: 'Oppfølging sendt.' });
+      setFollowupMsg({ severity: 'success', text: t('leads.s041') });
       queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
     },
     onError: (err) =>
-      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke sende oppfølging.' }),
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : t('leads.s030') }),
   });
   const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured || followupData?.whatsappConfigured) ?? false;
 
@@ -316,14 +321,14 @@ export default function LeadsPanel() {
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
       <PanelHeader
         icon={<LeadsIcon />}
-        title="Leads til kunden"
-        subtitle="Skjema-svar fra kundens Meta-annonser (Lead Ads). Hent dem inn her og lever til kunden."
+        title={t('leads.s035')}
+        subtitle={t('leads.s048')}
         actions={
           <ConnectionPicker
             connections={connections}
             value={connectionId}
             onChange={(v) => { setConnectionId(v); setFormId(''); }}
-            label="Velg Facebook-side"
+            label={t('leads.s059')}
           />
         }
       />
@@ -331,13 +336,12 @@ export default function LeadsPanel() {
       {connLoading ? (
         <LoadingSkeleton variant="list" />
       ) : connections.length === 0 ? (
-        <Alert severity="info">Koble til kundens Facebook-side først (under Feed-planner) for å hente leads.</Alert>
+        <Alert severity="info">{t('leads.s024')}</Alert>
       ) : (
         <>
           {graphError ? (
             <Alert severity="info">
-              Leads-henting er ikke aktivert ennå (venter på godkjenning av <code>leads_retrieval</code> fra Meta).
-              Når det er godkjent dukker kundens skjema-leads opp her automatisk.
+              {t('leads.s036')} <code>leads_retrieval</code> {t('leads.s064')}
             </Alert>
           ) : null}
 
@@ -354,7 +358,7 @@ export default function LeadsPanel() {
                 <Box sx={{ p: 1.5 }}><LoadingSkeleton variant="list" count={3} /></Box>
               ) : forms.length === 0 ? (
                 <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem' }}>
-                  Ingen lead-skjemaer funnet på kundens side ennå.
+                  {t('leads.s019')}
                 </Typography>
               ) : (
                 <List disablePadding>
@@ -376,7 +380,7 @@ export default function LeadsPanel() {
             <Box sx={{ minWidth: 0 }}>
               {!formId ? (
                 <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                  <Typography variant="body2">Velg et lead-skjema til venstre for å se leads.</Typography>
+                  <Typography variant="body2">{t('leads.s060')}</Typography>
                 </Box>
               ) : leadsLoading ? (
                 <LoadingSkeleton variant="table" />
@@ -404,14 +408,14 @@ export default function LeadsPanel() {
                     <Alert severity="warning" sx={{ py: 0 }}>{autoSegment.data.error}</Alert>
                   ) : autoSegment.data?.success ? (
                     <Typography sx={{ fontSize: '0.78rem', color: '#d8b4fe' }}>
-                      AI segmenterte {autoSegment.data.applied?.length ?? 0} nye leads. Hold over et segment for å se begrunnelsen.
+                      AI segmenterte {autoSegment.data.applied?.length ?? 0} {t('leads.s066')}
                     </Typography>
                   ) : null}
 
                   {/* Segment filter for retargeting */}
                   <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                     <Chip
-                      size="small" label={`Alle (${counts.alle})`} clickable
+                      size="small" label={t('leads.p01', { v0: counts.alle })} clickable
                       onClick={() => setSegmentFilter('alle')}
                       variant={segmentFilter === 'alle' ? 'filled' : 'outlined'}
                       sx={{ fontWeight: 700, bgcolor: segmentFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: segmentFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
@@ -431,7 +435,7 @@ export default function LeadsPanel() {
                   {activeSegment ? (
                     <Box sx={{ bgcolor: `${activeSegment.color}14`, color: '#e2e8f0', border: `1px solid ${activeSegment.color}40`, borderRadius: 1.5, p: 1.4 }}>
                       <Typography sx={{ fontSize: '0.86rem' }}>
-                        <strong>{activeSegment.label}</strong> — {activeSegment.hint}. Forslag til kampanje: «{activeSegment.campaign}». Eksporter gruppen og kjør en retargeting-kampanje mot den.
+                        <strong>{activeSegment.label}</strong> — {activeSegment.hint}{t('leads.s001')}{activeSegment.campaign}{t('leads.s068')}
                       </Typography>
                       <Button
                         size="small" variant="contained" startIcon={<AiIcon sx={{ fontSize: 15 }} />}
@@ -439,7 +443,7 @@ export default function LeadsPanel() {
                         disabled={retargetingCopy.isPending}
                         sx={{ mt: 1, bgcolor: 'rgba(168,85,247,0.9)', '&:hover': { bgcolor: 'rgb(147,51,234)' } }}
                       >
-                        {retargetingCopy.isPending ? 'Skriver…' : 'AI: skriv annonsetekst'}
+                        {retargetingCopy.isPending ? 'Skriver…' : t('leads.s002')}
                       </Button>
                       {retargetingCopy.data && retargetingCopy.data.success === false ? (
                         <Alert severity="warning" sx={{ mt: 1, py: 0 }}>{retargetingCopy.data.error}</Alert>
@@ -461,7 +465,7 @@ export default function LeadsPanel() {
                             </Box>
                           ))}
                           {retargetingCopy.data.audienceNote ? (
-                            <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.65)' }}>Målgruppe-tips: {retargetingCopy.data.audienceNote}</Typography>
+                            <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.65)' }}>{t('leads.s038')} {retargetingCopy.data.audienceNote}</Typography>
                           ) : null}
                         </Stack>
                       ) : null}
@@ -471,7 +475,7 @@ export default function LeadsPanel() {
                   {/* ROI / resultater for kunden */}
                   <Box sx={{ border: '1px solid rgba(34,197,94,0.35)', bgcolor: 'rgba(34,197,94,0.07)', borderRadius: 2, p: 1.6 }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                      <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>Resultater å vise kunden</Typography>
+                      <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>{t('leads.s043')}</Typography>
                       <TextField
                         size="small" type="number" label="Annonsekostnad"
                         value={spendInput}
@@ -484,11 +488,11 @@ export default function LeadsPanel() {
                     {/* Funnel: spend → leads → cost/lead → answered → booked → customers → revenue */}
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2,1fr)', sm: 'repeat(4,1fr)', md: 'repeat(7,1fr)' }, gap: 1 }}>
                       {[
-                        { label: 'Brukt på annonser', value: kr(summary?.spendKr ?? 0), color: '#e2e8f0' },
+                        { label: t('leads.s007'), value: kr(summary?.spendKr ?? 0), color: '#e2e8f0' },
                         { label: 'Leads inn', value: String(summary?.totalLeads ?? 0), color: 'var(--role-cyan, #22d3ee)' },
                         { label: 'Pris per lead', value: kr(summary?.costPerLeadKr ?? 0), color: '#e2e8f0' },
-                        { label: 'Svarte', value: String(summary?.answered ?? 0), color: '#38bdf8' },
-                        { label: 'Booket møte', value: String(summary?.booked ?? 0), color: '#a78bfa' },
+                        { label: t('leads.s051'), value: String(summary?.answered ?? 0), color: '#38bdf8' },
+                        { label: t('leads.s005'), value: String(summary?.booked ?? 0), color: '#a78bfa' },
                         { label: 'Ble kunder', value: String(summary?.customers ?? 0), color: '#22c55e' },
                         { label: 'Omsetning', value: kr(summary?.revenueKr ?? 0), color: '#22c55e' },
                       ].map((cell) => (
@@ -501,12 +505,12 @@ export default function LeadsPanel() {
                     {summary && summary.spendKr > 0 ? (
                       <Typography sx={{ mt: 1, fontSize: '0.84rem', color: '#86efac', fontWeight: 600 }}>
                         {summary.revenueKr > 0
-                          ? `For hver krone brukt på annonser fikk kunden ${summary.roi.toFixed(1).replace('.', ',')} kr tilbake${summary.customers > 0 ? ` · ${kr(summary.costPerCustomerKr)} per ny kunde` : ''}.`
-                          : 'Fyll inn omsetning på kundene under («Ble kunde» + verdi) for å vise verdien i kroner.'}
+                          ? t('leads.p02', { v0: summary.roi.toFixed(1).replace('.', ','), v1: summary.customers > 0 ? t('leads.p00', { v0: kr(summary.costPerCustomerKr) }) : '' })
+                          : t('leads.s016')}
                       </Typography>
                     ) : (
                       <Typography sx={{ mt: 1, fontSize: '0.8rem', color: 'rgba(226,232,240,0.6)' }}>
-                        Skriv inn annonsekostnaden over, og merk hver lead med status under, så regner vi ut pris per lead og avkastning automatisk.
+                        {t('leads.s050')}
                       </Typography>
                     )}
                   </Box>
@@ -520,40 +524,40 @@ export default function LeadsPanel() {
                     >
                       <FollowupIcon sx={{ color: '#38bdf8' }} />
                       <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>Rask oppfølging</Typography>
+                        <Typography sx={{ fontWeight: 800, color: '#f8fafc' }}>{t('leads.s042')}</Typography>
                         <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
-                          Send automatisk e-post, SMS og WhatsApp til nye leads, og varsle kunden. Trykk «Følg opp» på en lead under.
+                          {t('leads.s045')}
                         </Typography>
                       </Box>
                       <Typography sx={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: 700 }}>
-                        {showFollowup ? 'Skjul' : 'Tilpass meldinger'}
+                        {showFollowup ? t('leads.s049') : t('leads.s055')}
                       </Typography>
                     </Stack>
                     <Collapse in={showFollowup}>
                       <Box sx={{ px: 1.4, pb: 1.6 }}>
                         {!channelsReady ? (
                           <Alert severity="info" sx={{ mb: 1.5 }}>
-                            E-post/SMS/WhatsApp er ikke koblet på ennå. Meldingene under lagres, og sendes automatisk så snart en kanal er aktivert.
-                            {' '}(WhatsApp krever en Meta-godkjent meldingsmal.)
+                            {t('leads.s012')}
+                            {' '}{t('leads.s000')}
                           </Alert>
                         ) : null}
                         {cfg ? (
                           <Stack spacing={1.4}>
                             <TextField
-                              label="SMS til kunden (leadet)" size="small" fullWidth multiline
+                              label={t('leads.s044')} size="small" fullWidth multiline
                               value={cfg.smsBody}
                               onChange={(e) => setCfg({ ...cfg, smsBody: e.target.value })}
-                              helperText="Bruk {navn} for fornavnet og {bedrift} for bedriftsnavnet."
+                              helperText={t('leads.s006')}
                             />
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
                               <TextField
-                                label="E-post emne" size="small" fullWidth
+                                label={t('leads.s010')} size="small" fullWidth
                                 value={cfg.emailSubject}
                                 onChange={(e) => setCfg({ ...cfg, emailSubject: e.target.value })}
                               />
                             </Stack>
                             <TextField
-                              label="E-post tekst" size="small" fullWidth multiline minRows={3}
+                              label={t('leads.s011')} size="small" fullWidth multiline minRows={3}
                               value={cfg.emailBody}
                               onChange={(e) => setCfg({ ...cfg, emailBody: e.target.value })}
                             />
@@ -562,9 +566,9 @@ export default function LeadsPanel() {
                               value={cfg.replyTo}
                               onChange={(e) => setCfg({ ...cfg, replyTo: e.target.value })}
                               placeholder="kontakt@bedrift.no"
-                              helperText="E-posten vises med bedriftsnavnet som avsender. Når leadet svarer, går svaret til denne adressen (kundens innboks)."
+                              helperText={t('leads.s013')}
                             />
-                            <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>Varsle kunden om nye leads</Typography></Divider>
+                            <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>{t('leads.s058')}</Typography></Divider>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
                               <TextField
                                 label="Kundens mobilnummer (SMS-varsel)" size="small" fullWidth
@@ -573,10 +577,10 @@ export default function LeadsPanel() {
                                 placeholder="+47 …"
                               />
                               <TextField
-                                label="Kundens e-post (varsel)" size="small" fullWidth
+                                label={t('leads.s026')} size="small" fullWidth
                                 value={cfg.notifyEmail}
                                 onChange={(e) => setCfg({ ...cfg, notifyEmail: e.target.value })}
-                                placeholder="kunde@bedrift.no"
+                                placeholder={t('leads.s065')}
                               />
                             </Stack>
                             <Box sx={{ border: '1px solid rgba(168,85,247,0.3)', bgcolor: 'rgba(168,85,247,0.06)', borderRadius: 1.5, px: 1.4, py: 0.6 }}>
@@ -585,36 +589,36 @@ export default function LeadsPanel() {
                                 label={
                                   <Box>
                                     <Typography sx={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                      <AiIcon sx={{ fontSize: 16, color: '#c084fc' }} /> La AI skrive en personlig melding til hver lead
+                                      <AiIcon sx={{ fontSize: 16, color: '#c084fc' }} /> {t('leads.s031')}
                                     </Typography>
-                                    <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }}>Claude tilpasser meldingen ut fra hva hver lead spurte om. Malene over brukes som tone — og som reserve hvis AI feiler.</Typography>
+                                    <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)' }}>{t('leads.s008')}</Typography>
                                   </Box>
                                 }
                               />
                             </Box>
                             <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                               {saveFollowupConfig.isSuccess ? (
-                                <Typography sx={{ fontSize: '0.78rem', color: '#86efac' }}>Lagret</Typography>
+                                <Typography sx={{ fontSize: '0.78rem', color: '#86efac' }}>{t('leads.s033')}</Typography>
                               ) : null}
                               <Button
                                 size="small" variant="contained"
                                 onClick={() => saveFollowupConfig.mutate(cfg)}
                                 disabled={saveFollowupConfig.isPending}
                               >
-                                Lagre meldinger
+                                {t('leads.s032')}
                               </Button>
                             </Stack>
 
                             {/* White-label: send from the client's own domain */}
-                            <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>Send fra kundens eget domene (valgfritt)</Typography></Divider>
+                            <Divider><Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.5)' }}>{t('leads.s046')}</Typography></Divider>
                             {domainData?.configured && domainData.status === 'verified' ? (
                               <Alert severity="success" sx={{ bgcolor: 'rgba(34,197,94,0.1)' }}>
-                                Sender nå fra <strong>{domainData.fromAddress || `@${domainData.domain}`}</strong> — kundens eget domene er verifisert. Ingen «via theroleroom.com».
+                                {t('leads.s047')} <strong>{domainData.fromAddress || `@${domainData.domain}`}</strong> {t('leads.s069')}
                               </Alert>
                             ) : domainData?.configured ? (
                               <Stack spacing={1}>
                                 <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.1)' }}>
-                                  Domenet <strong>{domainData.domain}</strong> venter på DNS-verifisering. Be kunden legge inn postene under i sitt DNS, og trykk så «Sjekk verifisering».
+                                  Domenet <strong>{domainData.domain}</strong> {t('leads.s067')}
                                 </Alert>
                                 {(domainData.records || []).length > 0 ? (
                                   <Box sx={{ overflowX: 'auto' }}>
@@ -649,7 +653,7 @@ export default function LeadsPanel() {
                             ) : (
                               <Stack spacing={1}>
                                 <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
-                                  Vil du at e-posten skal komme fra kundens egen adresse (uten «via theroleroom.com»)? Koble kundens domene, så får du DNS-poster kunden legger inn én gang.
+                                  {t('leads.s062')}
                                 </Typography>
                                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
                                   <TextField label="Kundens domene" size="small" fullWidth value={domainInput} onChange={(e) => setDomainInput(e.target.value)} placeholder="tannlegen.no" />
@@ -660,7 +664,7 @@ export default function LeadsPanel() {
                                 ) : null}
                                 <Stack direction="row" justifyContent="flex-end">
                                   <Button size="small" variant="outlined" onClick={() => connectDomain.mutate()} disabled={!domainInput || connectDomain.isPending}>
-                                    {connectDomain.isPending ? 'Kobler…' : 'Koble domene'}
+                                    {connectDomain.isPending ? 'Kobler…' : t('leads.s023')}
                                   </Button>
                                 </Stack>
                               </Stack>
@@ -674,7 +678,7 @@ export default function LeadsPanel() {
                   <Divider />
                   {visibleLeads.length === 0 ? (
                     <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>
-                      {leads.length === 0 ? 'Ingen leads i dette skjemaet ennå.' : 'Ingen leads i denne gruppen ennå.'}
+                      {leads.length === 0 ? t('leads.s021') : t('leads.s020')}
                     </Typography>
                   ) : (
                     <Box sx={{ overflowX: 'auto' }}>
@@ -687,7 +691,7 @@ export default function LeadsPanel() {
                             <TableCell>Segment</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>Verdi (kr)</TableCell>
-                            <TableCell>Oppfølging</TableCell>
+                            <TableCell>{t('leads.s040')}</TableCell>
                             <TableCell>Tidspunkt</TableCell>
                           </TableRow>
                         </TableHead>
@@ -703,11 +707,11 @@ export default function LeadsPanel() {
                                     size="small" variant="standard"
                                     value={l.segment ?? ''}
                                     displayEmpty
-                                    inputProps={{ 'aria-label': 'Endre segment' }}
+                                    inputProps={{ 'aria-label': t('leads.s014') }}
                                     onChange={(e) => setSegment.mutate({ leadId: l.id, segment: (e.target.value || null) as Segment | null })}
                                     sx={{ fontSize: '0.8rem', minWidth: 100 }}
                                   >
-                                    <MenuItem value=""><em>Ikke satt</em></MenuItem>
+                                    <MenuItem value=""><em>{t('leads.s018')}</em></MenuItem>
                                     {SEGMENTS.map((s) => (
                                       <MenuItem key={s.key} value={s.key} sx={{ color: s.color }}>{s.label.replace(/r$|e$/, '')}</MenuItem>
                                     ))}
@@ -724,11 +728,11 @@ export default function LeadsPanel() {
                                   size="small" variant="standard"
                                   value={l.stage ?? ''}
                                   displayEmpty
-                                  inputProps={{ 'aria-label': 'Endre status' }}
+                                  inputProps={{ 'aria-label': t('leads.s015') }}
                                   onChange={(e) => setOutcome.mutate({ leadId: l.id, stage: (e.target.value || null) as Stage | null, valueKr: l.valueKr })}
                                   sx={{ fontSize: '0.8rem', minWidth: 110 }}
                                 >
-                                  <MenuItem value=""><em>Ny</em></MenuItem>
+                                  <MenuItem value=""><em>{t('leads.s039')}</em></MenuItem>
                                   {STAGES.map((s) => (
                                     <MenuItem key={s.key} value={s.key} sx={{ color: s.color }}>{s.label}</MenuItem>
                                   ))}
@@ -763,7 +767,7 @@ export default function LeadsPanel() {
                                     onClick={() => sendFollowup.mutate(l)}
                                     sx={{ fontSize: '0.72rem', py: 0.2 }}
                                   >
-                                    Følg opp
+                                    {t('leads.s017')}
                                   </Button>
                                 )}
                               </TableCell>

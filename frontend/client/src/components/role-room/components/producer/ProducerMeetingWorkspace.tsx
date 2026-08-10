@@ -44,6 +44,8 @@ import {
   PRODUCER_MEETING_WORKSPACE_STATUS_LABELS,
   PRODUCER_PLANNING_PHASE_LABELS,
 } from '../../utils/producerProjectPlanning';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ProducerMeetingWorkspaceProps {
   project: CastingProject;
@@ -79,34 +81,34 @@ const MEETING_STATUS_TONES: Record<ProducerMeetingWorkspace['status'], { backgro
   follow_up: { background: 'rgba(34,197,94,0.16)', color: '#bbf7d0' },
 };
 
-const DECISION_STATUS_LABELS: Record<NonNullable<ProducerMeetingDecisionItem['status']>, string> = {
-  open: 'Åpen',
-  done: 'Lukket',
-};
+const buildDECISION_STATUS_LABELS = (t: TFn): Record<NonNullable<ProducerMeetingDecisionItem['status']>, string> => ({
+  open: t('meetingWs.s066'),
+  done: t('meetingWs.s037'),
+});
 
-const FOLLOW_UP_STATUS_LABELS: Record<NonNullable<ProducerMeetingFollowUpItem['status']>, string> = {
-  planned: 'Planlagt',
-  in_progress: 'Pågår',
-  done: 'Ferdig',
-};
+const buildFOLLOW_UP_STATUS_LABELS = (t: TFn): Record<NonNullable<ProducerMeetingFollowUpItem['status']>, string> => ({
+  planned: t('meetingWs.s054'),
+  in_progress: t('meetingWs.s058'),
+  done: t('meetingWs.s013'),
+});
 
-const MEETING_VISIBILITY_LABELS = {
-  internal: 'Internt',
-  client: 'Deles med klient',
-} as const;
+const buildMEETING_VISIBILITY_LABELS = (t: TFn) => ({
+  internal: t('meetingWs.s023'),
+  client: t('meetingWs.s007'),
+} as const);
 
-const MEETING_SOURCE_LABELS: Record<NonNullable<ProducerMeetingAgendaItem['sourceType']>, string> = {
-  manual: 'Manuelt',
+const buildMEETING_SOURCE_LABELS = (t: TFn): Record<NonNullable<ProducerMeetingAgendaItem['sourceType']>, string> => ({
+  manual: t('meetingWs.s038'),
   client_review: 'Review',
-  timeline: 'Tidslinje',
-  framework: 'Retning',
-};
+  timeline: t('meetingWs.s064'),
+  framework: t('meetingWs.s059'),
+});
 
 const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
-const formatDateTime = (value?: string | null): string => {
+const formatDateTime = (t: TFn, value?: string | null): string => {
   if (!hasText(value)) {
-    return 'Ikke satt';
+    return t('meetingWs.s020');
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -198,6 +200,11 @@ export default function ProducerMeetingWorkspace({
   onSavePlanning,
   onRefreshGoogleAssets,
 }: ProducerMeetingWorkspaceProps) {
+  const { t } = useT();
+  const MEETING_SOURCE_LABELS = useMemo(() => buildMEETING_SOURCE_LABELS(t), [t]);
+  const DECISION_STATUS_LABELS = useMemo(() => buildDECISION_STATUS_LABELS(t), [t]);
+  const MEETING_VISIBILITY_LABELS = useMemo(() => buildMEETING_VISIBILITY_LABELS(t), [t]);
+  const FOLLOW_UP_STATUS_LABELS = useMemo(() => buildFOLLOW_UP_STATUS_LABELS(t), [t]);
   const { enqueueSnackbar } = useSnackbar();
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [highlightedItemKey, setHighlightedItemKey] = useState<string | null>(null);
@@ -273,7 +280,7 @@ export default function ProducerMeetingWorkspace({
       .map((item) => ({
         id: `timeline:${item.id}`,
         title: item.title,
-        detail: item.description?.trim() || 'Operativt punkt fra prosjektets tidslinje.',
+        detail: item.description?.trim() || t('meetingWs.s049'),
         phase: item.phase,
         sourceType: 'timeline',
         linkedEntityType: item.linked_entity_type ?? 'timeline_item',
@@ -286,7 +293,7 @@ export default function ProducerMeetingWorkspace({
       .map((step) => ({
         id: `framework:${step.key}`,
         title: step.output?.trim() || step.focus?.trim() || 'Retningspunkt',
-        detail: step.notes?.trim() || step.focus?.trim() || 'Punkt fra retning og aktivering.',
+        detail: step.notes?.trim() || step.focus?.trim() || t('meetingWs.s056'),
         phase: step.key === 'execution' || step.key === 'evaluation' ? 'postproduction' : 'preproduction',
         sourceType: 'framework',
         linkedEntityType: 'producer_framework',
@@ -335,19 +342,19 @@ export default function ProducerMeetingWorkspace({
   const meetingMissingItems = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (agendaReadyCount === 0) {
-      items.push({ id: 'meeting-agenda', label: 'Agenda mangler' });
+      items.push({ id: 'meeting-agenda', label: t('meetingWs.s000') });
     }
     if (!hasText(activeMeetUrl)) {
-      items.push({ id: 'meeting-link', label: 'Meet-lenke er ikke opprettet ennå' });
+      items.push({ id: 'meeting-link', label: t('meetingWs.s042') });
     }
     if (!hasText(meetingWorkspace.liveNotes)) {
-      items.push({ id: 'meeting-notes', label: 'Live-notater mangler' });
+      items.push({ id: 'meeting-notes', label: t('meetingWs.s035') });
     }
     if (loggedDecisionCount === 0) {
-      items.push({ id: 'meeting-decisions', label: 'Beslutninger er ikke loggført ennå' });
+      items.push({ id: 'meeting-decisions', label: t('meetingWs.s004') });
     }
     if (loggedFollowUpCount === 0) {
-      items.push({ id: 'meeting-followups', label: 'Oppfølging mangler' });
+      items.push({ id: 'meeting-followups', label: t('meetingWs.s050') });
     }
     return items;
   }, [activeMeetUrl, agendaReadyCount, loggedDecisionCount, loggedFollowUpCount, meetingWorkspace.liveNotes]);
@@ -358,8 +365,8 @@ export default function ProducerMeetingWorkspace({
     return [
       `${agendaReadyCount} agenda`,
       `${loggedDecisionCount} beslutninger`,
-      `${openFollowUpCount} åpne oppfølginger`,
-      hasText(activeMeetUrl) ? 'Meet er koblet til' : '',
+      t('meetingWs.p05', { v0: openFollowUpCount }),
+      hasText(activeMeetUrl) ? t('meetingWs.s040') : '',
     ].filter(Boolean).join(' · ');
   }, [activeMeetUrl, agendaReadyCount, loggedDecisionCount, meetingMissingItems.length, openFollowUpCount]);
   const participantCount = meetingWorkspace.participants?.length ?? 0;
@@ -474,14 +481,14 @@ export default function ProducerMeetingWorkspace({
   const handleCopyMeetingSummary = useCallback(async () => {
     const summary = buildMeetingSummary();
     if (!summary) {
-      enqueueSnackbar('Det er ingenting å lage referat av ennå.', { variant: 'info' });
+      enqueueSnackbar(t('meetingWs.s008'), { variant: 'info' });
       return;
     }
     try {
       await navigator.clipboard.writeText(summary);
-      enqueueSnackbar('Møtereferat kopiert — klart til å lime inn eller sende klienten.', { variant: 'success' });
+      enqueueSnackbar(t('meetingWs.s044'), { variant: 'success' });
     } catch {
-      enqueueSnackbar('Kunne ikke kopiere møtereferatet.', { variant: 'error' });
+      enqueueSnackbar(t('meetingWs.s026'), { variant: 'error' });
     }
   }, [buildMeetingSummary, enqueueSnackbar]);
 
@@ -550,10 +557,10 @@ export default function ProducerMeetingWorkspace({
         activeMeetCalendarEventId: calendarEventId || previous.activeMeetCalendarEventId,
       }));
       await onRefreshGoogleAssets();
-      enqueueSnackbar('Google Meet er opprettet for møteflaten.', { variant: 'success' });
+      enqueueSnackbar(t('meetingWs.s018'), { variant: 'success' });
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke opprette Google Meet fra møteflaten.',
+        error instanceof Error ? error.message : t('meetingWs.s028'),
         { variant: 'error' },
       );
     } finally {
@@ -576,10 +583,10 @@ export default function ProducerMeetingWorkspace({
   const handleSave = useCallback(async () => {
     try {
       await onSavePlanning();
-      enqueueSnackbar('Møteflaten er lagret i prosjektet.', { variant: 'success' });
+      enqueueSnackbar(t('meetingWs.s043'), { variant: 'success' });
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke lagre møteflaten.',
+        error instanceof Error ? error.message : t('meetingWs.s027'),
         { variant: 'error' },
       );
     }
@@ -630,15 +637,15 @@ export default function ProducerMeetingWorkspace({
         <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1}>
           <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-              Styr møtet
+              {t('meetingWs.s063')}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.3, lineHeight: 1.5, maxWidth: 620 }}>
               {isClientReviewerMode
-                ? 'Bruk denne flaten til å samle agenda, beslutninger og oppfølging rundt samme klientsync.'
-                : 'Fyll inn det som må være klart før, under og etter møtet i samme prosjektflyt.'}
+                ? t('meetingWs.s005')
+                : t('meetingWs.s015')}
             </Typography>
             <Typography sx={{ color: 'rgba(191,219,254,0.68)', fontSize: '0.78rem', mt: 0.45, lineHeight: 1.45 }}>
-              {`${PRODUCER_MEETING_WORKSPACE_STATUS_LABELS[meetingWorkspace.status]} · ${agendaReadyCount} agenda · ${openFollowUpCount} åpne oppfølginger`}
+              {t('meetingWs.p04', { v0: PRODUCER_MEETING_WORKSPACE_STATUS_LABELS[meetingWorkspace.status], v1: agendaReadyCount, v2: openFollowUpCount })}
             </Typography>
           </Box>
           <Stack
@@ -658,7 +665,7 @@ export default function ProducerMeetingWorkspace({
               Fremdrift
             </Typography>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-              {`${meetingReadyCount}/5 klare`}
+              {t('meetingWs.p06', { v0: meetingReadyCount })}
             </Typography>
             <Box
               sx={{
@@ -680,8 +687,8 @@ export default function ProducerMeetingWorkspace({
             </Box>
             <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
               {meetingMissingItems.length > 0
-                ? `Fyll ut ${meetingMissingItems[0]?.label.toLowerCase()} før du går videre.`
-                : 'Møtet er klart til å kjøres og følges opp.'}
+                ? t('meetingWs.p00', { v0: meetingMissingItems[0]?.label.toLowerCase() })
+                : t('meetingWs.s045')}
             </Typography>
           </Stack>
         </Stack>
@@ -722,7 +729,7 @@ export default function ProducerMeetingWorkspace({
               {hasText(meetingWorkspace.scheduledAt) ? (
                 <Chip
                   size="small"
-                  label={formatDateTime(meetingWorkspace.scheduledAt)}
+                  label={formatDateTime(t, meetingWorkspace.scheduledAt)}
                   sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }}
                 />
               ) : null}
@@ -773,7 +780,7 @@ export default function ProducerMeetingWorkspace({
             }}
           >
             <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-              Dette mangler i møtet
+              {t('meetingWs.s011')}
             </Typography>
             <Stack spacing={0.18}>
               {meetingMissingItems.map((item) => (
@@ -832,13 +839,13 @@ export default function ProducerMeetingWorkspace({
             }}
           >
             <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              Gjør dette nå
+              {t('meetingWs.s017')}
             </Typography>
             <Typography sx={{ color: '#fff', fontWeight: 700, mt: 0.35 }}>
               {meetingWorkspace.sessionLabel?.trim() || `Klientsync · ${project.name}`}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.82rem', mt: 0.35 }}>
-              {activeMeetUrl ? 'Meet er koblet til denne møteflaten.' : 'Opprett Meet når agendaen er klar.'}
+              {activeMeetUrl ? t('meetingWs.s041') : t('meetingWs.s052')}
             </Typography>
             <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.85 }}>
               {canEdit ? (
@@ -852,7 +859,7 @@ export default function ProducerMeetingWorkspace({
                   disabled={actionKey === 'meet-session'}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  {actionKey === 'meet-session' ? 'Oppretter...' : 'Opprett Meet'}
+                  {actionKey === 'meet-session' ? 'Oppretter...' : t('meetingWs.s051')}
                 </Button>
               ) : null}
               {activeMeetUrl ? (
@@ -863,7 +870,7 @@ export default function ProducerMeetingWorkspace({
                   onClick={handleOpenMeet}
                   sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' } }}
                 >
-                  Åpne Meet
+                  {t('meetingWs.s067')}
                 </Button>
               ) : null}
               {(['planned', 'lobby', 'live', 'follow_up'] as const).map((status) => (
@@ -897,13 +904,13 @@ export default function ProducerMeetingWorkspace({
             }}
           >
             <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              Trekk inn fra prosjektet
+              {t('meetingWs.s065')}
             </Typography>
             <Typography sx={{ color: '#fff', fontWeight: 700, mt: 0.35 }}>
-              {missingSuggestions.length > 0 ? `${missingSuggestions.length} forslag klare` : 'Agendaen er dekket'}
+              {missingSuggestions.length > 0 ? t('meetingWs.p03', { v0: missingSuggestions.length }) : t('meetingWs.s001')}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.82rem', mt: 0.35 }}>
-              Hent inn reviews, tidslinje og retning før møtet, så beslutninger og oppfølging får samme utgangspunkt.
+              {t('meetingWs.s019')}
             </Typography>
             {canEdit && missingSuggestions.length > 0 ? (
               <Button
@@ -913,7 +920,7 @@ export default function ProducerMeetingWorkspace({
                 onClick={handleImportSuggestedAgenda}
                 sx={{ mt: 0.85, textTransform: 'none', fontWeight: 700 }}
               >
-                Legg inn forslag
+                {t('meetingWs.s032')}
               </Button>
             ) : null}
           </Box>
@@ -932,10 +939,10 @@ export default function ProducerMeetingWorkspace({
           <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
             <Box>
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Legg inn neste møtepunkter
+                {t('meetingWs.s033')}
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                Punkter fra tidslinje, reviews og retning som bør tas i samme møte.
+                {t('meetingWs.s057')}
               </Typography>
             </Box>
           </Stack>
@@ -981,7 +988,7 @@ export default function ProducerMeetingWorkspace({
                       onClick={() => appendAgendaSuggestion(suggestion)}
                       sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                     >
-                      Legg til
+                      {t('meetingWs.s034')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -1009,10 +1016,10 @@ export default function ProducerMeetingWorkspace({
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
             <Box>
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Bygg agenda og noter
+                {t('meetingWs.s006')}
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                Samle det som skal tas i møtet og skriv notatene mens dere snakker.
+                {t('meetingWs.s060')}
               </Typography>
             </Box>
             {canEdit ? (
@@ -1035,7 +1042,7 @@ export default function ProducerMeetingWorkspace({
                 }))}
                 sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
               >
-                Nytt agendapunkt
+                {t('meetingWs.s048')}
               </Button>
             ) : null}
           </Stack>
@@ -1070,7 +1077,7 @@ export default function ProducerMeetingWorkspace({
                       ) : null}
                       <Chip
                         size="small"
-                        label={item.completed ? 'Ferdig' : 'Åpen'}
+                        label={item.completed ? t('meetingWs.s013') : t('meetingWs.s066')}
                         sx={{
                           bgcolor: item.completed ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.14)',
                           color: item.completed ? '#bbf7d0' : '#fde68a',
@@ -1091,7 +1098,7 @@ export default function ProducerMeetingWorkspace({
                           }))}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          {item.completed ? 'Gjenåpne' : 'Marker ferdig'}
+                          {item.completed ? t('meetingWs.s016') : t('meetingWs.s039')}
                         </Button>
                         <Button
                           size="small"
@@ -1103,7 +1110,7 @@ export default function ProducerMeetingWorkspace({
                           }))}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Slett
+                          {t('meetingWs.s061')}
                         </Button>
                       </Stack>
                     ) : null}
@@ -1138,7 +1145,7 @@ export default function ProducerMeetingWorkspace({
               </Box>
             ); }) : (
               <Alert severity="info">
-                Agendaen er tom. Legg inn foreslåtte punkter eller opprett egne.
+                {t('meetingWs.s002')}
               </Alert>
             )}
 
@@ -1169,10 +1176,10 @@ export default function ProducerMeetingWorkspace({
             <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Loggfør beslutninger
+                  {t('meetingWs.s036')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                  Det som ble bestemt i møtet og skal videreføres i prosjektet.
+                  {t('meetingWs.s009')}
                 </Typography>
               </Box>
               {canEdit ? (
@@ -1189,7 +1196,7 @@ export default function ProducerMeetingWorkspace({
                   }))}
                   sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                 >
-                  Ny beslutning
+                  {t('meetingWs.s046')}
                 </Button>
               ) : null}
             </Stack>
@@ -1246,7 +1253,7 @@ export default function ProducerMeetingWorkspace({
                         {syncedTimelineItem ? (
                           <Chip
                             size="small"
-                            label={`Tidslinje · ${getProducerTimelineStatusLabel(syncedTimelineItem.status)}`}
+                            label={t('meetingWs.p02', { v0: getProducerTimelineStatusLabel(syncedTimelineItem.status) })}
                             sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
                           />
                         ) : null}
@@ -1262,7 +1269,7 @@ export default function ProducerMeetingWorkspace({
                           }))}
                           sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                         >
-                          Slett
+                          {t('meetingWs.s061')}
                         </Button>
                       ) : null}
                     </Stack>
@@ -1302,7 +1309,7 @@ export default function ProducerMeetingWorkspace({
                       >
                         <option value="preproduction">Pre-produksjon</option>
                         <option value="production">Produksjon</option>
-                        <option value="postproduction">Post-produksjon</option>
+                        <option value="postproduction">{t('meetingWs.s055')}</option>
                       </TextField>
                       <TextField
                         label="Ansvarlig"
@@ -1352,7 +1359,7 @@ export default function ProducerMeetingWorkspace({
                     </TextField>
                     <TextField
                       select
-                      label="Status"
+                      label={t('meetingWs.s062')}
                       SelectProps={{ native: true }}
                       value={item.status ?? 'open'}
                       onChange={(event) => updateMeetingWorkspace((previous) => ({
@@ -1363,8 +1370,8 @@ export default function ProducerMeetingWorkspace({
                       }))}
                       disabled={!canEdit}
                     >
-                      <option value="open">Åpen</option>
-                      <option value="done">Lukket</option>
+                      <option value="open">{t('meetingWs.s066')}</option>
+                      <option value="done">{t('meetingWs.s037')}</option>
                     </TextField>
                     <TextField
                       label="Notat"
@@ -1383,7 +1390,7 @@ export default function ProducerMeetingWorkspace({
                   </Stack>
                 </Box>
               ); }) : (
-                <Alert severity="info">Ingen beslutninger er loggført ennå.</Alert>
+                <Alert severity="info">{t('meetingWs.s021')}</Alert>
               )}
             </Stack>
           </Box>
@@ -1399,10 +1406,10 @@ export default function ProducerMeetingWorkspace({
             <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Fordel oppfølging
+                  {t('meetingWs.s014')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                  Det som må gjøres etter møtet, med ansvar og frister.
+                  {t('meetingWs.s010')}
                 </Typography>
               </Box>
               {canEdit ? (
@@ -1419,7 +1426,7 @@ export default function ProducerMeetingWorkspace({
                   }))}
                   sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                 >
-                  Ny oppfølging
+                  {t('meetingWs.s047')}
                 </Button>
               ) : null}
             </Stack>
@@ -1468,7 +1475,7 @@ export default function ProducerMeetingWorkspace({
                         {syncedTimelineItem ? (
                           <Chip
                             size="small"
-                            label={`Tidslinje · ${getProducerTimelineStatusLabel(syncedTimelineItem.status)}`}
+                            label={t('meetingWs.p02', { v0: getProducerTimelineStatusLabel(syncedTimelineItem.status) })}
                             sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
                           />
                         ) : null}
@@ -1484,7 +1491,7 @@ export default function ProducerMeetingWorkspace({
                           }))}
                           sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                         >
-                          Slett
+                          {t('meetingWs.s061')}
                         </Button>
                       ) : null}
                     </Stack>
@@ -1524,7 +1531,7 @@ export default function ProducerMeetingWorkspace({
                       >
                         <option value="preproduction">Pre-produksjon</option>
                         <option value="production">Produksjon</option>
-                        <option value="postproduction">Post-produksjon</option>
+                        <option value="postproduction">{t('meetingWs.s055')}</option>
                       </TextField>
                       <TextField
                         label="Ansvarlig"
@@ -1555,7 +1562,7 @@ export default function ProducerMeetingWorkspace({
                     </Stack>
                     <TextField
                       select
-                      label="Status"
+                      label={t('meetingWs.s062')}
                       SelectProps={{ native: true }}
                       value={item.status ?? 'planned'}
                       onChange={(event) => updateMeetingWorkspace((previous) => ({
@@ -1573,9 +1580,9 @@ export default function ProducerMeetingWorkspace({
                       }))}
                       disabled={!canEdit}
                     >
-                      <option value="planned">Planlagt</option>
-                      <option value="in_progress">Pågår</option>
-                      <option value="done">Ferdig</option>
+                      <option value="planned">{t('meetingWs.s054')}</option>
+                      <option value="in_progress">{t('meetingWs.s058')}</option>
+                      <option value="done">{t('meetingWs.s013')}</option>
                     </TextField>
                     <TextField
                       label="Notat"
@@ -1594,7 +1601,7 @@ export default function ProducerMeetingWorkspace({
                   </Stack>
                 </Box>
               ); }) : (
-                <Alert severity="info">Ingen oppfølgingspunkter er lagt inn ennå.</Alert>
+                <Alert severity="info">{t('meetingWs.s022')}</Alert>
               )}
             </Stack>
           </Box>
@@ -1604,8 +1611,8 @@ export default function ProducerMeetingWorkspace({
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.25} alignItems={{ md: 'center' }}>
         <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
           {activeMeetUrl
-            ? `Siste Meet-lenke er tilgjengelig. Oppdatert ${formatDateTime(latestMeetArtifact?.updatedAt ?? latestMeetArtifact?.createdAt)}.`
-            : 'Opprett en Meet-sesjon når agendaen er klar, og hold resten av møtet i samme arbeidsflate.'} Lagring synker beslutninger og oppfølging til klientsamarbeid og tidslinje.
+            ? t('meetingWs.p01', { v0: formatDateTime(t, latestMeetArtifact?.updatedAt ?? latestMeetArtifact?.createdAt) })
+            : t('meetingWs.s053')} {t('meetingWs.s031')}
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
           <Typography
@@ -1621,10 +1628,10 @@ export default function ProducerMeetingWorkspace({
               : autosaveStatus === 'saved' && lastSavedAt
                 ? `Autolagret ${lastSavedAt.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
                 : autosaveStatus === 'editing'
-                  ? 'Endringer lagres automatisk…'
+                  ? t('meetingWs.s012')
                   : autosaveStatus === 'error'
-                    ? 'Kunne ikke autolagre — bruk «Lagre møteflate»'
-                    : 'Autolagring på'}
+                    ? t('meetingWs.s025')
+                    : t('meetingWs.s003')}
           </Typography>
           <Button
             variant="outlined"
@@ -1633,7 +1640,7 @@ export default function ProducerMeetingWorkspace({
             }}
             sx={{ textTransform: 'none', fontWeight: 700, color: '#e2e8f0', borderColor: 'rgba(148,163,184,0.4)' }}
           >
-            Kopier møtereferat
+            {t('meetingWs.s024')}
           </Button>
           <Button
             variant="contained"
@@ -1644,7 +1651,7 @@ export default function ProducerMeetingWorkspace({
             disabled={!canEdit || saving}
             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' } }}
           >
-            {saving ? 'Lagrer møteflate...' : 'Lagre møteflate'}
+            {saving ? t('meetingWs.s030') : t('meetingWs.s029')}
           </Button>
         </Stack>
       </Stack>

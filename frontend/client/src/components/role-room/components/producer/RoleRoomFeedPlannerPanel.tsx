@@ -54,6 +54,8 @@ import { buildFeedPost } from '../../utils/feedPlanner';
 import { describeProducerError } from '../../utils/producerErrorMessage';
 import SortableFeedPostTile from './SortableFeedPostTile';
 import { LoadingSkeleton } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type RoleRoomFeedPlannerPanelProps = {
   projectId: string;
@@ -79,6 +81,7 @@ export default function RoleRoomFeedPlannerPanel({
   bootstrap,
   onRequestBootstrap,
 }: RoleRoomFeedPlannerPanelProps) {
+  const { t } = useT();
   const [platform, setPlatform] = useState<RoleRoomFeedPlatform>('instagram');
   const [posts, setPosts] = useState<RoleRoomFeedPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -146,7 +149,7 @@ export default function RoleRoomFeedPlannerPanel({
         if (result?.updatedAt) setLastSavedAt(result.updatedAt);
         setDirty(false);
       } catch (error) {
-        setSaveError(describeProducerError(error, 'lagre feed-planen'));
+        setSaveError(describeProducerError(error, t('feedPlanner.s031')));
       } finally {
         setSaving(false);
       }
@@ -246,8 +249,8 @@ export default function RoleRoomFeedPlannerPanel({
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        `Godkjenne alle ${ids.length} poster uten å gå gjennom dem enkeltvis? ` +
-          'De merkes som klare for publisering.',
+        t('feedPlanner.p01', { v0: ids.length }) +
+          t('feedPlanner.s001'),
       )
     ) {
       return;
@@ -274,11 +277,11 @@ export default function RoleRoomFeedPlannerPanel({
         // Server rejected the batch (e.g. client-approval policy) — surface it
         // instead of leaving the button silently doing nothing.
         setSaveError(
-          (result as { error?: string }).error || 'Kunne ikke godkjenne postene.',
+          (result as { error?: string }).error || t('feedPlanner.s012'),
         );
       }
     } catch (error) {
-      setSaveError(describeProducerError(error, 'godkjenne postene'));
+      setSaveError(describeProducerError(error, t('feedPlanner.s030')));
     } finally {
       setBulkApproving(false);
     }
@@ -289,8 +292,8 @@ export default function RoleRoomFeedPlannerPanel({
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        'Regenerere alle forslag? Egne endringer på ulåste poster (captions, bilder) ' +
-          'overskrives — låste poster beholdes.',
+        t('feedPlanner.s019') +
+          t('feedPlanner.s032'),
       )
     ) {
       return;
@@ -399,12 +402,12 @@ export default function RoleRoomFeedPlannerPanel({
     try {
       const result = await roleRoomAgentService.refreshFeedPlanStrategy(platform);
       if (result.success) {
-        setStrategyRefreshNote(`Strategi for ${platform} oppdatert.`);
+        setStrategyRefreshNote(t('feedPlanner.p02', { v0: platform }));
       } else {
         setStrategyRefreshNote(
           result.error
-            ? `Strategioppdateringen feilet: ${result.error}`
-            : 'Strategioppdateringen kunne ikke fullføres. Prøv igjen.',
+            ? t('feedPlanner.p03', { v0: result.error })
+            : t('feedPlanner.s022'),
         );
       }
     } catch (refreshError) {
@@ -452,11 +455,10 @@ export default function RoleRoomFeedPlannerPanel({
       >
         <AutoAwesomeIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 40 }} />
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1.05rem' }}>
-          Analyser kunden først
+          {t('feedPlanner.s000')}
         </Typography>
         <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.9rem', maxWidth: 520 }}>
-          Feed-planneren henter logo, merkefarger, tone og innholdsidéer fra research-fanen. Kjør en
-          analyse for å se et brand-tilpasset Instagram-feed med forslag til innlegg.
+          {t('feedPlanner.s003')}
         </Typography>
         {onRequestBootstrap ? (
           <Button
@@ -469,7 +471,7 @@ export default function RoleRoomFeedPlannerPanel({
               background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
             }}
           >
-            Gå til research
+            {t('feedPlanner.s005')}
           </Button>
         ) : null}
       </Stack>
@@ -511,13 +513,13 @@ export default function RoleRoomFeedPlannerPanel({
               }}
               title={
                 currentTierSlug === 'spotlight'
-                  ? 'Klikk for å oppgradere til Headliner eller Showrunner'
+                  ? t('feedPlanner.s008')
                   : ROLE_ROOM_TIERS[currentTierSlug].tagline
               }
             />
           </Stack>
           <Typography sx={{ color: 'rgba(226,232,240,0.64)', fontSize: '0.84rem' }}>
-            Planlegg hvordan kundens feed skal se ut. Posts bruker logo, merkefarger og tone fra analysen.
+            {t('feedPlanner.s016')}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
@@ -525,7 +527,7 @@ export default function RoleRoomFeedPlannerPanel({
             const requiredTier = option.minimumTierLevel === 2 ? ROLE_ROOM_TIERS.headliner : ROLE_ROOM_TIERS.spotlight;
             const allowed = currentTierLevel >= option.minimumTierLevel;
             const active = option.id === platform && allowed;
-            const lockedHint = `Tilgjengelig fra Role Room ${requiredTier.shortName} — klikk for å oppgradere`;
+            const lockedHint = t('feedPlanner.p04', { v0: requiredTier.shortName });
 
             return (
               <Chip
@@ -535,7 +537,7 @@ export default function RoleRoomFeedPlannerPanel({
                     <SocialBrandLogo platform={option.id} size={18} />
                   </Box>
                 }
-                aria-label={allowed ? `Velg ${option.label}` : `${option.label} — låst. ${lockedHint}`}
+                aria-label={allowed ? t('feedPlanner.p05', { v0: option.label }) : t('feedPlanner.p06', { v0: option.label, v1: lockedHint })}
                 label={allowed ? option.label : `${option.label} · ${requiredTier.shortName}`}
                 onClick={() => {
                   if (allowed) {
@@ -602,7 +604,7 @@ export default function RoleRoomFeedPlannerPanel({
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap sx={{ rowGap: 0.8 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
-            {posts.length} forslag
+            {posts.length} {t('feedPlanner.s029')}
           </Typography>
           <Box role="status" aria-live="polite">
             <SaveStatusBadge
@@ -621,7 +623,7 @@ export default function RoleRoomFeedPlannerPanel({
               startIcon={<RestartAltIcon fontSize="small" />}
               onClick={refreshStrategy}
               disabled={refreshingStrategy}
-              title={strategyRefreshNote ?? 'Tving CI-oppdatering av plattform-strategi'}
+              title={strategyRefreshNote ?? t('feedPlanner.s024')}
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
@@ -657,7 +659,7 @@ export default function RoleRoomFeedPlannerPanel({
               '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
             }}
           >
-            Regenerer alle forslag
+            {t('feedPlanner.s018')}
           </Button>
           {draftCount > 0 ? (
             <Button
@@ -677,7 +679,7 @@ export default function RoleRoomFeedPlannerPanel({
                 '&:hover': { bgcolor: '#16a34a' },
               }}
             >
-              {bulkApproving ? 'Godkjenner…' : `Godkjenn alle (${draftCount})`}
+              {bulkApproving ? 'Godkjenner…' : t('feedPlanner.p00', { v0: draftCount })}
             </Button>
           ) : null}
         </Stack>
@@ -694,7 +696,7 @@ export default function RoleRoomFeedPlannerPanel({
             '& .MuiAlert-icon': { color: '#fbbf24' },
           }}
         >
-          {entitlementMessage} Oppgrader til <strong>Role Room Headliner</strong> eller <strong>Showrunner</strong> for ubegrenset AI-tilgang.
+          {entitlementMessage} {t('feedPlanner.s015')} <strong>Role Room Headliner</strong> {t('feedPlanner.s027')} <strong>Showrunner</strong> {t('feedPlanner.s028')}
         </Alert>
       ) : null}
 
@@ -707,7 +709,7 @@ export default function RoleRoomFeedPlannerPanel({
           '& .MuiAlert-icon': { color: 'var(--role-cyan, #22d3ee)' },
         }}
       >
-        Klikk på en post for å redigere, hente bilde fra Google Drive eller be AI om caption og publiseringstidspunkt. Dra for å endre rekkefølge.
+        {t('feedPlanner.s009')}
       </Alert>
 
       <FeedPlanTimeline
@@ -731,9 +733,9 @@ export default function RoleRoomFeedPlannerPanel({
           <LoadingSkeleton variant="cards" count={9} />
         ) : posts.length === 0 ? (
           <Stack alignItems="center" spacing={1.2} sx={{ py: 6, px: 2, textAlign: 'center' }}>
-            <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Ingen poster ennå</Typography>
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>{t('feedPlanner.s007')}</Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.86rem', maxWidth: 360 }}>
-              Klikk «Regenerer alle forslag» over for å la agenten lage et feed-utkast fra kundeprofilen.
+              {t('feedPlanner.s011')}
             </Typography>
           </Stack>
         ) : (
@@ -811,10 +813,10 @@ export default function RoleRoomFeedPlannerPanel({
                 }}
               >
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.95rem' }}>
-                  Velg en post for å redigere
+                  {t('feedPlanner.s026')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.8rem', maxWidth: 320 }}>
-                  Klikk på et innlegg i feeden for å tilpasse tittel, caption, konsept og hente inn eget bilde fra Google Drive.
+                  {t('feedPlanner.s010')}
                 </Typography>
               </Stack>
             </motion.div>
@@ -857,10 +859,11 @@ function SaveStatusBadge({
   error: string | null;
   lastSavedAt: string | null;
 }) {
+  const { t } = useT();
   if (loading) {
     return (
       <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.74rem', fontStyle: 'italic' }}>
-        Henter lagret plan…
+        {t('feedPlanner.s006')}
       </Typography>
     );
   }
@@ -874,14 +877,14 @@ function SaveStatusBadge({
   if (error) {
     return (
       <Typography sx={{ color: '#fca5a5', fontSize: '0.74rem', fontWeight: 700 }} title={error}>
-        Lagring feilet
+        {t('feedPlanner.s014')}
       </Typography>
     );
   }
   if (dirty) {
     return (
       <Typography sx={{ color: 'rgba(251,191,36,0.9)', fontSize: '0.74rem' }}>
-        Endringer venter…
+        {t('feedPlanner.s002')}
       </Typography>
     );
   }
@@ -895,7 +898,7 @@ function SaveStatusBadge({
     }
     return (
       <Typography sx={{ color: 'rgba(134,239,172,0.85)', fontSize: '0.74rem' }}>
-        Lagret{timeLabel ? ` · ${timeLabel}` : ''}
+        {t('feedPlanner.s013')}{timeLabel ? ` · ${timeLabel}` : ''}
       </Typography>
     );
   }
@@ -909,12 +912,13 @@ function BrandSummaryStrip({
   brandSnapshot: RoleRoomFeedBrandSnapshot | null;
   brandColors: RoleRoomAgentBrandColor[];
 }) {
+  const { t } = useT();
   if (!brandSnapshot) return null;
   const colors = brandColors.length > 0
     ? brandColors.slice(0, 5)
     : [
-        brandSnapshot.primaryColor ? { label: 'Primær', hex: brandSnapshot.primaryColor } : null,
-        brandSnapshot.secondaryColor ? { label: 'Sekundær', hex: brandSnapshot.secondaryColor } : null,
+        brandSnapshot.primaryColor ? { label: t('feedPlanner.s017'), hex: brandSnapshot.primaryColor } : null,
+        brandSnapshot.secondaryColor ? { label: t('feedPlanner.s020'), hex: brandSnapshot.secondaryColor } : null,
         brandSnapshot.accentColor ? { label: 'Accent', hex: brandSnapshot.accentColor } : null,
       ].filter((entry): entry is RoleRoomAgentBrandColor => entry !== null);
 
@@ -972,10 +976,10 @@ function BrandSummaryStrip({
         )}
         <Stack spacing={0.2}>
           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.95rem' }}>
-            {brandSnapshot.companyName || 'Ukjent merke'}
+            {brandSnapshot.companyName || t('feedPlanner.s025')}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>
-            {brandSnapshot.toneOfVoice || 'Tone ikke satt'} · {brandSnapshot.visualStyle || 'Stil ikke satt'}
+            {brandSnapshot.toneOfVoice || t('feedPlanner.s023')} · {brandSnapshot.visualStyle || t('feedPlanner.s021')}
           </Typography>
         </Stack>
       </Stack>
@@ -1024,6 +1028,7 @@ function InstagramPhoneMockup({
   selectedPostId: string | null;
   onSelectPost: (id: string) => void;
 }) {
+  const { t } = useT();
   return (
     <Box
       sx={{
@@ -1071,7 +1076,7 @@ function InstagramPhoneMockup({
       </Box>
       <Box sx={{ px: 1.4, py: 0.8, bgcolor: '#0b1220', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
         <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', textAlign: 'center' }}>
-          Forhåndsvisning · {FEED_POST_CONCEPT_ORDER.length} konseptvarianter
+          {t('feedPlanner.s004')} {FEED_POST_CONCEPT_ORDER.length} konseptvarianter
         </Typography>
       </Box>
     </Box>

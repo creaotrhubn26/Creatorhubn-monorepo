@@ -76,6 +76,8 @@ import {
 } from '../../utils/producerProjectPlanning';
 import type { ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type PlanningPanelTab = 'activation' | 'phase_plan' | 'calendar' | 'brand' | 'delivery';
 type ActivationEditorMode = ProducerClientLogicMode;
@@ -153,17 +155,17 @@ const getPrimaryFormatSeconds = (estimate: ContentProductionEstimate): number =>
 );
 
 const getPhaseLoadSummary = (
-  phase: ProducerPlanningPhase,
+  t: TFn, phase: ProducerPlanningPhase,
   estimate: ContentProductionEstimate,
   shotLists: ShotList[],
 ): { headline: string; detail: string } => {
   if (phase === 'preproduction') {
     const unscheduledCount = estimate.productionDayLoads.find((item) => item.dayId === 'unscheduled')?.shotListCount ?? 0;
     return {
-      headline: `${shotLists.length} shotlister i spill`,
+      headline: t('clientPlan.p16', { v0: shotLists.length }),
       detail: unscheduledCount > 0
-        ? `${unscheduledCount} shotlister mangler opptaksdag og bør prioriteres før klienten låser planen.`
-        : `${estimate.suggestedShootDays} anbefalte opptaksdager basert på shotlist og manus.`,
+        ? t('clientPlan.p17', { v0: unscheduledCount })
+        : t('clientPlan.p06', { v0: estimate.suggestedShootDays }),
     };
   }
 
@@ -171,14 +173,14 @@ const getPhaseLoadSummary = (
     return {
       headline: `${formatMinutes(estimate.totalRealisticFieldMinutes)} realistisk feltbelastning`,
       detail: estimate.overloadedDayCount > 0
-        ? `${estimate.overloadedDayCount} opptaksdager ser overbooket ut mot realistisk belastning.`
-        : 'Opptaksdagen er innenfor beregnet belastning slik planene står nå.',
+        ? t('clientPlan.p14', { v0: estimate.overloadedDayCount })
+        : t('clientPlan.s073'),
     };
   }
 
   return {
     headline: `${formatSeconds(getPrimaryFormatSeconds(estimate))} forventet hovedleveranse`,
-    detail: `${estimate.formatEstimates.length} leveranseformat${estimate.formatEstimates.length === 1 ? '' : 'er'} kan planlegges ut fra samme materiale.`,
+    detail: t('clientPlan.p11', { v0: estimate.formatEstimates.length, v1: estimate.formatEstimates.length === 1 ? '' : 's' }),
   };
 };
 
@@ -255,14 +257,14 @@ const ensureContentLogic = (planning: ProducerProjectPlanning) => ({
   successSignals: planning.contentLogic?.successSignals ?? [],
 });
 
-const CLIENT_MATERIAL_TYPE_LABELS: Record<string, string> = {
-  brand_asset: 'Logo / brand',
-  asset_link: 'Lenke',
-  reference: 'Referanse',
-  document: 'Dokument',
-  brief_note: 'Brief-notat',
-  feedback: 'Tilbakemelding',
-};
+const buildCLIENT_MATERIAL_TYPE_LABELS = (t: TFn): Record<string, string> => ({
+  brand_asset: t('clientPlan.s068'),
+  asset_link: t('clientPlan.s066'),
+  reference: t('clientPlan.s077'),
+  document: t('clientPlan.s016'),
+  brief_note: t('clientPlan.s006'),
+  feedback: t('clientPlan.s088'),
+});
 
 function formatMaterialFileSize(bytes: number | null | undefined): string {
   if (!bytes || bytes <= 0) return '';
@@ -285,6 +287,8 @@ function ProducerClientMaterialsSection({
   materials: ProducerClientMaterial[];
   onDeleted: (id: string) => void;
 }) {
+  const { t } = useT();
+  const CLIENT_MATERIAL_TYPE_LABELS = useMemo(() => buildCLIENT_MATERIAL_TYPE_LABELS(t), [t]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -323,7 +327,7 @@ function ProducerClientMaterialsSection({
         file?.originalName || material.title || 'fil',
       );
     } catch {
-      setError('Kunne ikke laste ned filen akkurat nå.');
+      setError(t('clientPlan.s059'));
     } finally {
       setBusyId(null);
     }
@@ -336,7 +340,7 @@ function ProducerClientMaterialsSection({
       await producerWorkflowService.deleteClientMaterial(projectId, material.id);
       onDeleted(material.id);
     } catch {
-      setError('Kunne ikke slette materialet akkurat nå.');
+      setError(t('clientPlan.s060'));
     } finally {
       setBusyId(null);
     }
@@ -346,7 +350,7 @@ function ProducerClientMaterialsSection({
     <CollapsibleSection
       title="Klientmateriale"
       defaultOpen={materials.length > 0 && materials.length <= 8}
-      summary={materials.length > 0 ? `${materials.length} element` : 'Ingen sendt ennå'}
+      summary={materials.length > 0 ? `${materials.length} element` : t('clientPlan.s042')}
       badge={
         materials.length > 0 ? (
           <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(192,132,252,0.18)', color: '#f5d0fe', fontWeight: 700, fontSize: '0.68rem' }} />
@@ -361,8 +365,7 @@ function ProducerClientMaterialsSection({
 
       {materials.length === 0 ? (
         <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-          Klienten har ikke sendt materiale ennå. De kan laste opp logo, brand-filer
-          og brief direkte fra klientportalen.
+          {t('clientPlan.s048')}
         </Typography>
       ) : (
         <Stack spacing={1.4}>
@@ -401,7 +404,7 @@ function ProducerClientMaterialsSection({
                             <Chip
                               size="small"
                               icon={<PersonIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />}
-                              label="Fra klient"
+                              label={t('clientPlan.s023')}
                               sx={{ height: 18, bgcolor: 'rgba(56,189,248,0.16)', color: '#bae6fd', fontWeight: 700, fontSize: '0.64rem' }}
                             />
                           ) : null}
@@ -426,7 +429,7 @@ function ProducerClientMaterialsSection({
                             startIcon={<DownloadIcon sx={{ fontSize: '1rem' }} />}
                             sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: '#93c5fd', minWidth: 0 }}
                           >
-                            Last ned
+                            {t('clientPlan.s063')}
                           </Button>
                         ) : material.external_url ? (
                           <Button
@@ -438,7 +441,7 @@ function ProducerClientMaterialsSection({
                             startIcon={<LaunchIcon sx={{ fontSize: '1rem' }} />}
                             sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: '#93c5fd', minWidth: 0 }}
                           >
-                            Åpne
+                            {t('clientPlan.s096')}
                           </Button>
                         ) : null}
                         <Button
@@ -472,6 +475,7 @@ export default function ProducerClientPlanningPanel({
   onOpenShotList,
   onOpenMedia,
 }: ProducerClientPlanningPanelProps) {
+  const { t } = useT();
   const [activeTab, setActiveTab] = useState<PlanningPanelTab>('activation');
   const normalizedProjectPlanning = useMemo(
     () => normalizeProducerProjectPlanning(project),
@@ -541,7 +545,7 @@ export default function ProducerClientPlanningPanel({
           return;
         }
         console.error('[ProducerClientPlanningPanel] Failed to load client grounding', error);
-        setClientWorkspaceError('Kunne ikke hente klientgrunnlag og den røde tråden.');
+        setClientWorkspaceError(t('clientPlan.s057'));
       } finally {
         if (!cancelled) {
           setClientWorkspaceLoading(false);
@@ -638,7 +642,7 @@ export default function ProducerClientPlanningPanel({
     return [
       { label: 'Premiss', value: storyLogicData.concept.corePremise },
       { label: 'Unik vinkel', value: storyLogicData.concept.uniqueAngle },
-      { label: 'Full logline', value: storyLogicData.logline.fullLogline },
+      { label: t('clientPlan.s024'), value: storyLogicData.logline.fullLogline },
       { label: 'Tema', value: storyLogicData.theme.themeStatement || storyLogicData.theme.centralTheme },
     ].filter((item) => item.value && item.value.trim().length > 0);
   }, [storyLogicData]);
@@ -712,7 +716,7 @@ export default function ProducerClientPlanningPanel({
             startDate: item.startDate || preStart,
             endDate: item.endDate || preEnd,
             linkedShotListIds: shotLists.filter((shotList) => !productionDays.some((day) => day.scenes?.includes(shotList.sceneId))).map((shotList) => shotList.id),
-          notes: `${productionEstimate.suggestedShootDays} anbefalte opptaksdager og ${shotLists.length} shotlister må avklares før opptak.${activationAnchor ? ` ${activationAnchor}.` : ''}`,
+          notes: t('clientPlan.p07', { v0: productionEstimate.suggestedShootDays, v1: shotLists.length, v2: activationAnchor ? ` ${activationAnchor}.` : '' }),
         };
       }
       if (item.phase === 'production') {
@@ -721,7 +725,7 @@ export default function ProducerClientPlanningPanel({
           startDate: item.startDate || productionStart,
           endDate: item.endDate || productionEnd,
           linkedShotListIds: shotLists.map((shotList) => shotList.id),
-          notes: `${formatMinutes(productionEstimate.totalRealisticFieldMinutes)} realistisk opptaksbelastning fordelt på ${Math.max(1, productionDays.length || productionEstimate.suggestedShootDays)} dager.`,
+          notes: t('clientPlan.p15', { v0: formatMinutes(productionEstimate.totalRealisticFieldMinutes), v1: Math.max(1, productionDays.length || productionEstimate.suggestedShootDays) }),
         };
       }
       return {
@@ -729,7 +733,7 @@ export default function ProducerClientPlanningPanel({
         startDate: item.startDate || postStart,
         endDate: item.endDate || postEnd,
         linkedShotListIds: shotLists.map((shotList) => shotList.id),
-        notes: `${productionEstimate.formatEstimates.length} leveranseformat${productionEstimate.formatEstimates.length === 1 ? '' : 'er'} planlagt ut fra samme opptak.`,
+        notes: t('clientPlan.p12', { v0: productionEstimate.formatEstimates.length, v1: productionEstimate.formatEstimates.length === 1 ? '' : 's' }),
       };
     });
 
@@ -741,12 +745,12 @@ export default function ProducerClientPlanningPanel({
       .map((item, index) => ({
         ...createProducerContentCalendarItem('postproduction'),
         title: item.label,
-        channel: item.emphasis === 'primary' ? 'Hovedleveranse' : 'Distribusjon',
+        channel: item.emphasis === 'primary' ? 'Hovedleveranse' : t('clientPlan.s014'),
         format: item.aspectRatio,
         phase: 'postproduction' as const,
         status: 'planned' as ProducerContentCalendarStatus,
         publishAt: withDateOffset(new Date(postStart), index * 2),
-        notes: `${formatSeconds(item.estimatedSeconds)} estimert lengde basert på manus og shotlist.`,
+        notes: t('clientPlan.p08', { v0: formatSeconds(item.estimatedSeconds) }),
       }));
 
     setDraft((previous) => ({
@@ -792,8 +796,8 @@ export default function ProducerClientPlanningPanel({
       console.error('[ProducerClientPlanningPanel] Failed to save planning data', error);
       setSaveError(
         savedProject
-          ? 'Planen ble lagret, men klientpunkter og godkjenningsflyt kunne ikke synkroniseres.'
-          : 'Kunne ikke lagre klient- og produksjonsplanen.',
+          ? t('clientPlan.s074')
+          : t('clientPlan.s058'),
       );
     } finally {
       setSaving(false);
@@ -813,10 +817,10 @@ export default function ProducerClientPlanningPanel({
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} justifyContent="space-between" alignItems={{ lg: 'center' }}>
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: { xs: '1.02rem', md: '1.12rem' } }}>
-              Klientplan og produksjonsgrunnlag
+              {t('clientPlan.s052')}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem', maxWidth: 860, mt: 0.35 }}>
-              Samler retning, idé, aktivering, faseplan, content-kalender, merkevareguide og leveringsrutine i samme arbeidsflate slik at klient, produsent og team planlegger ut fra samme sannhet.
+              {t('clientPlan.s079')}
             </Typography>
           </Box>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
@@ -827,7 +831,7 @@ export default function ProducerClientPlanningPanel({
             />
             <Chip
               size="small"
-              label={`${productionEstimate.suggestedShootDays} opptaksdager`}
+              label={t('clientPlan.p13', { v0: productionEstimate.suggestedShootDays })}
               sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#a7f3d0' }}
             />
             <Chip
@@ -844,7 +848,7 @@ export default function ProducerClientPlanningPanel({
                   onClick={syncPlanningFromEstimate}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Synk fra estimat
+                  {t('clientPlan.s086')}
                 </Button>
                 <Button
                   size="small"
@@ -854,7 +858,7 @@ export default function ProducerClientPlanningPanel({
                   disabled={clientWorkspaceLoading}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Fyll fra klientbrief
+                  {t('clientPlan.s026')}
                 </Button>
                 <Button
                   size="small"
@@ -864,15 +868,15 @@ export default function ProducerClientPlanningPanel({
                   disabled={!storyLogicData}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Fyll fra den røde tråden
+                  {t('clientPlan.s025')}
                 </Button>
                 <Tooltip
                   title={
                     saving
                       ? 'Lagrer endringene…'
                       : !dirty
-                        ? 'Alle endringer er lagret'
-                        : 'Lagre endringene i klientplanen'
+                        ? t('clientPlan.s001')
+                        : t('clientPlan.s061')
                   }
                   arrow
                 >
@@ -886,7 +890,7 @@ export default function ProducerClientPlanningPanel({
                       disabled={saving || !dirty}
                       sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
                     >
-                      {saving ? 'Lagrer…' : 'Lagre plan'}
+                      {saving ? 'Lagrer…' : t('clientPlan.s062')}
                     </Button>
                   </span>
                 </Tooltip>
@@ -911,13 +915,13 @@ export default function ProducerClientPlanningPanel({
         {saveError ? <Alert severity="error">{saveError}</Alert> : null}
         {!saveError && lastSavedAt ? (
           <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.78rem' }}>
-            Sist lagret {new Intl.DateTimeFormat('nb-NO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(lastSavedAt))}
+            {t('clientPlan.s080')} {new Intl.DateTimeFormat('nb-NO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(lastSavedAt))}
           </Typography>
         ) : null}
         {clientWorkspaceError ? <Alert severity="warning">{clientWorkspaceError}</Alert> : null}
-        {clientWorkspaceLoading ? <Alert severity="info">Henter klientgrunnlag og den røde tråden.</Alert> : null}
+        {clientWorkspaceLoading ? <Alert severity="info">{t('clientPlan.s029')}</Alert> : null}
         {reviewsError ? <Alert severity="warning">{reviewsError}</Alert> : null}
-        {reviewsLoading ? <Alert severity="info">Oppdaterer klientpunkter og godkjenningsstatus.</Alert> : null}
+        {reviewsLoading ? <Alert severity="info">{t('clientPlan.s072')}</Alert> : null}
 
         <Box
           sx={{
@@ -930,26 +934,26 @@ export default function ProducerClientPlanningPanel({
           <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.25} justifyContent="space-between">
             <Box sx={{ flex: 1 }}>
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.5 }}>
-                Arbeidsgrunnlag fra klient
+                {t('clientPlan.s003')}
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.86rem' }}>
-                Planen kan fylles direkte fra brief, materialer og den røde tråden, slik at retning, idé og aktivering ikke må skrives opp på nytt.
+                {t('clientPlan.s075')}
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
               <Chip
                 size="small"
-                label={`Brief ${clientGroundingSummary.briefReadyCount}/${clientGroundingSummary.totalBriefFields}`}
+                label={t('clientPlan.p00', { v0: clientGroundingSummary.briefReadyCount, v1: clientGroundingSummary.totalBriefFields })}
                 sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
               />
               <Chip
                 size="small"
-                label={`Materialer ${clientGroundingSummary.materialCount}`}
+                label={t('clientPlan.p02', { v0: clientGroundingSummary.materialCount })}
                 sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#a7f3d0' }}
               />
               <Chip
                 size="small"
-                label={storyLogicSnapshot.length > 0 ? `Den røde tråden ${storyLogicSnapshot.length} signaler` : 'Den røde tråden ikke fylt ut'}
+                label={storyLogicSnapshot.length > 0 ? t('clientPlan.p01', { v0: storyLogicSnapshot.length }) : t('clientPlan.s011')}
                 sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
               />
               {onOpenMedia ? (
@@ -960,7 +964,7 @@ export default function ProducerClientPlanningPanel({
                   onClick={() => onOpenMedia(briefWorkspaceFocus)}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Åpne brief og materiale
+                  {t('clientPlan.s097')}
                 </Button>
               ) : null}
             </Stack>
@@ -983,7 +987,7 @@ export default function ProducerClientPlanningPanel({
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                Brief og materiale
+                {t('clientPlan.s005')}
               </Typography>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.75 }}>
                 {Object.entries(clientGroundingSummary.materialsByPhase).map(([phase, count]) => (
@@ -997,8 +1001,8 @@ export default function ProducerClientPlanningPanel({
               </Stack>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem' }}>
                 {clientGroundingSummary.topMaterialTitles.length > 0
-                  ? `Nøkkelmateriale: ${clientGroundingSummary.topMaterialTitles.join(', ')}`
-                  : 'Ingen materialtitler er registrert ennå.'}
+                  ? t('clientPlan.p03', { v0: clientGroundingSummary.topMaterialTitles.join(', ') })
+                  : t('clientPlan.s041')}
               </Typography>
               {clientGroundingSummary.missingEssentials.length > 0 ? (
                 <Stack spacing={0.45} sx={{ mt: 0.8 }}>
@@ -1010,7 +1014,7 @@ export default function ProducerClientPlanningPanel({
                 </Stack>
               ) : (
                 <Typography sx={{ color: '#86efac', fontSize: '0.8rem', mt: 0.8 }}>
-                  Klientgrunnlaget dekker de viktigste punktene for videre planlegging.
+                  {t('clientPlan.s050')}
                 </Typography>
               )}
             </Box>
@@ -1024,7 +1028,7 @@ export default function ProducerClientPlanningPanel({
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                Den røde tråden
+                {t('clientPlan.s009')}
               </Typography>
               {storyLogicSnapshot.length > 0 ? (
                 <Stack spacing={0.65}>
@@ -1041,7 +1045,7 @@ export default function ProducerClientPlanningPanel({
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-                  Den røde tråden er ikke fylt ut ennå. Du kan fortsatt fylle planen direkte fra klientbrief og materiale.
+                  {t('clientPlan.s010')}
                 </Typography>
               )}
             </Box>
@@ -1054,11 +1058,11 @@ export default function ProducerClientPlanningPanel({
           onDeleted={(id) => setClientMaterials((previous) => previous.filter((material) => material.id !== id))}
         />
 
-        <CollapsibleSection title="Gantt-oversikt" summary="Fase-tidslinje og milepæler per fase">
+        <CollapsibleSection title="Gantt-oversikt" summary={t('clientPlan.s018')}>
           <Stack spacing={1}>
             {draft.phasePlan.map((item) => {
               const metrics = getBarMetrics(planningRange, item.startDate, item.endDate);
-              const loadSummary = getPhaseLoadSummary(item.phase, productionEstimate, shotLists);
+              const loadSummary = getPhaseLoadSummary(t, item.phase, productionEstimate, shotLists);
               return (
                 <Box key={item.phase}>
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.5 }}>
@@ -1067,7 +1071,7 @@ export default function ProducerClientPlanningPanel({
                     </Typography>
                     <Stack direction="row" spacing={0.75} flexWrap="wrap">
                       <Chip size="small" label={loadSummary.headline} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
-                      <Chip size="small" label={`${contentCalendarCountByPhase[item.phase]} kalenderpunkt`} sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }} />
+                      <Chip size="small" label={t('clientPlan.p09', { v0: contentCalendarCountByPhase[item.phase] })} sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }} />
                     </Stack>
                   </Stack>
                   <Box
@@ -1108,8 +1112,8 @@ export default function ProducerClientPlanningPanel({
                   </Box>
                   <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.82rem', mt: 0.55 }}>
                     {item.startDate && item.endDate
-                      ? `${toDateInputValue(item.startDate)} til ${toDateInputValue(item.endDate)}`
-                      : 'Ingen datoer satt ennå. Bruk Synk fra estimat eller legg dem inn manuelt.'}
+                      ? t('clientPlan.p18', { v0: toDateInputValue(item.startDate), v1: toDateInputValue(item.endDate) })
+                      : t('clientPlan.s038')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.8rem', mt: 0.25 }}>
                     {loadSummary.detail}
@@ -1121,8 +1125,8 @@ export default function ProducerClientPlanningPanel({
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Kundeflyt og innlegg"
-          summary="Faseplan og content-kalender som én samlet klientflyt"
+          title={t('clientPlan.s056')}
+          summary={t('clientPlan.s020')}
         >
           <Stack spacing={1}>
             <Stack spacing={0.9}>
@@ -1151,7 +1155,7 @@ export default function ProducerClientPlanningPanel({
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.4 }}>
                           <Chip
                             size="small"
-                            label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                            label={isContentLogicMoment ? t('clientPlan.s043') : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                             sx={{
                               bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
                               color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
@@ -1186,11 +1190,11 @@ export default function ProducerClientPlanningPanel({
                           {moment.title}
                         </Typography>
                         <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.9)' : 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                          {moment.detail || 'Ingen detaljer lagt inn ennå.'}
+                          {moment.detail || t('clientPlan.s039')}
                         </Typography>
                         {isContentLogicMoment ? (
                           <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.3 }}>
-                            Innholdsplan-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
+                            {t('clientPlan.s044')}
                           </Typography>
                         ) : null}
                       </Box>
@@ -1203,9 +1207,9 @@ export default function ProducerClientPlanningPanel({
                         {moment.drivenByReview ? (
                           <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.76rem', textAlign: { lg: 'right' } }}>
                             {[
-                              moment.commentCount ? `${moment.commentCount} kommentar${moment.commentCount === 1 ? '' : 'er'}` : '',
-                              moment.reviewDecisionAt ? `Beslutning ${moment.reviewDecisionAt}` : moment.reviewRequestedAt ? `Sendt ${moment.reviewRequestedAt}` : '',
-                            ].filter(Boolean).join(' · ') || 'Klientpunktet styres av reviewflyten'}
+                              moment.commentCount ? t('clientPlan.p10', { v0: moment.commentCount, v1: moment.commentCount === 1 ? '' : 's' }) : '',
+                              moment.reviewDecisionAt ? `Beslutning ${moment.reviewDecisionAt}` : moment.reviewRequestedAt ? t('clientPlan.p04', { v0: moment.reviewRequestedAt }) : '',
+                            ].filter(Boolean).join(' · ') || t('clientPlan.s053')}
                           </Typography>
                         ) : null}
                         {moment.linkedShotListId && !isContentLogicMoment && onOpenShotList ? (
@@ -1216,7 +1220,7 @@ export default function ProducerClientPlanningPanel({
                           onClick={() => onOpenShotList({ phase: moment.phase, shotListId: moment.linkedShotListId })}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Åpne shotlist
+                          {t('clientPlan.s099')}
                         </Button>
                         ) : null}
                       </Stack>
@@ -1249,9 +1253,9 @@ export default function ProducerClientPlanningPanel({
             },
           }}
         >
-          <Tab value="activation" label="Innholdsplan" />
-          <Tab value="phase_plan" label="Faseplan" />
-          <Tab value="calendar" label="Content-kalender" />
+          <Tab value="activation" label={t('clientPlan.s043')} />
+          <Tab value="phase_plan" label={t('clientPlan.s019')} />
+          <Tab value="calendar" label={t('clientPlan.s008')} />
           <Tab value="brand" label="Merkevareguide" />
           <Tab value="delivery" label="Leveringsrutine" />
         </Tabs>
@@ -1259,7 +1263,7 @@ export default function ProducerClientPlanningPanel({
         {activeTab === 'activation' ? (
           <Stack spacing={1.2}>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-              `Innholdsplan` er innholdsprodusentens og klientens arbeidsmodus. Den gjør mål, hook, budskap, bevis og CTA konkrete uten å endre produksjonsteamets separate `Story Logic`.
+              {t('clientPlan.s094')}
             </Typography>
 
             <ToggleButtonGroup
@@ -1291,8 +1295,8 @@ export default function ProducerClientPlanningPanel({
                 },
               }}
             >
-              <ToggleButton value="content_logic">Innholdsplan</ToggleButton>
-              <ToggleButton value="activation_plan">Planramme</ToggleButton>
+              <ToggleButton value="content_logic">{t('clientPlan.s043')}</ToggleButton>
+              <ToggleButton value="activation_plan">{t('clientPlan.s076')}</ToggleButton>
             </ToggleButtonGroup>
 
             {activationEditorMode === 'content_logic' ? (
@@ -1306,18 +1310,18 @@ export default function ProducerClientPlanningPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Arbeid med innholdet slik klienten faktisk tar stilling til det
+                    {t('clientPlan.s002')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.84rem', mt: 0.45 }}>
-                    Her definerer dere hva innholdet skal oppnå, hvilken krok som skal stoppe scrollen, hva som beviser budskapet, og hvilken handling publikum skal ta etterpå.
+                    {t('clientPlan.s030')}
                   </Typography>
                 </Box>
 
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
                   <TextField
                     size="small"
-                    label="Mål"
-                    helperText="Hva innholdet skal oppnå for virksomheten."
+                    label={t('clientPlan.s069')}
+                    helperText={t('clientPlan.s032')}
                     value={contentLogicDraft.objective}
                     disabled={readOnly}
                     onChange={(event) => updateContentLogic({ objective: event.target.value })}
@@ -1327,8 +1331,8 @@ export default function ProducerClientPlanningPanel({
                   />
                   <TextField
                     size="small"
-                    label="Målgruppe"
-                    helperText="Hvem innholdet må treffe og være relevant for."
+                    label={t('clientPlan.s071')}
+                    helperText={t('clientPlan.s034')}
                     value={contentLogicDraft.audience}
                     disabled={readOnly}
                     onChange={(event) => updateContentLogic({ audience: event.target.value })}
@@ -1342,7 +1346,7 @@ export default function ProducerClientPlanningPanel({
                   <TextField
                     size="small"
                     label="Hook"
-                    helperText="Første linje, første bilde eller første idé som skal få folk til å stoppe opp."
+                    helperText={t('clientPlan.s027')}
                     value={contentLogicDraft.hook}
                     disabled={readOnly}
                     onChange={(event) => updateContentLogic({ hook: event.target.value })}
@@ -1353,7 +1357,7 @@ export default function ProducerClientPlanningPanel({
                   <TextField
                     size="small"
                     label="CTA"
-                    helperText="Hva publikum konkret skal gjøre etter å ha sett innholdet."
+                    helperText={t('clientPlan.s033')}
                     value={contentLogicDraft.callToAction}
                     disabled={readOnly}
                     onChange={(event) => updateContentLogic({ callToAction: event.target.value })}
@@ -1376,33 +1380,33 @@ export default function ProducerClientPlanningPanel({
 
                 <TextField
                   size="small"
-                  label="Bevis / proof points (én per linje)"
+                  label={t('clientPlan.s004')}
                   multiline
                   minRows={3}
                   value={stringifyLineSeparatedValues(contentLogicDraft.proofPoints)}
                   disabled={readOnly}
                   onChange={(event) => updateContentLogic({ proofPoints: parseLineSeparatedValues(event.target.value) })}
-                  helperText="Konkrete momenter som underbygger budskapet: tall, referanser, egenskaper, kundeverdi eller demonstrasjoner."
+                  helperText={t('clientPlan.s055')}
                   InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
                   FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
                 />
 
                 <TextField
                   size="small"
-                  label="Distribusjon og kanalbruk"
+                  label={t('clientPlan.s015')}
                   multiline
                   minRows={2}
                   value={contentLogicDraft.distributionPlan}
                   disabled={readOnly}
                   onChange={(event) => updateContentLogic({ distributionPlan: event.target.value })}
-                  helperText="Hvordan budskapet skal fordeles mellom nettside, feed, reels, annonser eller andre flater."
+                  helperText={t('clientPlan.s035')}
                   InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
                   FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.86)' } }}
                 />
 
                 <TextField
                   size="small"
-                  label="Tegn på suksess (én per linje)"
+                  label={t('clientPlan.s087')}
                   multiline
                   minRows={3}
                   value={stringifyLineSeparatedValues(contentLogicDraft.successSignals)}
@@ -1420,10 +1424,10 @@ export default function ProducerClientPlanningPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.45 }}>
-                    Grunnlag fra produksjonsteamets Story Logic
+                    {t('clientPlan.s028')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(148,163,184,0.84)', fontSize: '0.82rem', mb: 1 }}>
-                    Story Logic beholdes som eget system for produksjonsteamet. Her kan du bare hente inn relevante signaler og oversette dem til klientvennlige content-beslutninger.
+                    {t('clientPlan.s084')}
                   </Typography>
                   {storyLogicSnapshot.length > 0 ? (
                     <Stack spacing={0.65}>
@@ -1440,7 +1444,7 @@ export default function ProducerClientPlanningPanel({
                     </Stack>
                   ) : (
                     <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-                      Story Logic er ikke fylt ut ennå. Det stopper ikke Innholdsplan for klient og innholdsprodusent.
+                      {t('clientPlan.s085')}
                     </Typography>
                   )}
                 </Box>
@@ -1448,14 +1452,14 @@ export default function ProducerClientPlanningPanel({
             ) : (
               <Stack spacing={1.2}>
                 <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.88rem' }}>
-                  `Planramme` bevarer den eksisterende produsentlogikken med retning, idé, aktivering og faseforankring. Den brukes fortsatt videre i plan, reviews og leveranser.
+                  {t('clientPlan.s095')}
                 </Typography>
 
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
                   <TextField
                     size="small"
-                    label="Retning"
-                    helperText="Hva eventet eller produksjonen skal oppnå."
+                    label={t('clientPlan.s078')}
+                    helperText={t('clientPlan.s031')}
                     value={draft.activationPlan.direction ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -1474,7 +1478,7 @@ export default function ProducerClientPlanningPanel({
                   <TextField
                     size="small"
                     label="Idé"
-                    helperText="Hvorfor folk skal bry seg, møte opp eller følge med."
+                    helperText={t('clientPlan.s037')}
                     value={draft.activationPlan.idea ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -1492,8 +1496,8 @@ export default function ProducerClientPlanningPanel({
                   />
                   <TextField
                     size="small"
-                    label="Aktivering"
-                    helperText="Hvordan kampanjen gjør eventet synlig og effektivt."
+                    label={t('clientPlan.s000')}
+                    helperText={t('clientPlan.s036')}
                     value={draft.activationPlan.activation ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -1514,7 +1518,7 @@ export default function ProducerClientPlanningPanel({
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
                   <TextField
                     size="small"
-                    label="Målgruppe"
+                    label={t('clientPlan.s071')}
                     value={draft.activationPlan.targetAudience ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -1531,7 +1535,7 @@ export default function ProducerClientPlanningPanel({
                   />
                   <TextField
                     size="small"
-                    label="Forretningsmål"
+                    label={t('clientPlan.s022')}
                     value={draft.activationPlan.businessGoal ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -1569,7 +1573,7 @@ export default function ProducerClientPlanningPanel({
 
                 <TextField
                   size="small"
-                  label="Tegn på suksess (én per linje)"
+                  label={t('clientPlan.s087')}
                   multiline
                   minRows={3}
                   value={stringifyLineSeparatedValues(draft.activationPlan.successSignals)}
@@ -1626,7 +1630,7 @@ export default function ProducerClientPlanningPanel({
                         />
                         <TextField
                           size="small"
-                          label="Leveranse / utfall"
+                          label={t('clientPlan.s067')}
                           fullWidth
                           value={getFrameworkStep(draft, section.key)?.output ?? ''}
                           disabled={readOnly}
@@ -1690,7 +1694,7 @@ export default function ProducerClientPlanningPanel({
               >
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
                   <TextField
-                    label={`${PRODUCER_PLANNING_PHASE_LABELS[item.phase]} tittel`}
+                    label={t('clientPlan.p19', { v0: PRODUCER_PLANNING_PHASE_LABELS[item.phase] })}
                     size="small"
                     fullWidth
                     value={item.title ?? ''}
@@ -1706,7 +1710,7 @@ export default function ProducerClientPlanningPanel({
                   />
                   <TextField
                     select
-                    label="Status"
+                    label={t('clientPlan.s083')}
                     size="small"
                     value={item.status ?? 'planned'}
                     disabled={readOnly}
@@ -1742,7 +1746,7 @@ export default function ProducerClientPlanningPanel({
                 </Stack>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} sx={{ mt: 1.1 }}>
                   <TextField
-                    label="Start"
+                    label={t('clientPlan.s082')}
                     type="date"
                     size="small"
                     value={toDateInputValue(item.startDate)}
@@ -1774,7 +1778,7 @@ export default function ProducerClientPlanningPanel({
                     sx={{ minWidth: { md: 180 } }}
                   />
                   <TextField
-                    label="Klient-checkpoint"
+                    label={t('clientPlan.s047')}
                     size="small"
                     fullWidth
                     value={item.clientCheckpoint ?? ''}
@@ -1790,7 +1794,7 @@ export default function ProducerClientPlanningPanel({
                   />
                 </Stack>
                 <TextField
-                  label="Mål for fasen"
+                  label={t('clientPlan.s070')}
                   size="small"
                   fullWidth
                   multiline
@@ -1833,7 +1837,7 @@ export default function ProducerClientPlanningPanel({
         {activeTab === 'calendar' ? (
           <Stack spacing={1.1}>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-              Kalenderen viser hva klienten faktisk skal se publisert eller levert, ikke den avanserte shotlisten som teamet jobber etter.
+              {t('clientPlan.s045')}
             </Typography>
             {openClientContributionTasks.length > 0 ? (
               <Box
@@ -1847,10 +1851,10 @@ export default function ProducerClientPlanningPanel({
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
                   <Box>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      Klientinnspill som styrer planen
+                      {t('clientPlan.s051')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.3 }}>
-                      Disse punktene er direkte koblet til retning, faseplan og content-kalender.
+                      {t('clientPlan.s013')}
                     </Typography>
                   </Box>
                   {onOpenMedia ? (
@@ -1861,7 +1865,7 @@ export default function ProducerClientPlanningPanel({
                       onClick={() => onOpenMedia(briefWorkspaceFocus)}
                       sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { lg: 'flex-start' } }}
                     >
-                      Åpne brief og materiale
+                      {t('clientPlan.s097')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -1926,7 +1930,7 @@ export default function ProducerClientPlanningPanel({
                 <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.1}>
                   <TextField
                     size="small"
-                    label="Tittel"
+                    label={t('clientPlan.s089')}
                     value={item.title}
                     fullWidth
                     disabled={readOnly}
@@ -1942,7 +1946,7 @@ export default function ProducerClientPlanningPanel({
                   <TextField
                     size="small"
                     select
-                    label="Kanal"
+                    label={t('clientPlan.s046')}
                     value={item.channel ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -1986,7 +1990,7 @@ export default function ProducerClientPlanningPanel({
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.2 }}>
                           {getProducerContentFormatOption(item.format)?.helper
-                            ?? 'Velg format ut fra kanal og hvordan innholdet skal publiseres.'}
+                            ?? t('clientPlan.s092')}
                         </Typography>
                       </Box>
                       <Box
@@ -2079,7 +2083,7 @@ export default function ProducerClientPlanningPanel({
                   <TextField
                     size="small"
                     select
-                    label="Status"
+                    label={t('clientPlan.s083')}
                     value={item.status ?? 'planned'}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -2101,7 +2105,7 @@ export default function ProducerClientPlanningPanel({
                   <Typography sx={{ color: 'rgba(191,219,254,0.76)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.85 }}>
                     {[
                       getProducerContentChannelOption(item.channel)?.helper,
-                      item.format ? `Vises som ${item.format} i plan og leveranse.` : null,
+                      item.format ? t('clientPlan.p05', { v0: item.format }) : null,
                     ].filter(Boolean).join(' · ')}
                   </Typography>
                 ) : null}
@@ -2144,7 +2148,7 @@ export default function ProducerClientPlanningPanel({
                   <TextField
                     size="small"
                     select
-                    label="Knytt til shotlist"
+                    label={t('clientPlan.s054')}
                     value={item.linkedShotListId ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -2157,7 +2161,7 @@ export default function ProducerClientPlanningPanel({
                     sx={{ flex: 1 }}
                     InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
                   >
-                    <MenuItem value="">Ingen kobling</MenuItem>
+                    <MenuItem value="">{t('clientPlan.s040')}</MenuItem>
                     {shotLists.map((shotList) => (
                       <MenuItem key={shotList.id} value={shotList.id}>
                         {shotList.sceneName || shotList.sceneId}
@@ -2176,7 +2180,7 @@ export default function ProducerClientPlanningPanel({
                       }}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Fjern
+                      {t('clientPlan.s021')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -2191,7 +2195,7 @@ export default function ProducerClientPlanningPanel({
                     }}
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.84rem', mb: 0.55 }}>
-                      Klientgrunnlag som fortsatt mangler for dette punktet
+                      {t('clientPlan.s049')}
                     </Typography>
                     <Stack spacing={0.55}>
                       {openClientContributionTasks
@@ -2249,7 +2253,7 @@ export default function ProducerClientPlanningPanel({
                     onClick={() => onOpenShotList({ shotListId: item.linkedShotListId, phase: item.phase })}
                     sx={{ mt: 0.7, alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
                   >
-                    Åpne koblet shotlist
+                    {t('clientPlan.s098')}
                   </Button>
                 ) : null}
               </Box>
@@ -2266,7 +2270,7 @@ export default function ProducerClientPlanningPanel({
                 }}
                 sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
               >
-                Legg til kalenderpunkt
+                {t('clientPlan.s065')}
               </Button>
             ) : null}
           </Stack>
@@ -2361,7 +2365,7 @@ export default function ProducerClientPlanningPanel({
                   />
                   <TextField
                     size="small"
-                    label="Bruk"
+                    label={t('clientPlan.s007')}
                     value={color.usage ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
@@ -2402,7 +2406,7 @@ export default function ProducerClientPlanningPanel({
                   }}
                   sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
                 >
-                  Legg til farge
+                  {t('clientPlan.s064')}
                 </Button>
               ) : null}
             </Stack>
@@ -2428,7 +2432,7 @@ export default function ProducerClientPlanningPanel({
               />
               <TextField
                 size="small"
-                label="Språk og tone"
+                label={t('clientPlan.s081')}
                 multiline
                 minRows={4}
                 fullWidth
@@ -2448,7 +2452,7 @@ export default function ProducerClientPlanningPanel({
             </Stack>
             <TextField
               size="small"
-              label="Visuell stil"
+              label={t('clientPlan.s093')}
               multiline
               minRows={3}
               value={draft.brandGuide.visualStyle ?? ''}
@@ -2486,7 +2490,7 @@ export default function ProducerClientPlanningPanel({
               />
               <TextField
                 size="small"
-                label="Unngå (én per linje)"
+                label={t('clientPlan.s090')}
                 multiline
                 minRows={4}
                 fullWidth
@@ -2510,7 +2514,7 @@ export default function ProducerClientPlanningPanel({
         {activeTab === 'delivery' ? (
           <Stack spacing={1.1}>
             <Alert severity="info" sx={{ bgcolor: 'rgba(15,23,42,0.45)' }}>
-              Denne rutinen brukes som prosjektets ene sannhet for mapper, versjoner, draft/final, backup og leveranse.
+              {t('clientPlan.s012')}
             </Alert>
             <TextField
               size="small"
@@ -2572,7 +2576,7 @@ export default function ProducerClientPlanningPanel({
             <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1}>
               <TextField
                 size="small"
-                label="Utkast vs final"
+                label={t('clientPlan.s091')}
                 multiline
                 minRows={3}
                 fullWidth
@@ -2638,7 +2642,7 @@ export default function ProducerClientPlanningPanel({
             <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)' }} />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.85rem' }}>
-                Du har endringer som ikke er lagret i prosjektet ennå.
+                {t('clientPlan.s017')}
               </Typography>
               <Button
                 variant="contained"
@@ -2647,7 +2651,7 @@ export default function ProducerClientPlanningPanel({
                 disabled={saving}
                 sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#2563eb' }}
               >
-                Lagre plan
+                {t('clientPlan.s062')}
               </Button>
             </Stack>
           </>

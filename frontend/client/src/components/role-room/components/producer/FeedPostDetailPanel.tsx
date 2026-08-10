@@ -55,6 +55,8 @@ import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
 import FeedPostApprovalActions from './FeedPostApprovalActions';
 import LinkedInPublishAsSelector from './LinkedInPublishAsSelector';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type FeedPostDetailPanelProps = {
   projectId: string;
@@ -71,25 +73,25 @@ type FeedPostDetailPanelProps = {
   onEntitlementBlocked?: (message: string) => void;
 };
 
-const LOGO_PLACEMENT_OPTIONS: { value: RoleRoomFeedLogoPlacement; label: string }[] = [
-  { value: 'top-left', label: 'Oppe venstre' },
-  { value: 'top-right', label: 'Oppe høyre' },
-  { value: 'bottom-left', label: 'Nede venstre' },
-  { value: 'bottom-right', label: 'Nede høyre' },
-  { value: 'center', label: 'Sentrert' },
-];
+const buildLOGO_PLACEMENT_OPTIONS = (t: TFn): { value: RoleRoomFeedLogoPlacement; label: string }[] => ([
+  { value: 'top-left', label: t('feedPostDetail.s060') },
+  { value: 'top-right', label: t('feedPostDetail.s059') },
+  { value: 'bottom-left', label: t('feedPostDetail.s058') },
+  { value: 'bottom-right', label: t('feedPostDetail.s057') },
+  { value: 'center', label: t('feedPostDetail.s075') },
+]);
 
-const MEDIA_TYPE_OPTIONS: { value: RoleRoomFeedMediaType; label: string }[] = [
-  { value: 'image', label: 'Bilde' },
+const buildMEDIA_TYPE_OPTIONS = (t: TFn): { value: RoleRoomFeedMediaType; label: string }[] => ([
+  { value: 'image', label: t('feedPostDetail.s008') },
   { value: 'reel', label: 'Reel' },
-  { value: 'carousel', label: 'Karusell' },
-];
+  { value: 'carousel', label: t('feedPostDetail.s039') },
+]);
 
-const GRID_ASPECT_OPTIONS: { value: RoleRoomFeedGridAspect; label: string; hint: string }[] = [
-  { value: '1:1', label: '1:1', hint: 'Kvadrat' },
-  { value: '4:5', label: '4:5', hint: 'Portrett (anbefalt for feed)' },
-  { value: '16:9', label: '16:9', hint: 'Liggende / nettside' },
-];
+const buildGRID_ASPECT_OPTIONS = (t: TFn): { value: RoleRoomFeedGridAspect; label: string; hint: string }[] => ([
+  { value: '1:1', label: '1:1', hint: t('feedPostDetail.s045') },
+  { value: '4:5', label: '4:5', hint: t('feedPostDetail.s061') },
+  { value: '16:9', label: '16:9', hint: t('feedPostDetail.s051') },
+]);
 
 // Cover/thumbnail lagres som data: URL i samme JSONB-rad som posten.
 // 2 MB matcher backendens MAX_CUSTOM_IMAGE_LENGTH.
@@ -121,6 +123,10 @@ export default function FeedPostDetailPanel({
   onClose,
   onEntitlementBlocked,
 }: FeedPostDetailPanelProps) {
+  const { t } = useT();
+  const GRID_ASPECT_OPTIONS = useMemo(() => buildGRID_ASPECT_OPTIONS(t), [t]);
+  const MEDIA_TYPE_OPTIONS = useMemo(() => buildMEDIA_TYPE_OPTIONS(t), [t]);
+  const LOGO_PLACEMENT_OPTIONS = useMemo(() => buildLOGO_PLACEMENT_OPTIONS(t), [t]);
   const hashtagsText = useMemo(() => post.hashtags.join(' '), [post.hashtags]);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
@@ -134,23 +140,23 @@ export default function FeedPostDetailPanel({
     setCoverError(null);
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setCoverError('Coveret må være et bilde (JPG/PNG/WebP).');
+      setCoverError(t('feedPostDetail.s013'));
       return;
     }
     if (file.size > MAX_COVER_BYTES) {
-      setCoverError('Bildet er for stort — maks 2 MB. Komprimer og prøv igjen.');
+      setCoverError(t('feedPostDetail.s009'));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = typeof reader.result === 'string' ? reader.result : null;
       if (!dataUrl) {
-        setCoverError('Kunne ikke lese bildet. Prøv et annet.');
+        setCoverError(t('feedPostDetail.s044'));
         return;
       }
       onUpdate({ coverImageUrl: dataUrl, coverImageName: file.name });
     };
-    reader.onerror = () => setCoverError('Kunne ikke lese bildet. Prøv et annet.');
+    reader.onerror = () => setCoverError(t('feedPostDetail.s044'));
     reader.readAsDataURL(file);
   };
   const [aiLoading, setAiLoading] = useState(false);
@@ -197,7 +203,7 @@ export default function FeedPostDetailPanel({
 
   const saveCurrentAsTemplate = async () => {
     const name = window.prompt(
-      'Navn på malen?',
+      t('feedPostDetail.s056'),
       `${post.title?.slice(0, 40) || 'Mal'} — ${new Date().toLocaleDateString('nb-NO')}`,
     );
     if (!name?.trim()) return;
@@ -224,14 +230,14 @@ export default function FeedPostDetailPanel({
       });
       if (created) setTemplates((current) => [created, ...current]);
     } catch (caught) {
-      setTemplateError(caught instanceof Error ? caught.message : 'Kunne ikke lagre malen.');
+      setTemplateError(caught instanceof Error ? caught.message : t('feedPostDetail.s043'));
     } finally {
       setSavingTemplate(false);
     }
   };
 
   const archiveTemplate = async (templateId: string) => {
-    if (!window.confirm('Arkiver denne malen?')) return;
+    if (!window.confirm(t('feedPostDetail.s006'))) return;
     const ok = await roleRoomAgentService.archiveFeedTemplate(templateId);
     if (ok) setTemplates((current) => current.filter((t) => t.id !== templateId));
   };
@@ -280,24 +286,24 @@ export default function FeedPostDetailPanel({
           if (body.pages.length > 0) setFbSelectedPageId(body.pages[0].id);
         } else {
           // Svaret kom, men ikke som forventet (auth/scope/feil) — vis tydelig.
-          setFbPagesError('Kunne ikke hente Facebook-sider. Sjekk at Meta-kontoen er koblet med riktige rettigheter, og prøv igjen.');
+          setFbPagesError(t('feedPostDetail.s042'));
         }
       })
       .catch(() => {
-        setFbPagesError('Klarte ikke å hente Facebook-sider (offline eller nettverksfeil). Prøv igjen når du er tilkoblet.');
+        setFbPagesError(t('feedPostDetail.s040'));
       });
   }, []);
 
   const publishToFacebookPage = async () => {
     if (!post.customVideoDataUrl) {
-      setFbPublishStatus('FB Page-publisering krever en video (reel-type).');
+      setFbPublishStatus(t('feedPostDetail.s017'));
       return;
     }
     if (!fbSelectedPageId) {
-      setFbPublishStatus('Velg en Facebook Page først.');
+      setFbPublishStatus(t('feedPostDetail.s078'));
       return;
     }
-    if (!window.confirm(`Publiser video til Facebook Page?`)) return;
+    if (!window.confirm(t('feedPostDetail.s067'))) return;
     setFbPublishing(true);
     setFbPublishStatus(null);
     try {
@@ -322,24 +328,24 @@ export default function FeedPostDetailPanel({
         const backendMsg = typeof body?.error === 'string' ? body.error : '';
         const human =
           response.status === 401
-            ? 'Meta-tilkoblingen har utløpt. Koble Meta-kontoen på nytt og prøv igjen.'
+            ? t('feedPostDetail.s055')
             : response.status === 403
-              ? 'Ingen tilgang til denne Facebook-siden. Sjekk at Meta-kontoen er koblet med riktige rettigheter.'
+              ? t('feedPostDetail.s037')
               : response.status === 429
-                ? 'For mange forespørsler mot Facebook akkurat nå. Vent et øyeblikk og prøv igjen.'
+                ? t('feedPostDetail.s024')
                 : response.status >= 500
-                  ? 'Facebook svarer ikke akkurat nå. Prøv igjen om litt.'
-                  : backendMsg || `Publisering feilet (kode ${response.status}). Prøv igjen.`;
+                  ? t('feedPostDetail.s019')
+                  : backendMsg || t('feedPostDetail.p04', { v0: response.status });
         setFbPublishStatus(backendMsg && response.status < 500 && response.status !== 403 ? `${human} (${backendMsg})` : human);
         return;
       }
       if (body?.video?.scheduled) {
-        setFbPublishStatus(`Køet for publisering ${post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : 'snart'} (video id ${body.video.id ?? '(ukjent)'})`);
+        setFbPublishStatus(t('feedPostDetail.p02', { v0: post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : t('feedPostDetail.s085'), v1: body.video.id ?? t('feedPostDetail.s003') }));
       } else {
-        setFbPublishStatus(`Publisert til Facebook Page (video id ${body?.video?.id ?? '(ukjent)'})`);
+        setFbPublishStatus(t('feedPostDetail.p06', { v0: body?.video?.id ?? t('feedPostDetail.s003') }));
       }
     } catch (e) {
-      setFbPublishStatus(e instanceof Error ? e.message : 'FB-publisering feilet.');
+      setFbPublishStatus(e instanceof Error ? e.message : t('feedPostDetail.s018'));
     } finally {
       setFbPublishing(false);
     }
@@ -354,20 +360,20 @@ export default function FeedPostDetailPanel({
     if (post.mediaType === 'carousel') {
       const count = post.customImageUrls?.length ?? 0;
       if (count < 2 || count > 10) {
-        setPublishStatus('Carousel krever 2-10 bilder fra Drive.');
+        setPublishStatus(t('feedPostDetail.s011'));
         return;
       }
     } else if (post.mediaType === 'reel') {
       if (!post.customVideoDataUrl) {
-        setPublishStatus('Reel krever en video fra Drive.');
+        setPublishStatus(t('feedPostDetail.s073'));
         return;
       }
     } else if (!post.customImageUrl) {
-      setPublishStatus('Posten må ha et bilde fra Drive før den kan publiseres.');
+      setPublishStatus(t('feedPostDetail.s063'));
       return;
     }
 
-    if (!window.confirm(`Publiser nå til @${instagramConnections[0]?.igUsername ?? 'Instagram'}?`)) return;
+    if (!window.confirm(t('feedPostDetail.p03', { v0: instagramConnections[0]?.igUsername ?? 'Instagram' }))) return;
     setPublishing(true);
     setPublishStatus(null);
     try {
@@ -386,19 +392,19 @@ export default function FeedPostDetailPanel({
         scheduledFor: post.scheduledFor,
       });
       if (result.rateLimited) {
-        setPublishStatus('Rate-limit nådd (50/24t). Prøv igjen senere.');
+        setPublishStatus(t('feedPostDetail.s071'));
       } else if (result.immediatelyPublished) {
-        setPublishStatus(`Publisert (media id ${result.job.igMediaId})`);
+        setPublishStatus(t('feedPostDetail.p05', { v0: result.job.igMediaId ?? '' }));
       } else {
-        setPublishStatus(`Køet for publisering ${post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : 'snart'}`);
+        setPublishStatus(t('feedPostDetail.p01', { v0: post.scheduledFor ? new Date(post.scheduledFor).toLocaleString('nb-NO') : t('feedPostDetail.s085') }));
       }
     } catch (caught) {
       if (caught instanceof RoleRoomFeedEntitlementError) {
-        const message = caught.message || 'IG-publisering krever Showrunner.';
+        const message = caught.message || t('feedPostDetail.s030');
         setPublishStatus(message);
         onEntitlementBlocked?.(message);
       } else {
-        setPublishStatus(caught instanceof Error ? caught.message : 'Publisering feilet.');
+        setPublishStatus(caught instanceof Error ? caught.message : t('feedPostDetail.s070'));
       }
     } finally {
       setPublishing(false);
@@ -464,11 +470,11 @@ export default function FeedPostDetailPanel({
       }
     } catch (caught) {
       if (caught instanceof RoleRoomFeedEntitlementError) {
-        const message = caught.message || 'AI-anbefaling krever aktiv Role Room-pakke.';
+        const message = caught.message || t('feedPostDetail.s004');
         setAiError(message);
         onEntitlementBlocked?.(message);
       } else {
-        setAiError(describeProducerError(caught, 'hente AI-anbefalingen'));
+        setAiError(describeProducerError(caught, t('feedPostDetail.s084')));
       }
     } finally {
       setAiLoading(false);
@@ -528,14 +534,14 @@ export default function FeedPostDetailPanel({
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Stack spacing={0.2}>
           <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.98rem' }}>
-            Rediger post
+            {t('feedPostDetail.s072')}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.78rem' }}>
-            Post {postIndex + 1} · {CONCEPT_LABELS[post.concept as RoleRoomFeedPostConcept] || 'Post'}
+            {t('feedPostDetail.s062')} {postIndex + 1} · {CONCEPT_LABELS[post.concept as RoleRoomFeedPostConcept] || t('feedPostDetail.s062')}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={post.locked ? 'Lås opp' : 'Lås denne posten mot regenerering'}>
+          <Tooltip title={post.locked ? t('feedPostDetail.s054') : t('feedPostDetail.s053')}>
             <IconButton
               size="small"
               onClick={() => onUpdate({ locked: !post.locked })}
@@ -545,7 +551,7 @@ export default function FeedPostDetailPanel({
             </IconButton>
           </Tooltip>
           {onClose ? (
-            <IconButton size="small" onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.7)' }}>
+            <IconButton size="small" onClick={onClose} aria-label={t('feedPostDetail.s052')} sx={{ color: 'rgba(226,232,240,0.7)' }}>
               <CloseIcon fontSize="small" />
             </IconButton>
           ) : null}
@@ -594,13 +600,13 @@ export default function FeedPostDetailPanel({
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
                 {post.customImageUrls && post.customImageUrls.length > 0
-                  ? `${post.customImageUrls.length} bilder valgt`
-                  : 'Carousel trenger 2-10 bilder'}
+                  ? t('feedPostDetail.p08', { v0: post.customImageUrls.length })
+                  : t('feedPostDetail.s012')}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.72rem' }}>
                 {post.customImageUrls && post.customImageUrls.length > 0
                   ? (post.customImageNames ?? []).join(', ')
-                  : 'Velg flere bilder fra Drive — holdes sammen som én carousel.'}
+                  : t('feedPostDetail.s081')}
               </Typography>
             </Box>
             <Button
@@ -616,10 +622,10 @@ export default function FeedPostDetailPanel({
                 '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
-              {post.customImageUrls && post.customImageUrls.length > 0 ? 'Endre utvalg' : 'Velg fra Drive'}
+              {post.customImageUrls && post.customImageUrls.length > 0 ? t('feedPostDetail.s016') : t('feedPostDetail.s082')}
             </Button>
             {post.customImageUrls && post.customImageUrls.length > 0 ? (
-              <Tooltip title="Fjern alle">
+              <Tooltip title={t('feedPostDetail.s020')}>
                 <IconButton
                   size="small"
                   onClick={() => onUpdate({ customImageUrls: null, customImageNames: null })}
@@ -678,7 +684,7 @@ export default function FeedPostDetailPanel({
           <Stack direction="row" spacing={0.8} alignItems="center">
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-                {post.customVideoDataUrl ? 'Video valgt' : 'Ingen video ennå'}
+                {post.customVideoDataUrl ? t('feedPostDetail.s083') : t('feedPostDetail.s038')}
               </Typography>
               <Typography
                 sx={{
@@ -690,8 +696,8 @@ export default function FeedPostDetailPanel({
                 }}
               >
                 {post.customVideoDataUrl
-                  ? post.customVideoName || 'Importert fra Drive (konverteres automatisk til 1080×1920 ved publisering)'
-                  : 'Velg en video fra Drive — konverteres til IG-reel-spec ved publisering.'}
+                  ? post.customVideoName || t('feedPostDetail.s031')
+                  : t('feedPostDetail.s079')}
               </Typography>
             </Box>
             <Button
@@ -707,10 +713,10 @@ export default function FeedPostDetailPanel({
                 '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
-              {post.customVideoDataUrl ? 'Bytt video' : 'Fra Drive'}
+              {post.customVideoDataUrl ? 'Bytt video' : t('feedPostDetail.s027')}
             </Button>
             {post.customVideoDataUrl ? (
-              <Tooltip title="Fjern video">
+              <Tooltip title={t('feedPostDetail.s023')}>
                 <IconButton
                   size="small"
                   onClick={() => onUpdate({ customVideoDataUrl: null, customVideoName: null })}
@@ -755,7 +761,7 @@ export default function FeedPostDetailPanel({
           <Stack direction="row" spacing={0.8} alignItems="center">
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-                {post.customImageUrl ? 'Eget bilde valgt' : 'Ingen egne bilder ennå'}
+                {post.customImageUrl ? t('feedPostDetail.s014') : t('feedPostDetail.s035')}
               </Typography>
               <Typography
                 sx={{
@@ -767,8 +773,8 @@ export default function FeedPostDetailPanel({
                 }}
               >
                 {post.customImageUrl
-                  ? post.customImageName || 'Importert fra Google Drive'
-                  : 'Velg et bilde fra Google Drive for å erstatte placeholder.'}
+                  ? post.customImageName || t('feedPostDetail.s032')
+                  : t('feedPostDetail.s080')}
               </Typography>
             </Box>
             <Button
@@ -784,10 +790,10 @@ export default function FeedPostDetailPanel({
                 '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
-              {post.customImageUrl ? 'Bytt bilde' : 'Fra Drive'}
+              {post.customImageUrl ? 'Bytt bilde' : t('feedPostDetail.s027')}
             </Button>
             {post.customImageUrl ? (
-              <Tooltip title="Fjern eget bilde">
+              <Tooltip title={t('feedPostDetail.s021')}>
                 <IconButton
                   size="small"
                   onClick={() => onUpdate({ customImageUrl: null, customImageName: null })}
@@ -802,7 +808,7 @@ export default function FeedPostDetailPanel({
             <Box
               component="img"
               src={post.customImageUrl}
-              alt={post.customImageName ?? 'valgt bilde'}
+              alt={post.customImageName ?? t('feedPostDetail.s086')}
               sx={{
                 mt: 0.4,
                 maxWidth: 260,
@@ -859,7 +865,7 @@ export default function FeedPostDetailPanel({
         {/* Format-velger */}
         <Box>
           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', mb: 0.6 }}>
-            Beskjæring i grid &amp; portfolio
+            {t('feedPostDetail.s007')}
           </Typography>
           <Stack direction="row" spacing={0.6}>
             {GRID_ASPECT_OPTIONS.map((option) => {
@@ -893,7 +899,7 @@ export default function FeedPostDetailPanel({
         {/* Cover/thumbnail-opplasting fra enhet */}
         <Box>
           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', mb: 0.6 }}>
-            Eget cover {post.mediaType === 'reel' ? '(poster-frame for reel)' : '(overstyrer grid-bildet)'}
+            Eget cover {post.mediaType === 'reel' ? t('feedPostDetail.s002') : t('feedPostDetail.s001')}
           </Typography>
           <Stack direction="row" spacing={0.8} alignItems="center">
             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -908,8 +914,8 @@ export default function FeedPostDetailPanel({
                 }}
               >
                 {post.coverImageUrl
-                  ? post.coverImageName || 'Eget cover lastet opp'
-                  : 'Last opp et eget cover fra enheten din.'}
+                  ? post.coverImageName || t('feedPostDetail.s015')
+                  : t('feedPostDetail.s049')}
               </Typography>
             </Box>
             <input
@@ -936,10 +942,10 @@ export default function FeedPostDetailPanel({
                 '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(167,139,250,0.08)' },
               }}
             >
-              {post.coverImageUrl ? 'Bytt cover' : 'Last opp'}
+              {post.coverImageUrl ? 'Bytt cover' : t('feedPostDetail.s048')}
             </Button>
             {post.coverImageUrl ? (
-              <Tooltip title="Fjern eget cover">
+              <Tooltip title={t('feedPostDetail.s022')}>
                 <IconButton
                   size="small"
                   onClick={() => onUpdate({ coverImageUrl: null, coverImageName: null })}
@@ -984,7 +990,7 @@ export default function FeedPostDetailPanel({
         }}
       >
         <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-          Brand-farger
+          {t('feedPostDetail.s010')}
         </Typography>
         <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
           <ColorSwatchInput
@@ -1034,12 +1040,12 @@ export default function FeedPostDetailPanel({
               '&:hover': { bgcolor: 'rgba(167,139,250,0.08)' },
             }}
           >
-            {savingTemplate ? 'Lagrer…' : 'Lagre som mal'}
+            {savingTemplate ? 'Lagrer…' : t('feedPostDetail.s047')}
           </Button>
         </Stack>
         {templates.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>
-            Ingen lagrede maler ennå. Tilpass posten og lagre den som mal for gjenbruk på fremtidige innlegg.
+            {t('feedPostDetail.s036')}
           </Typography>
         ) : (
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
@@ -1061,7 +1067,7 @@ export default function FeedPostDetailPanel({
                   '& .MuiChip-deleteIcon': { color: 'rgba(248,113,113,0.7)' },
                 }}
                 variant="outlined"
-                title={`Bruk malen "${tpl.name}". Du kan redigere felt etterpå.`}
+                title={t('feedPostDetail.p00', { v0: tpl.name })}
               />
             ))}
           </Stack>
@@ -1096,7 +1102,7 @@ export default function FeedPostDetailPanel({
 
       <TextField
         size="small"
-        label="Tittel"
+        label={t('feedPostDetail.s077')}
         value={post.title}
         onChange={(event) => onUpdate({ title: event.target.value })}
         inputProps={{ maxLength: 160 }}
@@ -1135,7 +1141,7 @@ export default function FeedPostDetailPanel({
         label="Hashtags"
         value={hashtagsText}
         onChange={(event) => handleHashtagChange(event.target.value)}
-        placeholder="#kunde #bransje #kampanje"
+        placeholder={t('feedPostDetail.s000')}
         fullWidth
         variant="outlined"
         InputProps={{
@@ -1178,7 +1184,7 @@ export default function FeedPostDetailPanel({
               }
               setHashtagSuggestions(body?.candidates || []);
             } catch (e) {
-              setHashtagSuggestError(e instanceof Error ? e.message : 'Suggest feilet');
+              setHashtagSuggestError(e instanceof Error ? e.message : t('feedPostDetail.s076'));
             } finally {
               setHashtagSuggesting(false);
             }
@@ -1187,11 +1193,11 @@ export default function FeedPostDetailPanel({
           sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
           data-testid="feedpost-hashtag-suggest"
         >
-          {hashtagSuggesting ? 'Foreslår…' : 'Foreslå hashtags (AI + Meta)'}
+          {hashtagSuggesting ? t('feedPostDetail.s026') : t('feedPostDetail.s025')}
         </Button>
         {hashtagSuggestions.length > 0 ? (
           <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.6)' }}>
-            Klikk for å legge til:
+            {t('feedPostDetail.s041')}
           </Typography>
         ) : null}
       </Stack>
@@ -1300,7 +1306,7 @@ export default function FeedPostDetailPanel({
           ) : null}
         </Stack>
         <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
-          Henter norsk caption, hashtags, CTA og anbefalt publiseringstidspunkt. Bruker plattform-strategi oppdatert daglig.
+          {t('feedPostDetail.s029')}
         </Typography>
         <Stack direction="row" spacing={0.8} alignItems="center">
           <Button
@@ -1318,7 +1324,7 @@ export default function FeedPostDetailPanel({
               '&:hover': { boxShadow: '0 4px 16px rgba(168,85,247,0.3)' },
             }}
           >
-            {aiLoading ? 'Henter anbefaling…' : 'Anbefal med AI'}
+            {aiLoading ? t('feedPostDetail.s028') : t('feedPostDetail.s005')}
           </Button>
           {aiNote ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.68rem', fontStyle: 'italic' }}>
@@ -1367,17 +1373,17 @@ export default function FeedPostDetailPanel({
         >
           <Stack direction="row" alignItems="center" spacing={0.6}>
             <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>
-              Publiser til Instagram
+              {t('feedPostDetail.s066')}
             </Typography>
           </Stack>
           {instagramConnections.length === 0 ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
-              Ingen IG-konto koblet. Koble en konto øverst i feed-planneren.
+              {t('feedPostDetail.s034')}
             </Typography>
           ) : (
             <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
-              Publiseres til <strong>@{instagramConnections[0].igUsername ?? 'IG-konto'}</strong>{' '}
-              {post.scheduledFor ? `på ${new Date(post.scheduledFor).toLocaleString('nb-NO')}` : 'umiddelbart'}.
+              {t('feedPostDetail.s069')} <strong>@{instagramConnections[0].igUsername ?? 'IG-konto'}</strong>{' '}
+              {post.scheduledFor ? t('feedPostDetail.p07', { v0: new Date(post.scheduledFor).toLocaleString('nb-NO') }) : 'umiddelbart'}.
             </Typography>
           )}
           <Button
@@ -1402,7 +1408,7 @@ export default function FeedPostDetailPanel({
               '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
             }}
           >
-            {publishing ? 'Publiserer…' : post.scheduledFor ? 'Køleg for publisering' : 'Publiser nå'}
+            {publishing ? t('feedPostDetail.s068') : post.scheduledFor ? t('feedPostDetail.s046') : t('feedPostDetail.s064')}
           </Button>
           {publishStatus ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.74rem' }}>
@@ -1425,13 +1431,13 @@ export default function FeedPostDetailPanel({
         >
           <Stack direction="row" alignItems="center" spacing={0.6}>
             <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 700 }}>
-              Publiser til Facebook Page
+              {t('feedPostDetail.s065')}
             </Typography>
           </Stack>
           {fbPages.length === 0 ? (
             <Typography sx={{ color: fbPagesError ? '#fca5a5' : 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
               {fbPagesError
-                ?? 'Ingen Facebook-sider er koblet ennå — koble Meta-kontoen for å få pages_manage_posts + publish_video scopes.'}
+                ?? t('feedPostDetail.s033')}
             </Typography>
           ) : (
             <TextField
@@ -1467,7 +1473,7 @@ export default function FeedPostDetailPanel({
               '&:hover': { boxShadow: '0 4px 16px rgba(24,119,242,0.3)' },
             }}
           >
-            {fbPublishing ? 'Laster opp til Facebook…' : 'Publiser til Facebook Page'}
+            {fbPublishing ? t('feedPostDetail.s050') : t('feedPostDetail.s065')}
           </Button>
           {fbPublishStatus ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.74rem' }}>
@@ -1491,7 +1497,7 @@ export default function FeedPostDetailPanel({
           '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
         }}
       >
-        Regenerer mal (placeholder)
+        {t('feedPostDetail.s074')}
       </Button>
     </Stack>
   );
