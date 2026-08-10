@@ -33,6 +33,15 @@ Executor: `create_object` `delete_object` `set_transform` `create_material`
 Katalogen bor i `extension/core.py` (`TOOLS`) — én kilde for både HTTP
 (`GET /tools`) og MCP `tools/list`.
 
+## Scene-resources (fase 2)
+
+Blender-tilstanden er adresserbar som MCP-resources — hent KUN den delen av
+scene-grafen som er relevant: `blender://scene` `blender://selection`
+`blender://context` `blender://render/settings` `blender://object/<navn>`
+`blender://material/<navn>` `blender://camera/<navn>` `blender://collection/<navn>`.
+HTTP: `GET /resources` + `GET /resource?uri=…`. Katalog + resolver i
+`extension/resources.py`.
+
 ## Vision-loopen
 
 `render_preview` skriver PNG til fil og returnerer stien — Claude leser bildet,
@@ -52,7 +61,7 @@ curl http://127.0.0.1:7717/health
 
 ## Ikke i fase 1 (kommer)
 
-Scene-resources (`blender://…`), vision-korreksjonssløyfe som skill,
+Vision-korreksjonssløyfe som skill,
 permissions-nivåer/hooks (delete er eneste destruktive verktøy nå — undo-steg
 pushes før hver mutasjon), Geometry Nodes, subagents, skills-biblioteket
 (`skills/blender-core` er starten).

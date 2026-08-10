@@ -50,7 +50,7 @@ def _handle(request: dict) -> dict | None:
     if method == "initialize":
         return _result(request_id, {
             "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {"tools": {}},
+            "capabilities": {"tools": {}, "resources": {}},
             "serverInfo": {"name": "blender-bridge", "version": "0.1.0"},
         })
     if method in ("notifications/initialized", "notifications/cancelled"):
@@ -61,6 +61,30 @@ def _handle(request: dict) -> dict | None:
         except (urllib.error.URLError, OSError):
             return _error(request_id, -32000,
                           "Får ikke kontakt med Blender-broen (kjører Blender med extensionen?)")
+    if method == "resources/list":
+        try:
+            listed = _http("/resources")["resources"]
+        except (urllib.error.URLError, OSError):
+            return _error(request_id, -32000, "Får ikke kontakt med Blender-broen")
+        return _result(request_id, {"resources": [
+            {"uri": r["uri"], "name": r["name"], "mimeType": "application/json"}
+            for r in listed
+        ]})
+    if method == "resources/read":
+        uri = ((request.get("params") or {}).get("uri")) or ""
+        from urllib.parse import quote
+        try:
+            response = _http("/resource?uri=" + quote(uri, safe=""))
+        except urllib.error.HTTPError as err:
+            body = err.read().decode(errors="replace")
+            return _error(request_id, -32002, f"ressurs feilet: {body[:200]}")
+        except (urllib.error.URLError, OSError):
+            return _error(request_id, -32000, "Får ikke kontakt med Blender-broen")
+        return _result(request_id, {"contents": [{
+            "uri": uri,
+            "mimeType": "application/json",
+            "text": json.dumps(response.get("result"), indent=2),
+        }]})
     if method == "tools/call":
         params = request.get("params") or {}
         try:
