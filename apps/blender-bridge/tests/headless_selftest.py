@@ -10,6 +10,7 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "extension"))
 import core  # noqa: E402
+import resources  # noqa: E402
 
 
 def main() -> None:
@@ -58,6 +59,24 @@ def main() -> None:
     try:
         core.call_tool("finnes_ikke")
         raise AssertionError("ukjent verktøy skulle feile")
+    except ValueError:
+        pass
+
+    # resources (fase 2)
+    uris = [r["uri"] for r in resources.list_resources()]
+    assert "blender://scene" in uris and "blender://context" in uris, uris
+    assert any(u.startswith("blender://material/HeroMat") for u in uris), uris
+    ctx = resources.resolve("blender://context")
+    assert ctx["camera"] == "Cam" and "mode" in ctx, ctx
+    mat = resources.resolve("blender://material/HeroMat")
+    assert abs(mat["principled"]["Roughness"] - 0.35) < 0.001, mat
+    rs = resources.resolve("blender://render/settings")
+    assert rs["engine"], rs
+    cam = resources.resolve("blender://camera/Cam")
+    assert cam["camera"]["dof_enabled"] is True, cam
+    try:
+        resources.resolve("blender://tull/xyz")
+        raise AssertionError("ukjent ressurs skulle feile")
     except ValueError:
         pass
 

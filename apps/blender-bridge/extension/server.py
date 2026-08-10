@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import bpy
 
-from . import core
+from . import core, resources
 
 HOST = "127.0.0.1"
 PORT = 7717  # ponytail: fast port; gjør konfigurerbar når behovet oppstår
@@ -36,7 +36,12 @@ def _drain_commands():
         except queue.Empty:
             break
         try:
-            cmd["result"] = core.call_tool(cmd["tool"], cmd["args"])
+            if cmd["tool"] == "__resources__":
+                cmd["result"] = resources.list_resources()
+            elif cmd["tool"] == "__resource__":
+                cmd["result"] = resources.resolve(cmd["args"]["uri"])
+            else:
+                cmd["result"] = core.call_tool(cmd["tool"], cmd["args"])
             cmd["ok"] = True
         except Exception as exc:  # noqa: BLE001 — feilen skal til klienten
             cmd["ok"] = False
@@ -60,6 +65,23 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._respond(200, {"ok": True, "blender": bpy.app.version_string})
+        elif self.path.startswith("/resource?"):
+            from urllib.parse import parse_qs, urlparse
+            uri = (parse_qs(urlparse(self.path).query).get("uri") or [""])[0]
+            cmd = {"tool": "__resource__", "args": {"uri": uri}, "event": threading.Event()}
+            _COMMANDS.put(cmd)
+            if not cmd["event"].wait(timeout=30):
+                return self._respond(504, {"ok": False, "error": "timeout"})
+            if cmd["ok"]:
+                self._respond(200, {"ok": True, "result": cmd["result"]})
+            else:
+                self._respond(422, {"ok": False, "error": cmd["error"]})
+        elif self.path == "/resources":
+            cmd = {"tool": "__resources__", "args": {}, "event": threading.Event()}
+            _COMMANDS.put(cmd)
+            if not cmd["event"].wait(timeout=30):
+                return self._respond(504, {"ok": False, "error": "timeout"})
+            self._respond(200, {"resources": cmd.get("result", [])})
         elif self.path == "/tools":
             tools = [
                 {"name": name, "description": t["description"], "mutates": t["mutates"]}
