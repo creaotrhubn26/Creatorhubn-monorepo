@@ -910,6 +910,16 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
         {(canvas.pushIn ?? 0) > 0 && (
           <input type="range" min={0.1} max={1} step={0.05} value={canvas.pushIn ?? 0.6} onChange={(e) => patchCanvas({ pushIn: Number(e.target.value) })} style={{ width: '100%', accentColor: C.accent }} />
         )}
+        <label style={checkRow}>
+          <input type="checkbox" checked={(canvas.beatPunch ?? 0) > 0} onChange={(e) => patchCanvas({ beatPunch: e.target.checked ? 0.6 : 0, bpm: e.target.checked ? (canvas.bpm ?? 120) : canvas.bpm })} /> Zoom-punch på beat
+        </label>
+        {(canvas.beatPunch ?? 0) > 0 && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+            <span style={{ fontSize: FS_SM, color: C.inkSoft }}>BPM</span>
+            <input type="number" min={60} max={200} value={canvas.bpm ?? 120} onChange={(e) => patchCanvas({ bpm: Math.max(40, Math.min(220, Number(e.target.value) || 120)) })} style={{ ...textInput, width: 64 }} />
+            <input type="range" min={0.1} max={1} step={0.05} value={canvas.beatPunch ?? 0.6} onChange={(e) => patchCanvas({ beatPunch: Number(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
+          </div>
+        )}
       </Field>
       <div style={{ fontSize: FS_SM, color: goodContrast ? '#4ade80' : '#e0b060', marginTop: 8 }}>
         {goodContrast ? '✓ God kontrast' : '! Svak kontrast tekst/bakgrunn'} ({ratio.toFixed(1)}:1)

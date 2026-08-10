@@ -919,9 +919,17 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   if (!ctx) return canvas;
   ctx.scale(scale, scale);
   const t = opts?.anim?.t;
-  // Push-in: global kamera-zoom under avspilling (kinematisk inntoning mot innholdet).
-  if (t != null && doc.canvas.pushIn) {
-    const z = 1 + doc.canvas.pushIn * 0.12 * Math.min(1, t);
+  // Global kamera-transform under avspilling: push-in (jevn zoom) + zoom-punch (beat-puls).
+  if (t != null && (doc.canvas.pushIn || (doc.canvas.beatPunch && doc.canvas.bpm))) {
+    let z = 1;
+    if (doc.canvas.pushIn) z *= 1 + doc.canvas.pushIn * 0.12 * Math.min(1, t);
+    if (doc.canvas.beatPunch && doc.canvas.bpm) {
+      const dur = deriveTimeline(doc).duration || 4;
+      const bp = 60 / doc.canvas.bpm;                 // sekunder per beat
+      const ph = ((t * dur) % bp) / bp;               // fase 0..1 innad i beat
+      const pulse = ph < 0.18 ? 1 - ph / 0.18 : 0;    // skarp puls rett etter beat, avtar
+      z *= 1 + doc.canvas.beatPunch * 0.08 * pulse;
+    }
     ctx.translate(doc.canvas.w / 2, doc.canvas.h / 2); ctx.scale(z, z); ctx.translate(-doc.canvas.w / 2, -doc.canvas.h / 2);
   }
   // Multi-spor timeline: hvert elements skrive-klipp gir sin egen lokale t

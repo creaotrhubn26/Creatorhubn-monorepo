@@ -187,6 +187,10 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
               <div key={s} style={{ position: 'absolute', left: `${(s / dur) * 100}%`, top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.12)', paddingLeft: 3, fontSize: TL_FS_SM, opacity: 0.6 }}>{s % 1 === 0 ? `${s}s` : ''}</div>
             ))}
           </div>
+          {/* Beat-markører (BPM): accent-linjer å snappe zoom-punch/kutt til */}
+          {doc.canvas.bpm && Array.from({ length: Math.floor(dur / (60 / doc.canvas.bpm)) + 1 }, (_, i) => i * (60 / (doc.canvas.bpm as number))).map((s, i) => (
+            <div key={`beat${i}`} style={{ position: 'absolute', left: `${(s / dur) * 100}%`, top: 16, bottom: 0, width: 1, background: 'rgba(34,211,238,0.35)', pointerEvents: 'none' }} />
+          ))}
           {/* Spor-rader */}
           {Array.from({ length: nTracks }, (_, i) => (
             <div key={i} style={{ position: 'relative', height: TRACK_H, borderBottom: '1px solid rgba(255,255,255,0.05)', background: i % 2 ? 'rgba(255,255,255,0.015)' : 'transparent' }} />

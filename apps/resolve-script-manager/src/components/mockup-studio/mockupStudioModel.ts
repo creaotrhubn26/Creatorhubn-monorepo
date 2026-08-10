@@ -261,6 +261,10 @@ export interface MockupCanvasSpec {
   warmth?: number;
   /** Push-in (0..1): global kamera-zoom under avspilling → kinematisk hero-inntoning. */
   pushIn?: number;
+  /** Tempo (BPM) for beat-markører + zoom-punch-synk. Default undefined = av. */
+  bpm?: number;
+  /** Zoom-punch (0..1): rask skala-puls på hver beat → retention-rytme synket til musikk. */
+  beatPunch?: number;
   /** Valgfri AI-generert bakgrunnsbilde (data-URL, cover-fylt bak dekor). */
   bgImage?: string;
   /** Lifestyle-scene: fotografisk bakgrunn + skjermbilde warpet i perspektiv-quad.
