@@ -479,6 +479,11 @@ try:
 except ImportError:  # flat import i headless-testene
     import geometry_nodes as _gn
 TOOLS.update(_gn.GN_TOOLS)
+try:
+    from . import assets as _assets
+except ImportError:
+    import assets as _assets
+TOOLS.update(_assets.ASSET_TOOLS)
 
 
 def call_tool(name: str, args: dict | None = None) -> dict:

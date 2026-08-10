@@ -22,7 +22,7 @@ Claude (MCP) → mcp/blender_mcp_server.py → HTTP :7717 → kommando-kø
    ```
 3. Blender må kjøre med extensionen aktiv når verktøyene brukes.
 
-## Verktøy (31)
+## Verktøy (38)
 
 Observer: `get_scene` `get_selection` `inspect_object` `validate_scene`
 Executor: `create_object` `delete_object` `set_transform` `create_material`
@@ -31,6 +31,10 @@ Executor: `create_object` `delete_object` `set_transform` `create_material`
 `render_final` `undo_push` `undo`
 AI-oppgaver: `begin_task` `task_status` `end_task` `undo_task` («Angre
 AI-oppgave»-knappen i panelet ruller tilbake hele oppgaven)
+Fotorealisme: `import_asset` (glb/gltf/fbx/obj/usd) `add_modifier`
+(bevel/subdivision/solidify/mirror/smooth) `apply_modifier` (destruktivt)
+`shade_smooth` `set_world_hdri` `set_world_color` `set_material_texture`
+(Base Color/Roughness/Metallic/Normal m/ riktig colorspace)
 Geometry Nodes: `create_geometry_nodes` `gn_add_node` `gn_connect`
 `gn_set_input` `gn_expose_parameter` `gn_set_parameter` `gn_get_graph`
 `gn_evaluated_stats`
