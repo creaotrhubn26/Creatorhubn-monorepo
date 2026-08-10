@@ -69,6 +69,16 @@ function parseOriginCandidate(value: string | null): URL | null {
   return null;
 }
 
+// Kanoniser origin: strip ledende "www." så redirect_uri alltid treffer det
+// registrerte apex-domenet i Google Cloud. www og apex serverer samme app, men
+// Google 400-er (invalid_request/redirect_uri_mismatch) hvis den nøyaktige
+// redirect_uri-varianten ikke er registrert. Apex er default-domenet
+// (getDefaultPublicOrigin), så vi normaliserer alltid til apex.
+function canonicalizeApexOrigin(url: URL): string {
+  const host = url.hostname.replace(/^www\./i, '');
+  return `${url.protocol}//${host}${url.port ? `:${url.port}` : ''}`;
+}
+
 export function resolveGoogleWorkspaceRequestOrigin(
   app: GoogleWorkspaceOauthApp,
   req?: Request,
@@ -78,7 +88,7 @@ export function resolveGoogleWorkspaceRequestOrigin(
   if (directOrigin) {
     return isRenderHostname(directOrigin.hostname)
       ? getDefaultPublicOrigin(app)
-      : directOrigin.origin;
+      : canonicalizeApexOrigin(directOrigin);
   }
 
   if (!req) {
@@ -89,14 +99,14 @@ export function resolveGoogleWorkspaceRequestOrigin(
   if (originHeader) {
     return isRenderHostname(originHeader.hostname)
       ? getDefaultPublicOrigin(app)
-      : originHeader.origin;
+      : canonicalizeApexOrigin(originHeader);
   }
 
   const refererHeader = parseOriginCandidate(readStringValue(req.headers.referer));
   if (refererHeader) {
     return isRenderHostname(refererHeader.hostname)
       ? getDefaultPublicOrigin(app)
-      : refererHeader.origin;
+      : canonicalizeApexOrigin(refererHeader);
   }
 
   const host = readStringValue(req.get('host'));
@@ -120,7 +130,7 @@ export function resolveGoogleWorkspaceRequestOrigin(
     return getDefaultPublicOrigin(app);
   }
 
-  return parsedHostOrigin.origin;
+  return canonicalizeApexOrigin(parsedHostOrigin);
 }
 
 function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string | null {
