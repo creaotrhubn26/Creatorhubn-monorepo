@@ -113,6 +113,28 @@ export async function createEducationProductionRow(
        VALUES ($1, $2, 'active', $3, now(), now())`,
       [projectId, input.title, ownerId],
     );
+    // Produksjonsmodus-UI-et (CastingPlannerPanel/loadProjects) leser IKKE
+    // fra casting_projects — det leser fra en separat legacy KV-compat-
+    // butikk via GET /api/casting/projects (compatStoreListByPrefix
+    // "casting:project:"). Uten denne skrivingen finnes prosjektet i
+    // Postgres (role-room-API-familien ser det fint), men UI-et selv viser
+    // "Opprett ditt første prosjekt" — E2E-verifisert 2026-08-10. Speiler
+    // shapen POST /api/casting/projects setter (begge cases på owner/
+    // created_by-felt, se casting-projects-routes.ts) med samme id, så
+    // begge lagre peker på ETT prosjekt.
+    const compatNow = new Date().toISOString();
+    const compatProject = {
+      id: projectId, name: input.title, status: "active",
+      ownerId, owner_id: ownerId, createdBy: ownerId, created_by: ownerId,
+      createdAt: compatNow, created_at: compatNow,
+      updatedAt: compatNow, updated_at: compatNow,
+    };
+    await pool.query(
+      `INSERT INTO legacy_compat_store (store_key, store_value, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (store_key) DO UPDATE SET store_value = EXCLUDED.store_value, updated_at = NOW()`,
+      [`casting:project:${projectId}`, JSON.stringify(compatProject)],
+    );
   }
   const id = newEntityId("edprod");
   const r = await pool.query(
