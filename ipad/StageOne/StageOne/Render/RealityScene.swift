@@ -14,15 +14,15 @@ enum RealityScene {
         let root = Entity()
         root.scale = SIMD3<Float>(repeating: scale)
         for node in scene.nodes where node.enabled {
-            root.addChild(entity(for: node))
+            root.addChild(entity(for: node, worldScale: scale))
         }
         return root
     }
 
-    static func entity(for node: Node) -> Entity {
+    static func entity(for node: Node, worldScale: Float = 1) -> Entity {
         let entity: Entity
         if node.kind == .light, case .light(let p) = node.params {
-            entity = lightEntity(params: p)
+            entity = lightEntity(params: p, worldScale: worldScale)
         } else if let mesh = try? meshResource(for: node) {
             let color = StageRenderer.baseColor(for: node)
             let material = SimpleMaterial(
@@ -54,22 +54,25 @@ enum RealityScene {
         return try MeshResource.generate(from: [descriptor])
     }
 
-    private static func lightEntity(params: LightParams) -> Entity {
+    private static func lightEntity(params: LightParams, worldScale: Float) -> Entity {
         let rgb = kelvinToRGB(params.temperatureK)
         let color = UIColor(red: CGFloat(rgb.x), green: CGFloat(rgb.y), blue: CGFloat(rgb.z), alpha: 1)
+        // Lys-parametre er world-absolutte: under root.scale krymper avstandene
+        // → intensitet må ned med skala² (inverse square), radius med skala.
+        let intensityScale = worldScale * worldScale
         if params.type == .spot {
             let light = SpotLight()
             light.light.color = color
-            light.light.intensity = Float(params.intensity) * 12000 / 100
+            light.light.intensity = Float(params.intensity) * 12000 / 100 * intensityScale
             light.light.outerAngleInDegrees = Float(params.beamDeg)
             light.light.innerAngleInDegrees = Float(params.beamDeg) * 0.6
-            light.light.attenuationRadius = 12
+            light.light.attenuationRadius = 12 * worldScale
             return light
         }
         let light = PointLight()
         light.light.color = color
-        light.light.intensity = Float(params.intensity) * 8000 / 100
-        light.light.attenuationRadius = 12
+        light.light.intensity = Float(params.intensity) * 8000 / 100 * intensityScale
+        light.light.attenuationRadius = 12 * worldScale
         return light
     }
 }

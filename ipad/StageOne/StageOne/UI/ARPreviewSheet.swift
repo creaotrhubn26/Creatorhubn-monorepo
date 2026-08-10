@@ -100,12 +100,17 @@ private struct ARSceneContainer: UIViewRepresentable {
         }
 
         @objc func handlePinch(_ g: UIPinchGestureRecognizer) {
-            guard let anchor, g.state == .changed else {
-                if g.state == .ended { baseScale = anchor?.children.first?.scale.x ?? baseScale }
-                return
+            switch g.state {
+            case .changed:
+                guard let anchor else { return }
+                let s = baseScale * Float(g.scale)
+                anchor.children.first?.scale = SIMD3<Float>(repeating: min(max(s, 0.02), 1.0))
+            case .ended, .cancelled, .failed:
+                // synk alltid — ellers hopper neste plassering tilbake til gammel skala
+                baseScale = anchor?.children.first?.scale.x ?? baseScale
+            default:
+                break
             }
-            let s = baseScale * Float(g.scale)
-            anchor.children.first?.scale = SIMD3<Float>(repeating: min(max(s, 0.02), 1.0))
         }
     }
 }

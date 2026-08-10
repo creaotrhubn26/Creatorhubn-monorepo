@@ -29,14 +29,16 @@ enum RoomScanImporter {
             let (shape, material, scale): (PropShape, String, SIMD3<Float>) = switch surface.kind {
             case .floor:
                 (.plane, "Skannet gulv", SIMD3(surface.dimensions.x, 1, max(surface.dimensions.z, surface.dimensions.y)))
-            case .wall, .opening:
+            case .wall:
                 (.box, "Skannet vegg", SIMD3(surface.dimensions.x, surface.dimensions.y, 0.1))
             case .door:
-                (.box, "Skannet dør", SIMD3(surface.dimensions.x, surface.dimensions.y, 0.06))
+                (.box, "Skannet dør", SIMD3(surface.dimensions.x, surface.dimensions.y, 0.14)) // tykkere enn veggen (0.1) så den synes
             case .window:
-                (.box, "Skannet vindu", SIMD3(surface.dimensions.x, surface.dimensions.y, 0.05))
+                (.box, "Skannet vindu", SIMD3(surface.dimensions.x, surface.dimensions.y, 0.12)) // tykkere enn veggen (0.1) så det synes
             case .object:
                 (.box, "Skannet objekt", simd_max(surface.dimensions, SIMD3(repeating: 0.05)))
+            case .opening:
+                fatalError("unreachable — filtrert av guard over")
             }
             return Node(
                 id: "scan-\(surface.kind.rawValue)-\(index)",

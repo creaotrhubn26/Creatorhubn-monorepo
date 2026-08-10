@@ -94,59 +94,49 @@ struct HierarchyPanel: View {
 
     private var comingSoonCards: some View {
         VStack(spacing: 8) {
-            Button {
-                onScanRoom?()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "viewfinder")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.accent)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Scan Room")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.fg)
-                        Text("LiDAR")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.muted)
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg.opacity(0.5)))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border, lineWidth: Theme.hairline))
-            }
-            .buttonStyle(.plain)
-            comingCard(icon: "square.grid.2x2", title: "Assets", subtitle: "Bibliotek")
+            panelCard(icon: "viewfinder", title: "Scan Room", subtitle: "LiDAR", action: onScanRoom)
+            panelCard(icon: "square.grid.2x2", title: "Assets", subtitle: "Bibliotek")
         }
         .padding(10)
     }
 
-    private func comingCard(icon: String, title: String, subtitle: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.muted)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.muted)
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.muted.opacity(0.7))
+    /// Panelkort: med `action` = aktivt (accent-ikon + chevron), uten = «Kommer».
+    private func panelCard(icon: String, title: String, subtitle: String,
+                           action: (() -> Void)? = nil) -> some View {
+        Button {
+            action?()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(action != nil ? Theme.accent : Theme.muted)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(action != nil ? Theme.fg : Theme.muted)
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.muted.opacity(0.7))
+                }
+                Spacer()
+                if action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    Text("Kommer")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.raise))
+                }
             }
-            Spacer()
-            Text("Kommer")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Theme.muted)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(Theme.raise))
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg.opacity(0.5)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border, lineWidth: Theme.hairline))
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg.opacity(0.5)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border, lineWidth: Theme.hairline))
+        .buttonStyle(.plain)
+        .disabled(action == nil)
     }
 }

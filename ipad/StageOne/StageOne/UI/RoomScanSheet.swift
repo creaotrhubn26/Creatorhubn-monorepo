@@ -2,20 +2,53 @@ import SwiftUI
 import RoomPlan
 
 /// RoomPlan-skann → «Scanned Room»-gruppe i scenen. Kun LiDAR-iPad.
+/// Kontrollobjekt så «Ferdig»-knappen kan stoppe capture-økten
+/// (RoomCaptureView har ingen innebygd Done — didPresent fyres først etter stop()).
+@MainActor
+final class RoomScanController {
+    weak var captureView: RoomCaptureView?
+    func finish() { captureView?.captureSession.stop() }
+}
+
 struct RoomScanSheet: View {
     let document: SceneDocument
     @Environment(\.dismiss) private var dismiss
-    @State private var finished = false
+    @State private var controller = RoomScanController()
+    @State private var errorMessage: String?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             if RoomCaptureSession.isSupported {
-                RoomCaptureContainer { room in
+                RoomCaptureContainer(controller: controller) { room in
                     importRoom(room)
                     dismiss()
+                } onError: { message in
+                    errorMessage = message
                 }
                 .ignoresSafeArea()
-                closeButton.padding(16)
+                VStack(alignment: .trailing, spacing: 8) {
+                    closeButton
+                    Button {
+                        controller.finish() // → didPresent → import + dismiss
+                    } label: {
+                        Text("Ferdig")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Theme.fg)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Theme.accent.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Theme.surface.opacity(0.9)))
+                    }
+                }
+                .padding(16)
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "viewfinder")
@@ -82,18 +115,21 @@ struct RoomScanSheet: View {
 /// RoomCaptureView-wrapper: kjører økten, kaller `onFinished` når brukeren
 /// avslutter med ferdig prosessert rom.
 private struct RoomCaptureContainer: UIViewRepresentable {
+    let controller: RoomScanController
     let onFinished: @MainActor (CapturedRoom) -> Void
+    let onError: @MainActor (String) -> Void
 
     func makeUIView(context: Context) -> RoomCaptureView {
         let view = RoomCaptureView(frame: .zero)
         view.delegate = context.coordinator
         view.captureSession.run(configuration: RoomCaptureSession.Configuration())
+        controller.captureView = view
         return view
     }
 
     func updateUIView(_ uiView: RoomCaptureView, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator(onFinished: onFinished) }
+    func makeCoordinator() -> Coordinator { Coordinator(onFinished: onFinished, onError: onError) }
 
     // RoomCaptureViewDelegate arver NSCoding — tomme stubs + stabilt objc-navn.
     // RoomCaptureView kaller delegaten på main-tråden — @preconcurrency-konformans
@@ -102,7 +138,12 @@ private struct RoomCaptureContainer: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, @preconcurrency RoomCaptureViewDelegate {
         let onFinished: @MainActor (CapturedRoom) -> Void
-        init(onFinished: @escaping @MainActor (CapturedRoom) -> Void) { self.onFinished = onFinished }
+        let onError: @MainActor (String) -> Void
+        init(onFinished: @escaping @MainActor (CapturedRoom) -> Void,
+             onError: @escaping @MainActor (String) -> Void) {
+            self.onFinished = onFinished
+            self.onError = onError
+        }
 
         required init?(coder: NSCoder) { return nil }
         func encode(with coder: NSCoder) {}
@@ -111,7 +152,10 @@ private struct RoomCaptureContainer: UIViewRepresentable {
                          error: (Error)?) -> Bool { true }
 
         func captureView(didPresent processedResult: CapturedRoom, error: (Error)?) {
-            guard error == nil else { return }
+            if let error {
+                onError("Skannet kunne ikke behandles: \(error.localizedDescription)")
+                return
+            }
             onFinished(processedResult)
         }
     }

@@ -57,7 +57,7 @@ platform :ios do
       output_directory: "build/",
       output_name: "StageOne.ipa",
       xcargs: provisioning_xcargs,
-      export_xcargs: "-allowProvisioningUpdates",
+      export_xcargs: provisioning_xcargs,
     )
 
     # Sanity FØR upload (lærdom fra CaptureApp: bruk gyms faktiske sti).

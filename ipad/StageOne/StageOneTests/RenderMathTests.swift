@@ -23,6 +23,16 @@ final class RenderMathTests: XCTestCase {
                 XCTAssertTrue(all(v.position .>= m.boundsMin - 0.001) && all(v.position .<= m.boundsMax + 0.001), "\(shape)")
             }
             XCTAssertLessThanOrEqual(Int(m.indices.max() ?? 0), m.vertices.count - 1, "\(shape)")
+            // Winding: geometrisk normal (CCW) må peke SAMME vei som vertex-normalene —
+            // RealityKit backface-culler (Metal-passet gjør ikke, så editoren skjuler feilen).
+            for t in stride(from: 0, to: m.indices.count, by: 3) {
+                let v0 = m.vertices[Int(m.indices[t])], v1 = m.vertices[Int(m.indices[t + 1])], v2 = m.vertices[Int(m.indices[t + 2])]
+                let geoNormal = simd_cross(v1.position - v0.position, v2.position - v0.position)
+                guard simd_length(geoNormal) > 1e-6 else { continue } // degenerert (pol-trekanter)
+                let avgNormal = v0.normal + v1.normal + v2.normal
+                XCTAssertGreaterThan(simd_dot(simd_normalize(geoNormal), simd_normalize(avgNormal)), 0,
+                                     "\(shape): trekant \(t / 3) vinder feil vei")
+            }
         }
     }
 
