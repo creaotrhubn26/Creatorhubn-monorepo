@@ -27,6 +27,19 @@ import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { newEntityId } from "./_shared-ids.js";
 
+// Lat, idempotent schema-selvheler for artifact_view-kolonnen (mig 0448).
+// Speiler ensureNrpsColumn i role-room-lti-routes: gjør oppgave-opprettelse
+// robust uavhengig av om migrasjon 0448 alt har kjørt på Neon (Render
+// auto-migrate kan henge etter en deploy → INSERT-en refererer artifact_view
+// og feilet med undefined_column → 500 create_failed). Kjøres per-request på
+// module-poolen (aldri en transaksjons-client), memoisert for lås-hygiene.
+let assignmentViewColumnEnsured = false;
+export async function ensureAssignmentViewColumn(pool: Pool): Promise<void> {
+  if (assignmentViewColumnEnsured) return;
+  await pool.query(`ALTER TABLE role_room_education_assignments ADD COLUMN IF NOT EXISTS artifact_view TEXT`);
+  assignmentViewColumnEnsured = true;
+}
+
 interface SessionData {
   userId: string;
   email: string;
@@ -249,6 +262,7 @@ export function createEducationAssignmentsRouter(
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) { res.status(400).json({ error: "title_required" }); return; }
     try {
+      await ensureAssignmentViewColumn(pool);
       const row = await insertEducationAssignmentRow(pool, uid(req), { ...body, title });
       res.status(201).json({ assignment: assignmentRowToView(row) });
     } catch (err) {
@@ -267,6 +281,7 @@ export function createEducationAssignmentsRouter(
     const status = typeof body.status === "string" && ASSIGNMENT_STATUSES.has(body.status) ? body.status : null;
     const vurderingsform = typeof body.vurderingsform === "string" && VURDERINGSFORMER.has(body.vurderingsform) ? body.vurderingsform : null;
     try {
+      await ensureAssignmentViewColumn(pool);
       const r = await pool.query(
         `UPDATE role_room_education_assignments
             SET title = COALESCE($3, title),
