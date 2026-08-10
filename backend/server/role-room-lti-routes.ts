@@ -701,13 +701,24 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
   // til deep_link_return_url.
   //
   // To payload-former:
-  //  - GAMMEL (bakoverkompatibel): { projectId, title? } — velger kun en
-  //    produksjon, ingen oppgave opprettes. custom bærer kun production_id.
+  //  - GAMMEL (bakoverkompatibel): { projectId } — INGEN tittel → velger kun
+  //    en eksisterende produksjon, ingen oppgave opprettes. custom bærer kun
+  //    production_id (og projectId MÅ være reell — vi signerer aldri en JWT
+  //    med et tomt production_id, se guard under).
   //  - RIK (Task 7-plukkeren): { title, cohortId, productionId?|createProduction,
   //    artifactKind?, artifactView?, brief?, learningGoals?, dueAt?,
   //    isArbeidskrav?, isExam?, vurderingsform? } — oppretter en publisert
   //    role_room_education_assignments-rad, custom bærer production_id +
   //    artifact_kind + artifact_view + assignment_id.
+  //
+  // Bryteren mellom disse er TITTEL (autorerings-intensjon), ikke cohortId.
+  // (Task 7-review: en cohortId-basert bryter lot faglærer fylle ut
+  // tittel/brief/artefakt, glemme kull, og trykke Publiser → alt rikt
+  // innhold ble stille forkastet, og med «opprett ny produksjon» aktiv fikk
+  // Canvas et content item med custom.production_id: "" — et ødelagt
+  // deep link. Nå: tittel → rik sti, som KREVER kull eksplisitt (400
+  // cohort_required, ingen stille fallback); ingen tittel → gammel sti, som
+  // KREVER en reell projectId (400 production_required, aldri tomt production_id).)
   router.post("/lti/launches/:id/deep-link-response", requireSession, async (req, res) => {
     const body = (req.body ?? {}) as {
       projectId?: string; title?: string;
@@ -716,9 +727,9 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       dueAt?: string; isArbeidskrav?: boolean; isExam?: boolean; vurderingsform?: string;
     };
     const uid = (req as Request & { userId: string }).userId;
-    // Rikt payload kjennetegnes av cohortId (det gamle payloadet har det aldri).
     const cohortId = typeof body.cohortId === "string" ? body.cohortId.trim() : "";
-    const isRichPayload = !!cohortId;
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const isRichPayload = !!title;
     try {
       const lr = await pool.query(
         `SELECT l.deep_link_return_url, l.deep_link_data, p.client_id, p.issuer, p.deployment_id
@@ -730,13 +741,14 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       if (!launch) { res.status(404).json({ error: "not_found" }); return; }
       if (!launch.deep_link_return_url) { res.status(400).json({ error: "not_a_deep_link_launch" }); return; }
 
-      let title: string;
+      let contentTitle: string;
       let projectId: string;
       let custom: Record<string, unknown>;
 
       if (isRichPayload) {
-        title = typeof body.title === "string" ? body.title.trim() : "";
-        if (!title) { res.status(400).json({ error: "title_required" }); return; }
+        // Tittel finnes → faglærer autorerer en ekte oppgave. Kull er PÅKREVD
+        // her — ALDRI en stille fallback til gammel sti (se kommentar over).
+        if (!cohortId) { res.status(400).json({ error: "cohort_required" }); return; }
         // Eierskap: faglærer-sesjonen MÅ eie kullet (samme mønster som education-cohorts-routes).
         const cohortOwn = await pool.query(
           `SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`,
@@ -787,14 +799,18 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
           assignmentRow = await insertEducationAssignmentRow(pool, uid, { ...assignmentInput, productionId: String(productionRow.id) });
         }
 
+        contentTitle = title;
         projectId = String(assignmentRow.production_project_id ?? productionRow.project_id ?? "");
         custom = { production_id: projectId, assignment_id: String(assignmentRow.id) };
         if (artifactKind) custom.artifact_kind = artifactKind;
         if (artifactView) custom.artifact_view = artifactView;
       } else {
-        // Gammel sti: kun velg/opprett produksjon, ingen oppgave.
-        title = (typeof body.title === "string" && body.title.trim()) ? body.title.trim() : "The Role Room-produksjon";
+        // Gammel sti: ingen tittel = ingen autorerings-intensjon, bare velg
+        // en eksisterende produksjon. Krever en REELL projectId — vi signerer
+        // aldri en JWT med et tomt production_id (halvt/ødelagt content item).
         projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+        if (!projectId) { res.status(400).json({ error: "production_required" }); return; }
+        contentTitle = "The Role Room-produksjon";
         custom = { production_id: projectId };
       }
 
@@ -802,7 +818,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       // ltiResourceLink → neste launch bærer custom.production_id og åpner produksjonen.
       const contentItems: Record<string, unknown>[] = [{
         type: "ltiResourceLink",
-        title,
+        title: contentTitle,
         url: `${TOOL_BASE}/lti/launch`,
         custom,
       }];

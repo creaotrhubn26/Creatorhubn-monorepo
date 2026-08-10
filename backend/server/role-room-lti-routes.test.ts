@@ -468,21 +468,49 @@ describe("POST /lti/launches/:id/deep-link-response", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
-  it("gammelt payload (kun projectId) → INGEN assignment-rad, custom har KUN production_id (bakoverkompatibelt)", async () => {
+  it("gammelt payload (kun projectId, INGEN tittel) → INGEN assignment-rad, custom har KUN production_id (bakoverkompatibelt)", async () => {
     const { pool, calls } = basePool(() => ({ rows: [] }));
-    const res = await post(pool, { projectId: "proj-old-1", title: "Min produksjon" });
+    const res = await post(pool, { projectId: "proj-old-1" });
     expect(res.statusCode).toBe(200);
     expect(contentItemOf(res).custom).toEqual({ production_id: "proj-old-1" });
     expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))).toBe(false);
     expect(calls.some((c) => c.sql.includes("role_room_education_cohorts"))).toBe(false);
   });
 
-  it("rikt payload uten title → 400, ingen JWT/halvt content item", async () => {
+  it("ingen tittel, ingen projectId (kun productionId) → 400 production_required, ingen JWT, ingen stille tomt production_id (Task 7-review)", async () => {
     const { pool, calls } = basePool(() => ({ rows: [] }));
     const res = await post(pool, { cohortId: "cohort-1", productionId: "edprod-1" });
     expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "production_required" });
     expect(res.body.jwt).toBeUndefined();
     expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))).toBe(false);
+  });
+
+  it("gammel sti helt uten projectId → 400 production_required, aldri en JWT med tomt production_id (Task 7-review)", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, {});
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "production_required" });
+    expect(res.body.jwt).toBeUndefined();
+    expect(calls.some((c) => c.sql.includes("role_room_lti_tool_keys"))).toBe(false); // stopper FØR JWT-signering
+  });
+
+  it("rikt payload (tittel finnes) UTEN kull → 400 cohort_required, ingen stille fallback til gammel sti (Task 7-review)", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, { title: "Skriv en Story Logic", productionId: "edprod-1" });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "cohort_required" });
+    expect(res.body.jwt).toBeUndefined();
+    expect(calls.some((c) => c.sql.includes("role_room_education_cohorts"))).toBe(false); // aldri spør — kull mangler helt
+    expect(calls.some((c) => c.sql.includes("INSERT INTO role_room_education_assignments"))).toBe(false);
+  });
+
+  it("rikt payload (tittel + kull) med createProduction=true men UTEN kull ville ellers gitt tomt production_id — kull-guarden fanger dette FØR opprettelse", async () => {
+    const { pool, calls } = basePool(() => ({ rows: [] }));
+    const res = await post(pool, { title: "Ny produksjon-oppgave", createProduction: true });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "cohort_required" });
+    expect(calls.some((c) => c.sql.includes("INSERT INTO casting_projects"))).toBe(false); // ingen foreldreløs produksjon
   });
 
   it("productionId ikke eid av faglærer-sesjonen → 400 production_not_found, ingen JWT", async () => {

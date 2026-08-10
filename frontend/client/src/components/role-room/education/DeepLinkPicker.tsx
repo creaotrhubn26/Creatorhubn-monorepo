@@ -40,6 +40,7 @@ const VURDERINGSFORM_OPTIONS: { key: string; label: string }[] = [
 
 const ERROR_REASONS: Record<string, string> = {
   title_required: 'tittel mangler',
+  cohort_required: 'kull mangler',
   cohort_not_found: 'valgt kull ble ikke funnet',
   production_required: 'produksjon mangler',
   production_not_found: 'valgt produksjon ble ikke funnet',
@@ -135,6 +136,17 @@ export function buildPublishPayload(f: FormState, creatingProduction: boolean, s
   };
 }
 
+/** Gate for primærknappen. Kull er PÅKREVD her — ikke bare valgfritt tier-2
+ *  synlig, se §2.2/§2.4-spenningen: uten dette kan faglærer fylle ut
+ *  tittel/brief/artefakt, glemme kull, og Publiser ville stille tatt backendens
+ *  gamle sti (isRichPayload keyer på tittel der, men KREVER kull når tittel
+ *  finnes — 400 cohort_required). Denne gaten forhindrer at faglærer i det
+ *  hele tatt kommer dit (defense in depth, Task 7-review). */
+export function canPublishForm(f: FormState, creatingProduction: boolean, publishing: boolean): boolean {
+  const hasProduction = creatingProduction || !!f.productionId;
+  return hasProduction && f.title.trim().length > 0 && !!f.cohortId && !publishing;
+}
+
 export function DeepLinkPicker() {
   const [launchId] = useState<string | null>(() => educationLtiService.getLaunchId());
   const [productions, setProductions] = useState<Production[]>([]);
@@ -190,8 +202,7 @@ export function DeepLinkPicker() {
     return () => clearTimeout(t);
   }, [hintText, reduceMotion]);
 
-  const hasProduction = creatingProduction || !!f.productionId;
-  const canPublish = hasProduction && f.title.trim().length > 0 && !publishing;
+  const canPublish = canPublishForm(f, creatingProduction, publishing);
 
   const publish = async () => {
     if (!launchId) { setError('Mangler launch-kontekst. Last siden på nytt og prøv igjen.'); return; }
@@ -243,6 +254,7 @@ export function DeepLinkPicker() {
                 <TextField
                   size="small" select label="Kull" value={f.cohortId}
                   onChange={(e) => setField('cohortId', e.target.value)}
+                  helperText={(!f.cohortId && f.title.trim()) ? 'Velg kull for å publisere oppgaven' : undefined}
                   sx={{ minWidth: { sm: 170 }, ...fieldTouchSx }}
                 >
                   <MenuItem value="">Ingen</MenuItem>
