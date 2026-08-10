@@ -103,12 +103,14 @@ export function artifactToTab(artifactKind: string): string {
  * `tab` er en artifact_kind (f.eks. `a.artifactKind` fra AssignmentsTab) —
  * den mappes internt via `artifactToTab` før den blir `?tab=`. `opts.view`
  * blir `?view=` (f.eks. `story-logic`) for dyp-lenking inn i en spesifikk
- * visning i Story Arc Studio.
+ * visning i Story Arc Studio. `opts.assignmentId` blir `?assignment=` — lar
+ * ankomst-stripen i produksjons-modus (EduAssignmentArrivalStripe) hente
+ * riktig oppgave-kontekst (tittel/brief/frist) uten et eget deep-link-signal.
  */
 export function openProductionInRoleRoom(
   projectId: string,
   tab?: string,
-  opts?: { asStudent?: boolean; view?: string },
+  opts?: { asStudent?: boolean; view?: string; assignmentId?: string },
 ): void {
   try {
     const url = new URL(window.location.href);
@@ -118,6 +120,8 @@ export function openProductionInRoleRoom(
     else url.searchParams.delete('tab');
     if (opts?.view) url.searchParams.set('view', opts.view);
     else url.searchParams.delete('view');
+    if (opts?.assignmentId) url.searchParams.set('assignment', opts.assignmentId);
+    else url.searchParams.delete('assignment');
     if (opts?.asStudent) {
       url.searchParams.set('edu', '1');
       window.location.assign(url.toString());

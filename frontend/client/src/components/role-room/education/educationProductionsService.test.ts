@@ -89,6 +89,17 @@ describe('openProductionInRoleRoom', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
+  it('setter ?assignment= når opts.assignmentId er satt (student-ankomststripe-signal)', () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    openProductionInRoleRoom('proj-1', 'story-arc', { asStudent: true, view: 'story-logic', assignmentId: 'asg-1' });
+
+    expect(assignSpy).toHaveBeenCalledTimes(1);
+    const calledUrl = assignSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('assignment=asg-1');
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it('faglærer-default (ingen opts) setter ikke ?view=', () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 

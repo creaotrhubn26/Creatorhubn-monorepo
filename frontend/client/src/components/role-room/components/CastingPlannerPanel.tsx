@@ -244,6 +244,9 @@ const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ def
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
 const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
+// Student-ankomststripe i produksjons-modus (edu=1 + assignment=<id>) — se
+// EduAssignmentArrivalStripe.tsx for detaljer. Lazy som søsknene over.
+const EduAssignmentArrivalStripe = lazy(() => import('../education/EduAssignmentArrivalStripe').then(m => ({ default: m.EduAssignmentArrivalStripe })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -9779,6 +9782,16 @@ type RoleRoomProjectWorkspaceState = {
           },
         }}
       />
+
+      {/* Student-ankomststripe (edu=1 + assignment=<id>) — tynt, ikke-blokkerende
+          oppgavekontekst-bånd over produksjonsverktøyet for bro-studenter.
+          Selvstyrt (leser egne URL-param + henter oppgave), returnerer null
+          når vilkårene ikke er oppfylt. Se EduAssignmentArrivalStripe.tsx. */}
+      {isEduStudentSession && (
+        <Suspense fallback={null}>
+          <EduAssignmentArrivalStripe />
+        </Suspense>
+      )}
 
       {/* Tabs */}
       <Box

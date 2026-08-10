@@ -279,7 +279,7 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
                         {a.brief && <Typography sx={{ fontSize: 12.5, color: 'text.secondary', mt: 0.75 }}>{a.brief}</Typography>}
                       </Box>
                       {a.productionProjectId && (
-                        <Button size="small" variant="text" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(a.productionProjectId as string, a.artifactKind || undefined, { asStudent: studentMode, view: a.artifactView || undefined })}
+                        <Button size="small" variant="text" startIcon={<OpenIcon />} onClick={() => openProductionInRoleRoom(a.productionProjectId as string, a.artifactKind || undefined, { asStudent: studentMode, view: a.artifactView || undefined, assignmentId: a.id })}
                           sx={{ color: '#e9d5ff', textTransform: 'none', whiteSpace: 'nowrap' }}>
                           Åpne
                         </Button>
@@ -309,7 +309,9 @@ function StudentViewContent({ view, studentMode = false }: { view: StudentView; 
   );
 }
 
-function AssignmentSubmit({ assignment }: { assignment: StudentViewAssignment }) {
+/** Eksportert for gjenbruk i student-ankomststripen (EduAssignmentArrivalStripe,
+ *  «Lever»-drawer i produksjons-modus) — samme leverings-UI, ikke duplisert. */
+export function AssignmentSubmit({ assignment }: { assignment: StudentViewAssignment }) {
   const [savedLink, setSavedLink] = useState(assignment.link);
   const [status, setStatus] = useState(assignment.submissionStatus);
   const [link, setLink] = useState(assignment.link ?? '');
