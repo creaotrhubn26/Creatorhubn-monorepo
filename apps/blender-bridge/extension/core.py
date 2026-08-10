@@ -359,6 +359,48 @@ def render_final(
             "engine": "CYCLES", "qa": validate_scene()}
 
 
+# ---------------------------------------------------------------- AI-oppgaver
+# «Angre hele AI-oppgaven» (§12): hver muterende operasjon pusher ett undo-steg
+# (_undo_push) — vi teller dem per oppgave og ruller tilbake N steg.
+
+_TASK = {"label": None, "ops": 0}
+
+
+def begin_task(label: str) -> dict:
+    """Start en AI-transaksjon. Alle muterende kall telles til undo_task/end_task."""
+    _TASK["label"] = label
+    _TASK["ops"] = 0
+    _undo_push(f"TASK: {label}")
+    return {"task": label, "ops": 0}
+
+
+def task_status() -> dict:
+    return {"task": _TASK["label"], "ops": _TASK["ops"]}
+
+
+def end_task() -> dict:
+    summary = task_status()
+    _TASK["label"] = None
+    _TASK["ops"] = 0
+    return {"ended": summary}
+
+
+def undo_task() -> dict:
+    """Rull tilbake HELE aktiv AI-oppgave (N undo-steg)."""
+    count = _TASK["ops"]
+    undone = 0
+    for _ in range(count):
+        try:
+            bpy.ops.ed.undo()
+            undone += 1
+        except RuntimeError:
+            break
+    summary = {"task": _TASK["label"], "requested": count, "undone": undone}
+    _TASK["label"] = None
+    _TASK["ops"] = 0
+    return summary
+
+
 def undo_push(label: str = "AI step") -> dict:
     _undo_push(label)
     return {"pushed": label}
@@ -380,6 +422,8 @@ def _require_object(name: str):
 
 
 def _undo_push(label: str) -> None:
+    if _TASK["label"] is not None and not label.startswith("TASK:"):
+        _TASK["ops"] += 1
     try:
         bpy.ops.ed.undo_push(message=f"[Claude] {label}")
     except RuntimeError:
@@ -420,6 +464,10 @@ TOOLS: dict[str, dict] = {
     "configure_camera": {"level": "modify", "fn": configure_camera, "description": "Endre kamera: focal_length_mm?, dof_enabled?, dof_focus_object?, f_stop?. Args: name + felter.", "mutates": True},
     "render_preview": {"level": "safe", "fn": render_preview, "description": "Rask EEVEE-preview til PNG. Args: filepath? (default temp), resolution? (default 512). Returnerer filsti — les bildet for visuell inspeksjon.", "mutates": False},
     "render_final": {"level": "safe", "fn": render_final, "description": "Cycles-render i full kvalitet (default 1920px/128 samples). Bruk ETTER preview-loopen. Args: filepath?, resolution?, samples?.", "mutates": False},
+    "begin_task": {"level": "safe", "fn": begin_task, "description": "Start en AI-transaksjon: alle muterende kall telles så hele oppgaven kan angres samlet. Args: label. Kall FØRST i fler-stegs oppgaver.", "mutates": False},
+    "task_status": {"level": "safe", "fn": task_status, "description": "Aktiv AI-oppgave + antall muterende operasjoner.", "mutates": False},
+    "end_task": {"level": "safe", "fn": end_task, "description": "Avslutt AI-oppgaven (beholder endringene).", "mutates": False},
+    "undo_task": {"level": "modify", "fn": undo_task, "description": "Rull tilbake HELE aktiv AI-oppgave (alle muterende steg siden begin_task).", "mutates": True},
     "undo_push": {"level": "safe", "fn": undo_push, "description": "Marker starten på en AI-transaksjon i undo-historikken. Args: label.", "mutates": False},
     "undo": {"level": "safe", "fn": undo, "description": "Angre siste steg.", "mutates": True},
 }

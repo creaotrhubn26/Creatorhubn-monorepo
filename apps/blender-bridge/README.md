@@ -22,13 +22,15 @@ Claude (MCP) → mcp/blender_mcp_server.py → HTTP :7717 → kommando-kø
    ```
 3. Blender må kjøre med extensionen aktiv når verktøyene brukes.
 
-## Verktøy (27)
+## Verktøy (31)
 
 Observer: `get_scene` `get_selection` `inspect_object` `validate_scene`
 Executor: `create_object` `delete_object` `set_transform` `create_material`
 `set_material_parameter` `assign_material` `create_light` `configure_light`
 `create_camera` `point_camera_at` `configure_camera` `render_preview`
 `render_final` `undo_push` `undo`
+AI-oppgaver: `begin_task` `task_status` `end_task` `undo_task` («Angre
+AI-oppgave»-knappen i panelet ruller tilbake hele oppgaven)
 Geometry Nodes: `create_geometry_nodes` `gn_add_node` `gn_connect`
 `gn_set_input` `gn_expose_parameter` `gn_set_parameter` `gn_get_graph`
 `gn_evaluated_stats`
@@ -80,7 +82,12 @@ pek plugin dit): `blender-core` (loopen + sikkerhet), `blender-scene-inspector`
 `blender-materials` (PBR-verdier), `blender-camera` (brennvidde/DOF/komposisjon),
 `blender-product-render` (orkestrering), `blender-scene-qa` (aldri «done» uten).
 
-## Ikke enda (kommer)
+## Subagents (fase 7)
 
-Subagents, stil-skills (apple-product, automotive, …),
-«Angre hele AI-oppgaven»-knapp (undo-steg pushes per mutasjon i dag).
+`agents/` — kopier til `.claude/agents/`: `blender-lighting-artist` (kun
+inspeksjon+lys+preview), `blender-modeling-artist` (geometri+GN, delete krever
+panel-godkjenning), `blender-technical-director` (orchestrator §33 — delegerer,
+QA-er, kan undo_task). Verktøy-begrensningene ligger i agent-frontmatter.
+
+Stil-skills (§31): `blender-style-apple-product`, `blender-style-automotive` —
+brukes SAMMEN med blender-product-render.
