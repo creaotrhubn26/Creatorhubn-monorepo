@@ -932,6 +932,9 @@ function App() {
                   <Route path="/partner/terms" component={PartnerTerms as React.ComponentType<any>} />
                   <Route path="/partner-portal" component={PartnerPortalPage as React.ComponentType<any>} />
                   <Route path="/partner-portal/guide" component={() => { window.location.replace("/partner-guide/index.html"); return null; }} />
+                  {/* Alias for /partner/apply,/partner/terms-mønsteret — canonical (brukt i e-post/Stripe-lenker) er /partner-portal, urørt */}
+                  <Route path="/partner/portal" component={PartnerPortalPage as React.ComponentType<any>} />
+                  <Route path="/partner/portal/guide" component={() => { window.location.replace("/partner-guide/index.html"); return null; }} />
                   <Route path="/showcase/photographer" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/showcase/videographer" component={VideoShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/photo-showcase" component={PhotoShowcaseRouteWrapper as React.ComponentType<any>} />
