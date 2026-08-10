@@ -1,0 +1,47 @@
+# Render-blueprint for en EGEN, dedikert tjeneste for Reknaren (regnskaps-API-et).
+# Referanse/utgangspunkt for manuell opprettelse — Reknaren er isolert fra
+# Creatorhub-backenden (egen tjeneste, egen Neon-database `reknaren`).
+#
+# Databasen ligger allerede i det betalte Neon-prosjektet (wispy-bar-06530976):
+# sett DATABASE_URL til …-pooler…/reknaren?sslmode=require (settes manuelt, ikke i repo).
+#
+# Helsesjekk: /api/health (uten auth, SELECT 1, ingen secrets) — brukes både av
+# Render for null-nedetid-deploy og av CreatorHub Control Center (Part B: sett
+# CONTROL_CENTER_REKNAREN_HEALTH_URL på creatorhub-backend til <denne URL>/api/health).
+services:
+  - type: web
+    name: reknaren
+    runtime: node
+    region: frankfurt # nærmest Neon eu-west-2
+    plan: starter
+    rootDir: apps/reknaren
+    # Bygger backend + web-SPA (main.ts serverer web/dist når den finnes).
+    buildCommand: npm install && npm run build && npm --prefix web install && npm --prefix web run build
+    # Migrasjoner kjøres før ny versjon går live (idempotent, _reknaren_migrations vokter).
+    preDeployCommand: npm run migrate
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # reknaren Neon-URL — settes manuelt
+      - key: REKNAREN_AUTH_SECRET
+        generateValue: true # sikker sesjons-HMAC (påkrevd i prod)
+      # Valgfrie integrasjoner — settes når legitimasjon finnes (ellers ærlig inaktiv):
+      - key: REKNAREN_LOVDATA_API_KEY
+        sync: false
+      - key: MASKINPORTEN_ENV
+        sync: false
+      - key: MASKINPORTEN_CLIENT_ID
+        sync: false
+      - key: MASKINPORTEN_SCOPE
+        sync: false
+      - key: MASKINPORTEN_PRIVATE_KEY
+        sync: false
+      - key: MASKINPORTEN_KEY_ID
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_RELEASE
+        sync: false

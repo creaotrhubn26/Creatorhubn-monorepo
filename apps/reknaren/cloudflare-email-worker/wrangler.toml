@@ -1,0 +1,11 @@
+name = "reknaren-inbound-email"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+# Secrets settes med:  wrangler secret put REKNAREN_WEBHOOK_URL
+#                      wrangler secret put REKNAREN_INBOUND_SECRET
+# (ikke sjekk dem inn her)
+
+# Email Routing kobles til denne workeren i Cloudflare-dashbordet
+# (Email → Email Routing → Routes → Catch-all → Send to a Worker), ikke via
+# wrangler. Se README.md.

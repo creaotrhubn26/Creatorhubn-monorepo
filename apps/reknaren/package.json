@@ -1,0 +1,47 @@
+{
+  "name": "@creatorhubn/reknaren",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Norsk regnskapsplattform — modulær monolitt (arbeidsnavn i konfig, ikke i domenemodellen)",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/api/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/api/main.js",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "migrate:test": "DATABASE_URL=$TEST_DATABASE_URL tsx scripts/migrate.ts",
+    "backup": "tsx scripts/backup.ts",
+    "backup:verify": "tsx scripts/verify-backup.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@sentry/node": "^7.120.4",
+    "@types/busboy": "^1.5.4",
+    "busboy": "^1.6.0",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^4.5.7",
+    "imapflow": "^1.4.9",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.11.10",
+    "@types/supertest": "^6.0.2",
+    "fast-check": "^3.23.1",
+    "playwright-core": "^1.61.1",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

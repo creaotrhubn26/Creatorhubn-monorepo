@@ -1,0 +1,157 @@
+/**
+ * Stripe → regnskap-synk mot ekte Postgres: betalte fakturaer → kunde-upsert +
+ * UTKAST-salgsfaktura (ikke bokført) + idempotens.
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Db } from '../src/db/pool.js';
+import { StaticStripeStub, type StripePaidInvoice } from '../src/integrations/stripe.js';
+import { syncStripeRevenue } from '../src/integrations/stripe-sync.js';
+import { createOrganization, ensureUser } from '../src/orgs/service.js';
+import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
+import { setupTestDb, truncateAll } from './helpers.js';
+
+let db: Db;
+let orgId: string;
+let userId: string;
+const rules = buildNorwegianRuleRegister();
+
+function inv(over: Partial<StripePaidInvoice> & { id: string }): StripePaidInvoice {
+  return {
+    number: 'INV-' + over.id,
+    hostedInvoiceUrl: 'https://invoice.stripe.com/' + over.id,
+    stripeCustomerId: 'cus_' + over.id,
+    customerName: 'Kunde ' + over.id,
+    customerEmail: over.id + '@example.com',
+    amountMinor: 49900n,
+    currency: 'NOK',
+    description: 'Leadgrid Solo Pro',
+    date: '2026-01-15',
+    periodStart: null,
+    periodEnd: null,
+    lineItems: [],
+    sourceProduct: 'leadgrid',
+    ...over,
+  };
+}
+
+beforeAll(async () => {
+  db = await setupTestDb();
+  await truncateAll();
+  userId = await ensureUser(db, 'stripe-synk@example.com', 'Synktester');
+  const org = await createOrganization(db, {
+    name: 'Creatorhub AS',
+    orgForm: 'AS',
+    vatStatus: 'not_registered',
+    orgNumber: '937518684',
+    createdByUserId: userId,
+  });
+  orgId = org.id;
+});
+
+afterAll(async () => {
+  await db.end();
+});
+
+const opts = () => ({ organizationId: orgId, actor: { userId, role: 'owner' } });
+
+describe('Stripe-inntektssynk', () => {
+  it('registrerer betalende kunder + utkast-salgsfaktura, hopper ærlig over ikke-NOK', async () => {
+    const stub = new StaticStripeStub([
+      inv({ id: 'in_a' }),
+      inv({ id: 'in_b', customerEmail: 'delt@example.com' }),
+      inv({ id: 'in_usd', currency: 'USD', amountMinor: 1000n }),
+    ]);
+    const r = await syncStripeRevenue(db, rules, stub, opts());
+    expect(r.imported).toBe(2);
+    expect(r.skippedCurrency).toBe(1);
+    expect(r.customersCreated).toBe(2);
+    expect(r.draftInvoiceIds).toHaveLength(2);
+    expect(r.reviewNote).toMatch(/fagkontrolleres/);
+
+    // Utkast-fakturaene finnes og er IKKE bokført (ingen journal_entry_id).
+    const drafts = await db.query<{ status: string; journal_entry_id: string | null; net_minor: string }>(
+      `SELECT status, journal_entry_id, net_minor FROM invoices WHERE organization_id = $1 ORDER BY created_at`,
+      [orgId],
+    );
+    expect(drafts.rows).toHaveLength(2);
+    for (const row of drafts.rows) {
+      expect(row.status).toBe('draft');
+      expect(row.journal_entry_id).toBeNull();
+      expect(row.net_minor).toBe('49900'); // ordrett fra Stripe, ingen mva (kode 7)
+    }
+
+    // Importene er registrert (idempotens-anker), inkl. den valuta-hoppede.
+    const imports = await db.query<{ status: string }>(
+      `SELECT status FROM stripe_imports WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(imports.rows).toHaveLength(3);
+    expect(imports.rows.filter((r) => r.status === 'skipped_currency')).toHaveLength(1);
+  });
+
+  it('segmenterer inntekt per produkt: dimensjoner opprettet + utkast-linje tagget', async () => {
+    // Produktlinjene finnes nå som prosjektdimensjoner.
+    const dims = await db.query<{ code: string }>(
+      `SELECT code FROM projects WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(dims.rows.map((r) => r.code)).toEqual(
+      expect.arrayContaining(['CREATORHUB', 'ROLEROOM', 'LEADGRID']),
+    );
+    // Utkast-linjene fra leadgrid-fakturaene er tagget med LEADGRID-dimensjonen.
+    const lines = await db.query<{ project: string | null }>(
+      `SELECT project FROM invoice_lines WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(lines.rowCount).toBeGreaterThan(0);
+    expect(lines.rows.every((r) => r.project === 'LEADGRID')).toBe(true);
+  });
+
+  it('er idempotent: ny kjøring importerer ingenting på nytt', async () => {
+    const stub = new StaticStripeStub([inv({ id: 'in_a' }), inv({ id: 'in_b', customerEmail: 'delt@example.com' })]);
+    const r = await syncStripeRevenue(db, rules, stub, opts());
+    expect(r.imported).toBe(0);
+    expect(r.alreadyImported).toBe(2);
+    // Fortsatt bare 2 utkast totalt.
+    const count = await db.query<{ n: string }>(`SELECT count(*)::text n FROM invoices WHERE organization_id = $1`, [orgId]);
+    expect(count.rows[0]!.n).toBe('2');
+  });
+
+  it('gjenbruker eksisterende kunde ved samme e-post', async () => {
+    const before = await db.query<{ n: string }>(`SELECT count(*)::text n FROM customers WHERE organization_id = $1`, [orgId]);
+    // Ny faktura til en e-post som allerede har en kunde (delt@example.com).
+    const stub = new StaticStripeStub([inv({ id: 'in_c', customerEmail: 'delt@example.com' })]);
+    const r = await syncStripeRevenue(db, rules, stub, opts());
+    expect(r.imported).toBe(1);
+    expect(r.customersCreated).toBe(0); // ingen ny kunde
+    const after = await db.query<{ n: string }>(`SELECT count(*)::text n FROM customers WHERE organization_id = $1`, [orgId]);
+    expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
+  });
+
+  it('AI-/overage-linjer bokføres på AI-inntektskonto (3210), vanlige på 3100', async () => {
+    const stub = new StaticStripeStub([
+      inv({
+        id: 'in_ai',
+        lineItems: [
+          { description: 'AI overage', amountMinor: 5000n, quantity: 1, periodStart: null, periodEnd: null, sourceProduct: 'creatorhub' },
+          { description: 'CreatorHub Pro', amountMinor: 29900n, quantity: 1, periodStart: null, periodEnd: null, sourceProduct: 'creatorhub' },
+        ],
+      }),
+    ]);
+    await syncStripeRevenue(db, rules, stub, opts());
+    const lines = await db.query<{ description: string; revenue_account: string }>(
+      `SELECT il.description, il.revenue_account
+       FROM invoice_lines il
+       JOIN stripe_imports si ON si.invoice_id = il.invoice_id
+       WHERE si.organization_id = $1 AND si.stripe_invoice_id = 'in_ai'`,
+      [orgId],
+    );
+    expect(lines.rows.find((r) => /AI overage/.test(r.description))!.revenue_account).toBe('3210');
+    expect(lines.rows.find((r) => /CreatorHub Pro/.test(r.description))!.revenue_account).toBe('3100');
+  });
+
+  it('uten Stripe-nøkkel kaster synken (ærlig inaktiv)', async () => {
+    const stub = new StaticStripeStub([], { hasApiKey: false });
+    await expect(syncStripeRevenue(db, rules, stub, opts())).rejects.toThrow();
+  });
+});
