@@ -72,7 +72,17 @@ def set_node_input(group: str, node: str, input: str, value) -> dict:
     target = _require_node(tree, node)
     socket = _require_socket(target.inputs, input, f"{node}.inputs")
     core._undo_push(f"set_node_input {node}.{input}")
-    socket.default_value = value
+    # MATERIAL/OBJECT-sockets: slå opp datablock ved navn (JSON kan ikke bære
+    # bpy-referanser — GeometryNodeSetMaterial m.fl. trenger dette).
+    if socket.type == "MATERIAL" and isinstance(value, str):
+        resolved = bpy.data.materials.get(value)
+        if resolved is None:
+            raise ValueError(f"ukjent materiale '{value}'")
+        socket.default_value = resolved
+    elif socket.type == "OBJECT" and isinstance(value, str):
+        socket.default_value = core._require_object(value)
+    else:
+        socket.default_value = value
     return {"node": node, "input": input, "value": value}
 
 
