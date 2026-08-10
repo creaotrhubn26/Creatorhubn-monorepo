@@ -593,7 +593,10 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         const assignmentId = custom ? String(custom.assignment_id ?? "").trim() : "";
         if (artifactKind) {
           pParams.set("tab", artifactToTab(artifactKind));
-          pParams.set("edu", "1");
+          // Kun studenter skal se «Min side»-knappen (student-ankomst-stripen
+          // selv-skjuler for ikke-studenter, men edu=1 driver også knappen) —
+          // en faglærer som forhåndsviser egen artefakt-lenke skal IKKE få den.
+          if (identity.educationRole === "student") pParams.set("edu", "1");
         }
         if (artifactView) pParams.set("view", artifactView);
         if (assignmentId) pParams.set("assignment", assignmentId);

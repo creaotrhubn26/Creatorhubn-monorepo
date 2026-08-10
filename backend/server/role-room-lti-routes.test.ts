@@ -284,14 +284,14 @@ describe("POST /lti/launch (custom.production_id → åpner artefakt-view)", () 
   // Ekte RSA-nøkkelpar + signert id_token (RS256), akkurat som en ekte LMS ville
   // sendt — så launchen går gjennom ekte JWKS-oppslag + signatur-verifisering,
   // ikke bare mockes forbi. fetchPlatform() bruker global fetch → mocket her.
-  function launchPool(custom?: Record<string, unknown>) {
+  function launchPool(custom?: Record<string, unknown>, roles: string[] = ["http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"]) {
     const key = generateToolKeypair();
     const nonce = "nonce-1";
     const now = Math.floor(Date.now() / 1000);
     const payload: Record<string, unknown> = {
       iss: ISSUER, aud: CLIENT_ID, sub: "stu-1", iat: now, exp: now + 300, nonce,
       email: "elev@skole.no", name: "Elev Elevsen",
-      [ROLES]: ["http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"],
+      [ROLES]: roles,
       "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiResourceLinkRequest",
       "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
     };
@@ -338,6 +338,20 @@ describe("POST /lti/launch (custom.production_id → åpner artefakt-view)", () 
     const u = new URL(res.redirectedTo);
     expect(u.searchParams.get("tab")).toBe("mystery-kind");
     expect(u.searchParams.get("edu")).toBe("1");
+  });
+
+  it("faglærer (Instructor) launcher artefakt-lenke → tab/view SATT men INGEN edu=1 (unngår student-'Min side'-knapp på faglærer-preview)", async () => {
+    const { pool, idToken } = launchPool(
+      { production_id: "proj-4", artifact_kind: "story-arc", artifact_view: "story-logic" },
+      ["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"],
+    );
+    const rs = mountHandlers(createLtiRouter(pool, { activeSessions: new Map() }));
+    const res = makeRes();
+    await run(H(rs, "POST", "/lti/launch"), { body: { id_token: idToken, state: "st1" } }, res);
+    const u = new URL(res.redirectedTo);
+    expect(u.searchParams.get("tab")).toBe("story-arc-studio");
+    expect(u.searchParams.get("view")).toBe("story-logic");
+    expect(u.searchParams.has("edu")).toBe(false);
   });
 
   it("kun production_id, INGEN artifact-custom → dagens oppførsel uendret (ingen tab/view/edu/assignment)", async () => {
