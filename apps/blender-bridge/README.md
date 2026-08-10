@@ -59,6 +59,16 @@ blender --background --python apps/blender-bridge/tests/run_headless_server.py
 curl http://127.0.0.1:7717/health
 ```
 
+## Permissions (fase 5)
+
+Hvert verktøy har nivå: **safe** (kjøres alltid) · **modify** (kjøres når
+«Auto-godkjenn endringer» er PÅ i N-panelet — default) · **destructive**
+(krever ALLTID klikk i panelet; kan ikke godkjennes over HTTP — agenten kan
+ikke godkjenne seg selv). Gated kall returnerer `approval_id`; Claude poller
+med `check_approval`. Panelet viser ventende godkjenninger + operasjonslogg.
+`render_final` leverer alltid `qa` (validate_scene) i resultatet.
+Headless CI: `BRIDGE_AUTO_APPROVE=1` (settes av mennesket som starter prosessen).
+
 ## Skills-biblioteket (fase 3–4)
 
 `skills/` — last inn i Claude (kopier/symlink til `.claude/skills/` eller
@@ -69,6 +79,5 @@ pek plugin dit): `blender-core` (loopen + sikkerhet), `blender-scene-inspector`
 
 ## Ikke enda (kommer)
 
-Permissions-nivåer/hooks (delete er eneste destruktive verktøy nå — undo-steg
-pushes før hver mutasjon), Geometry Nodes, subagents, stil-skills
-(apple-product, automotive, …).
+Geometry Nodes, subagents, stil-skills (apple-product, automotive, …),
+«Angre hele AI-oppgaven»-knapp (undo-steg pushes per mutasjon i dag).
