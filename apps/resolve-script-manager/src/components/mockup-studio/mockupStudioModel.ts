@@ -142,6 +142,8 @@ export function deriveTimeline(doc: MockupDoc): MockupTimeline {
     t = Math.max(t, len + 0.4);
   }
   doc.texts.forEach((tx, i) => clips.push({ id: `rev_${tx.id}`, label: 'tekst inn', track: 2, start: 0.8 + i * 0.2, len: 0.7, kind: 'reveal', ref: tx.id }));
+  // Frie bilder (grid/collage): stagger-reveal → «reel»-inntoning av menyen.
+  (doc.images ?? []).forEach((im, i) => clips.push({ id: `rev_${im.id}`, label: 'bilde inn', track: 3, start: 0.1 + i * 0.12, len: 0.7, kind: 'reveal', ref: im.id }));
   const duration = Math.max(3, ...clips.map((c) => c.start + c.len)) + 0.5;
   return { duration, clips };
 }

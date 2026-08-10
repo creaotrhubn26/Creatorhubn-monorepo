@@ -625,9 +625,7 @@ export function measureTextHeight(t: MockupTextSlot): number {
 }
 
 /** Frittstående bilde-element (mat-foto/collage): avrundet, fit cover/contain, valgfri skygge + rotasjon. */
-async function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudioModel').MockupImageSlot): Promise<void> {
-  const img = await loadImage(im.image).catch(() => null);
-  if (!img) return;
+function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudioModel').MockupImageSlot, img: HTMLImageElement): void {
   ctx.save();
   if (im.rotation) { const cx = im.x + im.w / 2, cy = im.y + im.h / 2; ctx.translate(cx, cy); ctx.rotate((im.rotation * Math.PI) / 180); ctx.translate(-cx, -cy); }
   if (im.shadow) {
@@ -912,7 +910,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   const typeTFor = (ref: string): number | undefined =>
     tl ? (clipLocalT(tl, ref, 'type', t as number) ?? undefined) : (t ?? undefined);
   // Reveal per-klipp om timelinen har et reveal-klipp for elementet; ellers global stagger.
-  const revealOf = (ref: string, kind: 'device' | 'text', i: number, total: number): Reveal | null => {
+  const revealOf = (ref: string, kind: 'device' | 'text' | 'image', i: number, total: number): Reveal | null => {
     if (t == null) return null;
     if (tl) { const lt = clipLocalT(tl, ref, 'reveal', t); if (lt != null) return revealFromLocal(kind, lt); }
     return revealFor(kind, i, total, t);
@@ -941,8 +939,18 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     return canvas;
   }
 
-  // Frittstående bilde-elementer (bak enheter/tekst — mat-foto/collage-lag).
-  if (doc.images?.length) { for (const im of doc.images) await drawImageSlot(ctx, im); }
+  // Frittstående bilde-elementer (bak enheter/tekst) — med stagger-reveal når animert.
+  if (doc.images?.length) {
+    for (let i = 0; i < doc.images.length; i++) {
+      const im = doc.images[i];
+      const rev = t != null ? revealOf(im.id, 'image', i, doc.images.length) : null;
+      if (rev && rev.alpha <= 0.001) continue;
+      const img = await loadImage(im.image).catch(() => null);
+      if (!img) continue;
+      if (rev) withReveal(ctx, rev, im.x + im.w / 2, im.y + im.h / 2, () => drawImageSlot(ctx, im, img));
+      else drawImageSlot(ctx, im, img);
+    }
+  }
 
   // Enheter i dokument-rekkefølge (senere = øverst), animert avsløring om t satt.
   for (let i = 0; i < doc.devices.length; i++) {

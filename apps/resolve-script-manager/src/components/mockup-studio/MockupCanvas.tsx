@@ -110,6 +110,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const outRef = useRef(outT); outRef.current = outT;
   const loopRef = useRef(loop); loopRef.current = loop;
   const hasTyping = doc.devices.some((d) => (!!d.typeAnim?.text || !!d.threeD?.kf) && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
+  // Vis transport/timeline også for ren reveal-animasjon (bilder/enheter/tekst glir/popper inn),
+  // ikke bare skrive-animasjon → gjør «reel»-inntoning + GIF/video-eksport tilgjengelig for menyer.
+  const hasMotion = hasTyping || (doc.images?.length ?? 0) > 0 || doc.devices.length > 0 || doc.texts.length > 1;
   const tlDur = deriveTimeline(doc).duration; // timeline-varighet (sek) for timecode + frame-steg
   const tlDurRef = useRef(tlDur);
   tlDurRef.current = tlDur; // onKey-closure er stale (deps [select]) → les dur via ref
@@ -588,7 +591,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       </div>
     </div>
     </div>
-    {hasTyping && (
+    {hasMotion && (
       <>
         {/* Drabar deler: dra opp/ned for å endre timeline-høyde */}
         <div onPointerDown={beginTimelineResize} title="Dra for å endre timeline-høyde" style={gripStyle}><div style={gripBar} /></div>
