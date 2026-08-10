@@ -35,24 +35,16 @@ import { Icons, ToastProvider } from './ui';
 
 export type ViewMode = 'simple' | 'advanced' | 'pro';
 
-/** Reknaren-monogram: skoggrønn flis, kremhvit R, gull-prikk (jf. logo). */
+/** Reknaren-merket (ekte logo-symbol). */
 function LogoMark() {
   return (
-    <svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <rect width="40" height="40" rx="9" fill="#1f4d3a" />
-      <circle cx="29.5" cy="11" r="3.4" fill="#b0913b" />
-      <text
-        x="19"
-        y="29"
-        textAnchor="middle"
-        fontSize="25"
-        fontWeight="800"
-        fill="#f4f3ee"
-        fontFamily="'Avenir Next','Segoe UI',system-ui,sans-serif"
-      >
-        R
-      </text>
-    </svg>
+    <img
+      src="/reknaren-mark.png"
+      width={28}
+      height={28}
+      alt=""
+      style={{ flexShrink: 0, borderRadius: 6, display: 'block' }}
+    />
   );
 }
 
