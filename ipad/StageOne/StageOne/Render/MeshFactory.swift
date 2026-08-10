@@ -102,7 +102,8 @@ enum MeshFactory {
         }
         for i in 0..<segments {
             let b = UInt16(i * 2)
-            idx += [b, b + 2, b + 1, b + 1, b + 2, b + 3]
+            // CCW sett utenfra — RealityKit backface-culler (Metal-passet culler ikke)
+            idx += [b, b + 1, b + 2, b + 2, b + 1, b + 3]
         }
         if capped {
             for (y, n) in [(h, SIMD3<Float>(0, 1, 0)), (-h, SIMD3<Float>(0, -1, 0))] {

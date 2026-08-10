@@ -1,0 +1,75 @@
+# StageOne — fastlane (mønster fra CaptureApp).
+#
+#   fastlane ios beta        → archive + upload til TestFlight
+#   fastlane ios bump_build  → CFBundleVersion = epoch-sekunder
+#
+# Engangs manuelt FØR første kjøring: opprett appen (bundle
+# com.creatorhubn.StageOne) i App Store Connect.
+#
+# Credentials via env (aldri commit): APP_STORE_CONNECT_API_KEY_ID,
+# APP_STORE_CONNECT_API_ISSUER_ID, APP_STORE_CONNECT_API_KEY_CONTENT (.p8 base64),
+# ev. FASTLANE_USER/FASTLANE_PASSWORD lokalt.
+
+default_platform(:ios)
+
+SCHEME  = "StageOne"
+PROJECT = "StageOne.xcodeproj"
+
+def provisioning_xcargs
+  args = ["-allowProvisioningUpdates"]
+  if ENV["ASC_KEY_PATH"] && ENV["APP_STORE_CONNECT_API_KEY_ID"] && ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+    args << "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']}"
+    args << "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_ISSUER_ID']}"
+  end
+  args.join(" ")
+end
+
+platform :ios do
+  desc "Sett CFBundleVersion til epoch-sekunder (unik + strengt økende — xcodegen nullstiller ellers til 1)"
+  lane :bump_build do
+    increment_build_number(build_number: Time.now.to_i.to_s, xcodeproj: PROJECT)
+  end
+
+  private_lane :setup_api_key do
+    if ENV["APP_STORE_CONNECT_API_KEY_CONTENT"]
+      app_store_connect_api_key(
+        key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+        issuer_id: ENV.fetch("APP_STORE_CONNECT_API_ISSUER_ID"),
+        key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
+        is_key_content_base64: true,
+      )
+    end
+  end
+
+  desc "Archive + upload til TestFlight"
+  lane :beta do
+    setup_api_key
+    bump_build
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: "ExportOptions.plist",
+      clean: true,
+      output_directory: "build/",
+      output_name: "StageOne.ipa",
+      xcargs: provisioning_xcargs,
+      export_xcargs: provisioning_xcargs,
+    )
+
+    # Sanity FØR upload (lærdom fra CaptureApp: bruk gyms faktiske sti).
+    ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("Fant ingen IPA etter build_app") unless ipa_path && File.exist?(ipa_path)
+    ipa_mb = (File.size(ipa_path) / 1_000_000.0).round(1)
+    UI.message("IPA klar for upload: #{ipa_path} (#{ipa_mb} MB)")
+    UI.user_error!("IPA er #{ipa_mb} MB (> 200 MB) — Apple avviser") if ipa_mb > 200
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: File.exist?("changelog.txt") ? File.read("changelog.txt") : nil,
+    )
+  end
+end
