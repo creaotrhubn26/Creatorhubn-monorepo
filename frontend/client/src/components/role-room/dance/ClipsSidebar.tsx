@@ -42,6 +42,8 @@ import {
 
 import { listClips, type VideoClip } from './danceVideoService';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface ClipsSidebarProps {
   /** Prosjekt clips skal scopes til. Null = eierens "frie" clips. */
@@ -122,6 +124,7 @@ export default function ClipsSidebar({
   projectId,
   'data-testid': testId = 'clips-sidebar',
 }: ClipsSidebarProps): React.ReactElement {
+  const { t } = useT();
   const [load, setLoad] = React.useState<LoadState>({ phase: 'loading' });
   const [clips, setClips] = React.useState<VideoClip[]>([]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -139,7 +142,7 @@ export default function ClipsSidebar({
     } catch (err) {
       setLoad({
         phase: 'error',
-        message: err instanceof Error ? err.message : 'Kunne ikke laste clips',
+        message: err instanceof Error ? err.message : t('danceClips.s002'),
       });
     }
   }, [projectId]);
@@ -214,7 +217,7 @@ export default function ClipsSidebar({
           Clips
         </Typography>
         <Stack direction="row" spacing={0.25} alignItems="center">
-          <Tooltip title="Oppdater liste">
+          <Tooltip title={t('danceClips.s004')}>
             <IconButton
               size="small"
               onClick={() => { void refresh(); }}
@@ -320,7 +323,7 @@ export default function ClipsSidebar({
                   onClick={() => { void refresh(); }}
                   sx={{ color: danceFlowColors.errorPrimary }}
                 >
-                  Prøv igjen
+                  {t('danceClips.s005')}
                 </Button>
               }
             >
@@ -333,7 +336,7 @@ export default function ClipsSidebar({
           <Box sx={{ p: 2, textAlign: 'center' }} data-testid={`${testId}-empty`}>
             <MovieIcon sx={{ fontSize: 32, color: danceFlowColors.textDisabled, mb: 1 }} />
             <Typography variant="body2" sx={{ color: danceFlowColors.textMuted, mb: 1.5 }}>
-              Ingen clips ennå.
+              {t('danceClips.s000')}
             </Typography>
             <Button
               size="small"
@@ -350,7 +353,7 @@ export default function ClipsSidebar({
                 },
               }}
             >
-              Last opp ditt første
+              {t('danceClips.s003')}
             </Button>
           </Box>
         ) : null}
@@ -358,7 +361,7 @@ export default function ClipsSidebar({
         {load.phase === 'ready' && filteredClips.length === 0 && clips.length > 0 ? (
           <Box sx={{ p: 2, textAlign: 'center' }} data-testid={`${testId}-no-matches`}>
             <Typography variant="caption" sx={{ color: danceFlowColors.textMuted }}>
-              Ingen clips matchet "{search}".
+              {t('danceClips.s001')}{search}".
             </Typography>
           </Box>
         ) : null}

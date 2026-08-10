@@ -59,6 +59,8 @@ import type { Choreography } from './choreographyTypes';
 import type { Rehearsal } from './rehearsalTypes';
 import type { Dancer, Formation } from './formationTypes';
 import { getInitials } from './dancerProfile';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
@@ -126,6 +128,7 @@ export function RehearsalPlannerConnected({
   projectId,
   onOpenDancerProfile,
 }: RehearsalPlannerConnectedProps): React.ReactElement {
+  const { t } = useT();
   const [state, setState] = React.useState<LoadState>({ phase: 'loading' });
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>('idle');
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -195,7 +198,7 @@ export function RehearsalPlannerConnected({
     } catch (err) {
       setState({
         phase: 'error',
-        message: err instanceof Error ? err.message : 'Kunne ikke laste prøvelogg',
+        message: err instanceof Error ? err.message : t('danceRehearsalConn.s002'),
       });
     }
   }, [projectId]);
@@ -237,7 +240,7 @@ export function RehearsalPlannerConnected({
       setTimeout(() => setSaveStatus('idle'), 1800);
     } catch (err) {
       setSaveStatus('error');
-      setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      setSaveError(err instanceof Error ? err.message : t('danceRehearsalConn.s001'));
     }
   }, [state]);
 
@@ -284,7 +287,7 @@ export function RehearsalPlannerConnected({
       >
         <CircularProgress size={28} sx={{ color: PURPLE }} />
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
-          Laster prøvelogg…
+          {t('danceRehearsalConn.s005')}
         </Typography>
       </Stack>
     );
@@ -297,7 +300,7 @@ export function RehearsalPlannerConnected({
           severity="error"
           action={
             <Button color="inherit" size="small" onClick={() => void initialLoad()}>
-              Prøv igjen
+              {t('danceRehearsalConn.s006')}
             </Button>
           }
         >
@@ -310,14 +313,14 @@ export function RehearsalPlannerConnected({
   if (state.phase === 'empty') {
     return (
       <Stack alignItems="center" justifyContent="center" spacing={2} sx={{ minHeight: 320 }}>
-        <Typography sx={{ fontWeight: 700 }}>Ingen koreografier i prosjektet ennå.</Typography>
+        <Typography sx={{ fontWeight: 700 }}>{t('danceRehearsalConn.s000')}</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => void initialLoad()}
           sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, textTransform: 'none' }}
         >
-          Last på nytt
+          {t('danceRehearsalConn.s004')}
         </Button>
       </Stack>
     );
@@ -342,7 +345,7 @@ export function RehearsalPlannerConnected({
         {saveStatus === 'saved' ? (
           <Chip
             icon={<SavedIcon sx={{ fontSize: 16 }} />}
-            label="Lagret"
+            label={t('danceRehearsalConn.s003')}
             size="small"
             sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark, fontWeight: 600 }}
           />

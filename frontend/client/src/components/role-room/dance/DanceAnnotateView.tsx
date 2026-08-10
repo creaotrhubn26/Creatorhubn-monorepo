@@ -52,6 +52,8 @@ import {
 // categoryByShortcut fra danceMovementCategories er erstattet av dynamisk
 // shortcut-lookup mot catalog (1-9 brukerdefinerte snarveier).
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export type AnnotateSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -87,6 +89,7 @@ export default function DanceAnnotateView({
   readOnly = false,
   onSaveStatusChange,
 }: DanceAnnotateViewProps): React.ReactElement {
+  const { t } = useT();
   // Catalog: categories + labels (auto-seedet defaults + brukerens egne).
   const catalog = useDanceAnnotationCatalog({ projectId });
 
@@ -124,7 +127,7 @@ export default function DanceAnnotateView({
     } catch (err) {
       inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1);
       setSaveStatus('error');
-      setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      setSaveError(err instanceof Error ? err.message : t('danceAnnotate.s001'));
       throw err;
     }
   }, []);
@@ -170,7 +173,7 @@ export default function DanceAnnotateView({
       })
       .catch((err) => {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : 'Kunne ikke laste annotations');
+        setLoadError(err instanceof Error ? err.message : t('danceAnnotate.s002'));
       });
     return () => { cancelled = true; };
   }, [clipId]);
@@ -205,7 +208,7 @@ export default function DanceAnnotateView({
       setAnnotations((prev) => [...prev, created]);
       setSelectedId(created.id);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Kunne ikke opprette annotation');
+      setLoadError(err instanceof Error ? err.message : t('danceAnnotate.s004'));
     }
   }, [readOnly, clipId, activeLabel, activeCategoryId, playheadSec, durationSec, trackMutation]);
 
@@ -219,7 +222,7 @@ export default function DanceAnnotateView({
       const updated = await trackMutation(() => patchAnnotation(id, patch));
       setAnnotations((prev) => prev.map((a) => (a.id === id ? updated : a)));
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Kunne ikke oppdatere annotation');
+      setLoadError(err instanceof Error ? err.message : t('danceAnnotate.s003'));
     }
   }, [readOnly, trackMutation]);
 
@@ -230,7 +233,7 @@ export default function DanceAnnotateView({
       setAnnotations((prev) => prev.filter((a) => a.id !== id));
       if (selectedId === id) setSelectedId(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Kunne ikke slette annotation');
+      setLoadError(err instanceof Error ? err.message : t('danceAnnotate.s005'));
     }
   }, [readOnly, selectedId, trackMutation]);
 
@@ -301,9 +304,9 @@ export default function DanceAnnotateView({
           p: 3,
         }}
       >
-        <Typography sx={{ fontSize: 14, mb: 1 }}>Velg et klipp i Clips-sidebar</Typography>
+        <Typography sx={{ fontSize: 14, mb: 1 }}>{t('danceAnnotate.s006')}</Typography>
         <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled }}>
-          DanceAnnotate viser annotations for ett klipp av gangen
+          {t('danceAnnotate.s000')}
         </Typography>
       </Box>
     );

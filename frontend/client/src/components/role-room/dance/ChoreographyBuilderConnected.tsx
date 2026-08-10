@@ -46,6 +46,8 @@ import {
   type ChoreographyHeader,
 } from './choreographyService';
 import type { Choreography } from './choreographyTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_SOFT = 'rgba(139,92,246,0.18)';
@@ -105,6 +107,7 @@ function snapshotHeader(c: Choreography): SavedHeader {
 export function ChoreographyBuilderConnected({
   projectId,
 }: ChoreographyBuilderConnectedProps): React.ReactElement {
+  const { t } = useT();
   const [headers, setHeaders] = React.useState<ChoreographyHeader[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [state, setState] = React.useState<LoadState>({ phase: 'loading' });
@@ -135,7 +138,7 @@ export function ChoreographyBuilderConnected({
       } catch (err) {
         setState({
           phase: 'error',
-          message: err instanceof Error ? err.message : 'Kunne ikke laste koreografi',
+          message: err instanceof Error ? err.message : t('choreoBuilderConn.s005'),
         });
       }
     },
@@ -158,7 +161,7 @@ export function ChoreographyBuilderConnected({
     } catch (err) {
       setState({
         phase: 'error',
-        message: err instanceof Error ? err.message : 'Kunne ikke laste stykker',
+        message: err instanceof Error ? err.message : t('choreoBuilderConn.s006'),
       });
     }
   }, [projectId, refreshHeaders, loadActive]);
@@ -193,7 +196,7 @@ export function ChoreographyBuilderConnected({
   const handleUploadMusic = React.useCallback(
     async (file: File): Promise<Choreography> => {
       if (state.phase !== 'ready') {
-        throw new Error('Ingen aktiv koreografi å laste opp musikk på');
+        throw new Error(t('choreoBuilderConn.s001'));
       }
       const id = state.choreography.id;
       const updated = await uploadChoreographyMusic(id, file);
@@ -252,7 +255,7 @@ export function ChoreographyBuilderConnected({
   };
 
   const openCreate = (): void => {
-    setCreateTitle('Nytt stykke');
+    setCreateTitle(t('choreoBuilderConn.s010'));
     setCreateError(null);
     setCreateOpen(true);
   };
@@ -260,7 +263,7 @@ export function ChoreographyBuilderConnected({
   const submitCreate = async (): Promise<void> => {
     const title = createTitle.trim();
     if (!title) {
-      setCreateError('Tittel kreves.');
+      setCreateError(t('choreoBuilderConn.s017'));
       return;
     }
     setCreateBusy(true);
@@ -290,7 +293,7 @@ export function ChoreographyBuilderConnected({
       saveStoredActiveId(projectId, created.id);
       setState({ phase: 'ready', choreography: created });
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Kunne ikke opprette');
+      setCreateError(err instanceof Error ? err.message : t('choreoBuilderConn.s007'));
     } finally {
       setCreateBusy(false);
     }
@@ -333,7 +336,7 @@ export function ChoreographyBuilderConnected({
       setState({ phase: 'ready', choreography: fresh });
     } catch (err) {
       // eslint-disable-next-line no-alert
-      window.alert(err instanceof Error ? err.message : 'Kunne ikke duplisere');
+      window.alert(err instanceof Error ? err.message : t('choreoBuilderConn.s004'));
     } finally {
       setDuplicateBusy(false);
     }
@@ -344,7 +347,7 @@ export function ChoreographyBuilderConnected({
     const id = state.choreography.id;
     const title = state.choreography.title;
     // eslint-disable-next-line no-alert
-    if (!window.confirm(`Slette "${title}"? Dette kan ikke angres.`)) return;
+    if (!window.confirm(t('choreoBuilderConn.p00', { v0: title }))) return;
     setDeleteBusy(true);
     try {
       await deleteChoreography(id);
@@ -359,7 +362,7 @@ export function ChoreographyBuilderConnected({
       }
     } catch (err) {
       // eslint-disable-next-line no-alert
-      window.alert(err instanceof Error ? err.message : 'Kunne ikke slette');
+      window.alert(err instanceof Error ? err.message : t('choreoBuilderConn.s008'));
     } finally {
       setDeleteBusy(false);
     }
@@ -426,7 +429,7 @@ export function ChoreographyBuilderConnected({
         </TextField>
       ) : (
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.6)' }}>
-          Ingen stykker ennå
+          {t('choreoBuilderConn.s002')}
         </Typography>
       )}
       <Button
@@ -442,7 +445,7 @@ export function ChoreographyBuilderConnected({
         }}
         data-testid="choreography-new"
       >
-        Nytt stykke
+        {t('choreoBuilderConn.s010')}
       </Button>
       {state.phase === 'ready' ? (
         <>
@@ -459,7 +462,7 @@ export function ChoreographyBuilderConnected({
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title="Slett stykket">
+          <Tooltip title={t('choreoBuilderConn.s015')}>
             <span>
               <IconButton
                 size="small"
@@ -476,7 +479,7 @@ export function ChoreographyBuilderConnected({
       ) : null}
       <Box sx={{ flex: 1 }} />
       <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-        {headers.length} {headers.length === 1 ? 'stykke' : 'stykker'} totalt
+        {headers.length} {headers.length === 1 ? 'stykke' : 'stykker'} {t('choreoBuilderConn.s018')}
       </Typography>
     </Stack>
   );
@@ -493,7 +496,7 @@ export function ChoreographyBuilderConnected({
       >
         <CircularProgress size={28} sx={{ color: PURPLE }} />
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
-          Laster koreografi…
+          {t('choreoBuilderConn.s009')}
         </Typography>
       </Stack>
     );
@@ -504,7 +507,7 @@ export function ChoreographyBuilderConnected({
           severity="error"
           action={
             <Button color="inherit" size="small" onClick={() => void initialLoad()}>
-              Prøv igjen
+              {t('choreoBuilderConn.s014')}
             </Button>
           }
         >
@@ -521,11 +524,10 @@ export function ChoreographyBuilderConnected({
         sx={{ minHeight: 320, p: 4, color: 'rgba(229,231,235,0.85)' }}
       >
         <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>
-          Ingen stykker i dette prosjektet
+          {t('choreoBuilderConn.s003')}
         </Typography>
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)', textAlign: 'center', maxWidth: 480 }}>
-          Opprett ditt første stykke for å begynne å bygge timeline,
-          formasjoner og 8-counts. Du kan ha flere stykker per prosjekt.
+          {t('choreoBuilderConn.s012')}
         </Typography>
         <Button
           variant="contained"
@@ -539,7 +541,7 @@ export function ChoreographyBuilderConnected({
           }}
           data-testid="choreography-empty-cta"
         >
-          Opprett første stykke
+          {t('choreoBuilderConn.s013')}
         </Button>
       </Stack>
     );
@@ -565,11 +567,11 @@ export function ChoreographyBuilderConnected({
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle sx={{ fontWeight: 700 }}>Nytt stykke</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>{t('choreoBuilderConn.s010')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="Tittel"
+              label={t('choreoBuilderConn.s016')}
               value={createTitle}
               onChange={(e) => setCreateTitle(e.target.value)}
               autoFocus
@@ -582,7 +584,7 @@ export function ChoreographyBuilderConnected({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)} disabled={createBusy}>
-            Avbryt
+            {t('choreoBuilderConn.s000')}
           </Button>
           <Button
             onClick={() => void submitCreate()}
@@ -591,7 +593,7 @@ export function ChoreographyBuilderConnected({
             sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
             data-testid="choreography-new-submit"
           >
-            {createBusy ? 'Oppretter…' : 'Opprett'}
+            {createBusy ? 'Oppretter…' : t('choreoBuilderConn.s011')}
           </Button>
         </DialogActions>
       </Dialog>

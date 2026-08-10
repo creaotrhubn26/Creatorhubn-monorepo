@@ -49,6 +49,8 @@ import {
   type SkillLevel,
 } from './dancerProfileService';
 import type { Dancer } from './formationTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 // ─── Konstanter ─────────────────────────────────────────────────────────
 
@@ -61,22 +63,22 @@ const SKILL_CATEGORIES = [
   'turns', 'leaps', 'lifts', 'partnering', 'improv', 'musicality', 'floorwork',
 ] as const;
 
-const SKILL_CATEGORY_LABEL_NB: Record<(typeof SKILL_CATEGORIES)[number], string> = {
-  turns: 'Piruetter',
-  leaps: 'Hopp',
-  lifts: 'Lift',
-  partnering: 'Partnering',
-  improv: 'Improvisasjon',
-  musicality: 'Musikalitet',
-  floorwork: 'Gulvarbeid',
-};
+const buildSKILL_CATEGORY_LABEL_NB = (t: TFn): Record<(typeof SKILL_CATEGORIES)[number], string> => ({
+  turns: t('dancerProfEditor.s022'),
+  leaps: t('dancerProfEditor.s006'),
+  lifts: t('dancerProfEditor.s015'),
+  partnering: t('dancerProfEditor.s021'),
+  improv: t('dancerProfEditor.s009'),
+  musicality: t('dancerProfEditor.s018'),
+  floorwork: t('dancerProfEditor.s005'),
+});
 
-const SKILL_LEVEL_LABEL_NB: Record<SkillLevel, string> = {
-  beginner: 'Nybegynner',
-  intermediate: 'Mellomnivå',
-  advanced: 'Avansert',
-  pro: 'Pro',
-};
+const buildSKILL_LEVEL_LABEL_NB = (t: TFn): Record<SkillLevel, string> => ({
+  beginner: t('dancerProfEditor.s020'),
+  intermediate: t('dancerProfEditor.s017'),
+  advanced: t('dancerProfEditor.s000'),
+  pro: t('dancerProfEditor.s024'),
+});
 
 const INJURY_LABEL_NB: Record<InjuryStatus, string> = {
   healthy: 'Frisk',
@@ -147,6 +149,9 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
   onClose,
   onSaved,
 }) => {
+  const { t } = useT();
+  const SKILL_CATEGORY_LABEL_NB = useMemo(() => buildSKILL_CATEGORY_LABEL_NB(t), [t]);
+  const SKILL_LEVEL_LABEL_NB = useMemo(() => buildSKILL_LEVEL_LABEL_NB(t), [t]);
   const baseline = useMemo(() => fromProfile(initialProfile), [initialProfile]);
   const [form, setForm] = useState<DancerProfileExtras>(() => baseline);
   const [status, setStatus] = useState<'idle' | 'saving' | 'error'>('idle');
@@ -173,24 +178,24 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
   // ─── Validering ───────────────────────────────────
   const validationError = useMemo((): string | null => {
     if (form.heightCm != null && (form.heightCm < 50 || form.heightCm > 250)) {
-      return 'Høyde må være mellom 50 og 250 cm';
+      return t('dancerProfEditor.s008');
     }
     for (const w of form.availabilityWindows) {
       if (Date.parse(w.from) > Date.parse(w.to)) {
-        return 'Tilgjengelighet: "fra" må være før "til"';
+        return t('dancerProfEditor.s028');
       }
     }
     for (const url of form.reelUrls) {
       try { new URL(url); } catch {
-        return `Ugyldig URL: ${url}`;
+        return t('dancerProfEditor.p00', { v0: url });
       }
     }
     const bm = form.bodyMeasurements;
     if (bm.inseamCm != null && (bm.inseamCm < 50 || bm.inseamCm > 150)) {
-      return 'Innenbenslengde må være mellom 50 og 150 cm';
+      return t('dancerProfEditor.s010');
     }
     if (bm.weightKg != null && (bm.weightKg < 30 || bm.weightKg > 200)) {
-      return 'Vekt må være mellom 30 og 200 kg';
+      return t('dancerProfEditor.s029');
     }
     return null;
   }, [form]);
@@ -207,7 +212,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
       onClose();
     } catch (err) {
       setStatus('error');
-      setErrorMsg(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      setErrorMsg(err instanceof Error ? err.message : t('dancerProfEditor.s011'));
     }
   }, [dirty, status, validationError, dancer.id, form, onSaved, onClose]);
 
@@ -233,7 +238,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
       >
         <Box>
           <Typography sx={{ fontSize: 11, letterSpacing: 1.8, color: danceFlowColors.lavender, fontWeight: 700 }}>
-            {initialProfile ? 'REDIGER PROFIL' : 'NY DANSERPROFIL'}
+            {initialProfile ? t('dancerProfEditor.s025') : t('dancerProfEditor.s019')}
           </Typography>
           <Typography sx={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>
             {form.displayName || dancer.name}
@@ -242,7 +247,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
         <IconButton
           onClick={onClose}
           disabled={status === 'saving'}
-          aria-label="Lukk"
+          aria-label={t('dancerProfEditor.s016')}
           sx={{ color: danceFlowColors.textMuted }}
         >
           <CloseIcon />
@@ -274,7 +279,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                 }
                 sx={fieldSx}
               >
-                <MenuItem value="">— Velg —</MenuItem>
+                <MenuItem value="">{t('dancerProfEditor.s031')}</MenuItem>
                 {DANCE_STYLES.map((s) => (
                   <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize' }}>
                     {s}
@@ -282,7 +287,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                 ))}
               </TextField>
               <TextField
-                label="Høyde (cm)"
+                label={t('dancerProfEditor.s007')}
                 type="number"
                 size="small"
                 fullWidth
@@ -377,7 +382,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                 }
               />
               <BodyMeasurementField
-                label="Skostørrelse"
+                label={t('dancerProfEditor.s026')}
                 value={form.bodyMeasurements.shoeSize}
                 min={20}
                 max={60}
@@ -401,7 +406,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                   alignItems="center"
                 >
                   <TextField
-                    label="Fra"
+                    label={t('dancerProfEditor.s004')}
                     type="datetime-local"
                     size="small"
                     fullWidth
@@ -415,7 +420,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                     sx={fieldSx}
                   />
                   <TextField
-                    label="Til"
+                    label={t('dancerProfEditor.s027')}
                     type="datetime-local"
                     size="small"
                     fullWidth
@@ -442,7 +447,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                   />
                   <IconButton
                     size="small"
-                    aria-label="Fjern tilgjengelighet"
+                    aria-label={t('dancerProfEditor.s003')}
                     onClick={() => {
                       update(
                         'availabilityWindows',
@@ -472,7 +477,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                 sx={addBtnSx}
                 data-testid="dancer-profile-add-availability"
               >
-                Legg til tilgjengelighets-vindu
+                {t('dancerProfEditor.s014')}
               </Button>
             </Stack>
           </Section>
@@ -533,7 +538,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                     sx={fieldSx}
                   />
                   {url && (
-                    <Tooltip title="Åpne i ny fane">
+                    <Tooltip title={t('dancerProfEditor.s030')}>
                       <span>
                         <IconButton
                           size="small"
@@ -547,7 +552,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                   )}
                   <IconButton
                     size="small"
-                    aria-label="Fjern reel"
+                    aria-label={t('dancerProfEditor.s002')}
                     onClick={() => update('reelUrls', form.reelUrls.filter((_, j) => j !== i))}
                     sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}
                   >
@@ -562,7 +567,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
                 sx={addBtnSx}
                 data-testid="dancer-profile-add-reel"
               >
-                Legg til reel-URL
+                {t('dancerProfEditor.s013')}
               </Button>
             </Stack>
           </Section>
@@ -574,7 +579,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
               fullWidth
               multiline
               rows={3}
-              placeholder="Private notater om danseren — ikke synlig for danseren selv."
+              placeholder={t('dancerProfEditor.s023')}
               value={form.notes ?? ''}
               onChange={(e) => update('notes', e.target.value || null)}
               sx={fieldSx}
@@ -601,7 +606,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
           disabled={status === 'saving'}
           sx={{ textTransform: 'none', color: danceFlowColors.textMuted }}
         >
-          Avbryt
+          {t('dancerProfEditor.s001')}
         </Button>
         <Button
           variant="contained"
@@ -615,7 +620,7 @@ export const DancerProfileEditor: React.FC<DancerProfileEditorProps> = ({
             '&.Mui-disabled': { bgcolor: danceFlowColors.borderStrong, color: danceFlowColors.textDisabled },
           }}
         >
-          {status === 'saving' ? 'Lagrer…' : 'Lagre profil'}
+          {status === 'saving' ? 'Lagrer…' : t('dancerProfEditor.s012')}
         </Button>
       </DialogActions>
     </Dialog>

@@ -45,6 +45,8 @@ import {
   isDanceMode,
   type ProfessionMode,
 } from '../config/professionMode';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 // ─── Demo-data — erstattes med faktiske API-kall i Fase 4 ──────────────
 
@@ -165,6 +167,7 @@ export interface DanceDashboardProps {
 }
 
 export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, projectId }) => {
+  const { t } = useT();
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
   const mode = modeOverride ?? getActiveProfessionMode();
@@ -299,13 +302,13 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             {labels.danceTabDashboard.toUpperCase()} · {heading.toUpperCase()}
           </Typography>
           <Typography sx={{ fontSize: { xs: 22, md: 28 }, fontWeight: 800, color: '#fff', lineHeight: 1.1 }}>
-            God morgen{isStudio ? ', studio' : ''}.
+            God morgen{isStudio ? t('danceDash.s000') : ''}.
           </Typography>
           <Typography sx={{ fontSize: 13, color: danceFlowColors.textMuted, mt: 0.5 }}>
-            {rehearsalsToShow.length} {labels.danceTermRehearsalPlural.toLowerCase()} de neste 7 dagene · {performancesToShow.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
+            {rehearsalsToShow.length} {labels.danceTermRehearsalPlural.toLowerCase()} {t('danceDash.s018')} {performancesToShow.length} {labels.danceTermPerformancePlural.toLowerCase()} planlagt
             {liveData ? (
               <Box component="span" sx={{ color: danceFlowColors.lavender, ml: 1 }}>
-                · {liveData.counts.choreographies} stykker · {liveData.counts.formations} formasjoner · {liveData.counts.dancers} dansere
+                · {liveData.counts.choreographies} stykker · {liveData.counts.formations} {t('danceDash.s019')} {liveData.counts.dancers} {t('danceDash.s017')}
               </Box>
             ) : null}
           </Typography>
@@ -318,7 +321,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
             variant="outlined"
             data-testid="dance-dashboard-ai-summary"
           >
-            AI-oppsummering av uka
+            {t('danceDash.s003')}
           </Button>
         </Stack>
       </Stack>
@@ -334,7 +337,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
       >
         <StatCard
           icon={<TrendingIcon />}
-          label={isStudio ? 'Inntekt denne måneden' : 'Honorar denne måneden'}
+          label={isStudio ? t('danceDash.s009') : t('danceDash.s008')}
           value={formatNok(stats.earningsNok)}
           deltaPct={stats.earningsDeltaPct}
         />
@@ -343,11 +346,11 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           label={isStudio ? 'Undervisningstimer' : 'Arbeidstimer'}
           value={`${stats.hoursLogged} t`}
           deltaPct={stats.hoursDeltaPct}
-          deltaLabel="vs forrige måned"
+          deltaLabel={t('danceDash.s020')}
         />
         <StatCard
           icon={<InvoiceIcon />}
-          label="Usendte fakturaer"
+          label={t('danceDash.s016')}
           value={String(stats.unsentInvoices)}
           accent={stats.unsentInvoices > 0 ? danceFlowColors.gold : danceFlowColors.successPrimary}
         />
@@ -371,7 +374,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
         <Stack spacing={2}>
           <SectionCard
             title={`Kommende ${labels.danceTermRehearsalPlural.toLowerCase()}`}
-            actionLabel="Se alle"
+            actionLabel={t('danceDash.s011')}
             actionTabId="rehearsal_log"
             testId="dashboard-section-rehearsals"
             icon={<ListIcon sx={{ fontSize: 18, color: danceFlowColors.lavender }} />}
@@ -473,7 +476,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                       </Box>
                       <Chip
                         size="small"
-                        label={`om ${daysUntil(p.date)} dager`}
+                        label={t('danceDash.p00', { v0: daysUntil(p.date) })}
                         sx={{
                           height: 20,
                           fontSize: 10,
@@ -516,8 +519,8 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
         <Stack spacing={2}>
           {!isStudio && (
             <SectionCard
-              title="Åpne auditions"
-              actionLabel="Se alle"
+              title={t('danceDash.s022')}
+              actionLabel={t('danceDash.s011')}
               actionTabId="reel"
               testId="dashboard-section-auditions"
               icon={<AuditionIcon sx={{ fontSize: 18, color: danceFlowColors.successPrimary }} />}
@@ -540,12 +543,12 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
                           {a.title}
                         </Typography>
                         <Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted, mt: 0.25 }}>
-                          {a.organizer} · søknadsfrist {formatDate(a.deadline)}
+                          {a.organizer} {t('danceDash.s021')} {formatDate(a.deadline)}
                         </Typography>
                       </Box>
                       <Chip
                         size="small"
-                        label={a.applied ? 'Søkt' : 'Søk nå'}
+                        label={a.applied ? t('danceDash.s014') : t('danceDash.s013')}
                         sx={{
                           height: 20,
                           fontSize: 10,
@@ -601,23 +604,23 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           )}
 
           <SectionCard
-            title="CI · forslag denne uka"
+            title={t('danceDash.s004')}
             icon={<AutoAwesomeIcon sx={{ fontSize: 18, color: danceFlowColors.lavender }} />}
             tinted
           >
             <Stack spacing={1}>
               <AiHint
-                title="Stykke 3 trenger continuity-sjekk"
-                body="To kjøringer ble logget uten at AI sammenlignet mot forrige. Kjør sjekken før neste øving."
+                title={t('danceDash.s012')}
+                body={t('danceDash.s015')}
               />
               <AiHint
-                title={isStudio ? '4 fakturaer er klare for utsendelse' : '2 honorarkrav er klare for utsendelse'}
-                body="Generer EHF-faktura med ett klikk når økonomi-flyten er aktivert."
+                title={isStudio ? t('danceDash.s002') : t('danceDash.s001')}
+                body={t('danceDash.s007')}
               />
               {!isStudio && (
                 <AiHint
-                  title="Carte Blanche-audition: 8 dager igjen"
-                  body="Du har en reel-klipp fra fjorårets samtidsdans-prosjekt som matcher beskrivelsen i utlysningen."
+                  title={t('danceDash.s005')}
+                  body={t('danceDash.s006')}
                 />
               )}
             </Stack>
@@ -635,7 +638,7 @@ export const DanceDashboard: React.FC<DanceDashboardProps> = ({ modeOverride, pr
           fontStyle: 'italic',
         }}
       >
-        MVP — data er demo. Kobler til faktiske API-kall etter bruker-intervjuer (se docs/role-room/dans/).
+        {t('danceDash.s010')}
       </Typography>
     </Box>
   );
@@ -653,6 +656,7 @@ interface StatCardProps {
 }
 
 const StatCard: React.FC<StatCardProps> = ({ icon, label, value, deltaPct, deltaLabel, accent = danceFlowColors.lavenderDark }) => {
+  const { t } = useT();
   const positive = deltaPct === undefined || deltaPct >= 0;
   return (
     <Card
@@ -682,7 +686,7 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, deltaPct, delta
               fontWeight: 600,
             }}
           >
-            {positive ? '↑' : '↓'} {Math.abs(deltaPct)}% {deltaLabel ?? 'vs forrige måned'}
+            {positive ? '↑' : '↓'} {Math.abs(deltaPct)}% {deltaLabel ?? t('danceDash.s020')}
           </Typography>
         )}
       </CardContent>

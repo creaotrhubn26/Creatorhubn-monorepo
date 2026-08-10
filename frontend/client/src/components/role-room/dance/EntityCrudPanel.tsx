@@ -39,6 +39,8 @@ import {
   Search as SearchIcon,
 } from '@mui/icons-material';
 import EmptyState from '../shared/EmptyState';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
@@ -112,10 +114,11 @@ export function EntityCrudPanel<T extends { id: string } & object>({
   remove,
   newDefaults = {},
   rowExpansion,
-  emptyText = 'Ingen oppføringer ennå.',
+  emptyText,
   emptyState,
   panelTestId,
 }: EntityCrudPanelProps<T>): React.ReactElement {
+  const { t } = useT();
   const [items, setItems] = React.useState<T[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -133,7 +136,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
     try {
       setItems(await list());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke laste liste');
+      setError(err instanceof Error ? err.message : t('danceEntityCrud.s001'));
     } finally {
       setLoading(false);
     }
@@ -203,7 +206,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
 
   const handleDelete = async (row: T): Promise<void> => {
     const label = ((row as unknown as Record<string, unknown>)[primaryField] as string) ?? row.id;
-    if (!window.confirm(`Slett "${label}"?`)) return;
+    if (!window.confirm(t('danceEntityCrud.p03', { v0: label }))) return;
     try {
       await remove(row.id);
       await refresh();
@@ -234,7 +237,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
             {title.toUpperCase()}
           </Typography>
           <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>
-            {items.length} oppføringer
+            {items.length} {t('danceEntityCrud.s008')}
           </Typography>
           {description ? (
             <Typography sx={{ fontSize: 11, color: 'rgba(229,231,235,0.6)', mt: 0.5 }}>
@@ -244,7 +247,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
         </Box>
         <TextField
           size="small"
-          placeholder="Søk…"
+          placeholder={t('danceEntityCrud.s007')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
@@ -263,7 +266,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
           sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep }, textTransform: 'none', fontWeight: 600 }}
           data-testid={`crud-new-${primaryField}`}
         >
-          Ny
+          {t('danceEntityCrud.s003')}
         </Button>
       </Stack>
 
@@ -283,7 +286,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
             description={emptyState.description}
             hint={emptyState.hint}
             primaryAction={{
-              label: emptyState.primaryActionLabel ?? `Opprett første ${title.toLowerCase()}`,
+              label: emptyState.primaryActionLabel ?? t('danceEntityCrud.p01', { v0: title.toLowerCase() }),
               onClick: () => {
                 setEditing(null);
                 setDialogOpen(true);
@@ -293,7 +296,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
           />
         ) : (
           <Typography sx={{ color: 'rgba(229,231,235,0.5)', fontStyle: 'italic', py: 4, textAlign: 'center' }}>
-            {emptyText}
+            {emptyText ?? t('danceEntityCrud.empty')}
           </Typography>
         )
       ) : null}
@@ -354,12 +357,12 @@ export function EntityCrudPanel<T extends { id: string } & object>({
                       })}
                   </Stack>
                 </Box>
-                <Tooltip title="Rediger">
+                <Tooltip title={t('danceEntityCrud.s005')}>
                   <IconButton size="small" onClick={() => openEdit(row)} data-testid={`crud-edit-${row.id}`} sx={{ color: PURPLE_LIGHT }}>
                     <EditIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Slett">
+                <Tooltip title={t('danceEntityCrud.s006')}>
                   <IconButton size="small" onClick={() => void handleDelete(row)} data-testid={`crud-delete-${row.id}`} sx={{ color: 'rgba(229,231,235,0.4)' }}>
                     <DeleteIcon sx={{ fontSize: 16 }} />
                   </IconButton>
@@ -384,8 +387,8 @@ export function EntityCrudPanel<T extends { id: string } & object>({
       >
         <DialogTitle sx={{ fontWeight: 700 }}>
           {editing
-            ? `Rediger: ${String((editing as unknown as Record<string, unknown>)[primaryField] ?? editing.id)}`
-            : `Ny ${title.toLowerCase()}`}
+            ? t('danceEntityCrud.p02', { v0: String((editing as unknown as Record<string, unknown>)[primaryField] ?? editing.id) })
+            : t('danceEntityCrud.p00', { v0: title.toLowerCase() })}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -403,7 +406,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} disabled={saving}>Avbryt</Button>
+          <Button onClick={() => setDialogOpen(false)} disabled={saving}>{t('danceEntityCrud.s000')}</Button>
           <Button
             variant="contained"
             onClick={() => void submitDraft()}
@@ -411,7 +414,7 @@ export function EntityCrudPanel<T extends { id: string } & object>({
             sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
             data-testid="crud-submit"
           >
-            {saving ? 'Lagrer…' : editing ? 'Lagre' : 'Opprett'}
+            {saving ? 'Lagrer…' : editing ? t('danceEntityCrud.s002') : t('danceEntityCrud.s004')}
           </Button>
         </DialogActions>
       </Dialog>

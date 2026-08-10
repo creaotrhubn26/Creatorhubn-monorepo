@@ -29,6 +29,8 @@ import {
 import * as svc from './danceAddonService';
 import { useDancePlanGate } from './useDancePlanGate';
 import type { DanceAddon, DanceAddonSubscription } from './danceAddonService';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
 const PURPLE_DEEP   = '#4c1d95';
@@ -38,6 +40,7 @@ const TEXT_MUTED    = 'rgba(229,231,235,0.50)';
 const PANEL_BORDER  = 'rgba(167,139,250,0.18)';
 
 export const AddonsPanel: React.FC = () => {
+  const { t } = useT();
   const gate = useDancePlanGate();
   const [addons, setAddons] = React.useState<DanceAddon[]>([]);
   const [active, setActive] = React.useState<DanceAddonSubscription[]>([]);
@@ -55,7 +58,7 @@ export const AddonsPanel: React.FC = () => {
       setAddons(list);
       setActive(mine);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke laste add-ons');
+      setError(e instanceof Error ? e.message : t('danceAddons.s006'));
     } finally {
       setLoading(false);
     }
@@ -79,9 +82,9 @@ export const AddonsPanel: React.FC = () => {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg === 'no_trial_available'
-        ? 'Denne modulen har ingen prøveperiode — abonnement må kjøpes.'
+        ? t('danceAddons.s003')
         : msg === 'already_active'
-          ? 'Du har allerede denne aktiv.'
+          ? t('danceAddons.s004')
           : msg);
     } finally {
       setBusy(null);
@@ -89,7 +92,7 @@ export const AddonsPanel: React.FC = () => {
   };
 
   const cancel = async (slug: string) => {
-    if (!window.confirm('Stopp denne modulen ved slutten av perioden?')) return;
+    if (!window.confirm(t('danceAddons.s010'))) return;
     setBusy(slug);
     setError(null);
     try {
@@ -97,7 +100,7 @@ export const AddonsPanel: React.FC = () => {
       await refresh();
       await gate.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke stoppe');
+      setError(e instanceof Error ? e.message : t('danceAddons.s007'));
     } finally {
       setBusy(null);
     }
@@ -116,14 +119,13 @@ export const AddonsPanel: React.FC = () => {
       {/* ── Header ── */}
       <Box>
         <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700 }}>
-          MODULER · LEGG TIL VED BEHOV
+          {t('danceAddons.s008')}
         </Typography>
         <Typography sx={{ fontSize: { xs: 22, md: 26 }, fontWeight: 700, color: 'rgba(237,233,254,0.95)', mt: 0.5 }}>
-          Utvid kontoen din med ekstra moduler
+          {t('danceAddons.s011')}
         </Typography>
         <Typography sx={{ fontSize: 13, color: TEXT_DIM, mt: 1, maxWidth: 640 }}>
-          Aktiver bare det du trenger. Modulene legger seg additivt over Frilansdanser-planen
-          din — du beholder alt du allerede har, og kan stoppe når som helst.
+          {t('danceAddons.s002')}
         </Typography>
       </Box>
 
@@ -131,8 +133,7 @@ export const AddonsPanel: React.FC = () => {
 
       {!eligible ? (
         <Alert severity="info" sx={{ bgcolor: 'rgba(139,92,246,0.10)', color: 'rgba(237,233,254,0.92)' }}>
-          For å aktivere moduler trenger du <strong>Frilansdanser Pro</strong>-planen.
-          Oppgrader fra <Box component="a" href="?tab=pricing" sx={{ color: PURPLE_LIGHT, textDecoration: 'underline' }}>prisingsiden</Box>.
+          {t('danceAddons.s005')} <strong>Frilansdanser Pro</strong>{t('danceAddons.s000')} <Box component="a" href="?tab=pricing" sx={{ color: PURPLE_LIGHT, textDecoration: 'underline' }}>prisingsiden</Box>.
         </Alert>
       ) : null}
 
@@ -165,7 +166,7 @@ export const AddonsPanel: React.FC = () => {
                       ) : null}
                       {isActiveStatus ? (
                         <Chip
-                          label={sub!.status === 'trialing' ? `Trial — ${sub!.trialEndAt ? new Date(sub!.trialEndAt).toLocaleDateString('nb-NO') : ''}` : 'Aktiv'}
+                          label={sub!.status === 'trialing' ? `Trial — ${sub!.trialEndAt ? new Date(sub!.trialEndAt).toLocaleDateString('nb-NO') : ''}` : t('danceAddons.s001')}
                           size="small"
                           icon={<CheckIcon sx={{ fontSize: 14 }} />}
                           sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#22c55e', fontWeight: 700, height: 20, fontSize: 11 }}
@@ -210,7 +211,7 @@ export const AddonsPanel: React.FC = () => {
                       startIcon={<StopIcon />}
                       sx={{ textTransform: 'none', color: danceFlowColors.errorPrimary, fontSize: 12 }}
                     >
-                      Stopp
+                      {t('danceAddons.s009')}
                     </Button>
                   ) : !isActiveStatus && eligible ? (
                     <Button

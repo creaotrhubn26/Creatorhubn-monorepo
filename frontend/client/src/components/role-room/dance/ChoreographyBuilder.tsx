@@ -65,6 +65,8 @@ import {
 import { CountGrid } from './CountGrid';
 import { MusicWaveform } from './MusicWaveform';
 import { VideoRefPlayer } from './VideoRefPlayer';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 // ─── Sub-helpers ────────────────────────────────────────────────────────
 
@@ -124,6 +126,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
   onUploadMusic,
   onOpenDancerProfile,
 }) => {
+  const { t } = useT();
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
 
@@ -371,7 +374,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
           </Typography>
           <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted, mt: 0.25 }}>
             {choreography.choreographer ? `Koreograf: ${choreography.choreographer} · ` : ''}
-            {choreography.musicTitle ?? 'Musikk ikke valgt'}
+            {choreography.musicTitle ?? t('choreoBuilder.s009')}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1.5} alignItems="center">
@@ -396,7 +399,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
               }}
             />
           ) : null}
-          <Tooltip title={audioUrl ? labels.choreographyBuilderPlayLabel : 'Last opp musikkfil først'}>
+          <Tooltip title={audioUrl ? labels.choreographyBuilderPlayLabel : t('choreoBuilder.s007')}>
             <span>
               <IconButton
                 data-testid="choreo-play-toggle"
@@ -594,7 +597,7 @@ export const ChoreographyBuilder: React.FC<ChoreographyBuilderProps> = ({
             />
           ) : (
             <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled }}>
-              Velg et segment for å se detaljer.
+              {t('choreoBuilder.s012')}
             </Typography>
           )}
         </Box>
@@ -1057,6 +1060,7 @@ interface SegmentInspectorProps {
 const SegmentInspector: React.FC<SegmentInspectorProps> = ({
   segment, bpm, labels, onChange, onDelete, onOpenDancerProfile, onSeekToCount,
 }) => {
+  const { t } = useT();
   const meta = getSegmentMeta(segment.kind);
   const energyMeta = getEnergyMeta(segment.energy);
   const approvalMeta = getApprovalMeta(segment.approval);
@@ -1072,7 +1076,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         </Stack>
         <IconButton
           size="small"
-          aria-label="Slett segment"
+          aria-label={t('choreoBuilder.s010')}
           onClick={onDelete}
           sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}
         >
@@ -1116,7 +1120,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
       {/* Tidsrom */}
       <Stack direction="row" spacing={1}>
         <Box sx={{ flex: 1 }}>
-          <FieldLabel>Start (sek)</FieldLabel>
+          <FieldLabel>{t('choreoBuilder.s011')}</FieldLabel>
           <TextField
             fullWidth
             size="small"
@@ -1196,7 +1200,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         <FieldLabel>{labels.choreographyInspectorDancersLabel}</FieldLabel>
         <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
           {segment.dancers.length === 0 ? (
-            <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>Ingen dansere tildelt</Typography>
+            <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>{t('choreoBuilder.s004')}</Typography>
           ) : (
             segment.dancers.map((d) => (
               <Chip
@@ -1308,11 +1312,11 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <AutoAwesomeIcon sx={{ fontSize: 14, color: danceFlowColors.lavender }} />
             <Typography sx={{ fontSize: 10, fontWeight: 700, color: danceFlowColors.lavender, letterSpacing: 1 }}>
-              CI — KOREOGRAFI-FORSLAG
+              {t('choreoBuilder.s001')}
             </Typography>
           </Stack>
           <Typography sx={{ fontSize: 10.5, color: danceFlowColors.grayLight, mb: 1, lineHeight: 1.4 }}>
-            Få AI-forslag for bevegelse, formasjon eller musikkmatching basert på {energyMeta.labelToken && labels[energyMeta.labelToken]?.toLowerCase()}-energi og segment-type.
+            {t('choreoBuilder.s003')} {energyMeta.labelToken && labels[energyMeta.labelToken]?.toLowerCase()}{t('choreoBuilder.s000')}
           </Typography>
           <Button
             size="small"
@@ -1320,7 +1324,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
             startIcon={<AutoAwesomeIcon sx={{ fontSize: 13 }} />}
             sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.lavenderLight, borderColor: 'rgba(139,92,246,0.4)' }}
           >
-            Foreslå bevegelser
+            {t('choreoBuilder.s002')}
           </Button>
         </CardContent>
       </Card>
@@ -1474,12 +1478,13 @@ const AudioFileButton: React.FC<{
   hasAudio: boolean;
   uploading?: boolean;
 }> = ({ onFile, hasAudio, uploading }) => {
+  const { t } = useT();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const tooltip = uploading
-    ? 'Laster opp…'
+    ? t('choreoBuilder.s008')
     : hasAudio
       ? 'Bytt musikkfil'
-      : 'Last opp musikkfil';
+      : t('choreoBuilder.s006');
   return (
     <>
       <input
@@ -1518,11 +1523,12 @@ const AudioFileButton: React.FC<{
 // ─── Autosave-status-badge ───────────────────────────────────────────────
 
 const AutosaveBadge: React.FC<{ status: 'idle' | 'saving' | 'saved' | 'error' }> = ({ status }) => {
+  const { t } = useT();
   if (status === 'idle') return null;
   const cfg = {
-    saving: { label: 'Lagrer…', color: danceFlowColors.lavender, bg: 'rgba(167,139,250,0.12)' },
-    saved:  { label: '✓ Lagret', color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.12)' },
-    error:  { label: '⚠ Lagring feilet', color: danceFlowColors.errorPrimary, bg: 'rgba(248,113,113,0.12)' },
+    saving: { label: t('choreoBuilder.s005'), color: danceFlowColors.lavender, bg: 'rgba(167,139,250,0.12)' },
+    saved:  { label: t('choreoBuilder.s014'), color: danceFlowColors.successPrimary, bg: 'rgba(52,211,153,0.12)' },
+    error:  { label: t('choreoBuilder.s013'), color: danceFlowColors.errorPrimary, bg: 'rgba(248,113,113,0.12)' },
   }[status];
   return (
     <Chip

@@ -17,6 +17,8 @@ import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Dancer, DancerTransitionPath, Formation } from './formationTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const HANDLE_RADIUS = 6;
 
@@ -63,6 +65,7 @@ export function CurveOverlay({
   enabled,
   onChange,
 }: CurveOverlayProps): React.ReactElement | null {
+  const { t } = useT();
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = React.useState<DragState>(null);
 
@@ -190,7 +193,7 @@ export function CurveOverlay({
               {/* Handles — kun synlige+dragbar når curve-mode er på */}
               {enabled ? (
                 <>
-                  <Tooltip title={`Drag for å reshape (${dancer?.name ?? dancerId})`}>
+                  <Tooltip title={t('danceCurve.p00', { v0: dancer?.name ?? dancerId })}>
                     <circle
                       data-testid={`formation-curve-handle-${dancerId}-0`}
                       cx={cps[0].x * 100}
@@ -208,7 +211,7 @@ export function CurveOverlay({
                       vectorEffect="non-scaling-stroke"
                     />
                   </Tooltip>
-                  <Tooltip title={`Drag for å reshape (${dancer?.name ?? dancerId})`}>
+                  <Tooltip title={t('danceCurve.p00', { v0: dancer?.name ?? dancerId })}>
                     <circle
                       data-testid={`formation-curve-handle-${dancerId}-1`}
                       cx={cps[1].x * 100}

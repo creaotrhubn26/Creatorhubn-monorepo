@@ -49,6 +49,8 @@ import {
   requestFormationExport,
   type FormationExportFormat,
 } from './formationExport';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export type FormationSubTab =
   | 'annotate'
@@ -114,6 +116,7 @@ export default function FormationHeaderBar({
   presenceUsers,
   'data-testid': testId = 'formation-header-bar',
 }: FormationHeaderBarProps): React.ReactElement {
+  const { t } = useT();
   const [exportAnchor, setExportAnchor] = React.useState<HTMLElement | null>(null);
 
   const handleSubTabChange = React.useCallback(
@@ -248,7 +251,7 @@ export default function FormationHeaderBar({
           aria-haspopup="menu"
           aria-expanded={exportAnchor ? 'true' : 'false'}
           disabled={disableExport}
-          title={disableExport ? 'Legg til en formasjon før du eksporterer' : undefined}
+          title={disableExport ? t('formationHeader.s003') : undefined}
           sx={{
             textTransform: 'none',
             color: danceFlowColors.textSecondary,
@@ -275,12 +278,12 @@ export default function FormationHeaderBar({
         >
           <MenuItem onClick={() => handleExport('png')} data-testid={`${testId}-export-png`}>
             <ListItemIcon><ImageIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="PNG (snapshot)" secondary="Scene som bilde" />
+            <ListItemText primary="PNG (snapshot)" secondary={t('formationHeader.s005')} />
           </MenuItem>
           <MenuItem onClick={() => handleExport('json')} data-testid={`${testId}-export-json`}>
             <ListItemIcon><JsonIcon fontSize="small" /></ListItemIcon>
             {/* Workflow-audit G22: brukervennlig label i stedet for teknisk "JSON" */}
-            <ListItemText primary="Backup-fil" secondary="For å re-importere eller dele med en annen DanceFlow-bruker" />
+            <ListItemText primary="Backup-fil" secondary={t('formationHeader.s000')} />
           </MenuItem>
           <MenuItem
             onClick={() => handleExport('pdf')}
@@ -289,7 +292,7 @@ export default function FormationHeaderBar({
             <ListItemIcon><PdfIcon fontSize="small" /></ListItemIcon>
             {/* Workflow-audit G21: enabled — åpner print-overlay m/ stage-plot
                 for alle formasjoner. Bruker browser's print-to-PDF. */}
-            <ListItemText primary="Stage plot (PDF)" secondary="Print eller lagre — én side per formasjon" />
+            <ListItemText primary="Stage plot (PDF)" secondary={t('formationHeader.s004')} />
           </MenuItem>
         </Menu>
 
@@ -304,7 +307,7 @@ export default function FormationHeaderBar({
             {presenceUsers.slice(0, 5).map((u) => (
               <Box
                 key={u.userId}
-                title={`${u.displayName} ser denne flaten nå`}
+                title={t('formationHeader.p00', { v0: u.displayName })}
                 data-testid={`${testId}-presence-${u.userId}`}
                 sx={{
                   width: 22, height: 22, borderRadius: '50%',
@@ -344,7 +347,7 @@ export default function FormationHeaderBar({
               }}
               title={new Date(lastSavedAt).toLocaleString('nb-NO')}
             >
-              Lagret kl {new Date(lastSavedAt).toLocaleTimeString('nb-NO', {
+              {t('formationHeader.s002')} {new Date(lastSavedAt).toLocaleTimeString('nb-NO', {
                 hour: '2-digit',
                 minute: '2-digit',
               })}
@@ -366,7 +369,7 @@ export default function FormationHeaderBar({
           {saveStatus === 'saved' ? (
             <Chip
               icon={<SavedIcon sx={{ fontSize: 16 }} />}
-              label="Lagret"
+              label={t('formationHeader.s001')}
               size="small"
               data-testid={`${testId}-save-pill`}
               sx={{

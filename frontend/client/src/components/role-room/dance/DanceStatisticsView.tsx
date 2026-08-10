@@ -21,6 +21,8 @@ import { useDanceAnnotationsAggregate } from './useDanceAnnotationsAggregate';
 import { useDanceAnnotationCatalog } from './useDanceAnnotationCatalog';
 import { formatTimecode } from './timecode';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface DanceStatisticsViewProps {
   projectId: string | null;
@@ -37,6 +39,7 @@ export default function DanceStatisticsView({
   projectId,
   dancerOptions,
 }: DanceStatisticsViewProps): React.ReactElement {
+  const { t } = useT();
   const aggregate = useDanceAnnotationsAggregate({ projectId });
   const catalog = useDanceAnnotationCatalog({ projectId });
 
@@ -109,7 +112,7 @@ export default function DanceStatisticsView({
   ];
 
   const dancerLabel = (id: string): string => {
-    if (id === '__unset__') return 'Uten dancer';
+    if (id === '__unset__') return t('danceStats.s003');
     return dancerOptions.find((d) => d.id === id)?.label ?? id;
   };
 
@@ -169,10 +172,10 @@ export default function DanceStatisticsView({
           }}
         >
           <Typography sx={{ fontSize: 14, color: danceFlowColors.textSecondary, mb: 1 }}>
-            Ingen annotations ennå
+            {t('danceStats.s000')}
           </Typography>
           <Typography sx={{ fontSize: 12, color: danceFlowColors.textMuted }}>
-            Legg til annotations i Annotate-flaten for å se statistikk.
+            {t('danceStats.s002')}
           </Typography>
         </Box>
       ) : (
@@ -289,7 +292,7 @@ export default function DanceStatisticsView({
                         bgcolor: danceFlowColors.textDisabled,
                       }} />
                       <Typography sx={{ flex: 1, fontSize: 12, color: danceFlowColors.textDisabled }}>
-                        Uten kategori
+                        {t('danceStats.s004')}
                       </Typography>
                       <Typography sx={{ fontSize: 12, fontWeight: 700, color: danceFlowColors.textMuted }}>
                         {stats.byCategory.get('__uncat__')!.count}
@@ -377,7 +380,7 @@ export default function DanceStatisticsView({
             </Typography>
             {stats.topLabels.length === 0 ? (
               <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled }}>
-                Ingen labels brukt ennå.
+                {t('danceStats.s001')}
               </Typography>
             ) : (
               <Stack spacing={0.75}>

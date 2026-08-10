@@ -49,6 +49,8 @@ import {
   type TimelineItemRecord,
 } from './danceTimelineItemService';
 import TimelineItemModal from './TimelineItemModal';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
@@ -117,6 +119,7 @@ export function FormationViewConnected({
   videoPanelSlot,
   readOnly = false,
 }: FormationViewConnectedProps): React.ReactElement {
+  const { t } = useT();
   const [load, setLoad] = React.useState<LoadState>({ phase: 'loading' });
   const [dancers, setDancers] = React.useState<Dancer[]>([]);
   const [initialFormations, setInitialFormations] = React.useState<Formation[] | null>(null);
@@ -142,7 +145,7 @@ export function FormationViewConnected({
       // saving = endringer i flyt, error = endringer ikke persistert.
       e.preventDefault();
       // Eldre browsers krever returnValue + returnert string.
-      e.returnValue = 'Endringer holder på å lagres. Vent et øyeblikk før du forlater siden.';
+      e.returnValue = t('formationConn.s000');
       return e.returnValue;
     };
     window.addEventListener('beforeunload', handler);
@@ -193,7 +196,7 @@ export function FormationViewConnected({
       if (loadEpochRef.current !== myEpoch) return;
       setLoad({
         phase: 'error',
-        message: err instanceof Error ? err.message : 'Kunne ikke laste formasjoner',
+        message: err instanceof Error ? err.message : t('formationConn.s005'),
       });
     }
   }, [projectId]);
@@ -280,20 +283,20 @@ export function FormationViewConnected({
       if (err instanceof FormationVersionConflictError) {
         setSaveStatus('error');
         setSaveError(
-          'Konflikt: En annen fane eller bruker har endret denne formasjonen. Last på nytt for å se siste versjon.',
+          t('formationConn.s003'),
         );
         // Dispatch toast som DanceWorkspace lytter på
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('dance:toast', {
             detail: {
-              message: 'Konflikt — endring fra en annen fane. Last på nytt for å fortsette.',
+              message: t('formationConn.s002'),
               kind: 'error',
             },
           }));
         }
       } else {
         setSaveStatus('error');
-        setSaveError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+        setSaveError(err instanceof Error ? err.message : t('formationConn.s004'));
       }
     } finally {
       inFlightRef.current = false;
@@ -416,7 +419,7 @@ export function FormationViewConnected({
       >
         <CircularProgress size={28} sx={{ color: PURPLE }} />
         <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
-          Laster formasjoner…
+          {t('formationConn.s007')}
         </Typography>
       </Stack>
     );
@@ -450,7 +453,7 @@ export function FormationViewConnected({
           {saveStatus === 'saved' ? (
             <Chip
               icon={<SavedIcon sx={{ fontSize: 16 }} />}
-              label="Lagret"
+              label={t('formationConn.s006')}
               size="small"
               sx={{ bgcolor: 'rgba(16,185,129,0.18)', color: danceFlowColors.successDark, fontWeight: 600 }}
             />
@@ -467,8 +470,7 @@ export function FormationViewConnected({
       ) : null}
       {dancers.length === 0 ? (
         <Alert severity="info" sx={{ m: 2 }}>
-          Ingen danserprofiler i prosjektet ennå. Legg til dansere under "Studenter"-fanen
-          så kan du plassere dem på scenen her.
+          {t('formationConn.s001')}
         </Alert>
       ) : null}
       <FormationView

@@ -56,6 +56,8 @@ import {
   type CalendarEvent,
   type CalendarEventKind,
 } from './calendarTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
@@ -107,6 +109,7 @@ export function DanceProductionCalendar({
   projectId,
   professionMode,
 }: DanceProductionCalendarProps): React.ReactElement {
+  const { t } = useT();
   const isStudio = professionMode === 'dance_studio';
 
   // ─── State ──────────────────────────────────────────────────────────
@@ -240,7 +243,7 @@ export function DanceProductionCalendar({
 
       setEvents(all);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke laste kalender');
+      setError(err instanceof Error ? err.message : t('danceProdCal.s006'));
     } finally {
       setLoading(false);
     }
@@ -429,16 +432,16 @@ export function DanceProductionCalendar({
                 textTransform: 'uppercase',
               }}
             >
-              {v === 'month' ? 'Måned' : v === 'week' ? 'Uke' : v === 'day' ? 'Dag' : 'Agenda'}
+              {v === 'month' ? t('danceProdCal.s008') : v === 'week' ? t('danceProdCal.s016') : v === 'day' ? 'Dag' : 'Agenda'}
             </Box>
           ))}
         </Stack>
-        <Tooltip title="Eksporter til kalender (.ics)">
+        <Tooltip title={t('danceProdCal.s001')}>
           <IconButton size="small" onClick={exportIcs} data-testid="calendar-export" sx={{ color: PURPLE_LIGHT }}>
             <DownloadIcon />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Skriv ut">
+        <Tooltip title={t('danceProdCal.s014')}>
           <IconButton size="small" onClick={() => window.print()} data-testid="calendar-print" sx={{ color: PURPLE_LIGHT }}>
             <PrintIcon />
           </IconButton>
@@ -525,7 +528,7 @@ export function DanceProductionCalendar({
           data-testid="calendar-upcoming-sidepanel"
         >
           <Typography sx={{ fontSize: 10, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700, mb: 1 }}>
-            KOMMENDE DENNE MÅNEDEN
+            {t('danceProdCal.s004')}
           </Typography>
           <Stack spacing={0.75}>
             {visibleEvents
@@ -570,7 +573,7 @@ export function DanceProductionCalendar({
         PaperProps={{ sx: { bgcolor: '#0f0a1c', color: danceFlowColors.textSecondary, minWidth: 360 } }}
       >
         <DialogTitle sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>
-          Nytt event {createDay ? `· ${formatDateShort(createDay)}` : ''}
+          {t('danceProdCal.s010')} {createDay ? `· ${formatDateShort(createDay)}` : ''}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ pt: 1 }}>
@@ -583,13 +586,13 @@ export function DanceProductionCalendar({
               fullWidth
               inputProps={{ 'data-testid': 'calendar-create-kind' }}
             >
-              <MenuItem value="rehearsal">Prøve</MenuItem>
+              <MenuItem value="rehearsal">{t('danceProdCal.s013')}</MenuItem>
               <MenuItem value="performance">Forestilling</MenuItem>
               {isStudio ? <MenuItem value="class">Klasse</MenuItem> : null}
             </TextField>
             <TextField
               size="small"
-              label="Tittel"
+              label={t('danceProdCal.s015')}
               value={createTitle}
               onChange={(e) => setCreateTitle(e.target.value)}
               fullWidth
@@ -615,13 +618,13 @@ export function DanceProductionCalendar({
               >
                 <MenuItem value="none">Engangs</MenuItem>
                 <MenuItem value="weekly">Ukentlig</MenuItem>
-                <MenuItem value="monthly">Månedlig</MenuItem>
+                <MenuItem value="monthly">{t('danceProdCal.s009')}</MenuItem>
               </TextField>
             ) : null}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDay(null)} sx={{ color: PURPLE_LIGHT }}>Avbryt</Button>
+          <Button onClick={() => setCreateDay(null)} sx={{ color: PURPLE_LIGHT }}>{t('danceProdCal.s000')}</Button>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -630,7 +633,7 @@ export function DanceProductionCalendar({
             data-testid="calendar-create-submit"
             sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
           >
-            Opprett
+            {t('danceProdCal.s012')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -673,21 +676,21 @@ export function DanceProductionCalendar({
                     >
                       <WarningIcon sx={{ fontSize: 16, color: danceFlowColors.errorPrimary }} />
                       <Typography sx={{ fontSize: 11, color: danceFlowColors.errorSoft }}>
-                        Kolliderer med: {collisions.map((c) => c.title).join(', ')}
+                        {t('danceProdCal.s005')} {collisions.map((c) => c.title).join(', ')}
                       </Typography>
                     </Stack>
                   ) : null}
                 </Stack>
               </DialogContent>
               <DialogActions>
-                <Button onClick={() => setDetailEvent(null)} sx={{ color: PURPLE_LIGHT }}>Lukk</Button>
+                <Button onClick={() => setDetailEvent(null)} sx={{ color: PURPLE_LIGHT }}>{t('danceProdCal.s007')}</Button>
                 <Button
                   onClick={() => navToSourceTab(detailEvent.kind)}
                   variant="contained"
                   data-testid="calendar-event-open-tab"
                   sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
                 >
-                  Åpne i {meta.label}-tab
+                  {t('danceProdCal.s017')} {meta.label}-tab
                 </Button>
               </DialogActions>
             </>
@@ -735,7 +738,7 @@ export function DanceProductionCalendar({
                 onClick={() => { openCreate(drawerDay); setDrawerDay(null); }}
                 sx={{ mt: 1, textTransform: 'none', color: PURPLE_LIGHT, borderColor: PURPLE_SOFT }}
               >
-                Nytt event her
+                {t('danceProdCal.s011')}
               </Button>
             </Stack>
           </>
@@ -946,6 +949,7 @@ const WeekView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; o
 };
 
 const DayView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; onClickEvent: (e: CalendarEvent) => void }> = ({ anchorDate, events, onClickEvent }) => {
+  const { t } = useT();
   const list = eventsOnDay(events, anchorDate).sort(
     (a, b) => new Date(a.startSec).getTime() - new Date(b.startSec).getTime(),
   );
@@ -953,7 +957,7 @@ const DayView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; on
     <Box data-testid="calendar-day-view">
       <Stack spacing={0.5}>
         {list.length === 0 ? (
-          <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>Ingen events denne dagen.</Typography>
+          <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>{t('danceProdCal.s002')}</Typography>
         ) : null}
         {list.map((ev) => {
           const meta = KIND_META[ev.kind];
@@ -978,6 +982,7 @@ const DayView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; on
 };
 
 const AgendaView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[]; onClickEvent: (e: CalendarEvent) => void }> = ({ anchorDate, events, onClickEvent }) => {
+  const { t } = useT();
   const list = events
     .filter((e) => {
       const d = new Date(e.startSec);
@@ -987,7 +992,7 @@ const AgendaView: React.FC<{ anchorDate: Date; events: readonly CalendarEvent[];
   return (
     <Stack spacing={0.5} data-testid="calendar-agenda-view">
       {list.length === 0 ? (
-        <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>Ingen events i denne måneden.</Typography>
+        <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>{t('danceProdCal.s003')}</Typography>
       ) : null}
       {list.map((ev) => {
         const meta = KIND_META[ev.kind];

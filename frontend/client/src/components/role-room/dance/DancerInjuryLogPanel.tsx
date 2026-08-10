@@ -7,7 +7,7 @@
  */
 
 import { danceFlowColors } from './danceFlowTheme';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Box,
   Stack,
@@ -51,43 +51,45 @@ import {
   listDancerProfiles,
   type DancerProfile,
 } from './dancerProfileService';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const BG_DARK = danceFlowColors.bgBase;
 const CARD_BG = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
-const BODY_PART_LABEL: Record<InjuryBodyPart, string> = {
-  ankle: 'Ankel',
-  knee: 'Kne',
-  hip: 'Hofte',
-  lower_back: 'Korsrygg',
-  shoulder: 'Skulder',
-  wrist: 'Håndledd',
-  foot: 'Fot',
-  neck: 'Nakke',
-  other: 'Annet',
-};
+const buildBODY_PART_LABEL = (t: TFn): Record<InjuryBodyPart, string> => ({
+  ankle: t('dancerInjury.s001'),
+  knee: t('dancerInjury.s019'),
+  hip: t('dancerInjury.s012'),
+  lower_back: t('dancerInjury.s020'),
+  shoulder: t('dancerInjury.s033'),
+  wrist: t('dancerInjury.s014'),
+  foot: t('dancerInjury.s009'),
+  neck: t('dancerInjury.s028'),
+  other: t('dancerInjury.s002'),
+});
 
-const SIDE_LABEL: Record<InjurySide, string> = {
-  left: 'Venstre',
-  right: 'Høyre',
-  both: 'Begge',
-};
+const buildSIDE_LABEL = (t: TFn): Record<InjurySide, string> => ({
+  left: t('dancerInjury.s038'),
+  right: t('dancerInjury.s015'),
+  both: t('dancerInjury.s005'),
+});
 
-const TRIGGER_LABEL: Record<InjuryTrigger, string> = {
-  rehearsal: 'Prøve',
-  performance: 'Forestilling',
-  audition: 'Audition',
-  training: 'Trening',
-  other: 'Annet',
-};
+const buildTRIGGER_LABEL = (t: TFn): Record<InjuryTrigger, string> => ({
+  rehearsal: t('dancerInjury.s030'),
+  performance: t('dancerInjury.s008'),
+  audition: t('dancerInjury.s003'),
+  training: t('dancerInjury.s035'),
+  other: t('dancerInjury.s002'),
+});
 
-const STATUS_LABEL: Record<InjuryEntryStatus, string> = {
-  active: 'Aktiv',
-  healing: 'Under heling',
-  resolved: 'Frisk',
-};
+const buildSTATUS_LABEL = (t: TFn): Record<InjuryEntryStatus, string> => ({
+  active: t('dancerInjury.s000'),
+  healing: t('dancerInjury.s036'),
+  resolved: t('dancerInjury.s010'),
+});
 
 const STATUS_COLOR: Record<InjuryEntryStatus, string> = {
   active: danceFlowColors.errorStrong,
@@ -132,6 +134,11 @@ export interface DancerInjuryLogPanelProps {
 export function DancerInjuryLogPanel({
   projectId,
 }: DancerInjuryLogPanelProps): React.ReactElement {
+  const { t } = useT();
+  const STATUS_LABEL = useMemo(() => buildSTATUS_LABEL(t), [t]);
+  const BODY_PART_LABEL = useMemo(() => buildBODY_PART_LABEL(t), [t]);
+  const SIDE_LABEL = useMemo(() => buildSIDE_LABEL(t), [t]);
+  const TRIGGER_LABEL = useMemo(() => buildTRIGGER_LABEL(t), [t]);
   const [entries, setEntries] = React.useState<InjuryLogEntry[]>([]);
   const [profiles, setProfiles] = React.useState<DancerProfile[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -154,7 +161,7 @@ export function DancerInjuryLogPanel({
       setEntries(injuries);
       setProfiles(dancerProfiles);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke laste skadelogg');
+      setError(err instanceof Error ? err.message : t('dancerInjury.s022'));
     } finally {
       setLoading(false);
     }
@@ -197,7 +204,7 @@ export function DancerInjuryLogPanel({
 
   const handleSubmit = async (): Promise<void> => {
     if (!form.dancerId) {
-      setSubmitError('Velg en danser først.');
+      setSubmitError(t('dancerInjury.s037'));
       return;
     }
     setSubmitting(true);
@@ -218,7 +225,7 @@ export function DancerInjuryLogPanel({
       setEntries((prev) => [created, ...prev]);
       setDialogOpen(false);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Kunne ikke lagre');
+      setSubmitError(err instanceof Error ? err.message : t('dancerInjury.s021'));
     } finally {
       setSubmitting(false);
     }
@@ -232,17 +239,17 @@ export function DancerInjuryLogPanel({
       const patched = await patchInjury(entry.id, { status: nextStatus });
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? patched : e)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke oppdatere status');
+      setError(err instanceof Error ? err.message : t('dancerInjury.s023'));
     }
   };
 
   const removeEntry = async (entry: InjuryLogEntry): Promise<void> => {
-    if (!window.confirm(`Slett skadeoppføring for ${dancerName(entry.dancerId)}?`)) return;
+    if (!window.confirm(t('dancerInjury.p01', { v0: dancerName(entry.dancerId) }))) return;
     try {
       await deleteInjury(entry.id);
       setEntries((prev) => prev.filter((e) => e.id !== entry.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke slette');
+      setError(err instanceof Error ? err.message : t('dancerInjury.s024'));
     }
   };
 
@@ -278,7 +285,7 @@ export function DancerInjuryLogPanel({
               SKADELOGG
             </Typography>
             <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff' }}>
-              {counts.open} åpne · {counts.resolved} avsluttet
+              {counts.open} {t('dancerInjury.s039')} {counts.resolved} avsluttet
             </Typography>
           </Box>
         </Stack>
@@ -295,7 +302,7 @@ export function DancerInjuryLogPanel({
           }}
           data-testid="injury-log-add"
         >
-          Ny skadeoppføring
+          {t('dancerInjury.s029')}
         </Button>
       </Stack>
 
@@ -315,9 +322,9 @@ export function DancerInjuryLogPanel({
           '& .MuiTabs-indicator': { bgcolor: PURPLE, height: 3, borderRadius: 1.5 },
         }}
       >
-        <Tab value="open" label={`Åpne (${counts.open})`} />
+        <Tab value="open" label={t('dancerInjury.p02', { v0: counts.open })} />
         <Tab value="resolved" label={`Friske (${counts.resolved})`} />
-        <Tab value="all" label={`Alle (${entries.length})`} />
+        <Tab value="all" label={t('dancerInjury.p00', { v0: entries.length })} />
       </Tabs>
 
       {error ? (
@@ -334,8 +341,7 @@ export function DancerInjuryLogPanel({
 
       {!loading && profiles.length === 0 ? (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Ingen danserprofiler i prosjektet. Legg til dansere under "Studenter"-fanen først,
-          så kan du registrere skader på dem her.
+          {t('dancerInjury.s017')}
         </Alert>
       ) : null}
 
@@ -344,10 +350,10 @@ export function DancerInjuryLogPanel({
           <HealthIcon sx={{ fontSize: 48, color: STATUS_COLOR.resolved }} />
           <Typography variant="body2" sx={{ color: 'rgba(229,231,235,0.7)' }}>
             {tab === 'open'
-              ? 'Ingen åpne skader. Alle dansere er klare for innsats.'
+              ? t('dancerInjury.s018')
               : tab === 'resolved'
-              ? 'Ingen avsluttede oppføringer enda.'
-              : 'Skadeloggen er tom.'}
+              ? t('dancerInjury.s016')
+              : t('dancerInjury.s032')}
           </Typography>
         </Stack>
       ) : null}
@@ -426,7 +432,7 @@ export function DancerInjuryLogPanel({
                 ) : null}
                 {entry.resolvedDate && entry.status === 'resolved' ? (
                   <Typography sx={{ fontSize: 12, color: STATUS_COLOR.resolved, mt: 0.5, fontWeight: 600 }}>
-                    Frisk fra:{' '}
+                    {t('dancerInjury.s011')}{' '}
                     {new Date(entry.resolvedDate).toLocaleDateString('nb-NO', {
                       day: 'numeric', month: 'long',
                     })}
@@ -435,7 +441,7 @@ export function DancerInjuryLogPanel({
               </Box>
               <Stack direction="row" spacing={1} alignItems="center">
                 {entry.status === 'active' ? (
-                  <Tooltip title="Marker som under heling">
+                  <Tooltip title={t('dancerInjury.s027')}>
                     <Button
                       size="small"
                       onClick={() => void updateStatus(entry, 'healing')}
@@ -446,7 +452,7 @@ export function DancerInjuryLogPanel({
                   </Tooltip>
                 ) : null}
                 {entry.status !== 'resolved' ? (
-                  <Tooltip title="Marker som frisk">
+                  <Tooltip title={t('dancerInjury.s026')}>
                     <Button
                       size="small"
                       startIcon={<CheckIcon />}
@@ -454,11 +460,11 @@ export function DancerInjuryLogPanel({
                       sx={{ color: STATUS_COLOR.resolved, textTransform: 'none' }}
                       data-testid={`injury-log-resolve-${entry.id}`}
                     >
-                      Frisk
+                      {t('dancerInjury.s010')}
                     </Button>
                   </Tooltip>
                 ) : null}
-                <Tooltip title="Slett oppføring">
+                <Tooltip title={t('dancerInjury.s034')}>
                   <IconButton
                     size="small"
                     onClick={() => void removeEntry(entry)}
@@ -479,12 +485,12 @@ export function DancerInjuryLogPanel({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle sx={{ fontWeight: 700 }}>Ny skadeoppføring</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>{t('dancerInjury.s029')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
               select
-              label="Danser"
+              label={t('dancerInjury.s006')}
               value={form.dancerId}
               onChange={(e) => setForm((f) => ({ ...f, dancerId: e.target.value }))}
               fullWidth
@@ -500,7 +506,7 @@ export function DancerInjuryLogPanel({
             <Stack direction="row" spacing={2}>
               <TextField
                 type="date"
-                label="Dato"
+                label={t('dancerInjury.s007')}
                 value={form.entryDate}
                 onChange={(e) => setForm((f) => ({ ...f, entryDate: e.target.value }))}
                 fullWidth
@@ -544,7 +550,7 @@ export function DancerInjuryLogPanel({
               </TextField>
               <TextField
                 select
-                label="Side"
+                label={t('dancerInjury.s031')}
                 value={form.side}
                 onChange={(e) => setForm((f) => ({ ...f, side: e.target.value as InjurySide | '' }))}
                 fullWidth
@@ -591,14 +597,14 @@ export function DancerInjuryLogPanel({
               maxRows={6}
               fullWidth
               size="small"
-              placeholder="Hva skjedde? — brukes også som NAV-grunnlag senere."
+              placeholder={t('dancerInjury.s013')}
             />
             {submitError ? <Alert severity="error">{submitError}</Alert> : null}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)} disabled={submitting}>
-            Avbryt
+            {t('dancerInjury.s004')}
           </Button>
           <Button
             onClick={() => void handleSubmit()}
@@ -607,7 +613,7 @@ export function DancerInjuryLogPanel({
             sx={{ bgcolor: PURPLE, '&:hover': { bgcolor: danceFlowColors.lavenderDeep } }}
             data-testid="injury-form-submit"
           >
-            {submitting ? 'Lagrer…' : 'Lagre'}
+            {submitting ? 'Lagrer…' : t('dancerInjury.s025')}
           </Button>
         </DialogActions>
       </Dialog>
