@@ -6329,6 +6329,7 @@ export const en: Record<keyof typeof no, string> = {
   'billAcct.snapshotRestored': 'Recent changes have been restored in the project.',
   'billAcct.snapshotRestoreError': 'Could not restore the project change.',
   'billAcct.dialogTitle': 'Account, subscription, and team',
+  'billAcct.languageLabel': 'Language / Språk',
   'billAcct.dialogSubtitle': 'Overview of who is logged in, the active project, Google Workspace, and the workspace subscription.',
   'billAcct.tabOverview': 'Overview',
   'billAcct.tabSyncRecovery': 'Sync and recovery',

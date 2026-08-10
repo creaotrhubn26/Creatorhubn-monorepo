@@ -6328,6 +6328,7 @@ export const no = {
   'billAcct.snapshotRestored': 'Nylige endringer er gjenopprettet i prosjektet.',
   'billAcct.snapshotRestoreError': 'Kunne ikke gjenopprette prosjektendringen.',
   'billAcct.dialogTitle': 'Konto, abonnement og team',
+  'billAcct.languageLabel': 'Språk / Language',
   'billAcct.dialogSubtitle': 'Oversikt over hvem som er innlogget, aktivt prosjekt, Google Workspace og workspace-abonnementet.',
   'billAcct.tabOverview': 'Oversikt',
   'billAcct.tabSyncRecovery': 'Sync og gjenoppretting',

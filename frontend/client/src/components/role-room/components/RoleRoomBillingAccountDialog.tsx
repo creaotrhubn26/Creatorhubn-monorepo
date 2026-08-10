@@ -47,7 +47,7 @@ import WorkspaceWhatsAppSettings from './WorkspaceWhatsAppSettings';
 import type { CastingProject } from '../models/casting';
 import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
-import { useT } from '../../../i18n';
+import { useT, LanguageSwitcher } from '../../../i18n';
 
 type WorkspaceAccountTeamMember = {
   name: string;
@@ -653,6 +653,18 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
 
         {tabValue === 0 ? (
           <>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          spacing={1.5}
+          sx={{ mb: 2, p: 2, borderRadius: 2.5, border: '1px solid rgba(148,163,184,0.18)' }}
+        >
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#f8fafc' }}>
+            {t('billAcct.languageLabel')}
+          </Typography>
+          <LanguageSwitcher />
+        </Stack>
         <Stack spacing={2} sx={{ mb: 2 }}>
           <Stack
             direction={{ xs: 'column', md: 'row' }}

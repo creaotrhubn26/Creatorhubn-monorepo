@@ -462,7 +462,7 @@ import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
-import { useT, LanguageSwitcher, type TranslationKey } from '../../../i18n';
+import { useT, type TranslationKey } from '../../../i18n';
 
 // Lokalisert, uppercased status-etikett for manus-pillen. Ukjent status → rå uppercase.
 const MANUSCRIPT_STATUS_KEYS: Record<string, TranslationKey> = {
@@ -2545,7 +2545,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 <ListItemText primary={t('menu.importFile')} secondary={t('menu.importFileDesc')} />
               </MenuItem>
             </Menu>
-            <LanguageSwitcher />
           </Stack>
         </Stack>
         {isLoading && selectedManuscript && (
