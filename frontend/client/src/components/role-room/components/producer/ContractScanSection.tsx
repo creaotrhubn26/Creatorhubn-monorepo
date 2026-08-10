@@ -20,6 +20,8 @@ import {
   ReceiptLong as ContractIcon,
 } from '@mui/icons-material';
 import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface PaymentTerm {
   label: string;
@@ -47,6 +49,7 @@ interface ContractScan {
 }
 
 export function ContractScanSection({ projectId }: { projectId: string | null }) {
+  const { t } = useT();
   const [contractText, setContractText] = useState('');
   const [scan, setScan] = useState<ContractScan | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,8 +94,8 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
         setError(body?.error === 'pdf_er_for_stor_maks_15mb'
-          ? 'PDF-en er for stor (maks 15 MB).'
-          : `PDF-lesing feilet (${body?.error ?? r.status}).`);
+          ? t('contractScan.s016')
+          : t('contractScan.p00', { v0: body?.error ?? r.status }));
         return;
       }
       setContractText(String(body.text ?? ''));
@@ -117,8 +120,8 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
         setError(body?.error === 'kontraktteksten_er_for_kort_til_et_aerlig_skann'
-          ? 'Kontraktteksten er for kort til et ærlig skann — lim inn hele avtalen.'
-          : `Skannet feilet (${body?.error ?? r.status}).`);
+          ? t('contractScan.s008')
+          : t('contractScan.p01', { v0: body?.error ?? r.status }));
         return;
       }
       setScan(body.scan as ContractScan);
@@ -138,11 +141,11 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
         <Stack direction="row" spacing={1} alignItems="center">
           <ContractIcon sx={{ color: '#fbbf24' }} />
           <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
-            Kontrakt-skann — økonomisk oppsett fra signert avtale
+            {t('contractScan.s007')}
           </Typography>
           {scan && (
             <Chip size="small"
-              label={scan.missingPoints.length === 0 ? 'Komplett' : `${scan.missingPoints.length} mangler`}
+              label={scan.missingPoints.length === 0 ? t('contractScan.s006') : t('contractScan.p02', { v0: scan.missingPoints.length })}
               sx={{
                 bgcolor: scan.missingPoints.length === 0 ? 'rgba(16,185,129,0.16)' : 'rgba(251,191,36,0.16)',
                 color: scan.missingPoints.length === 0 ? '#bbf7d0' : '#fde68a',
@@ -153,14 +156,12 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
       </AccordionSummary>
       <AccordionDetails>
         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem', mb: 1 }}>
-          Lim inn teksten fra den signerte avtalen. Beløp og datoer verifiseres
-          maskinelt mot teksten — hull i det økonomiske oppsettet listes som
-          avklaringspunkter, aldri gjetting.
+          {t('contractScan.s013')}
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
           <Button component="label" size="small" variant="outlined" disabled={pdfBusy}
             sx={{ textTransform: 'none', fontWeight: 700 }}>
-            {pdfBusy ? 'Leser PDF…' : 'Last opp signert PDF'}
+            {pdfBusy ? t('contractScan.s010') : t('contractScan.s009')}
             <input hidden type="file" accept="application/pdf"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -169,21 +170,20 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
               }} />
           </Button>
           <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
-            Bilde-baserte PDF-er (Adobe Sign o.l.) leses visuelt — les over
-            transkripsjonen før skann.
+            {t('contractScan.s001')}
           </Typography>
         </Stack>
         <TextField multiline minRows={4} maxRows={10} fullWidth size="small"
-          placeholder="Lim inn kontraktteksten her — eller last opp PDF over …"
+          placeholder={t('contractScan.s012')}
           value={contractText} onChange={(e) => setContractText(e.target.value)} sx={{ mb: 1 }} />
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: scan ? 1.5 : 0 }}>
           <Button variant="contained" size="small" onClick={() => void runScan()}
             disabled={busy || contractText.trim().length < 200}>
-            {busy ? 'Skanner…' : 'Skann kontrakten'}
+            {busy ? t('contractScan.s020') : t('contractScan.s019')}
           </Button>
           {scan && (
             <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
-              Sist skannet {new Date(scan.scannedAt).toLocaleString('nb-NO')}
+              {t('contractScan.s018')} {new Date(scan.scannedAt).toLocaleString('nb-NO')}
             </Typography>
           )}
         </Stack>
@@ -194,16 +194,16 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
           <Stack spacing={1}>
             <Box sx={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: 2, p: 1.2 }}>
               <Typography sx={{ fontWeight: 700, fontSize: '0.84rem', color: '#f8fafc', mb: 0.5 }}>
-                Økonomiske vilkår funnet i kontrakten
+                {t('contractScan.s023')}
               </Typography>
               {[
-                ['Parter', [eco.supplier, eco.client].filter(Boolean).join(' ↔ ') || null],
-                ['Totalsum', eco.totalAmount ? `${eco.totalAmount} ${eco.currency ?? ''} (${eco.vatHandling ?? 'MVA ikke angitt'})` : null],
-                ['Fakturering', eco.invoicing],
-                ['Bruksrettigheter', eco.usageRights],
-                ['Terminering', eco.terminationTerms],
-                ['Frister', eco.deadlines.length ? eco.deadlines.join(' · ') : null],
-                ['Leveranser', eco.deliverables.length ? eco.deliverables.join(' · ') : null],
+                [t('contractScan.s017'), [eco.supplier, eco.client].filter(Boolean).join(' ↔ ') || null],
+                [t('contractScan.s022'), eco.totalAmount ? `${eco.totalAmount} ${eco.currency ?? ''} (${eco.vatHandling ?? t('contractScan.s014')})` : null],
+                [t('contractScan.s003'), eco.invoicing],
+                [t('contractScan.s002'), eco.usageRights],
+                [t('contractScan.s021'), eco.terminationTerms],
+                [t('contractScan.s005'), eco.deadlines.length ? eco.deadlines.join(' · ') : null],
+                [t('contractScan.s011'), eco.deliverables.length ? eco.deliverables.join(' · ') : null],
               ].map(([label, value]) => value ? (
                 <Typography key={label as string} sx={{ fontSize: '0.8rem', color: 'rgba(226,232,240,0.8)' }}>
                   <strong>{label}:</strong> {value}
@@ -211,7 +211,7 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
               ) : null)}
               {eco.paymentTerms.length > 0 && (
                 <Box sx={{ mt: 0.5 }}>
-                  <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(226,232,240,0.85)' }}>Betalingsplan:</Typography>
+                  <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(226,232,240,0.85)' }}>{t('contractScan.s000')}</Typography>
                   {eco.paymentTerms.map((t, i) => (
                     <Typography key={i} sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.75)' }}>
                       • {t.label}{t.amount ? ` — ${t.amount}` : ''}{t.trigger ? ` (${t.trigger})` : ''}
@@ -224,7 +224,7 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
             {scan!.missingPoints.length > 0 && (
               <Alert severity="warning" sx={{ py: 0.5 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', mb: 0.25 }}>
-                  Mangler for komplett økonomisk oppsett — avklar med klienten:
+                  {t('contractScan.s015')}
                 </Typography>
                 {scan!.missingPoints.map((m, i) => (
                   <Typography key={i} sx={{ fontSize: '0.78rem' }}>• {m}</Typography>
@@ -234,7 +234,7 @@ export function ContractScanSection({ projectId }: { projectId: string | null })
             {scan!.rejectedValues.length > 0 && (
               <Alert severity="error" sx={{ py: 0.5 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', mb: 0.25 }}>
-                  Forkastet av verbatim-vakten (fantes ikke i kontraktteksten):
+                  {t('contractScan.s004')}
                 </Typography>
                 {scan!.rejectedValues.map((v, i) => (
                   <Typography key={i} sx={{ fontSize: '0.78rem' }}>• {v}</Typography>

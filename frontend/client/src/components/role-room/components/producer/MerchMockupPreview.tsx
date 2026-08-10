@@ -37,6 +37,8 @@ import type {
   RoleRoomAgentMerchSupplier,
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface MerchMockupPreviewProps {
   projectId: string | null;
@@ -46,26 +48,28 @@ interface MerchMockupPreviewProps {
   selectedSupplier?: RoleRoomAgentMerchSupplier | null;
 }
 
-const PRODUCT_OPTIONS: ReadonlyArray<{
+const buildPRODUCT_OPTIONS = (t: TFn): ReadonlyArray<{
   id: MerchMockupProductId;
   label: string;
   /** Categories from the agent's classification that should map to this
    *  Printful product. Used to filter the picker by selected supplier. */
   categories: RoleRoomAgentMerchProductCategory[];
-}> = [
-  { id: 'tshirt', label: 'T-skjorte', categories: ['apparel'] },
-  { id: 'hoodie', label: 'Hettegenser', categories: ['apparel'] },
+}> => ([
+  { id: 'tshirt', label: t('merchMockup.s018'), categories: ['apparel'] },
+  { id: 'hoodie', label: t('merchMockup.s004'), categories: ['apparel'] },
   { id: 'polo', label: 'Polo', categories: ['apparel'] },
-  { id: 'cap', label: 'Caps', categories: ['headwear'] },
-  { id: 'totebag', label: 'Totebag', categories: ['bags'] },
-  { id: 'mug', label: 'Krus', categories: ['drinkware'] },
-];
+  { id: 'cap', label: t('merchMockup.s000'), categories: ['headwear'] },
+  { id: 'totebag', label: t('merchMockup.s019'), categories: ['bags'] },
+  { id: 'mug', label: t('merchMockup.s007'), categories: ['drinkware'] },
+]);
 
 const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
   projectId,
   bootstrap,
   selectedSupplier,
 }) => {
+  const { t } = useT();
+  const PRODUCT_OPTIONS = useMemo(() => buildPRODUCT_OPTIONS(t), [t]);
   const logoUrl = useMemo(() => {
     return (
       bootstrap?.planningDraft?.brandGuide?.logoUrl
@@ -198,8 +202,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
           '& .MuiAlert-icon': { color: '#a5f3fc' },
         }}
       >
-        Mockup-preview krever en logo-URL fra Research-fanen. Kjør research, så vi har noe å trykke
-        på produktet.
+        {t('merchMockup.s013')}
       </Alert>
     );
   }
@@ -221,7 +224,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
         <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={0.6}>
           <Box>
             <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
-              Fotorealistisk mockup{companyName ? ` · ${companyName}` : ''}
+              {t('merchMockup.s001')}{companyName ? ` · ${companyName}` : ''}
               {selectedSupplier ? (
                 <Chip
                   size="small"
@@ -231,15 +234,14 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
               ) : null}
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.82rem' }}>
-              Logo rendret av Printful Mockup Generator. Bruk i pitch — leverandøren leverer eget prøvetrykk
-              før produksjon.
+              {t('merchMockup.s012')}
             </Typography>
           </Box>
           <Stack direction="row" spacing={0.6} alignItems="center">
             {cached ? (
               <Chip
                 size="small"
-                label="Lagret render"
+                label={t('merchMockup.s009')}
                 sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 600 }}
               />
             ) : null}
@@ -257,7 +259,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
                 py: 0.3,
               }}
             >
-              Rendre på nytt
+              {t('merchMockup.s017')}
             </Button>
           </Stack>
         </Stack>
@@ -293,18 +295,18 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
             <Box
               component="img"
               src={logoUrl}
-              alt="Logo brukt for mockup"
+              alt={t('merchMockup.s010')}
               sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               onError={(e) => {
                 const target = e.currentTarget as HTMLImageElement;
                 target.style.opacity = '0.2';
-                target.title = 'Kunne ikke laste logo — Printful kan heller ikke nå denne URLen';
+                target.title = t('merchMockup.s008');
               }}
             />
           </Box>
           <Stack spacing={0.2} sx={{ minWidth: 0, flex: 1 }}>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem' }}>
-              Logo brukt for render
+              {t('merchMockup.s011')}
             </Typography>
             <Typography
               sx={{
@@ -319,8 +321,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
               {logoUrl}
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.46)', fontSize: '0.68rem' }}>
-              Hvis dette ser feil ut (f.eks. favicon i stedet for ekte logo), klikk «Rendre på nytt»
-              etter at research har plukket opp riktig bilde.
+              {t('merchMockup.s005')}
             </Typography>
           </Stack>
         </Box>
@@ -348,7 +349,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
           })}
           {availableProducts.length < PRODUCT_OPTIONS.length ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.74rem', alignSelf: 'center', ml: 0.5 }}>
-              Kun produkter {selectedSupplier?.name} klassifiseres for
+              {t('merchMockup.j00', { v0: selectedSupplier?.name ?? '' })}
             </Typography>
           ) : null}
         </Stack>
@@ -371,10 +372,10 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
             <Stack spacing={1.2} alignItems="center">
               <CircularProgress size={32} sx={{ color: '#a5b4fc' }} />
               <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.86rem' }}>
-                Renderer mockup hos Printful … {elapsedSec}s
+                {t('merchMockup.s016')} {elapsedSec}s
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
-                Første render tar 5–30 s; senere visninger er øyeblikkelige (cachet).
+                {t('merchMockup.s002')}
               </Typography>
             </Stack>
           ) : error ? (
@@ -385,10 +386,8 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
               >
                 {error.code === 'mockup_provider_unconfigured' ? (
                   <>
-                    Printful er ikke fullt konfigurert. Be admin sette både
-                    <code> PRINTFUL_API_KEY</code> og <code>PRINTFUL_STORE_ID</code> i
-                    backend-env (Render → environment). Store-ID hentes fra Printful
-                    → Stores etter at en gratis "Manual / API"-store er opprettet.
+                    {t('merchMockup.s014')}
+                    <code> PRINTFUL_API_KEY</code> {t('merchMockup.s021')} <code>PRINTFUL_STORE_ID</code> {t('merchMockup.s020')}
                   </>
                 ) : (
                   error.detail
@@ -401,7 +400,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
                   onClick={() => void runFetch(true)}
                   sx={{ textTransform: 'none' }}
                 >
-                  Prøv igjen
+                  {t('merchMockup.s015')}
                 </Button>
               ) : null}
             </Stack>
@@ -418,13 +417,12 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
               }}
             />
           ) : (
-            <Typography sx={{ color: 'rgba(226,232,240,0.5)' }}>Ingen render</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.5)' }}>{t('merchMockup.s006')}</Typography>
           )}
         </Box>
 
         <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', lineHeight: 1.5 }}>
-          Generisk plagg fra Printful-katalogen — leverandørens faktiske produkt kan være tykkere stoff,
-          annen passform eller annen trykk-teknikk. Bruk dette som visuell pitch, ikke som endelig spesifikasjon.
+          {t('merchMockup.s003')}
         </Typography>
       </Stack>
     </Box>

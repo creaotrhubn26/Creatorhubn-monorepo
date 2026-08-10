@@ -24,6 +24,8 @@ import roleRoomAgentService, {
   type RoleRoomYouTubeChannelPlan,
 } from '../../services/roleRoomAgentService';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface YouTubeChannelSetupProps {
   /** Prosjektet vi henter brand-snapshot fra. */
@@ -47,6 +49,7 @@ export default function YouTubeChannelSetup({
   projectId,
   onChannelSelected,
 }: YouTubeChannelSetupProps): React.ReactElement {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState<RoleRoomYouTubeChannel[]>([]);
   const [scopeMissing, setScopeMissing] = useState(false);
@@ -97,7 +100,7 @@ export default function YouTubeChannelSetup({
       <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
         <CircularProgress size={16} />
         <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>
-          Sjekker YouTube-kanaler…
+          {t('youtubeSetup.s018')}
         </Typography>
       </Stack>
     );
@@ -106,10 +109,9 @@ export default function YouTubeChannelSetup({
   if (noConnection) {
     return (
       <>
-        <SetupCard intent="info" title="Koble til Google for å bruke YouTube">
+        <SetupCard intent="info" title={t('youtubeSetup.s010')}>
           <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.82rem', mb: 1 }}>
-            YouTube-publisering krever en Google-tilkobling. Hvis kunden eier YouTube-kanalen, kan
-            du be dem invitere deg som Manager — vi lager e-posten for deg.
+            {t('youtubeSetup.s023')}
           </Typography>
           <Stack direction="row" spacing={1}>
             <Button
@@ -124,7 +126,7 @@ export default function YouTubeChannelSetup({
                 borderColor: 'rgba(59,130,246,0.4)',
               }}
             >
-              Be kunden om tilgang
+              {t('youtubeSetup.s001')}
             </Button>
           </Stack>
         </SetupCard>
@@ -141,9 +143,9 @@ export default function YouTubeChannelSetup({
 
   if (scopeMissing) {
     return (
-      <SetupCard intent="warn" title="YouTube-tilgang mangler">
+      <SetupCard intent="warn" title={t('youtubeSetup.s024')}>
         <Typography sx={{ color: 'rgba(253,230,138,0.85)', fontSize: '0.78rem', mb: 1 }}>
-          Google-tilkoblingen din har ikke YouTube-scope. Re-connect for å hente kanalene dine.
+          {t('youtubeSetup.s006')}
         </Typography>
         <Button
           size="small"
@@ -163,7 +165,7 @@ export default function YouTubeChannelSetup({
     <>
     <Stack spacing={1.6} data-testid="youtube-channel-setup">
       {channels.length > 0 ? (
-        <SetupCard intent="success" title={`${channels.length} ${channels.length === 1 ? 'kanal' : 'kanaler'} koblet`}>
+        <SetupCard intent="success" title={t('youtubeSetup.p02', { v0: channels.length, v1: channels.length === 1 ? t('youtubeSetup.s025') : t('youtubeSetup.s026') })}>
           <Stack spacing={0.8}>
             {channels.map((c) => {
               const isSelected = selectedChannelId === c.id;
@@ -209,7 +211,7 @@ export default function YouTubeChannelSetup({
                       </Typography>
                       {c.isBrandAccount ? (
                         <Chip
-                          label="Brand-konto"
+                          label={t('youtubeSetup.s002')}
                           size="small"
                           sx={{
                             height: 18,
@@ -223,8 +225,8 @@ export default function YouTubeChannelSetup({
                     </Stack>
                     <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.72rem' }}>
                       {[
-                        c.subscriberCount != null ? `${c.subscriberCount.toLocaleString('no-NO')} abonn.` : null,
-                        c.videoCount != null ? `${c.videoCount} videoer` : null,
+                        c.subscriberCount != null ? t('youtubeSetup.p00', { v0: c.subscriberCount.toLocaleString('no-NO') }) : null,
+                        c.videoCount != null ? t('youtubeSetup.p01', { v0: c.videoCount }) : null,
                         c.customUrl,
                       ]
                         .filter(Boolean)
@@ -238,11 +240,9 @@ export default function YouTubeChannelSetup({
           </Stack>
         </SetupCard>
       ) : (
-        <SetupCard intent="info" title="Ingen YouTube-kanal funnet ennå">
+        <SetupCard intent="info" title={t('youtubeSetup.s007')}>
           <Typography sx={{ color: 'rgba(226,232,240,0.75)', fontSize: '0.82rem', mb: 1 }}>
-            YouTube krever at du oppretter kanalen manuelt på youtube.com — det kan ikke gjøres via API.
-            CI kan lage et gjennomtenkt utgangspunkt basert på kunden din: navn, beskrivelse,
-            content pillars, video-ideer og publiseringskadens.
+            {t('youtubeSetup.s022')}
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button
@@ -258,7 +258,7 @@ export default function YouTubeChannelSetup({
                 '&:hover': { bgcolor: '#dc2626' },
               }}
             >
-              {planLoading ? 'Lager plan…' : 'Lag kanal-plan med CI'}
+              {planLoading ? t('youtubeSetup.s014') : t('youtubeSetup.s013')}
             </Button>
             <Button
               size="small"
@@ -272,7 +272,7 @@ export default function YouTubeChannelSetup({
                 borderColor: 'rgba(148,163,184,0.4)',
               }}
             >
-              Opprett kanal på YouTube
+              {t('youtubeSetup.s015')}
             </Button>
             <Button
               size="small"
@@ -286,7 +286,7 @@ export default function YouTubeChannelSetup({
                 borderColor: 'rgba(59,130,246,0.4)',
               }}
             >
-              Be kunden om tilgang
+              {t('youtubeSetup.s001')}
             </Button>
           </Stack>
         </SetupCard>
@@ -375,6 +375,7 @@ function ChannelPlanView({
   copied: string | null;
   onCopy: (value: string, key: string) => void;
 }) {
+  const { t } = useT();
   return (
     <Box
       sx={{
@@ -389,11 +390,11 @@ function ChannelPlanView({
         <Stack direction="row" alignItems="center" spacing={0.8}>
           <AutoAwesomeIcon sx={{ color: '#fbbf24', fontSize: '1rem' }} />
           <Typography sx={{ color: '#fef3c7', fontSize: '0.78rem', fontWeight: 700 }}>
-            Forslag til kanal-oppsett
+            {t('youtubeSetup.s004')}
           </Typography>
           {plan.source === 'fallback' ? (
             <Chip
-              label="starter-mal"
+              label={t('youtubeSetup.s027')}
               size="small"
               sx={{
                 height: 18,
@@ -406,14 +407,14 @@ function ChannelPlanView({
         </Stack>
 
         <PlanField
-          label="Kanal-navn"
+          label={t('youtubeSetup.s009')}
           value={plan.channelName}
           onCopy={() => onCopy(plan.channelName, 'name')}
           copied={copied === 'name'}
         />
         {plan.alternativeNames.length > 0 ? (
           <Box>
-            <FieldLabel>Alternative navn</FieldLabel>
+            <FieldLabel>{t('youtubeSetup.s000')}</FieldLabel>
             <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
               {plan.alternativeNames.map((n) => (
                 <Chip
@@ -447,7 +448,7 @@ function ChannelPlanView({
           />
         ) : null}
         <PlanField
-          label="Kanal-beskrivelse"
+          label={t('youtubeSetup.s008')}
           value={plan.description}
           multiline
           onCopy={() => onCopy(plan.description, 'desc')}
@@ -456,7 +457,7 @@ function ChannelPlanView({
 
         {plan.keywords.length > 0 ? (
           <Box>
-            <FieldLabel>Søkeord</FieldLabel>
+            <FieldLabel>{t('youtubeSetup.s019')}</FieldLabel>
             <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
               {plan.keywords.map((k) => (
                 <Chip
@@ -522,7 +523,7 @@ function ChannelPlanView({
 
         {plan.firstVideoIdeas.length > 0 ? (
           <Box>
-            <FieldLabel>Første 5 videoer</FieldLabel>
+            <FieldLabel>{t('youtubeSetup.s005')}</FieldLabel>
             <Stack spacing={0.8}>
               {plan.firstVideoIdeas.map((v, idx) => (
                 <Box
@@ -573,7 +574,7 @@ function ChannelPlanView({
 
         {plan.channelTrailerConcept.hook ? (
           <Box>
-            <FieldLabel>Channel-trailer ({plan.channelTrailerConcept.durationSeconds} sek)</FieldLabel>
+            <FieldLabel>{t('youtubeSetup.j00', { v0: plan.channelTrailerConcept.durationSeconds })}</FieldLabel>
             <Box
               sx={{
                 p: 1,
@@ -602,7 +603,7 @@ function ChannelPlanView({
         ) : null}
 
         <Box>
-          <FieldLabel>Publiseringskadens</FieldLabel>
+          <FieldLabel>{t('youtubeSetup.s017')}</FieldLabel>
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 600 }}>
             {plan.postingCadence.frequency}
           </Typography>
@@ -616,19 +617,19 @@ function ChannelPlanView({
 
         {plan.visualIdentity.bannerConcept ? (
           <Box>
-            <FieldLabel>Visuell identitet</FieldLabel>
+            <FieldLabel>{t('youtubeSetup.s021')}</FieldLabel>
             <Stack spacing={0.4}>
               <PlanLine label="Banner" value={plan.visualIdentity.bannerConcept} />
               <PlanLine label="Avatar" value={plan.visualIdentity.avatarConcept} />
               <PlanLine label="Thumbnails" value={plan.visualIdentity.thumbnailStyle} />
-              <PlanLine label="Farger" value={plan.visualIdentity.colorPaletteHint} />
+              <PlanLine label={t('youtubeSetup.s003')} value={plan.visualIdentity.colorPaletteHint} />
             </Stack>
           </Box>
         ) : null}
 
         {plan.growthAdvice.length > 0 ? (
           <Box>
-            <FieldLabel>Vekst-tips</FieldLabel>
+            <FieldLabel>{t('youtubeSetup.s020')}</FieldLabel>
             <Stack spacing={0.3}>
               {plan.growthAdvice.map((g, i) => (
                 <Typography
@@ -670,7 +671,7 @@ function ChannelPlanView({
             alignSelf: 'flex-start',
           }}
         >
-          Opprett kanalen på YouTube
+          {t('youtubeSetup.s016')}
         </Button>
       </Stack>
     </Box>
@@ -707,11 +708,12 @@ function PlanField({
   onCopy: () => void;
   copied: boolean;
 }) {
+  const { t } = useT();
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.3 }}>
         <FieldLabel>{label}</FieldLabel>
-        <Tooltip title={copied ? 'Kopiert' : 'Kopier'}>
+        <Tooltip title={copied ? t('youtubeSetup.s012') : t('youtubeSetup.s011')}>
           <IconButton
             size="small"
             onClick={onCopy}

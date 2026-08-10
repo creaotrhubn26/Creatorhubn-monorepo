@@ -43,6 +43,8 @@ import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';
 import MarketingPlanCalendarView from './MarketingPlanCalendarView';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface Props {
   projectId: string;
@@ -58,12 +60,12 @@ interface Props {
   reloadSignal?: number;
 }
 
-const STATUS_LABELS: Record<MarketingPlanPost['status'], string> = {
-  proposed: 'Forslag',
-  scheduled: 'Planlagt',
-  published: 'Publisert',
-  skipped: 'Hoppet over',
-};
+const buildSTATUS_LABELS = (t: TFn): Record<MarketingPlanPost['status'], string> => ({
+  proposed: t('marketingPlanWs.s007'),
+  scheduled: t('marketingPlanWs.s021'),
+  published: t('marketingPlanWs.s025'),
+  skipped: t('marketingPlanWs.s012'),
+});
 
 const STATUS_COLORS: Record<MarketingPlanPost['status'], { bg: string; fg: string; icon: typeof CheckCircleIcon }> = {
   proposed: { bg: 'rgba(168,85,247,0.16)', fg: '#c084fc', icon: LightbulbIcon },
@@ -72,17 +74,18 @@ const STATUS_COLORS: Record<MarketingPlanPost['status'], { bg: string; fg: strin
   skipped: { bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8', icon: BlockIcon },
 };
 
-const FORMAT_LABELS: Record<MarketingPlanPost['format'], string> = {
+const buildFORMAT_LABELS = (t: TFn): Record<MarketingPlanPost['format'], string> => ({
   reel: 'Reel',
   carousel: 'Carousel',
-  image: 'Bilde',
+  image: t('marketingPlanWs.s003'),
   story: 'Story',
   tiktok: 'TikTok',
   linkedin_post: 'LinkedIn',
   youtube_short: 'YT Short',
-};
+});
 
 export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOnly = false, reloadSignal }: Props) {
+  const { t } = useT();
   const [plan, setPlan] = useState<MarketingPlan | null>(null);
   const [posts, setPosts] = useState<MarketingPlanPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,7 +204,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
     const weeks = Math.ceil(metrics.horizon / 7);
     const buckets: Array<{ week: number; count: number; label: string }> = [];
     for (let i = 0; i < weeks; i++) {
-      buckets.push({ week: i + 1, count: 0, label: `Uke ${i + 1}` });
+      buckets.push({ week: i + 1, count: 0, label: t('marketingPlanWs.p02', { v0: i + 1 }) });
     }
     for (const p of posts) {
       if (p.dayOffset == null) continue;
@@ -232,7 +235,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
     return (
       <Box sx={emptyStateSx}>
         <Typography color="error" sx={{ mb: 1 }}>{error}</Typography>
-        <Button variant="outlined" onClick={() => void load()}>Prøv igjen</Button>
+        <Button variant="outlined" onClick={() => void load()}>{t('marketingPlanWs.s024')}</Button>
       </Box>
     );
   }
@@ -242,18 +245,17 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
       <Box sx={emptyStateSx}>
         <RocketLaunchIcon sx={{ fontSize: 48, color: 'rgba(236,72,153,0.6)' }} />
         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.05rem', mt: 1.4 }}>
-          Ingen markedsplan ennå
+          {t('marketingPlanWs.s013')}
         </Typography>
         <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.88rem', mt: 0.6, maxWidth: 420, textAlign: 'center' }}>
-          Generer en plan med 30 dagers innholdsforslag basert på research-en din.
-          Planen blir tilgjengelig her med fullt dashboard og kalender.
+          {t('marketingPlanWs.s009')}
         </Typography>
         {onOpenAdvancedEditor && (
           <Button variant="contained"
                   onClick={onOpenAdvancedEditor}
                   startIcon={<RoleRoomAgentIcon size={18} />}
                   sx={{ mt: 2.4, bgcolor: '#ec4899', '&:hover': { bgcolor: '#db2777' } }}>
-            Åpne markedsplan-generator
+            {t('marketingPlanWs.s032')}
           </Button>
         )}
       </Box>
@@ -269,7 +271,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
         <Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.6 }}>
             <Typography sx={{ color: '#ec4899', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-              Markedsplan
+              {t('marketingPlanWs.s018')}
             </Typography>
             <Chip size="small" label={plan.status.toUpperCase()}
                   sx={{
@@ -282,16 +284,16 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
             {plan.strategy.positioning.valueProp}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.84rem', mt: 0.3 }}>
-            {metrics.horizon}-dagers horisont · {plan.pillars.length} pillars · Start{' '}
+            {metrics.horizon}{t('marketingPlanWs.s000')} {plan.pillars.length} pillars · Start{' '}
             {plan.startDate
               ? new Date(plan.startDate).toLocaleDateString('nb', { day: '2-digit', month: 'short' })
-              : 'ikke satt'}
+              : t('marketingPlanWs.s030')}
           </Typography>
         </Box>
         {!readOnly && (
           <Stack direction="row" spacing={1.2}>
             <VersionPicker
-              title="Plan-versjoner"
+              title={t('marketingPlanWs.s020')}
               versions={planVersions.map(v => ({
                 id: v.id, versionNumber: v.versionNumber,
                 label: v.label, isActive: v.isActive,
@@ -319,7 +321,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
                         color: '#ec4899',
                         '&:hover': { borderColor: '#ec4899', bgcolor: 'rgba(236,72,153,0.08)' },
                       }}>
-                Endre plan
+                {t('marketingPlanWs.s006')}
               </Button>
             )}
           </Stack>
@@ -328,28 +330,28 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
 
       {/* ── KPI-tiles ───────────────────────────────────────────── */}
       <Box sx={kpiGridSx} data-testid="kpi-tiles">
-        <KpiTile label="Totalt posts" value={metrics.total}
+        <KpiTile label={t('marketingPlanWs.s027')} value={metrics.total}
                  icon={<RocketLaunchIcon />} color="#ec4899" />
-        <KpiTile label="Publisert" value={metrics.by.published}
+        <KpiTile label={t('marketingPlanWs.s025')} value={metrics.by.published}
                  icon={<CheckCircleIcon />} color="#22c55e" />
-        <KpiTile label="Planlagt" value={metrics.by.scheduled}
+        <KpiTile label={t('marketingPlanWs.s021')} value={metrics.by.scheduled}
                  icon={<ScheduleIcon />} color="#22d3ee"
-                 subtext={`${metrics.by.proposed} forslag`} />
-        <KpiTile label="Dager igjen"
+                 subtext={t('marketingPlanWs.p03', { v0: metrics.by.proposed })} />
+        <KpiTile label={t('marketingPlanWs.s005')}
                  value={metrics.daysRemaining ?? '—'}
                  icon={<CalendarMonthIcon />} color="#f59e0b"
                  subtext={metrics.endDate
-                   ? `Til ${metrics.endDate.toLocaleDateString('nb', { day: '2-digit', month: 'short' })}`
+                   ? t('marketingPlanWs.p01', { v0: metrics.endDate.toLocaleDateString('nb', { day: '2-digit', month: 'short' }) })
                    : undefined} />
       </Box>
 
       {/* ── Charts-rad ──────────────────────────────────────────── */}
       <Box sx={chartGridSx}>
-        <ChartCard title="Pillar-fordeling"
-                   subtitle={`${posts.length === 0 ? 'Ingen posts ennå' : `${posts.length} posts fordelt`}`}>
+        <ChartCard title={t('marketingPlanWs.s019')}
+                   subtitle={`${posts.length === 0 ? t('marketingPlanWs.s014') : t('marketingPlanWs.p05', { v0: posts.length })}`}>
           <Stack spacing={1.2}>
             {pillarDistribution.length === 0 && (
-              <Typography sx={mutedSx}>Generer posts for å se fordelingen.</Typography>
+              <Typography sx={mutedSx}>{t('marketingPlanWs.s010')}</Typography>
             )}
             {pillarDistribution.map(({ pillar, count, pct }) => (
               <PillarBar key={pillar.id}
@@ -360,10 +362,10 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
           </Stack>
         </ChartCard>
 
-        <ChartCard title="Posts per uke"
-                   subtitle={`${Math.ceil(metrics.horizon / 7)} uker total`}>
+        <ChartCard title={t('marketingPlanWs.s023')}
+                   subtitle={t('marketingPlanWs.p06', { v0: Math.ceil(metrics.horizon / 7) })}>
           {weeklyDistribution.length === 0 ? (
-            <Typography sx={mutedSx}>Trenger startdato for å vise tidslinje.</Typography>
+            <Typography sx={mutedSx}>{t('marketingPlanWs.s028')}</Typography>
           ) : (
             <Stack direction="row" spacing={1} alignItems="flex-end" sx={{ height: 140 }}>
               {weeklyDistribution.map(w => {
@@ -406,7 +408,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
       <Box sx={tableCardSx}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.2 }}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1rem' }}>
-            Posts ({filteredPosts.length}{filteredPosts.length !== posts.length ? ` av ${posts.length}` : ''})
+            Posts ({filteredPosts.length}{filteredPosts.length !== posts.length ? t('marketingPlanWs.p00', { v0: posts.length }) : ''})
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Stack direction="row" sx={{
@@ -422,7 +424,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
                         color: viewMode === 'table' ? '#ec4899' : 'rgba(226,232,240,0.7)',
                         borderRadius: 0, px: 1.5,
                         '&:hover': { bgcolor: 'rgba(236,72,153,0.10)' },
-                      }}>Tabell</Button>
+                      }}>{t('marketingPlanWs.s026')}</Button>
               <Button size="small"
                       onClick={() => setViewMode('calendar')}
                       sx={{
@@ -431,21 +433,21 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
                         color: viewMode === 'calendar' ? '#ec4899' : 'rgba(226,232,240,0.7)',
                         borderRadius: 0, px: 1.5,
                         '&:hover': { bgcolor: 'rgba(236,72,153,0.10)' },
-                      }}>Kalender</Button>
+                      }}>{t('marketingPlanWs.s016')}</Button>
             </Stack>
             <TextField select size="small" value={statusFilter}
                        onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
                        sx={selectSx}>
-              <MenuItem value="all">Alle status</MenuItem>
-              <MenuItem value="proposed">Forslag</MenuItem>
-              <MenuItem value="scheduled">Planlagt</MenuItem>
-              <MenuItem value="published">Publisert</MenuItem>
-              <MenuItem value="skipped">Hoppet over</MenuItem>
+              <MenuItem value="all">{t('marketingPlanWs.s002')}</MenuItem>
+              <MenuItem value="proposed">{t('marketingPlanWs.s007')}</MenuItem>
+              <MenuItem value="scheduled">{t('marketingPlanWs.s021')}</MenuItem>
+              <MenuItem value="published">{t('marketingPlanWs.s025')}</MenuItem>
+              <MenuItem value="skipped">{t('marketingPlanWs.s012')}</MenuItem>
             </TextField>
             <TextField select size="small" value={pillarFilter}
                        onChange={(e) => setPillarFilter(e.target.value)}
                        sx={selectSx}>
-              <MenuItem value="all">Alle pillars</MenuItem>
+              <MenuItem value="all">{t('marketingPlanWs.s001')}</MenuItem>
               {plan.pillars.map(p => (
                 <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
               ))}
@@ -457,7 +459,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
           <Box sx={{ py: 4, textAlign: 'center' }}>
             <RocketLaunchIcon sx={{ fontSize: 36, color: 'rgba(236,72,153,0.45)' }} />
             <Typography sx={{ ...mutedSx, mt: 1 }}>
-              Ingen posts generert ennå. {plan.pillars.length} pillars er klare.
+              {t('marketingPlanWs.s015')} {plan.pillars.length} {t('marketingPlanWs.s031')}
             </Typography>
             {!readOnly && plan.pillars.length > 0 && (
               <Button
@@ -483,7 +485,7 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
                   '&:hover': { bgcolor: '#db2777' },
                   fontWeight: 700,
                 }}>
-                {generatingPosts ? 'Genererer posts …' : 'Generer 30 posts nå'}
+                {generatingPosts ? t('marketingPlanWs.s011') : t('marketingPlanWs.s008')}
               </Button>
             )}
             {generatingPosts && (
@@ -524,11 +526,11 @@ export function MarketingPlanWorkspace({ projectId, onOpenAdvancedEditor, readOn
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ ...thSx, width: 56 }}></TableCell>
-                  <TableCell sx={thSx}>Dag</TableCell>
+                  <TableCell sx={thSx}>{t('marketingPlanWs.s004')}</TableCell>
                   <TableCell sx={thSx}>Format</TableCell>
                   <TableCell sx={thSx}>Hook</TableCell>
                   <TableCell sx={thSx}>Pillar</TableCell>
-                  <TableCell sx={thSx}>Plattform</TableCell>
+                  <TableCell sx={thSx}>{t('marketingPlanWs.s022')}</TableCell>
                   <TableCell sx={thSx}>Status</TableCell>
                 </TableRow>
               </TableHead>
@@ -621,6 +623,9 @@ function PostRow({ post, pillar, onEdit }: {
   pillar: MarketingPlanPillar | null;
   onEdit?: () => void;
 }) {
+  const { t } = useT();
+  const FORMAT_LABELS = useMemo(() => buildFORMAT_LABELS(t), [t]);
+  const STATUS_LABELS = useMemo(() => buildSTATUS_LABELS(t), [t]);
   const statusCfg = STATUS_COLORS[post.status];
   const StatusIcon = statusCfg.icon;
   return (
@@ -652,7 +657,7 @@ function PostRow({ post, pillar, onEdit }: {
           <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.2 }}>
             {post.lastEditedByKind && (
               <Chip size="small"
-                    label={post.lastEditedByKind === 'client' ? 'Klient' : 'Team'}
+                    label={post.lastEditedByKind === 'client' ? t('marketingPlanWs.s017') : 'Team'}
                     sx={{
                       height: 14,
                       fontSize: '0.58rem',
@@ -668,7 +673,7 @@ function PostRow({ post, pillar, onEdit }: {
               {post.lastEditedByName
                 ? `${post.lastEditedByName.split('@')[0]} · `
                 : ''}
-              {formatTimeAgo(post.lastEditedAt)}
+              {formatTimeAgo(t, post.lastEditedAt)}
             </Typography>
           </Stack>
         )}
@@ -736,15 +741,15 @@ const FORMAT_COLOR_FALLBACK: Record<MarketingPlanPost['format'], string> = {
   youtube_short: '#ef4444',
 };
 
-function formatTimeAgo(iso: string): string {
+function formatTimeAgo(t: TFn, iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60000);
-  if (min < 1) return 'akkurat nå';
-  if (min < 60) return `${min} min siden`;
+  if (min < 1) return t('marketingPlanWs.s029');
+  if (min < 60) return t('marketingPlanWs.p04', { v0: min });
   const hour = Math.floor(min / 60);
-  if (hour < 24) return `${hour}t siden`;
+  if (hour < 24) return t('marketingPlanWs.p08', { v0: hour });
   const day = Math.floor(hour / 24);
-  if (day < 7) return `${day}d siden`;
+  if (day < 7) return t('marketingPlanWs.p07', { v0: day });
   return new Date(iso).toLocaleDateString('nb', { day: '2-digit', month: 'short' });
 }
 

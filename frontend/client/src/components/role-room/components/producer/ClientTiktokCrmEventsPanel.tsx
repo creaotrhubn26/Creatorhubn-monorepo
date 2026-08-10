@@ -15,7 +15,7 @@
  *   POST /api/admin-room/agent/ads/configs/:id/tiktok/sync-crm-event
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
@@ -26,6 +26,8 @@ import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -51,20 +53,20 @@ interface CrmEvent {
   last_error: string | null;
 }
 
-const EVENT_LABEL: Record<string, string> = {
-  TRIAL_START: 'Prøveperiode startet',
-  PAID_SIGNUP: 'Betalt registrering',
-  LEAD_QUALIFIED: 'Lead kvalifisert',
-  CUSTOMER_CONVERTED: 'Kunde konvertert',
-  CHURN: 'Avbestilling',
-};
+const buildEVENT_LABEL = (t: TFn): Record<string, string> => ({
+  TRIAL_START: t('tiktokCrm.s015'),
+  PAID_SIGNUP: t('tiktokCrm.s002'),
+  LEAD_QUALIFIED: t('tiktokCrm.s011'),
+  CUSTOMER_CONVERTED: t('tiktokCrm.s008'),
+  CHURN: t('tiktokCrm.s000'),
+});
 
-const STATUS_LABEL: Record<string, { txt: string; color: string; bg: string }> = {
-  delivered: { txt: 'SENDT', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
-  pending: { txt: 'PÅ VEI', color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
-  retrying: { txt: 'PRØVER PÅ NYTT', color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
-  failed: { txt: 'FEILET', color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
-};
+const buildSTATUS_LABEL = (t: TFn): Record<string, { txt: string; color: string; bg: string }> => ({
+  delivered: { txt: t('tiktokCrm.s017'), color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
+  pending: { txt: t('tiktokCrm.s016'), color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
+  retrying: { txt: t('tiktokCrm.s014'), color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
+  failed: { txt: t('tiktokCrm.s004'), color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
+});
 
 export default function ClientTiktokCrmEventsPanel({
   configId,
@@ -75,6 +77,9 @@ export default function ClientTiktokCrmEventsPanel({
   advertiserId?: string | null;
   isOwnAccount?: boolean;
 }) {
+  const { t } = useT();
+  const STATUS_LABEL = useMemo(() => buildSTATUS_LABEL(t), [t]);
+  const EVENT_LABEL = useMemo(() => buildEVENT_LABEL(t), [t]);
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [events, setEvents] = useState<CrmEvent[]>([]);
   const [summary, setSummary] = useState<Record<string, number>>({});
@@ -104,11 +109,11 @@ export default function ClientTiktokCrmEventsPanel({
     try {
       const r = await fetch(`/api/admin-room/agent/ads/configs/${effectiveConfigId}/tiktok/crm-events`, { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Kunne ikke hente events');
+      if (!r.ok) throw new Error(d.error || t('tiktokCrm.s010'));
       setEvents(d.events ?? []);
       setSummary(d.summary ?? {});
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Henting feilet');
+      setError(err instanceof Error ? err.message : t('tiktokCrm.s006'));
     } finally {
       setLoading(false);
     }
@@ -133,13 +138,13 @@ export default function ClientTiktokCrmEventsPanel({
         }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Send feilet');
+      if (!r.ok) throw new Error(d.error || t('tiktokCrm.s019'));
       setTestOpen(false);
       setTestEmail('');
       setTestValue('');
       setTimeout(load, 600);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Send feilet');
+      setError(err instanceof Error ? err.message : t('tiktokCrm.s019'));
     } finally {
       setSending(false);
     }
@@ -165,10 +170,10 @@ export default function ClientTiktokCrmEventsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Kunde-handlinger sendt til TikTok
+              {t('tiktokCrm.s009')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Når noen betaler eller registrerer seg, sender vi det videre så TikTok lærer hva som virker.
+              {t('tiktokCrm.s012')}
             </Typography>
           </Box>
         </Stack>
@@ -185,18 +190,18 @@ export default function ClientTiktokCrmEventsPanel({
             {summary.delivered ?? 0}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-            handlinger sendt vellykket siste uke
+            {t('tiktokCrm.s028')}
           </Typography>
           {total7d > 0 ? (
             <Stack direction="row" spacing={1} sx={{ mt: 1.2 }} flexWrap="wrap" useFlexGap>
               {summary.pending ? (
-                <Chip size="small" label={`${summary.pending} på vei`} sx={{ bgcolor: STATUS_LABEL.pending.bg, color: STATUS_LABEL.pending.color, fontWeight: 700 }} />
+                <Chip size="small" label={t('tiktokCrm.p02', { v0: summary.pending })} sx={{ bgcolor: STATUS_LABEL.pending.bg, color: STATUS_LABEL.pending.color, fontWeight: 700 }} />
               ) : null}
               {summary.retrying ? (
-                <Chip size="small" label={`${summary.retrying} prøver på nytt`} sx={{ bgcolor: STATUS_LABEL.retrying.bg, color: STATUS_LABEL.retrying.color, fontWeight: 700 }} />
+                <Chip size="small" label={t('tiktokCrm.p01', { v0: summary.retrying })} sx={{ bgcolor: STATUS_LABEL.retrying.bg, color: STATUS_LABEL.retrying.color, fontWeight: 700 }} />
               ) : null}
               {summary.failed ? (
-                <Chip size="small" label={`${summary.failed} feilet`} sx={{ bgcolor: STATUS_LABEL.failed.bg, color: STATUS_LABEL.failed.color, fontWeight: 700 }} />
+                <Chip size="small" label={t('tiktokCrm.p00', { v0: summary.failed })} sx={{ bgcolor: STATUS_LABEL.failed.bg, color: STATUS_LABEL.failed.color, fontWeight: 700 }} />
               ) : null}
             </Stack>
           ) : null}
@@ -221,7 +226,7 @@ export default function ClientTiktokCrmEventsPanel({
               '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
             }}
           >
-            Send testhandling
+            {t('tiktokCrm.s020')}
           </Button>
           <Button
             onClick={load}
@@ -229,7 +234,7 @@ export default function ClientTiktokCrmEventsPanel({
             startIcon={loading ? <CircularProgress size={16} /> : <RefreshOutlinedIcon />}
             sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600 }}
           >
-            Oppdater liste
+            {t('tiktokCrm.s013')}
           </Button>
         </Stack>
 
@@ -237,7 +242,7 @@ export default function ClientTiktokCrmEventsPanel({
         {events.length > 0 ? (
           <Box>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 1.2 }}>
-              Siste hendelser
+              {t('tiktokCrm.s024')}
             </Typography>
             <Stack spacing={0.8}>
               {events.slice(0, 12).map((ev) => {
@@ -268,7 +273,7 @@ export default function ClientTiktokCrmEventsPanel({
                         </Typography>
                         {ev.last_error ? (
                           <Typography sx={{ color: '#fda4af', fontSize: '0.74rem', mt: 0.4 }}>
-                            Feil: {ev.last_error.slice(0, 80)}
+                            {t('tiktokCrm.s005')} {ev.last_error.slice(0, 80)}
                           </Typography>
                         ) : null}
                       </Box>
@@ -284,17 +289,17 @@ export default function ClientTiktokCrmEventsPanel({
             </Stack>
             {events.length > 12 ? (
               <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mt: 1.4, textAlign: 'center' }}>
-                + {events.length - 12} flere
+                + {events.length - 12} {t('tiktokCrm.s027')}
               </Typography>
             ) : null}
           </Box>
         ) : !loading ? (
           <Box sx={{ textAlign: 'center', py: 3 }}>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.92rem' }}>
-              Ingen handlinger sendt ennå.
+              {t('tiktokCrm.s007')}
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mt: 0.6 }}>
-              Send en test eller koble Stripe/CRM-webhooks så fyrer hendelsene automatisk.
+              {t('tiktokCrm.s018')}
             </Typography>
           </Box>
         ) : null}
@@ -302,10 +307,10 @@ export default function ClientTiktokCrmEventsPanel({
 
       {/* Test-dialog */}
       <Dialog open={testOpen} onClose={() => setTestOpen(false)} PaperProps={{ sx: { bgcolor: palette.bg, color: palette.textPrimary } }}>
-        <DialogTitle sx={{ color: palette.textPrimary, fontWeight: 800 }}>Send testhandling til TikTok</DialogTitle>
+        <DialogTitle sx={{ color: palette.textPrimary, fontWeight: 800 }}>{t('tiktokCrm.s021')}</DialogTitle>
         <DialogContent>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem', mb: 2 }}>
-            Velg hvilken handling som skjedde, og oppgi e-posten til personen.
+            {t('tiktokCrm.s025')}
           </Typography>
           <Stack spacing={2}>
             <Select
@@ -321,7 +326,7 @@ export default function ClientTiktokCrmEventsPanel({
             </Select>
             <TextField
               size="small"
-              label="E-postadresse"
+              label={t('tiktokCrm.s003')}
               value={testEmail}
               onChange={(e) => setTestEmail(e.target.value)}
               placeholder="kunde@example.no"
@@ -331,7 +336,7 @@ export default function ClientTiktokCrmEventsPanel({
             <TextField
               size="small"
               type="number"
-              label="Verdi (kr, valgfritt)"
+              label={t('tiktokCrm.s026')}
               value={testValue}
               onChange={(e) => setTestValue(e.target.value)}
               InputProps={{ sx: { color: palette.textPrimary } }}
@@ -341,7 +346,7 @@ export default function ClientTiktokCrmEventsPanel({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTestOpen(false)} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-            Avbryt
+            {t('tiktokCrm.s001')}
           </Button>
           <Button
             onClick={sendTestEvent}
@@ -353,7 +358,7 @@ export default function ClientTiktokCrmEventsPanel({
               '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
             }}
           >
-            {sending ? 'Sender…' : 'Send til TikTok'}
+            {sending ? t('tiktokCrm.s023') : t('tiktokCrm.s022')}
           </Button>
         </DialogActions>
       </Dialog>

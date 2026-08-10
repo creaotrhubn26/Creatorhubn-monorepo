@@ -35,6 +35,8 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import { useSequencedFetch } from '../../hooks/useSequencedFetch';
 import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type FilterPlatform = 'all' | 'instagram' | 'facebook_page' | 'linkedin' | 'youtube';
 type FilterKind = 'all' | 'comment' | 'reply' | 'mention' | 'dm' | 'reaction';
@@ -84,22 +86,23 @@ const PLATFORM_LABEL: Record<string, string> = {
   threads: 'Threads',
 };
 
-function formatTimestamp(iso: string | null): string {
+function formatTimestamp(t: TFn, iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   const now = Date.now();
   const diffMs = now - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return 'akkurat nå';
-  if (diffMin < 60) return `${diffMin}m siden`;
+  if (diffMin < 1) return t('socialInbox.s038');
+  if (diffMin < 60) return t('socialInbox.p03', { v0: diffMin });
   const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}t siden`;
+  if (diffH < 24) return t('socialInbox.p04', { v0: diffH });
   const diffD = Math.floor(diffH / 24);
-  if (diffD < 7) return `${diffD}d siden`;
+  if (diffD < 7) return t('socialInbox.p02', { v0: diffD });
   return d.toLocaleDateString('nb-NO');
 }
 
 export default function SocialInboxPanel(): React.ReactElement {
+  const { t } = useT();
   const [events, setEvents] = useState<RoleRoomSocialEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,7 +197,7 @@ export default function SocialInboxPanel(): React.ReactElement {
     } catch {
       setDrafts((prev) => ({
         ...prev,
-        [eventId]: { ...prev[eventId], error: 'Kunne ikke kopiere til utklippstavlen.' },
+        [eventId]: { ...prev[eventId], error: t('socialInbox.s022') },
       }));
     }
   };
@@ -235,10 +238,10 @@ export default function SocialInboxPanel(): React.ReactElement {
       <PanelHeader
         icon={<InboxHeaderIcon />}
         title="Inbox"
-        subtitle={`${events.length} hendelser${counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}`}
+        subtitle={t('socialInbox.p01', { v0: events.length, v1: counts.unread > 0 ? t('socialInbox.p00', { v0: counts.unread }) : '' })}
         actions={
-          <Tooltip title="Oppdater">
-            <IconButton size="small" aria-label="Oppdater inbox" onClick={() => void refresh()} disabled={loading}>
+          <Tooltip title={t('socialInbox.s030')}>
+            <IconButton size="small" aria-label={t('socialInbox.s031')} onClick={() => void refresh()} disabled={loading}>
               <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
             </IconButton>
           </Tooltip>
@@ -253,7 +256,7 @@ export default function SocialInboxPanel(): React.ReactElement {
           onChange={(_, v) => v && setPlatformFilter(v)}
           data-testid="inbox-platform-filter"
         >
-          <ToggleButton value="all">Alle</ToggleButton>
+          <ToggleButton value="all">{t('socialInbox.s006')}</ToggleButton>
           <ToggleButton value="instagram">Instagram</ToggleButton>
           <ToggleButton value="facebook_page">Facebook</ToggleButton>
           <ToggleButton value="linkedin">LinkedIn</ToggleButton>
@@ -265,15 +268,15 @@ export default function SocialInboxPanel(): React.ReactElement {
           value={kindFilter}
           onChange={(e) => setKindFilter(e.target.value as FilterKind)}
           data-testid="inbox-kind-filter"
-          inputProps={{ 'aria-label': 'Filtrer etter type' }}
+          inputProps={{ 'aria-label': t('socialInbox.s012') }}
           sx={{ minWidth: 130, fontSize: '0.78rem' }}
         >
-          <MenuItem value="all">Alle typer</MenuItem>
-          <MenuItem value="comment">Kommentarer</MenuItem>
-          <MenuItem value="reply">Svar</MenuItem>
-          <MenuItem value="mention">Omtaler</MenuItem>
-          <MenuItem value="dm">DM-er</MenuItem>
-          <MenuItem value="reaction">Reaksjoner</MenuItem>
+          <MenuItem value="all">{t('socialInbox.s008')}</MenuItem>
+          <MenuItem value="comment">{t('socialInbox.s018')}</MenuItem>
+          <MenuItem value="reply">{t('socialInbox.s036')}</MenuItem>
+          <MenuItem value="mention">{t('socialInbox.s029')}</MenuItem>
+          <MenuItem value="dm">{t('socialInbox.s010')}</MenuItem>
+          <MenuItem value="reaction">{t('socialInbox.s033')}</MenuItem>
         </Select>
 
         <Select
@@ -281,14 +284,14 @@ export default function SocialInboxPanel(): React.ReactElement {
           value={sentimentFilter}
           onChange={(e) => setSentimentFilter(e.target.value as FilterSentiment)}
           data-testid="inbox-sentiment-filter"
-          inputProps={{ 'aria-label': 'Filtrer etter sentiment' }}
+          inputProps={{ 'aria-label': t('socialInbox.s011') }}
           sx={{ minWidth: 130, fontSize: '0.78rem' }}
         >
-          <MenuItem value="all">Alle stemninger</MenuItem>
-          <MenuItem value="negative">Negativ</MenuItem>
-          <MenuItem value="neutral">Nøytral</MenuItem>
-          <MenuItem value="positive">Positiv</MenuItem>
-          <MenuItem value="mixed">Blandet</MenuItem>
+          <MenuItem value="all">{t('socialInbox.s007')}</MenuItem>
+          <MenuItem value="negative">{t('socialInbox.s026')}</MenuItem>
+          <MenuItem value="neutral">{t('socialInbox.s028')}</MenuItem>
+          <MenuItem value="positive">{t('socialInbox.s032')}</MenuItem>
+          <MenuItem value="mixed">{t('socialInbox.s009')}</MenuItem>
         </Select>
 
         <ToggleButton
@@ -298,7 +301,7 @@ export default function SocialInboxPanel(): React.ReactElement {
           onChange={() => setUnreadOnly((v) => !v)}
           data-testid="inbox-unread-toggle"
         >
-          Kun ulest
+          {t('socialInbox.s021')}
         </ToggleButton>
       </Stack>
 
@@ -308,13 +311,13 @@ export default function SocialInboxPanel(): React.ReactElement {
         <LoadingSkeleton variant="list" />
       ) : events.length === 0 ? (
         <EmptyState
-          title="Ingen events ennå"
-          description="Når koblede plattformer mottar comments, mentions, eller DMs, lander de her med sentiment-score og avsender-info."
-          hintsLabel="Sjekk:"
+          title={t('socialInbox.s017')}
+          description={t('socialInbox.s027')}
+          hintsLabel={t('socialInbox.s035')}
           hints={[
-            { label: '1. Kontoer koblet (bar øverst)', tone: 'accent' },
-            { label: '2. Webhook subscribed (skjer auto ved connect)', tone: 'positive' },
-            { label: '3. Posts publisert (Plan-fase)', tone: 'neutral' },
+            { label: t('socialInbox.s003'), tone: 'accent' },
+            { label: t('socialInbox.s004'), tone: 'positive' },
+            { label: t('socialInbox.s005'), tone: 'neutral' },
           ]}
         />
       ) : (
@@ -366,7 +369,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                       ? e.authorDisplayName
                       : e.authorUsername
                         ? `@${e.authorUsername}`
-                        : '(anonym)'}
+                        : t('socialInbox.s000')}
                   </Typography>
                   <Chip
                     size="small"
@@ -430,7 +433,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                       }}
                     />
                   ) : (
-                    <Tooltip title="Sentiment-scoring pågår">
+                    <Tooltip title={t('socialInbox.s034')}>
                       <Chip
                         size="small"
                         label="…"
@@ -445,7 +448,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                     </Tooltip>
                   )}
                   <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.7rem' }}>
-                    {formatTimestamp(e.occurredAt ?? e.receivedAt)}
+                    {formatTimestamp(t, e.occurredAt ?? e.receivedAt)}
                   </Typography>
                 </Stack>
                 <Typography
@@ -458,18 +461,18 @@ export default function SocialInboxPanel(): React.ReactElement {
                     wordBreak: 'break-word',
                   }}
                 >
-                  {e.body ?? <em style={{ opacity: 0.5 }}>(ingen tekst)</em>}
+                  {e.body ?? <em style={{ opacity: 0.5 }}>{t('socialInbox.s001')}</em>}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.2} alignItems="flex-start">
                 {canReply ? (
-                  <Tooltip title="Foreslå svar med agenten">
+                  <Tooltip title={t('socialInbox.s014')}>
                     <IconButton
                       size="small"
                       onClick={() => void handleDraftReply(e.id)}
                       disabled={draftState?.loading}
                       data-testid="inbox-draft-reply"
-                      aria-label="Foreslå svar"
+                      aria-label={t('socialInbox.s013')}
                       sx={{ color: 'rgba(34,211,238,0.9)' }}
                     >
                       {draftState?.loading ? (
@@ -481,7 +484,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                   </Tooltip>
                 ) : null}
                 {!e.isRead ? (
-                  <Tooltip title="Marker som lest">
+                  <Tooltip title={t('socialInbox.s025')}>
                     <IconButton
                       size="small"
                       onClick={() => void handleMarkRead(e.id)}
@@ -523,7 +526,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                       value={draftState.draft}
                       onChange={(ev) => handleDraftChange(e.id, ev.target.value)}
                       data-testid="inbox-draft-text"
-                      inputProps={{ 'aria-label': 'Svarutkast' }}
+                      inputProps={{ 'aria-label': t('socialInbox.s037') }}
                       sx={{
                         mt: 1,
                         '& .MuiInputBase-root': {
@@ -559,7 +562,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                           '&:hover': { bgcolor: 'rgba(34,211,238,0.28)', boxShadow: 'none' },
                         }}
                       >
-                        {draftState.copied ? 'Kopiert!' : 'Kopier'}
+                        {draftState.copied ? t('socialInbox.s020') : t('socialInbox.s019')}
                       </Button>
                       <Button
                         size="small"
@@ -571,7 +574,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                           color: 'rgba(226,232,240,0.7)',
                         }}
                       >
-                        Generer på nytt
+                        {t('socialInbox.s015')}
                       </Button>
                       <Button
                         size="small"
@@ -582,11 +585,10 @@ export default function SocialInboxPanel(): React.ReactElement {
                           color: 'rgba(226,232,240,0.5)',
                         }}
                       >
-                        Lukk
+                        {t('socialInbox.s024')}
                       </Button>
                       <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.68rem' }}>
-                        Lim inn svaret på {PLATFORM_LABEL[e.platform] ?? e.platform}. Kun
-                        denne kommentaren ble sendt til agenten.
+                        {t('socialInbox.s023')} {PLATFORM_LABEL[e.platform] ?? e.platform}{t('socialInbox.s002')}
                       </Typography>
                     </Stack>
                   </>
@@ -650,7 +652,7 @@ export default function SocialInboxPanel(): React.ReactElement {
         }}
         data-testid="inbox-refresh-button"
       >
-        {loading ? 'Henter…' : 'Oppdater'}
+        {loading ? t('socialInbox.s016') : t('socialInbox.s030')}
       </Button>
     </Stack>
   );

@@ -35,6 +35,8 @@ import {
   Typography,
 } from '@mui/material';
 import { Shield as ShieldIcon, MailOutline as MailIcon } from '@mui/icons-material';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface VaultRevealMfaPromptProps {
   open: boolean;
@@ -54,6 +56,7 @@ export interface VaultRevealMfaPromptProps {
 const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
   open, onClose, availableMethods, policy, message, userEmail, onSubmit,
 }) => {
+  const { t } = useT();
   // Default-fane: TOTP hvis tilgjengelig, ellers e-post
   const [activeTab, setActiveTab] = useState<'totp' | 'email'>(
     availableMethods.totp ? 'totp' : 'email',
@@ -88,14 +91,14 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
       if (response.ok) {
         const payload = await response.json().catch(() => null) as { devCode?: string } | null;
         if (payload?.devCode) {
-          setError(`Dev-mode: koden er ${payload.devCode}`);
+          setError(t('vaultMfa.p00', { v0: payload.devCode }));
         }
         setEmailCodeSent(true);
       } else {
-        setError('Kunne ikke sende kode. Prøv igjen.');
+        setError(t('vaultMfa.s012'));
       }
     } catch {
-      setError('Nettverksfeil — prøv igjen.');
+      setError(t('vaultMfa.s013'));
     } finally {
       setSendingEmail(false);
     }
@@ -104,11 +107,11 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
   const handleSubmit = useCallback(async (): Promise<void> => {
     setError(null);
     if (activeTab === 'totp' && totpCode.length < 6) {
-      setError('Koden må være 6 sifre.');
+      setError(t('vaultMfa.s011'));
       return;
     }
     if (activeTab === 'email' && emailCode.length < 6) {
-      setError('Koden må være 6 sifre.');
+      setError(t('vaultMfa.s011'));
       return;
     }
     setSubmitting(true);
@@ -117,7 +120,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
         activeTab === 'totp' ? { totpCode } : { emailCode },
       );
       if (!result.ok) {
-        setError(result.errorMessage ?? 'Feil kode. Prøv igjen.');
+        setError(result.errorMessage ?? t('vaultMfa.s009'));
       }
       // Parent ansvarlig for å lukke modalen ved suksess
     } finally {
@@ -137,12 +140,12 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
         <ShieldIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Stack spacing={0.2}>
           <Typography sx={{ fontWeight: 800 }}>
-            Bekreft for å se passord
+            {t('vaultMfa.s004')}
           </Typography>
           <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)', fontWeight: 400 }}>
             {policy === 'mfa_required'
-              ? 'Denne secret-en krever ekstra bekreftelse for hver reveal.'
-              : 'Du har 2FA aktivert — bekreft for å se passordet.'}
+              ? t('vaultMfa.s006')
+              : t('vaultMfa.s007')}
           </Typography>
         </Stack>
       </DialogTitle>
@@ -164,15 +167,15 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
               '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
             }}
           >
-            <Tab value="totp" label="Authenticator-app" icon={<ShieldIcon fontSize="small" />} iconPosition="start" />
-            <Tab value="email" label="E-post-kode" icon={<MailIcon fontSize="small" />} iconPosition="start" />
+            <Tab value="totp" label={t('vaultMfa.s001')} icon={<ShieldIcon fontSize="small" />} iconPosition="start" />
+            <Tab value="email" label={t('vaultMfa.s008')} icon={<MailIcon fontSize="small" />} iconPosition="start" />
           </Tabs>
         ) : null}
 
         {activeTab === 'totp' ? (
           <Stack spacing={1.2}>
             <Typography sx={{ fontSize: '0.82rem', color: 'rgba(226,232,240,0.7)' }}>
-              Åpne Authenticator-appen og skriv inn 6-sifret kode for Creatorhub.
+              {t('vaultMfa.s018')}
             </Typography>
             <TextField
               value={totpCode}
@@ -192,7 +195,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
         ) : (
           <Stack spacing={1.2}>
             <Typography sx={{ fontSize: '0.82rem', color: 'rgba(226,232,240,0.7)' }}>
-              Vi sender en 6-sifret kode til <strong>{userEmail}</strong>.
+              {t('vaultMfa.s017')} <strong>{userEmail}</strong>.
             </Typography>
             {!emailCodeSent ? (
               <Button
@@ -207,12 +210,12 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
                   '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
                 }}
               >
-                {sendingEmail ? 'Sender…' : 'Send kode på e-post'}
+                {sendingEmail ? t('vaultMfa.s016') : t('vaultMfa.s014')}
               </Button>
             ) : (
               <>
                 <Typography sx={{ fontSize: '0.78rem', color: '#34d399' }}>
-                  Kode sendt til {userEmail}. Sjekk innboksen (og spam).
+                  {t('vaultMfa.s010')} {userEmail}{t('vaultMfa.s000')}
                 </Typography>
                 <TextField
                   value={emailCode}
@@ -234,7 +237,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
                   disabled={sendingEmail}
                   sx={{ textTransform: 'none', color: '#94a3b8', alignSelf: 'flex-start' }}
                 >
-                  Send ny kode
+                  {t('vaultMfa.s015')}
                 </Button>
               </>
             )}
@@ -250,7 +253,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={submitting} sx={{ textTransform: 'none', color: '#94a3b8' }}>
-          Avbryt
+          {t('vaultMfa.s002')}
         </Button>
         <Button
           onClick={() => void handleSubmit()}
@@ -269,7 +272,7 @@ const VaultRevealMfaPrompt: React.FC<VaultRevealMfaPromptProps> = ({
             '&:hover': { bgcolor: '#06b6d4' },
           }}
         >
-          {submitting ? 'Bekrefter…' : 'Bekreft'}
+          {submitting ? t('vaultMfa.s005') : t('vaultMfa.s003')}
         </Button>
       </DialogActions>
     </Dialog>

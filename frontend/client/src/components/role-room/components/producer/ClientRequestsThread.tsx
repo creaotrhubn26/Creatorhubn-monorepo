@@ -35,6 +35,8 @@ import {
   SupportAgent as MarketerIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ClientRequestSummary {
   id: string;
@@ -68,12 +70,12 @@ export interface ClientRequestsThreadProps {
   initialLimit?: number;
 }
 
-const STATUS_META: Record<ClientRequestSummary['status'], { label: string; color: string; bg: string }> = {
-  pending:     { label: 'Sendt — venter på klient',         color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-  in_progress: { label: 'Du purret — venter fortsatt',      color: '#a5b4fc', bg: 'rgba(167,139,250,0.12)' },
-  answered:    { label: 'Klient har svart',                 color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
-  closed:      { label: 'Lukket',                           color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
-};
+const buildSTATUS_META = (t: TFn): Record<ClientRequestSummary['status'], { label: string; color: string; bg: string }> => ({
+  pending:     { label: t('clientRequestsThread.s014'),         color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+  in_progress: { label: t('clientRequestsThread.s000'),      color: '#a5b4fc', bg: 'rgba(167,139,250,0.12)' },
+  answered:    { label: t('clientRequestsThread.s005'),                 color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+  closed:      { label: t('clientRequestsThread.s008'),                           color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
+});
 
 const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
   projectId,
@@ -81,6 +83,8 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
   emptyMode = 'inline',
   initialLimit = 5,
 }) => {
+  const { t } = useT();
+  const STATUS_META = useMemo(() => buildSTATUS_META(t), [t]);
   const [requests, setRequests] = useState<ClientRequestSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +99,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
     try {
       const result = await roleRoomAgentService.listClientRequests(projectId, { contextArea });
       if (!result) {
-        setError('Kunne ikke laste klient-forespørsler.');
+        setError(t('clientRequestsThread.s007'));
         return;
       }
       setRequests(result.requests);
@@ -135,7 +139,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
         }
         await load();
       } else {
-        setError('Svar kunne ikke sendes.');
+        setError(t('clientRequestsThread.s015'));
       }
     } finally {
       setReplying(null);
@@ -163,7 +167,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
     if (emptyMode === 'hide') return null;
     return (
       <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem', py: 1 }}>
-        Ingen klient-forespørsler ennå{contextArea ? ` for ${contextArea}` : ''}.
+        {t('clientRequestsThread.s002')}{contextArea ? ` for ${contextArea}` : ''}.
       </Typography>
     );
   }
@@ -175,12 +179,12 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.9 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
-            Klient-korrespondanse
+            {t('clientRequestsThread.s006')}
           </Typography>
           {pendingCount > 0 ? (
             <Chip
               size="small"
-              label={`${pendingCount} venter`}
+              label={t('clientRequestsThread.p02', { v0: pendingCount })}
               sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700, height: 22 }}
             />
           ) : null}
@@ -221,7 +225,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                       sx={{ bgcolor: meta.bg, color: meta.color, fontWeight: 700, height: 20, fontSize: '0.7rem' }}
                     />
                     <Typography sx={{ fontSize: '0.7rem', color: 'rgba(226,232,240,0.5)' }}>
-                      {req.clientName ?? req.clientEmail} · sendt {formatRelative(req.createdAt)}
+                      {req.clientName ?? req.clientEmail} {t('clientRequestsThread.s018')} {formatRelative(t, req.createdAt)}
                     </Typography>
                   </Stack>
                   <Typography sx={{ color: '#f8fafc', fontSize: '0.86rem', fontWeight: 600 }}>
@@ -237,7 +241,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                 <Box sx={{ mt: 1.2 }}>
                   {messages.length === 0 ? (
                     <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.5)' }}>
-                      Ingen meldinger ennå.
+                      {t('clientRequestsThread.s003')}
                     </Typography>
                   ) : (
                     <Stack spacing={1}>
@@ -262,7 +266,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                             </Box>
                             <Box sx={{ flex: 1, minWidth: 0 }}>
                               <Typography sx={{ fontSize: '0.72rem', color: 'rgba(226,232,240,0.55)' }}>
-                                {m.senderLabel ?? (isClient ? 'Klient' : 'Markedsfører')} · {formatRelative(m.createdAt)}
+                                {m.senderLabel ?? (isClient ? t('clientRequestsThread.s004') : t('clientRequestsThread.s009'))} · {formatRelative(t, m.createdAt)}
                               </Typography>
                               <Typography
                                 component="pre"
@@ -289,8 +293,8 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                         value={replyDraft[req.id] ?? ''}
                         onChange={(e) => setReplyDraft((prev) => ({ ...prev, [req.id]: e.target.value }))}
                         placeholder={req.status === 'answered'
-                          ? 'Følg opp svaret — eller takk klienten…'
-                          : 'Send en purring eller utdypning…'}
+                          ? t('clientRequestsThread.s001')
+                          : t('clientRequestsThread.s011')}
                         multiline
                         minRows={2}
                         fullWidth
@@ -308,7 +312,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                             onClick={() => void handleClose(req.id)}
                             sx={{ textTransform: 'none', color: '#94a3b8' }}
                           >
-                            Marker som ferdig
+                            {t('clientRequestsThread.s010')}
                           </Button>
                         ) : null}
                         <Button
@@ -324,7 +328,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                             '&:hover': { bgcolor: '#06b6d4' },
                           }}
                         >
-                          {replying === req.id ? 'Sender…' : 'Send melding'}
+                          {replying === req.id ? t('clientRequestsThread.s013') : t('clientRequestsThread.s012')}
                         </Button>
                       </Stack>
                     </Stack>
@@ -342,24 +346,24 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
           onClick={() => setShowAll(true)}
           sx={{ mt: 0.8, textTransform: 'none', color: '#94a3b8' }}
         >
-          Vis alle ({requests.length})
+          {t('clientRequestsThread.s016')}{requests.length})
         </Button>
       ) : null}
     </Box>
   );
 };
 
-function formatRelative(isoDate: string): string {
+function formatRelative(t: TFn, isoDate: string): string {
   const then = new Date(isoDate).getTime();
   if (Number.isNaN(then)) return isoDate;
   const diffMs = Date.now() - then;
   const min = Math.floor(diffMs / 60000);
-  if (min < 1) return 'nå';
-  if (min < 60) return `${min} min siden`;
+  if (min < 1) return t('clientRequestsThread.s017');
+  if (min < 60) return t('clientRequestsThread.p00', { v0: min });
   const hours = Math.floor(min / 60);
-  if (hours < 24) return `${hours} t siden`;
+  if (hours < 24) return t('clientRequestsThread.p01', { v0: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d siden`;
+  if (days < 7) return t('clientRequestsThread.p03', { v0: days });
   return new Date(isoDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' });
 }
 

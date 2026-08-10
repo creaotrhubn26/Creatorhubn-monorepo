@@ -36,6 +36,8 @@ import {
   CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface CampaignResult {
   campaignId: string;
@@ -91,41 +93,41 @@ const PLATFORM_LABEL: Record<string, string> = {
   tiktok: 'TikTok',
 };
 
-const STATUS_META: Record<string, { color: string; bg: string; label: string }> = {
-  active: { color: '#86efac', bg: 'rgba(134,239,172,0.12)', label: 'Aktiv' },
-  paused: { color: '#fcd34d', bg: 'rgba(252,211,77,0.12)', label: 'Pauset' },
-  draft: { color: '#93c5fd', bg: 'rgba(147,197,253,0.12)', label: 'Utkast' },
-  ended: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: 'Avsluttet' },
-  failed: { color: '#fca5a5', bg: 'rgba(252,165,165,0.12)', label: 'Feilet' },
-};
+const buildSTATUS_META = (t: TFn): Record<string, { color: string; bg: string; label: string }> => ({
+  active: { color: '#86efac', bg: 'rgba(134,239,172,0.12)', label: t('clientAdsPerf.s002') },
+  paused: { color: '#fcd34d', bg: 'rgba(252,211,77,0.12)', label: t('clientAdsPerf.s028') },
+  draft: { color: '#93c5fd', bg: 'rgba(147,197,253,0.12)', label: t('clientAdsPerf.s041') },
+  ended: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: t('clientAdsPerf.s004') },
+  failed: { color: '#fca5a5', bg: 'rgba(252,165,165,0.12)', label: t('clientAdsPerf.s012') },
+});
 
-const INTENT_OPTIONS: { value: CommentIntent; label: string; rolesAllowed: ('client' | 'producer')[] }[] = [
-  { value: 'increase_budget', label: 'Øk budsjettet', rolesAllowed: ['client'] },
-  { value: 'decrease_budget', label: 'Reduser budsjettet', rolesAllowed: ['client'] },
-  { value: 'pause', label: 'Pause kampanjen', rolesAllowed: ['client'] },
-  { value: 'resume', label: 'Restart kampanjen', rolesAllowed: ['client'] },
-  { value: 'change_targeting', label: 'Endre målgruppe', rolesAllowed: ['client'] },
-  { value: 'change_creative', label: 'Endre kreativ/tekst', rolesAllowed: ['client'] },
-  { value: 'general_feedback', label: 'Tilbakemelding (info)', rolesAllowed: ['client'] },
-  { value: 'producer_reply', label: 'Svar (produsent)', rolesAllowed: ['producer'] },
-];
+const buildINTENT_OPTIONS = (t: TFn): { value: CommentIntent; label: string; rolesAllowed: ('client' | 'producer')[] }[] => ([
+  { value: 'increase_budget', label: t('clientAdsPerf.s043'), rolesAllowed: ['client'] },
+  { value: 'decrease_budget', label: t('clientAdsPerf.s031'), rolesAllowed: ['client'] },
+  { value: 'pause', label: t('clientAdsPerf.s027'), rolesAllowed: ['client'] },
+  { value: 'resume', label: t('clientAdsPerf.s032'), rolesAllowed: ['client'] },
+  { value: 'change_targeting', label: t('clientAdsPerf.s010'), rolesAllowed: ['client'] },
+  { value: 'change_creative', label: t('clientAdsPerf.s009'), rolesAllowed: ['client'] },
+  { value: 'general_feedback', label: t('clientAdsPerf.s039'), rolesAllowed: ['client'] },
+  { value: 'producer_reply', label: t('clientAdsPerf.s038'), rolesAllowed: ['producer'] },
+]);
 
 const FEE_RATE = 0.2; // 20 % påslag — matcher ClientEconomyPanel §5.3
 
 const nok = (n: number) =>
   new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n || 0);
 
-const fmtRelativeTime = (iso: string): string => {
+const fmtRelativeTime = (t: TFn, iso: string): string => {
   const now = Date.now();
   const then = new Date(iso).getTime();
   const diff = Math.max(0, now - then);
   const min = Math.floor(diff / 60000);
-  if (min < 1) return 'akkurat nå';
-  if (min < 60) return `${min} min siden`;
+  if (min < 1) return t('clientAdsPerf.s042');
+  if (min < 60) return t('clientAdsPerf.p01', { v0: min });
   const hours = Math.floor(min / 60);
-  if (hours < 24) return `${hours} t siden`;
+  if (hours < 24) return t('clientAdsPerf.p02', { v0: hours });
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} dager siden`;
+  if (days < 30) return t('clientAdsPerf.p00', { v0: days });
   return new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' }).format(new Date(iso));
 };
 
@@ -138,6 +140,7 @@ export default function ClientAdsPerformancePanel({
   period: string; // YYYY-MM
   userRole: 'client' | 'client_reviewer' | 'content_producer' | string | null;
 }) {
+  const { t } = useT();
   const [campaigns, setCampaigns] = useState<CampaignResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +168,7 @@ export default function ClientAdsPerformancePanel({
       const data = await res.json();
       setCampaigns(data.campaigns || []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ukjent feil');
+      setError(e instanceof Error ? e.message : t('clientAdsPerf.s040'));
     } finally {
       setLoading(false);
     }
@@ -180,7 +183,7 @@ export default function ClientAdsPerformancePanel({
     return (
       <Stack sx={CARD_SX} alignItems="center" spacing={1}>
         <CircularProgress size={24} sx={{ color: '#a5b4fc' }} />
-        <Typography sx={SUBTLE}>Laster kampanje-resultater…</Typography>
+        <Typography sx={SUBTLE}>{t('clientAdsPerf.s023')}</Typography>
       </Stack>
     );
   }
@@ -188,7 +191,7 @@ export default function ClientAdsPerformancePanel({
   if (error) {
     return (
       <Alert severity="error" sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}>
-        Klarte ikke laste kampanje-resultater: {error}
+        {t('clientAdsPerf.s016')} {error}
       </Alert>
     );
   }
@@ -198,10 +201,10 @@ export default function ClientAdsPerformancePanel({
       <Stack sx={CARD_SX} spacing={1}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <CampaignIcon sx={{ fontSize: 20, color: '#a5b4fc' }} />
-          <Typography sx={LABEL}>Aktive kampanjer</Typography>
+          <Typography sx={LABEL}>{t('clientAdsPerf.s003')}</Typography>
         </Stack>
         <Typography sx={SUBTLE}>
-          Ingen kampanjer er registrert for denne perioden ennå.
+          {t('clientAdsPerf.s014')}
         </Typography>
       </Stack>
     );
@@ -211,12 +214,12 @@ export default function ClientAdsPerformancePanel({
     <Stack sx={CARD_SX} spacing={1.2}>
       <Stack direction="row" alignItems="center" spacing={1}>
         <CampaignIcon sx={{ fontSize: 20, color: '#a5b4fc' }} />
-        <Typography sx={LABEL}>Per kampanje</Typography>
+        <Typography sx={LABEL}>{t('clientAdsPerf.s029')}</Typography>
       </Stack>
       <Typography sx={SUBTLE}>
         {isClient
-          ? 'Du ser hvordan hver kampanje presterer denne perioden. Be om endringer ved å åpne kommentar-tråden — produsenten får varsel og kan utføre det du ber om.'
-          : 'Klient-synlig per-kampanje-nedbryting. Klient kan kommentere på en kampanje — du ser dialogen her og kan svare eller markere som løst.'}
+          ? t('clientAdsPerf.s008')
+          : t('clientAdsPerf.s019')}
       </Typography>
 
       {campaigns.map((c) => (
@@ -247,6 +250,8 @@ function CampaignCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useT();
+  const STATUS_META = useMemo(() => buildSTATUS_META(t), [t]);
   const status = STATUS_META[campaign.status] ?? { color: '#cbd5e1', bg: 'rgba(148,163,184,0.12)', label: campaign.status };
   const spendWithFee = campaign.spendNok * (1 + FEE_RATE);
 
@@ -288,18 +293,18 @@ function CampaignCard({
       </Stack>
 
       <Stack direction="row" flexWrap="wrap" gap={1.5} sx={{ mb: 0.8 }}>
-        <Metric label="Forbruk" value={nok(campaign.spendNok)} />
-        <Metric label="+ 20 % påslag" value={nok(spendWithFee)} />
-        <Metric label="Klikk" value={campaign.clicks.toLocaleString('nb-NO')} />
-        <Metric label="Konv." value={campaign.conversions.toLocaleString('nb-NO')} />
-        <Metric label="Konv.verdi" value={nok(campaign.conversionValueNok)} />
+        <Metric label={t('clientAdsPerf.s013')} value={nok(campaign.spendNok)} />
+        <Metric label={t('clientAdsPerf.s000')} value={nok(spendWithFee)} />
+        <Metric label={t('clientAdsPerf.s020')} value={campaign.clicks.toLocaleString('nb-NO')} />
+        <Metric label={t('clientAdsPerf.s021')} value={campaign.conversions.toLocaleString('nb-NO')} />
+        <Metric label={t('clientAdsPerf.s022')} value={nok(campaign.conversionValueNok)} />
         <Metric
           label="ROAS"
           value={campaign.roas != null ? `${campaign.roas}×` : '—'}
           highlight
         />
         {campaign.dailyBudgetNok != null && (
-          <Metric label="Daglig budsjett" value={nok(campaign.dailyBudgetNok)} />
+          <Metric label={t('clientAdsPerf.s007')} value={nok(campaign.dailyBudgetNok)} />
         )}
       </Stack>
 
@@ -315,7 +320,7 @@ function CampaignCard({
             fontSize: '0.76rem',
           }}
         >
-          {expanded ? 'Lukk tråd' : isClient ? 'Be om endring' : 'Se klient-tråd'}
+          {expanded ? t('clientAdsPerf.s024') : isClient ? t('clientAdsPerf.s005') : t('clientAdsPerf.s033')}
         </Button>
       </Stack>
 
@@ -331,6 +336,8 @@ function CampaignCard({
 // ─── CommentThread ──────────────────────────────────────────
 
 function CommentThread({ campaignId, isClient }: { campaignId: string; isClient: boolean }) {
+  const { t } = useT();
+  const INTENT_OPTIONS = useMemo(() => buildINTENT_OPTIONS(t), [t]);
   const [comments, setComments] = useState<CampaignComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -356,7 +363,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
       const data = await res.json();
       setComments(data.comments || []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Feil ved lasting');
+      setError(e instanceof Error ? e.message : t('clientAdsPerf.s011'));
     } finally {
       setLoading(false);
     }
@@ -445,7 +452,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
 
       {comments.length === 0 && (
         <Typography sx={{ ...SUBTLE, fontStyle: 'italic' }}>
-          Ingen kommentarer ennå. {isClient ? 'Si fra hva du ønsker endret.' : 'Klient har ikke kommentert på denne kampanjen.'}
+          {t('clientAdsPerf.s015')} {isClient ? t('clientAdsPerf.s036') : t('clientAdsPerf.s018')}
         </Typography>
       )}
 
@@ -465,10 +472,10 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
           <Box sx={{ flex: 1 }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.3 }}>
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.74rem', fontWeight: 700 }}>
-                {c.authorRole === 'client' ? 'Klient' : 'Produsent'}
+                {c.authorRole === 'client' ? t('clientAdsPerf.s017') : t('clientAdsPerf.s030')}
               </Typography>
               <Typography sx={{ ...SUBTLE, fontSize: '0.7rem' }}>
-                {fmtRelativeTime(c.createdAt)}
+                {fmtRelativeTime(t, c.createdAt)}
               </Typography>
               {c.intent && (
                 <Chip
@@ -486,7 +493,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
               {c.resolvedAt && (
                 <Chip
                   icon={<CheckIcon sx={{ fontSize: 13, color: '#86efac !important' }} />}
-                  label="Løst"
+                  label={t('clientAdsPerf.s025')}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(134,239,172,0.14)',
@@ -508,7 +515,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
               onClick={() => resolve(c.id)}
               sx={{ textTransform: 'none', color: '#86efac', fontSize: '0.7rem', minWidth: 0 }}
             >
-              Marker løst
+              {t('clientAdsPerf.s026')}
             </Button>
           )}
         </Stack>
@@ -528,7 +535,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
               '& fieldset': { borderColor: 'rgba(148,163,184,0.2)' },
             }}
           >
-            <MenuItem value="">— Velg type forespørsel (valgfritt) —</MenuItem>
+            <MenuItem value="">{t('clientAdsPerf.s044')}</MenuItem>
             {availableIntents.map((opt) => (
               <MenuItem key={opt.value} value={opt.value}>
                 {opt.label}
@@ -543,8 +550,8 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
           size="small"
           placeholder={
             isClient
-              ? 'Beskriv hva du ønsker endret (f.eks. «Øk budsjettet til 800 kr/dag fra mandag», eller «Pause inntil sommerkampanjen er over»)…'
-              : 'Skriv et svar til klient eller dokumenter hva som er gjort…'
+              ? t('clientAdsPerf.s006')
+              : t('clientAdsPerf.s037')
           }
           value={body}
           onChange={(e) => setBody(e.target.value.slice(0, 4000))}
@@ -559,7 +566,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
         />
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography sx={{ ...SUBTLE, fontSize: '0.68rem' }}>
-            {body.length} / 4000 tegn
+            {body.length} {t('clientAdsPerf.s001')}
           </Typography>
           <Button
             size="small"
@@ -575,7 +582,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
               '&:hover': { bgcolor: '#4f46e5' },
             }}
           >
-            {submitting ? 'Sender…' : 'Send'}
+            {submitting ? t('clientAdsPerf.s035') : t('clientAdsPerf.s034')}
           </Button>
         </Stack>
       </Stack>

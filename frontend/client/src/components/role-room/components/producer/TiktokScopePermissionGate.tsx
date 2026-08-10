@@ -9,10 +9,12 @@
  * Hvis ikke: viser et tydelig banner + dimmer innholdet.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Alert, Box, Chip, Stack, Typography } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface State {
   acceptedAt: string | null;
@@ -21,29 +23,29 @@ interface State {
   needsReaccept: boolean;
 }
 
-const ACTION_LABEL: Record<string, string> = {
+const buildACTION_LABEL = (t: TFn): Record<string, string> => ({
   // TikTok
-  audience_upload: 'Bygge målgrupper fra e-postlister (TikTok)',
-  crm_event_sync: 'Sende konverteringer til TikTok',
-  plugin_install: 'Binde nettside/butikk til TikTok',
-  creator_invitation: 'Invitere creators (TikTok)',
-  tiktok_audience_upload: 'Bygge målgrupper fra e-postlister (TikTok)',
-  tiktok_crm_event_sync: 'Sende konverteringer til TikTok',
-  tiktok_plugin_install: 'Binde nettside/butikk til TikTok',
-  tiktok_creator_invitation: 'Invitere creators (TikTok)',
+  audience_upload: t('tiktokScopeGate.s004'),
+  crm_event_sync: t('tiktokScopeGate.s015'),
+  plugin_install: t('tiktokScopeGate.s000'),
+  creator_invitation: t('tiktokScopeGate.s007'),
+  tiktok_audience_upload: t('tiktokScopeGate.s004'),
+  tiktok_crm_event_sync: t('tiktokScopeGate.s015'),
+  tiktok_plugin_install: t('tiktokScopeGate.s000'),
+  tiktok_creator_invitation: t('tiktokScopeGate.s007'),
   // Meta
-  meta_audience_upload: 'Bygge Custom Audiences (Meta)',
-  meta_capi_sync: 'Sende konverteringer til Meta (CAPI)',
-  meta_lead_sync: 'Hente leads fra Meta Lead Ads',
+  meta_audience_upload: t('tiktokScopeGate.s001'),
+  meta_capi_sync: t('tiktokScopeGate.s014'),
+  meta_lead_sync: t('tiktokScopeGate.s006'),
   // LinkedIn
-  linkedin_audience_upload: 'Bygge Matched Audiences (LinkedIn)',
-  linkedin_capi_sync: 'Sende konverteringer til LinkedIn (CAPI)',
-  linkedin_lead_sync: 'Hente leads fra LinkedIn Lead Gen Forms',
+  linkedin_audience_upload: t('tiktokScopeGate.s003'),
+  linkedin_capi_sync: t('tiktokScopeGate.s013'),
+  linkedin_lead_sync: t('tiktokScopeGate.s005'),
   // Google
-  google_customer_match: 'Bygge Customer Match-målgrupper (Google)',
-  google_offline_conversions: 'Sende offline-konverteringer til Google',
+  google_customer_match: t('tiktokScopeGate.s002'),
+  google_offline_conversions: t('tiktokScopeGate.s016'),
   google_enhanced_conversions: 'Enhanced Conversions (Google)',
-};
+});
 
 export default function TiktokScopePermissionGate({
   configId,
@@ -54,6 +56,8 @@ export default function TiktokScopePermissionGate({
   action: string;
   children: React.ReactNode;
 }) {
+  const { t } = useT();
+  const ACTION_LABEL = useMemo(() => buildACTION_LABEL(t), [t]);
   const [state, setState] = useState<State | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -75,7 +79,7 @@ export default function TiktokScopePermissionGate({
         <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 5 }}>
           <Chip
             icon={<VerifiedUserOutlinedIcon sx={{ color: '#34d399 !important', fontSize: 16 }} />}
-            label="Klient har godkjent"
+            label={t('tiktokScopeGate.s008')}
             size="small"
             sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 700, fontSize: '0.72rem' }}
           />
@@ -87,10 +91,10 @@ export default function TiktokScopePermissionGate({
 
   // Ikke godkjent — vis banner + dimmet innhold
   const reason = !accepted
-    ? 'Klienten har ikke akseptert vilkårene ennå. Be klient gå til Client Economy → "Tillatelser og vilkår" og slå på denne handlingen.'
+    ? t('tiktokScopeGate.s011')
     : status === 'rejected'
-      ? 'Klienten har eksplisitt avvist denne handlingen. Du kan ikke kjøre den før klienten skrur den på.'
-      : 'Klienten har ikke gitt tillatelse til denne handlingen ennå.';
+      ? t('tiktokScopeGate.s010')
+      : t('tiktokScopeGate.s012');
 
   return (
     <Box>
@@ -101,7 +105,7 @@ export default function TiktokScopePermissionGate({
       >
         <Stack spacing={0.6}>
           <Typography sx={{ fontWeight: 800, fontSize: '0.94rem' }}>
-            Klient-godkjenning kreves: {ACTION_LABEL[action]}
+            {t('tiktokScopeGate.s009')} {ACTION_LABEL[action]}
           </Typography>
           <Typography sx={{ fontSize: '0.84rem' }}>
             {reason}
