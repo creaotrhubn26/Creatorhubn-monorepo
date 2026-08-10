@@ -14,7 +14,9 @@
  * Denne komponenten dekker steg 1-4. B2/B3/B5/B6 hekker på senere.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
   IconButton, Stack, TextField, Tooltip, Typography,
@@ -102,8 +104,8 @@ interface DiscoveryResult {
   warnings: string[];
 }
 
-const GOAL_CATEGORIES = [
-  { value: 'purchase', label: 'Purchase (kjøp)' },
+const buildGOAL_CATEGORIES = (t: TFn) => [
+  { value: 'purchase', label: t('agentAds.s059') },
   { value: 'add_to_cart', label: 'Add to cart' },
   { value: 'begin_checkout', label: 'Begin checkout' },
   { value: 'submit_lead_form', label: 'Submit lead form' },
@@ -117,13 +119,13 @@ const GOAL_CATEGORIES = [
   { value: 'other', label: 'Other' },
 ];
 
-const TRIGGER_TYPES = [
-  { value: 'page_load', label: 'Page load (URL-mønster)' },
+const buildTRIGGER_TYPES = (t: TFn) => [
+  { value: 'page_load', label: t('agentAds.s058') },
   { value: 'form_submit', label: 'Form submit' },
-  { value: 'click', label: 'Klikk på element' },
+  { value: 'click', label: t('agentAds.s034') },
   { value: 'event', label: 'JS-event (custom)' },
   { value: 'outbound', label: 'Outbound link' },
-  { value: 'manual', label: 'Manuell trigger' },
+  { value: 'manual', label: t('agentAds.s052') },
 ];
 
 export default function AgentAdsPanel({
@@ -134,6 +136,7 @@ export default function AgentAdsPanel({
   defaultClientName?: string;
 }) {
   const [stage, setStage] = useState<'discover' | 'review' | 'saved'>('discover');
+  const { t } = useT();
 
   // Discovery form
   const [clientName, setClientName] = useState(defaultClientName ?? '');
@@ -183,7 +186,7 @@ export default function AgentAdsPanel({
     const success = url.searchParams.get('oauth_success');
     const errParam = url.searchParams.get('oauth_error');
     if (success) {
-      setOauthBanner({ kind: 'success', msg: 'Google Ads koblet — du kan nå sette klientens customer-ID og synke actions.' });
+      setOauthBanner({ kind: 'success', msg: t('agentAds.s025') });
       const cfg = url.searchParams.get('config');
       if (cfg) setSavedConfigId(cfg);
       // Rydd querystring så banneret ikke vises igjen ved refresh
@@ -191,7 +194,7 @@ export default function AgentAdsPanel({
       url.searchParams.delete('config');
       window.history.replaceState({}, '', url.toString());
     } else if (errParam) {
-      setOauthBanner({ kind: 'error', msg: `OAuth feilet: ${errParam}` });
+      setOauthBanner({ kind: 'error', msg: t('agentAds.t004', { v0: errParam }) });
       url.searchParams.delete('oauth_error');
       window.history.replaceState({}, '', url.toString());
     }
@@ -204,10 +207,10 @@ export default function AgentAdsPanel({
         credentials: 'include',
       });
       const data = await r.json();
-      if (!r.ok || !data.authUrl) throw new Error(data.error || 'Kunne ikke starte OAuth');
+      if (!r.ok || !data.authUrl) throw new Error(data.error || t('agentAds.s042'));
       window.location.href = data.authUrl;
     } catch (err) {
-      setOauthBanner({ kind: 'error', msg: err instanceof Error ? err.message : 'OAuth-start feilet' });
+      setOauthBanner({ kind: 'error', msg: err instanceof Error ? err.message : t('agentAds.s056') });
     }
   };
 
@@ -215,7 +218,7 @@ export default function AgentAdsPanel({
     if (!savedConfigId) return;
     const raw = customerIdInput.replace(/\D/g, '').slice(0, 10);
     if (raw.length !== 10) {
-      setOauthBanner({ kind: 'error', msg: 'Customer-ID må være 10 sifre (uten bindestreker).' });
+      setOauthBanner({ kind: 'error', msg: t('agentAds.s020') });
       return;
     }
     setSavingCustomerId(true);
@@ -229,9 +232,9 @@ export default function AgentAdsPanel({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setCustomerIdSaved(raw);
-      setOauthBanner({ kind: 'success', msg: `Customer-ID ${raw.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')} lagret.` });
+      setOauthBanner({ kind: 'success', msg: t('agentAds.t002', { v0: raw.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3') }) });
     } catch (err) {
-      setOauthBanner({ kind: 'error', msg: err instanceof Error ? err.message : 'Kunne ikke lagre customer-ID' });
+      setOauthBanner({ kind: 'error', msg: err instanceof Error ? err.message : t('agentAds.s040') });
     } finally {
       setSavingCustomerId(false);
     }
@@ -256,7 +259,7 @@ export default function AgentAdsPanel({
         details: data,
       });
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : 'Sync feilet');
+      setSyncError(err instanceof Error ? err.message : t('agentAds.s070'));
     } finally {
       setSyncing(false);
     }
@@ -281,7 +284,7 @@ export default function AgentAdsPanel({
       setApprovalSent(true);
       setApprovalDeadline(data.deadline ?? null);
     } catch (err) {
-      setApprovalError(err instanceof Error ? err.message : 'Kunne ikke sende til godkjenning');
+      setApprovalError(err instanceof Error ? err.message : t('agentAds.s041'));
     } finally {
       setSendingForApproval(false);
     }
@@ -310,7 +313,7 @@ export default function AgentAdsPanel({
       setActions(data.result.suggested_actions);
       setStage('review');
     } catch (err) {
-      setDiscoveryError(err instanceof Error ? err.message : 'Analyse feilet');
+      setDiscoveryError(err instanceof Error ? err.message : t('agentAds.s013'));
     } finally {
       setDiscovering(false);
     }
@@ -319,7 +322,7 @@ export default function AgentAdsPanel({
   // Save config + actions
   const saveConfig = async () => {
     if (!discoveryResult || !clientProjectId) {
-      setSaveError('client_project_id mangler — kan ikke lagre uten knytting til prosjekt.');
+      setSaveError(t('agentAds.s074'));
       return;
     }
     setSaving(true);
@@ -342,7 +345,7 @@ export default function AgentAdsPanel({
       setSavedConfigId(data.configId);
       setStage('saved');
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Lagring feilet');
+      setSaveError(err instanceof Error ? err.message : t('agentAds.s046'));
     } finally {
       setSaving(false);
     }
@@ -370,7 +373,8 @@ export default function AgentAdsPanel({
             Ads & conversion-tracking
           </Typography>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-            Agent setter opp Google Ads-tracking for klienten — tilpasset deres bransje.
+            
+            {t('agentAds.s011')}
           </Typography>
         </Box>
       </Stack>
@@ -380,12 +384,13 @@ export default function AgentAdsPanel({
         <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderSubtle}`, color: palette.textPrimary }}>
           <CardContent>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 1, mb: 1.6, textTransform: 'uppercase' }}>
-              Steg 1 av 4 — Klient-analyse
+              
+              {t('agentAds.s064')}
             </Typography>
             <Stack spacing={2}>
               <TextField
-                label="Klient-navn"
-                placeholder="f.eks. PreVisit AI"
+                label={t('agentAds.s031')}
+                placeholder={t('agentAds.s078')}
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 fullWidth
@@ -395,7 +400,7 @@ export default function AgentAdsPanel({
               />
               <TextField
                 label="Klientens nettside (URL)"
-                placeholder="https://klient.no"
+                placeholder={t('agentAds.s080')}
                 value={clientUrl}
                 onChange={(e) => setClientUrl(e.target.value)}
                 fullWidth
@@ -422,10 +427,11 @@ export default function AgentAdsPanel({
                   '&:disabled': { background: 'rgba(168,85,247,0.32)', color: 'rgba(255,255,255,0.5)' },
                 }}
               >
-                {discovering ? 'Claude analyserer…' : 'Analyser klient'}
+                {discovering ? t('agentAds.s018') : t('agentAds.s014')}
               </Button>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                Agent fetcher klient-siden, kjenner igjen bransje, og foreslår 3-7 conversion-actions tilpasset hva slags virksomhet det er.
+                
+                {t('agentAds.s010')}
               </Typography>
             </Stack>
           </CardContent>
@@ -441,10 +447,11 @@ export default function AgentAdsPanel({
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.4 }}>
                 <Box>
                   <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 1, mb: 0.6, textTransform: 'uppercase' }}>
-                    Steg 2 av 4 — Review + tilpass
+                    
+                    {t('agentAds.s066')}
                   </Typography>
                   <Typography sx={{ fontSize: '1.1rem', fontWeight: 800, color: palette.textPrimary }}>
-                    {clientName || 'Klienten'} — analyse
+                    {clientName || t('agentAds.s032')} — analyse
                   </Typography>
                 </Box>
                 <Button
@@ -453,7 +460,8 @@ export default function AgentAdsPanel({
                   onClick={() => setStage('discover')}
                   sx={{ color: palette.accent, textTransform: 'none' }}
                 >
-                  Analyser på nytt
+                  
+                  {t('agentAds.s015')}
                 </Button>
               </Stack>
               <Stack direction="row" spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1, mb: 1.4 }}>
@@ -471,7 +479,7 @@ export default function AgentAdsPanel({
                 {discoveryResult.detected_gtm_id ? (
                   <Chip label={`GTM: ${discoveryResult.detected_gtm_id}`} size="small" sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontSize: '0.74rem' }} />
                 ) : null}
-                <Tooltip title={`Åpne ${discoveryResult.page_snapshot.finalUrl ?? discoveryResult.url} i ny fane`}>
+                <Tooltip title={t('agentAds.t005', { v0: discoveryResult.page_snapshot.finalUrl ?? discoveryResult.url })}>
                   <IconButton
                     size="small"
                     component="a"
@@ -496,7 +504,8 @@ export default function AgentAdsPanel({
               <CardContent>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ cursor: 'pointer' }} onClick={() => setShowNotes((v) => !v)}>
                   <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: '#60a5fa' }}>
-                    Claude-innsikt ({discoveryResult.notes.length})
+                    
+                    {t('agentAds.s019')}{discoveryResult.notes.length})
                   </Typography>
                   <IconButton size="small" sx={{ color: '#60a5fa' }}>
                     {showNotes ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -553,19 +562,20 @@ export default function AgentAdsPanel({
                   onClick={() => {
                     const newAction: SuggestedAction = {
                       action_name: `custom_action_${actions.length + 1}`,
-                      display_name: 'Ny custom action',
+                      display_name: t('agentAds.s054'),
                       goal_category: 'other',
                       default_value: 0,
                       currency: 'NOK',
                       trigger_type: 'manual',
-                      claude_reasoning: 'Lagt til manuelt av producer',
+                      claude_reasoning: t('agentAds.s047'),
                     };
                     setActions([...actions, newAction]);
                     setEditingIdx(actions.length);
                   }}
                   sx={{ color: palette.accent, textTransform: 'none' }}
                 >
-                  Legg til
+                  
+                  {t('agentAds.s048')}
                 </Button>
               </Stack>
               <Stack spacing={1.4}>
@@ -609,18 +619,20 @@ export default function AgentAdsPanel({
                     '&:disabled': { background: 'rgba(168,85,247,0.32)' },
                   }}
                 >
-                  {saving ? 'Lagrer…' : 'Lagre + gå videre til OAuth'}
+                  {saving ? 'Lagrer…' : t('agentAds.s044')}
                 </Button>
                 <Button
                   onClick={() => setStage('discover')}
                   sx={{ color: palette.textMuted, textTransform: 'none' }}
                 >
-                  Avbryt
+                  
+                  {t('agentAds.s016')}
                 </Button>
               </Stack>
               {!clientProjectId ? (
                 <Typography sx={{ color: '#f87171', fontSize: '0.78rem', mt: 1 }}>
-                  Mangler client_project_id — denne komponenten må mountes med et prosjekt.
+                  
+                  {t('agentAds.s051')}
                 </Typography>
               ) : null}
             </CardContent>
@@ -634,10 +646,12 @@ export default function AgentAdsPanel({
           <Card sx={{ bgcolor: palette.bgCard, border: `1px solid rgba(52,211,153,0.32)`, color: palette.textPrimary }}>
             <CardContent>
               <Typography sx={{ color: '#34d399', fontWeight: 800, fontSize: '1rem', mb: 1.2 }}>
-                ✓ Lagret — config og {actions.length} actions
+                
+                {t('agentAds.s084')} {actions.length} actions
               </Typography>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem', mb: 1.4 }}>
-                Neste: send anbefalingene til klienten for godkjenning før du går videre til Google Ads-setup.
+                
+                {t('agentAds.s053')}
               </Typography>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
                 Config-ID: <code>{savedConfigId}</code>
@@ -650,12 +664,12 @@ export default function AgentAdsPanel({
             <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
               <CardContent>
                 <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', mb: 1.2 }}>
-                  Send til klient for godkjenning
+                  
+                  {t('agentAds.s061')}
                 </Typography>
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.6 }}>
-                  Klienten ser anbefalingene i sin "Client Economy"-fane i Role Room.
-                  De kan godkjenne, avvise eller be om endringer. Hvis ingen respons innen
-                  3 business-dager → auto-godkjent (per MedInnova §5.2).
+                  
+                  {t('agentAds.s033')}
                 </Typography>
                 <Box sx={{
                   bgcolor: 'rgba(168,85,247,0.10)',
@@ -698,17 +712,15 @@ export default function AgentAdsPanel({
                           onClick={() => setEditingFee(false)}
                           sx={{ color: '#34d399', textTransform: 'none', minWidth: 0 }}
                         >
-                          Lagre
+                          
+                          {t('agentAds.s043')}
                         </Button>
                       </Stack>
                     )}
                   </Stack>
                   <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem', lineHeight: 1.5 }}>
-                    Google Ads-kontoen står på klienten — spend trekkes direkte fra klientens kort/bank
-                    til Google. Du håndterer aldri ads-pengene; du har kun OAuth-tilgang for setup
-                    + optimalisering. Din faktura = KUN management-fee (20% av spend, standard).
-                    Eks: klient bruker 20 000 kr/mnd → du fakturerer 4 000 kr/mnd. Justér per klient
-                    — klient ser satsen før godkjenning.
+                    
+                    {t('agentAds.s026')}
                   </Typography>
                 </Box>
                 <TextField
@@ -716,8 +728,8 @@ export default function AgentAdsPanel({
                   rows={3}
                   fullWidth
                   size="small"
-                  label="Beskjed til klient (optional)"
-                  placeholder="Hei [klient], her er forslagene mine basert på Claude-analysen…"
+                  label={t('agentAds.s017')}
+                  placeholder={t('agentAds.s027')}
                   value={approvalMessage}
                   onChange={(e) => setApprovalMessage(e.target.value)}
                   sx={{ mb: 1.6 }}
@@ -742,7 +754,7 @@ export default function AgentAdsPanel({
                     '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                   }}
                 >
-                  {sendingForApproval ? 'Sender…' : 'Send til klient'}
+                  {sendingForApproval ? 'Sender…' : t('agentAds.s060')}
                 </Button>
               </CardContent>
             </Card>
@@ -750,11 +762,12 @@ export default function AgentAdsPanel({
             <Card sx={{ bgcolor: 'rgba(96,165,250,0.06)', border: `1px solid rgba(96,165,250,0.24)`, color: palette.textPrimary }}>
               <CardContent>
                 <Typography sx={{ color: '#60a5fa', fontWeight: 800, fontSize: '0.96rem', mb: 1 }}>
-                  📤 Sendt til klient for godkjenning
+                  
+                  {t('agentAds.s085')}
                 </Typography>
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem' }}>
-                  Klient har frist til {approvalDeadline ? new Date(approvalDeadline).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : '3 business-dager'}.
-                  Du får notification i Admin Room når klienten har bestemt seg.
+                  
+                  {t('agentAds.s030')} {approvalDeadline ? new Date(approvalDeadline).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : t('agentAds.s008')}{t('agentAds.s004')}
                 </Typography>
               </CardContent>
             </Card>
@@ -764,11 +777,12 @@ export default function AgentAdsPanel({
           <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
             <CardContent>
               <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', mb: 0.6 }}>
-                Aktiver i klientens Google Ads-konto
+                
+                {t('agentAds.s012')}
               </Typography>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 1.6 }}>
-                Når klient har godkjent: koble MCC-tilgang, sett klientens 10-sifrede
-                customer-ID, og synk alle godkjente actions til Google Ads via
+                
+                {t('agentAds.s055')}
                 <code style={{ color: palette.accent, marginLeft: 4 }}>ConversionActionService</code>.
               </Typography>
 
@@ -785,7 +799,8 @@ export default function AgentAdsPanel({
               {/* Steg 1: OAuth */}
               <Box sx={{ mb: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-                  Steg 1 — Koble Google Ads (MCC)
+                  
+                  {t('agentAds.s065')}
                 </Typography>
                 <Button
                   onClick={startGoogleOAuth}
@@ -797,11 +812,12 @@ export default function AgentAdsPanel({
                     fontWeight: 700,
                   }}
                 >
-                  Koble Google Ads
+                  
+                  {t('agentAds.s035')}
                 </Button>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-                  Du blir sendt til Google for å gi tilgang. MCC-tilgang lagres på din
-                  bruker — alle dine klient-configs kan bruke samme tilkobling.
+                  
+                  {t('agentAds.s022')}
                 </Typography>
               </Box>
 
@@ -810,7 +826,8 @@ export default function AgentAdsPanel({
               {/* Steg 2: Customer-ID */}
               <Box sx={{ mb: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-                  Steg 2 — Klientens Google Ads customer-ID (10 sifre)
+                  
+                  {t('agentAds.s067')}
                 </Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <TextField
@@ -833,19 +850,20 @@ export default function AgentAdsPanel({
                       '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                     }}
                   >
-                    Lagre
+                    
+                    {t('agentAds.s043')}
                   </Button>
                   {customerIdSaved ? (
                     <Chip
-                      label={`Lagret: ${customerIdSaved.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')}`}
+                      label={t('agentAds.t003', { v0: customerIdSaved.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3') })}
                       size="small"
                       sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontFamily: 'monospace' }}
                     />
                   ) : null}
                 </Stack>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-                  Spør klienten — finnes øverst til høyre i Google Ads UI. Ti sifre,
-                  med eller uten bindestreker.
+                  
+                  {t('agentAds.s063')}
                 </Typography>
               </Box>
 
@@ -854,7 +872,8 @@ export default function AgentAdsPanel({
               {/* Steg 3: Sync */}
               <Box>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-                  Steg 3 — Synk actions til Google Ads
+                  
+                  {t('agentAds.s068')}
                 </Typography>
                 <Button
                   onClick={runSyncToGoogle}
@@ -867,15 +886,16 @@ export default function AgentAdsPanel({
                     fontWeight: 800,
                   }}
                 >
-                  {syncing ? 'Synker…' : 'Synk til Google Ads'}
+                  {syncing ? 'Synker…' : t('agentAds.s071')}
                 </Button>
                 {syncResult ? (
                   <Alert
                     severity={syncResult.failed > 0 ? 'warning' : 'success'}
                     sx={{ mt: 1.2 }}
                   >
-                    Opprettet {syncResult.created} conversion-actions
-                    {syncResult.failed > 0 ? ` — ${syncResult.failed} feilet (sjekk customer-ID + MCC-tilgang)` : ' i Google Ads. Tag-snippet for installasjon vises i deployment-guide nedenfor.'}
+                    
+                    {t('agentAds.s057')} {syncResult.created} conversion-actions
+                    {syncResult.failed > 0 ? t('agentAds.t001', { v0: syncResult.failed }) : t('agentAds.s002')}
                   </Alert>
                 ) : null}
                 {syncError ? (
@@ -884,9 +904,11 @@ export default function AgentAdsPanel({
                   </Alert>
                 ) : null}
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-                  Kjøres bare når klient har godkjent. Backend sjekker
+                  
+                  {t('agentAds.s029')}
                   <code style={{ color: palette.accent, margin: '0 4px' }}>approval_status = 'approved'</code>
-                  før actions sendes til Google.
+                  
+                  {t('agentAds.s079')}
                 </Typography>
               </Box>
             </CardContent>
@@ -895,7 +917,7 @@ export default function AgentAdsPanel({
           {/* O2/O3/O4 — Full Google-suite (GA4 + GSC + GTM) per klient */}
           <ClientGoogleSuitePanel
             configId={savedConfigId}
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
             clientWebsiteUrl={discoveryResult.url}
           />
 
@@ -918,7 +940,7 @@ export default function AgentAdsPanel({
           {/* R1 — LinkedIn (Insight Tag + Conversion Rules + CAPI gated) */}
           <ClientLinkedinSuitePanel
             configId={savedConfigId}
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
           />
 
           {/* LinkedIn Matched Audiences (gated) */}
@@ -934,7 +956,7 @@ export default function AgentAdsPanel({
           {/* R2 — Meta (Pixel + Custom Conversions + CAPI gated på App Review) */}
           <ClientMetaSuitePanel
             configId={savedConfigId}
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
           />
 
           {/* Meta Custom Audiences (gated) */}
@@ -950,7 +972,7 @@ export default function AgentAdsPanel({
           {/* R3 — TikTok (Pixel + Events + Events API) */}
           <ClientTiktokSuitePanel
             configId={savedConfigId}
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
           />
 
           {/* R3a — TikTok Lead Ads → klient-CRM */}
@@ -996,17 +1018,17 @@ export default function AgentAdsPanel({
           {/* Innsikt — full stack (GA4 + Ads + GSC + tracked events) */}
           <ClientInsightsPanel
             configId={savedConfigId}
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
           />
 
           {/* AI-prompter for klient's verktøy (Loveable/v0/Bolt/Cursor) */}
           <ClientAiPromptsPanel
             configId={savedConfigId}
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
           />
 
           <DeploymentGuide
-            clientName={clientName || 'Klienten'}
+            clientName={clientName || t('agentAds.s032')}
             clientUrl={discoveryResult.url}
             businessType={discoveryResult.business_type}
             businessSummary={discoveryResult.business_summary}
@@ -1025,7 +1047,8 @@ export default function AgentAdsPanel({
             }}
             sx={{ color: palette.accent, textTransform: 'none', alignSelf: 'flex-start' }}
           >
-            Sett opp ny klient
+            
+            {t('agentAds.s062')}
           </Button>
         </Stack>
       ) : null}
@@ -1058,6 +1081,7 @@ function DeploymentGuide({
 }) {
   const [tab, setTab] = useState<'gads' | 'ai' | 'html' | 'react' | 'wordpress'>('gads');
   const [copied, setCopied] = useState<string | null>(null);
+  const { t } = useT();
 
   const gadsSetup = generateGoogleAdsSetupInstructions(clientName, actions);
   const aiPrompt = generateAiPrompt({ clientName, clientUrl, businessType, businessSummary, detectedGtag, detectedGtm, isSpa, actions });
@@ -1092,7 +1116,8 @@ function DeploymentGuide({
       <CardContent>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
           <Typography sx={{ fontWeight: 800, fontSize: '1rem' }}>
-            Steg 4 av 4 — Installer på klientens side
+            
+            {t('agentAds.s069')}
           </Typography>
         </Stack>
 
@@ -1104,7 +1129,8 @@ function DeploymentGuide({
             onClick={() => setTab('gads')}
             sx={tabBtnSx(tab === 'gads')}
           >
-            1. Google Ads oppsett
+            
+            {t('agentAds.s006')}
           </Button>
           <Button
             size="small"
@@ -1112,7 +1138,8 @@ function DeploymentGuide({
             onClick={() => setTab('ai')}
             sx={tabBtnSx(tab === 'ai')}
           >
-            2. AI-prompt (anbefalt)
+            
+            {t('agentAds.s007')}
           </Button>
           <Button
             size="small"
@@ -1142,9 +1169,7 @@ function DeploymentGuide({
         {tab === 'gads' ? (
           <Box>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              <strong>Først:</strong> du må opprette {actions.length} conversion-actions i klientens
-              Google Ads-konto for å få AW-ID + labels. Følg disse stegene før du går videre til
-              kode-installasjon (B2 OAuth-flow vil automatisere dette i nær fremtid).
+              <strong>{t('agentAds.s024')}</strong>  {t('agentAds.s076')} {actions.length}  {t('agentAds.s075')}
             </Typography>
             <Box sx={{ position: 'relative' }}>
               <Box sx={codeBoxSx}>{gadsSetup}</Box>
@@ -1154,7 +1179,7 @@ function DeploymentGuide({
                 onClick={() => copy(gadsSetup, 'gads')}
                 sx={{ position: 'absolute', top: 8, right: 8, color: palette.accent, bgcolor: 'rgba(0,0,0,0.4)', textTransform: 'none' }}
               >
-                {copied === 'gads' ? 'Kopiert ✓' : 'Kopier guide'}
+                {copied === 'gads' ? t('agentAds.s039') : t('agentAds.s037')}
               </Button>
             </Box>
             <Button
@@ -1166,7 +1191,8 @@ function DeploymentGuide({
               startIcon={<OpenInNewIcon fontSize="small" />}
               sx={{ mt: 1.6, color: palette.accent, borderColor: palette.borderStrong, textTransform: 'none' }}
             >
-              Åpne Google Ads → Conversions
+              
+              {t('agentAds.s083')}
             </Button>
           </Box>
         ) : null}
@@ -1175,8 +1201,8 @@ function DeploymentGuide({
         {tab === 'ai' ? (
           <Box>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              Lim denne prompten inn i klientens AI-builder (Lovable, Bolt, v0, Cursor, ChatGPT etc.).
-              AI-en installerer alle 3-7 conversion-events tilpasset {clientName}'s site.
+              
+              {t('agentAds.s049')} {clientName}'s site.
             </Typography>
             <Box sx={{ position: 'relative' }}>
               <Box sx={codeBoxSx}>{aiPrompt}</Box>
@@ -1186,7 +1212,7 @@ function DeploymentGuide({
                 onClick={() => copy(aiPrompt, 'ai')}
                 sx={{ position: 'absolute', top: 8, right: 8, color: palette.accent, bgcolor: 'rgba(0,0,0,0.4)', textTransform: 'none' }}
               >
-                {copied === 'ai' ? 'Kopiert ✓' : 'Kopier prompt'}
+                {copied === 'ai' ? t('agentAds.s039') : t('agentAds.s038')}
               </Button>
             </Box>
           </Box>
@@ -1196,8 +1222,9 @@ function DeploymentGuide({
         {tab === 'html' ? (
           <Box>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              Lim hele blokken inn rett før <code>{'</head>'}</code> på klientens nettside.
-              {isSpa ? ' SPA-deteksjon: bruk dataLayer.push istedenfor URL-baserte page-load-triggers (se kommentarer).' : ''}
+              
+              {t('agentAds.s050')} <code>{'</head>'}</code>  {t('agentAds.s081')}
+              {isSpa ? t('agentAds.s001') : ''}
             </Typography>
             <Box sx={{ position: 'relative' }}>
               <Box sx={codeBoxSx}>{htmlSnippet}</Box>
@@ -1207,7 +1234,7 @@ function DeploymentGuide({
                 onClick={() => copy(htmlSnippet, 'html')}
                 sx={{ position: 'absolute', top: 8, right: 8, color: palette.accent, bgcolor: 'rgba(0,0,0,0.4)', textTransform: 'none' }}
               >
-                {copied === 'html' ? 'Kopiert ✓' : 'Kopier'}
+                {copied === 'html' ? t('agentAds.s039') : t('agentAds.s036')}
               </Button>
             </Box>
           </Box>
@@ -1217,8 +1244,8 @@ function DeploymentGuide({
         {tab === 'react' ? (
           <Box>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              For Next.js/React-baserte sider: legg gtag-config i <code>app/layout.tsx</code> eller <code>_app.tsx</code>,
-              og bruk helper-funksjonen for å fyre conversions.
+              
+              {t('agentAds.s023')} <code>app/layout.tsx</code>  {t('agentAds.s077')} <code>_app.tsx</code>{t('agentAds.s003')}
             </Typography>
             <Box sx={{ position: 'relative' }}>
               <Box sx={codeBoxSx}>{reactSnippet}</Box>
@@ -1228,7 +1255,7 @@ function DeploymentGuide({
                 onClick={() => copy(reactSnippet, 'react')}
                 sx={{ position: 'absolute', top: 8, right: 8, color: palette.accent, bgcolor: 'rgba(0,0,0,0.4)', textTransform: 'none' }}
               >
-                {copied === 'react' ? 'Kopiert ✓' : 'Kopier'}
+                {copied === 'react' ? t('agentAds.s039') : t('agentAds.s036')}
               </Button>
             </Box>
           </Box>
@@ -1245,7 +1272,7 @@ function DeploymentGuide({
                 onClick={() => copy(wpInstructions, 'wp')}
                 sx={{ position: 'absolute', top: 8, right: 8, color: palette.accent, bgcolor: 'rgba(0,0,0,0.4)', textTransform: 'none' }}
               >
-                {copied === 'wp' ? 'Kopiert ✓' : 'Kopier'}
+                {copied === 'wp' ? t('agentAds.s039') : t('agentAds.s036')}
               </Button>
             </Box>
           </Box>
@@ -1773,6 +1800,9 @@ function ActionCard({
 }) {
   const [draft, setDraft] = useState<SuggestedAction>(action);
   useEffect(() => setDraft(action), [action]);
+  const { t } = useT();
+  const GOAL_CATEGORIES = useMemo(() => buildGOAL_CATEGORIES(t), [t]);
+  const TRIGGER_TYPES = useMemo(() => buildTRIGGER_TYPES(t), [t]);
 
   if (!isEditing) {
     return (
@@ -1808,7 +1838,7 @@ function ActionCard({
             </Stack>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mb: 0.4 }}>
               <code>{action.action_name}</code>
-              {action.url_pattern ? <> · URL-mønster: <code>{action.url_pattern}</code></> : null}
+              {action.url_pattern ? <>  {t('agentAds.s082')} <code>{action.url_pattern}</code></> : null}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', fontStyle: 'italic', lineHeight: 1.4 }}>
               {action.claude_reasoning}
@@ -1839,18 +1869,18 @@ function ActionCard({
       <Stack spacing={1.4}>
         <Stack direction="row" spacing={1.4}>
           <TextField
-            label="Action-navn (snake_case) — LÅST"
+            label={t('agentAds.s009')}
             value={draft.action_name}
             disabled
             size="small"
             sx={{ flex: 1 }}
             InputProps={{ sx: { color: palette.textMuted, fontFamily: 'monospace', WebkitTextFillColor: palette.textMuted } }}
             InputLabelProps={{ sx: { color: palette.textMuted } }}
-            helperText="Kan ikke endres — knyttet til Google Ads-labelen"
+            helperText={t('agentAds.s028')}
             FormHelperTextProps={{ sx: { color: palette.textMuted } }}
           />
           <TextField
-            label="Display-navn (norsk)"
+            label={t('agentAds.s021')}
             value={draft.display_name}
             onChange={(e) => setDraft({ ...draft, display_name: e.target.value })}
             size="small"
@@ -1875,7 +1905,7 @@ function ActionCard({
           </TextField>
           <TextField
             type="number"
-            label="Verdi (NOK)"
+            label={t('agentAds.s073')}
             value={draft.default_value}
             onChange={(e) => setDraft({ ...draft, default_value: Number(e.target.value) || 0 })}
             size="small"
@@ -1894,21 +1924,22 @@ function ActionCard({
             InputProps={{ sx: { color: palette.textPrimary } }}
             InputLabelProps={{ sx: { color: palette.textMuted } }}
           >
-            {TRIGGER_TYPES.map((t) => <option key={t.value} value={t.value} style={{ color: '#000' }}>{t.label}</option>)}
+            {TRIGGER_TYPES.map((opt) => <option key={opt.value} value={opt.value} style={{ color: '#000' }}>{opt.label}</option>)}
           </TextField>
         </Stack>
         <TextField
-          label="URL-mønster (optional — kun for page_load)"
+          label={t('agentAds.s072')}
           value={draft.url_pattern ?? ''}
           onChange={(e) => setDraft({ ...draft, url_pattern: e.target.value || undefined })}
           size="small"
-          placeholder="/takk-for-bestillingen*"
+          placeholder={t('agentAds.s005')}
           InputProps={{ sx: { color: palette.textPrimary, fontFamily: 'monospace' } }}
           InputLabelProps={{ sx: { color: palette.textMuted } }}
         />
         <Stack direction="row" spacing={1.2} justifyContent="flex-end">
           <Button onClick={onCancel} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-            Avbryt
+            
+            {t('agentAds.s016')}
           </Button>
           <Button
             onClick={() => onSave(draft)}
@@ -1921,7 +1952,8 @@ function ActionCard({
               '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
             }}
           >
-            Lagre endring
+            
+            {t('agentAds.s045')}
           </Button>
         </Stack>
       </Stack>

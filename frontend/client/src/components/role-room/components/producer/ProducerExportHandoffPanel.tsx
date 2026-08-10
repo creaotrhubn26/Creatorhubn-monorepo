@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 import {
   Alert,
   Box,
@@ -106,24 +108,24 @@ const EMPTY_INTAKE: ProducerClientIntake = {
   additionalNotes: '',
 };
 
-const MATERIAL_TYPE_LABELS: Record<ProducerClientMaterialType, string> = {
-  brief_note: 'Briefnotat',
-  asset_link: 'Lenke',
-  brand_asset: 'Merkevarefil',
-  brand_logo: 'Merkelogo',
-  brand_colors: 'Merkefarger',
-  brand_fonts: 'Merkefonter',
-  reference: 'Referanse',
-  document: 'Dokument',
-  feedback: 'Tilbakemelding',
-  other: 'Annet',
-};
+const buildMATERIAL_TYPE_LABELS = (t: TFn): Record<ProducerClientMaterialType, string> => ({
+  brief_note: t('exportHandoff.s009'),
+  asset_link: t('exportHandoff.s080'),
+  brand_asset: t('exportHandoff.s105'),
+  brand_logo: t('exportHandoff.s103'),
+  brand_colors: t('exportHandoff.s101'),
+  brand_fonts: t('exportHandoff.s102'),
+  reference: t('exportHandoff.s126'),
+  document: t('exportHandoff.s019'),
+  feedback: t('exportHandoff.s139'),
+  other: t('exportHandoff.s006'),
+});
 
-const MATERIAL_PRIORITY_LABELS: Record<'critical' | 'important' | 'reference', string> = {
-  critical: 'Kritisk',
-  important: 'Viktig',
-  reference: 'Referanse',
-};
+const buildMATERIAL_PRIORITY_LABELS = (t: TFn): Record<'critical' | 'important' | 'reference', string> => ({
+  critical: t('exportHandoff.s072'),
+  important: t('exportHandoff.s144'),
+  reference: t('exportHandoff.s126'),
+});
 
 const hasText = (value: string | undefined | null): value is string => typeof value === 'string' && value.trim().length > 0;
 const CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS = 12_000;
@@ -150,14 +152,14 @@ const SECONDARY_ACTION_SX = {
   '&:hover': { color: '#e2e8f0', background: 'rgba(148,163,184,0.08)' },
 };
 
-function withClientPackageInputTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+function withClientPackageInputTimeout<T>(t: TFn, promise: Promise<T>, label: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
   return Promise.race([
     promise,
     new Promise<T>((_resolve, reject) => {
       timeout = setTimeout(() => {
-        reject(new Error(`${label} tok for lang tid å laste.`));
+        reject(new Error(t('exportHandoff.t039', { v0: label })));
       }, CLIENT_PACKAGE_INPUT_LOAD_TIMEOUT_MS);
     }),
   ]).finally(() => {
@@ -208,9 +210,9 @@ const normalizeFileToken = (value: string): string => (
     || 'leveranse'
 );
 
-const formatDate = (value?: string): string => {
+const formatDate = (t: TFn, value?: string): string => {
   if (!value) {
-    return 'Ikke satt';
+    return t('exportHandoff.s036');
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -219,42 +221,42 @@ const formatDate = (value?: string): string => {
   return new Intl.DateTimeFormat('nb-NO', { dateStyle: 'medium' }).format(parsed);
 };
 
-const buildReadinessChecklist = (project: CastingProject) => {
+const buildReadinessChecklist = (t: TFn, project: CastingProject) => {
   const planning = normalizeProducerProjectPlanning(project);
   const brandGuide = planning.brandGuide;
   const deliveryWorkflow = planning.deliveryWorkflow;
   const logoTimingDetail = (() => {
     switch (brandGuide.logoTiming ?? 'outro') {
       case 'intro':
-        return 'Logo vises i introen.';
+        return t('exportHandoff.s094');
       case 'throughout':
-        return 'Logo vises gjennom hele videoen.';
+        return t('exportHandoff.s093');
       case 'custom':
-        return `Logo vises fra ${brandGuide.logoStartSecond ?? 0}s til ${brandGuide.logoEndSecond ?? 3}s.`;
+        return t('exportHandoff.t019', { v0: brandGuide.logoStartSecond ?? 0, v1: brandGuide.logoEndSecond ?? 3 });
       case 'none':
-        return 'Logo vises ikke i videoen.';
+        return t('exportHandoff.s096');
       case 'outro':
       default:
-        return 'Logo vises i outroen.';
+        return t('exportHandoff.s095');
     }
   })();
 
   const brandItems = [
-    { label: 'Logo', ready: hasText(brandGuide.logoUrl), detail: hasText(brandGuide.logoUrl) ? 'Logo er koblet til prosjektet.' : 'Logo mangler i merkevareguiden.' },
-    { label: 'Logo i video', ready: hasText(brandGuide.logoUrl) && brandGuide.logoTiming !== 'none', detail: hasText(brandGuide.logoUrl) ? logoTimingDetail : 'Sett logo først for å bestemme visning i videoen.' },
-    { label: 'Farger', ready: Boolean(brandGuide.colors?.length), detail: brandGuide.colors?.length ? `${brandGuide.colors.length} merkevarefarger er definert.` : 'Merkevarefarger mangler.' },
-    { label: 'Fonter', ready: Boolean(brandGuide.fonts?.filter(hasText).length), detail: brandGuide.fonts?.filter(hasText).length ? `${brandGuide.fonts?.filter(hasText).length ?? 0} fonter er definert.` : 'Fonter mangler.' },
-    { label: 'Tone of voice', ready: hasText(brandGuide.toneOfVoice), detail: brandGuide.toneOfVoice || 'Tone of voice mangler.' },
-    { label: 'Visuell stil', ready: hasText(brandGuide.visualStyle), detail: brandGuide.visualStyle || 'Visuell stil mangler.' },
+    { label: 'Logo', ready: hasText(brandGuide.logoUrl), detail: hasText(brandGuide.logoUrl) ? t('exportHandoff.s089') : t('exportHandoff.s092') },
+    { label: t('exportHandoff.s090'), ready: hasText(brandGuide.logoUrl) && brandGuide.logoTiming !== 'none', detail: hasText(brandGuide.logoUrl) ? logoTimingDetail : t('exportHandoff.s134') },
+    { label: t('exportHandoff.s022'), ready: Boolean(brandGuide.colors?.length), detail: brandGuide.colors?.length ? t('exportHandoff.t035', { v0: brandGuide.colors.length }) : t('exportHandoff.s104') },
+    { label: t('exportHandoff.s029'), ready: Boolean(brandGuide.fonts?.filter(hasText).length), detail: brandGuide.fonts?.filter(hasText).length ? t('exportHandoff.t031', { v0: brandGuide.fonts?.filter(hasText).length ?? 0 }) : t('exportHandoff.s030') },
+    { label: 'Tone of voice', ready: hasText(brandGuide.toneOfVoice), detail: brandGuide.toneOfVoice || t('exportHandoff.s140') },
+    { label: t('exportHandoff.s145'), ready: hasText(brandGuide.visualStyle), detail: brandGuide.visualStyle || t('exportHandoff.s146') },
   ];
 
   const workflowItems = [
-    { label: 'Filnavn', ready: hasText(deliveryWorkflow.fileNamingConvention), detail: deliveryWorkflow.fileNamingConvention || 'Filnavnregel mangler.' },
-    { label: 'Versjonering', ready: hasText(deliveryWorkflow.versioningRule), detail: deliveryWorkflow.versioningRule || 'Versjoneringsregel mangler.' },
-    { label: 'Mapper', ready: hasText(deliveryWorkflow.folderStructure), detail: deliveryWorkflow.folderStructure || 'Mappestruktur mangler.' },
-    { label: 'Draft / final', ready: hasText(deliveryWorkflow.draftVsFinalRule), detail: deliveryWorkflow.draftVsFinalRule || 'Draft/final-regel mangler.' },
-    { label: 'Backup', ready: hasText(deliveryWorkflow.backupRoutine), detail: deliveryWorkflow.backupRoutine || 'Backuprutine mangler.' },
-    { label: 'Leveringsrytme', ready: hasText(deliveryWorkflow.deliveryCadence), detail: deliveryWorkflow.deliveryCadence || 'Leveringsrytme mangler.' },
+    { label: t('exportHandoff.s026'), ready: hasText(deliveryWorkflow.fileNamingConvention), detail: deliveryWorkflow.fileNamingConvention || t('exportHandoff.s027') },
+    { label: t('exportHandoff.s142'), ready: hasText(deliveryWorkflow.versioningRule), detail: deliveryWorkflow.versioningRule || t('exportHandoff.s143') },
+    { label: t('exportHandoff.s098'), ready: hasText(deliveryWorkflow.folderStructure), detail: deliveryWorkflow.folderStructure || t('exportHandoff.s099') },
+    { label: 'Draft / final', ready: hasText(deliveryWorkflow.draftVsFinalRule), detail: deliveryWorkflow.draftVsFinalRule || t('exportHandoff.s020') },
+    { label: 'Backup', ready: hasText(deliveryWorkflow.backupRoutine), detail: deliveryWorkflow.backupRoutine || t('exportHandoff.s007') },
+    { label: t('exportHandoff.s086'), ready: hasText(deliveryWorkflow.deliveryCadence), detail: deliveryWorkflow.deliveryCadence || t('exportHandoff.s087') },
   ];
 
   return {
@@ -304,12 +306,15 @@ interface LegalAgreementSummary {
 }
 
 const buildClientInputSummaryText = (
+  t: TFn,
   planning: ProducerProjectPlanning,
   intake: ProducerClientIntake,
   materials: ProducerClientMaterial[],
   contributionTasks: ReturnType<typeof getProducerClientContributionTasks>,
   pendingClientMoments: ReturnType<typeof buildProducerDeliveryManifest>['pendingClientMoments'],
 ): string => {
+  const MATERIAL_TYPE_LABELS = buildMATERIAL_TYPE_LABELS(t);
+  const MATERIAL_PRIORITY_LABELS = buildMATERIAL_PRIORITY_LABELS(t);
   const contentLogic = planning.contentLogic ?? {
     objective: '',
     audience: '',
@@ -322,44 +327,44 @@ const buildClientInputSummaryText = (
   const summaryLines = [
     '',
     '',
-    'KLIENTBRIEF OG MATERIALE',
+    t('exportHandoff.s048'),
     '------------------------',
-    `Prosjektmål: ${intake.projectGoal || 'Ikke satt'}`,
-    `Leveranser: ${intake.deliverables || 'Ikke satt'}`,
-    `Målgruppe: ${intake.targetAudience || 'Ikke satt'}`,
-    `Kjernebudskap: ${intake.keyMessage || 'Ikke satt'}`,
-    `Tidsrammer: ${intake.timingConstraints || 'Ikke satt'}`,
-    `Brand-notater: ${intake.brandNotes || 'Ikke satt'}`,
-    `Materialoversikt: ${intake.materialOverview || 'Ikke satt'}`,
-    `Referanselenker: ${intake.referenceLinks || 'Ikke satt'}`,
-    `Kontaktperson: ${[intake.contactName, intake.contactEmail, intake.contactPhone].filter(hasText).join(' · ') || 'Ikke satt'}`,
-    `Tilleggsnotater: ${intake.additionalNotes || 'Ikke satt'}`,
+    t('exportHandoff.t023', { v0: intake.projectGoal || t('exportHandoff.s036') }),
+    t('exportHandoff.t018', { v0: intake.deliverables || t('exportHandoff.s036') }),
+    t('exportHandoff.t022', { v0: intake.targetAudience || t('exportHandoff.s036') }),
+    t('exportHandoff.t014', { v0: intake.keyMessage || t('exportHandoff.s036') }),
+    t('exportHandoff.t029', { v0: intake.timingConstraints || t('exportHandoff.s036') }),
+    t('exportHandoff.t011', { v0: intake.brandNotes || t('exportHandoff.s036') }),
+    t('exportHandoff.t020', { v0: intake.materialOverview || t('exportHandoff.s036') }),
+    t('exportHandoff.t024', { v0: intake.referenceLinks || t('exportHandoff.s036') }),
+    t('exportHandoff.t015', { v0: [intake.contactName, intake.contactEmail, intake.contactPhone].filter(hasText).join(' · ') || t('exportHandoff.s036') }),
+    t('exportHandoff.t030', { v0: intake.additionalNotes || t('exportHandoff.s036') }),
     '',
     'CONTENT LOGIC',
     '-------------',
-    `Mål: ${contentLogic.objective || 'Ikke satt'}`,
-    `Målgruppe: ${contentLogic.audience || 'Ikke satt'}`,
-    `Hook: ${contentLogic.hook || 'Ikke satt'}`,
-    `Kjernebudskap: ${contentLogic.coreMessage || 'Ikke satt'}`,
-    `CTA: ${contentLogic.callToAction || 'Ikke satt'}`,
-    `Distribusjon: ${contentLogic.distributionPlan || 'Ikke satt'}`,
-    `Bevis: ${contentLogic.proofPoints?.length ? contentLogic.proofPoints.join(' · ') : 'Ikke satt'}`,
+    t('exportHandoff.t021', { v0: contentLogic.objective || t('exportHandoff.s036') }),
+    t('exportHandoff.t022', { v0: contentLogic.audience || t('exportHandoff.s036') }),
+    `Hook: ${contentLogic.hook || t('exportHandoff.s036')}`,
+    t('exportHandoff.t014', { v0: contentLogic.coreMessage || t('exportHandoff.s036') }),
+    `CTA: ${contentLogic.callToAction || t('exportHandoff.s036')}`,
+    t('exportHandoff.t012', { v0: contentLogic.distributionPlan || t('exportHandoff.s036') }),
+    t('exportHandoff.t010', { v0: contentLogic.proofPoints?.length ? contentLogic.proofPoints.join(' · ') : t('exportHandoff.s036') }),
     '',
-    'ÅPNE BESLUTNINGSPUNKTER',
+    t('exportHandoff.s153'),
     '-----------------------',
     ...(
       pendingClientMoments.length > 0
         ? pendingClientMoments.map((moment) => (
           `- ${getProducerClientMomentTextEyebrow(moment)} ${moment.title} · ${moment.reviewStatusLabel ?? moment.statusLabel}`
         ))
-        : ['- Ingen åpne beslutningspunkter akkurat nå.']
+        : [t('exportHandoff.s003')]
     ),
     '',
-    'Registrert materiale:',
+    t('exportHandoff.s127'),
   ];
 
   if (materials.length === 0) {
-    summaryLines.push('- Ingen materialer registrert ennå.');
+    summaryLines.push(t('exportHandoff.s002'));
     return [
       summaryLines.join('\n'),
       formatProducerClientContributionTasksAsText(contributionTasks),
@@ -371,15 +376,15 @@ const buildClientInputSummaryText = (
     summaryLines.push(
       `- ${material.title}`,
       `  Type: ${MATERIAL_TYPE_LABELS[material.entry_type] ?? material.entry_type}`,
-      `  Prioritet: ${MATERIAL_PRIORITY_LABELS[metadata.priority]}`,
-      `  Fase: ${material.phase ? material.phase : 'Ikke satt'}`,
-      `  Status: ${material.status || 'Levert'}`,
-      `  Filnavn: ${metadata.fileName || 'Ikke satt'}`,
-      `  Versjon: ${metadata.versionLabel || 'Ikke satt'}`,
-      `  Kilde: ${metadata.sourceLabel || 'Ikke satt'}`,
-      `  Brukes til: ${metadata.usageNotes || 'Ikke satt'}`,
-      `  Beskrivelse: ${material.description || 'Ikke satt'}`,
-      `  Lenke: ${material.external_url || 'Ikke satt'}`,
+      t('exportHandoff.t007', { v0: MATERIAL_PRIORITY_LABELS[metadata.priority] }),
+      t('exportHandoff.t003', { v0: material.phase ? material.phase : t('exportHandoff.s036') }),
+      `  Status: ${material.status || t('exportHandoff.s088')}`,
+      t('exportHandoff.t004', { v0: metadata.fileName || t('exportHandoff.s036') }),
+      t('exportHandoff.t008', { v0: metadata.versionLabel || t('exportHandoff.s036') }),
+      t('exportHandoff.t005', { v0: metadata.sourceLabel || t('exportHandoff.s036') }),
+      t('exportHandoff.t002', { v0: metadata.usageNotes || t('exportHandoff.s036') }),
+      t('exportHandoff.t001', { v0: material.description || t('exportHandoff.s036') }),
+      t('exportHandoff.t006', { v0: material.external_url || t('exportHandoff.s036') }),
     );
   });
 
@@ -399,6 +404,9 @@ export default function ProducerExportHandoffPanel({
   onSendToClient,
 }: ProducerExportHandoffPanelProps) {
   const { enqueueSnackbar } = useSnackbar();
+  const { t } = useT();
+  const MATERIAL_TYPE_LABELS = useMemo(() => buildMATERIAL_TYPE_LABELS(t), [t]);
+  const MATERIAL_PRIORITY_LABELS = useMemo(() => buildMATERIAL_PRIORITY_LABELS(t), [t]);
   const { uploadProjectFile, getProjectFiles, deleteProjectFile, shareProjectFile } = useProject();
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_INTAKE);
   const [clientMaterials, setClientMaterials] = useState<ProducerClientMaterial[]>([]);
@@ -469,8 +477,8 @@ export default function ProducerExportHandoffPanel({
     setClientInputError(null);
     try {
       const [nextIntake, nextMaterials] = await Promise.allSettled([
-        withClientPackageInputTimeout(producerWorkflowService.getClientIntake(project.id), 'Klientbrief'),
-        withClientPackageInputTimeout(producerWorkflowService.getClientMaterials(project.id), 'Klientmateriale'),
+        withClientPackageInputTimeout(t, producerWorkflowService.getClientIntake(project.id), t('exportHandoff.s051')),
+        withClientPackageInputTimeout(t, producerWorkflowService.getClientMaterials(project.id), t('exportHandoff.s058')),
       ]);
       if (requestId !== clientInputsRequestRef.current) {
         return;
@@ -493,14 +501,14 @@ export default function ProducerExportHandoffPanel({
       }
 
       if (failures.some(isRoleRoomSessionFailure)) {
-        setClientInputError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+        setClientInputError(t('exportHandoff.s128'));
       }
     } catch (loadError) {
       if (requestId !== clientInputsRequestRef.current) {
         return;
       }
       if (isRoleRoomSessionFailure(loadError)) {
-        setClientInputError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+        setClientInputError(t('exportHandoff.s128'));
       }
     } finally {
       if (requestId === clientInputsRequestRef.current) {
@@ -566,7 +574,7 @@ export default function ProducerExportHandoffPanel({
       }
       setLatestPackage({
         id: latestUploadedPackage.id,
-        name: latestUploadedPackage.name || latestUploadedPackage.originalName || 'Klientpakke',
+        name: latestUploadedPackage.name || latestUploadedPackage.originalName || t('exportHandoff.s059'),
         uploadedAt: latestUploadedPackage.uploadedAt || '',
         downloadUrl: latestUploadedPackage.downloadUrl || '',
         packageName: getProjectFileMetadataString(latestUploadedPackage, 'packageName'),
@@ -661,7 +669,7 @@ export default function ProducerExportHandoffPanel({
     [planning],
   );
   const readiness = useMemo(
-    () => buildReadinessChecklist(project),
+    () => buildReadinessChecklist(t, project),
     [project],
   );
   const upcomingDeliveries = useMemo(
@@ -733,6 +741,7 @@ export default function ProducerExportHandoffPanel({
     const content = [
       formatProducerDeliveryManifestAsText(manifest),
       buildClientInputSummaryText(
+        t,
         planning,
         clientIntake,
         prioritizedClientMaterials,
@@ -743,14 +752,14 @@ export default function ProducerExportHandoffPanel({
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(content);
-        enqueueSnackbar('Sammendrag til kunden kopiert.', { variant: 'success' });
+        enqueueSnackbar(t('exportHandoff.s129'), { variant: 'success' });
         return;
       } catch (clipboardError) {
         console.warn('[ProducerExportHandoffPanel] Clipboard copy failed, falling back to file download', clipboardError);
       }
     }
     downloadTextFile(`${normalizeFileToken(project.name)}-overleveringsbrief.txt`, content);
-    enqueueSnackbar('Clipboard er ikke tilgjengelig. Briefen ble lastet ned som fil.', { variant: 'info' });
+    enqueueSnackbar(t('exportHandoff.s012'), { variant: 'info' });
   }, [clientContributionTasks, clientIntake, enqueueSnackbar, manifest, planning, prioritizedClientMaterials, project.name]);
 
   const handleDownloadManifest = useCallback(() => {
@@ -761,7 +770,7 @@ export default function ProducerExportHandoffPanel({
         formatProducerClientContributionTasksAsText(clientContributionTasks),
       ].join('\n'),
     );
-    enqueueSnackbar('Leveringsmanifest lastet ned.', { variant: 'success' });
+    enqueueSnackbar(t('exportHandoff.s084'), { variant: 'success' });
   }, [clientContributionTasks, enqueueSnackbar, manifest, project.name]);
 
   const handleDownloadPdf = useCallback(async () => {
@@ -776,10 +785,10 @@ export default function ProducerExportHandoffPanel({
         clientIntake,
         clientMaterials,
       });
-      enqueueSnackbar('Klientpakken ble lastet ned som PDF.', { variant: 'success' });
+      enqueueSnackbar(t('exportHandoff.s060'), { variant: 'success' });
     } catch (exportError) {
       console.error('[ProducerExportHandoffPanel] Failed to export handoff PDF', exportError);
-      setClientInputError('Kunne ikke generere klientpakken som PDF.');
+      setClientInputError(t('exportHandoff.s074'));
     } finally {
       setDownloadingPdf(false);
     }
@@ -787,16 +796,16 @@ export default function ProducerExportHandoffPanel({
 
   const handleCopyClientPortalUrl = useCallback(async () => {
     if (!clientPortalUrl) {
-      setClientInputError('Kunne ikke bygge klientportal-lenken for dette prosjektet.');
+      setClientInputError(t('exportHandoff.s073'));
       return;
     }
 
     try {
       await navigator.clipboard.writeText(clientPortalUrl);
-      enqueueSnackbar('Klientportal-lenke kopiert.', { variant: 'success' });
+      enqueueSnackbar(t('exportHandoff.s065'), { variant: 'success' });
     } catch (clipboardError) {
       console.error('[ProducerExportHandoffPanel] Failed to copy client portal url', clipboardError);
-      setClientInputError('Kunne ikke kopiere klientportal-lenken.');
+      setClientInputError(t('exportHandoff.s075'));
     }
   }, [clientPortalUrl, enqueueSnackbar]);
 
@@ -811,6 +820,7 @@ export default function ProducerExportHandoffPanel({
         formatProducerClientContributionTasksAsText(clientContributionTasks),
       ].join('\n');
       const clientInputSummaryText = buildClientInputSummaryText(
+        t,
         planning,
         clientIntake,
         prioritizedClientMaterials,
@@ -839,7 +849,7 @@ export default function ProducerExportHandoffPanel({
         versionLabel: packageBuild.versionLabel,
         generatedAt: packageBuild.generatedAtIso,
         portalUrl: clientPortalUrl,
-        deliveryStageLabel: 'Klientpakke',
+        deliveryStageLabel: t('exportHandoff.s059'),
       }) as Record<string, unknown>;
 
       const nextPackage: UploadedClientPackageSummary = {
@@ -852,11 +862,11 @@ export default function ProducerExportHandoffPanel({
         versionLabel: packageBuild.versionLabel,
       };
       setLatestPackage(nextPackage);
-      enqueueSnackbar('Klientpakken ble skrevet til prosjektfiler.', { variant: 'success' });
+      enqueueSnackbar(t('exportHandoff.s061'), { variant: 'success' });
       return nextPackage;
     } catch (packageError) {
       console.error('[ProducerExportHandoffPanel] Failed to build and upload client package', packageError);
-      setClientInputError(describeProducerError(packageError, 'skrive klientpakken til prosjektets leveranseflyt'));
+      setClientInputError(describeProducerError(packageError, t('exportHandoff.s150')));
       return null;
     } finally {
       setUploadingPackage(false);
@@ -920,11 +930,11 @@ export default function ProducerExportHandoffPanel({
       }
 
       setDeliveryWorkspaceFiles(uploadedWorkspaceFiles);
-      enqueueSnackbar('Filene ble klargjort for levering.', { variant: 'success' });
+      enqueueSnackbar(t('exportHandoff.s024'), { variant: 'success' });
       return uploadedWorkspaceFiles;
     } catch (workspaceError) {
       console.error('[ProducerExportHandoffPanel] Failed to write delivery workspace', workspaceError);
-      setClientInputError(describeProducerError(workspaceError, 'skrive leveransearbeidsområdet til prosjektfiler'));
+      setClientInputError(describeProducerError(workspaceError, t('exportHandoff.s151')));
       return [];
     } finally {
       setWritingWorkspace(false);
@@ -943,7 +953,7 @@ export default function ProducerExportHandoffPanel({
 
   const handleShareLatestPackage = useCallback(async () => {
     if (!latestPackage) {
-      setClientInputError('Klientpakken må skrives før den kan deles.');
+      setClientInputError(t('exportHandoff.s064'));
       return;
     }
 
@@ -956,10 +966,10 @@ export default function ProducerExportHandoffPanel({
         await navigator.clipboard.writeText(absoluteShareUrl);
       }
 
-      enqueueSnackbar('Delingslenke til klientpakken er klar.', { variant: 'success' });
+      enqueueSnackbar(t('exportHandoff.s015'), { variant: 'success' });
     } catch (shareError) {
       console.error('[ProducerExportHandoffPanel] Failed to share latest package', shareError);
-      setClientInputError(describeProducerError(shareError, 'lage delingslenke for klientpakken'));
+      setClientInputError(describeProducerError(shareError, t('exportHandoff.s148')));
     }
   }, [enqueueSnackbar, latestPackage, project.id, shareProjectFile]);
 
@@ -977,10 +987,10 @@ export default function ProducerExportHandoffPanel({
       }
       await handleWriteDeliveryWorkspace();
       await onSendToClient();
-      enqueueSnackbar('Klientpakken er klar for deling.', { variant: 'success' });
+      enqueueSnackbar(t('exportHandoff.s063'), { variant: 'success' });
     } catch (sendError) {
       console.error('[ProducerExportHandoffPanel] Failed to prepare client handoff', sendError);
-      setClientInputError(describeProducerError(sendError, 'klargjøre klientpakken for deling'));
+      setClientInputError(describeProducerError(sendError, t('exportHandoff.s147')));
     } finally {
       setSendingToClient(false);
     }
@@ -1004,11 +1014,13 @@ export default function ProducerExportHandoffPanel({
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <AssignmentTurnedInIcon sx={{ color: '#fbbf24' }} />
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-              Sende til kunden
+              
+              {t('exportHandoff.s133')}
             </Typography>
           </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.86)', maxWidth: 920 }}>
-            Alt kunden skal få — innleggene som skal ut, filnavn, stilguide og leveringsrutine — samlet på ett sted, slik at det som planlegges er nøyaktig det som sendes.
+            
+            {t('exportHandoff.s004')}
           </Typography>
         </Box>
         {/* Én hovedhandling (The Role Room-gradient), resten dempet til
@@ -1031,33 +1043,33 @@ export default function ProducerExportHandoffPanel({
                 '&.Mui-disabled': { opacity: 0.45, color: '#fff' },
               }}
             >
-              {sendingToClient ? 'Klargjør…' : 'Send til kunden'}
+              {sendingToClient ? t('exportHandoff.s050') : t('exportHandoff.s132')}
             </Button>
           ) : null}
           <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap justifyContent={{ sm: 'flex-end' }}>
             {onOpenManuscript ? (
-              <Button variant="text" size="small" startIcon={<AutoStoriesIcon />} onClick={onOpenManuscript} sx={SECONDARY_ACTION_SX}>Åpne manus</Button>
+              <Button variant="text" size="small" startIcon={<AutoStoriesIcon />} onClick={onOpenManuscript} sx={SECONDARY_ACTION_SX}>{t('exportHandoff.s164')}</Button>
             ) : null}
             {onOpenShotList ? (
-              <Button variant="text" size="small" startIcon={<ViewListIcon />} onClick={onOpenShotList} sx={SECONDARY_ACTION_SX}>Åpne shotlist</Button>
+              <Button variant="text" size="small" startIcon={<ViewListIcon />} onClick={onOpenShotList} sx={SECONDARY_ACTION_SX}>{t('exportHandoff.s169')}</Button>
             ) : null}
             {onOpenMedia ? (
-              <Button variant="text" size="small" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={SECONDARY_ACTION_SX}>Åpne brief</Button>
+              <Button variant="text" size="small" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={SECONDARY_ACTION_SX}>{t('exportHandoff.s154')}</Button>
             ) : null}
-            <Button variant="text" size="small" startIcon={<ContentCopyIcon />} data-testid="producer-export-copy-portal" onClick={() => { void handleCopyClientPortalUrl(); }} sx={SECONDARY_ACTION_SX}>Kopier kundeportal</Button>
-            <Button variant="text" size="small" startIcon={<TaskAltIcon />} data-testid="producer-export-write-package" onClick={() => { void handleBuildAndUploadPackage(); }} disabled={uploadingPackage} sx={SECONDARY_ACTION_SX}>{uploadingPackage ? 'Skriver…' : 'Lag pakke'}</Button>
-            <Button variant="text" size="small" startIcon={<ViewListIcon />} data-testid="producer-export-write-workspace" onClick={() => { void handleWriteDeliveryWorkspace(); }} disabled={writingWorkspace} sx={SECONDARY_ACTION_SX}>{writingWorkspace ? 'Skriver…' : 'Lag filer'}</Button>
+            <Button variant="text" size="small" startIcon={<ContentCopyIcon />} data-testid="producer-export-copy-portal" onClick={() => { void handleCopyClientPortalUrl(); }} sx={SECONDARY_ACTION_SX}>{t('exportHandoff.s069')}</Button>
+            <Button variant="text" size="small" startIcon={<TaskAltIcon />} data-testid="producer-export-write-package" onClick={() => { void handleBuildAndUploadPackage(); }} disabled={uploadingPackage} sx={SECONDARY_ACTION_SX}>{uploadingPackage ? 'Skriver…' : t('exportHandoff.s077')}</Button>
+            <Button variant="text" size="small" startIcon={<ViewListIcon />} data-testid="producer-export-write-workspace" onClick={() => { void handleWriteDeliveryWorkspace(); }} disabled={writingWorkspace} sx={SECONDARY_ACTION_SX}>{writingWorkspace ? 'Skriver…' : t('exportHandoff.s076')}</Button>
             {latestPackage ? (
-              <Button variant="text" size="small" startIcon={<LaunchIcon />} data-testid="producer-export-share-package" onClick={() => { void handleShareLatestPackage(); }} sx={SECONDARY_ACTION_SX}>Del siste pakke</Button>
+              <Button variant="text" size="small" startIcon={<LaunchIcon />} data-testid="producer-export-share-package" onClick={() => { void handleShareLatestPackage(); }} sx={SECONDARY_ACTION_SX}>{t('exportHandoff.s014')}</Button>
             ) : null}
           </Stack>
         </Stack>
       </Stack>
 
       {error ? <Alert severity="error">{error}</Alert> : null}
-      {loading ? <Alert severity="info">Oppdaterer eksportgrunnlag fra manus, shotlist og produksjonsplan.</Alert> : null}
+      {loading ? <Alert severity="info">{t('exportHandoff.s118')}</Alert> : null}
       {clientInputError ? <Alert severity="error">{clientInputError}</Alert> : null}
-      {loadingClientInput ? <Alert severity="info">Henter klientbrief og materiale til klientpakken.</Alert> : null}
+      {loadingClientInput ? <Alert severity="info">{t('exportHandoff.s033')}</Alert> : null}
       {reviewsError ? <Alert severity="warning">{reviewsError}</Alert> : null}
       {latestPackage ? (
         <Alert
@@ -1072,11 +1084,12 @@ export default function ProducerExportHandoffPanel({
               rel="noreferrer"
               sx={{ textTransform: 'none', fontWeight: 700 }}
             >
-              Åpne pakke
+              
+              {t('exportHandoff.s166')}
             </Button>
           ) : undefined}
         >
-          {`Siste klientpakke: ${latestPackage.name} · ${latestPackage.versionLabel || 'uten versjon'} · ${latestPackage.folderPath || 'mappe ikke satt'}`}
+          {t('exportHandoff.t028', { v0: latestPackage.name, v1: latestPackage.versionLabel || t('exportHandoff.s152'), v2: latestPackage.folderPath || t('exportHandoff.s149') })}
         </Alert>
       ) : null}
       {latestPackageShareUrl ? (
@@ -1092,15 +1105,17 @@ export default function ProducerExportHandoffPanel({
               rel="noreferrer"
               sx={{ textTransform: 'none', fontWeight: 700 }}
             >
-              Åpne delingslenke
+              
+              {t('exportHandoff.s156')}
             </Button>
           )}
         >
-          Klientpakken er delt. Delingslenken er kopiert og kan åpnes direkte fra denne meldingen.
+          
+          {t('exportHandoff.s062')}
         </Alert>
       ) : null}
       {!loading && !loadingClientInput && loadingReviews ? (
-        <Alert severity="info">Oppdaterer klientstatus for faseplan og content-kalender.</Alert>
+        <Alert severity="info">{t('exportHandoff.s119')}</Alert>
       ) : null}
 
       {strategySnapshot.length > 0 ? (
@@ -1120,7 +1135,7 @@ export default function ProducerExportHandoffPanel({
           />
           <Chip
             size="small"
-            label={`${manifest.recommendedShootDays} opptaksdager`}
+            label={t('exportHandoff.t036', { v0: manifest.recommendedShootDays })}
             sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }}
           />
         </Stack>
@@ -1138,64 +1153,64 @@ export default function ProducerExportHandoffPanel({
       >
         {[
           {
-            label: 'Klientpunkter',
+            label: t('exportHandoff.s066'),
             tone: (manifest.pendingClientMoments.length > 0 ? 'wait' : 'go') as StatusTone,
             value: `${manifest.pendingClientMoments.length}`,
             detail: manifest.pendingClientMoments.length > 0
-              ? 'Åpne punkter fra faseplan og content-kalender.'
-              : 'Ingen åpne klientpunkter akkurat nå.',
+              ? t('exportHandoff.s167')
+              : t('exportHandoff.s042'),
           },
           {
-            label: 'Merkevareklarhet',
+            label: t('exportHandoff.s108'),
             tone: (readiness.brandReadyCount === readiness.brandItems.length ? 'go' : 'wait') as StatusTone,
             value: `${readiness.brandReadyCount}/${readiness.brandItems.length}`,
             detail: readiness.brandReadyCount === readiness.brandItems.length
-              ? 'Merkevareguiden er klar for levering.'
-              : 'Noen merkevarepunkter bør fylles før final eksport.',
+              ? t('exportHandoff.s107')
+              : t('exportHandoff.s115'),
           },
           {
-            label: 'Leveringsrutine',
+            label: t('exportHandoff.s085'),
             tone: (readiness.workflowReadyCount === readiness.workflowItems.length ? 'go' : 'wait') as StatusTone,
             value: `${readiness.workflowReadyCount}/${readiness.workflowItems.length}`,
             detail: readiness.workflowReadyCount === readiness.workflowItems.length
-              ? 'Filstruktur og levering er definert.'
-              : 'Noen leveringsregler mangler for konsekvent handoff.',
+              ? t('exportHandoff.s028')
+              : t('exportHandoff.s114'),
           },
           {
-            label: 'Klientgrunnlag',
+            label: t('exportHandoff.s056'),
             tone: (clientMaterials.length > 0 ? 'go' : 'wait') as StatusTone,
-            value: `${clientBriefReadyCount}/6 · ${clientMaterials.length} filer`,
+            value: t('exportHandoff.t040', { v0: clientBriefReadyCount, v1: clientMaterials.length }),
             detail: clientMaterials.length > 0
-              ? 'Klientbrief og opplastet materiale er koblet til pakken.'
-              : 'Klienten bør legge inn brief og materiale før endelig handoff.',
+              ? t('exportHandoff.s053')
+              : t('exportHandoff.s054'),
           },
           {
-            label: 'Innholdsplan',
+            label: t('exportHandoff.s044'),
             tone: 'wait' as StatusTone,
             value: [manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length > 0
               ? `${[manifest.contentLogicSummary.objective, manifest.contentLogicSummary.hook, manifest.contentLogicSummary.callToAction].filter(hasText).length}/3`
               : '0/3',
             detail: hasText(manifest.contentLogicSummary.hook)
               ? `Hook: ${manifest.contentLogicSummary.hook}`
-              : 'Mål, hook og CTA bør fylles før klientpakken sendes.',
+              : t('exportHandoff.s110'),
           },
           {
-            label: 'Hvem har tilgang',
+            label: t('exportHandoff.s034'),
             tone: (manifest.accountAccessSummary.connectedCount >= manifest.accountAccessSummary.requiredPlatformCount ? 'go' : manifest.accountAccessSummary.connectedCount === 0 ? 'stop' : 'wait') as StatusTone,
             value: `${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount}`,
             detail: manifest.accountAccessSummary.clientActionCount > 0
-              ? `${manifest.accountAccessSummary.clientActionCount} plattform${manifest.accountAccessSummary.clientActionCount === 1 ? '' : 'er'} krever klienthandling.`
+              ? t('exportHandoff.t037', { v0: manifest.accountAccessSummary.clientActionCount, v1: manifest.accountAccessSummary.clientActionCount === 1 ? '' : 's' })
               : manifest.accountAccessSummary.inviteSentCount > 0
-                ? `${manifest.accountAccessSummary.inviteSentCount} invitasjon${manifest.accountAccessSummary.inviteSentCount === 1 ? '' : 'er'} venter på bekreftelse.`
-                : 'Nødvendige kontoer er avklart eller koblet.',
+                ? t('exportHandoff.t032', { v0: manifest.accountAccessSummary.inviteSentCount, v1: manifest.accountAccessSummary.inviteSentCount === 1 ? '' : 's' })
+                : t('exportHandoff.s116'),
           },
           {
-            label: 'Åpne klientinnspill',
+            label: t('exportHandoff.s160'),
             tone: (openClientContributionTasks.length > 0 ? 'wait' : 'go') as StatusTone,
             value: `${openClientContributionTasks.length}`,
             detail: openClientContributionTasks.length > 0
-              ? 'Punkter som fortsatt må avklares før pakken er helt trygg å sende.'
-              : 'Ingen åpne klientinnspill akkurat nå.',
+              ? t('exportHandoff.s125')
+              : t('exportHandoff.s041'),
           },
         ].map((card) => {
           const t = TONE_COLORS[card.tone];
@@ -1238,18 +1253,20 @@ export default function ProducerExportHandoffPanel({
       >
         <Stack spacing={2}>
           <CollapsibleSection
-            title="Neste steg med kunden"
+            title={t('exportHandoff.s113')}
             defaultOpen
           >
             <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
               {onOpenReviews ? (
                 <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={onOpenReviews} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne klientsamarbeid
+                  
+                  {t('exportHandoff.s161')}
                 </Button>
               ) : null}
               {onOpenTimeline ? (
                 <Button size="small" variant="outlined" startIcon={<CalendarMonthIcon />} onClick={onOpenTimeline} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                  Åpne tidslinje
+                  
+                  {t('exportHandoff.s170')}
                 </Button>
               ) : null}
             </Stack>
@@ -1287,7 +1304,7 @@ export default function ProducerExportHandoffPanel({
                             <>
                               <Chip
                                 size="small"
-                                label="Innholdsplan"
+                                label={t('exportHandoff.s044')}
                                 sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
                               />
                               <Chip
@@ -1301,7 +1318,7 @@ export default function ProducerExportHandoffPanel({
                             <>
                               <Chip
                                 size="small"
-                                label="Hvem har tilgang"
+                                label={t('exportHandoff.s034')}
                                 sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#ccfbf1' }}
                               />
                               <Chip
@@ -1330,7 +1347,7 @@ export default function ProducerExportHandoffPanel({
                           {moment.commentCount ? (
                             <Chip
                               size="small"
-                              label={`${moment.commentCount} kommentar${moment.commentCount === 1 ? '' : 'er'}`}
+                              label={t('exportHandoff.t033', { v0: moment.commentCount, v1: moment.commentCount === 1 ? '' : 's' })}
                               sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }}
                             />
                           ) : null}
@@ -1339,39 +1356,41 @@ export default function ProducerExportHandoffPanel({
                           {moment.title}
                         </Typography>
                         <Typography sx={{ color: isContentLogicMoment ? 'rgba(233,213,255,0.92)' : isAccountAccessMoment ? 'rgba(204,251,241,0.92)' : 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
-                          {moment.detail || 'Ingen detaljer lagt inn ennå.'}
+                          {moment.detail || t('exportHandoff.s037')}
                         </Typography>
                         {isContentLogicMoment ? (
                           <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
-                            Dette er en innholdsbeslutning som låser hook, CTA eller proof points før videre produksjon.
+                            
+                            {t('exportHandoff.s016')}
                           </Typography>
                         ) : null}
                         {isAccountAccessMoment ? (
                           <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem', mt: 0.35 }}>
-                            Dette klientpunktet låser invite, OAuth eller publiseringstilgang før eksport og levering er helt trygg.
+                            
+                            {t('exportHandoff.s017')}
                           </Typography>
                         ) : null}
                         {moment.drivenByReview ? (
                           <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem', mt: 0.35 }}>
                             {moment.reviewDecisionAt
-                              ? `Sist oppdatert ${formatDate(moment.reviewDecisionAt)}`
+                              ? t('exportHandoff.t027', { v0: formatDate(t, moment.reviewDecisionAt) })
                               : moment.reviewRequestedAt
-                                ? `Sendt til klient ${formatDate(moment.reviewRequestedAt)}`
-                                : 'Klientpunktet styres av reviewflyten'}
+                                ? t('exportHandoff.t026', { v0: formatDate(t, moment.reviewRequestedAt) })
+                                : t('exportHandoff.s067')}
                           </Typography>
                         ) : null}
                       </Box>
                       <Stack spacing={0.45} alignItems={{ md: 'flex-end' }}>
                         <Chip
                           size="small"
-                          label={isContentLogicMoment ? 'Innholdsvalg' : isAccountAccessMoment ? 'Plattformtilgang' : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
+                          label={isContentLogicMoment ? t('exportHandoff.s045') : isAccountAccessMoment ? t('exportHandoff.s121') : PRODUCER_PLANNING_PHASE_LABELS[moment.phase]}
                           sx={{
                             bgcolor: isContentLogicMoment ? 'rgba(125,211,252,0.14)' : isAccountAccessMoment ? 'rgba(45,212,191,0.16)' : 'rgba(59,130,246,0.14)',
                             color: isContentLogicMoment ? '#cffafe' : isAccountAccessMoment ? '#ccfbf1' : '#bfdbfe',
                           }}
                         />
                         <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
-                          {moment.date ? formatDate(moment.date) : 'Dato ikke satt'}
+                          {moment.date ? formatDate(t, moment.date) : t('exportHandoff.s013')}
                         </Typography>
                       </Stack>
                     </Stack>
@@ -1380,24 +1399,26 @@ export default function ProducerExportHandoffPanel({
               })}
               {manifest.pendingClientMoments.length === 0 ? (
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
-                  Ingen åpne klientpunkter. Faseplan og content-kalender er enten fullført eller ikke satt opp ennå.
+                  
+                  {t('exportHandoff.s043')}
                 </Typography>
               ) : null}
             </Stack>
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Hvem har tilgang"
-            summary={`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} plattformer koblet · ${manifest.accountAccessSummary.clientActionCount} krever klient`}
+            title={t('exportHandoff.s034')}
+            summary={t('exportHandoff.t042', { v0: manifest.accountAccessSummary.connectedCount, v1: manifest.accountAccessSummary.requiredPlatformCount, v2: manifest.accountAccessSummary.clientActionCount })}
           >
             {onOpenMedia ? (
               <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(accountsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
-                Åpne kontotilgang
+                
+                {t('exportHandoff.s162')}
               </Button>
             ) : null}
             <Stack spacing={0.7}>
               <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
-                {`${manifest.accountAccessSummary.connectedCount}/${manifest.accountAccessSummary.requiredPlatformCount} nødvendige plattformer er koblet. ${manifest.accountAccessSummary.clientActionCount} krever klienthandling. ${manifest.accountAccessSummary.inviteSentCount} venter på invite-bekreftelse.`}
+                {t('exportHandoff.t041', { v0: manifest.accountAccessSummary.connectedCount, v1: manifest.accountAccessSummary.requiredPlatformCount, v2: manifest.accountAccessSummary.clientActionCount, v3: manifest.accountAccessSummary.inviteSentCount })}
               </Typography>
               {manifest.accountAccessSummary.entries.map((entry) => (
                 <Box
@@ -1434,17 +1455,17 @@ export default function ProducerExportHandoffPanel({
                           }}
                         />
                         {entry.requiredForProject ? (
-                          <Chip size="small" label="Kreves" sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                          <Chip size="small" label={t('exportHandoff.s071')} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
                         ) : null}
                       </Stack>
                       <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 700 }}>
-                        {`${entry.methodLabel} · ${entry.accessScope || 'Scope ikke satt'}`}
+                        {`${entry.methodLabel} · ${entry.accessScope || t('exportHandoff.s131')}`}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.78rem', mt: 0.2 }}>
-                        {`Konto / side: ${entry.accountLabel || 'Ikke satt'} · Invite: ${entry.inviteTarget || 'Ikke satt'}`}
+                        {t('exportHandoff.t016', { v0: entry.accountLabel || t('exportHandoff.s036'), v1: entry.inviteTarget || t('exportHandoff.s036') })}
                       </Typography>
                       <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.76rem', mt: 0.2 }}>
-                        {`Kontoeier: ${entry.clientOwnerLabel || 'Ikke satt'} · 2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`}
+                        {t('exportHandoff.t017', { v0: entry.clientOwnerLabel || t('exportHandoff.s036'), v1: entry.twoFactorRequired ? 'Ja' : 'Nei' })}
                       </Typography>
                       {hasText(entry.notes) ? (
                         <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.76rem', mt: 0.2 }}>
@@ -1457,20 +1478,21 @@ export default function ProducerExportHandoffPanel({
               ))}
               <Box sx={{ pt: 0.2 }}>
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
-                  Sikkerhetsmodell
+                  
+                  {t('exportHandoff.s136')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.2 }}>
-                  {manifest.accountAccessSummary.securityNotes || 'Ikke satt'}
+                  {manifest.accountAccessSummary.securityNotes || t('exportHandoff.s036')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.25 }}>
-                  {`Revoke-plan: ${manifest.accountAccessSummary.revokePlan || 'Ikke satt'}`}
+                  {t('exportHandoff.t025', { v0: manifest.accountAccessSummary.revokePlan || t('exportHandoff.s036') })}
                 </Typography>
               </Box>
             </Stack>
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Filer klare til levering"
+            title={t('exportHandoff.s025')}
             summary={`${deliveryWorkspaceFiles.length} prosjektfiler`}
             badge={<Chip size="small" label={String(deliveryWorkspaceFiles.length)} sx={{ height: 18, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontSize: '0.68rem' }} />}
           >
@@ -1492,10 +1514,10 @@ export default function ProducerExportHandoffPanel({
                         {file.deliveryTitle || file.name}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
-                        {file.folderPath || 'Mappe ikke satt'}
+                        {file.folderPath || t('exportHandoff.s097')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.78rem', mt: 0.25 }}>
-                        {`${file.packageName || 'Pakke ikke satt'} · ${file.versionLabel || 'uten versjon'} · ${file.workspaceType || 'arbeidsfil'}`}
+                        {`${file.packageName || t('exportHandoff.s120')} · ${file.versionLabel || t('exportHandoff.s152')} · ${file.workspaceType || 'arbeidsfil'}`}
                       </Typography>
                     </Box>
                     {hasText(file.downloadUrl) ? (
@@ -1507,21 +1529,23 @@ export default function ProducerExportHandoffPanel({
                         rel="noreferrer"
                         sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
                       >
-                        Åpne fil
+                        
+                        {t('exportHandoff.s158')}
                       </Button>
                     ) : null}
                   </Stack>
                 </Box>
               )) : (
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
-                  Ingen leveransefiler er skrevet ennå. Bruk "Skriv leveransearbeidsområde" for å opprette faktiske prosjektfiler per leveransepunkt.
+                  
+                  {t('exportHandoff.s040')}
                 </Typography>
               )}
             </Stack>
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Juridiske dokumenter"
+            title={t('exportHandoff.s047')}
             summary={`${legalAgreements.agreements.length} avtaler`}
             badge={<Chip size="small" label={String(legalAgreements.agreements.length)} sx={{ height: 18, bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff', fontSize: '0.68rem' }} />}
           >
@@ -1558,7 +1582,7 @@ export default function ProducerExportHandoffPanel({
                             />
                             <Chip
                               size="small"
-                              label={`Juridisk signatur · ${getAgreementSignatureLabel(agreement.google_signature)}`}
+                              label={t('exportHandoff.t013', { v0: getAgreementSignatureLabel(agreement.google_signature) })}
                               sx={{ bgcolor: signatureTone.background, color: signatureTone.color }}
                             />
                           </Stack>
@@ -1581,7 +1605,8 @@ export default function ProducerExportHandoffPanel({
                               })}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne i klientflate
+                              
+                              {t('exportHandoff.s159')}
                             </Button>
                           ) : null}
                           {primaryUrl ? (
@@ -1594,7 +1619,8 @@ export default function ProducerExportHandoffPanel({
                               rel="noreferrer"
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne dokument
+                              
+                              {t('exportHandoff.s157')}
                             </Button>
                           ) : null}
                           {auditArtifact?.webViewUrl ? (
@@ -1607,7 +1633,8 @@ export default function ProducerExportHandoffPanel({
                               rel="noreferrer"
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Signaturspor
+                              
+                              {t('exportHandoff.s135')}
                             </Button>
                           ) : null}
                         </Stack>
@@ -1618,18 +1645,20 @@ export default function ProducerExportHandoffPanel({
               </Stack>
             ) : (
               <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
-                Ingen juridiske dokumenter er koblet til klientpakken ennå.
+                
+                {t('exportHandoff.s039')}
               </Typography>
             )}
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Innspill fra kunden før levering"
-            summary={`${openClientContributionTasks.length} punkter må avklares`}
+            title={t('exportHandoff.s046')}
+            summary={t('exportHandoff.t038', { v0: openClientContributionTasks.length })}
           >
             {onOpenMedia ? (
               <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(materialsWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
-                Åpne brief og materiale
+                
+                {t('exportHandoff.s155')}
               </Button>
             ) : null}
             <Stack spacing={0.85}>
@@ -1682,7 +1711,8 @@ export default function ProducerExportHandoffPanel({
                         onClick={() => onOpenMedia(getWorkspaceFocusForContributionTask(task))}
                         sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
                       >
-                        Åpne riktig side
+                        
+                        {t('exportHandoff.s168')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -1690,15 +1720,16 @@ export default function ProducerExportHandoffPanel({
               ))}
               {openClientContributionTasks.length === 0 ? (
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
-                  Klientgrunnlaget er komplett nok til å sende videre som handoff-pakke.
+                  
+                  {t('exportHandoff.s057')}
                 </Typography>
               ) : null}
             </Stack>
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Leveranser og filnavn"
-            summary={`${upcomingDeliveries.length} leveranser`}
+            title={t('exportHandoff.s083')}
+            summary={t('exportHandoff.t034', { v0: upcomingDeliveries.length })}
           >
             <Stack spacing={0.9}>
               {upcomingDeliveries.map((item) => (
@@ -1745,11 +1776,12 @@ export default function ProducerExportHandoffPanel({
                         sx={{ bgcolor: 'rgba(192,132,252,0.14)', color: '#e9d5ff' }}
                       />
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
-                        {item.publishDateLabel ?? 'Publiseringsdato ikke satt'}
+                        {item.publishDateLabel ?? t('exportHandoff.s124')}
                       </Typography>
                       {item.estimatedDurationLabel ? (
                         <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem' }}>
-                          Estimert lengde {item.estimatedDurationLabel}
+                          
+                          {t('exportHandoff.s021')} {item.estimatedDurationLabel}
                         </Typography>
                       ) : null}
                     </Stack>
@@ -1762,34 +1794,36 @@ export default function ProducerExportHandoffPanel({
 
         <Stack spacing={2}>
           <CollapsibleSection
-            title="Klientbrief og materiale"
+            title={t('exportHandoff.s052')}
             defaultOpen
           >
             {onOpenMedia ? (
               <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(briefWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
-                Åpne brief og materiale
+                
+                {t('exportHandoff.s155')}
               </Button>
             ) : null}
             <Stack spacing={0.8}>
               {[
-                ['Prosjektmål', clientIntake.projectGoal],
-                ['Leveranser', clientIntake.deliverables],
-                ['Målgruppe', clientIntake.targetAudience],
-                ['Kjernebudskap', clientIntake.keyMessage],
-                ['Kontakt', [clientIntake.contactName, clientIntake.contactEmail].filter(hasText).join(' · ')],
+                [t('exportHandoff.s122'), clientIntake.projectGoal],
+                [t('exportHandoff.s082'), clientIntake.deliverables],
+                [t('exportHandoff.s112'), clientIntake.targetAudience],
+                [t('exportHandoff.s049'), clientIntake.keyMessage],
+                [t('exportHandoff.s068'), [clientIntake.contactName, clientIntake.contactEmail].filter(hasText).join(' · ')],
               ].map(([label, value]) => (
                 <Box key={label}>
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
                     {label}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
-                    {hasText(value) ? value : 'Ikke fylt ut ennå.'}
+                    {hasText(value) ? value : t('exportHandoff.s035')}
                   </Typography>
                 </Box>
               ))}
               <Divider sx={{ borderColor: 'rgba(148,163,184,0.14)' }} />
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
-                Materialtyper
+                
+                {t('exportHandoff.s100')}
               </Typography>
               {clientMaterials.length > 0 ? (
                 <Stack direction="row" spacing={0.75} flexWrap="wrap">
@@ -1804,14 +1838,16 @@ export default function ProducerExportHandoffPanel({
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
-                  Klienten har ikke lagt inn materiale ennå.
+                  
+                  {t('exportHandoff.s055')}
                 </Typography>
               )}
               {prioritizedClientMaterials.length > 0 ? (
                 <>
                   <Divider sx={{ borderColor: 'rgba(148,163,184,0.14)' }} />
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
-                    Nøkkelmateriale for produksjonen
+                    
+                    {t('exportHandoff.s117')}
                   </Typography>
                   <Stack spacing={0.8}>
                     {prioritizedClientMaterials.slice(0, 4).map((material) => {
@@ -1845,7 +1881,7 @@ export default function ProducerExportHandoffPanel({
                               metadata.fileName ? `Filnavn ${metadata.fileName}` : '',
                               metadata.versionLabel ? `versjon ${metadata.versionLabel}` : '',
                               metadata.sourceLabel ? `kilde ${metadata.sourceLabel}` : '',
-                            ].filter(hasText).join(' · ') || 'Ingen fil- eller kildeinfo lagt inn ennå.'}
+                            ].filter(hasText).join(' · ') || t('exportHandoff.s038')}
                           </Typography>
                           {(hasText(metadata.usageNotes) || hasText(material.description)) ? (
                             <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.78rem', mt: 0.2 }}>
@@ -1862,8 +1898,8 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Prosjektramme"
-            summary="Strategi, konsept og aktivering"
+            title={t('exportHandoff.s123')}
+            summary={t('exportHandoff.s137')}
           >
             <Stack spacing={0.8}>
               {frameworkSections.map((section) => (
@@ -1878,38 +1914,40 @@ export default function ProducerExportHandoffPanel({
               ))}
               {frameworkSections.length === 0 ? (
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
-                  Strategi, konsept og aktivering er ikke fylt ut ennå.
+                  
+                  {t('exportHandoff.s138')}
                 </Typography>
               ) : null}
             </Stack>
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Innholdsplan"
-            summary="Mål, målgruppe, hook, budskap, CTA"
+            title={t('exportHandoff.s044')}
+            summary={t('exportHandoff.s111')}
           >
             <Stack spacing={0.8}>
               {[
-                { label: 'Mål', value: manifest.contentLogicSummary.objective },
-                { label: 'Målgruppe', value: manifest.contentLogicSummary.audience },
+                { label: t('exportHandoff.s109'), value: manifest.contentLogicSummary.objective },
+                { label: t('exportHandoff.s112'), value: manifest.contentLogicSummary.audience },
                 { label: 'Hook', value: manifest.contentLogicSummary.hook },
-                { label: 'Budskap', value: manifest.contentLogicSummary.coreMessage },
+                { label: t('exportHandoff.s011'), value: manifest.contentLogicSummary.coreMessage },
                 { label: 'CTA', value: manifest.contentLogicSummary.callToAction },
-                { label: 'Distribusjon', value: manifest.contentLogicSummary.distributionPlan },
+                { label: t('exportHandoff.s018'), value: manifest.contentLogicSummary.distributionPlan },
               ].map((item) => (
                 <Box key={item.label}>
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
                     {item.label}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
-                    {item.value || 'Ikke satt'}
+                    {item.value || t('exportHandoff.s036')}
                   </Typography>
                 </Box>
               ))}
               {manifest.contentLogicSummary.proofPoints.length > 0 ? (
                 <Box>
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', fontWeight: 700 }}>
-                    Bevis
+                    
+                    {t('exportHandoff.s008')}
                   </Typography>
                   <Stack spacing={0.2} sx={{ mt: 0.25 }}>
                     {manifest.contentLogicSummary.proofPoints.map((item) => (
@@ -1924,12 +1962,13 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Merkevareguide"
-            summary="Farger, fonter og tone kunden skal bruke"
+            title={t('exportHandoff.s106')}
+            summary={t('exportHandoff.s023')}
           >
             {onOpenMedia ? (
               <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(brandWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
-                Åpne merkevareguide
+                
+                {t('exportHandoff.s165')}
               </Button>
             ) : null}
             <Stack spacing={0.7}>
@@ -1948,7 +1987,8 @@ export default function ProducerExportHandoffPanel({
               ))}
               <Box sx={{ pt: 0.35 }}>
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
-                  Logo i videoen
+                  
+                  {t('exportHandoff.s091')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
                   {`${manifest.logoPlacementLabel} · ${manifest.logoTreatmentLabel} · ${manifest.logoTimingDetail}`}
@@ -1966,7 +2006,7 @@ export default function ProducerExportHandoffPanel({
                     {`Opacity: ${manifest.overlayEditorGuidance.opacity.label}`}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
-                    {`Anbefalt margin: ${manifest.overlayEditorGuidance.recommendedMargin.label}`}
+                    {t('exportHandoff.t009', { v0: manifest.overlayEditorGuidance.recommendedMargin.label })}
                   </Typography>
                   <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.78rem' }}>
                     {manifest.overlayEditorGuidance.note}
@@ -1976,7 +2016,8 @@ export default function ProducerExportHandoffPanel({
               {manifest.overlayFormatProfiles.length > 0 ? (
                 <Box>
                   <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
-                    Formatprofiler
+                    
+                    {t('exportHandoff.s031')}
                   </Typography>
                   <Stack spacing={0.35} sx={{ mt: 0.25 }}>
                     {manifest.overlayFormatProfiles.map((profile) => (
@@ -2019,7 +2060,7 @@ export default function ProducerExportHandoffPanel({
                         borderBottom: '1px solid rgba(148,163,184,0.14)',
                       }}
                     >
-                      {['Leveranse', 'Format', 'Valg', 'Brukes', 'Anbefalt'].map((label) => (
+                      {[t('exportHandoff.s081'), 'Format', t('exportHandoff.s141'), t('exportHandoff.s010'), t('exportHandoff.s005')].map((label) => (
                         <Typography key={label} sx={{ color: '#e2e8f0', fontSize: '0.73rem', fontWeight: 800 }}>
                           {label}
                         </Typography>
@@ -2056,7 +2097,7 @@ export default function ProducerExportHandoffPanel({
                           {item.resolvedLabel}
                         </Typography>
                         <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.76rem' }}>
-                          {`${item.recommendedLabel}${item.autoApplied ? ' · auto aktiv' : ''}`}
+                          {`${item.recommendedLabel}${item.autoApplied ? t('exportHandoff.s001') : ''}`}
                         </Typography>
                       </Box>
                     ))}
@@ -2067,12 +2108,13 @@ export default function ProducerExportHandoffPanel({
           </CollapsibleSection>
 
           <CollapsibleSection
-            title="Leveringsrutine"
-            summary={`${readiness.workflowItems.filter((i) => i.ready).length}/${readiness.workflowItems.length} steg klare`}
+            title={t('exportHandoff.s085')}
+            summary={t('exportHandoff.t043', { v0: readiness.workflowItems.filter((i) => i.ready).length, v1: readiness.workflowItems.length })}
           >
             {onOpenMedia ? (
               <Button size="small" variant="outlined" startIcon={<LaunchIcon />} onClick={() => onOpenMedia(deliveryWorkspaceFocus)} sx={{ textTransform: 'none', fontWeight: 700, mb: 1 }}>
-                Åpne leveringsrutine
+                
+                {t('exportHandoff.s163')}
               </Button>
             ) : null}
             <Stack spacing={0.7}>
@@ -2098,7 +2140,8 @@ export default function ProducerExportHandoffPanel({
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.82rem', maxWidth: 880 }}>
-          Sammendraget til kunden bygges automatisk på retning, idé, aktivering, innleggsplan, merkevareguide og leveringsrutine. Filnavn og punkter følger prosjektets egne regler.
+          
+          {t('exportHandoff.s130')}
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button
@@ -2109,13 +2152,15 @@ export default function ProducerExportHandoffPanel({
             disabled={downloadingPdf}
             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
           >
-            {downloadingPdf ? 'Genererer PDF…' : 'Last ned PDF'}
+            {downloadingPdf ? t('exportHandoff.s032') : t('exportHandoff.s078')}
           </Button>
           <Button variant="outlined" startIcon={<ContentCopyIcon />} data-testid="producer-export-copy-brief" onClick={() => { void handleCopyBrief(); }} sx={{ textTransform: 'none', fontWeight: 700 }}>
-            Kopier overleveringsbrief
+            
+            {t('exportHandoff.s070')}
           </Button>
           <Button variant="outlined" startIcon={<DownloadIcon />} data-testid="producer-export-download-manifest" onClick={handleDownloadManifest} sx={{ textTransform: 'none', fontWeight: 700 }}>
-            Last ned manifest
+            
+            {t('exportHandoff.s079')}
           </Button>
         </Stack>
       </Stack>

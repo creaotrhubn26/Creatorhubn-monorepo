@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 import {
   Alert,
   Box,
@@ -219,33 +221,33 @@ const EMPTY_CLIENT_INTAKE: ProducerClientIntake = {
 };
 
 const PHASE_ORDER: ProducerPlanningPhase[] = ['preproduction', 'production', 'postproduction'];
-const VIEW_OPTIONS: Array<{ value: PlannerViewMode; label: string }> = [
-  { value: 'timeline', label: 'Tidslinje' },
-  { value: 'calendar', label: 'Kalender' },
-  { value: 'coordination', label: 'Koordinering' },
-];
-const CALENDAR_TYPE_LABELS: Record<PlannerCalendarEntry['type'], string> = {
-  meeting: 'Møte',
+const buildVIEW_OPTIONS = (t: TFn): Array<{ value: PlannerViewMode; label: string }> => ([
+  { value: 'timeline', label: t('plannerStudio.s237') },
+  { value: 'calendar', label: t('plannerStudio.s116') },
+  { value: 'coordination', label: t('plannerStudio.s130') },
+]);
+const buildCALENDAR_TYPE_LABELS = (t: TFn): Record<PlannerCalendarEntry['type'], string> => ({
+  meeting: t('plannerStudio.s178'),
   shoot: 'Shoot',
   deadline: 'Deadline',
-  delivery: 'Leveranse',
-  review: 'Godkjenning',
-};
-const MEETING_STEPS = ['Velg type', 'Foreslå deltakere', 'Tid og kontekst', 'Inviter'];
+  delivery: t('plannerStudio.s148'),
+  review: t('plannerStudio.s073'),
+});
+const buildMEETING_STEPS = (t: TFn) => [t('plannerStudio.s254'), t('plannerStudio.s066'), t('plannerStudio.s236'), t('plannerStudio.s114')];
 const ROLE_FILTER_OPTIONS = ['all', 'client', 'producer', 'director', 'dop', 'editor', 'crew'] as const;
-const PRODUCER_INBOX_FILTER_LABELS: Record<ProducerInboxFilter, string> = {
-  all: 'Alt',
-  follow_up: 'Til oppfølging',
-  workspace: 'Prosjektrom',
-  approval: 'Godkjenning',
-  delivery: 'Levering',
-};
-const PRODUCER_INBOX_CATEGORY_LABELS: Record<ProducerInboxCategory, string> = {
-  workspace: 'Prosjektrom',
-  approval: 'Godkjenning',
-  delivery: 'Levering',
-  other: 'Aktivitet',
-};
+const buildPRODUCER_INBOX_FILTER_LABELS = (t: TFn): Record<ProducerInboxFilter, string> => ({
+  all: t('plannerStudio.s008'),
+  follow_up: t('plannerStudio.s239'),
+  workspace: t('plannerStudio.s209'),
+  approval: t('plannerStudio.s073'),
+  delivery: t('plannerStudio.s150'),
+});
+const buildPRODUCER_INBOX_CATEGORY_LABELS = (t: TFn): Record<ProducerInboxCategory, string> => ({
+  workspace: t('plannerStudio.s209'),
+  approval: t('plannerStudio.s073'),
+  delivery: t('plannerStudio.s150'),
+  other: t('plannerStudio.s003'),
+});
 
 const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
@@ -273,9 +275,9 @@ const roleMatches = (value: string | undefined, patterns: string[]): boolean => 
   return patterns.some((pattern) => normalized.includes(pattern));
 };
 
-const toDisplayDateTime = (value?: string | null): string => {
+const toDisplayDateTime = (t: TFn, value?: string | null): string => {
   if (!hasText(value)) {
-    return 'Ikke satt';
+    return t('plannerStudio.s086');
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -338,16 +340,16 @@ const getNotificationInboxCategory = (notification: ProducerProjectNotification)
   return 'other';
 };
 
-const getNotificationActionLabel = (category: ProducerInboxCategory): string => {
+const getNotificationActionLabel = (t: TFn, category: ProducerInboxCategory): string => {
   switch (category) {
     case 'workspace':
-      return 'Åpne Prosjektrom';
+      return t('plannerStudio.s261');
     case 'approval':
-      return 'Åpne Godkjenning';
+      return t('plannerStudio.s259');
     case 'delivery':
-      return 'Åpne Levering';
+      return t('plannerStudio.s260');
     default:
-      return 'Åpne';
+      return t('plannerStudio.s258');
   }
 };
 
@@ -355,21 +357,21 @@ const getLatestNotification = (items: ProducerProjectNotification[]): ProducerPr
   [...items].sort((left, right) => compareDatesAsc(right.updated_at, left.updated_at))[0]
 );
 
-const getReviewStatusLabel = (status?: string | null): string => {
+const getReviewStatusLabel = (t: TFn, status?: string | null): string => {
   const normalizedStatus = String(status ?? '').trim().toLowerCase();
   if (normalizedStatus === 'pending') {
-    return 'Venter';
+    return t('plannerStudio.s255');
   }
   if (normalizedStatus === 'changes_requested') {
-    return 'Endringer ønsket';
+    return t('plannerStudio.s060');
   }
   if (normalizedStatus === 'rejected') {
-    return 'Avvist';
+    return t('plannerStudio.s023');
   }
   if (normalizedStatus === 'approved') {
-    return 'Godkjent';
+    return t('plannerStudio.s078');
   }
-  return normalizedStatus || 'Uavklart';
+  return normalizedStatus || t('plannerStudio.s246');
 };
 
 const getReviewStatusTone = (status?: string | null): 'info' | 'warning' | 'error' | 'success' => {
@@ -386,23 +388,23 @@ const getReviewStatusTone = (status?: string | null): 'info' | 'warning' | 'erro
   return 'info';
 };
 
-const getReviewTypeLabel = (review: ProducerClientReview): string => {
+const getReviewTypeLabel = (t: TFn, review: ProducerClientReview): string => {
   const normalizedReviewType = String(review.review_type ?? '').trim().toLowerCase();
   const normalizedTargetEntityType = String(review.target_entity_type ?? '').trim().toLowerCase();
 
   if (normalizedReviewType === 'storyboard') return 'Storyboard';
-  if (normalizedReviewType === 'manuscript') return 'Manus';
-  if (normalizedReviewType === 'shotlist') return 'Shotlist';
-  if (normalizedReviewType === 'client_intake_request') return 'Brief';
-  if (normalizedReviewType === 'client_material_request') return 'Materiale';
-  if (normalizedReviewType === 'content_delivery' || normalizedTargetEntityType === 'content_calendar') return 'Levering';
-  if (normalizedReviewType === 'budget_package' || normalizedTargetEntityType === 'economy') return 'Økonomi';
-  if (normalizedReviewType === 'account_access' || normalizedTargetEntityType === 'account_access') return 'Kontotilgang';
-  if (normalizedReviewType === 'change_order') return 'Endringsordre';
-  if (normalizedReviewType === 'client_approval') return 'Klientgodkjenning';
-  if (normalizedTargetEntityType === 'project_agreement') return 'Avtale';
+  if (normalizedReviewType === 'manuscript') return t('plannerStudio.s167');
+  if (normalizedReviewType === 'shotlist') return t('plannerStudio.s224');
+  if (normalizedReviewType === 'client_intake_request') return t('plannerStudio.s040');
+  if (normalizedReviewType === 'client_material_request') return t('plannerStudio.s171');
+  if (normalizedReviewType === 'content_delivery' || normalizedTargetEntityType === 'content_calendar') return t('plannerStudio.s150');
+  if (normalizedReviewType === 'budget_package' || normalizedTargetEntityType === 'economy') return t('plannerStudio.s266');
+  if (normalizedReviewType === 'account_access' || normalizedTargetEntityType === 'account_access') return t('plannerStudio.s127');
+  if (normalizedReviewType === 'change_order') return t('plannerStudio.s061');
+  if (normalizedReviewType === 'client_approval') return t('plannerStudio.s122');
+  if (normalizedTargetEntityType === 'project_agreement') return t('plannerStudio.s021');
 
-  return review.review_type || 'Godkjenning';
+  return review.review_type || t('plannerStudio.s073');
 };
 
 const isValidDate = (value?: string | null): boolean => {
@@ -525,6 +527,7 @@ const participantAvailabilityTone = (
 };
 
 const getMeetingTypeDefaults = (
+  t: TFn,
   meetingType: ProducerPlannerMeetingType,
 ): {
   context: string;
@@ -533,90 +536,90 @@ const getMeetingTypeDefaults = (
 } => {
   if (meetingType === 'casting') {
     return {
-      context: 'Samle rollebehov, callback-prioritering og neste beslutningspunkter før videre casting.',
+      context: t('plannerStudio.s219'),
       expectations: [
-        'Bestem hvilke kandidater eller roller som går videre.',
-        'Lås hva som må avklares før neste callback eller klientrunde.',
-        'Bekreft hvem som følger opp og når.',
+        t('plannerStudio.s037'),
+        t('plannerStudio.s158'),
+        t('plannerStudio.s026'),
       ],
       agenda: [
-        { title: 'Avklar rollebehov', detail: 'Hvilke roller er fortsatt åpne, og hvilke kandidater dekker briefen best?' },
-        { title: 'Prioriter callbacks', detail: 'Bestem hvem som skal videre og hvilket materiale som trengs.' },
-        { title: 'Lås neste beslutningspunkt', detail: 'Sett dato, ansvar og kriterier for neste runde.' },
+        { title: t('plannerStudio.s020'), detail: t('plannerStudio.s085') },
+        { title: t('plannerStudio.s204'), detail: t('plannerStudio.s036') },
+        { title: t('plannerStudio.s161'), detail: t('plannerStudio.s223') },
       ],
     };
   }
   if (meetingType === 'creative') {
     return {
-      context: 'Bruk møtet til å låse idé, budskap og hva som må være klart før produksjonen kan settes.',
+      context: t('plannerStudio.s044'),
       expectations: [
-        'Godkjenn kreativ retning og tydelig budskap.',
-        'Lås hvilke assets som må oppdateres før produksjon.',
-        'Avklar hvem som godkjenner neste steg.',
+        t('plannerStudio.s072'),
+        t('plannerStudio.s160'),
+        t('plannerStudio.s017'),
       ],
       agenda: [
-        { title: 'Kreativ retning', detail: 'Gå gjennom idé, hook og hva publikum skal sitte igjen med.' },
-        { title: 'Storyboard / manus', detail: 'Avklar hvilke elementer som må justeres før opptak.' },
-        { title: 'Brand og referanser', detail: 'Bekreft look, referanser og hva som er utenfor scope.' },
+        { title: t('plannerStudio.s132'), detail: t('plannerStudio.s079') },
+        { title: t('plannerStudio.s229'), detail: t('plannerStudio.s018') },
+        { title: t('plannerStudio.s039'), detail: t('plannerStudio.s029') },
       ],
     };
   }
   if (meetingType === 'delivery') {
     return {
-      context: 'Samle siste vurdering av klipp, leveranser og hva som må godkjennes før publisering eller levering.',
+      context: t('plannerStudio.s220'),
       expectations: [
-        'Beslutt om leveransen er godkjent eller om endringer kreves.',
-        'Bekreft publiserings- eller leveringsvindu.',
-        'Lås ansvar for oppfølging, eksport og distribusjon.',
+        t('plannerStudio.s035'),
+        t('plannerStudio.s030'),
+        t('plannerStudio.s156'),
       ],
       agenda: [
-        { title: 'Edit review', detail: 'Gå gjennom siste cut og noter nødvendige endringer.' },
-        { title: 'Godkjenning og leveranse', detail: 'Bekreft hva som kan sendes, og hva som fortsatt er blokkert.' },
-        { title: 'Distribusjon og eierskap', detail: 'Lås hvem som publiserer, følger opp og arkiverer.' },
+        { title: 'Edit review', detail: t('plannerStudio.s081') },
+        { title: t('plannerStudio.s074'), detail: t('plannerStudio.s025') },
+        { title: t('plannerStudio.s055'), detail: t('plannerStudio.s159') },
       ],
     };
   }
 
   return {
-    context: 'Bruk møtet til å koordinere opptak, crew, lokasjon og beslutninger som må tas før teamet går videre.',
+    context: t('plannerStudio.s043'),
     expectations: [
-      'Bekreft hvem som må være på sett eller i møtet.',
-      'Lås blokkere, approvals og avhengigheter før neste fase.',
-      'Avklar hva som må sendes ut i invitasjonen slik at alle møter forberedt.',
+      t('plannerStudio.s027'),
+      t('plannerStudio.s157'),
+      t('plannerStudio.s016'),
     ],
     agenda: [
-      { title: 'Shoot readiness', detail: 'Gå gjennom produksjonsdager, lokasjon og hva som blokkerer opptak.' },
-      { title: 'Crew og availability', detail: 'Bekreft kjernecrew, ansvar og hvem som mangler i planen.' },
-      { title: 'Assets og approvals', detail: 'Avklar hvilke filer, shotlists og godkjenninger som må være med.' },
+      { title: 'Shoot readiness', detail: t('plannerStudio.s080') },
+      { title: t('plannerStudio.s047'), detail: t('plannerStudio.s028') },
+      { title: t('plannerStudio.s013'), detail: t('plannerStudio.s019') },
     ],
   };
 };
 
-const PRIMARY_ROLE_PATTERNS: Record<ProducerPlannerMeetingType, Array<{ label: string; patterns: string[]; required?: boolean }>> = {
+const buildPRIMARY_ROLE_PATTERNS = (t: TFn): Record<ProducerPlannerMeetingType, Array<{ label: string; patterns: string[]; required?: boolean }>> => ({
   casting: [
-    { label: 'Produsent', patterns: ['producer', 'produsent'], required: true },
-    { label: 'Regissør', patterns: ['director', 'regissor', 'director'], required: true },
+    { label: t('plannerStudio.s205'), patterns: ['producer', 'produsent'], required: true },
+    { label: t('plannerStudio.s213'), patterns: ['director', 'regissor', 'director'], required: true },
     { label: 'Casting', patterns: ['casting'], required: false },
   ],
   production: [
-    { label: 'Produsent', patterns: ['producer', 'produsent'], required: true },
-    { label: 'Regissør', patterns: ['director', 'regissor'], required: true },
+    { label: t('plannerStudio.s205'), patterns: ['producer', 'produsent'], required: true },
+    { label: t('plannerStudio.s213'), patterns: ['director', 'regissor'], required: true },
     { label: 'DoP', patterns: ['dop', 'director of photography', 'fotograf'], required: true },
-    { label: 'Lyd', patterns: ['sound', 'audio', 'lyd'], required: false },
+    { label: t('plannerStudio.s155'), patterns: ['sound', 'audio', 'lyd'], required: false },
     { label: '1st AD', patterns: ['1st ad', 'ad', 'assistant director'], required: false },
   ],
   creative: [
-    { label: 'Produsent', patterns: ['producer', 'produsent'], required: true },
-    { label: 'Regissør', patterns: ['director', 'regissor'], required: true },
+    { label: t('plannerStudio.s205'), patterns: ['producer', 'produsent'], required: true },
+    { label: t('plannerStudio.s213'), patterns: ['director', 'regissor'], required: true },
     { label: 'DoP', patterns: ['dop', 'director of photography', 'fotograf'], required: false },
-    { label: 'Klipp / kreativ', patterns: ['editor', 'creative', 'writer', 'copy'], required: false },
+    { label: t('plannerStudio.s124'), patterns: ['editor', 'creative', 'writer', 'copy'], required: false },
   ],
   delivery: [
-    { label: 'Produsent', patterns: ['producer', 'produsent'], required: true },
+    { label: t('plannerStudio.s205'), patterns: ['producer', 'produsent'], required: true },
     { label: 'Editor', patterns: ['editor', 'klipp'], required: true },
     { label: 'Motion / color', patterns: ['color', 'motion', 'grade'], required: false },
   ],
-};
+});
 
 const getMeetingDraftTitle = (
   projectName: string,
@@ -652,6 +655,13 @@ export default function ProducerPlannerStudio({
   onResumeWorkspace,
 }: ProducerPlannerStudioProps) {
   const { enqueueSnackbar } = useSnackbar();
+  const { t } = useT();
+  const VIEW_OPTIONS = useMemo(() => buildVIEW_OPTIONS(t), [t]);
+  const CALENDAR_TYPE_LABELS = useMemo(() => buildCALENDAR_TYPE_LABELS(t), [t]);
+  const MEETING_STEPS = useMemo(() => buildMEETING_STEPS(t), [t]);
+  const PRODUCER_INBOX_FILTER_LABELS = useMemo(() => buildPRODUCER_INBOX_FILTER_LABELS(t), [t]);
+  const PRODUCER_INBOX_CATEGORY_LABELS = useMemo(() => buildPRODUCER_INBOX_CATEGORY_LABELS(t), [t]);
+  const PRIMARY_ROLE_PATTERNS = useMemo(() => buildPRIMARY_ROLE_PATTERNS(t), [t]);
   const theme = useTheme();
   const isMobilePlanner = useMediaQuery(theme.breakpoints.down('sm'));
   const [viewMode, setViewMode] = useState<PlannerViewMode>('timeline');
@@ -856,11 +866,11 @@ export default function ProducerPlannerStudio({
         producerWorkflowService.syncMeetingWorkspaceWorkflow(project.id, nextPlanning),
       ]);
       if (planningSync.status === 'rejected' || meetingSync.status === 'rejected') {
-        enqueueSnackbar('Planneren ble lagret, men deler av review- eller møteflyten må synkroniseres på nytt.', {
+        enqueueSnackbar(t('plannerStudio.s198'), {
           variant: 'warning',
         });
       } else {
-        enqueueSnackbar('Planneren er lagret i prosjektet.', { variant: 'success' });
+        enqueueSnackbar(t('plannerStudio.s200'), { variant: 'success' });
       }
       await onProjectUpdated?.(projectPayload);
       setPlanningDraft(nextPlanning);
@@ -868,8 +878,8 @@ export default function ProducerPlannerStudio({
       console.error('[ProducerPlannerStudio] Failed to save planning', error);
       enqueueSnackbar(
         projectSaved
-          ? 'Planneren ble lagret, men noe av synkroniseringen feilet.'
-          : (error instanceof Error ? error.message : 'Kunne ikke lagre planneren.'),
+          ? t('plannerStudio.s199')
+          : (error instanceof Error ? error.message : t('plannerStudio.s134')),
         { variant: 'error' },
       );
     } finally {
@@ -914,10 +924,10 @@ export default function ProducerPlannerStudio({
         nextDate: nextDeadline,
         summary: phasePlan?.objective?.trim()
           || (phase === 'preproduction'
-            ? 'Retning, scope og produksjonsrammer må være låst før teamet går videre.'
+            ? t('plannerStudio.s215')
             : phase === 'production'
-              ? 'Opptaksdager, crew og lokasjon må være synkronisert rundt samme plan.'
-              : 'Godkjenninger, leveranser og oppfølging må samles i én sluttfase.'),
+              ? t('plannerStudio.s196')
+              : t('plannerStudio.s077')),
         tone,
       };
     });
@@ -939,8 +949,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'tech-scout',
         severity: 'warning',
-        title: 'Tech scout mangler før opptak',
-        detail: `Du har opptaksdager planlagt fra ${toDisplayDateTime(firstProductionDay.date)}, men ingen tydelig tech scout eller recce i planneren.`,
+        title: t('plannerStudio.s235'),
+        detail: t('plannerStudio.t002', { v0: toDisplayDateTime(t, firstProductionDay.date) }),
         phase: 'preproduction',
       });
     }
@@ -949,8 +959,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'missing-dop',
         severity: 'error',
-        title: 'DoP er ikke dekket i produksjonsfasen',
-        detail: 'Planneren finner ingen DoP/fotograf i crew. Opptaksmøter og shoot days bør ikke låses før dette er dekket.',
+        title: t('plannerStudio.s056'),
+        detail: t('plannerStudio.s201'),
         phase: 'production',
       });
     }
@@ -959,8 +969,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'core-crew-gap',
         severity: 'warning',
-        title: 'Kjernecrew mangler i koordineringen',
-        detail: 'Minst én av rollene produsent eller regissør mangler i crewlisten. Det svekker møteforslag og ansvarsavklaringer.',
+        title: t('plannerStudio.s118'),
+        detail: t('plannerStudio.s175'),
         phase: 'production',
       });
     }
@@ -969,8 +979,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'unscheduled-shotlists',
         severity: 'warning',
-        title: 'Shotlists mangler produksjonsplassering',
-        detail: `${unscheduledLoad?.shotListCount ?? 0} shotlists står fortsatt uten opptaksdag. Planneren bør låse disse før crew og lokasjon bookes videre.`,
+        title: t('plannerStudio.s226'),
+        detail: t('plannerStudio.t018', { v0: unscheduledLoad?.shotListCount ?? 0 }),
         phase: 'preproduction',
       });
     }
@@ -979,8 +989,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'edit-review',
         severity: 'info',
-        title: 'Edit review er ikke satt opp',
-        detail: 'Du har leveranser i planen, men ingen tydelig klippgjennomgang i timeline eller møteflyt.',
+        title: t('plannerStudio.s058'),
+        detail: t('plannerStudio.s057'),
         phase: 'postproduction',
       });
     }
@@ -989,8 +999,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'missing-deliveries',
         severity: 'info',
-        title: 'Ingen leveranser ligger i planen ennå',
-        detail: 'Legg inn publiseringer, review-frister eller leveranser så klient og team får et tydelig neste steg.',
+        title: t('plannerStudio.s098'),
+        detail: t('plannerStudio.s144'),
       });
     }
 
@@ -998,8 +1008,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'pending-approvals',
         severity: 'info',
-        title: 'Godkjenninger venter på beslutning',
-        detail: `${reviewSummary.pending} reviewpunkter står fortsatt som ventende. Samle dem i neste gjennomgang eller leveringsrunde.`,
+        title: t('plannerStudio.s076'),
+        detail: t('plannerStudio.t014', { v0: reviewSummary.pending }),
       });
     }
 
@@ -1007,8 +1017,8 @@ export default function ProducerPlannerStudio({
       alerts.push({
         id: 'changes-requested',
         severity: 'warning',
-        title: 'Klienten venter på oppfølging',
-        detail: `${reviewSummary.changesRequested} reviewpunkter har endringer ønsket. Planneren bør samle disse i neste beslutningspunkt.`,
+        title: t('plannerStudio.s121'),
+        detail: t('plannerStudio.t013', { v0: reviewSummary.changesRequested }),
       });
     }
 
@@ -1067,12 +1077,12 @@ export default function ProducerPlannerStudio({
         projectName: project.name,
         clientLabel: clientIntake.contactName || clientIntake.contactEmail || undefined,
         type: 'approval',
-        title: review.title || getReviewTypeLabel(review),
+        title: review.title || getReviewTypeLabel(t, review),
         detail: latestRelatedNotification?.message?.trim()
           || review.description?.trim()
-          || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.',
-        statusLabel: getReviewStatusLabel(review.status),
-        actionLabel: 'Åpne Godkjenning',
+          || t('plannerStudio.s051'),
+        statusLabel: getReviewStatusLabel(t, review.status),
+        actionLabel: t('plannerStudio.s259'),
         tone,
         updatedAt: latestRelatedNotification?.updated_at ?? review.updated_at,
         dueAt: review.due_at ?? undefined,
@@ -1122,9 +1132,9 @@ export default function ProducerPlannerStudio({
         clientLabel: notification.client_name || notification.client_email || undefined,
         type: notification.inbox_type || category,
         title: notification.title,
-        detail: notification.message?.trim() || 'Varslet mangler beskrivelse.',
-        statusLabel: resolved ? 'Løst' : notification.read ? 'Lest' : 'Ny',
-        actionLabel: getNotificationActionLabel(category),
+        detail: notification.message?.trim() || t('plannerStudio.s253'),
+        statusLabel: resolved ? t('plannerStudio.s163') : notification.read ? t('plannerStudio.s147') : t('plannerStudio.s186'),
+        actionLabel: getNotificationActionLabel(t, category),
         tone: resolved ? 'success' : severity === 'warning' ? 'warning' : 'info',
         updatedAt: notification.updated_at,
         dueAt: notification.due_at ?? undefined,
@@ -1175,7 +1185,7 @@ export default function ProducerPlannerStudio({
         if (item.category !== 'delivery') return false;
       }
 
-      if (inboxClientFilter !== 'all' && (item.clientLabel ?? 'Uten klient') !== inboxClientFilter) {
+      if (inboxClientFilter !== 'all' && (item.clientLabel ?? t('plannerStudio.s249')) !== inboxClientFilter) {
         return false;
       }
       if (inboxTypeFilter !== 'all' && item.type !== inboxTypeFilter) {
@@ -1220,7 +1230,7 @@ export default function ProducerPlannerStudio({
   const inboxClientOptions = useMemo(() => {
     const labels = new Set<string>();
     for (const item of contentProducerInboxItems) {
-      labels.add(item.clientLabel ?? 'Uten klient');
+      labels.add(item.clientLabel ?? t('plannerStudio.s249'));
     }
     return Array.from(labels).sort((left, right) => left.localeCompare(right, 'nb-NO'));
   }, [contentProducerInboxItems]);
@@ -1245,7 +1255,7 @@ export default function ProducerPlannerStudio({
     try {
       await markAsRead(notificationId);
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke markere varselet som lest.', {
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s135'), {
         variant: 'error',
       });
     }
@@ -1254,11 +1264,11 @@ export default function ProducerPlannerStudio({
   const handleResolveNotification = useCallback(async (notificationId: string, resolved: boolean) => {
     try {
       await resolveNotification(notificationId, resolved);
-      enqueueSnackbar(resolved ? 'Innbokselementet er løst.' : 'Innbokselementet er åpnet igjen.', {
+      enqueueSnackbar(resolved ? t('plannerStudio.s111') : t('plannerStudio.s112'), {
         variant: resolved ? 'success' : 'info',
       });
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke oppdatere status.', {
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s137'), {
         variant: 'error',
       });
     }
@@ -1267,9 +1277,9 @@ export default function ProducerPlannerStudio({
   const handleArchiveNotification = useCallback(async (notificationId: string) => {
     try {
       await archiveNotification(notificationId, true);
-      enqueueSnackbar('Innbokselementet er arkivert.', { variant: 'success' });
+      enqueueSnackbar(t('plannerStudio.s110'), { variant: 'success' });
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke arkivere innbokselementet.', {
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s133'), {
         variant: 'error',
       });
     }
@@ -1283,7 +1293,7 @@ export default function ProducerPlannerStudio({
         assignedToLabel: assignedToLabel.trim() || null,
       });
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke tildele innbokselementet.', {
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s141'), {
         variant: 'error',
       });
     }
@@ -1295,7 +1305,7 @@ export default function ProducerPlannerStudio({
         dueAt: dueDate ? `${dueDate}T23:59:59.999Z` : null,
       });
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke sette frist.', {
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s140'), {
         variant: 'error',
       });
     }
@@ -1350,7 +1360,7 @@ export default function ProducerPlannerStudio({
     try {
       await markAllAsRead();
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke markere varsler som lest.', {
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s136'), {
         variant: 'error',
       });
     }
@@ -1370,11 +1380,11 @@ export default function ProducerPlannerStudio({
     const totalDeadlines = timelineItems.filter((item) => hasText(item.due_at)).length;
     const deliveryCount = planningDraft.contentCalendar.length;
     return [
-      { label: 'Kontrakter', value: contractCount, helper: 'Avtaler og signaturløp i prosjektet.' },
-      { label: 'Deadlines', value: totalDeadlines, helper: 'Milepæler med dato i planneren.' },
-      { label: 'Leveranser', value: deliveryCount, helper: 'Publiseringer og leveranser i content-kalenderen.' },
-      { label: 'Godkjenninger', value: reviewSummary.pending + reviewSummary.changesRequested, helper: 'Punkter som fortsatt venter på beslutning.' },
-      { label: 'Oppfølginger', value: pendingFollowUps, helper: 'Beslutninger som fortsatt må følges opp.' },
+      { label: t('plannerStudio.s128'), value: contractCount, helper: t('plannerStudio.s022') },
+      { label: 'Deadlines', value: totalDeadlines, helper: t('plannerStudio.s174') },
+      { label: t('plannerStudio.s149'), value: deliveryCount, helper: t('plannerStudio.s210') },
+      { label: t('plannerStudio.s075'), value: reviewSummary.pending + reviewSummary.changesRequested, helper: t('plannerStudio.s212') },
+      { label: t('plannerStudio.s192'), value: pendingFollowUps, helper: t('plannerStudio.s034') },
     ];
   }, [contractCount, pendingFollowUps, planningDraft.contentCalendar.length, reviewSummary.changesRequested, reviewSummary.pending, timelineItems]);
 
@@ -1391,17 +1401,17 @@ export default function ProducerPlannerStudio({
       participants.push(participant);
     };
 
-    const clientLabel = liveProject.clientName || clientIntake.contactName || 'Klient';
+    const clientLabel = liveProject.clientName || clientIntake.contactName || t('plannerStudio.s120');
     const clientNote = liveProject.clientEmail || clientIntake.contactEmail || '';
     if (meetingType !== 'casting' || hasText(clientNote) || hasText(liveProject.clientName)) {
       addParticipant({
         id: 'client-primary',
         label: clientNote ? `${clientLabel} · ${clientNote}` : clientLabel,
-        role: 'Klient',
+        role: t('plannerStudio.s120'),
         kind: 'client',
         required: meetingType !== 'casting',
         availability: 'unknown',
-        note: 'Deles når møtet krever godkjenning eller kundeinput.',
+        note: t('plannerStudio.s048'),
       });
     }
 
@@ -1434,19 +1444,19 @@ export default function ProducerPlannerStudio({
         kind: 'crew',
         required: roleBlueprint.required,
         availability,
-        note: assignedCount > 0 ? `${assignedCount} opptaksdager allerede planlagt.` : undefined,
+        note: assignedCount > 0 ? t('plannerStudio.t012', { v0: assignedCount }) : undefined,
       });
     });
 
     if (meetingType === 'casting' && liveProject.roles.length > 0) {
       addParticipant({
         id: 'casting-roles',
-        label: `${liveProject.roles.length} roller i spill`,
+        label: t('plannerStudio.t016', { v0: liveProject.roles.length }),
         role: 'Casting scope',
         kind: 'cast',
         required: false,
         availability: 'unknown',
-        note: 'Bruk rollenivået når dere prioriterer callbacks og kandidater.',
+        note: t('plannerStudio.s045'),
       });
     }
 
@@ -1468,18 +1478,18 @@ export default function ProducerPlannerStudio({
       });
     };
 
-    pushAsset('brief', 'Prosjektbrief', 'client_intake');
+    pushAsset('brief', t('plannerStudio.s208'), 'client_intake');
     if (meetingType === 'creative' || phase === 'preproduction') {
-      pushAsset('storyboard', 'Storyboard / referanser', 'storyboard');
-      pushAsset('manuscript', 'Manus', 'manuscript');
+      pushAsset('storyboard', t('plannerStudio.s230'), 'storyboard');
+      pushAsset('manuscript', t('plannerStudio.s167'), 'manuscript');
     }
     if (meetingType === 'production' || phase === 'production') {
-      pushAsset('shotlist', 'Shotlist og scenegrunnlag', 'shotlist');
-      pushAsset('reference', liveProject.locations.length > 0 ? `Lokasjon · ${liveProject.locations[0].name}` : 'Lokasjon og logistikk');
+      pushAsset('shotlist', t('plannerStudio.s225'), 'shotlist');
+      pushAsset('reference', liveProject.locations.length > 0 ? `Lokasjon · ${liveProject.locations[0].name}` : t('plannerStudio.s153'));
     }
     if (meetingType === 'delivery' || phase === 'postproduction') {
-      pushAsset('timeline', 'Edit review og endringslogg', 'meeting_follow_up');
-      pushAsset('contract', 'Kontrakter / godkjenninger', 'project_agreement');
+      pushAsset('timeline', t('plannerStudio.s059'), 'meeting_follow_up');
+      pushAsset('contract', t('plannerStudio.s129'), 'project_agreement');
     }
 
     return assets;
@@ -1489,15 +1499,15 @@ export default function ProducerPlannerStudio({
     meetingType: ProducerPlannerMeetingType,
     phase: ProducerPlanningPhase,
   ): MeetingDraft => {
-    const defaults = getMeetingTypeDefaults(meetingType);
+    const defaults = getMeetingTypeDefaults(t, meetingType);
     const participants = buildSuggestedParticipants(meetingType, phase);
     const assets = buildSuggestedAssets(meetingType, phase);
     const locationLabel = phase === 'production'
       ? (productionDays[0]?.locationId
-        ? liveProject.locations.find((location) => location.id === productionDays[0]?.locationId)?.name ?? 'Sett / lokasjon'
-        : liveProject.locations[0]?.name ?? 'Sett / lokasjon')
+        ? liveProject.locations.find((location) => location.id === productionDays[0]?.locationId)?.name ?? t('plannerStudio.s222')
+        : liveProject.locations[0]?.name ?? t('plannerStudio.s222'))
       : phase === 'postproduction'
-        ? 'Review room / digital gjennomgang'
+        ? t('plannerStudio.s216')
         : 'Kickoff / digital sync';
 
     return {
@@ -1527,38 +1537,38 @@ export default function ProducerPlannerStudio({
   );
 
   const suggestedAgenda = useMemo(
-    () => getMeetingTypeDefaults(coordinationMeetingType).agenda,
+    () => getMeetingTypeDefaults(t, coordinationMeetingType).agenda,
     [coordinationMeetingType],
   );
 
   const coordinationRows = useMemo<CoordinationRow[]>(() => {
     return suggestedParticipants.map((participant) => {
       const assigned = participant.kind === 'crew'
-        ? `${productionDays.filter((day) => (day.crew ?? []).includes(participant.id)).length} dager`
+        ? t('plannerStudio.t009', { v0: productionDays.filter((day) => (day.crew ?? []).includes(participant.id)).length })
         : participant.kind === 'client'
-          ? `${reviewSummary.pending + reviewSummary.changesRequested} åpne approvals`
+          ? t('plannerStudio.t024', { v0: reviewSummary.pending + reviewSummary.changesRequested })
           : participant.kind === 'cast'
-            ? `${liveProject.roles.length} roller`
+            ? t('plannerStudio.t015', { v0: liveProject.roles.length })
             : '—';
       const conflict = participant.availability === 'unavailable'
-        ? 'Tilgjengelighet kolliderer med valgt fase'
+        ? t('plannerStudio.s244')
         : participant.availability === 'tentative'
-          ? 'Må bekreftes før møte sendes'
-          : 'Ingen tydelig konflikt';
+          ? t('plannerStudio.s177')
+          : t('plannerStudio.s103');
       const recommendation = participant.required
-        ? 'Bør være med i første invitasjonsrunde'
-        : 'Inviter ved behov eller hold som observatør';
+        ? t('plannerStudio.s046')
+        : t('plannerStudio.s115');
       return {
         id: participant.id,
         label: participant.label,
-        role: participant.role ?? 'Deltaker',
+        role: participant.role ?? t('plannerStudio.s049'),
         availability: participant.availability === 'available'
-          ? 'Tilgjengelig'
+          ? t('plannerStudio.s243')
           : participant.availability === 'tentative'
-            ? 'Usikker'
+            ? t('plannerStudio.s248')
             : participant.availability === 'unavailable'
-              ? 'Utilgjengelig'
-              : 'Ikke verifisert',
+              ? t('plannerStudio.s251')
+              : t('plannerStudio.s087'),
         assigned,
         conflict,
         recommendation,
@@ -1577,15 +1587,15 @@ export default function ProducerPlannerStudio({
   const recommendedMeetingWindow = useMemo(() => {
     const phaseRange = getPhaseRange(planningDraft, phaseInView);
     if (phaseRange.start && phaseRange.end) {
-      return `${toDisplayDateTime(`${phaseRange.start}T09:00:00`)} til ${toDisplayDateTime(`${phaseRange.end}T17:00:00`)}`;
+      return t('plannerStudio.t021', { v0: toDisplayDateTime(t, `${phaseRange.start}T09:00:00`), v1: toDisplayDateTime(t, `${phaseRange.end}T17:00:00`) });
     }
     const firstShootDay = [...productionDays]
       .filter((day) => hasText(day.date))
       .sort((left, right) => compareDatesAsc(left.date, right.date))[0];
     if (firstShootDay) {
-      return `${toDisplayDateTime(`${firstShootDay.date}T09:00:00`)} som første operative holdepunkt`;
+      return t('plannerStudio.t019', { v0: toDisplayDateTime(t, `${firstShootDay.date}T09:00:00`) });
     }
-    return 'Ingen fasevindu satt ennå';
+    return t('plannerStudio.s095');
   }, [phaseInView, planningDraft, productionDays]);
 
   const openMeetingDialog = useCallback((meetingType: ProducerPlannerMeetingType = coordinationMeetingType) => {
@@ -1602,15 +1612,15 @@ export default function ProducerPlannerStudio({
 
   const openTimelineActionDialog = useCallback((kind: TimelineActionKind) => {
     const defaultTitle = kind === 'milestone'
-      ? `Ny milepæl · ${PRODUCER_PLANNING_PHASE_LABELS[phaseInView]}`
-      : `Oppgave · ${PRODUCER_PLANNING_PHASE_LABELS[phaseInView]}`;
+      ? t('plannerStudio.t005', { v0: PRODUCER_PLANNING_PHASE_LABELS[phaseInView] })
+      : t('plannerStudio.t006', { v0: PRODUCER_PLANNING_PHASE_LABELS[phaseInView] });
     setTimelineActionDraft({
       kind,
       phase: phaseInView,
       title: defaultTitle,
       description: kind === 'milestone'
-        ? 'Beskriv hva som må være sant før denne milepælen kan lukkes.'
-        : 'Beskriv hva som skal leveres, hvem som eier det og hva som blokkerer fremdrift.',
+        ? t('plannerStudio.s031')
+        : t('plannerStudio.s032'),
       ownerUserId: '',
       dueAt: '',
       status: 'planned',
@@ -1643,7 +1653,7 @@ export default function ProducerPlannerStudio({
           id: `phase:${item.phase}`,
           type: 'deadline',
           title: item.title || PRODUCER_PLANNING_PHASE_LABELS[item.phase],
-          detail: item.clientCheckpoint || item.objective || 'Fasepunkt i planneren.',
+          detail: item.clientCheckpoint || item.objective || t('plannerStudio.s064'),
           date: item.endDate!,
           phase: item.phase,
           roleTags: ['producer', 'client'],
@@ -1660,7 +1670,7 @@ export default function ProducerPlannerStudio({
         id: item.id,
         type: item.linked_entity_type === 'meeting_workspace' ? 'meeting' : 'deadline',
         title: item.title,
-        detail: item.description?.trim() || 'Punkt fra produsentens workflow.',
+        detail: item.description?.trim() || t('plannerStudio.s211'),
         date: item.due_at!,
         phase: getPhaseForTimelineItem(item),
         roleTags: [
@@ -1678,7 +1688,7 @@ export default function ProducerPlannerStudio({
         id: item.id,
         type: 'delivery',
         title: item.title,
-        detail: `${item.channel || 'Leveranse'} · ${item.format || 'format ikke satt'}`,
+        detail: `${item.channel || t('plannerStudio.s148')} · ${item.format || t('plannerStudio.s257')}`,
         date: item.publishAt!,
         phase: item.phase,
         roleTags: ['client', 'editor'],
@@ -1690,12 +1700,12 @@ export default function ProducerPlannerStudio({
         if (!isValidDate(day.date)) {
           return;
         }
-        const locationName = liveProject.locations.find((location) => location.id === day.locationId)?.name ?? 'Lokasjon ikke satt';
+        const locationName = liveProject.locations.find((location) => location.id === day.locationId)?.name ?? t('plannerStudio.s152');
         entries.push({
           id: day.id,
           type: 'shoot',
           title: `Shoot day · ${locationName}`,
-          detail: `${(day.scenes ?? []).length} scener · ${(day.crew ?? []).length} crew`,
+          detail: t('plannerStudio.t017', { v0: (day.scenes ?? []).length, v1: (day.crew ?? []).length }),
           date: day.date ?? '',
           phase: 'production',
           roleTags: ['producer', 'director', 'dop', 'crew'],
@@ -1707,8 +1717,8 @@ export default function ProducerPlannerStudio({
       entries.push({
         id: 'meeting-workspace',
         type: 'meeting',
-        title: planningDraft.meetingWorkspace.sessionLabel?.trim() || 'Planlagt møte',
-        detail: planningDraft.meetingWorkspace.contextSummary?.trim() || 'Møte opprettet fra planneren.',
+        title: planningDraft.meetingWorkspace.sessionLabel?.trim() || t('plannerStudio.s197'),
+        detail: planningDraft.meetingWorkspace.contextSummary?.trim() || t('plannerStudio.s179'),
         date: planningDraft.meetingWorkspace.scheduledAt!,
         phase: planningDraft.meetingWorkspace.phase ?? phaseInView,
         roleTags: (planningDraft.meetingWorkspace.participants ?? [])
@@ -1725,7 +1735,7 @@ export default function ProducerPlannerStudio({
         id: review.id,
         type: 'review',
         title: review.title,
-        detail: review.description?.trim() || 'Klientreview / approval.',
+        detail: review.description?.trim() || t('plannerStudio.s123'),
         date: review.due_at!,
         phase: resolveReviewPhase(review),
         roleTags: ['client'],
@@ -1760,12 +1770,12 @@ export default function ProducerPlannerStudio({
     try {
       await createItem(payload);
       enqueueSnackbar(
-        timelineActionDraft.kind === 'milestone' ? 'Ny milepæl er lagt til i planneren.' : 'Ny oppgave er lagt til i planneren.',
+        timelineActionDraft.kind === 'milestone' ? t('plannerStudio.s188') : t('plannerStudio.s189'),
         { variant: 'success' },
       );
       closeTimelineActionDialog();
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke opprette nytt planner-punkt.', { variant: 'error' });
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s139'), { variant: 'error' });
     }
   }, [closeTimelineActionDialog, createItem, enqueueSnackbar, timelineActionDraft]);
 
@@ -1776,7 +1786,7 @@ export default function ProducerPlannerStudio({
 
     const selectedParticipants = suggestedParticipants.filter((participant) => meetingDraft.participantIds.includes(participant.id));
     const selectedAssets = suggestedAssets.filter((asset) => meetingDraft.assetIds.includes(asset.id));
-    const agendaItems: ProducerMeetingAgendaItem[] = getMeetingTypeDefaults(meetingDraft.type).agenda.map((item) => ({
+    const agendaItems: ProducerMeetingAgendaItem[] = getMeetingTypeDefaults(t, meetingDraft.type).agenda.map((item) => ({
       id: createRandomId('planner-agenda'),
       title: item.title,
       detail: item.detail,
@@ -1816,7 +1826,7 @@ export default function ProducerPlannerStudio({
       await createItem({
         phase: meetingDraft.phase,
         title: meetingDraft.title.trim(),
-        description: meetingDraft.contextSummary.trim() || `Planlagt ${PRODUCER_PLANNER_MEETING_TYPE_LABELS[meetingDraft.type].toLowerCase()}-møte fra planneren.`,
+        description: meetingDraft.contextSummary.trim() || t('plannerStudio.t007', { v0: PRODUCER_PLANNER_MEETING_TYPE_LABELS[meetingDraft.type].toLowerCase() }),
         dueAt: meetingDraft.scheduledAt || undefined,
         status: 'planned',
         linkedEntityType: 'meeting_workspace',
@@ -1832,15 +1842,15 @@ export default function ProducerPlannerStudio({
           contextSummary: meetingDraft.contextSummary.trim(),
         },
       });
-      enqueueSnackbar('Møtet er opprettet i planneren og lagt til i timeline.', { variant: 'success' });
+      enqueueSnackbar(t('plannerStudio.s181'), { variant: 'success' });
       closeMeetingDialog();
     } catch (error) {
-      enqueueSnackbar(error instanceof Error ? error.message : 'Kunne ikke opprette møtet i planneren.', { variant: 'error' });
+      enqueueSnackbar(error instanceof Error ? error.message : t('plannerStudio.s138'), { variant: 'error' });
     }
   }, [closeMeetingDialog, createItem, enqueueSnackbar, meetingDraft, planningDraft, savePlanning, suggestedAssets, suggestedParticipants]);
 
   const meetingDialogAgenda = useMemo(
-    () => getMeetingTypeDefaults(meetingDraft?.type ?? coordinationMeetingType).agenda,
+    () => getMeetingTypeDefaults(t, meetingDraft?.type ?? coordinationMeetingType).agenda,
     [coordinationMeetingType, meetingDraft?.type],
   );
 
@@ -1882,8 +1892,8 @@ export default function ProducerPlannerStudio({
             </Stack>
             <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.9rem', maxWidth: 920, lineHeight: 1.55 }}>
               {isContentProducerPlanner
-                ? 'Planneren samler faseoversikt, innholdsmøter, deadlines, approvals og leveranser i én operativ flate for innholdsprodusenten.'
-                : 'Planneren samler faseoversikt, møteflyt, deadlines, approvals og koordinering i én operativ produksjonsflate. Dette er ikke bare en kalender, men produksjonens administrative backbone.'}
+                ? t('plannerStudio.s202')
+                : t('plannerStudio.s203')}
             </Typography>
           </Box>
 
@@ -1892,7 +1902,7 @@ export default function ProducerPlannerStudio({
               <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
                 <Chip
                   size="small"
-                  label={contentProducerInboxSummary.followUp > 0 ? `${contentProducerInboxSummary.followUp} krever oppfølging` : 'Rolig nå'}
+                  label={contentProducerInboxSummary.followUp > 0 ? t('plannerStudio.t010', { v0: contentProducerInboxSummary.followUp }) : t('plannerStudio.s217')}
                   sx={{
                     bgcolor: contentProducerInboxSummary.followUp > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
                     color: contentProducerInboxSummary.followUp > 0 ? '#fde68a' : '#bbf7d0',
@@ -1900,7 +1910,7 @@ export default function ProducerPlannerStudio({
                 />
                 <Chip
                   size="small"
-                  label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} nye varsler` : 'Ingen nye varsler'}
+                  label={notificationsUnreadCount > 0 ? t('plannerStudio.t011', { v0: notificationsUnreadCount }) : t('plannerStudio.s099')}
                   sx={{
                     bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
                     color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
@@ -1922,7 +1932,8 @@ export default function ProducerPlannerStudio({
                     onClick={() => openMeetingDialog('creative')}
                     sx={{ minHeight: 44, bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                   >
-                    Gjennomgang
+                    
+                    {t('plannerStudio.s070')}
                   </Button>
                 ) : null}
                 {onOpenMedia ? (
@@ -1932,7 +1943,8 @@ export default function ProducerPlannerStudio({
                     onClick={() => onOpenMedia({ workspace: 'brief' })}
                     sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                   >
-                    Prosjektrom
+                    
+                    {t('plannerStudio.s209')}
                   </Button>
                 ) : null}
                 {onOpenReviews ? (
@@ -1942,7 +1954,8 @@ export default function ProducerPlannerStudio({
                     onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
                     sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                   >
-                    Godkjenning
+                    
+                    {t('plannerStudio.s073')}
                   </Button>
                 ) : null}
                 <Button
@@ -1952,22 +1965,23 @@ export default function ProducerPlannerStudio({
                   onClick={() => setMobileActionsOpen(true)}
                   sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                 >
-                  Mer
+                  
+                  {t('plannerStudio.s172')}
                 </Button>
               </Box>
             </Stack>
           ) : (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
               <FormControl size="small" sx={{ minWidth: 180 }}>
-                <InputLabel id="planner-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Fase</InputLabel>
+                <InputLabel id="planner-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('plannerStudio.s063')}</InputLabel>
                 <Select
                   labelId="planner-phase-filter-label"
-                  label="Fase"
+                  label={t('plannerStudio.s063')}
                   value={selectedPhase}
                   onChange={(event) => setSelectedPhase(event.target.value as ProducerPlanningPhase | 'all')}
                   sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
                 >
-                  <MenuItem value="all">Alle faser</MenuItem>
+                  <MenuItem value="all">{t('plannerStudio.s005')}</MenuItem>
                   {PHASE_ORDER.map((phase) => (
                     <MenuItem key={phase} value={phase}>{PRODUCER_PLANNING_PHASE_LABELS[phase]}</MenuItem>
                   ))}
@@ -2008,7 +2022,7 @@ export default function ProducerPlannerStudio({
                     onClick={() => openMeetingDialog()}
                     sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                   >
-                    {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Opprett møte'}
+                    {isContentProducerPlanner ? t('plannerStudio.s193') : t('plannerStudio.s194')}
                   </Button>
                   <Button
                     size="small"
@@ -2017,7 +2031,8 @@ export default function ProducerPlannerStudio({
                     onClick={() => openTimelineActionDialog('milestone')}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Legg til milepæl
+                    
+                    {t('plannerStudio.s145')}
                   </Button>
                   <Button
                     size="small"
@@ -2026,7 +2041,7 @@ export default function ProducerPlannerStudio({
                     onClick={() => openTimelineActionDialog('task')}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    {isContentProducerPlanner ? 'Legg til oppfølging' : 'Tildel oppgave'}
+                    {isContentProducerPlanner ? t('plannerStudio.s146') : t('plannerStudio.s242')}
                   </Button>
                 </Stack>
               ) : null}
@@ -2080,14 +2095,15 @@ export default function ProducerPlannerStudio({
                     }}
                   />
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                    <Chip size="small" label={`${card.progress}% fremdrift`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
+                    <Chip size="small" label={t('plannerStudio.t025', { v0: card.progress })} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
                     <Chip size="small" label={`${card.blockers} blockers`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca' }} />
                     {!useMobileContentProducerPlanner ? (
                       <Chip size="small" label={`${card.approvals} approvals`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                     ) : null}
                   </Stack>
                   <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
-                    Neste holdepunkt: {card.nextDate ? toDisplayDateTime(`${toDateOnly(card.nextDate)}T09:00:00`) : 'Ikke satt'}
+                    
+                    {t('plannerStudio.s184')} {card.nextDate ? toDisplayDateTime(t, `${toDateOnly(card.nextDate)}T09:00:00`) : t('plannerStudio.s086')}
                   </Typography>
                 </Stack>
               </Box>
@@ -2096,7 +2112,7 @@ export default function ProducerPlannerStudio({
         </Stack>
       </Box>
 
-      {savingPlanning ? <Alert severity="info">Lagrer planner-data og synkroniserer møteflyt.</Alert> : null}
+      {savingPlanning ? <Alert severity="info">{t('plannerStudio.s143')}</Alert> : null}
       {timelineError ? <Alert severity="error">{timelineError}</Alert> : null}
       {reviewsError ? <Alert severity="warning">{reviewsError}</Alert> : null}
       {notificationsError ? <Alert severity="warning">{notificationsError}</Alert> : null}
@@ -2141,16 +2157,18 @@ export default function ProducerPlannerStudio({
           <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.95 }}>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Innboks
+                
+                {t('plannerStudio.s109')}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-                Ett sted for alt som krever oppfølging i innholdsløpet: brief, prosjektrom, klientgodkjenning og levering.
+                
+                {t('plannerStudio.s062')}
               </Typography>
             </Box>
             <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap alignItems="center">
               <Chip
                 size="small"
-                label={contentProducerInboxSummary.followUp > 0 ? `${contentProducerInboxSummary.followUp} til oppfølging` : 'Ingen åpne oppfølginger'}
+                label={contentProducerInboxSummary.followUp > 0 ? t('plannerStudio.t020', { v0: contentProducerInboxSummary.followUp }) : t('plannerStudio.s107')}
                 sx={{
                   bgcolor: contentProducerInboxSummary.followUp > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
                   color: contentProducerInboxSummary.followUp > 0 ? '#fde68a' : '#bbf7d0',
@@ -2158,7 +2176,7 @@ export default function ProducerPlannerStudio({
               />
               <Chip
                 size="small"
-                label={contentProducerInboxSummary.unread > 0 ? `${contentProducerInboxSummary.unread} uleste` : 'Alt lest'}
+                label={contentProducerInboxSummary.unread > 0 ? `${contentProducerInboxSummary.unread} uleste` : t('plannerStudio.s009')}
                 sx={{
                   bgcolor: contentProducerInboxSummary.unread > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
                   color: contentProducerInboxSummary.unread > 0 ? '#bfdbfe' : '#cbd5e1',
@@ -2171,7 +2189,8 @@ export default function ProducerPlannerStudio({
                   onClick={() => { void handleMarkAllNotificationsRead(); }}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Marker varsler som lest
+                  
+                  {t('plannerStudio.s170')}
                 </Button>
               ) : null}
             </Stack>
@@ -2221,16 +2240,16 @@ export default function ProducerPlannerStudio({
           >
             <TextField
               size="small"
-              label="Søk"
+              label={t('plannerStudio.s232')}
               value={inboxSearch}
               onChange={(event) => setInboxSearch(event.target.value)}
-              placeholder="Søk i tittel, klient, ansvarlig eller @mentions"
+              placeholder={t('plannerStudio.s233')}
               sx={{ minWidth: { md: 260 }, flex: 1 }}
             />
             <TextField
               select
               size="small"
-              label="Prosjekt"
+              label={t('plannerStudio.s207')}
               value={project.id}
               sx={{ minWidth: { md: 190 } }}
               disabled
@@ -2240,12 +2259,12 @@ export default function ProducerPlannerStudio({
             <TextField
               select
               size="small"
-              label="Klient"
+              label={t('plannerStudio.s120')}
               value={inboxClientFilter}
               onChange={(event) => setInboxClientFilter(event.target.value)}
               sx={{ minWidth: { md: 170 } }}
             >
-              <MenuItem value="all">Alle klienter</MenuItem>
+              <MenuItem value="all">{t('plannerStudio.s006')}</MenuItem>
               {inboxClientOptions.map((clientLabel) => (
                 <MenuItem key={clientLabel} value={clientLabel}>{clientLabel}</MenuItem>
               ))}
@@ -2258,7 +2277,7 @@ export default function ProducerPlannerStudio({
               onChange={(event) => setInboxTypeFilter(event.target.value)}
               sx={{ minWidth: { md: 150 } }}
             >
-              <MenuItem value="all">Alle typer</MenuItem>
+              <MenuItem value="all">{t('plannerStudio.s007')}</MenuItem>
               {inboxTypeOptions.map((typeLabel) => (
                 <MenuItem key={typeLabel} value={typeLabel}>{typeLabel}</MenuItem>
               ))}
@@ -2266,21 +2285,22 @@ export default function ProducerPlannerStudio({
             <TextField
               select
               size="small"
-              label="Status"
+              label={t('plannerStudio.s228')}
               value={inboxStatusFilter}
               onChange={(event) => setInboxStatusFilter(event.target.value as typeof inboxStatusFilter)}
               sx={{ minWidth: { md: 140 } }}
             >
-              <MenuItem value="open">Åpne</MenuItem>
-              <MenuItem value="unread">Uleste</MenuItem>
-              <MenuItem value="resolved">Løste</MenuItem>
-              <MenuItem value="all">Alle</MenuItem>
+              <MenuItem value="open">{t('plannerStudio.s258')}</MenuItem>
+              <MenuItem value="unread">{t('plannerStudio.s247')}</MenuItem>
+              <MenuItem value="resolved">{t('plannerStudio.s164')}</MenuItem>
+              <MenuItem value="all">{t('plannerStudio.s004')}</MenuItem>
             </TextField>
           </Stack>
 
           {filteredContentProducerInboxItems.length === 0 ? (
             <Alert severity="success">
-              Innboksen er tom. Når klienten oppdaterer briefen, legger inn materiale eller sender noe til godkjenning, dukker det opp her.
+              
+              {t('plannerStudio.s113')}
             </Alert>
           ) : (
             <Stack spacing={0.8} sx={{ maxHeight: { xs: 'none', lg: 460 }, overflowY: { lg: 'auto' }, pr: { lg: 0.4 } }}>
@@ -2324,26 +2344,26 @@ export default function ProducerPlannerStudio({
                         {hasText(item.clientLabel) ? (
                           <Chip
                             size="small"
-                            label={`Klient: ${item.clientLabel}`}
+                            label={t('plannerStudio.t004', { v0: item.clientLabel })}
                             sx={{ bgcolor: 'rgba(16,185,129,0.12)', color: '#bbf7d0' }}
                           />
                         ) : null}
                         {hasText(item.assignedToLabel) ? (
                           <Chip
                             size="small"
-                            label={`Ansvarlig: ${item.assignedToLabel}`}
+                            label={t('plannerStudio.t001', { v0: item.assignedToLabel })}
                             sx={{ bgcolor: 'rgba(168,85,247,0.12)', color: '#e9d5ff' }}
                           />
                         ) : null}
                         <Chip
                           size="small"
-                          label={toDisplayDateTime(item.updatedAt)}
+                          label={toDisplayDateTime(t, item.updatedAt)}
                           sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }}
                         />
                         {hasText(item.dueAt) ? (
                           <Chip
                             size="small"
-                            label={`Frist ${toDisplayDateTime(item.dueAt)}`}
+                            label={t('plannerStudio.t003', { v0: toDisplayDateTime(t, item.dueAt) })}
                             sx={{ bgcolor: 'rgba(244,63,94,0.14)', color: '#fecdd3' }}
                           />
                         ) : null}
@@ -2390,20 +2410,20 @@ export default function ProducerPlannerStudio({
                           <TextField
                             select
                             size="small"
-                            label="Ansvarlig"
+                            label={t('plannerStudio.s011')}
                             value={item.assignedToLabel ?? ''}
                             onChange={(event) => {
                               void handleAssignNotification(item.notification!.id, event.target.value);
                             }}
                           >
-                            <MenuItem value="">Ingen ansvarlig</MenuItem>
+                            <MenuItem value="">{t('plannerStudio.s089')}</MenuItem>
                             {ownerOptions.map((owner) => (
                               <MenuItem key={owner.value} value={owner.label}>{owner.label}</MenuItem>
                             ))}
                           </TextField>
                           <TextField
                             size="small"
-                            label="Frist"
+                            label={t('plannerStudio.s069')}
                             type="date"
                             value={item.dueAt ? item.dueAt.slice(0, 10) : ''}
                             onChange={(event) => {
@@ -2421,7 +2441,7 @@ export default function ProducerPlannerStudio({
                               }}
                               sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
                             >
-                              {item.resolved ? 'Gjenåpne' : 'Løs'}
+                              {item.resolved ? t('plannerStudio.s071') : t('plannerStudio.s162')}
                             </Button>
                             <Button
                               size="small"
@@ -2430,7 +2450,8 @@ export default function ProducerPlannerStudio({
                               onClick={() => { void handleArchiveNotification(item.notification!.id); }}
                               sx={{ flex: 1, textTransform: 'none', fontWeight: 700 }}
                             >
-                              Arkiver
+                              
+                              {t('plannerStudio.s012')}
                             </Button>
                           </Stack>
                         </Stack>
@@ -2442,7 +2463,8 @@ export default function ProducerPlannerStudio({
                           onClick={() => { void handleMarkNotificationRead(item.notification!.id); }}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Marker som lest
+                          
+                          {t('plannerStudio.s169')}
                         </Button>
                       ) : null}
                     </Stack>
@@ -2465,16 +2487,18 @@ export default function ProducerPlannerStudio({
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Utestående klientgodkjenninger
+                  
+                  {t('plannerStudio.s250')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-                  Her ser du hvilke klientgodkjenninger og reviewpunkter som fortsatt blokkerer videre fremdrift.
+                  
+                  {t('plannerStudio.s083')}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.8} alignItems="center">
                 <Chip
                   size="small"
-                  label={outstandingClientApprovals.length > 0 ? `${outstandingClientApprovals.length} åpne` : 'Ingen åpne'}
+                  label={outstandingClientApprovals.length > 0 ? t('plannerStudio.t023', { v0: outstandingClientApprovals.length }) : t('plannerStudio.s106')}
                   sx={{
                     bgcolor: outstandingClientApprovals.length > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
                     color: outstandingClientApprovals.length > 0 ? '#fde68a' : '#bbf7d0',
@@ -2487,14 +2511,15 @@ export default function ProducerPlannerStudio({
                     onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Åpne Godkjenning
+                    
+                    {t('plannerStudio.s259')}
                   </Button>
                 ) : null}
               </Stack>
             </Stack>
 
             {outstandingClientApprovals.length === 0 ? (
-              <Alert severity="success">Ingen utestående klientgodkjenninger akkurat nå.</Alert>
+              <Alert severity="success">{t('plannerStudio.s104')}</Alert>
             ) : (
               <Stack spacing={0.85}>
                 {outstandingClientApprovals.slice(0, 5).map((review) => {
@@ -2519,12 +2544,12 @@ export default function ProducerPlannerStudio({
                             <Chip
                               size="small"
                               color={statusTone}
-                              label={getReviewStatusLabel(review.status)}
+                              label={getReviewStatusLabel(t, review.status)}
                               variant={statusTone === 'info' ? 'outlined' : 'filled'}
                             />
                             <Chip
                               size="small"
-                              label={getReviewTypeLabel(review)}
+                              label={getReviewTypeLabel(t, review)}
                               sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
                             />
                             <Chip
@@ -2535,19 +2560,20 @@ export default function ProducerPlannerStudio({
                             {hasText(review.due_at) ? (
                               <Chip
                                 size="small"
-                                label={`Frist ${toDisplayDateTime(review.due_at)}`}
+                                label={t('plannerStudio.t003', { v0: toDisplayDateTime(t, review.due_at) })}
                                 sx={{ bgcolor: 'rgba(244,63,94,0.14)', color: '#fecdd3' }}
                               />
                             ) : null}
                           </Stack>
                           <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                            {review.title || getReviewTypeLabel(review)}
+                            {review.title || getReviewTypeLabel(t, review)}
                           </Typography>
                           <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                            {review.description?.trim() || 'Denne godkjenningen trenger fortsatt en beslutning før arbeidsløpet kan gå videre.'}
+                            {review.description?.trim() || t('plannerStudio.s051')}
                           </Typography>
                           <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.76rem' }}>
-                            Sist oppdatert {toDisplayDateTime(review.updated_at)}
+                            
+                            {t('plannerStudio.s227')} {toDisplayDateTime(t, review.updated_at)}
                           </Typography>
                         </Stack>
 
@@ -2559,7 +2585,8 @@ export default function ProducerPlannerStudio({
                               onClick={() => onOpenReviews({ focusedPhase: phase, approvalTemplate })}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne
+                              
+                              {t('plannerStudio.s258')}
                             </Button>
                           </Stack>
                         ) : null}
@@ -2569,7 +2596,7 @@ export default function ProducerPlannerStudio({
                 })}
                 {outstandingClientApprovals.length > 5 ? (
                   <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem' }}>
-                    + {outstandingClientApprovals.length - 5} flere åpne godkjenninger ligger i modulen `Godkjenning`.
+                    + {outstandingClientApprovals.length - 5}  {t('plannerStudio.s256')}
                   </Typography>
                 ) : null}
               </Stack>
@@ -2587,16 +2614,18 @@ export default function ProducerPlannerStudio({
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 0.9 }}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Varsler
+                  
+                  {t('plannerStudio.s252')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-                  Produsentvarsler for klientbrief, materiale, kommentarer og godkjenninger.
+                  
+                  {t('plannerStudio.s206')}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.8} alignItems="center">
                 <Chip
                   size="small"
-                  label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} uleste` : 'Alt lest'}
+                  label={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} uleste` : t('plannerStudio.s009')}
                   sx={{
                     bgcolor: notificationsUnreadCount > 0 ? 'rgba(59,130,246,0.18)' : 'rgba(148,163,184,0.16)',
                     color: notificationsUnreadCount > 0 ? '#bfdbfe' : '#cbd5e1',
@@ -2609,14 +2638,15 @@ export default function ProducerPlannerStudio({
                     onClick={() => { void handleMarkAllNotificationsRead(); }}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Marker alle som lest
+                    
+                    {t('plannerStudio.s168')}
                   </Button>
                 ) : null}
               </Stack>
             </Stack>
 
             {recentNotifications.length === 0 ? (
-              <Alert severity="info">Ingen varsler ennå. Når klienten fyller ut brief, kommenterer eller godkjenner, dukker det opp her.</Alert>
+              <Alert severity="info">{t('plannerStudio.s105')}</Alert>
             ) : (
               <Stack spacing={0.8}>
                 {recentNotifications.map((notification) => (
@@ -2638,7 +2668,7 @@ export default function ProducerPlannerStudio({
                         <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
                           <Chip
                             size="small"
-                            label={notification.read ? 'Lest' : 'Ny'}
+                            label={notification.read ? t('plannerStudio.s147') : t('plannerStudio.s186')}
                             sx={{
                               bgcolor: notification.read ? 'rgba(148,163,184,0.16)' : 'rgba(59,130,246,0.18)',
                               color: notification.read ? '#cbd5e1' : '#bfdbfe',
@@ -2647,7 +2677,7 @@ export default function ProducerPlannerStudio({
                           <Chip
                             size="small"
                             color={getNotificationSeverity(notification) === 'warning' ? 'warning' : 'info'}
-                            label={toDisplayDateTime(notification.updated_at)}
+                            label={toDisplayDateTime(t, notification.updated_at)}
                             variant="outlined"
                           />
                         </Stack>
@@ -2655,7 +2685,7 @@ export default function ProducerPlannerStudio({
                           {notification.title}
                         </Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.76)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                          {notification.message || 'Varslet mangler beskrivelse.'}
+                          {notification.message || t('plannerStudio.s253')}
                         </Typography>
                       </Stack>
 
@@ -2666,7 +2696,8 @@ export default function ProducerPlannerStudio({
                           onClick={() => { void handleOpenNotification(notification); }}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Åpne
+                          
+                          {t('plannerStudio.s258')}
                         </Button>
                         {!notification.read ? (
                           <Button
@@ -2675,7 +2706,8 @@ export default function ProducerPlannerStudio({
                             onClick={() => { void handleMarkNotificationRead(notification.id); }}
                             sx={{ textTransform: 'none', fontWeight: 700 }}
                           >
-                            Marker som lest
+                            
+                            {t('plannerStudio.s169')}
                           </Button>
                         ) : null}
                       </Stack>
@@ -2702,10 +2734,12 @@ export default function ProducerPlannerStudio({
               <Stack spacing={0.95}>
                 <Box>
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Mobiloversikt
+                    
+                    {t('plannerStudio.s176')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.28 }}>
-                    Det viktigste først: oppfølginger, neste holdepunkt og rask vei tilbake til riktig arbeidsflate.
+                    
+                    {t('plannerStudio.s052')}
                   </Typography>
                 </Box>
                 {resumeCard && onResumeWorkspace ? (
@@ -2721,7 +2755,7 @@ export default function ProducerPlannerStudio({
                       <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
-                          label="Fortsett der du slapp"
+                          label={t('plannerStudio.s067')}
                           sx={{
                             bgcolor: 'rgba(59,130,246,0.16)',
                             color: '#bfdbfe',
@@ -2772,20 +2806,20 @@ export default function ProducerPlannerStudio({
                             <Chip size="small" label={PRODUCER_PLANNING_PHASE_LABELS[getPhaseForTimelineItem(item)]} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                             <Chip size="small" label={item.status} sx={{ bgcolor: styles.chipBackground, color: styles.chipColor }} />
                             {hasText(item.due_at) ? (
-                              <Chip size="small" label={toDisplayDateTime(item.due_at)} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
+                              <Chip size="small" label={toDisplayDateTime(t, item.due_at)} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
                             ) : null}
                           </Stack>
                           <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.92rem' }}>
                             {item.title}
                           </Typography>
                           <Typography sx={{ color: 'rgba(226,232,240,0.74)', fontSize: '0.8rem', lineHeight: 1.45 }}>
-                            {item.description?.trim() || 'Ingen detalj lagt inn ennå.'}
+                            {item.description?.trim() || t('plannerStudio.s092')}
                           </Typography>
                         </Stack>
                       </Box>
                     );
                   }) : (
-                    <Alert severity="success">Ingen åpne oppfølgingskort akkurat nå.</Alert>
+                    <Alert severity="success">{t('plannerStudio.s108')}</Alert>
                   )}
                 </Stack>
 
@@ -2797,7 +2831,8 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenMedia({ workspace: 'brief' })}
                       sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                     >
-                      Åpne prosjektrom
+                      
+                      {t('plannerStudio.s263')}
                     </Button>
                   ) : null}
                   {onOpenReviews ? (
@@ -2807,7 +2842,8 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
                       sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                     >
-                      Åpne godkjenning
+                      
+                      {t('plannerStudio.s262')}
                     </Button>
                   ) : null}
                   {!readOnly ? (
@@ -2817,7 +2853,8 @@ export default function ProducerPlannerStudio({
                       onClick={() => openMeetingDialog('creative')}
                       sx={{ minHeight: 44, bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                     >
-                      Ny gjennomgang
+                      
+                      {t('plannerStudio.s187')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -2835,9 +2872,9 @@ export default function ProducerPlannerStudio({
         >
           <Stack spacing={1.25} sx={{ minWidth: 0 }}>
             <CollapsibleSection
-              title="Møte"
+              title={t('plannerStudio.s178')}
               defaultOpen={false}
-              summary={`${(planningDraft.meetingWorkspace.agenda ?? []).length} agenda · ${(planningDraft.meetingWorkspace.decisions ?? []).length} beslutninger · ${(planningDraft.meetingWorkspace.followUps ?? []).filter((followUp) => followUp.status !== 'done').length} åpne oppfølginger`}
+              summary={t('plannerStudio.t008', { v0: (planningDraft.meetingWorkspace.agenda ?? []).length, v1: (planningDraft.meetingWorkspace.decisions ?? []).length, v2: (planningDraft.meetingWorkspace.followUps ?? []).filter((followUp) => followUp.status !== 'done').length })}
             >
               <ProducerMeetingWorkspace
                 project={liveProject}
@@ -2870,26 +2907,31 @@ export default function ProducerPlannerStudio({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
                 <Box>
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Macro timeline og beslutningspunkter
+                    
+                    {t('plannerStudio.s165')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', mt: 0.35 }}>
-                    Her ser du hva som stopper flyten per fase, og hvilke milepæler som må lukkes før produksjonen kan gå videre.
+                    
+                    {t('plannerStudio.s082')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                   {onOpenSelection ? (
                     <Button size="small" variant="outlined" onClick={onOpenSelection} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                      Til utvelgelse
+                      
+                      {t('plannerStudio.s240')}
                     </Button>
                   ) : null}
                   {onOpenShotList ? (
                     <Button size="small" variant="outlined" onClick={() => onOpenShotList({ phase: phaseInView })} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                      Åpne shotlist
+                      
+                      {t('plannerStudio.s264')}
                     </Button>
                   ) : null}
                   {onOpenTeam ? (
                     <Button size="small" variant="outlined" onClick={onOpenTeam} sx={{ textTransform: 'none', fontWeight: 700 }}>
-                      Team
+                      
+                      {t('plannerStudio.s234')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -2915,12 +2957,12 @@ export default function ProducerPlannerStudio({
                               {PRODUCER_PLANNING_PHASE_LABELS[phase]}
                             </Typography>
                             <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem' }}>
-                              {(planningDraft.phasePlan.find((item) => item.phase === phase)?.objective || 'Ingen fasebeskrivelse satt ennå.')}
+                              {(planningDraft.phasePlan.find((item) => item.phase === phase)?.objective || t('plannerStudio.s094'))}
                             </Typography>
                           </Box>
                           <Chip
                             size="small"
-                            label={`${phaseItems.length} timeline-punkt`}
+                            label={t('plannerStudio.t022', { v0: phaseItems.length })}
                             sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe', alignSelf: 'flex-start' }}
                           />
                         </Stack>
@@ -2944,13 +2986,13 @@ export default function ProducerPlannerStudio({
                                       {item.title}
                                     </Typography>
                                     <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.81rem', mt: 0.25 }}>
-                                      {item.description?.trim() || 'Ingen beskrivelse lagt inn ennå.'}
+                                      {item.description?.trim() || t('plannerStudio.s090')}
                                     </Typography>
                                   </Box>
                                   <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap>
                                     <Chip size="small" label={item.status} sx={{ bgcolor: styles.chipBackground, color: styles.chipColor }} />
                                     {hasText(item.due_at) ? (
-                                      <Chip size="small" label={toDisplayDateTime(item.due_at)} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
+                                      <Chip size="small" label={toDisplayDateTime(t, item.due_at)} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
                                     ) : null}
                                     {item.owner_user_id ? (
                                       <Chip
@@ -2964,7 +3006,7 @@ export default function ProducerPlannerStudio({
                               </Box>
                             );
                           }) : (
-                            <Alert severity="info">Ingen timeline-punkter i denne fasen ennå.</Alert>
+                            <Alert severity="info">{t('plannerStudio.s102')}</Alert>
                           )}
                         </Stack>
                       </Box>
@@ -2985,7 +3027,8 @@ export default function ProducerPlannerStudio({
             >
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 0.9 }}>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Administrativ backbone
+                  
+                  {t('plannerStudio.s001')}
                 </Typography>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                   {onOpenReviews ? (
@@ -2995,7 +3038,8 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenReviews({ focusedPhase: phaseInView })}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Godkjenning
+                      
+                      {t('plannerStudio.s073')}
                     </Button>
                   ) : null}
                   {onOpenEconomy ? (
@@ -3005,7 +3049,8 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenEconomy({ focusedPhase: phaseInView })}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Økonomi
+                      
+                      {t('plannerStudio.s266')}
                     </Button>
                   ) : null}
                   {onOpenMedia ? (
@@ -3015,7 +3060,8 @@ export default function ProducerPlannerStudio({
                       onClick={() => onOpenMedia({ workspace: 'brief' })}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Prosjektrom
+                      
+                      {t('plannerStudio.s209')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -3052,7 +3098,8 @@ export default function ProducerPlannerStudio({
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.85 }}>
-                Neste operative punkter
+                
+                {t('plannerStudio.s185')}
               </Typography>
               <Stack spacing={0.75}>
                 {timelineUrgentItems.length > 0 ? timelineUrgentItems.map((item) => (
@@ -3067,11 +3114,11 @@ export default function ProducerPlannerStudio({
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>{item.title}</Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.25 }}>
-                      {hasText(item.due_at) ? `Forfaller ${toDisplayDateTime(item.due_at)}.` : 'Ingen dato satt.'} {item.description?.trim() || ''}
+                      {hasText(item.due_at) ? `Forfaller ${toDisplayDateTime(t, item.due_at)}.` : t('plannerStudio.s091')} {item.description?.trim() || ''}
                     </Typography>
                   </Box>
                 )) : (
-                  <Alert severity="info">Ingen akutte timeline-punkter akkurat nå.</Alert>
+                  <Alert severity="info">{t('plannerStudio.s088')}</Alert>
                 )}
               </Stack>
             </Box>
@@ -3093,12 +3140,12 @@ export default function ProducerPlannerStudio({
             <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between">
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  {isContentProducerPlanner ? 'Kalender for innhold, reviews og leveranser' : 'Klassisk kalender, men filtrert på produksjonslogikk'}
+                  {isContentProducerPlanner ? t('plannerStudio.s117') : t('plannerStudio.s119')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
                   {isContentProducerPlanner
-                    ? 'Bruk denne visningen for å se briefpunkter, møter, leveranser og approvals i én samlet tidslinje.'
-                    : 'Bruk denne visningen for å se møtepunkter, shoot days, leveranser og approvals i én samlet tidslinje.'}
+                    ? t('plannerStudio.s041')
+                    : t('plannerStudio.s042')}
                 </Typography>
               </Box>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
@@ -3111,7 +3158,7 @@ export default function ProducerPlannerStudio({
                     onChange={(event) => setCalendarTypeFilter(event.target.value as PlannerCalendarEntry['type'] | 'all')}
                     sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
                   >
-                    <MenuItem value="all">Alle typer</MenuItem>
+                    <MenuItem value="all">{t('plannerStudio.s007')}</MenuItem>
                     {Object.entries(CALENDAR_TYPE_LABELS).map(([value, label]) => (
                       <MenuItem key={value} value={value}>{label}</MenuItem>
                     ))}
@@ -3119,18 +3166,18 @@ export default function ProducerPlannerStudio({
                 </FormControl>
                 {!isContentProducerPlanner ? (
                   <FormControl size="small" sx={{ minWidth: 160 }}>
-                    <InputLabel id="planner-calendar-role-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Rolle</InputLabel>
+                    <InputLabel id="planner-calendar-role-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('plannerStudio.s218')}</InputLabel>
                     <Select
                       labelId="planner-calendar-role-label"
-                      label="Rolle"
+                      label={t('plannerStudio.s218')}
                       value={calendarRoleFilter}
                       onChange={(event) => setCalendarRoleFilter(event.target.value as (typeof ROLE_FILTER_OPTIONS)[number])}
                       sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
                     >
-                      <MenuItem value="all">Alle</MenuItem>
-                      <MenuItem value="client">Klient</MenuItem>
-                      <MenuItem value="producer">Produsent</MenuItem>
-                      <MenuItem value="director">Regissør</MenuItem>
+                      <MenuItem value="all">{t('plannerStudio.s004')}</MenuItem>
+                      <MenuItem value="client">{t('plannerStudio.s120')}</MenuItem>
+                      <MenuItem value="producer">{t('plannerStudio.s205')}</MenuItem>
+                      <MenuItem value="director">{t('plannerStudio.s213')}</MenuItem>
                       <MenuItem value="dop">DoP</MenuItem>
                       <MenuItem value="editor">Editor</MenuItem>
                       <MenuItem value="crew">Crew</MenuItem>
@@ -3163,12 +3210,12 @@ export default function ProducerPlannerStudio({
                       </Typography>
                     </Box>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                      {toDisplayDateTime(`${toDateOnly(entry.date)}T09:00:00`)}
+                      {toDisplayDateTime(t, `${toDateOnly(entry.date)}T09:00:00`)}
                     </Typography>
                   </Stack>
                 </Box>
               )) : (
-                <Alert severity="info">Ingen planner-punkter matcher filtrene akkurat nå.</Alert>
+                <Alert severity="info">{t('plannerStudio.s100')}</Alert>
               )}
             </Stack>
           </Box>
@@ -3188,18 +3235,20 @@ export default function ProducerPlannerStudio({
             <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1} justifyContent="space-between">
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Koordineringsvisning
+                  
+                  {t('plannerStudio.s131')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem', mt: 0.35 }}>
-                  Dette er plasseringsmotoren for hvem som må være med, hva som kolliderer og når neste møte realistisk bør skje.
+                  
+                  {t('plannerStudio.s054')}
                 </Typography>
               </Box>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <FormControl size="small" sx={{ minWidth: 200 }}>
-                  <InputLabel id="planner-coordination-type-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Møtetype</InputLabel>
+                  <InputLabel id="planner-coordination-type-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('plannerStudio.s182')}</InputLabel>
                   <Select
                     labelId="planner-coordination-type-label"
-                    label="Møtetype"
+                    label={t('plannerStudio.s182')}
                     value={coordinationMeetingType}
                     onChange={(event) => setCoordinationMeetingType(event.target.value as ProducerPlannerMeetingType)}
                     sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
@@ -3217,7 +3266,7 @@ export default function ProducerPlannerStudio({
                     onClick={() => openMeetingDialog(coordinationMeetingType)}
                     sx={{ bgcolor: '#2563eb', textTransform: 'none', fontWeight: 700 }}
                   >
-                    {isContentProducerPlanner ? 'Opprett gjennomgang' : 'Opprett møte'}
+                    {isContentProducerPlanner ? t('plannerStudio.s193') : t('plannerStudio.s194')}
                   </Button>
                 ) : null}
               </Stack>
@@ -3233,10 +3282,11 @@ export default function ProducerPlannerStudio({
                   background: 'rgba(30,41,59,0.4)',
                 }}
               >
-                <Typography sx={{ color: '#bfdbfe', fontWeight: 700 }}>Anbefalt møte-vindu</Typography>
+                <Typography sx={{ color: '#bfdbfe', fontWeight: 700 }}>{t('plannerStudio.s010')}</Typography>
                 <Typography sx={{ color: '#fff', fontWeight: 700, mt: 0.35 }}>{recommendedMeetingWindow}</Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.8rem', mt: 0.25 }}>
-                  Basert på faseplan, crew availability og nærmeste operative holdepunkt.
+                  
+                  {t('plannerStudio.s024')}
                 </Typography>
               </Box>
               <Box
@@ -3248,12 +3298,13 @@ export default function ProducerPlannerStudio({
                   background: 'rgba(120,53,15,0.18)',
                 }}
               >
-                <Typography sx={{ color: '#fde68a', fontWeight: 700 }}>Manglende roller</Typography>
+                <Typography sx={{ color: '#fde68a', fontWeight: 700 }}>{t('plannerStudio.s166')}</Typography>
                 <Typography sx={{ color: '#fff', fontWeight: 700, mt: 0.35 }}>
-                  {missingCoreRoles.length > 0 ? missingCoreRoles.join(', ') : 'Ingen kjerne-hull oppdaget'}
+                  {missingCoreRoles.length > 0 ? missingCoreRoles.join(', ') : t('plannerStudio.s096')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.8rem', mt: 0.25 }}>
-                  Dette er de viktigste rollene planneren fortsatt savner for valgt møte-/fasekombinasjon.
+                  
+                  {t('plannerStudio.s053')}
                 </Typography>
               </Box>
               <Box
@@ -3265,10 +3316,11 @@ export default function ProducerPlannerStudio({
                   background: 'rgba(127,29,29,0.18)',
                 }}
               >
-                <Typography sx={{ color: '#fecaca', fontWeight: 700 }}>Blokkere nå</Typography>
+                <Typography sx={{ color: '#fecaca', fontWeight: 700 }}>{t('plannerStudio.s038')}</Typography>
                 <Typography sx={{ color: '#fff', fontWeight: 700, mt: 0.35 }}>{plannerAlerts.length}</Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.8rem', mt: 0.25 }}>
-                  Assistant-varsler og koordinasjonskonflikter som bør tas i neste beslutningspunkt.
+                  
+                  {t('plannerStudio.s014')}
                 </Typography>
               </Box>
             </Stack>
@@ -3283,7 +3335,8 @@ export default function ProducerPlannerStudio({
             }}
           >
             <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.85 }}>
-              Hvem må være med
+              
+              {t('plannerStudio.s084')}
             </Typography>
             <Table size="small">
               <TableHead>
@@ -3337,27 +3390,29 @@ export default function ProducerPlannerStudio({
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Flere handlinger
+                  
+                  {t('plannerStudio.s065')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem' }}>
-                  Sekundære valg og filtre for mobil.
+                  
+                  {t('plannerStudio.s221')}
                 </Typography>
               </Box>
-              <IconButton onClick={() => setMobileActionsOpen(false)} aria-label="Lukk mobilhandlinger" sx={{ color: '#cbd5e1' }}>
+              <IconButton onClick={() => setMobileActionsOpen(false)} aria-label={t('plannerStudio.s154')} sx={{ color: '#cbd5e1' }}>
                 <MoreHorizIcon />
               </IconButton>
             </Stack>
 
             <FormControl size="small" fullWidth>
-              <InputLabel id="planner-mobile-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Fase</InputLabel>
+              <InputLabel id="planner-mobile-phase-filter-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('plannerStudio.s063')}</InputLabel>
               <Select
                 labelId="planner-mobile-phase-filter-label"
-                label="Fase"
+                label={t('plannerStudio.s063')}
                 value={selectedPhase}
                 onChange={(event) => setSelectedPhase(event.target.value as ProducerPlanningPhase | 'all')}
                 sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.28)' } }}
               >
-                <MenuItem value="all">Alle faser</MenuItem>
+                <MenuItem value="all">{t('plannerStudio.s005')}</MenuItem>
                 {PHASE_ORDER.map((phase) => (
                   <MenuItem key={phase} value={phase}>{PRODUCER_PLANNING_PHASE_LABELS[phase]}</MenuItem>
                 ))}
@@ -3412,7 +3467,8 @@ export default function ProducerPlannerStudio({
                   }}
                   sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                 >
-                  Milepæl
+                  
+                  {t('plannerStudio.s173')}
                 </Button>
                 <Button
                   size="small"
@@ -3424,7 +3480,8 @@ export default function ProducerPlannerStudio({
                   }}
                   sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                 >
-                  Oppfølging
+                  
+                  {t('plannerStudio.s191')}
                 </Button>
                 {onOpenMedia ? (
                   <Button
@@ -3436,7 +3493,8 @@ export default function ProducerPlannerStudio({
                     }}
                     sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                   >
-                    Levering
+                    
+                    {t('plannerStudio.s150')}
                   </Button>
                 ) : null}
                 {onOpenEconomy ? (
@@ -3449,7 +3507,8 @@ export default function ProducerPlannerStudio({
                     }}
                     sx={{ minHeight: 44, textTransform: 'none', fontWeight: 700 }}
                   >
-                    Økonomi
+                    
+                    {t('plannerStudio.s266')}
                   </Button>
                 ) : null}
               </Box>
@@ -3459,7 +3518,7 @@ export default function ProducerPlannerStudio({
       ) : null}
 
       <Dialog open={meetingDialogOpen} onClose={closeMeetingDialog} fullWidth maxWidth="md">
-        <DialogTitle>Opprett smart meeting</DialogTitle>
+        <DialogTitle>{t('plannerStudio.s195')}</DialogTitle>
         <DialogContent dividers>
           <Stepper activeStep={meetingStep} sx={{ mb: 2 }}>
             {MEETING_STEPS.map((label) => (
@@ -3475,7 +3534,7 @@ export default function ProducerPlannerStudio({
                 <>
                   <TextField
                     select
-                    label="Møtetype"
+                    label={t('plannerStudio.s182')}
                     value={meetingDraft.type}
                     onChange={(event) => {
                       const nextType = event.target.value as ProducerPlannerMeetingType;
@@ -3489,7 +3548,7 @@ export default function ProducerPlannerStudio({
                   </TextField>
                   <TextField
                     select
-                    label="Fase"
+                    label={t('plannerStudio.s063')}
                     value={meetingDraft.phase}
                     onChange={(event) => {
                       const nextPhase = event.target.value as ProducerPlanningPhase;
@@ -3502,7 +3561,7 @@ export default function ProducerPlannerStudio({
                     ))}
                   </TextField>
                   <TextField
-                    label="Tittel"
+                    label={t('plannerStudio.s245')}
                     value={meetingDraft.title}
                     onChange={(event) => setMeetingDraft((previous) => previous ? { ...previous, title: event.target.value } : previous)}
                     fullWidth
@@ -3513,10 +3572,11 @@ export default function ProducerPlannerStudio({
               {meetingStep === 1 ? (
                 <>
                   <Alert severity="info">
-                    Systemet foreslår hvem som bør delta, hvilke assets som bør ligge ved, og hvilke beslutningspunkter som bør tas i møtet.
+                    
+                    {t('plannerStudio.s231')}
                   </Alert>
                   <Box>
-                    <Typography sx={{ fontWeight: 700, mb: 0.6 }}>Deltakere</Typography>
+                    <Typography sx={{ fontWeight: 700, mb: 0.6 }}>{t('plannerStudio.s050')}</Typography>
                     <Stack spacing={0.55}>
                       {meetingDialogParticipants.map((participant) => (
                         <Box key={participant.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3538,7 +3598,7 @@ export default function ProducerPlannerStudio({
                           <Box sx={{ minWidth: 0 }}>
                             <Typography sx={{ fontWeight: 700 }}>{participant.label}</Typography>
                             <Typography sx={{ color: 'text.secondary', fontSize: '0.82rem' }}>
-                              {participant.role ?? 'Deltaker'} · {participant.note ?? 'Ingen ekstra kommentar'}
+                              {participant.role ?? t('plannerStudio.s049')} · {participant.note ?? t('plannerStudio.s093')}
                             </Typography>
                           </Box>
                         </Box>
@@ -3549,7 +3609,7 @@ export default function ProducerPlannerStudio({
                   <Divider />
 
                   <Box>
-                    <Typography sx={{ fontWeight: 700, mb: 0.6 }}>Relevante assets</Typography>
+                    <Typography sx={{ fontWeight: 700, mb: 0.6 }}>{t('plannerStudio.s214')}</Typography>
                     <Stack spacing={0.55}>
                       {meetingDialogAssets.map((asset) => (
                         <Box key={asset.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3577,7 +3637,7 @@ export default function ProducerPlannerStudio({
                   <Divider />
 
                   <Box>
-                    <Typography sx={{ fontWeight: 700, mb: 0.6 }}>Agenda systemet foreslår</Typography>
+                    <Typography sx={{ fontWeight: 700, mb: 0.6 }}>{t('plannerStudio.s002')}</Typography>
                     <Stack spacing={0.7}>
                       {meetingDialogAgenda.map((item) => (
                         <Box key={item.title} sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(59,130,246,0.08)' }}>
@@ -3593,7 +3653,7 @@ export default function ProducerPlannerStudio({
               {meetingStep === 2 ? (
                 <>
                   <TextField
-                    label="Tidspunkt"
+                    label={t('plannerStudio.s238')}
                     type="datetime-local"
                     value={meetingDraft.scheduledAt}
                     onChange={(event) => setMeetingDraft((previous) => previous ? { ...previous, scheduledAt: event.target.value } : previous)}
@@ -3602,7 +3662,7 @@ export default function ProducerPlannerStudio({
                   />
                   <TextField
                     select
-                    label="Møteform"
+                    label={t('plannerStudio.s180')}
                     value={meetingDraft.mode}
                     onChange={(event) => setMeetingDraft((previous) => previous ? { ...previous, mode: event.target.value as ProducerPlannerMeetingMode } : previous)}
                     fullWidth
@@ -3612,13 +3672,13 @@ export default function ProducerPlannerStudio({
                     ))}
                   </TextField>
                   <TextField
-                    label="Lokasjon / digital link"
+                    label={t('plannerStudio.s151')}
                     value={meetingDraft.locationLabel}
                     onChange={(event) => setMeetingDraft((previous) => previous ? { ...previous, locationLabel: event.target.value } : previous)}
                     fullWidth
                   />
                   <TextField
-                    label="Kontekst"
+                    label={t('plannerStudio.s126')}
                     value={meetingDraft.contextSummary}
                     onChange={(event) => setMeetingDraft((previous) => previous ? { ...previous, contextSummary: event.target.value } : previous)}
                     multiline
@@ -3631,16 +3691,17 @@ export default function ProducerPlannerStudio({
               {meetingStep === 3 ? (
                 <>
                   <TextField
-                    label="Forventninger"
+                    label={t('plannerStudio.s068')}
                     value={meetingDraft.expectations}
                     onChange={(event) => setMeetingDraft((previous) => previous ? { ...previous, expectations: event.target.value } : previous)}
                     multiline
                     minRows={5}
-                    helperText="Én forventning per linje. Dette sendes som møtets forventningsgrunnlag."
+                    helperText={t('plannerStudio.s265')}
                     fullWidth
                   />
                   <Alert severity="info">
-                    Når du oppretter møtet, blir det skrevet inn i plannerens meeting workspace og lagt til som et ekte timeline-punkt.
+                    
+                    {t('plannerStudio.s190')}
                   </Alert>
                 </>
               ) : null}
@@ -3648,10 +3709,11 @@ export default function ProducerPlannerStudio({
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeMeetingDialog}>Avbryt</Button>
+          <Button onClick={closeMeetingDialog}>{t('plannerStudio.s015')}</Button>
           {meetingStep > 0 ? (
             <Button onClick={() => setMeetingStep((previous) => Math.max(0, previous - 1) as MeetingDraftStep)}>
-              Tilbake
+              
+              {t('plannerStudio.s241')}
             </Button>
           ) : null}
           {meetingStep < 3 ? (
@@ -3659,24 +3721,26 @@ export default function ProducerPlannerStudio({
               variant="contained"
               onClick={() => setMeetingStep((previous) => Math.min(3, previous + 1) as MeetingDraftStep)}
             >
-              Neste
+              
+              {t('plannerStudio.s183')}
             </Button>
           ) : (
             <Button variant="contained" onClick={() => { void handleCreateMeeting(); }}>
-              Opprett møte
+              
+              {t('plannerStudio.s194')}
             </Button>
           )}
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(timelineActionDraft)} onClose={closeTimelineActionDialog} fullWidth maxWidth="sm">
-        <DialogTitle>{timelineActionDraft?.kind === 'milestone' ? 'Legg til milepæl' : 'Tildel oppgave'}</DialogTitle>
+        <DialogTitle>{timelineActionDraft?.kind === 'milestone' ? t('plannerStudio.s145') : t('plannerStudio.s242')}</DialogTitle>
         <DialogContent dividers>
           {timelineActionDraft ? (
             <Stack spacing={1.1}>
               <TextField
                 select
-                label="Fase"
+                label={t('plannerStudio.s063')}
                 value={timelineActionDraft.phase}
                 onChange={(event) => setTimelineActionDraft((previous) => previous ? { ...previous, phase: event.target.value as ProducerPhase } : previous)}
                 fullWidth
@@ -3686,13 +3750,13 @@ export default function ProducerPlannerStudio({
                 ))}
               </TextField>
               <TextField
-                label="Tittel"
+                label={t('plannerStudio.s245')}
                 value={timelineActionDraft.title}
                 onChange={(event) => setTimelineActionDraft((previous) => previous ? { ...previous, title: event.target.value } : previous)}
                 fullWidth
               />
               <TextField
-                label="Beskrivelse"
+                label={t('plannerStudio.s033')}
                 value={timelineActionDraft.description}
                 onChange={(event) => setTimelineActionDraft((previous) => previous ? { ...previous, description: event.target.value } : previous)}
                 multiline
@@ -3709,19 +3773,19 @@ export default function ProducerPlannerStudio({
               />
               <TextField
                 select
-                label="Ansvarlig"
+                label={t('plannerStudio.s011')}
                 value={timelineActionDraft.ownerUserId}
                 onChange={(event) => setTimelineActionDraft((previous) => previous ? { ...previous, ownerUserId: event.target.value } : previous)}
                 fullWidth
               >
-                <MenuItem value="">Ingen satt ennå</MenuItem>
+                <MenuItem value="">{t('plannerStudio.s101')}</MenuItem>
                 {ownerOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                 ))}
               </TextField>
               <TextField
                 select
-                label="Kobling"
+                label={t('plannerStudio.s125')}
                 value={timelineActionDraft.linkedEntityId ? `${timelineActionDraft.linkedEntityType}:${timelineActionDraft.linkedEntityId}` : ''}
                 onChange={(event) => {
                   const [linkedEntityType = '', linkedEntityId = ''] = String(event.target.value).split(':');
@@ -3729,7 +3793,7 @@ export default function ProducerPlannerStudio({
                 }}
                 fullWidth
               >
-                <MenuItem value="">Ingen kobling</MenuItem>
+                <MenuItem value="">{t('plannerStudio.s097')}</MenuItem>
                 {entityOptions.map((option) => (
                   <MenuItem key={`${option.entityType}:${option.entityId}`} value={`${option.entityType}:${option.entityId}`}>
                     {option.label}
@@ -3740,9 +3804,10 @@ export default function ProducerPlannerStudio({
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeTimelineActionDialog}>Avbryt</Button>
+          <Button onClick={closeTimelineActionDialog}>{t('plannerStudio.s015')}</Button>
           <Button variant="contained" onClick={() => { void handleCreateTimelineItem(); }}>
-            Lagre
+            
+            {t('plannerStudio.s142')}
           </Button>
         </DialogActions>
       </Dialog>

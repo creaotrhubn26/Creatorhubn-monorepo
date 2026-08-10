@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 import {
   Alert,
   Box,
@@ -66,18 +68,18 @@ interface ProducerTimelinePanelProps {
   onOpenMedia?: (focus?: ClientPortalWorkspaceFocus) => void;
 }
 
-const PHASE_LABELS: Record<ProducerPhase, string> = {
-  preproduction: 'Pre-produksjon',
-  production: 'Produksjonsdag',
-  postproduction: 'Post-produksjon',
-};
+const buildPHASE_LABELS = (t: TFn): Record<ProducerPhase, string> => ({
+  preproduction: t('prodTimeline.s038'),
+  production: t('prodTimeline.s040'),
+  postproduction: t('prodTimeline.s035'),
+});
 
-const STATUS_OPTIONS = [
-  { value: 'planned', label: 'Planlagt' },
-  { value: 'in_progress', label: 'Pågår' },
-  { value: 'blocked', label: 'Blokkert' },
-  { value: 'completed', label: 'Fullført' },
-] as const;
+const buildSTATUS_OPTIONS = (t: TFn) => ([
+  { value: 'planned', label: t('prodTimeline.s034') },
+  { value: 'in_progress', label: t('prodTimeline.s044') },
+  { value: 'blocked', label: t('prodTimeline.s006') },
+  { value: 'completed', label: t('prodTimeline.s011') },
+] as const);
 
 const EMPTY_ENTITY_OPTIONS: ProducerWorkflowEntityOption[] = [];
 const EMPTY_OWNER_OPTIONS: ProducerWorkflowOwnerOption[] = [];
@@ -309,6 +311,9 @@ export default function ProducerTimelinePanel({
   onOpenMedia,
 }: ProducerTimelinePanelProps) {
   const { groupedByPhase, loading, error, createItem, updateItem, removeItem } = useProducerTimeline(projectId);
+  const { t } = useT();
+  const PHASE_LABELS = useMemo(() => buildPHASE_LABELS(t), [t]);
+  const STATUS_OPTIONS = useMemo(() => buildSTATUS_OPTIONS(t), [t]);
   const { enqueueSnackbar } = useSnackbar();
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // Planner-visning: skiller «Tidslinje & fremdrift» (faseprioritet +
@@ -538,10 +543,10 @@ export default function ProducerTimelinePanel({
             shotListCount: 0,
             actionableCount: 0,
             priorityScore: timelineCounts.blocked * 8 + timelineCounts.in_progress * 3 + timelineCounts.planned,
-            heading: 'Ingen shotlister låst for pre-produksjon ennå',
-            summary: 'Når shotlisten bygges her, blir planlegging, klientforventning og opptaksdag enklere å holde synkronisert.',
+            heading: t('prodTimeline.s017'),
+            summary: t('prodTimeline.s032'),
             tone: timelineCounts.blocked > 0 ? 'warning' : 'neutral',
-            actionLabel: onOpenShotList ? 'Åpne shotlist' : undefined,
+            actionLabel: onOpenShotList ? t('prodTimeline.s062') : undefined,
             actionTarget: onOpenShotList ? 'shotlist' : undefined,
           };
         }
@@ -556,12 +561,12 @@ export default function ProducerTimelinePanel({
             + timelineCounts.blocked * 8
             + timelineCounts.in_progress * 3
             + timelineCounts.planned,
-          heading: actionableCount > 0 ? 'Lås plan og ansvar før opptak' : 'Pre-produksjonen er planlagt',
+          heading: actionableCount > 0 ? t('prodTimeline.s027') : t('prodTimeline.s039'),
           summary: actionableCount > 0
-            ? `${missingProductionDay.length} mangler opptaksdag, ${missingDeadline.length} mangler frist, ${emptyShotLists.length} mangler ferdig shotliste og ${formatMinutes(unscheduledLoad?.realisticFieldMinutes ?? 0)} står fortsatt uten plass i planen.`
-            : `Shotlist, frister og opptaksdager er koblet før produksjonen starter. Anbefalt opptaksramme er ${productionEstimate.suggestedShootDays} dager.`,
+            ? t('prodTimeline.t016', { v0: missingProductionDay.length, v1: missingDeadline.length, v2: emptyShotLists.length, v3: formatMinutes(unscheduledLoad?.realisticFieldMinutes ?? 0) })
+            : t('prodTimeline.t012', { v0: productionEstimate.suggestedShootDays }),
           tone: actionableCount > 0 || timelineCounts.blocked > 0 ? 'warning' : 'success',
-          actionLabel: onOpenShotList ? 'Åpne shotlist' : undefined,
+          actionLabel: onOpenShotList ? t('prodTimeline.s062') : undefined,
           actionTarget: onOpenShotList ? 'shotlist' : undefined,
         };
       }
@@ -603,17 +608,17 @@ export default function ProducerTimelinePanel({
             + timelineCounts.blocked * 8
             + timelineCounts.in_progress * 4,
             heading: overdue.length > 0
-              ? 'Opptaksplanen har sklidd'
+              ? t('prodTimeline.s033')
               : overloadedDays.length > 0
-              ? 'Produksjonsdagen er tyngre enn planen tåler'
+              ? t('prodTimeline.s041')
             : actionableCount > 0
-              ? 'Klargjør shotlisten før neste opptaksvindu'
-              : 'Produksjonsdagen er under kontroll',
+              ? t('prodTimeline.s019')
+              : t('prodTimeline.s042'),
           summary: actionableCount > 0
-            ? `${overdue.length} er over tid, ${approaching.length} nærmer seg opptak, ${withoutOwner.length} mangler ansvarlig, ${withoutEstimate.length} mangler tidsestimat og ${overloadedDays.length} opptaksdager er overbooket mot realistisk belastning.`
-            : `Aktive scener har opptaksdag, ansvarlig og estimert tid på plass. Samlet feltbelastning er ${formatMinutes(productionEstimate.totalRealisticFieldMinutes)}.`,
+            ? t('prodTimeline.t014', { v0: overdue.length, v1: approaching.length, v2: withoutOwner.length, v3: withoutEstimate.length, v4: overloadedDays.length })
+            : t('prodTimeline.t001', { v0: formatMinutes(productionEstimate.totalRealisticFieldMinutes) }),
           tone: overdue.length > 0 || overloadedDays.length > 0 || timelineCounts.blocked > 0 ? 'danger' : actionableCount > 0 ? 'warning' : 'success',
-          actionLabel: onOpenShotList ? 'Åpne shotlist' : undefined,
+          actionLabel: onOpenShotList ? t('prodTimeline.s062') : undefined,
           actionTarget: onOpenShotList ? 'shotlist' : undefined,
         };
       }
@@ -636,23 +641,23 @@ export default function ProducerTimelinePanel({
         actionableCount,
         priorityScore: (changesRequested ? 16 : 0) + (waitingForClient ? 10 : 0) + timelineCounts.blocked * 8 + timelineCounts.in_progress * 4,
         heading: changesRequested
-          ? 'Klienten venter på oppdatert leveranse'
+          ? t('prodTimeline.s020')
           : waitingForClient
-            ? 'Shotlisten er klar for klientgjennomgang'
+            ? t('prodTimeline.s048')
             : completedShotLists.length > 0
-              ? 'Post-produksjonen er klar for overlevering'
-              : 'Post-produksjonen starter når opptaket er ferdig',
+              ? t('prodTimeline.s036')
+              : t('prodTimeline.s037'),
         summary: changesRequested
-          ? 'Shotlist-godkjenningen har bedt om endringer. Hold post og klientsamarbeid i samme løp før levering.'
+          ? t('prodTimeline.s047')
           : waitingForClient
-            ? `Ferdige scener bør sendes til klient før endringer og eksport bygger seg opp i etterkant. Hovedleveransen er estimert til ${Math.floor((productionEstimate.formatEstimates.find((item) => item.emphasis === 'primary')?.estimatedSeconds ?? 0) / 60)}:${String((productionEstimate.formatEstimates.find((item) => item.emphasis === 'primary')?.estimatedSeconds ?? 0) % 60).padStart(2, '0')}.`
+            ? t('prodTimeline.t004', { v0: Math.floor((productionEstimate.formatEstimates.find((item) => item.emphasis === 'primary')?.estimatedSeconds ?? 0) / 60), v1: String((productionEstimate.formatEstimates.find((item) => item.emphasis === 'primary')?.estimatedSeconds ?? 0) % 60).padStart(2, '0') })
             : completedShotLists.length > 0
-              ? 'Ferdige shotlister, klientgodkjenning og levering ligger på linje.'
-              : 'Når scener blir ferdigstilt, bør godkjenning og levering styres videre herfra.',
+              ? t('prodTimeline.s009')
+              : t('prodTimeline.s031'),
         tone: changesRequested || timelineCounts.blocked > 0 ? 'danger' : waitingForClient ? 'warning' : completedShotLists.length > 0 ? 'success' : 'neutral',
         actionLabel: waitingForClient || changesRequested
-          ? (onOpenReviews ? 'Åpne klientsamarbeid' : undefined)
-          : (onOpenShotList ? 'Åpne shotlist' : undefined),
+          ? (onOpenReviews ? t('prodTimeline.s060') : undefined)
+          : (onOpenShotList ? t('prodTimeline.s062') : undefined),
         actionTarget: waitingForClient || changesRequested
           ? (onOpenReviews ? 'reviews' : undefined)
           : (onOpenShotList ? 'shotlist' : undefined),
@@ -723,9 +728,9 @@ export default function ProducerTimelinePanel({
       setItemStatus('planned');
       setLinkedEntityType('');
       setLinkedEntityId('');
-      enqueueSnackbar('Milepælen er lagt til.', { variant: 'success' });
+      enqueueSnackbar(t('prodTimeline.s029'), { variant: 'success' });
     } catch (createError) {
-      enqueueSnackbar(describeProducerError(createError, 'legge til milepælen'), { variant: 'error' });
+      enqueueSnackbar(describeProducerError(createError, t('prodTimeline.s053')), { variant: 'error' });
     }
   };
 
@@ -744,9 +749,9 @@ export default function ProducerTimelinePanel({
         delete next[itemId];
         return next;
       });
-      enqueueSnackbar('Statusen er oppdatert.', { variant: 'success' });
+      enqueueSnackbar(t('prodTimeline.s051'), { variant: 'success' });
     } catch (saveError) {
-      enqueueSnackbar(describeProducerError(saveError, 'oppdatere statusen'), { variant: 'error' });
+      enqueueSnackbar(describeProducerError(saveError, t('prodTimeline.s054')), { variant: 'error' });
     } finally {
       setBusyItemId(null);
     }
@@ -761,9 +766,9 @@ export default function ProducerTimelinePanel({
         delete next[itemId];
         return next;
       });
-      enqueueSnackbar('Milepælen er slettet.', { variant: 'success' });
+      enqueueSnackbar(t('prodTimeline.s030'), { variant: 'success' });
     } catch (deleteError) {
-      enqueueSnackbar(describeProducerError(deleteError, 'slette milepælen'), { variant: 'error' });
+      enqueueSnackbar(describeProducerError(deleteError, t('prodTimeline.s055')), { variant: 'error' });
     } finally {
       setBusyItemId(null);
     }
@@ -988,12 +993,13 @@ export default function ProducerTimelinePanel({
         <Stack direction="row" spacing={1} alignItems="center">
           <ScheduleIcon sx={{ color: '#38bdf8' }} />
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            Fase-tidslinje
+            
+            {t('prodTimeline.s008')}
           </Typography>
         </Stack>
         <Chip
           size="small"
-          label={`${totalItems} milepæler`}
+          label={t('prodTimeline.t017', { v0: totalItems })}
           sx={{
             bgcolor: 'rgba(56,189,248,0.14)',
             color: '#bae6fd',
@@ -1002,11 +1008,11 @@ export default function ProducerTimelinePanel({
         />
       </Stack>
       <Stack direction="row" spacing={1} flexWrap="wrap">
-        <Chip size="small" label={`Fullført ${statusSummary.completed}`} sx={{ bgcolor: 'rgba(74,222,128,0.16)', color: '#86efac' }} />
-        <Chip size="small" label={`Pågår ${statusSummary.in_progress}`} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'var(--role-cyan, #7dd3fc)' }} />
-        <Chip size="small" label={`Planlagt ${statusSummary.planned}`} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
-        <Chip size="small" label={`Blokkert ${statusSummary.blocked}`} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fca5a5' }} />
-        <Chip size="small" label={`Fremdrift ${completionPct}%`} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />
+        <Chip size="small" label={t('prodTimeline.t007', { v0: statusSummary.completed })} sx={{ bgcolor: 'rgba(74,222,128,0.16)', color: '#86efac' }} />
+        <Chip size="small" label={t('prodTimeline.t011', { v0: statusSummary.in_progress })} sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: 'var(--role-cyan, #7dd3fc)' }} />
+        <Chip size="small" label={t('prodTimeline.t010', { v0: statusSummary.planned })} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1' }} />
+        <Chip size="small" label={t('prodTimeline.t003', { v0: statusSummary.blocked })} sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fca5a5' }} />
+        <Chip size="small" label={t('prodTimeline.t005', { v0: completionPct })} sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: '#fde68a' }} />
       </Stack>
 
       {/* Planner-faner: tidslinje/fremdrift vs. klientplan — jf. Daniels
@@ -1030,8 +1036,8 @@ export default function ProducerTimelinePanel({
           '& .MuiTabs-indicator': { backgroundColor: '#38bdf8', height: 3 },
         }}
       >
-        <Tab value="tidslinje" label="Tidslinje & fremdrift" />
-        <Tab value="klientplan" label="Klientplan" />
+        <Tab value="tidslinje" label={t('prodTimeline.s052')} />
+        <Tab value="klientplan" label={t('prodTimeline.s022')} />
       </Tabs>
 
       <Box
@@ -1046,10 +1052,12 @@ export default function ProducerTimelinePanel({
         <Stack spacing={1.1}>
           <Box>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-              Hva som haster nå
+              
+              {t('prodTimeline.s012')}
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.82)', fontSize: '0.92rem', mt: 0.4 }}>
-              Shotlist, opptaksdager og klientgodkjenning prioriteres her etter hva som faktisk kan stoppe flyten før, under og etter produksjonen.
+              
+              {t('prodTimeline.s046')}
             </Typography>
           </Box>
           <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1}>
@@ -1074,7 +1082,7 @@ export default function ProducerTimelinePanel({
                         {index === 0 && summary.priorityScore > 0 ? (
                           <Chip
                             size="small"
-                            label="Høyest nå"
+                            label={t('prodTimeline.s013')}
                             sx={{
                               bgcolor: 'rgba(251,191,36,0.16)',
                               color: '#fde68a',
@@ -1084,7 +1092,7 @@ export default function ProducerTimelinePanel({
                         ) : null}
                         <Chip
                           size="small"
-                          label={`${summary.shotListCount} shotlister`}
+                          label={t('prodTimeline.t018', { v0: summary.shotListCount })}
                           sx={{
                             bgcolor: accent.chipBackground,
                             color: accent.chipColor,
@@ -1094,7 +1102,7 @@ export default function ProducerTimelinePanel({
                         {summary.actionableCount > 0 ? (
                           <Chip
                             size="small"
-                            label={`${summary.actionableCount} krever handling`}
+                            label={t('prodTimeline.t015', { v0: summary.actionableCount })}
                             sx={{
                               bgcolor: 'rgba(248,113,113,0.14)',
                               color: '#fecaca',
@@ -1118,7 +1126,7 @@ export default function ProducerTimelinePanel({
                         onClick={() => onOpenShotList({ phase: summary.phase })}
                         sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
                       >
-                        {summary.actionLabel ?? 'Åpne shotlist'}
+                        {summary.actionLabel ?? t('prodTimeline.s062')}
                       </Button>
                     ) : null}
                     {summary.actionTarget === 'reviews' && onOpenReviews ? (
@@ -1129,7 +1137,7 @@ export default function ProducerTimelinePanel({
                         onClick={() => onOpenReviews({ focusedPhase: summary.phase, approvalTemplate: 'shotlist' })}
                         sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
                       >
-                        {summary.actionLabel ?? 'Åpne klientsamarbeid'}
+                        {summary.actionLabel ?? t('prodTimeline.s060')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -1167,10 +1175,10 @@ export default function ProducerTimelinePanel({
         <Stack direction="column" spacing={1}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
             <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel id="timeline-phase-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>Fase</InputLabel>
+              <InputLabel id="timeline-phase-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>{t('prodTimeline.s007')}</InputLabel>
               <Select
                 labelId="timeline-phase-label"
-                label="Fase"
+                label={t('prodTimeline.s007')}
                 value={phase}
                 onChange={(event) => setPhase(event.target.value as ProducerPhase)}
                 fullWidth
@@ -1183,7 +1191,7 @@ export default function ProducerTimelinePanel({
             </FormControl>
             <TextField
               size="small"
-              label="Milepæl"
+              label={t('prodTimeline.s028')}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               sx={{ flex: 1, minWidth: 220 }}
@@ -1191,7 +1199,7 @@ export default function ProducerTimelinePanel({
             />
             <TextField
               size="small"
-              label="Beskrivelse"
+              label={t('prodTimeline.s005')}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               sx={{ flex: 1, minWidth: 220 }}
@@ -1202,15 +1210,15 @@ export default function ProducerTimelinePanel({
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
             {ownerOptions.length > 0 ? (
               <FormControl size="small" sx={{ flex: 1, minWidth: 240 }}>
-                <InputLabel id="timeline-owner-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Ansvarlig</InputLabel>
+                <InputLabel id="timeline-owner-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('prodTimeline.s001')}</InputLabel>
                 <Select
                   labelId="timeline-owner-label"
-                  label="Ansvarlig"
+                  label={t('prodTimeline.s001')}
                   value={ownerUserId}
                   onChange={(event) => setOwnerUserId(String(event.target.value))}
                   sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
                 >
-                  <MenuItem value="">Ingen ansvarlig</MenuItem>
+                  <MenuItem value="">{t('prodTimeline.s014')}</MenuItem>
                   {ownerOptions.map((option) => (
                     <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                   ))}
@@ -1219,7 +1227,7 @@ export default function ProducerTimelinePanel({
             ) : (
               <TextField
                 size="small"
-                label="Ansvarlig (bruker-id/e-post)"
+                label={t('prodTimeline.s002')}
                 value={ownerUserId}
                 onChange={(event) => setOwnerUserId(event.target.value)}
                 sx={{ flex: 1, minWidth: 240 }}
@@ -1236,10 +1244,10 @@ export default function ProducerTimelinePanel({
               InputLabelProps={{ shrink: true, sx: { color: 'rgba(226,232,240,0.82)' } }}
             />
             <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="timeline-status-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>Status</InputLabel>
+              <InputLabel id="timeline-status-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>{t('prodTimeline.s050')}</InputLabel>
               <Select
                 labelId="timeline-status-label"
-                label="Status"
+                label={t('prodTimeline.s050')}
                 value={itemStatus}
                 onChange={(event) => setItemStatus(event.target.value as (typeof STATUS_OPTIONS)[number]['value'])}
                 fullWidth
@@ -1251,10 +1259,10 @@ export default function ProducerTimelinePanel({
               </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel id="timeline-link-type-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>Koblingstype</InputLabel>
+              <InputLabel id="timeline-link-type-label" sx={{ color: 'rgba(226,232,240,0.8)' }}>{t('prodTimeline.s024')}</InputLabel>
               <Select
                 labelId="timeline-link-type-label"
-                label="Koblingstype"
+                label={t('prodTimeline.s024')}
                 value={linkedEntityType}
                 onChange={(event) => {
                   const nextType = String(event.target.value);
@@ -1264,7 +1272,7 @@ export default function ProducerTimelinePanel({
                 fullWidth
                 sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
               >
-                <MenuItem value="">Ingen kobling</MenuItem>
+                <MenuItem value="">{t('prodTimeline.s015')}</MenuItem>
                 {distinctEntityTypes.map((option) => (
                   <MenuItem key={option.entityType} value={option.entityType}>{getProducerEntityTypeLabel(option.entityType)}</MenuItem>
                 ))}
@@ -1272,10 +1280,10 @@ export default function ProducerTimelinePanel({
             </FormControl>
             {filteredEntityOptions.length > 0 ? (
               <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
-                <InputLabel id="timeline-link-entity-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>Koblet entitet</InputLabel>
+                <InputLabel id="timeline-link-entity-label" sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('prodTimeline.s023')}</InputLabel>
                 <Select
                   labelId="timeline-link-entity-label"
-                  label="Koblet entitet"
+                  label={t('prodTimeline.s023')}
                   value={linkedEntityId}
                   onChange={(event) => setLinkedEntityId(String(event.target.value))}
                   sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
@@ -1302,7 +1310,8 @@ export default function ProducerTimelinePanel({
               disabled={loading || !title.trim()}
               sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.4)', fontWeight: 700, textTransform: 'none', minWidth: 170, '&:hover': { borderColor: 'rgba(148,163,184,0.7)', background: 'rgba(148,163,184,0.08)' } }}
             >
-              Legg til milepæl
+              
+              {t('prodTimeline.s026')}
             </Button>
           </Stack>
         </Stack>
@@ -1328,7 +1337,7 @@ export default function ProducerTimelinePanel({
               <Stack direction="row" spacing={0.75} flexWrap="wrap">
                 <Chip
                   size="small"
-                  label={`${phaseReadinessByPhase[phaseKey].shotListCount} shotlister`}
+                  label={t('prodTimeline.t018', { v0: phaseReadinessByPhase[phaseKey].shotListCount })}
                   sx={{
                     bgcolor: 'rgba(148,163,184,0.16)',
                     color: '#cbd5e1',
@@ -1338,7 +1347,7 @@ export default function ProducerTimelinePanel({
                 {phaseReadinessByPhase[phaseKey].actionableCount > 0 ? (
                   <Chip
                     size="small"
-                    label={`${phaseReadinessByPhase[phaseKey].actionableCount} krever handling`}
+                    label={t('prodTimeline.t015', { v0: phaseReadinessByPhase[phaseKey].actionableCount })}
                     sx={{
                       bgcolor: 'rgba(251,191,36,0.16)',
                       color: '#fde68a',
@@ -1375,7 +1384,8 @@ export default function ProducerTimelinePanel({
                     onClick={() => onOpenShotList({ phase: phaseKey })}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Åpne shotlist
+                    
+                    {t('prodTimeline.s062')}
                   </Button>
                 ) : phaseReadinessByPhase[phaseKey].actionTarget === 'reviews' && onOpenReviews ? (
                   <Button
@@ -1384,7 +1394,8 @@ export default function ProducerTimelinePanel({
                     onClick={() => onOpenReviews({ focusedPhase: phaseKey, approvalTemplate: 'shotlist' })}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Åpne klientsamarbeid
+                    
+                    {t('prodTimeline.s060')}
                   </Button>
                 ) : undefined}
               >
@@ -1399,7 +1410,8 @@ export default function ProducerTimelinePanel({
             <Stack spacing={1}>
               {groupedByPhase[phaseKey].length === 0 ? (
                 <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.9rem' }}>
-                  Ingen milepæler i denne fasen.
+                  
+                  {t('prodTimeline.s016')}
                 </Typography>
               ) : (
                 groupedByPhase[phaseKey].map((item) => {
@@ -1430,12 +1442,12 @@ export default function ProducerTimelinePanel({
                     || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'decision'
                     || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'follow_up';
                   const workspaceActionLabel = workspaceTargetEntityType === 'project_agreement'
-                    ? 'Åpne juridisk avtale'
+                    ? t('prodTimeline.s059')
                     : workspaceTargetEntityType === 'meeting_decision' || workspaceTargetEntityType === 'meeting_follow_up'
                       || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'decision'
                       || readFirstNonEmptyString(itemMetadata.meetingItemType) === 'follow_up'
-                      ? 'Åpne møteworkspace'
-                      : 'Åpne brief og materiale';
+                      ? t('prodTimeline.s061')
+                      : t('prodTimeline.s056');
 
                   return (
                     <Box
@@ -1478,7 +1490,7 @@ export default function ProducerTimelinePanel({
                         {projectStatusItem && (
                           <Chip
                             size="small"
-                            label="Prosjektstatus"
+                            label={t('prodTimeline.s043')}
                             sx={{
                               height: 22,
                               bgcolor: 'rgba(192,132,252,0.16)',
@@ -1490,7 +1502,7 @@ export default function ProducerTimelinePanel({
                         {item.owner_user_id && (
                           <Chip
                             size="small"
-                            label={`Ansvarlig: ${getOwnerLabel(item.owner_user_id) ?? item.owner_user_id}`}
+                            label={t('prodTimeline.t002', { v0: getOwnerLabel(item.owner_user_id) ?? item.owner_user_id })}
                             sx={{
                               height: 22,
                               bgcolor: 'rgba(30,41,59,0.9)',
@@ -1502,7 +1514,7 @@ export default function ProducerTimelinePanel({
                         {item.due_at && (
                           <Chip
                             size="small"
-                            label={`Frist: ${new Date(item.due_at).toLocaleString('nb-NO')}`}
+                            label={t('prodTimeline.t006', { v0: new Date(item.due_at).toLocaleString('nb-NO') })}
                             sx={{
                               height: 22,
                               bgcolor: 'rgba(30,41,59,0.9)',
@@ -1514,7 +1526,7 @@ export default function ProducerTimelinePanel({
                         {linkedEntityLabel && (
                           <Chip
                             size="small"
-                            label={`Kobling: ${linkedEntityLabel}`}
+                            label={t('prodTimeline.t009', { v0: linkedEntityLabel })}
                             sx={{
                               height: 22,
                               bgcolor: 'rgba(30,41,59,0.9)',
@@ -1526,7 +1538,7 @@ export default function ProducerTimelinePanel({
                         {shotListLinked && (
                           <Chip
                             size="small"
-                            label="Shotlist"
+                            label={t('prodTimeline.s045')}
                             sx={{
                               height: 22,
                               bgcolor: 'rgba(14,165,233,0.18)',
@@ -1538,7 +1550,7 @@ export default function ProducerTimelinePanel({
                         {clientWorkspaceLinked && (
                           <Chip
                             size="small"
-                            label="Klientgrunnlag"
+                            label={t('prodTimeline.s021')}
                             sx={{
                               height: 22,
                               bgcolor: 'rgba(192,132,252,0.16)',
@@ -1550,7 +1562,7 @@ export default function ProducerTimelinePanel({
                         {agreementSignatureStatus && agreementSignatureStyles ? (
                           <Chip
                             size="small"
-                            label={`Juridisk signatur · ${PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS[agreementSignatureStatus]}`}
+                            label={t('prodTimeline.t008', { v0: PROJECT_AGREEMENT_SIGNATURE_STATUS_LABELS[agreementSignatureStatus] })}
                             sx={{
                               height: 22,
                               bgcolor: agreementSignatureStyles.background,
@@ -1570,12 +1582,12 @@ export default function ProducerTimelinePanel({
                           }}
                         >
                           {agreementSignatureStatus === 'signed'
-                            ? 'Avtalen er juridisk signert og milepælen er låst.'
+                            ? t('prodTimeline.s004')
                             : agreementSignatureStatus === 'changes_requested'
-                              ? 'Signaturflyten krever endringer før prosjektet kan gå videre her.'
+                              ? t('prodTimeline.s049')
                               : agreementSignatureStatus === 'rejected'
-                                ? 'Avtalen er avvist i signaturflyten og må avklares i økonomi og klientsamarbeid.'
-                                : 'Juridisk signatur pågår fortsatt for denne milepælen.'}
+                                ? t('prodTimeline.s003')
+                                : t('prodTimeline.s018')}
                         </Typography>
                       ) : null}
                       {!readOnly && (
@@ -1583,8 +1595,8 @@ export default function ProducerTimelinePanel({
                           <Box sx={{ minWidth: { xs: '100%', md: 180 } }}>
                             <Select
                               size="small"
-                              aria-label={`Status for ${item.title}`}
-                              SelectDisplayProps={{ 'aria-label': `Status for ${item.title}` }}
+                              aria-label={t('prodTimeline.t013', { v0: item.title })}
+                              SelectDisplayProps={{ 'aria-label': t('prodTimeline.t013', { v0: item.title }) }}
                               value={statusDraftById[item.id] ?? normalizeTimelineStatusValue(item.status)}
                               onChange={(event) => handleStatusDraftChange(item.id, String(event.target.value))}
                               fullWidth
@@ -1612,7 +1624,8 @@ export default function ProducerTimelinePanel({
                             }
                             sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                           >
-                            Lagre status
+                            
+                            {t('prodTimeline.s025')}
                           </Button>
                           <Button
                             size="small"
@@ -1623,7 +1636,8 @@ export default function ProducerTimelinePanel({
                             disabled={loading || busyItemId === item.id}
                             sx={{ textTransform: 'none', fontWeight: 700 }}
                           >
-                            Fjern
+                            
+                            {t('prodTimeline.s010')}
                           </Button>
                           {onOpenReviews && reviewFocus ? (
                             <Button
@@ -1632,7 +1646,8 @@ export default function ProducerTimelinePanel({
                               onClick={() => onOpenReviews(reviewFocus)}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne i klientsamarbeid
+                              
+                              {t('prodTimeline.s057')}
                             </Button>
                           ) : null}
                           {onOpenEconomy && economyFocus ? (
@@ -1642,7 +1657,8 @@ export default function ProducerTimelinePanel({
                               onClick={() => onOpenEconomy(economyFocus)}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne i økonomi
+                              
+                              {t('prodTimeline.s058')}
                             </Button>
                           ) : null}
                           {onOpenShotList && shotListLinked ? (
@@ -1656,7 +1672,8 @@ export default function ProducerTimelinePanel({
                               })}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne shotlist
+                              
+                              {t('prodTimeline.s062')}
                             </Button>
                           ) : null}
                           {onOpenMedia && clientWorkspaceLinked ? (
@@ -1681,7 +1698,8 @@ export default function ProducerTimelinePanel({
                               onClick={() => onOpenReviews(reviewFocus)}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne i klientsamarbeid
+                              
+                              {t('prodTimeline.s057')}
                             </Button>
                           ) : null}
                           {onOpenEconomy && economyFocus ? (
@@ -1691,7 +1709,8 @@ export default function ProducerTimelinePanel({
                               onClick={() => onOpenEconomy(economyFocus)}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne i økonomi
+                              
+                              {t('prodTimeline.s058')}
                             </Button>
                           ) : null}
                           {onOpenShotList && shotListLinked ? (
@@ -1705,7 +1724,8 @@ export default function ProducerTimelinePanel({
                               })}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Åpne shotlist
+                              
+                              {t('prodTimeline.s062')}
                             </Button>
                           ) : null}
                           {onOpenMedia && clientWorkspaceLinked ? (
