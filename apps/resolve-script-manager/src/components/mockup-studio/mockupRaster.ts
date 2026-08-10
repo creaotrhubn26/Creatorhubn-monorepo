@@ -11,6 +11,7 @@
  * så vilkårlige skjermbilder fyller skjermen uten forhåndsprosessering.
  */
 
+import { convertFileSrc } from '../../api';
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, revealFromLocal, type Reveal } from './mockupMotion';
@@ -56,6 +57,34 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
   _imgCache.set(src, p);
   return p;
+}
+
+// ── Seedance-video-frames (compositing i eksport) ────────────────────────────
+const _videoCache = new Map<string, Promise<HTMLVideoElement>>();
+const _videoSafeSrc = (p: string): string => { try { return p.startsWith('data:') || p.startsWith('http') || p.startsWith('blob:') ? p : convertFileSrc(p); } catch { return p; } };
+function loadVideo(src: string): Promise<HTMLVideoElement> {
+  const cached = _videoCache.get(src);
+  if (cached) return cached;
+  const p = new Promise<HTMLVideoElement>((resolve, reject) => {
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'auto'; v.playsInline = true; v.crossOrigin = 'anonymous';
+    v.onloadeddata = () => resolve(v);
+    v.onerror = () => reject(new Error('Kunne ikke laste video'));
+    v.src = _videoSafeSrc(src);
+  });
+  _videoCache.set(src, p);
+  return p;
+}
+/** Søk et video-element til gitt tid (loopet over klipp-lengden) og vent til framen er klar. */
+function seekVideo(v: HTMLVideoElement, timeSec: number): Promise<void> {
+  return new Promise((resolve) => {
+    const dur = v.duration || 0;
+    const target = dur > 0 ? timeSec % dur : 0;
+    if (Math.abs(v.currentTime - target) < 0.02) { resolve(); return; }
+    const on = () => { v.removeEventListener('seeked', on); resolve(); };
+    v.addEventListener('seeked', on);
+    v.currentTime = target;
+  });
 }
 
 // ── Hjelpere ────────────────────────────────────────────────────────────────
@@ -624,8 +653,9 @@ export function measureTextHeight(t: MockupTextSlot): number {
   return hardLines * t.size * t.lineHeight;
 }
 
-/** Frittstående bilde-element (mat-foto/collage): avrundet, fit cover/contain, valgfri skygge + rotasjon. */
-function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudioModel').MockupImageSlot, img: HTMLImageElement): void {
+/** Frittstående bilde-element (mat-foto/collage/VIDEO-frame): avrundet, fit cover/contain, skygge, rotasjon.
+ *  Kilde kan være bilde ELLER video-element (Seedance-klipp) — eksplisitte kilde-dims. */
+function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudioModel').MockupImageSlot, source: CanvasImageSource, sw: number, sh: number): void {
   ctx.save();
   if (im.rotation) { const cx = im.x + im.w / 2, cy = im.y + im.h / 2; ctx.translate(cx, cy); ctx.rotate((im.rotation * Math.PI) / 180); ctx.translate(-cx, -cy); }
   if (im.shadow) {
@@ -636,7 +666,13 @@ function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudio
   }
   roundRectPath(ctx, im.x, im.y, im.w, im.h, im.radius);
   ctx.save(); ctx.clip();
-  drawFitted(ctx, img, im.x, im.y, im.w, im.h, im.fit);
+  if (sw && sh) {
+    const tA = im.w / im.h, sA = sw / sh;
+    let rw = im.w, rh = im.h;
+    if (im.fit === 'contain') { ctx.fillStyle = '#0c0e16'; ctx.fillRect(im.x, im.y, im.w, im.h); if (sA > tA) rh = im.w / sA; else rw = im.h * sA; }
+    else { if (sA > tA) rw = im.h * sA; else rh = im.w / sA; } // cover
+    ctx.drawImage(source, im.x + (im.w - rw) / 2, im.y + (im.h - rh) / 2, rw, rh);
+  }
   ctx.restore();
   ctx.restore();
 }
@@ -911,7 +947,7 @@ function applyWarmth(ctx: CanvasRenderingContext2D, canvasEl: HTMLCanvasElement,
   ctx.restore();
 }
 
-export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean; anim?: { t: number }; transparent?: boolean }): Promise<HTMLCanvasElement> {
+export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAnnotations?: boolean; anim?: { t: number }; transparent?: boolean; videoTime?: number }): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(doc.canvas.w * scale);
   canvas.height = Math.round(doc.canvas.h * scale);
@@ -975,10 +1011,15 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
       const im = doc.images[i];
       const rev = t != null ? revealOf(im.id, 'image', i, doc.images.length) : null;
       if (rev && rev.alpha <= 0.001) continue;
-      const img = await loadImage(im.image).catch(() => null);
-      if (!img) continue;
-      if (rev) withReveal(ctx, rev, im.x + im.w / 2, im.y + im.h / 2, () => drawImageSlot(ctx, im, img));
-      else drawImageSlot(ctx, im, img);
+      let source: CanvasImageSource | null = null, sw = 0, sh = 0;
+      // Compositing: Seedance-klipp-frame ved eksport (opts.videoTime); ellers poster-bilde.
+      if (opts?.videoTime != null && im.video) {
+        try { const v = await loadVideo(im.video); await seekVideo(v, opts.videoTime); source = v; sw = v.videoWidth; sh = v.videoHeight; } catch { source = null; }
+      }
+      if (!source) { const img = await loadImage(im.image).catch(() => null); if (!img) continue; source = img; sw = img.naturalWidth; sh = img.naturalHeight; }
+      const src = source, cw = sw, ch = sh;
+      if (rev) withReveal(ctx, rev, im.x + im.w / 2, im.y + im.h / 2, () => drawImageSlot(ctx, im, src, cw, ch));
+      else drawImageSlot(ctx, im, src, cw, ch);
     }
   }
 
@@ -1028,7 +1069,8 @@ export async function renderMotionFrames(doc: MockupDoc, cfg: { seconds: number;
     const prog = f / (total - 1);
     const raw = prog <= 1 - hold ? prog / (1 - hold) : 1;
     const t = iv + raw * (ov - iv);
-    frames.push(await rasterizeMockup(doc, scale, { anim: { t } }));
+    // Seedance-klipp komposittes: hver frame ved reel-tid f/fps sek (loopes over klipp-lengden).
+    frames.push(await rasterizeMockup(doc, scale, { anim: { t }, videoTime: f / cfg.fps }));
     onProgress?.(f + 1, total);
   }
   return frames;
