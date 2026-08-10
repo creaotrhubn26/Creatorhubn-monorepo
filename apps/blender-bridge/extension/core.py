@@ -425,6 +425,14 @@ TOOLS: dict[str, dict] = {
 }
 
 
+# Geometry Nodes-verktøyene bor i egen modul — merges inn i katalogen her.
+try:
+    from . import geometry_nodes as _gn
+except ImportError:  # flat import i headless-testene
+    import geometry_nodes as _gn
+TOOLS.update(_gn.GN_TOOLS)
+
+
 def call_tool(name: str, args: dict | None = None) -> dict:
     if name not in TOOLS:
         raise ValueError(f"ukjent verktøy '{name}'")
