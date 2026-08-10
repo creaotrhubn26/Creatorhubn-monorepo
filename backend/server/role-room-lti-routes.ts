@@ -23,7 +23,7 @@ import {
   type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
 import { createEducationProductionRow } from "./role-room-education-productions-routes.js";
-import { insertEducationAssignmentRow } from "./role-room-education-assignments-routes.js";
+import { insertEducationAssignmentRow, ensureAssignmentViewColumn } from "./role-room-education-assignments-routes.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 const APP_URL = process.env.LTI_APP_URL?.trim() || "https://www.theroleroom.com/";
@@ -803,6 +803,9 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
           vurderingsform: body.vurderingsform,
         };
 
+        // Selvhel artifact_view-kolonnen (mig 0448) på module-poolen FØR en evt.
+        // transaksjon — robust mot Render auto-migrate-lag.
+        await ensureAssignmentViewColumn(pool);
         let productionRow: Record<string, unknown>;
         let assignmentRow: Record<string, unknown>;
         if (body.createProduction === true) {
