@@ -473,6 +473,11 @@ interface RoleRoomGoogleOauthState {
   createdByEmail?: string | null;
   targetConnectionUserId?: string | null;
   targetConnectionEmail?: string | null;
+  // 'youtube-analytics'-consenten: yt-analytics-scopene bes om ISOLERT
+  // (include_granted_scopes=false) og lagres som EGEN tilkobling
+  // (oauth_app='role_room_yt_analytics'), fordi yt-analytics-monetary IKKE kan
+  // dele grant med Drive. Flagget bæres hit så callback ruter til riktig rad.
+  youtubeAnalytics?: boolean;
   createdAt: number;
 }
 
@@ -2398,6 +2403,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     roleRoomEmail: string | null,
     googleProfile: { email: string; subject: string; profile: Record<string, unknown> },
     tokenBundle: NonNullable<RoleRoomGoogleTransferPayload['tokenBundle']>,
+    // Hvilken logisk tilkobling raden tilhører. Default 'role_room' = Workspace-
+    // tilkoblingen (Drive/Kalender/Gmail/YouTube). 'role_room_yt_analytics' er den
+    // isolerte YouTube-Analytics-granten (eget refresh-token, egne scopes) — den
+    // MÅ være separat fordi yt-analytics-monetary ikke kan dele grant med Drive.
+    oauthApp: string = 'role_room',
   ): Promise<RoleRoomGoogleConnectionRow> {
     if (!(await ensureRoleRoomGoogleTables())) {
       throw new Error('Role Room Google tables unavailable');
@@ -2416,9 +2426,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT *
          FROM role_room_google_connections
          WHERE user_id = $1
-           AND oauth_app = 'role_room'
+           AND oauth_app = $2
          LIMIT 1`,
-        [userId],
+        [userId, oauthApp],
       );
       const existingByUser = existingByUserResult.rows[0] ?? null;
 
@@ -2426,9 +2436,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT *
          FROM role_room_google_connections
          WHERE google_subject = $1
-           AND oauth_app = 'role_room'
+           AND oauth_app = $2
          LIMIT 1`,
-        [googleProfile.subject],
+        [googleProfile.subject, oauthApp],
       );
       const existingBySubject = existingBySubjectResult.rows[0] ?? null;
 
@@ -2453,7 +2463,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                connection_state = 'connected',
                last_error = NULL,
                profile = $10::jsonb,
-               oauth_app = 'role_room',
+               oauth_app = $11,
                updated_at = NOW(),
                last_used_at = NOW()
            WHERE id = $1
@@ -2469,6 +2479,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             expiryDate,
             JSON.stringify(tokenBundle.scopes ?? []),
             JSON.stringify(googleProfile.profile),
+            oauthApp,
           ],
         );
         await client.query('COMMIT');
@@ -2483,7 +2494,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9::jsonb,
-          'connected', NULL, $10::jsonb, 'role_room', NOW(), NOW(), NOW()
+          'connected', NULL, $10::jsonb, $11, NOW(), NOW(), NOW()
         )
         ON CONFLICT (user_id, oauth_app) DO UPDATE SET
           role_room_email = EXCLUDED.role_room_email,
@@ -2492,9 +2503,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_google_connections.access_token_encrypted),
           refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
           expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
-          -- OVERSKRIVER scopes (ikke union). Korrekt fordi inkrementelle consenter
-          -- bruker include_granted_scopes=true → Googles token-svar bærer HELE den
-          -- samlede bevilgningen (eksisterende + nye), ikke bare de nye scopene.
+          -- OVERSKRIVER scopes (ikke union). Korrekt per (user_id, oauth_app)-rad:
+          -- Workspace-raden ('role_room') akkumulerer via include_granted_scopes=true
+          -- (token-svaret bærer HELE bevilgningen); analytics-raden
+          -- ('role_room_yt_analytics') er en isolert grant der token-svaret alltid er
+          -- akkurat analytics-scopene. Hver rad = én logisk grant, så overskrive er riktig.
           scopes = EXCLUDED.scopes,
           connection_state = 'connected',
           last_error = NULL,
@@ -2513,6 +2526,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           expiryDate,
           JSON.stringify(tokenBundle.scopes ?? []),
           JSON.stringify(googleProfile.profile),
+          oauthApp,
         ],
       );
 
@@ -9168,6 +9182,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         createdByEmail: requestUser?.email ?? null,
         targetConnectionUserId,
         targetConnectionEmail,
+        youtubeAnalytics: isYoutubeAnalyticsConsent,
         createdAt: Date.now(),
       };
       roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
@@ -9186,10 +9201,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         : isLoginMode
           ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES]
           : [...ROLE_ROOM_GOOGLE_SCOPES];
+      // yt-analytics-monetary KAN IKKE evalueres sammen med Drive. include_granted_scopes
+      // fletter tidligere gitte Drive-scopes inn i denne forespørselen → Google avviser
+      // («scopes that cannot be requested together»). Derfor MÅ analytics-consenten hentes
+      // isolert (false); den blir et eget refresh-token på oauth_app='role_room_yt_analytics'.
+      const includeGrantedScopes = !isLoginMode && !isYoutubeAnalyticsConsent;
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
         scope: requestedScopes,
-        include_granted_scopes: !isLoginMode,
+        include_granted_scopes: includeGrantedScopes,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),
@@ -9621,6 +9641,34 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           platformKey: 'google',
           clientEmail: googleEmail ?? null,
         });
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrGoogleStatus: 'success',
+            rrGoogleMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        );
+        return;
+      }
+
+      // YouTube-Analytics-consent: isolert grant (kun yt-analytics-scopene,
+      // include_granted_scopes=false). Lagres som EGEN tilkobling
+      // (oauth_app='role_room_yt_analytics') så den IKKE overskriver Workspace-
+      // tokenet — yt-analytics-monetary kan ikke dele grant med Drive. Kortslutter
+      // FØR Workspace-link-upserten under (som ellers ville klobbet 'role_room').
+      if (oauthState.youtubeAnalytics) {
+        const analyticsUserId = oauthState.targetConnectionUserId ?? oauthState.createdByUserId ?? null;
+        const analyticsEmail = oauthState.targetConnectionEmail ?? oauthState.createdByEmail ?? null;
+        if (!analyticsUserId) {
+          redirectWithError(oauthState.returnPath, 'Fant ikke brukeren som skal koble YouTube Analytics', oauthState.browserOrigin);
+          return;
+        }
+        await upsertRoleRoomGoogleConnection(
+          analyticsUserId,
+          analyticsEmail,
+          { email: googleEmail, subject: googleSubject, profile: googleProfile },
+          tokenBundle,
+          'role_room_yt_analytics',
+        );
         res.redirect(
           buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
             rrGoogleStatus: 'success',
