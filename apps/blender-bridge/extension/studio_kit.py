@@ -148,11 +148,23 @@ def add_softbox(name: str, position: list, size: float = 1.2,
 
     fabric = _ensure_material("MAT_SoftboxFabric", [0.02, 0.02, 0.02], roughness=0.9)
     diffusion = _ensure_material("MAT_Diffusion", [0.95, 0.95, 0.95], roughness=0.6)
-    body = _box(f"{name}_Body", [size, size, 0.35], [0, 0, 0], "LIGHTING", fabric)
+    metal = _ensure_material("MAT_GripMetal", [0.12, 0.12, 0.13], roughness=0.35, metallic=1.0)
+    # konisk frustum (liten bakplate → stor front) — ekte softbox-form
+    back, half = size * 0.18, size / 2
+    depth = size * 0.45
+    verts = [(-back, -back, depth), (back, -back, depth), (back, back, depth), (-back, back, depth),
+             (-half, -half, 0), (half, -half, 0), (half, half, 0), (-half, half, 0)]
+    faces = [(0, 1, 2, 3), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+    body = _mesh_object(f"{name}_Body", verts, faces, "LIGHTING", fabric)
     body.parent = root
-    front = _box(f"{name}_Diffusion", [size * 0.94, size * 0.94, 0.01],
-                 [0, 0, -0.18], "LIGHTING", diffusion)
+    front = _box(f"{name}_Diffusion", [size * 0.96, size * 0.96, 0.012],
+                 [0, 0, 0.01], "LIGHTING", diffusion)
     front.parent = root
+    rim = _box(f"{name}_Rim", [size * 1.02, size * 1.02, 0.03], [0, 0, 0.02], "LIGHTING", metal)
+    rim.parent = root
+    # yoke + speedring bak
+    yoke = _box(f"{name}_Yoke", [0.06, 0.06, 0.22], [0, 0, depth + 0.11], "LIGHTING", metal)
+    yoke.parent = root
 
     light_data = bpy.data.lights.new(f"{name}_Light", "AREA")
     light_data.shape = "DISK" if shape == "disk" else "SQUARE"
@@ -162,7 +174,25 @@ def add_softbox(name: str, position: list, size: float = 1.2,
     light = bpy.data.objects.new(f"{name}_Light", light_data)
     _studio_collection("LIGHTING").objects.link(light)
     light.parent = root
-    light.location = Vector([0, 0, -0.20])
+    # foran diffusjonsflata (z=0.01, åpning mot -Z) — flata er opak og ville
+    # ellers blokkert alt; ekte transmisjon kan komme senere
+    light.location = Vector([0, 0, -0.06])
+
+    # C-stand: vertikal pole fra gulvet + tre bein (world-rom, egen sub-rigg
+    # så stativet står rett uansett hvordan boksen tiltes)
+    stand_root = bpy.data.objects.new(f"{name}_Stand", None)
+    stand_root.empty_display_size = 0.1
+    _studio_collection("GRIP").objects.link(stand_root)
+    stand_root.location = Vector([position[0], position[1], 0])
+    pole_h = max(position[2] - 0.1, 0.5)
+    pole = _box(f"{name}_Pole", [0.035, 0.035, pole_h], [0, 0, pole_h / 2], "GRIP", metal)
+    pole.parent = stand_root
+    for i, angle in enumerate((15, 135, 255)):
+        rad = math.radians(angle)
+        leg = _box(f"{name}_Leg{i}", [0.03, 0.55, 0.02],
+                   [0.24 * math.cos(rad), 0.24 * math.sin(rad), 0.05], "GRIP", metal)
+        leg.rotation_euler = (0, 0, rad + math.pi / 2)
+        leg.parent = stand_root
 
     if aim_at is not None:
         direction = Vector(aim_at) - Vector(position)

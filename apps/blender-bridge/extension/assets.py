@@ -182,6 +182,29 @@ def set_material_texture(material: str, parameter: str, image_path: str) -> dict
     return {"material": material, "parameter": parameter, "image": os.path.basename(image_path)}
 
 
+def append_from_blend(filepath: str, object_name: str, new_name: str | None = None,
+                      location: list | None = None) -> dict:
+    """Hent ett objekt fra en .blend-fil (asset-bibliotek/master-filer).
+    Lister gyldige navn i feilmeldingen ved bom."""
+    if not os.path.exists(filepath):
+        raise ValueError(f"fila finnes ikke: {filepath}")
+    core._undo_push(f"append {object_name}")
+    with bpy.data.libraries.load(filepath) as (src, dst):
+        if object_name not in src.objects:
+            sample = sorted(src.objects)[:30]
+            raise ValueError(f"ukjent objekt '{object_name}' — eksempler: {sample}")
+        dst.objects = [object_name]
+    obj = dst.objects[0]
+    bpy.context.scene.collection.objects.link(obj)
+    if new_name:
+        obj.name = new_name
+    if location:
+        from mathutils import Vector
+        obj.location = Vector(location)
+    return {"appended": obj.name, "type": obj.type,
+            "dimensions": list(obj.dimensions)}
+
+
 def configure_render(exposure: float | None = None, view_transform: str | None = None,
                      look: str | None = None, film_transparent: bool | None = None) -> dict:
     """Fargestyring/eksponering — AgX (default i Blender 5) håndterer høylys
@@ -213,6 +236,7 @@ def save_blend(filepath: str) -> dict:
 
 
 ASSET_TOOLS = {
+    "append_from_blend": {"level": "safe", "fn": append_from_blend, "description": "Hent ett objekt fra en .blend-fil (asset-bibliotek). Args: filepath, object_name, new_name?, location?. Feilmelding lister gyldige navn.", "mutates": True},
     "configure_render": {"level": "modify", "fn": configure_render, "description": "Fargestyring: exposure (stops), view_transform (AgX|Filmic|Standard), look (f.eks. 'AgX - Punchy'), film_transparent?. Fotografisk høylys-håndtering.", "mutates": True},
     "save_blend": {"level": "modify", "fn": save_blend, "description": "Lagre scenen som .blend (master-fila for asset-biblioteket). Args: filepath.", "mutates": False},
     "import_asset": {"level": "safe", "fn": import_asset, "description": "Importer 3D-asset (glb/gltf/fbx/obj/usd/usdz). Args: filepath, name_prefix?. Returnerer nye objektnavn.", "mutates": True},
