@@ -11,6 +11,8 @@ import type {
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS } from '../../utils/feedPlanner';
 import type { RoleRoomFeedPostConcept } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type FeedPlanTimelineProps = {
   posts: RoleRoomFeedPost[];
@@ -48,6 +50,7 @@ export default function FeedPlanTimeline({
   onAutoSchedule,
   onClearSchedule,
 }: FeedPlanTimelineProps) {
+  const { t } = useT();
   const hasAnyScheduled = useMemo(() => posts.some((post) => Boolean(post.scheduledFor)), [posts]);
 
   const orderedPosts = useMemo(() => {
@@ -74,14 +77,14 @@ export default function FeedPlanTimeline({
         <Stack direction="row" spacing={0.8} alignItems="center">
           <CalendarMonthIcon fontSize="small" sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.92rem' }}>
-            Innholdsplan
+            {t('feedPlanTl.s004')}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.78rem' }}>
-            {hasAnyScheduled ? `${posts.filter((p) => p.scheduledFor).length} av ${posts.length} planlagt` : 'Ingen datoer satt'}
+            {hasAnyScheduled ? t('feedPlanTl.p00', { v0: posts.filter((p) => p.scheduledFor).length, v1: posts.length }) : t('feedPlanTl.s003')}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.6}>
-          <Tooltip title="Foreslår man/ons/fre 09:00 fra neste mandag (ulåste posts)">
+          <Tooltip title={t('feedPlanTl.s001')}>
             <Button
               size="small"
               variant={hasAnyScheduled ? 'outlined' : 'contained'}
@@ -103,7 +106,7 @@ export default function FeedPlanTimeline({
                     }),
               }}
             >
-              {hasAnyScheduled ? 'Auto-planlegg' : 'Sett datoer automatisk'}
+              {hasAnyScheduled ? t('feedPlanTl.s000') : t('feedPlanTl.s006')}
             </Button>
           </Tooltip>
           {hasAnyScheduled ? (
@@ -117,7 +120,7 @@ export default function FeedPlanTimeline({
                 '&:hover': { bgcolor: 'rgba(148,163,184,0.06)' },
               }}
             >
-              Tøm
+              {t('feedPlanTl.s007')}
             </Button>
           ) : null}
         </Stack>
@@ -134,8 +137,7 @@ export default function FeedPlanTimeline({
           }}
         >
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.84rem', lineHeight: 1.5 }}>
-            Postene har ingen datoer ennå. Klikk <strong>«Sett datoer automatisk»</strong> over — så
-            foreslår jeg et publiseringsskjema (man/ons/fre 09:00). Du kan justere hver dato etterpå.
+            {t('feedPlanTl.s005')} <strong>{t('feedPlanTl.s010')}</strong> {t('feedPlanTl.s009')}
           </Typography>
         </Box>
       ) : null}
@@ -213,7 +215,7 @@ export default function FeedPlanTimeline({
                     #{index + 1} · {conceptLabel}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.62rem' }}>
-                    {brandSnapshot?.companyName || 'merke'}
+                    {brandSnapshot?.companyName || t('feedPlanTl.s008')}
                   </Typography>
                 </Stack>
               </Stack>
@@ -229,7 +231,7 @@ export default function FeedPlanTimeline({
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.66rem', fontStyle: 'italic' }}>
-                  Ingen dato satt
+                  {t('feedPlanTl.s002')}
                 </Typography>
               )}
             </Box>

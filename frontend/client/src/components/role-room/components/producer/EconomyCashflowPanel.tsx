@@ -28,16 +28,18 @@ import {
   YAxis,
 } from 'recharts';
 import { useProducerEconomy } from '../../hooks/useProducerEconomy';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface EconomyCashflowPanelProps {
   projectId: string;
 }
 
-const PHASE_LABELS: Record<string, string> = {
-  preproduction: 'Pre-produksjon',
-  production: 'Produksjon',
-  postproduction: 'Post-produksjon',
-};
+const buildPHASE_LABELS = (t: TFn): Record<string, string> => ({
+  preproduction: t('cashflow.s010'),
+  production: t('cashflow.s011'),
+  postproduction: t('cashflow.s009'),
+});
 
 function formatCurrency(value: number): string {
   if (!Number.isFinite(value) || value === 0) return '0';
@@ -45,6 +47,8 @@ function formatCurrency(value: number): string {
 }
 
 export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanelProps) {
+  const { t } = useT();
+  const PHASE_LABELS = useMemo(() => buildPHASE_LABELS(t), [t]);
   const { items, loading, error } = useProducerEconomy(projectId);
 
   // Bygg en tidsserie pr. uke basert på item.created_at som proxy for
@@ -122,19 +126,18 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
   }, [items]);
 
   if (loading && items.length === 0) {
-    return <Alert severity="info">Laster cashflow-data…</Alert>;
+    return <Alert severity="info">{t('cashflow.s008')}</Alert>;
   }
 
   if (error) {
-    return <Alert severity="error">Kunne ikke laste cashflow: {String(error)}</Alert>;
+    return <Alert severity="error">{t('cashflow.s007')} {String(error)}</Alert>;
   }
 
   if (items.length === 0) {
     return (
       <Box sx={{ p: 2 }}>
         <Alert severity="info">
-          Cashflow vises når du har opprettet budsjett-linjer i Linjer-fanen. Tidsserien grupperer per uke
-          basert på når linjen ble opprettet, og viser kumulativ utvikling for estimat, godkjent og faktisk.
+          {t('cashflow.s001')}
         </Alert>
       </Box>
     );
@@ -151,11 +154,11 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
         }}
       >
         {[
-          { label: 'Estimat', value: totals.estimate, tone: 'rgba(148,163,184,0.18)', fg: '#e2e8f0' },
-          { label: 'Godkjent', value: totals.approved, tone: 'rgba(59,130,246,0.18)', fg: '#bfdbfe' },
-          { label: 'Faktisk', value: totals.actual, tone: 'rgba(168,85,247,0.18)', fg: '#ddd6fe' },
+          { label: t('cashflow.s002'), value: totals.estimate, tone: 'rgba(148,163,184,0.18)', fg: '#e2e8f0' },
+          { label: t('cashflow.s005'), value: totals.approved, tone: 'rgba(59,130,246,0.18)', fg: '#bfdbfe' },
+          { label: t('cashflow.s004'), value: totals.actual, tone: 'rgba(168,85,247,0.18)', fg: '#ddd6fe' },
           {
-            label: 'Avvik',
+            label: t('cashflow.s000'),
             value: totals.approved > 0 ? ((totals.actual - totals.approved) / totals.approved) * 100 : 0,
             tone:
               totals.approved === 0
@@ -200,11 +203,10 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
         }}
       >
         <Typography sx={{ color: '#fff', fontWeight: 800, mb: 0.5 }}>
-          Kumulativ utvikling
+          {t('cashflow.s006')}
         </Typography>
         <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.84rem', mb: 1.2 }}>
-          Tidsserien grupperer pr. uke fra første budsjett-linje til siste. Forskjellen mellom Godkjent og
-          Faktisk viser hvor mye av rammen som faktisk har blitt brukt.
+          {t('cashflow.s012')}
         </Typography>
         <Box sx={{ height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -221,9 +223,9 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
                 formatter={(value, name) => [`${formatCurrency(Number(value) || 0)} NOK`, String(name)]}
               />
               <Legend />
-              <Area type="monotone" dataKey="estimate" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.18} name="Estimat" />
-              <Area type="monotone" dataKey="approved" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.22} name="Godkjent" />
-              <Area type="monotone" dataKey="actual" stroke="#a855f7" fill="#a855f7" fillOpacity={0.32} name="Faktisk" />
+              <Area type="monotone" dataKey="estimate" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.18} name={t('cashflow.s002')} />
+              <Area type="monotone" dataKey="approved" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.22} name={t('cashflow.s005')} />
+              <Area type="monotone" dataKey="actual" stroke="#a855f7" fill="#a855f7" fillOpacity={0.32} name={t('cashflow.s004')} />
             </AreaChart>
           </ResponsiveContainer>
         </Box>
@@ -240,7 +242,7 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
           }}
         >
           <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-            Estimat vs faktisk per fase
+            {t('cashflow.s003')}
           </Typography>
           <Stack spacing={1}>
             {phaseDistribution.map((p) => {
@@ -275,10 +277,10 @@ export default function EconomyCashflowPanel({ projectId }: EconomyCashflowPanel
                   </Typography>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap">
                     <Chip size="small" label={`Est ${formatCurrency(p.estimate)} NOK`} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
-                    <Chip size="small" label={`Faktisk ${formatCurrency(p.actual)} NOK`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
+                    <Chip size="small" label={t('cashflow.p01', { v0: formatCurrency(p.actual) })} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
                     <Chip
                       size="small"
-                      label={`Avvik ${variance === null ? '—' : `${variance > 0 ? '+' : ''}${variance.toFixed(1)}%`}`}
+                      label={t('cashflow.p00', { v0: variance === null ? '—' : `${variance > 0 ? '+' : ''}${variance.toFixed(1)}%` })}
                       sx={{ bgcolor: tone, color: fg, fontWeight: 700 }}
                     />
                   </Stack>

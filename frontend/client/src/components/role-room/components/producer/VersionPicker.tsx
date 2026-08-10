@@ -18,6 +18,8 @@ import {
   Person as PersonIcon,
   AutoAwesome as AgentIcon,
 } from '@mui/icons-material';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface VersionItem {
   id: string;
@@ -49,6 +51,7 @@ export function VersionPicker({
   title, versions, loading, onActivate, onAfterActivate,
   accentColor = '#ec4899',
 }: Props) {
+  const { t } = useT();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,10 +91,10 @@ export function VersionPicker({
                 fontWeight: 700,
                 '&:hover': { borderColor: accentColor, bgcolor: `${accentColor}10` },
               }}>
-        {loading ? 'Laster …'
-          : versions.length === 0 ? 'Ingen versjoner'
+        {loading ? t('versionPicker.s003')
+          : versions.length === 0 ? t('versionPicker.s002')
           : active ? `v${active.versionNumber}${active.label ? ` · ${active.label}` : ''}`
-          : `${versions.length} versjoner`}
+          : t('versionPicker.p00', { v0: versions.length })}
       </Button>
 
       <Menu anchorEl={anchorEl}
@@ -110,7 +113,7 @@ export function VersionPicker({
             {title}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', mt: 0.2 }}>
-            Velg en versjon for å aktivere den
+            {t('versionPicker.s004')}
           </Typography>
         </Box>
         <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)' }} />
@@ -148,7 +151,7 @@ export function VersionPicker({
                         : <PersonIcon sx={{ fontSize: 11 }} />}
                       label={v.generatedByKind === 'agent'
                         ? 'Agent'
-                        : (v.generatedByName?.split('@')[0] ?? 'Bruker')}
+                        : (v.generatedByName?.split('@')[0] ?? t('versionPicker.s001'))}
                       sx={{
                         height: 18,
                         fontSize: '0.62rem',
@@ -160,7 +163,7 @@ export function VersionPicker({
                 {v.isActive && (
                   <Chip size="small"
                         icon={<CheckIcon sx={{ fontSize: 11 }} />}
-                        label="Aktiv"
+                        label={t('versionPicker.s000')}
                         sx={{
                           height: 18,
                           fontSize: '0.62rem',

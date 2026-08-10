@@ -11,6 +11,8 @@ import {
 import roleRoomAgentService, {
   type RoleRoomGrantedAssets,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 /**
  * Shown to the content producer at login: a clear overview of which Pages /
@@ -48,6 +50,7 @@ function platformIcon(platform: 'meta' | 'linkedin', assetType: string) {
 export default function GrantedAssetsCard({
   perspective = 'producer',
 }: { perspective?: 'producer' | 'client' } = {}) {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<RoleRoomGrantedAssets | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +64,7 @@ export default function GrantedAssetsCard({
         const result = await roleRoomAgentService.fetchGrantedAdsAssets();
         if (!cancelled) setData(result);
       } catch {
-        if (!cancelled) setError('Klarte ikke å hente tilgangsoversikten.');
+        if (!cancelled) setError(t('grantedAssets.s010'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -81,14 +84,14 @@ export default function GrantedAssetsCard({
         <AdminIcon sx={{ fontSize: 18, color: '#86efac' }} />
         <Typography sx={LABEL}>
           {perspective === 'client'
-            ? 'Tilganger du har gitt produsenten'
-            : 'Din admin-tilgang fra kunden'}
+            ? t('grantedAssets.s012')
+            : t('grantedAssets.s005')}
         </Typography>
         {data?.hasAdminAccess && (
           <Chip
             size="small"
             icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-            label={`${data.adminAssets.length} med admin`}
+            label={t('grantedAssets.p00', { v0: data.adminAssets.length })}
             sx={{
               fontWeight: 700,
               color: '#86efac',
@@ -102,7 +105,7 @@ export default function GrantedAssetsCard({
       {loading && (
         <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 0.5 }}>
           <CircularProgress size={14} sx={{ color: 'rgba(226,232,240,0.6)' }} />
-          <Typography sx={SUBTLE}>Henter tilgang …</Typography>
+          <Typography sx={SUBTLE}>{t('grantedAssets.s007')}</Typography>
         </Stack>
       )}
 
@@ -111,8 +114,8 @@ export default function GrantedAssetsCard({
       {noConnections && (
         <Typography sx={SUBTLE}>
           {perspective === 'client'
-            ? 'Ingen annonsekontoer er koblet ennå. Når du gir produsenten admin-tilgang til en Facebook/Instagram-side eller LinkedIn-konto, vises de her.'
-            : 'Ingen annonsekontoer er koblet ennå. Når kunden gir deg admin-tilgang til en Facebook/Instagram-side eller LinkedIn-konto, vises de her.'}
+            ? t('grantedAssets.s008')
+            : t('grantedAssets.s009')}
         </Typography>
       )}
 
@@ -166,20 +169,20 @@ export default function GrantedAssetsCard({
       {data && !loading && (metaConnected || linkedinConnected) && data.adminAssets.length === 0 && (
         <Alert severity="warning" sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}>
           {perspective === 'client'
-            ? <>Produsenten er koblet til, men har ikke <strong>admin</strong>-tilgang til noen sider ennå. Gi produsenten admin (MANAGE / ACCOUNT_MANAGER) så de kan publisere og drifte annonser på vegne av dere.</>
-            : <>Du er koblet til, men har ikke fått <strong>admin</strong>-tilgang til noen sider ennå. Be kunden gi deg admin (MANAGE / ACCOUNT_MANAGER) så du kan publisere og drifte annonser.</>}
+            ? <>{t('grantedAssets.s011')} <strong>admin</strong>{t('grantedAssets.s001')}</>
+            : <>Du er koblet til, men har ikke fått <strong>admin</strong>{t('grantedAssets.s000')}</>}
         </Alert>
       )}
 
       {/* Non-admin (limited) Meta pages, listed for transparency */}
       {metaConnected && (data?.platforms.meta.pages?.some((p) => !p.isAdmin)) && (
         <Box>
-          <Typography sx={{ ...SUBTLE, mb: 0.5 }}>Begrenset tilgang (Meta):</Typography>
+          <Typography sx={{ ...SUBTLE, mb: 0.5 }}>{t('grantedAssets.s004')}</Typography>
           <Stack direction="row" flexWrap="wrap" gap={0.5}>
             {data!.platforms.meta.pages!
               .filter((p) => !p.isAdmin)
               .map((p) => (
-                <Tooltip key={p.id} title={p.accessLabels.join(', ') || 'Begrenset'}>
+                <Tooltip key={p.id} title={p.accessLabels.join(', ') || t('grantedAssets.s002')}>
                   <Chip
                     size="small"
                     label={p.name}
@@ -199,7 +202,7 @@ export default function GrantedAssetsCard({
       {/* Non-admin (limited) LinkedIn assets */}
       {linkedinConnected && (data?.platforms.linkedin.assets?.some((a) => !a.isAdmin)) && (
         <Box>
-          <Typography sx={{ ...SUBTLE, mb: 0.5 }}>Begrenset tilgang (LinkedIn):</Typography>
+          <Typography sx={{ ...SUBTLE, mb: 0.5 }}>{t('grantedAssets.s003')}</Typography>
           <Stack direction="row" flexWrap="wrap" gap={0.5}>
             {data!.platforms.linkedin.assets!
               .filter((a) => !a.isAdmin)

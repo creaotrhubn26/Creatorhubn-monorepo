@@ -7,6 +7,8 @@ import {
 } from '@mui/icons-material';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface LinkedInConnectionCardProps {
   projectId: string;
@@ -22,6 +24,7 @@ interface LinkedInConnectionCardProps {
 export default function LinkedInConnectionCard({
   projectId,
 }: LinkedInConnectionCardProps): React.ReactElement {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<{
     connected: boolean;
@@ -76,7 +79,7 @@ export default function LinkedInConnectionCard({
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success || !data.authorizationUrl) {
-        setError(data?.error ?? 'Kunne ikke starte LinkedIn OAuth.');
+        setError(data?.error ?? t('liConn.s004'));
         return;
       }
       const popup = window.open(
@@ -85,7 +88,7 @@ export default function LinkedInConnectionCard({
         'width=720,height=820,resizable=yes',
       );
       if (!popup) {
-        setError('Popupen ble blokkert. Tillat popup for denne siden og prøv igjen.');
+        setError(t('liConn.s007'));
       }
     } catch (err) {
       setError((err as Error).message);
@@ -123,13 +126,13 @@ export default function LinkedInConnectionCard({
           in
         </Box>
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.92rem' }}>
-          LinkedIn-publisering
+          {t('liConn.s006')}
         </Typography>
         {profile.connected ? (
           <Chip
             size="small"
             icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-            label="Koblet"
+            label={t('liConn.s003')}
             sx={{
               ml: 1,
               fontWeight: 700,
@@ -146,7 +149,7 @@ export default function LinkedInConnectionCard({
         <Stack direction="row" spacing={1} alignItems="center">
           <CircularProgress size={14} />
           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>
-            Sjekker LinkedIn-status…
+            {t('liConn.s008')}
           </Typography>
         </Stack>
       ) : profile.connected ? (
@@ -187,7 +190,7 @@ export default function LinkedInConnectionCard({
                 whiteSpace: 'nowrap',
               }}
             >
-              {profile.name ?? 'LinkedIn-konto'}
+              {profile.name ?? t('liConn.s005')}
             </Typography>
             {profile.email ? (
               <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.72rem' }}>
@@ -199,8 +202,7 @@ export default function LinkedInConnectionCard({
       ) : (
         <Stack spacing={1}>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem' }}>
-            Koble LinkedIn for å publisere som personlig profil eller bedriftsside. Hvis kunden eier
-            bedriftssiden, kan vi sende dem en e-post som inviterer deg som Innholdsadministrator.
+            {t('liConn.s002')}
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button
@@ -220,7 +222,7 @@ export default function LinkedInConnectionCard({
                 '&:hover': { bgcolor: '#0958a8' },
               }}
             >
-              {connecting ? 'Åpner LinkedIn…' : 'Koble LinkedIn'}
+              {connecting ? t('liConn.s009') : t('liConn.s001')}
             </Button>
             <Button
               variant="outlined"
@@ -234,7 +236,7 @@ export default function LinkedInConnectionCard({
                 borderColor: 'rgba(59,130,246,0.4)',
               }}
             >
-              Be kunden om tilgang
+              {t('liConn.s000')}
             </Button>
           </Stack>
           {error ? (

@@ -8,6 +8,8 @@ import { InstagramBrandLogo } from './SocialBrandLogo';
 import roleRoomAgentService, {
   type RoleRoomInstagramConnection,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface PlatformSlot {
   id: 'instagram' | 'facebook_page' | 'tiktok' | 'linkedin' | 'youtube' | 'x' | 'threads';
@@ -42,6 +44,7 @@ export default function RoleRoomAgentConnectionsBar({
   onConnectInstagram,
   onConnectFacebookPage,
 }: RoleRoomAgentConnectionsBarProps): React.ReactElement {
+  const { t } = useT();
   const [igConnections, setIgConnections] = useState<RoleRoomInstagramConnection[]>([]);
   const [linkedInProfile, setLinkedInProfile] = useState<{
     connected: boolean;
@@ -85,7 +88,7 @@ export default function RoleRoomAgentConnectionsBar({
         // Previously a rejection here left `loading` stuck true forever and
         // swallowed the error — the bar just showed a permanent spinner.
         if (!cancelled) {
-          setLoadError('Kunne ikke hente tilkoblinger. Prøv å laste siden på nytt.');
+          setLoadError(t('agentConn.s003'));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -106,7 +109,7 @@ export default function RoleRoomAgentConnectionsBar({
       shortLabel: 'IG',
       color: '#ec4899',
       status: 'available',
-      hint: 'Koble Business eller Creator-konto',
+      hint: t('agentConn.s001'),
     });
     slots.push({
       id: 'facebook_page',
@@ -114,7 +117,7 @@ export default function RoleRoomAgentConnectionsBar({
       shortLabel: 'FB',
       color: '#3b82f6',
       status: 'available',
-      hint: 'Page-publisering + comments',
+      hint: t('agentConn.s004'),
     });
   } else {
     for (const c of igConnections) {
@@ -160,7 +163,7 @@ export default function RoleRoomAgentConnectionsBar({
         shortLabel: 'LI',
         color: '#0a66c2',
         status: 'available',
-        hint: 'Tekst, bilde, video og lenke-posts',
+        hint: t('agentConn.s007'),
       };
 
   // TikTok er live for inbox-mode publisering (kreator publiserer fra app).
@@ -180,7 +183,7 @@ export default function RoleRoomAgentConnectionsBar({
         shortLabel: 'TT',
         color: 'var(--role-cyan, #22d3ee)',
         status: 'available',
-        hint: 'Video til kreators TikTok-inbox',
+        hint: t('agentConn.s009'),
       };
 
   // Plattformer som ikke er ferdig integrert vises som "available" med hint
@@ -194,7 +197,7 @@ export default function RoleRoomAgentConnectionsBar({
       shortLabel: 'YT',
       color: '#ef4444',
       status: 'available',
-      hint: 'Shorts (≤60s vertikal video)',
+      hint: t('agentConn.s005'),
     },
   ];
 
@@ -224,19 +227,19 @@ export default function RoleRoomAgentConnectionsBar({
           minWidth: { xs: 60, md: 80 },
         }}
       >
-        Kontoer
+        {t('agentConn.s002')}
       </Typography>
       <Stack direction="row" spacing={0.8} sx={{ flex: 1 }}>
         {[...slots, ...comingSoon].map((slot, idx) => {
           if (slot.status === 'coming_soon') {
             return (
-              <Tooltip key={`${slot.id}-${idx}`} title={`${slot.label} kommer i neste fase`} disableInteractive>
+              <Tooltip key={`${slot.id}-${idx}`} title={t('agentConn.p03', { v0: slot.label })} disableInteractive>
                 <Chip
                   size="small"
                   label={slot.shortLabel}
                   data-testid={`connection-slot-${slot.id}`}
                   data-status="coming_soon"
-                  aria-label={`${slot.label} — kommer i neste fase`}
+                  aria-label={t('agentConn.p05', { v0: slot.label })}
                   sx={{
                     height: 24,
                     fontSize: '0.7rem',
@@ -263,7 +266,7 @@ export default function RoleRoomAgentConnectionsBar({
             return (
               <Tooltip
                 key={`${slot.id}-${idx}`}
-                title={isConnectable ? (slot.hint ?? `Koble til ${slot.label}`) : `${slot.label} — kommer snart`}
+                title={isConnectable ? (slot.hint ?? t('agentConn.p02', { v0: slot.label })) : t('agentConn.p06', { v0: slot.label })}
                 disableInteractive
               >
                 <Chip
@@ -274,8 +277,8 @@ export default function RoleRoomAgentConnectionsBar({
                   data-status={isConnectable ? 'available' : 'coming_soon'}
                   aria-label={
                     isConnectable
-                      ? `Koble til ${slot.label}`
-                      : `${slot.label} — kommer snart, ikke tilgjengelig ennå`
+                      ? t('agentConn.p02', { v0: slot.label })
+                      : t('agentConn.p07', { v0: slot.label })
                   }
                   onClick={handler}
                   clickable={isConnectable}
@@ -302,7 +305,7 @@ export default function RoleRoomAgentConnectionsBar({
           return (
             <Tooltip
               key={`${slot.id}-${idx}`}
-              title={`${slot.label}${slot.followerCount != null ? ` · ${formatCount(slot.followerCount)} følgere` : ''}`}
+              title={`${slot.label}${slot.followerCount != null ? t('agentConn.p00', { v0: formatCount(slot.followerCount) }) : ''}`}
               disableInteractive
             >
               <Stack
@@ -310,7 +313,7 @@ export default function RoleRoomAgentConnectionsBar({
                 spacing={0.6}
                 alignItems="center"
                 role="img"
-                aria-label={`${slot.label} tilkoblet${slot.followerCount != null ? `, ${formatCount(slot.followerCount)} følgere` : ''}`}
+                aria-label={t('agentConn.p04', { v0: slot.label, v1: slot.followerCount != null ? t('agentConn.p01', { v0: formatCount(slot.followerCount) }) : '' })}
                 data-testid={`connection-slot-${slot.id}`}
                 data-status="connected"
                 sx={{
@@ -365,12 +368,12 @@ export default function RoleRoomAgentConnectionsBar({
             }}
             data-testid="connections-bar-error"
           >
-            Tilkoblinger feilet
+            {t('agentConn.s008')}
           </Box>
         </Tooltip>
       ) : null}
       {loading || loadError ? null : igConnections.length === 0 ? (
-        <Tooltip title="Du må koble en konto for å begynne å publisere og lytte" disableInteractive>
+        <Tooltip title={t('agentConn.s000')} disableInteractive>
           <Box
             sx={{
               fontSize: '0.7rem',
@@ -384,7 +387,7 @@ export default function RoleRoomAgentConnectionsBar({
               flexShrink: 0,
             }}
           >
-            Start her
+            {t('agentConn.s006')}
           </Box>
         </Tooltip>
       ) : null}

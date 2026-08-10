@@ -15,6 +15,8 @@ import {
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import TrendingDownOutlinedIcon from '@mui/icons-material/TrendingDownOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -48,6 +50,7 @@ export default function ClientTiktokSpendPanel({
   configId: string;
   advertiserId?: string | null;
 }) {
+  const { t } = useT();
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [data, setData] = useState<Spend | null>(null);
   const [loading, setLoading] = useState(false);
@@ -70,30 +73,30 @@ export default function ClientTiktokSpendPanel({
       // Bruker eksisterende insights-endpoint som returnerer tiktok-metrics
       const r = await fetch(`/api/admin-room/agent/ads/configs/${configId}/insights?range=28`, { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Henting feilet');
+      if (!r.ok) throw new Error(d.error || t('ttSpend.s002'));
       if (!d.tiktok) {
         setData(null);
         return;
       }
-      const t = d.tiktok;
+      const tk = d.tiktok;
       // Beregn siste 7 dager fra dailyTrend
-      const trend = (t.dailyTrend ?? []).slice(-28);
+      const trend = (tk.dailyTrend ?? []).slice(-28);
       const last7 = trend.slice(-7).reduce((s: number, x: any) => s + (x.spend ?? 0), 0);
       const last28 = trend.reduce((s: number, x: any) => s + (x.spend ?? 0), 0);
 
       setData({
-        totalSpend: t.spend ?? last28,
+        totalSpend: tk.spend ?? last28,
         spendLast7d: last7,
         spendLast28d: last28,
         spendPrev28d: null,
-        clicks: t.clicks ?? 0,
-        conversions: t.conversions ?? 0,
-        costPerConversion: t.costPerConversion ?? 0,
-        topCampaigns: t.topCampaigns ?? [],
+        clicks: tk.clicks ?? 0,
+        conversions: tk.conversions ?? 0,
+        costPerConversion: tk.costPerConversion ?? 0,
+        topCampaigns: tk.topCampaigns ?? [],
         dailyTrend: trend,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Henting feilet');
+      setError(err instanceof Error ? err.message : t('ttSpend.s002'));
     } finally {
       setLoading(false);
     }
@@ -118,10 +121,10 @@ export default function ClientTiktokSpendPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Hva er brukt på TikTok-annonser?
+              {t('ttSpend.s004')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Penger som har gått fra ad-kontoen til TikTok siste 28 dager.
+              {t('ttSpend.s009')}
             </Typography>
           </Box>
         </Stack>
@@ -143,7 +146,7 @@ export default function ClientTiktokSpendPanel({
               mb: 2,
             }}>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 0.6 }}>
-                Brukt siste 4 uker
+                {t('ttSpend.s001')}
               </Typography>
               <Stack direction="row" alignItems="baseline" spacing={1.4}>
                 <Typography sx={{ fontSize: '2.6rem', fontWeight: 800, color: palette.tiktok, lineHeight: 1 }}>
@@ -155,7 +158,7 @@ export default function ClientTiktokSpendPanel({
                       ? <TrendingUpOutlinedIcon sx={{ color: '#fbbf24 !important', fontSize: 16 }} />
                       : <TrendingDownOutlinedIcon sx={{ color: '#34d399 !important', fontSize: 16 }} />
                     }
-                    label={trendDirection === 'up' ? 'Økende' : 'Synkende'}
+                    label={trendDirection === 'up' ? t('ttSpend.s017') : t('ttSpend.s012')}
                     size="small"
                     sx={{
                       bgcolor: trendDirection === 'up' ? 'rgba(251,191,36,0.18)' : 'rgba(52,211,153,0.18)',
@@ -166,7 +169,7 @@ export default function ClientTiktokSpendPanel({
                 ) : null}
               </Stack>
               <Typography sx={{ color: palette.textPrimary, fontSize: '0.96rem', mt: 1.4, fontStyle: 'italic' }}>
-                Tilsvarer ca. <strong>{fmtNok(data.spendLast28d / 28)}</strong> per dag.
+                {t('ttSpend.s013')} <strong>{fmtNok(data.spendLast28d / 28)}</strong> {t('ttSpend.s016')}
               </Typography>
             </Box>
 
@@ -179,7 +182,7 @@ export default function ClientTiktokSpendPanel({
             }}>
               <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Siste uke
+                  {t('ttSpend.s011')}
                 </Typography>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '1.3rem', fontWeight: 800, mt: 0.4 }}>
                   {fmtNok(data.spendLast7d)}
@@ -187,7 +190,7 @@ export default function ClientTiktokSpendPanel({
               </Box>
               <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Klikk på annonser
+                  {t('ttSpend.s006')}
                 </Typography>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '1.3rem', fontWeight: 800, mt: 0.4 }}>
                   {Math.round(data.clicks).toLocaleString('nb-NO')}
@@ -195,7 +198,7 @@ export default function ClientTiktokSpendPanel({
               </Box>
               <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Pris per kunde
+                  {t('ttSpend.s010')}
                 </Typography>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '1.3rem', fontWeight: 800, mt: 0.4 }}>
                   {data.costPerConversion > 0 ? fmtNok(data.costPerConversion) : '—'}
@@ -207,7 +210,7 @@ export default function ClientTiktokSpendPanel({
             {data.topCampaigns.length > 0 ? (
               <Box>
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 1.2 }}>
-                  Hva dro mest av spend?
+                  {t('ttSpend.s003')}
                 </Typography>
                 <Stack spacing={1}>
                   {data.topCampaigns.slice(0, 5).map((c, i) => {
@@ -229,13 +232,13 @@ export default function ClientTiktokSpendPanel({
                         </Stack>
                         <Stack direction="row" spacing={2}>
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                            {pct}% av total spend
+                            {pct}{t('ttSpend.s000')}
                           </Typography>
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                            {c.clicks} klikk
+                            {c.clicks} {t('ttSpend.s014')}
                           </Typography>
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                            {c.conversions} kunder
+                            {c.conversions} {t('ttSpend.s015')}
                           </Typography>
                         </Stack>
                       </Box>
@@ -248,7 +251,7 @@ export default function ClientTiktokSpendPanel({
         ) : (
           <Box sx={{ textAlign: 'center', py: 3 }}>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.92rem' }}>
-              Ingen annonser kjørt ennå.
+              {t('ttSpend.s005')}
             </Typography>
           </Box>
         )}
@@ -259,7 +262,7 @@ export default function ClientTiktokSpendPanel({
           startIcon={loading ? <CircularProgress size={14} sx={{ color: palette.accent }} /> : null}
           sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600, mt: 1 }}
         >
-          {loading ? 'Oppdaterer…' : 'Oppdater'}
+          {loading ? t('ttSpend.s008') : t('ttSpend.s007')}
         </Button>
       </CardContent>
     </Card>

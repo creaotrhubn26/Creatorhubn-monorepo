@@ -24,6 +24,8 @@ import {
 import roleRoomAgentService, {
   type RoleRoomDriveImage,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export type DriveMediaKind = 'image' | 'video' | 'media';
 
@@ -53,6 +55,7 @@ export default function GoogleDriveImagePicker({
   onPick,
   onPickMultiple,
 }: GoogleDriveImagePickerProps) {
+  const { t } = useT();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
@@ -89,7 +92,7 @@ export default function GoogleDriveImagePicker({
       setNotConnected(false);
       setFiles(result.files);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke hente Google Drive-filer.');
+      setError(caught instanceof Error ? caught.message : t('gdrivePicker.s003'));
     } finally {
       setLoading(false);
     }
@@ -131,7 +134,7 @@ export default function GoogleDriveImagePicker({
       });
       onClose();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke importere filen fra Drive.');
+      setError(caught instanceof Error ? caught.message : t('gdrivePicker.s005'));
     } finally {
       setImportingId(null);
     }
@@ -157,20 +160,20 @@ export default function GoogleDriveImagePicker({
       onPickMultiple(picked);
       onClose();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke importere ett eller flere filer.');
+      setError(caught instanceof Error ? caught.message : t('gdrivePicker.s004'));
     } finally {
       setBulkImporting(false);
     }
   };
 
   const headerTitle = kind === 'video'
-    ? 'Velg video fra Google Drive'
+    ? t('gdrivePicker.s010')
     : kind === 'media'
-      ? 'Velg bilde eller video fra Google Drive'
-      : 'Velg bilde fra Google Drive';
+      ? t('gdrivePicker.s008')
+      : t('gdrivePicker.s009');
   const headerSubtitle = isMulti
-    ? `Velg ${minPick === maxPick ? `${minPick}` : `${minPick}-${maxPick}`} filer (${selectedIds.length} valgt).`
-    : 'Henter filer fra kontoen som er koblet til prosjektet.';
+    ? t('gdrivePicker.p03', { v0: minPick === maxPick ? `${minPick}` : `${minPick}-${maxPick}`, v1: selectedIds.length })
+    : t('gdrivePicker.s002');
   const header = useMemo(
     () => (
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
@@ -182,7 +185,7 @@ export default function GoogleDriveImagePicker({
             {headerSubtitle}
           </Typography>
         </Stack>
-        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.75)' }}>
+        <IconButton onClick={onClose} aria-label={t('gdrivePicker.s006')} sx={{ color: 'rgba(226,232,240,0.75)' }}>
           <CloseIcon />
         </IconButton>
       </Stack>
@@ -212,7 +215,7 @@ export default function GoogleDriveImagePicker({
             size="small"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Søk i Drive (navn, tagger, foldere)"
+            placeholder={t('gdrivePicker.s007')}
             fullWidth
             InputProps={{
               startAdornment: (
@@ -244,7 +247,7 @@ export default function GoogleDriveImagePicker({
                 border: '1px solid rgba(234,179,8,0.25)',
               }}
             >
-              Google Drive er ikke koblet til denne brukeren. Koble til workspace-kontoen fra innstillinger før du henter bilder.
+              {t('gdrivePicker.s001')}
             </Alert>
           ) : null}
 
@@ -260,7 +263,7 @@ export default function GoogleDriveImagePicker({
             </Stack>
           ) : files.length === 0 && !notConnected ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.62)', textAlign: 'center', py: 3 }}>
-              Fant ingen bilder for søket.
+              {t('gdrivePicker.s000')}
             </Typography>
           ) : (
             <Box
@@ -282,7 +285,7 @@ export default function GoogleDriveImagePicker({
                     key={file.id}
                     role="button"
                     tabIndex={0}
-                    aria-label={`Velg fil ${file.name}`}
+                    aria-label={t('gdrivePicker.p02', { v0: file.name })}
                     aria-pressed={isMulti ? isSelected : undefined}
                     onClick={() => (isImporting || bulkImporting ? null : handlePick(file))}
                     onKeyDown={(event) => {
@@ -426,7 +429,7 @@ export default function GoogleDriveImagePicker({
           disabled={bulkImporting}
           sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.72)' }}
         >
-          Lukk
+          {t('gdrivePicker.s006')}
         </Button>
         {isMulti ? (
           <Button
@@ -450,8 +453,8 @@ export default function GoogleDriveImagePicker({
             }}
           >
             {bulkImporting
-              ? `Importerer ${selectedIds.length}…`
-              : `Bruk ${selectedIds.length}${minPick !== maxPick ? `/${maxPick}` : ''} valgte`}
+              ? t('gdrivePicker.p01', { v0: selectedIds.length })
+              : t('gdrivePicker.p00', { v0: selectedIds.length, v1: minPick !== maxPick ? `/${maxPick}` : '' })}
           </Button>
         ) : null}
       </DialogActions>

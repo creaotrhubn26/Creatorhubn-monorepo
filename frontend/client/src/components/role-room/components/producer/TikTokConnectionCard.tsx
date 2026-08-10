@@ -10,6 +10,8 @@ import roleRoomAgentService, {
   type RoleRoomTikTokConnection,
 } from '../../services/roleRoomAgentService';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface TikTokConnectionCardProps {
   projectId: string;
@@ -30,6 +32,7 @@ interface TikTokConnectionCardProps {
 export default function TikTokConnectionCard({
   projectId,
 }: TikTokConnectionCardProps): React.ReactElement {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<RoleRoomTikTokConnection>({
     connected: false,
@@ -71,7 +74,7 @@ export default function TikTokConnectionCard({
     setError(null);
     const result = await roleRoomAgentService.startTikTokOauth({ projectId });
     if (result.error || !result.authorizationUrl) {
-      setError(result.error ?? 'Kunne ikke starte TikTok OAuth.');
+      setError(result.error ?? t('ttConn.s005'));
       setConnecting(false);
       return;
     }
@@ -81,7 +84,7 @@ export default function TikTokConnectionCard({
       'width=720,height=820,resizable=yes',
     );
     if (!popup) {
-      setError('Popupen ble blokkert. Tillat popup for denne siden og prøv igjen.');
+      setError(t('ttConn.s006'));
     }
     setConnecting(false);
   }
@@ -124,13 +127,13 @@ export default function TikTokConnectionCard({
           ♪
         </Box>
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.92rem' }}>
-          TikTok-publisering
+          {t('ttConn.s009')}
         </Typography>
         {connection.connected ? (
           <Chip
             size="small"
             icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-            label="Koblet"
+            label={t('ttConn.s004')}
             sx={{
               ml: 1,
               fontWeight: 700,
@@ -147,7 +150,7 @@ export default function TikTokConnectionCard({
         <Stack direction="row" spacing={1} alignItems="center">
           <CircularProgress size={14} />
           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>
-            Sjekker TikTok-status…
+            {t('ttConn.s007')}
           </Typography>
         </Stack>
       ) : connection.connected ? (
@@ -188,7 +191,7 @@ export default function TikTokConnectionCard({
                 whiteSpace: 'nowrap',
               }}
             >
-              {connection.displayName ?? connection.username ?? 'TikTok-konto'}
+              {connection.displayName ?? connection.username ?? t('ttConn.s008')}
             </Typography>
             {connection.username ? (
               <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.72rem' }}>
@@ -209,14 +212,13 @@ export default function TikTokConnectionCard({
               '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' },
             }}
           >
-            Frakoble
+            {t('ttConn.s001')}
           </Button>
         </Stack>
       ) : (
         <Stack spacing={1}>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem' }}>
-            Koble TikTok for å sende videoer rett til kreatorens TikTok-inbox. Hvis kunden eier
-            kontoen, kan vi sende dem en e-post som inviterer deg som Operator.
+            {t('ttConn.s003')}
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button
@@ -238,7 +240,7 @@ export default function TikTokConnectionCard({
                 '&:hover': { bgcolor: '#1a1a1a' },
               }}
             >
-              {connecting ? 'Åpner TikTok…' : 'Koble TikTok'}
+              {connecting ? t('ttConn.s010') : t('ttConn.s002')}
             </Button>
             <Button
               variant="outlined"
@@ -252,7 +254,7 @@ export default function TikTokConnectionCard({
                 borderColor: 'rgba(59,130,246,0.4)',
               }}
             >
-              Be kunden om tilgang
+              {t('ttConn.s000')}
             </Button>
           </Stack>
           {error ? (

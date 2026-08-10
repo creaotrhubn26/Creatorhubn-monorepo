@@ -33,6 +33,8 @@ import {
   type CarouselSlideRow,
   type CarouselPlatform,
 } from '../../../../../services/carouselService';
+import { useT } from '../../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type State =
   | { kind: 'empty' }
@@ -53,6 +55,7 @@ interface CarouselPanelProps {
 }
 
 export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
+  const { t } = useT();
   const [state, setState] = useState<State>({ kind: 'empty' });
   const [url, setUrl] = useState('https://');
   const [weekStarting, setWeekStarting] = useState(nextMondayISO());
@@ -74,7 +77,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
     if (!/^https?:\/\/.+\..+/.test(url)) {
       setState({
         kind: 'error',
-        message: 'Limt inn en gyldig URL (med https:// foran)',
+        message: t('carouselPanel.s009'),
       });
       return;
     }
@@ -174,7 +177,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
     });
     patchPost(postId, { scheduledAt }).catch((err) => {
       console.error('[CarouselPanel] schedule patch failed', err);
-      setToast({ kind: 'error', message: 'Kunne ikke lagre tidspunkt' });
+      setToast({ kind: 'error', message: t('carouselPanel.s005') });
     });
   }
 
@@ -182,7 +185,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
     if (!projectId) {
       setToast({
         kind: 'error',
-        message: 'Velg et prosjekt før du publiserer (Role Room → prosjektliste).',
+        message: t('carouselPanel.s013'),
       });
       return;
     }
@@ -200,14 +203,14 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
       setToast({
         kind: 'success',
         message: warnings.length
-          ? `Sendt til Feed Planner med ${warnings.length} advarsel(er): ${warnings.join('; ')}`
-          : 'Sendt til Feed Planner!',
+          ? t('carouselPanel.p00', { v0: warnings.length, v1: warnings.join('; ') })
+          : t('carouselPanel.s011'),
       });
       setEditingPostId(null);
     } catch (err) {
       setToast({
         kind: 'error',
-        message: (err as Error).message || 'Kunne ikke publisere',
+        message: (err as Error).message || t('carouselPanel.s006'),
       });
     } finally {
       setApproveBusyPostId(null);
@@ -241,20 +244,18 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
             <Stack direction="row" alignItems="center" spacing={1}>
               <AutoAwesomeIcon sx={{ color: '#c084fc' }} />
               <Typography variant="h6" sx={{ color: '#e2e8f0', fontWeight: 700 }}>
-                Lag 1 ukes innhold fra én URL
+                {t('carouselPanel.s007')}
               </Typography>
             </Stack>
             <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.7)' }}>
-              Lim inn nettsiden din eller en kunde-side. Vi henter brand-profil, lager 7 ferdige
-              innlegg (humor, lærerikt, bak kulissene, kundehistorie, tilbud, sesong, innsikt) og
-              klargjør caption per plattform.
+              {t('carouselPanel.s008')}
             </Typography>
             {state.kind === 'error' && (
               <Alert severity="error">{state.message}</Alert>
             )}
             <TextField
               fullWidth
-              label="Nettside-URL"
+              label={t('carouselPanel.s010')}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://holycrust.no"
@@ -268,7 +269,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
             />
             <TextField
               fullWidth
-              label="Ukestart (mandag)"
+              label={t('carouselPanel.s012')}
               type="date"
               value={weekStarting}
               onChange={(e) => setWeekStarting(e.target.value)}
@@ -292,7 +293,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
                 fontWeight: 600,
               }}
             >
-              Generér 1 ukes innhold
+              {t('carouselPanel.s002')}
             </Button>
           </Stack>
         </Card>
@@ -306,10 +307,10 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
         <Stack alignItems="center" spacing={2}>
           <CircularProgress sx={{ color: '#c084fc' }} />
           <Typography sx={{ color: '#e2e8f0' }}>
-            Analyserer {state.url} + lager 7 konsepter…
+            {t('carouselPanel.s001')} {state.url} {t('carouselPanel.s000')}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.65)' }}>
-            Kan ta opptil 60 sekunder første gang
+            {t('carouselPanel.s004')}
           </Typography>
         </Stack>
       </Box>
@@ -372,7 +373,7 @@ export default function CarouselPanel({ projectId }: CarouselPanelProps = {}) {
             textTransform: 'none',
           }}
         >
-          Generér ny uke
+          {t('carouselPanel.s003')}
         </Button>
       </Stack>
       <Snackbar

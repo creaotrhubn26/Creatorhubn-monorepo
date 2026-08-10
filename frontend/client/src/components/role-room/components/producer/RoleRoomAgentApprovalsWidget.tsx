@@ -17,6 +17,8 @@ import {
 import roleRoomAgentService, {
   type RoleRoomPendingApproval,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ProjectGroup {
   projectId: string;
@@ -63,6 +65,7 @@ function formatRelative(iso: string | null): string {
  *   - Audit-detaljer skjult bak hover/utvidelse
  */
 export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | null {
+  const { t } = useT();
   const [pending, setPending] = useState<RoleRoomPendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -142,7 +145,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
       >
         <DoneIcon sx={{ color: '#86efac', fontSize: '1.1rem' }} />
         <Typography sx={{ color: '#86efac', fontSize: '0.78rem', fontWeight: 600, flex: 1 }}>
-          Alt er godkjent — ingenting venter
+          {t('agentApprovals.s001')}
         </Typography>
         <IconButton
           size="small"
@@ -191,10 +194,10 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
         </Box>
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.86rem' }}>
-            {total === 1 ? '1 post venter på godkjenning' : `${total} posts venter på godkjenning`}
+            {total === 1 ? t('agentApprovals.s000') : t('agentApprovals.p01', { v0: total })}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.72rem' }}>
-            Godkjenn for å låse opp publisering
+            {t('agentApprovals.s003')}
           </Typography>
         </Box>
         <IconButton
@@ -214,7 +217,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
           const groupKey = `${group.projectId}::${group.platform}`;
           const isBusy = bulkBusyProject === groupKey;
           // Vis maks 3 post-titler på linje, flere skjules ("+ N andre")
-          const visibleTitles = group.posts.slice(0, 3).map((p) => p.title || 'Uten tittel');
+          const visibleTitles = group.posts.slice(0, 3).map((p) => p.title || t('agentApprovals.s007'));
           const hiddenCount = group.posts.length - visibleTitles.length;
           return (
             <Stack
@@ -243,7 +246,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Prosjekt {group.projectId.slice(0, 10)}…
+                    {t('agentApprovals.s006')} {group.projectId.slice(0, 10)}…
                   </Typography>
                   <Chip
                     size="small"
@@ -271,14 +274,14 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
                   }}
                 >
                   {visibleTitles.join(' · ')}
-                  {hiddenCount > 0 ? ` · +${hiddenCount} andre` : ''}
+                  {hiddenCount > 0 ? t('agentApprovals.p00', { v0: hiddenCount }) : ''}
                 </Typography>
                 {/* Hvis noen er needs_changes, varsel diskret — én linje, ingen knapp */}
                 {group.posts.some((p) => p.approvalState === 'needs_changes') ? (
                   <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mt: 0.2 }}>
                     <NeedsChangesIcon sx={{ fontSize: '0.78rem', color: '#fbbf24' }} />
                     <Typography sx={{ color: '#fde68a', fontSize: '0.66rem' }}>
-                      Inkluderer poster som trenger endring
+                      {t('agentApprovals.s005')}
                     </Typography>
                   </Stack>
                 ) : null}
@@ -302,7 +305,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
                   isBusy ? <CircularProgress size={12} color="inherit" /> : <CheckIcon fontSize="small" />
                 }
               >
-                {isBusy ? 'Godkjenner…' : 'Godkjenn alle'}
+                {isBusy ? t('agentApprovals.s004') : t('agentApprovals.s002')}
               </Button>
             </Stack>
           );
