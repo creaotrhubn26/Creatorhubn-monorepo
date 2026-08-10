@@ -1,6 +1,7 @@
-import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Chip,
@@ -16,6 +17,7 @@ import {
   Stack,
   Tab,
   Tabs,
+  TextField,
   Typography,
   CircularProgress,
 } from '@mui/material';
@@ -48,6 +50,7 @@ import type { CastingProject } from '../models/casting';
 import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
 import { useT, LanguageSwitcher } from '../../../i18n';
+import { apiRequest } from '../../../lib/queryClient';
 
 type WorkspaceAccountTeamMember = {
   name: string;
@@ -196,6 +199,92 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   const canManageBilling = Boolean(account?.canManageBilling);
   const canRetryPayment = Boolean(account?.canManageBilling && account?.canRetryPayment);
   const currentUserInitials = getInitials(currentUser.name || currentUser.email);
+
+  // Egen profil-redigering — synkes til brukerkontoen via PATCH /api/user/profile.
+  // Gjelder den innloggede brukeren selv (samme flyt om man er solo eller
+  // team-medlem; hver redigerer sin egen konto). Profesjon er gated på backend
+  // (settes kun i onboarding), så den redigeres ikke her.
+  const emptyProfile = { firstName: '', lastName: '', phone: '', companyName: '', avatarUrl: null as string | null };
+  const [profileDraft, setProfileDraft] = useState(emptyProfile);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setProfileLoading(true);
+    setProfileError(null);
+    setProfileNotice(null);
+    apiRequest('/api/user/profile')
+      .then((r) => {
+        if (cancelled) return;
+        const p = r?.profile ?? {};
+        setProfileDraft({
+          firstName: p.firstName ?? '',
+          lastName: p.lastName ?? '',
+          phone: p.phone ?? '',
+          companyName: p.companyName ?? '',
+          avatarUrl: p.avatarUrl ?? null,
+        });
+      })
+      .catch(() => { if (!cancelled) setProfileError(t('billAcct.profileLoadError')); })
+      .finally(() => { if (!cancelled) setProfileLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, t]);
+
+  const handleAvatarPick = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 1_500_000) { setProfileError(t('billAcct.profileAvatarTooLarge')); return; }
+    setProfileError(null);
+    const reader = new FileReader();
+    reader.onload = () => setProfileDraft((d) => ({
+      ...d,
+      avatarUrl: typeof reader.result === 'string' ? reader.result : d.avatarUrl,
+    }));
+    reader.readAsDataURL(file);
+  }, [t]);
+
+  const handleProfileSave = useCallback(async () => {
+    setProfileSaving(true);
+    setProfileError(null);
+    setProfileNotice(null);
+    try {
+      const r = await apiRequest('/api/user/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          firstName: profileDraft.firstName,
+          lastName: profileDraft.lastName,
+          phone: profileDraft.phone,
+          companyName: profileDraft.companyName,
+          avatarUrl: profileDraft.avatarUrl,
+        }),
+      });
+      const p = r?.profile ?? {};
+      setProfileDraft({
+        firstName: p.firstName ?? '',
+        lastName: p.lastName ?? '',
+        phone: p.phone ?? '',
+        companyName: p.companyName ?? '',
+        avatarUrl: p.avatarUrl ?? null,
+      });
+      setProfileNotice(t('billAcct.profileSaved'));
+    } catch {
+      setProfileError(t('billAcct.profileSaveError'));
+    } finally {
+      setProfileSaving(false);
+    }
+  }, [profileDraft, t]);
+
+  const darkFieldSx = {
+    '& .MuiInputBase-input': { color: '#f8fafc' },
+    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' },
+    '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.5)' },
+  } as const;
   const [googleStatus, setGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [googleStatusLoading, setGoogleStatusLoading] = useState(false);
   const [googleStatusError, setGoogleStatusError] = useState<string | null>(null);
@@ -665,6 +754,49 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
           </Typography>
           <LanguageSwitcher />
         </Stack>
+        <Box sx={{ mb: 2, p: 2, borderRadius: 2.5, border: '1px solid rgba(148,163,184,0.18)' }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#f8fafc', mb: 1.5 }}>
+            {t('billAcct.profileSectionTitle')}
+          </Typography>
+          {profileLoading ? (
+            <Stack alignItems="center" sx={{ py: 2 }}><CircularProgress size={22} /></Stack>
+          ) : (
+            <Stack spacing={1.5}>
+              <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" useFlexGap>
+                <Avatar
+                  src={profileDraft.avatarUrl || undefined}
+                  sx={{ width: 64, height: 64, bgcolor: 'rgba(125,211,252,0.14)', color: '#e0f2fe', fontWeight: 800 }}
+                >
+                  {currentUserInitials}
+                </Avatar>
+                <Button component="label" variant="outlined" size="small" sx={{ textTransform: 'none' }}>
+                  {t('billAcct.profileChangePhoto')}
+                  <input type="file" accept="image/*" hidden onChange={handleAvatarPick} />
+                </Button>
+                {profileDraft.avatarUrl ? (
+                  <Button size="small" color="inherit" onClick={() => setProfileDraft((d) => ({ ...d, avatarUrl: null }))} sx={{ textTransform: 'none', color: 'rgba(255,255,255,0.72)' }}>
+                    {t('billAcct.profileRemovePhoto')}
+                  </Button>
+                ) : null}
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField fullWidth size="small" sx={darkFieldSx} label={t('billAcct.profileFirstName')} value={profileDraft.firstName} onChange={(e) => setProfileDraft((d) => ({ ...d, firstName: e.target.value }))} />
+                <TextField fullWidth size="small" sx={darkFieldSx} label={t('billAcct.profileLastName')} value={profileDraft.lastName} onChange={(e) => setProfileDraft((d) => ({ ...d, lastName: e.target.value }))} />
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField fullWidth size="small" sx={darkFieldSx} label={t('billAcct.profilePhone')} value={profileDraft.phone} onChange={(e) => setProfileDraft((d) => ({ ...d, phone: e.target.value }))} />
+                <TextField fullWidth size="small" sx={darkFieldSx} label={t('billAcct.profileCompany')} value={profileDraft.companyName} onChange={(e) => setProfileDraft((d) => ({ ...d, companyName: e.target.value }))} />
+              </Stack>
+              {profileError ? <Alert severity="error">{profileError}</Alert> : null}
+              {profileNotice ? <Alert severity="success">{profileNotice}</Alert> : null}
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button variant="contained" size="small" disabled={profileSaving} onClick={handleProfileSave} sx={{ textTransform: 'none' }}>
+                  {profileSaving ? t('billAcct.profileSaving') : t('billAcct.profileSave')}
+                </Button>
+              </Box>
+            </Stack>
+          )}
+        </Box>
         <Stack spacing={2} sx={{ mb: 2 }}>
           <Stack
             direction={{ xs: 'column', md: 'row' }}
