@@ -86,6 +86,19 @@ def main() -> None:
     except ValueError:
         pass
 
+    # AI-oppgave-transaksjon (fase 7): telling + samlet rulle-tilbake
+    core.begin_task("selftest-task")
+    core.create_object("cube", name="T1")
+    core.create_object("cube", name="T2", location=[2, 0, 0])
+    core.set_transform("T1", location=[0, 0, 3])
+    status = core.task_status()
+    assert status == {"task": "selftest-task", "ops": 3}, status
+    rolled = core.undo_task()
+    assert rolled["requested"] == 3, rolled
+    # i GUI ruller undo alt tilbake; headless kan mangle undo-stack — verifiser
+    # bare at tilstanden er nullstilt og at telleren var korrekt.
+    assert core.task_status() == {"task": None, "ops": 0}
+
     print("SELFTEST PASSED")
 
 

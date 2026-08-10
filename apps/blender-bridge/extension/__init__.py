@@ -35,6 +35,17 @@ class CLAUDEBRIDGE_OT_toggle_auto(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class CLAUDEBRIDGE_OT_undo_task(bpy.types.Operator):
+    bl_idname = "claudebridge.undo_task"
+    bl_label = "Angre AI-oppgave"
+
+    def execute(self, context):
+        from . import core
+        result = core.undo_task()
+        self.report({"INFO"}, f"Angret {result['undone']} steg")
+        return {"FINISHED"}
+
+
 class CLAUDEBRIDGE_PT_panel(bpy.types.Panel):
     bl_label = "Claude Bridge"
     bl_idname = "CLAUDEBRIDGE_PT_panel"
@@ -66,6 +77,13 @@ class CLAUDEBRIDGE_PT_panel(bpy.types.Panel):
                 op = row.operator("claudebridge.deny", text="Avvis", icon="CANCEL")
                 op.approval_id = entry["id"]
 
+        from . import core
+        task = core.task_status()
+        if task["task"]:
+            box = layout.box()
+            box.label(text=f"AI-oppgave: {task['task']} ({task['ops']} steg)", icon="TOOL_SETTINGS")
+            box.operator("claudebridge.undo_task", icon="LOOP_BACK")
+
         recent = permissions.log_tail(5)
         if recent:
             box = layout.box()
@@ -79,6 +97,7 @@ _CLASSES = (
     CLAUDEBRIDGE_OT_approve,
     CLAUDEBRIDGE_OT_deny,
     CLAUDEBRIDGE_OT_toggle_auto,
+    CLAUDEBRIDGE_OT_undo_task,
     CLAUDEBRIDGE_PT_panel,
 )
 
