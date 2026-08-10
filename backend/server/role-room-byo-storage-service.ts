@@ -21,6 +21,7 @@
  */
 
 import type { Pool } from "pg";
+import { b2StoreFor } from "./b2-client-factory.js";
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
 import {
   CopyObjectCommand,
@@ -100,20 +101,9 @@ function makeByoClient(creds: ByoB2Creds): { client: S3Client; bucket: string } 
 }
 
 function makeAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  const region = process.env.B2_REGION || "eu-central-003";
-  return {
-    client: new S3Client({
-      region,
-      endpoint: `https://s3.${region}.backblazeb2.com`,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  // Migreringen kopierer brukerens filer fra vår bøtte til deres egen og
+  // sletter originalen etterpå — samme rolle som flaten som la dem inn.
+  return b2StoreFor("user-storage", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 /**

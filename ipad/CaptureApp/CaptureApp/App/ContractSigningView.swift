@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import UIKit
+import OutboxKit
 
 /// Apple Pencil-native contract signing. Renders the contract PDF
 /// (or falls back to the term-list when no cached PDF exists) and

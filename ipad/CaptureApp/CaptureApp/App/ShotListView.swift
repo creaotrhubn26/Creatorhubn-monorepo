@@ -1,5 +1,6 @@
 import SwiftUI
 import PencilKit
+import OutboxKit
 
 /// Shot-list surface, scoped to one project. Shows every planned
 /// shot as a checkable row, with must-have shots pinned to the top

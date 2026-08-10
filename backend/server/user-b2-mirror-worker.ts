@@ -107,7 +107,9 @@ export type MirrorSource =
   | "single-upload"
   | "talent-media"
   | "marketing-preview"
-  | "selftape";
+  | "selftape"
+  // iPad-ens multipart-opplasting av originaler (capture_assets).
+  | "capture";
 
 export interface MirrorJob {
   userId: string;

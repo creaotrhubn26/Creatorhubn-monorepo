@@ -23,10 +23,26 @@ import {
   photographerClientGalleries,
 } from '../migrations/schema.js';
 import {
-  buildCaptureR2Config,
+  captureWriteStore,
   signAssetReadUrlForDelivery,
   type CaptureR2Config,
 } from './capture-upload-service.js';
+import { bucketForClass, keyMarkerFor } from './b2-bucket-registry.js';
+
+/**
+ * Lagringskonfig for leveranser: primærlageret, men med leveranse-bøtta
+ * og leveranse-prefikset i stedet for fellesverdiene.
+ */
+function deliveryStoreConfig(): CaptureR2Config {
+  const cfg = captureWriteStore();
+  if (cfg.backend !== 'b2') return cfg;
+  const resolved = bucketForClass('deliverables');
+  return {
+    ...cfg,
+    bucket: resolved?.bucket ?? cfg.bucket,
+    prefix: `${cfg.prefix}${keyMarkerFor('deliverables')}`,
+  };
+}
 
 type Db = NodePgDatabase<Record<string, unknown>>;
 
@@ -134,12 +150,15 @@ async function defaultUpload(
     throw new Error('r2_not_configured');
   }
   const client = new S3Client({
-    region: 'auto',
+    // Region og adresseringsstil kommer fra konfigen, ikke hardkodet:
+    // B2 krever path-style og en ekte region, R2 bruker 'auto'.
+    region: cfg.region,
     endpoint: cfg.endpoint,
     credentials: {
       accessKeyId: cfg.accessKeyId,
       secretAccessKey: cfg.secretAccessKey,
     },
+    ...(cfg.forcePathStyle ? { forcePathStyle: true } : {}),
   });
   await client.send(
     new PutObjectCommand({
@@ -158,7 +177,9 @@ export async function createClientGalleryFromBlobs(
     return { ok: false, error: 'no_images' };
   }
 
-  const cfg = input.r2Config ?? buildCaptureR2Config();
+  // Leveranser er egen bøtte-klasse: de dokumenterer hva kunden faktisk
+  // mottok, og skal ikke ryddes av samme livssyklusregler som proxyer.
+  const cfg = input.r2Config ?? deliveryStoreConfig();
   const upload = input.upload ?? ((key, body, mime) => defaultUpload(cfg, key, body, mime));
   const sign = input.sign ?? signAssetReadUrlForDelivery;
   const tokenFactory = input.tokenFactory ?? generateAccessToken;

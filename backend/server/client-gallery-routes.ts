@@ -11,6 +11,10 @@ import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
 } from "./client-gallery-render.js";
+import {
+  getObjectStoreClientFor,
+  isObjectStoreBackend,
+} from "./upload-storage-router.js";
 
 const _require = createRequire(import.meta.url);
 const archiverFactory = _require("archiver") as (
@@ -547,46 +551,24 @@ export function setupClientGalleryRoutes(
           `inline; filename="${(chunkedRow.file_name || "fil").replace(/"/g, "")}"`,
         );
 
-        // R2-pathen
-        if (backend === "r2" && metadata.r2Key) {
-          const { S3Client, GetObjectCommand } = await import(
-            "@aws-sdk/client-s3"
-          );
-          const r2 = new S3Client({
-            region: "auto",
-            endpoint:
-              process.env.GENERIC_UPLOADS_R2_ENDPOINT ||
-              process.env.CLOUDFLARE_R2_ENDPOINT ||
-              process.env.R2_ENDPOINT,
-            credentials: {
-              accessKeyId:
-                process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID ||
-                process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
-                process.env.R2_ACCESS_KEY_ID ||
-                "",
-              secretAccessKey:
-                process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY ||
-                process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
-                process.env.R2_SECRET_ACCESS_KEY ||
-                "",
-            },
-          });
-          const bucket =
-            process.env.GENERIC_UPLOADS_R2_BUCKET ||
-            process.env.CLOUDFLARE_R2_BUCKET ||
-            process.env.R2_BUCKET ||
-            "";
-          if (!bucket) {
-            return res.status(503).json({ error: "r2_not_configured" });
+        // Objektlager-pathen (B2 eller R2). Klienten bygges for backend'en
+        // fila faktisk ligger på — eldre filer ligger fortsatt i R2 selv om
+        // nye skrives til B2.
+        const objectKey = metadata.objectKey ?? metadata.r2Key;
+        if (isObjectStoreBackend(backend) && objectKey) {
+          const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+          const store = getObjectStoreClientFor(backend, String(objectKey));
+          if (!store) {
+            return res.status(503).json({ error: `${backend}_not_configured` });
           }
-          const obj = await r2.send(
+          const obj = await store.client.send(
             new GetObjectCommand({
-              Bucket: bucket,
-              Key: String(metadata.r2Key),
+              Bucket: store.bucket,
+              Key: String(objectKey),
             }),
           );
           if (!obj.Body) {
-            return res.status(502).json({ error: "r2_empty_body" });
+            return res.status(502).json({ error: "object_store_empty_body" });
           }
           const source = obj.Body as NodeJS.ReadableStream;
           if (isEncrypted) {

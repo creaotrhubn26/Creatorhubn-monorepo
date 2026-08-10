@@ -1,12 +1,14 @@
 /**
  * stripboard.mockData.ts
- * Fallback / demo data used when the API returns nothing.
+ * Demodata. IKKE en fallback for ekte data — se kommentaren under.
  * Keeping this separate means the main bundle can tree-shake it in production
  * and the component file itself stays readable.
  *
  * Exports:
- *   DEMO_SHOOTING_DAYS  – legacy ShootingDay[] fed to useStripboardData
- *   DEMO_STRIPS         – legacy StripboardStrip[] fed to useStripboardData
+ *   DEMO_SHOOTING_DAYS  – demodata. Brukes IKKE lenger av useStripboardData:
+ *                         stripboardet leser ekte data, og en fallback hit
+ *                         viste «TROLL» som om det var brukerens produksjon.
+ *   DEMO_STRIPS         – samme; beholdt for storybook/manuell utprøving
  *   DEMO_POOL_ITEMS     – ScenePoolItem[] for the new Scene Pool
  *   DEMO_SHOOT_DAYS     – ShootDay[] for the new ShootDay Engine
  */

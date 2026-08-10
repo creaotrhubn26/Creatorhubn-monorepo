@@ -22,6 +22,7 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { b2ClientFor, b2StoreFor } from "./b2-client-factory.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface AdminSystemBackupRoutesDeps {
@@ -40,18 +41,11 @@ interface B2Config {
 }
 
 function getB2Config(): B2Config | null {
-  const keyId = process.env.B2_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_APPLICATION_KEY;
-  const bucketName = process.env.B2_BUCKET_NAME;
-  if (!keyId || !appKey || !bucketName) return null;
-
-  const client = new S3Client({
-    region: B2_REGION,
-    endpoint: B2_ENDPOINT,
-    credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    forcePathStyle: true,
-  });
-  return { bucketName, client };
+  const store = b2StoreFor("admin", process.env.B2_BUCKET_NAME);
+  if (!store) return null;
+  const client = b2ClientFor("admin", B2_REGION);
+  if (!client) return null;
+  return { bucketName: store.bucket, client };
 }
 
 interface B2Object {

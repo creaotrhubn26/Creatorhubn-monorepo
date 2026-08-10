@@ -1300,6 +1300,18 @@ function encryptRoleRoomGoogleToken(value: string): string {
   return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
 }
 
+// Live-set: utledning av nåtilstand fra hendelsesloggen.
+import {
+  projectLiveSet,
+  type LiveSetEvent as ProjectionEvent,
+} from './role-room-live-set-projection.js';
+
+// Budsjett-onboarding og maler (Del A punkt 105/106).
+import {
+  applyBudgetTemplate,
+  getBudgetOnboardingState,
+} from './role-room-budget-onboarding.js';
+
 // Slice 9X.80 — delegerer til shared dekryptor
 import { decryptGoogleToken as sharedDecryptGoogleToken } from './google-oauth-shared.js';
 function decryptRoleRoomGoogleToken(value: string | null | undefined): string | null {
@@ -8222,6 +8234,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       .filter((entry): entry is Record<string, unknown> => Boolean(entry));
   }
 
+  /**
+   * Kandidatraden slik talentet selv skal se den.
+   *
+   * `notes` og `rating` er castingteamets interne vurdering og utelates
+   * bevisst. De lå her tidligere fordi raden ble sendt hel — og én av
+   * rutene som bruker denne (`GET /talent/invites/:inviteToken`) er
+   * uautentisert, så vurderingen gikk ut til alle som hadde tokenet.
+   *
+   * Legger du til felt her: sjekk først om kolonnen er noe produsenten
+   * skrev om talentet, eller noe talentet skrev om seg selv. Bare det
+   * siste hører hjemme i denne funksjonen.
+   */
   function buildRoleRoomTalentPortalCandidate(row: RoleRoomTalentPortalCandidateRow) {
     const metadata = readJsonObject(row.metadata);
     const talentProfile = readJsonObject(metadata.talentProfile);
@@ -8232,9 +8256,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       email: normalizeEmailValue(row.email),
       phone: readStringValue(row.phone),
       agency: readStringValue(row.agency),
-      notes: readStringValue(row.notes),
       status: readStringValue(row.status) ?? 'pending',
-      rating: typeof row.rating === 'number' && Number.isFinite(row.rating) ? row.rating : null,
       assignedRoleIds: toStringArray(row.assigned_roles),
       consentStatus: readStringValue(row.consent_status),
       emergencyContact: readJsonObject(row.emergency_contact),
@@ -8912,9 +8934,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         : Promise.resolve({ rows: [] } as { rows: RoleRoomTalentInviteRow[] }),
       talentTablesReady
         ? pool.query<RoleRoomTalentActivityRow>(
+            // Bare delte innslag. Kolonnen finnes nettopp for å kunne
+            // holde interne notater utenfor talentets visning — samme
+            // skille som role_room_messages.visibility håndhever. Uten
+            // filteret her er kolonnen dekorasjon, og den første som
+            // skriver en intern rad sender den rett til talentet.
             `SELECT *
                FROM role_room_talent_activity
               WHERE candidate_id = ANY($1::text[])
+                AND visibility = 'shared'
               ORDER BY created_at DESC
               LIMIT 200`,
             [candidateIds],
@@ -14668,6 +14696,63 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (error) {
       console.error('Producer economy delete error:', error);
       res.status(500).json({ error: 'Kunne ikke slette økonomilinje' });
+    }
+  });
+
+  // ── Budsjett-onboarding og maler (Del A punkt 105/106) ──────────────────
+  // Tjenestelaget fantes, men bare via MCP. Uten disse to endepunktene må
+  // produsenten skrive inn alle linjene selv — og et tomt budsjett gjør
+  // tilskuddseksporten til en liste med nuller.
+  //
+  // Ligger her og ikke i en egen rutefil fordi skrivetilgangen
+  // (canWriteProducerData) er en closure i denne oppsettsfunksjonen, og
+  // maler skriver til de samme linjene som rutene rett over.
+
+  router.get('/projects/:projectId/producer/economy/onboarding', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!roleRecord) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      res.json(await getBudgetOnboardingState(pool, projectId));
+    } catch (error) {
+      console.error('Budget onboarding state error:', error);
+      res.status(500).json({ error: 'Kunne ikke hente budsjettstatus' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/economy/apply-template', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    const templateKey = typeof req.body?.templateKey === 'string' ? req.body.templateKey.trim() : '';
+    if (!templateKey) {
+      res.status(400).json({ error: 'templateKey er påkrevd' });
+      return;
+    }
+
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å opprette økonomilinjer' });
+        return;
+      }
+
+      const result = await applyBudgetTemplate(pool, {
+        projectId,
+        templateKey,
+        userId: getUserId(req) ?? null,
+      });
+      res.json(result);
+    } catch (error) {
+      // Ukjent mal er en klientfeil, ikke en serverfeil — den som ber om en
+      // mal som ikke finnes skal få vite det, ikke se «noe gikk galt».
+      if (error instanceof Error && error.message.startsWith('Ukjent budsjettmal')) {
+        res.status(404).json({ error: error.message });
+        return;
+      }
+      console.error('Budget template apply error:', error);
+      res.status(500).json({ error: 'Kunne ikke bruke budsjettmalen' });
     }
   });
 
@@ -20921,6 +21006,40 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       success: true,
       events: filtered.slice(-5000),
       conflicts: [],
+      serverCursor: nowISO(),
+    });
+  });
+
+  /**
+   * Nåtilstanden på settet, utledet av hendelsesloggen.
+   *
+   * Loggen ble skrevet, men aldri lest på serversiden — tilstanden fantes
+   * bare i den ene klientens egen reducer. En annen enhet, en ny fane eller
+   * en annen skjerm i produktet kunne hente hendelsene uten å vite hva de
+   * betydde. Utledningen ligger i role-room-live-set-projection.ts og speiler
+   * `liveSetReducer` i useLiveSet.ts.
+   */
+  router.get('/projects/:projectId/live-set/state', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const { projectId } = req.params;
+    if (!(await ensureProjectAccess(projectId))) {
+      res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      return;
+    }
+
+    const stateRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, stateRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
+      return;
+    }
+
+    const shootingDayId = typeof req.query.shootingDayId === 'string' && req.query.shootingDayId
+      ? req.query.shootingDayId
+      : undefined;
+
+    const events = await getLiveSetEventsV2(projectId);
+    res.json({
+      success: true,
+      state: projectLiveSet(events as unknown as ProjectionEvent[], { shootingDayId }),
       serverCursor: nowISO(),
     });
   });

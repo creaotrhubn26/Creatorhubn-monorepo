@@ -77,6 +77,8 @@ import {
   type SplitSheetStatus,
 } from './split-sheets/types';
 import ProjectAgreementsPanel from './ProjectAgreementsPanel';
+import BudgetTemplateStarter from './BudgetTemplateStarter';
+import FundingApplicationPanel from './FundingApplicationPanel';
 import ProducerEconomyPanel from './producer/ProducerEconomyPanel';
 import { CollapsibleSection } from './CollapsibleSection';
 import EconomyCashflowPanel from './producer/EconomyCashflowPanel';
@@ -115,7 +117,7 @@ interface NormalizedTravelCost {
   totalCost: number;
 }
 
-type EconomyWorkspaceView = 'overview' | 'budget' | 'approvals';
+type EconomyWorkspaceView = 'overview' | 'budget' | 'financing' | 'approvals';
 type EconomyFocusPhase = ProducerPhase | 'all';
 type SplitSheetContributorDraft = Omit<SplitSheetContributor, 'id' | 'split_sheet_id' | 'created_at' | 'updated_at'>;
 type ApprovalWorkQueueLane = 'budget' | 'deliverable' | 'agreement';
@@ -2335,6 +2337,12 @@ export default function ProjectEconomyHub({
         >
           <Tab value="overview" label="Oversikt" />
           <Tab value="budget" label="Budsjett" />
+          {/* Finansiering står mellom Budsjett og Godkjenning fordi det er
+              rekkefølgen arbeidet faktisk går i: budsjettet må finnes før
+              man kan søke, og søknaden må være sendt før det er noe å
+              godkjenne. Egen fane og ikke en under-fane av Budsjett, fordi
+              søknadsfrister har egen tidslinje og må kunne nås direkte. */}
+          <Tab value="financing" label="Finansiering" />
           <Tab value="approvals" label="Godkjenning" />
         </Tabs>
 
@@ -2970,15 +2978,31 @@ export default function ProjectEconomyHub({
 
               {/* ── Sub-tab: Linjer (kun budsjett-linjer per fase) ───── */}
               {budgetSubTab === 'lines' ? (
-                <ProducerEconomyPanel
-                  key={`${project.id}:${budgetPanelVersion}`}
-                  projectId={project.id}
-                  title="Budsjett og avtaler"
-                  readOnly={readOnly}
-                  canSendBudgetReview={false}
-                  focusedPhase={focusedPhase}
-                  onFocusedPhaseChange={setFocusedPhase}
-                />
+                <>
+                  {/* Starthjelp når budsjettet er tomt på et prosjekt som
+                      ellers er i gang. Skjuler seg selv når det ikke er
+                      relevant — se BudgetTemplateStarter. */}
+                  <BudgetTemplateStarter
+                    projectId={project.id}
+                    readOnly={readOnly}
+                    // Malen skriver via REST, ikke via producerWorkflowService,
+                    // så ingen økonomi-event fyrer. Hub-totalene hentes på nytt,
+                    // og linjepanelet remountes for å hente sine egne linjer.
+                    onApplied={() => {
+                      void reload();
+                      setBudgetPanelVersion((version) => version + 1);
+                    }}
+                  />
+                  <ProducerEconomyPanel
+                    key={`${project.id}:${budgetPanelVersion}`}
+                    projectId={project.id}
+                    title="Budsjett og avtaler"
+                    readOnly={readOnly}
+                    canSendBudgetReview={false}
+                    focusedPhase={focusedPhase}
+                    onFocusedPhaseChange={setFocusedPhase}
+                  />
+                </>
               ) : null}
 
               {/* ── Sub-tab: Avtaler & fordeling ─────────────────────── */}
@@ -3259,6 +3283,14 @@ export default function ProjectEconomyHub({
                 <EconomyReportsPanel projectId={project.id} />
               ) : null}
             </Stack>
+          ) : null}
+
+          {/* Finansiering — søknad om tilskudd. Panelet leser de samme
+              budsjettlinjene som fanen ved siden av (role_room_budget_items),
+              så tallene i søknaden er de samme tallene produsenten allerede
+              har ført. Ingen egen budsjettinntasting her. */}
+          {activeView === 'financing' ? (
+            <FundingApplicationPanel projectId={project.id} />
           ) : null}
 
           {activeView === 'approvals' ? (

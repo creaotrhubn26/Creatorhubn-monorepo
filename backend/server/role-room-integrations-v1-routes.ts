@@ -3,6 +3,7 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import type { QueryResultRow } from 'pg';
 import { type Pool } from 'pg';
 import { z } from 'zod';
+import { ROLE_ROOM_V1_OPENAPI } from './role-room-integrations-v1-openapi.js';
 
 type IntegrationAction = 'read' | 'write';
 
@@ -1592,6 +1593,14 @@ export function createRoleRoomIntegrationsV1Router(pool: Pool): Router {
       version: 'v1',
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Maskinlesbar kontrakt (Del A punkt 150). Åpen — den beskriver bare
+  // formen på API-et, ingen data. Uten den måtte integratorer prøve seg
+  // fram mot produksjon for å finne ut hvordan endepunktene oppfører seg.
+  router.get('/openapi.json', (_req, res) => {
+    res.setHeader('cache-control', 'public, max-age=300');
+    res.json(ROLE_ROOM_V1_OPENAPI);
   });
 
   router.get('/admin/accounts', requireIntegrationAuth(pool, 'admin'), async (req, res) => {

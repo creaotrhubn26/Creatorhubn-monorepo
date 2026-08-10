@@ -10,7 +10,7 @@
 //   3. Sikrer at root-mappa for prosjektet eksisterer (idempotent).
 //   4. Lager target-undermappa (f.eks. "01_Raw") under prosjekt-mappa.
 //   5. For hver item med fileId (referanse til chunked_uploads): henter
-//      bytes fra storage-backend (filesystem eller R2) og kopierer til
+//      bytes fra storage-backend (filesystem eller objektlager) og kopierer til
 //      Drive via files.create med media body. Stream-videoer hoppes
 //      over (de lever som streaming, ikke files). Per-fil retry på
 //      429/5xx + 401-reauth.
@@ -22,7 +22,7 @@ import * as fsPromises from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { Readable } from "stream";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import {
   loadDriveClient,
   ensureDriveFolder,
@@ -30,48 +30,17 @@ import {
   withDriveRetry,
   mapDriveError,
 } from "./google-drive-helpers.js";
+import {
+  getObjectStoreClientFor,
+  isObjectStoreBackend,
+} from "./upload-storage-router.js";
 
 const CHUNKED_UPLOAD_ROOT =
   process.env.CHUNKED_UPLOAD_DIR ||
   path.join(os.tmpdir(), "creatorhub-chunked-uploads");
 
-const firstNonEmpty = (...vals: (string | undefined)[]): string | undefined => {
-  for (const v of vals) if (v && v.trim().length > 0) return v.trim();
-  return undefined;
-};
-
-let cachedR2: S3Client | null = null;
-const getGenericR2 = (): { client: S3Client; bucket: string } | null => {
-  const endpoint = firstNonEmpty(
-    process.env.GENERIC_UPLOADS_R2_ENDPOINT,
-    process.env.CLOUDFLARE_R2_ENDPOINT,
-    process.env.R2_ENDPOINT,
-  );
-  const bucket = firstNonEmpty(
-    process.env.GENERIC_UPLOADS_R2_BUCKET,
-    process.env.CLOUDFLARE_R2_BUCKET,
-    process.env.R2_BUCKET,
-  );
-  const accessKeyId = firstNonEmpty(
-    process.env.GENERIC_UPLOADS_R2_ACCESS_KEY_ID,
-    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
-    process.env.R2_ACCESS_KEY_ID,
-  );
-  const secretAccessKey = firstNonEmpty(
-    process.env.GENERIC_UPLOADS_R2_SECRET_ACCESS_KEY,
-    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-    process.env.R2_SECRET_ACCESS_KEY,
-  );
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
-  if (!cachedR2) {
-    cachedR2 = new S3Client({
-      region: "auto",
-      endpoint,
-      credentials: { accessKeyId, secretAccessKey },
-    });
-  }
-  return { client: cachedR2, bucket };
-};
+// Objektlager-klienten kommer fra upload-storage-router, som eier
+// hvilken backend (B2/R2) som er primær og hvordan hver av dem kobles opp.
 
 export interface GoogleDriveSyncRoutesDeps {
   app: express.Application;
@@ -256,36 +225,43 @@ export function setupGoogleDriveSyncRoutes(
           let bytesLength: number | undefined;
 
           try {
-            if (backend === "r2") {
-              const r2 = getGenericR2();
-              if (!r2) {
+            if (isObjectStoreBackend(backend)) {
+              // Klient for backend'en fila ligger på — B2 for nye filer,
+              // R2 for de som ble lastet opp før primæren ble flyttet.
+              const store = getObjectStoreClientFor(
+                backend,
+                String(metadata.objectKey ?? metadata.r2Key ?? ""),
+              );
+              if (!store) {
                 driveItems.push({
                   id: itemId,
                   fileName: row.file_name,
                   status: "failed",
-                  message: "R2 er ikke konfigurert i miljøvariabler.",
+                  message: `${backend.toUpperCase()} er ikke konfigurert i miljøvariabler.`,
                 });
                 continue;
               }
-              const key = metadata.r2Key as string | undefined;
+              const key = (metadata.objectKey ?? metadata.r2Key) as
+                | string
+                | undefined;
               if (!key) {
                 driveItems.push({
                   id: itemId,
                   fileName: row.file_name,
                   status: "failed",
-                  message: "R2-key mangler i metadata.",
+                  message: "Objektnøkkel mangler i metadata.",
                 });
                 continue;
               }
-              const obj = await r2.client.send(
-                new GetObjectCommand({ Bucket: r2.bucket, Key: key }),
+              const obj = await store.client.send(
+                new GetObjectCommand({ Bucket: store.bucket, Key: key }),
               );
               if (!obj.Body) {
                 driveItems.push({
                   id: itemId,
                   fileName: row.file_name,
                   status: "failed",
-                  message: "R2 returnerte tom body.",
+                  message: "Objektlageret returnerte tom body.",
                 });
                 continue;
               }

@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 /// En enkelt køet mutasjon som må syncs tilbake til backend. Hver
 /// iPad-originert write (cull-beslutning, shot-completion, kontrakt-
@@ -15,10 +16,10 @@ import Foundation
 /// sendes som `X-Client-Mutation-Id`-header. Backend deduper retries
 /// mot dette så samme mutasjon kan flushes flere ganger uten dobbel-
 /// effekt.
-struct OutboxMutation: Codable, Sendable, Equatable {
+public struct OutboxMutation: Codable, Sendable, Equatable {
     /// HTTP-metoden mutasjonen mapper til når den flushes. String-
     /// rawValue så de lagres som ren tekst i `method`-kolonnen.
-    enum Method: String, Codable, Sendable, Equatable {
+    public enum Method: String, Codable, Sendable, Equatable {
         case get = "GET"
         case post = "POST"
         case patch = "PATCH"
@@ -31,7 +32,7 @@ struct OutboxMutation: Codable, Sendable, Equatable {
     /// network-feil eller 5xx. En rad med `failed` + `attemptCount >=
     /// maxAttempts` parkes — UI viser den så fotografen kan beslutte
     /// retry eller drop.
-    enum Status: String, Codable, Sendable, Equatable {
+    public enum Status: String, Codable, Sendable, Equatable {
         case pending
         case syncing
         case succeeded
@@ -41,42 +42,42 @@ struct OutboxMutation: Codable, Sendable, Equatable {
     /// Maks antall flush-forsøk før raden parkes som ikke-retryable.
     /// Matchet med schema-kommentaren ("failed count >= 5") og brukes
     /// av både Outbox.requeue og purge-cleanup.
-    static let maxAttempts: Int = 5
+    public static let maxAttempts: Int = 5
 
     /// Auto-increment rowID fra SQLite. nil før insert; stempled av
     /// `didInsert` i `DatabaseSchema.swift`.
-    var id: Int64?
+    public var id: Int64?
 
     /// Client-generated UUID som backend bruker til å deduplikere
     /// retries. Unique-constraint på kolonnen sikrer at flush ikke
     /// inserter samme klient-token to ganger ved race-conditions.
-    var clientMutationId: String
+    public var clientMutationId: String
 
     /// HTTP-endepunktet å POST/PATCH/DELETE mot. Inkluderer hverken
     /// host eller bearer-token (det stampes av ``BackendClient``).
-    var endpoint: String
+    public var endpoint: String
 
-    var method: Method
+    public var method: Method
 
     /// JSON-encoded request-body. nil for metoder uten body (GET,
     /// DELETE uten payload).
-    var bodyJson: String?
+    public var bodyJson: String?
 
     /// GRDB-tabellen som ble mutert lokalt. Brukes til å re-finne
     /// raden ved retry-flows + til status-mapping ("din asset venter
     /// på sync").
-    var entityTable: String?
-    var entityId: String?
+    public var entityTable: String?
+    public var entityId: String?
 
-    var status: Status
+    public var status: Status
 
-    var attemptCount: Int
-    var lastError: String?
+    public var attemptCount: Int
+    public var lastError: String?
 
-    var createdAt: Date
-    var updatedAt: Date
+    public var createdAt: Date
+    public var updatedAt: Date
 
-    init(
+    public init(
         id: Int64? = nil,
         clientMutationId: String,
         endpoint: String,
@@ -102,5 +103,21 @@ struct OutboxMutation: Codable, Sendable, Equatable {
         self.lastError = lastError
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+// MARK: - Persistens
+//
+// Konformansen lå tidligere i appens `DatabaseSchema.swift`. Den hører hjemme
+// sammen med typen: en ny app skal ikke måtte vite at den må skrives.
+
+extension OutboxMutation: FetchableRecord, MutablePersistableRecord {
+    public static var databaseTableName: String { "outboxMutation" }
+    public static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    public static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+
+    /// Auto-increment-nøkkelen stemples etter INSERT — derfor er `id` optional.
+    public mutating func didInsert(_ inserted: InsertionSuccess) {
+        id = inserted.rowID
     }
 }

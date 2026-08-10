@@ -585,6 +585,8 @@ import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.
 import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
 import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
 import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
+import { registerRoleRoomRetentionCron } from "./role-room-retention-cron.js";
+import { registerRoleRoomRightsExpiryCron } from "./role-room-rights-expiry-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
@@ -755,6 +757,11 @@ import { setupCastingAgreementsRoutes } from "./casting-agreements-routes";
 import { createCastingManuscriptsService } from "./casting-manuscripts-service";
 import { setupCastingManuscriptsRoutes } from "./casting-manuscripts-routes";
 import { setupRoleRoomCallSheetRoutes } from "./role-room-call-sheet-routes";
+import { setupRoleRoomCalendarRoutes } from "./role-room-calendar-routes.js";
+import { setupRoleRoomFundingRoutes } from "./role-room-funding-routes.js";
+import { setupRoleRoomWorkTimeRoutes } from "./role-room-work-time-routes.js";
+import { setupRoleRoomStripboardRoutes } from "./role-room-stripboard-routes.js";
+import { setupRoleRoomTakeApprovalRoutes } from "./role-room-take-approval-routes.js";
 import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
@@ -953,6 +960,7 @@ import { setupUploadsRoutes } from "./uploads-routes";
 import { setupStorageStatusRoutes } from "./storage-status-routes";
 import { setupStorageBillingAdminRoutes } from "./storage-billing-admin-routes";
 import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
+import { setupAdminStorageStatusRoutes } from "./admin-storage-status-routes.js";
 import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
@@ -25324,6 +25332,14 @@ registerLeadgridIntelligenceCron({ app, pool });
 // (.github/workflows/leadgrid-retention-cleanup.yml). Bruker samme
 // CRON_TOKEN som intelligence-rescore.
 registerLeadgridRetentionCron({ app, pool });
+// GDPR-autosletting av casting-data (Del A punkt 35): utløpt samtykke,
+// avviste kandidater, avsluttede prosjekter og utløpte delingslenker.
+// Tørrkjøring inntil RR_RETENTION_ENFORCE=true — fristene i migrering 0443
+// er ikke juridisk vurdert ennå.
+registerRoleRoomRetentionCron({ app, pool });
+// Utløpsvarsling for buyout-rettigheter (Del A punkt 46). Varsler ved 90/30/7/0
+// dager, én gang per terskel — daglig masing ville fått varselet slått av.
+registerRoleRoomRightsExpiryCron({ app, pool });
 // Skalering nivå 2b — denormaliser crm_customers.organization_id (mig 320)
 // via backfill-cron (kjøres @ 03:15 UTC daily + manuell trigger). Eliminerer
 // owner_user_id IN organization_members-subqueries fra hot-path queries.
@@ -31812,8 +31828,18 @@ setupCastingManuscriptsRoutes({
   compatStoreGet,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
+  // Lar /manuscripts/:id/import?persist=true lagre parsede scener
+  // (Del A punkt 82) framfor bare å returnere dem.
+  pool,
 });
 setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
+// Envegs kalendersynk (Del A punkt 60) — ICS-abonnement for opptaksdager og frister.
+setupRoleRoomCalendarRoutes({ app, pool, requireUserSession });
+// Tilskuddssøknader (Del A punkt 114) — klarhetsvurdering, finansieringsplan og eksport.
+setupRoleRoomFundingRoutes({ app, pool, requireUserSession });
+setupRoleRoomWorkTimeRoutes({ app, pool, requireUserSession });
+setupRoleRoomStripboardRoutes({ app, pool, requireUserSession });
+setupRoleRoomTakeApprovalRoutes({ app, pool, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
@@ -47531,15 +47557,13 @@ app.get("/api/notifications/active", (req, res) => {
 let _showcaseB2Cache: { client: any; bucket: string } | null | undefined;
 async function getShowcaseB2(): Promise<{ client: any; bucket: string } | null> {
   if (_showcaseB2Cache !== undefined) return _showcaseB2Cache;
-  const keyId = process.env.B2_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_APPLICATION_KEY;
   const bucket = process.env.B2_BUCKET_NAME;
-  const region = process.env.B2_REGION;
-  if (!keyId || !appKey || !bucket || !region) { _showcaseB2Cache = null; return null; }
+  if (!bucket) { _showcaseB2Cache = null; return null; }
   try {
-    const { S3Client } = await import("@aws-sdk/client-s3");
-    const endpoint = process.env.B2_ENDPOINT || `https://s3.${region}.backblazeb2.com`;
-    _showcaseB2Cache = { client: new S3Client({ region, endpoint, credentials: { accessKeyId: keyId, secretAccessKey: appKey } }), bucket };
+    // Showcase-media er avledet innhold en bakgrunnsjobb lager og rydder.
+    const { b2ClientFor } = await import("./b2-client-factory.js");
+    const client = b2ClientFor("media-worker");
+    _showcaseB2Cache = client ? { client, bucket } : null;
   } catch { _showcaseB2Cache = null; }
   return _showcaseB2Cache;
 }
@@ -67154,6 +67178,17 @@ setupChunkedUploadRoutes({
   pool,
   requireUserSession,
 });
+
+// Én linje ved oppstart om hvilke B2-roller som fortsatt deler
+// plattformens fellesnøkkel. Uten den er en halvferdig nøkkelutrulling
+// usynlig: alt virker, og ingen oppdager at tjenester som bare skal lese
+// fortsatt har full slettetilgang til hele bøtta.
+void import("./b2-key-registry.js")
+  .then((m) => m.logKeyRoleStatus())
+  .catch(() => undefined);
+void import("./b2-bucket-registry.js")
+  .then((m) => m.logBucketStatus())
+  .catch(() => undefined);
 setupUploadsRoutes({
   app,
   pool,
@@ -67170,6 +67205,11 @@ setupStorageBillingAdminRoutes({
   requireAdminSession,
 });
 setupAdminStorageCostRoutes({
+  app,
+  pool,
+  requireAdminSession,
+});
+setupAdminStorageStatusRoutes({
   app,
   pool,
   requireAdminSession,

@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OutboxKit
 
 extension AppDatabase {
     static let migrator: DatabaseMigrator = {
@@ -222,22 +223,9 @@ extension AppDatabase {
             // flush is in flight, ``succeeded`` on 2xx, or ``failed``
             // (with a retry count) on network error. A row with
             // ``failed`` count >= 5 is parked and surfaced to the UI.
-            try db.create(table: "outboxMutation") { t in
-                t.autoIncrementedPrimaryKey("id")
-                t.column("clientMutationId", .text).notNull().unique()
-                t.column("endpoint", .text).notNull()        // e.g. "PATCH /api/capture/assets/:id"
-                t.column("method", .text).notNull()          // GET|POST|PATCH|DELETE
-                t.column("bodyJson", .text)
-                t.column("entityTable", .text)               // local table the row belongs to
-                t.column("entityId", .text)                  // row id we patched locally
-                t.column("status", .text).notNull().defaults(to: "pending")
-                t.column("attemptCount", .integer).notNull().defaults(to: 0)
-                t.column("lastError", .text)
-                t.column("createdAt", .datetime).notNull()
-                t.column("updatedAt", .datetime).notNull()
-            }
-            try db.create(indexOn: "outboxMutation", columns: ["status", "createdAt"])
-            try db.create(indexOn: "outboxMutation", columns: ["entityTable", "entityId"])
+            // DDL-en eies av OutboxKit. Migreringsnavnet blir stående her,
+            // så eksisterende installasjoner beholder identiteten sin.
+            try OutboxSchema.createTable(db)
         }
         migrator.registerMigration("v4_asset_voice_memo") { db in
             // Per-asset voice memo recorded by the photographer mid-shoot
@@ -357,14 +345,6 @@ extension CullSuggestionCache: FetchableRecord, PersistableRecord {
     static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy { .uppercaseString }
 }
 
-extension OutboxMutation: FetchableRecord, MutablePersistableRecord {
-    static var databaseTableName: String { "outboxMutation" }
-    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
-    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
-    mutating func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
-}
 
 // MARK: - JSON-backed columns
 

@@ -1,13 +1,22 @@
 // Upload storage router — bestemmer hvor en assemblet upload skal lagres
-// permanent: Cloudflare Stream (for video), R2 (for alt annet), eller
-// filesystem som siste fallback.
+// permanent: Cloudflare Stream (for video), et S3-kompatibelt objektlager
+// (B2 primært, R2 som fallback), eller filesystem som siste utvei.
 //
 // Brukes av chunked-upload-routes.ts etter at chunks er assemblet, men
 // kan også brukes av andre upload-paths som vil ha samme routing-logikk.
 //
-// Env-fallback for R2 følger samme kjede som cms-media-service.ts:
+// B2 er primærlageret. R2 beholdes som fallback fordi filene som allerede
+// ligger der fortsatt må kunne leses: hvilken backend en fil ligger på
+// lagres PER FIL (`storageBackend` i metadata), så eksisterende R2-objekter
+// leses videre via R2-klienten uten at noe må migreres.
+//
+// Env-kjede for B2:
+//   GENERIC_UPLOADS_B2_BUCKET → B2_ROLE_ROOM_BUCKET_NAME → B2_BUCKET_NAME
+// Env-kjede for R2 følger samme mønster som cms-media-service.ts:
 //   GENERIC_UPLOADS_R2_BUCKET → CLOUDFLARE_R2_BUCKET → R2_BUCKET
-// Samme mønster for endpoint/accessKey/secretKey.
+//
+// Rekkefølgen kan snus med UPLOAD_STORAGE_PRIMARY=r2 hvis B2 må kobles ut
+// uten redeploy av kode.
 //
 // Stream-konfig leses fra cloudflare-stream-service.ts (samme env vars).
 
@@ -19,8 +28,26 @@ import {
   buildStreamConfig,
   uploadToStream,
 } from "./cloudflare-stream-service.js";
+import { resolveB2Key, type B2KeyRole } from "./b2-key-registry.js";
+import { bucketForClass, bucketForKey, keyMarkerFor } from "./b2-bucket-registry.js";
 
-export type UploadStorageBackend = "cloudflare_stream" | "r2" | "filesystem";
+/** S3-kompatible objektlagre. Samme kode-path, ulik klient og bucket. */
+export const OBJECT_STORE_BACKENDS = ["b2", "r2"] as const;
+export type ObjectStoreBackend = (typeof OBJECT_STORE_BACKENDS)[number];
+
+export type UploadStorageBackend =
+  | "cloudflare_stream"
+  | ObjectStoreBackend
+  | "filesystem";
+
+/** Ligger fila i et objektlager vi kan hente den fra med en S3-klient? */
+export function isObjectStoreBackend(
+  backend: string | null | undefined,
+): backend is ObjectStoreBackend {
+  return (
+    backend === "b2" || backend === "r2"
+  );
+}
 
 export interface UploadStorageResult {
   backend: UploadStorageBackend;
@@ -35,7 +62,12 @@ export interface UploadStorageResult {
   thumbnailUrl?: string;
   ready?: boolean;
   duration?: number;
-  // R2-spesifikt
+  // Objektlager (B2 eller R2) — bruk disse i ny kode.
+  objectKey?: string;
+  objectBucket?: string;
+  // Samme verdier under de gamle navnene. Feltnavnet sier R2, men verdien
+  // er nøkkelen i det objektlageret fila faktisk havnet i — beholdt fordi
+  // lesepathene og lagret metadata fortsatt bruker disse navnene.
   r2Key?: string;
   r2Bucket?: string;
   // Filesystem fallback
@@ -51,9 +83,13 @@ export interface UploadStorageResult {
   ciphertextSize?: number;
 }
 
-interface GenericR2Config {
+interface ObjectStoreConfig {
+  backend: ObjectStoreBackend;
   enabled: boolean;
   endpoint?: string;
+  region: string;
+  /** B2 krever path-style; R2 bruker virtual-host. */
+  forcePathStyle: boolean;
   bucket?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
@@ -70,7 +106,49 @@ const firstNonEmpty = (
   return undefined;
 };
 
-const buildGenericUploadsR2Config = (): GenericR2Config => {
+// the-role-room-prod ligger i eu-central-003 (samme default som
+// b2-archive-helper.ts — feil default her ville gitt stille skrivefeil).
+const B2_DEFAULT_REGION = "eu-central-003";
+
+const buildGenericUploadsB2Config = (): ObjectStoreConfig => {
+  const region =
+    firstNonEmpty(process.env.GENERIC_UPLOADS_B2_REGION, process.env.B2_REGION) ??
+    B2_DEFAULT_REGION;
+  const endpoint =
+    firstNonEmpty(
+      process.env.GENERIC_UPLOADS_B2_ENDPOINT,
+      process.env.B2_ENDPOINT,
+    ) ?? `https://s3.${region}.backblazeb2.com`;
+  const bucket = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_B2_BUCKET,
+    process.env.B2_ROLE_ROOM_BUCKET_NAME,
+    process.env.B2_BUCKET_NAME,
+  );
+  const accessKeyId = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_B2_APPLICATION_KEY_ID,
+    process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID,
+    process.env.B2_APPLICATION_KEY_ID,
+  );
+  const secretAccessKey = firstNonEmpty(
+    process.env.GENERIC_UPLOADS_B2_APPLICATION_KEY,
+    process.env.B2_ROLE_ROOM_APPLICATION_KEY,
+    process.env.B2_APPLICATION_KEY,
+  );
+  return {
+    backend: "b2",
+    enabled: Boolean(endpoint && bucket && accessKeyId && secretAccessKey),
+    endpoint,
+    region,
+    forcePathStyle: true,
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    prefix: process.env.GENERIC_UPLOADS_B2_PREFIX ?? "uploads/",
+    publicUrlBase: process.env.GENERIC_UPLOADS_B2_PUBLIC_URL_BASE,
+  };
+};
+
+const buildGenericUploadsR2Config = (): ObjectStoreConfig => {
   const endpoint = firstNonEmpty(
     process.env.GENERIC_UPLOADS_R2_ENDPOINT,
     process.env.CLOUDFLARE_R2_ENDPOINT,
@@ -92,8 +170,11 @@ const buildGenericUploadsR2Config = (): GenericR2Config => {
     process.env.R2_SECRET_ACCESS_KEY,
   );
   return {
+    backend: "r2",
     enabled: Boolean(endpoint && bucket && accessKeyId && secretAccessKey),
     endpoint,
+    region: "auto",
+    forcePathStyle: false,
     bucket,
     accessKeyId,
     secretAccessKey,
@@ -102,31 +183,97 @@ const buildGenericUploadsR2Config = (): GenericR2Config => {
   };
 };
 
-let cachedR2: S3Client | null = null;
-let cachedR2Key = "";
+const buildObjectStoreConfig = (backend: ObjectStoreBackend): ObjectStoreConfig =>
+  backend === "b2" ? buildGenericUploadsB2Config() : buildGenericUploadsR2Config();
 
-const getR2 = (cfg: GenericR2Config): S3Client | null => {
-  if (
-    !cfg.enabled ||
-    !cfg.endpoint ||
-    !cfg.accessKeyId ||
-    !cfg.secretAccessKey
-  ) {
-    return null;
+/**
+ * Rekkefølgen vi forsøker å skrive i. B2 er primær; R2 er der som fallback
+ * slik at en feilende eller ukonfigurert B2 ikke stopper opplastinger.
+ * UPLOAD_STORAGE_PRIMARY=r2 snur rekkefølgen uten kodeendring.
+ */
+export function objectStoreWriteOrder(): ObjectStoreConfig[] {
+  const primary: ObjectStoreBackend =
+    process.env.UPLOAD_STORAGE_PRIMARY === "r2" ? "r2" : "b2";
+  const secondary: ObjectStoreBackend = primary === "b2" ? "r2" : "b2";
+  return [buildObjectStoreConfig(primary), buildObjectStoreConfig(secondary)].filter(
+    (cfg) => cfg.enabled,
+  );
+}
+
+const clientCache = new Map<string, S3Client>();
+
+/**
+ * Legitimasjonen for en operasjon.
+ *
+ * B2 har egne nokler per rolle - skrivenokkelen kan ikke slette, og
+ * lesenokkelen kan ikke skrive. R2 har ikke fatt samme oppdeling, sa der
+ * brukes konfigens nokkel uansett rolle; a late som noe annet ville vaert
+ * en falsk trygghet.
+ */
+const credentialsFor = (
+  cfg: ObjectStoreConfig,
+  role: B2KeyRole,
+): { accessKeyId: string; secretAccessKey: string } | null => {
+  if (cfg.backend === "b2") {
+    const scoped = resolveB2Key(role);
+    if (scoped) {
+      return {
+        accessKeyId: scoped.keyId,
+        secretAccessKey: scoped.applicationKey,
+      };
+    }
   }
-  const key = `${cfg.endpoint}|${cfg.accessKeyId}`;
-  if (cachedR2 && cachedR2Key === key) return cachedR2;
-  cachedR2 = new S3Client({
-    region: "auto",
-    endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: cfg.accessKeyId,
-      secretAccessKey: cfg.secretAccessKey,
-    },
-  });
-  cachedR2Key = key;
-  return cachedR2;
+  if (!cfg.accessKeyId || !cfg.secretAccessKey) return null;
+  return { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey };
 };
+
+const getObjectStoreClient = (
+  cfg: ObjectStoreConfig,
+  role: B2KeyRole,
+): S3Client | null => {
+  if (!cfg.enabled || !cfg.endpoint) return null;
+  const creds = credentialsFor(cfg, role);
+  if (!creds) return null;
+  // Nokkel-id-en er med i cache-nokkelen, slik at to roller med ulik
+  // nokkel aldri deler klient.
+  const cacheKey = `${cfg.backend}|${cfg.endpoint}|${creds.accessKeyId}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached) return cached;
+  const client = new S3Client({
+    region: cfg.region,
+    endpoint: cfg.endpoint,
+    credentials: creds,
+    ...(cfg.forcePathStyle ? { forcePathStyle: true } : {}),
+  });
+  clientCache.set(cacheKey, client);
+  return client;
+};
+
+/**
+ * Klient + bucket for backend'en en GITT FIL ligger på — les alltid fra
+ * `metadata.storageBackend`, aldri fra dagens primærvalg. Ellers ville en
+ * fil som ble skrevet til R2 i går bli lett etter i B2 i dag.
+ */
+export function getObjectStoreClientFor(
+  backend: string | null | undefined,
+  objectKey?: string | null,
+): { client: S3Client; bucket: string } | null {
+  if (!isObjectStoreBackend(backend)) return null;
+  const cfg = buildObjectStoreConfig(backend);
+  const client = getObjectStoreClient(cfg, "uploads-read");
+  if (!client) return null;
+  // Klasseleddet i nøkkelen avgjør bøtta. Nøkler skrevet før splitten
+  // mangler leddet og havner i fellesbøtta — derfor må ingenting kopieres.
+  const bucket =
+    cfg.backend === "b2" && objectKey
+      ? bucketForKey(stripPrefix(cfg, objectKey))?.bucket ?? cfg.bucket
+      : cfg.bucket;
+  if (!bucket) return null;
+  return { client, bucket };
+}
+
+const stripPrefix = (cfg: ObjectStoreConfig, key: string): string =>
+  key.startsWith(cfg.prefix) ? key.slice(cfg.prefix.length) : key;
 
 // Signed-URL TTL: kort (1 time) som default. En lekket lenke har dermed
 // et mindre risikovindu enn med 7-dagers TTL.
@@ -276,20 +423,32 @@ export async function routeAssembledUpload(
     }
   }
 
-  // 2) R2
-  const r2Cfg = buildGenericUploadsR2Config();
-  const r2Client = !opts.preferFilesystem ? getR2(r2Cfg) : null;
-  if (r2Client && r2Cfg.bucket && r2Cfg.endpoint) {
+  // 2) Objektlager — B2 først, deretter R2. Feiler den ene går vi videre
+  //    til den neste før vi gir opp og lar fila bli liggende på disk.
+  const stores = opts.preferFilesystem ? [] : objectStoreWriteOrder();
+  for (const cfg of stores) {
+    const client = getObjectStoreClient(cfg, "uploads-write");
+    // Generiske opplastinger har sin egen bøtte-klasse: de hører ikke til
+    // en produksjon, og skal ikke ryddes av produksjonens livssyklus.
+    const bucket =
+      cfg.backend === "b2"
+        ? bucketForClass("uploads")?.bucket ?? cfg.bucket
+        : cfg.bucket;
+    const keyPrefix =
+      cfg.backend === "b2"
+        ? `${cfg.prefix}${keyMarkerFor("uploads")}`
+        : cfg.prefix;
+    if (!client || !bucket) continue;
     try {
       const safeName = input.fileName
         .replace(/[\\/:*?"<>|\x00-\x1F]/g, "_")
         .slice(0, 200);
-      const key = `${r2Cfg.prefix}${input.userId}/${input.fileId}/${safeName}`;
+      const key = `${keyPrefix}${input.userId}/${input.fileId}/${safeName}`;
       const stream = fsSync.createReadStream(activeSourcePath);
 
-      await r2Client.send(
+      await client.send(
         new PutObjectCommand({
-          Bucket: r2Cfg.bucket,
+          Bucket: bucket,
           Key: key,
           Body: stream,
           // Hvis kryptert: ciphertext er opaque blob, ikke originalt MIME
@@ -307,18 +466,19 @@ export async function routeAssembledUpload(
       );
 
       // Bygg URL: public hvis konfigurert, ellers signed.
-      // VIKTIG: encrypted-at-rest filer kan IKKE 302-redirectes til R2 —
-      // klient ville fått dekrypterbar ciphertext. Vi setter downloadUrl
-      // til vårt egen proxy-endepunkt så fil-serving piper gjennom decrypt.
+      // VIKTIG: encrypted-at-rest filer kan IKKE 302-redirectes til
+      // objektlageret — klient ville fått ciphertext den ikke kan
+      // dekryptere. Vi setter downloadUrl til vårt eget proxy-endepunkt
+      // så fil-serving piper gjennom decrypt.
       let url: string;
       if (wantsEncryption) {
         url = `/api/chunked-upload/files/${input.fileId}`;
-      } else if (r2Cfg.publicUrlBase) {
-        url = `${r2Cfg.publicUrlBase.replace(/\/$/, "")}/${key}`;
+      } else if (cfg.publicUrlBase) {
+        url = `${cfg.publicUrlBase.replace(/\/$/, "")}/${key}`;
       } else {
         url = await getSignedUrl(
-          r2Client,
-          new GetObjectCommand({ Bucket: r2Cfg.bucket, Key: key }),
+          client,
+          new GetObjectCommand({ Bucket: bucket, Key: key }),
           { expiresIn: R2_SIGNED_TTL_SECONDS },
         );
       }
@@ -330,13 +490,15 @@ export async function routeAssembledUpload(
       }
 
       return {
-        backend: "r2",
+        backend: cfg.backend,
         fileId: input.fileId,
         fileName: input.fileName,
         size: input.size,
         mimeType: mime,
+        objectKey: key,
+        objectBucket: bucket,
         r2Key: key,
-        r2Bucket: r2Cfg.bucket,
+        r2Bucket: bucket,
         downloadUrl: url,
         ...(encryptionMeta && {
           encryptedAtRest: true,
@@ -347,10 +509,10 @@ export async function routeAssembledUpload(
       };
     } catch (err) {
       console.warn(
-        "[storage-router] R2 upload feilet, faller tilbake til filesystem:",
+        `[storage-router] ${cfg.backend}-upload feilet, prøver neste backend:`,
         err,
       );
-      // Fortsetter til filesystem-fallback
+      // Fortsetter til neste objektlager, ev. filesystem-fallback
     }
   }
 
@@ -383,20 +545,29 @@ export async function routeAssembledUpload(
 /** Diagnose: hva er koblet til akkurat nå? */
 export function getStorageStatus(): {
   cloudflareStream: { enabled: boolean; customerSubdomain: string | null };
+  b2: { enabled: boolean; bucket: string | null };
   r2: { enabled: boolean; bucket: string | null };
+  /** Objektlageret nye opplastinger faktisk havner i, eller null. */
+  primaryObjectStore: ObjectStoreBackend | null;
   filesystem: { dir: string };
 } {
   const streamCfg = buildStreamConfig();
+  const b2Cfg = buildGenericUploadsB2Config();
   const r2Cfg = buildGenericUploadsR2Config();
   return {
     cloudflareStream: {
       enabled: streamCfg.enabled,
       customerSubdomain: streamCfg.customerSubdomain ?? null,
     },
+    b2: {
+      enabled: b2Cfg.enabled,
+      bucket: b2Cfg.bucket ?? null,
+    },
     r2: {
       enabled: r2Cfg.enabled,
       bucket: r2Cfg.bucket ?? null,
     },
+    primaryObjectStore: objectStoreWriteOrder()[0]?.backend ?? null,
     filesystem: {
       dir:
         process.env.CHUNKED_UPLOAD_DIR ||

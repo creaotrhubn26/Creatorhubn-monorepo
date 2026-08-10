@@ -12,6 +12,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import { b2StoreFor } from "./b2-client-factory.js";
 
 const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
@@ -31,19 +32,7 @@ const ALLOWED_MIMES = new Set([
 const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB
 
 function getB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  return b2StoreFor("documents", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 function partnerDocKey(applicationId: string, documentType: string, filename: string): string {

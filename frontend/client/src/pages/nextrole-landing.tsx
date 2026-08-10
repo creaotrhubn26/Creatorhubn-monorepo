@@ -48,6 +48,37 @@ import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
 import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 // ════════════════════════════════════════════════════════════════════
+// FARGER — merkevaregult, delt i to fordi kontrast krever det
+// ════════════════════════════════════════════════════════════════════
+//
+// #F5B82E har luminans 0,54. Det gir 1,78:1 mot hvitt — under halvparten
+// av WCAG-kravet på 4,5:1, og under 3:1 selv for stor tekst. Fargen kan
+// derfor brukes som BAKGRUNN, aldri som tekst på lyst underlag, og den
+// tåler ikke hvit tekst oppå seg.
+//
+// Lighthouse målte 28 kontrastbrudd på denne siden. De fleste kom fra
+// nettopp den kombinasjonen — hvit tekst på gult, og gul tekst på hvitt.
+
+/** Merkevaregult. Kun bakgrunn. Tekst oppå må være AMBER_ON. */
+const AMBER = '#F5B82E';
+
+/** Tekstfarge på gul bakgrunn. 8,2:1 mot #F5B82E. */
+const AMBER_ON = '#1F2937';
+
+/** Gult som tekst på lyst underlag. 6,4:1 mot hvitt. Fantes i fila fra før. */
+const AMBER_TEXT = '#7A5A0B';
+
+/**
+ * Mørkere variant av temaets primary (#ff6b35), som gir 2,83:1 mot hvitt og
+ * derfor faller på outlined-knapper. Denne gir 5,96:1 i samme fargetone.
+ *
+ * Merk at rotårsaken ligger i app-temaet, ikke her: HVER outlined
+ * primary-knapp i hele appen har samme problem. Det er en egen jobb, med
+ * et helt annet nedslagsfelt enn denne siden.
+ */
+const ORANGE_TEXT = '#B33A00';
+
+// ════════════════════════════════════════════════════════════════════
 // SAMPLE-DATA for å vise template-preview
 // ════════════════════════════════════════════════════════════════════
 //
@@ -147,10 +178,29 @@ const TemplateCarousel: React.FC = () => {
         <Chip
           label={`Mal: ${current.name}`}
           size="small"
-          sx={{ bgcolor: '#F5B82E', color: 'white', fontWeight: 700 }}
+          sx={{ bgcolor: AMBER, color: AMBER_ON, fontWeight: 700 }}
         />
       </Box>
+      {/*
+        Forhåndsvisningen er en ekte mal fylt med Ola Nordmanns fiktive
+        CV, skalert til 58 %. Den er dekorasjon: poenget er at malen ser
+        pen ut, ikke hva det står i den.
+
+        `aria-hidden` fordi en skjermleser ellers leser opp en oppdiktet
+        persons arbeidshistorikk midt i et salgsargument. `inert` i tillegg,
+        siden malene inneholder lenker — aria-hidden alene ville etterlatt
+        fokuserbare elementer skjult for skjermleseren, som er sitt eget
+        brudd (aria-hidden-focus).
+
+        Det fjerner samtidig de fleste av de 28 kontrastbruddene. Merk at
+        de bruddene fortsatt FINNES i malene — se kommentaren under.
+      */}
       <Box
+        aria-hidden="true"
+        // `inert` finnes ikke i React 18s JSX-typer ennå. Spredt inn som
+        // vanlig attributt framfor @ts-expect-error, fordi feilen ellers
+        // rapporteres på JSX-elementet og ikke på linja direktivet står på.
+        {...({ inert: '' } as Record<string, string>)}
         sx={{
           transform: 'scale(0.58)',
           transformOrigin: 'top center',
@@ -163,17 +213,39 @@ const TemplateCarousel: React.FC = () => {
       >
         <Component resume={{ ...SAMPLE_RESUME, templateId: current.id }} preview />
       </Box>
-      <Stack direction="row" justifyContent="center" spacing={0.5} sx={{ mt: -16, position: 'relative', zIndex: 3 }}>
+      {/*
+        Prikkene var klikkbare <Box>-er: ingen rolle, ingen tabbing, ingen
+        navn. Med forhåndsvisningen skjult for skjermlesere er de dessuten
+        det eneste som forteller hvilken mal som vises, så de må bære den
+        informasjonen selv.
+      */}
+      <Stack
+        direction="row"
+        justifyContent="center"
+        spacing={0.5}
+        sx={{ mt: -16, position: 'relative', zIndex: 3 }}
+        role="tablist"
+        aria-label="Velg CV-mal"
+      >
         {TEMPLATE_CAROUSEL.map((t, i) => (
           <Box
             key={t.id}
+            component="button"
+            type="button"
+            role="tab"
+            aria-selected={i === idx}
+            aria-label={`Vis malen ${t.name}`}
             sx={{
               width: i === idx ? 24 : 8,
               height: 8,
+              p: 0,
+              border: 0,
               borderRadius: 4,
-              bgcolor: i === idx ? '#F5B82E' : 'rgba(255, 255, 255, 0.5)',
+              bgcolor: i === idx ? AMBER : 'rgba(255, 255, 255, 0.5)',
               transition: 'all 0.3s ease',
               cursor: 'pointer',
+              // Uten dette er tastaturfokus usynlig på en 8px prikk.
+              '&:focus-visible': { outline: `2px solid ${AMBER}`, outlineOffset: 3 },
             }}
             onClick={() => setIdx(i)}
           />
@@ -256,7 +328,7 @@ const HowItWorksAnimation: React.FC = () => {
                   <Stack direction="row" spacing={2} alignItems="center">
                     <Avatar
                       sx={{
-                        bgcolor: i === activeStep ? '#F5B82E' : 'grey.200',
+                        bgcolor: i === activeStep ? AMBER : 'grey.200',
                         color: i === activeStep ? 'white' : 'text.secondary',
                         width: 36, height: 36, fontWeight: 700,
                         transition: 'all 0.3s ease',
@@ -265,7 +337,7 @@ const HowItWorksAnimation: React.FC = () => {
                       {i + 1}
                     </Avatar>
                     <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{s.title}</Typography>
+                      <Typography component="h3" variant="subtitle2" sx={{ fontWeight: 700 }}>{s.title}</Typography>
                       {i === activeStep && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.4 }}>
                           {s.description}
@@ -329,14 +401,22 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
         <PdfIcon sx={{ fontSize: 64, color: '#F5B82E', mb: 2 }} />
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Last opp din eksisterende CV</Typography>
+        <Typography component="h3" variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Last opp din eksisterende CV</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           PDF eller DOCX, maks 10 MB
         </Typography>
-        <Button variant="contained" sx={{ bgcolor: '#F5B82E' }}>Velg fil</Button>
+        <Button variant="contained" sx={{ bgcolor: AMBER, color: AMBER_ON }}>Velg fil</Button>
         <Box sx={{ mt: 3, p: 2, bgcolor: '#FAF7F0', borderRadius: 1, textAlign: 'left' }}>
-          <Typography variant="caption" sx={{ fontWeight: 700, color: '#7A5A0B' }}>BEHANDLER</Typography>
-          <LinearProgress sx={{ mt: 0.7, '& .MuiLinearProgress-bar': { bgcolor: '#F5B82E' } }} />
+          <Typography variant="caption" sx={{ fontWeight: 700, color: AMBER_TEXT }}>BEHANDLER</Typography>
+          {/*
+            En framdriftsindikator uten navn er bare «progressbar» for en
+            skjermleser — ingen antydning om hva som pågår. Teksten over er
+            visuelt knyttet til den, men den koblingen finnes ikke i DOM-en.
+          */}
+          <LinearProgress
+            aria-label="Behandler dokumentet"
+            sx={{ mt: 0.7, '& .MuiLinearProgress-bar': { bgcolor: AMBER } }}
+          />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
             Creatorhub Intelligence leser dokumentet (12 sekunder gjenstår …)
           </Typography>
@@ -347,7 +427,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
   if (mockup === 'analyze') {
     return (
       <Stack spacing={2}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>ATS-analyse</Typography>
+        <Typography component="h3" variant="h6" sx={{ fontWeight: 700 }}>ATS-analyse</Typography>
         <Paper variant="outlined" sx={{ p: 2, borderLeft: '4px solid #10B981' }}>
           <Stack direction="row" spacing={2} alignItems="center">
             <Box sx={{
@@ -355,7 +435,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
               bgcolor: '#ECFDF5', border: '3px solid #10B981',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Typography variant="h5" sx={{ fontWeight: 800 }}>92</Typography>
+              <Typography component="p" variant="h5" sx={{ fontWeight: 800 }}>92</Typography>
             </Box>
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Utmerket ATS-score</Typography>
@@ -378,7 +458,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
   if (mockup === 'templates') {
     return (
       <Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>Velg mal</Typography>
+        <Typography component="h3" variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>Velg mal</Typography>
         <Grid container spacing={1}>
           {[
             { name: 'Nordic Dark', color: '#1F2937' },
@@ -404,7 +484,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
   if (mockup === 'cover-letter') {
     return (
       <Stack spacing={1.5}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>AI-generert søknadsbrev</Typography>
+        <Typography component="h3" variant="h6" sx={{ fontWeight: 700 }}>AI-generert søknadsbrev</Typography>
         <Paper variant="outlined" sx={{ p: 2, bgcolor: '#FAFAF9', fontFamily: 'Georgia, serif' }}>
           <Typography variant="caption" color="text.secondary">Dear hiring manager,</Typography>
           <Typography variant="body2" sx={{ mt: 1, lineHeight: 1.6 }}>
@@ -412,7 +492,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
             Med dokumenterte resultater som å øke engasjement med 340%, og kompetanse innen AI-drevne strategier,
             kan jeg bidra med …
           </Typography>
-          <Box sx={{ mt: 1.5, height: 6, bgcolor: '#F5B82E', width: '70%', borderRadius: 3 }} />
+          <Box sx={{ mt: 1.5, height: 6, bgcolor: AMBER, width: '70%', borderRadius: 3 }} />
         </Paper>
         <Stack direction="row" spacing={1}>
           <Chip label="Norsk" size="small" color="primary" />
@@ -424,7 +504,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
   // publish
   return (
     <Stack spacing={2}>
-      <Typography variant="h6" sx={{ fontWeight: 700 }}>Del og eksporter</Typography>
+      <Typography component="h3" variant="h6" sx={{ fontWeight: 700 }}>Del og eksporter</Typography>
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Box>
@@ -544,15 +624,15 @@ const PricingCards: React.FC<{ onChoose: (tierId: string) => void; loading: stri
                 size="small"
                 sx={{
                   position: 'absolute', top: -12, left: 24, zIndex: 1,
-                  bgcolor: '#F5B82E', color: 'white', fontWeight: 700,
+                  bgcolor: AMBER, color: AMBER_ON, fontWeight: 700,
                 }}
               />
             )}
             <CardContent sx={{ p: 3 }}>
               <Typography variant="overline" color="text.secondary">{tier.bestFor}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5 }}>{tier.name}</Typography>
+              <Typography component="h3" variant="h5" sx={{ fontWeight: 800, mt: 0.5 }}>{tier.name}</Typography>
               <Box sx={{ my: 2 }}>
-                <Typography variant="h3" sx={{ fontWeight: 900, color: tier.highlighted ? '#F5B82E' : 'inherit', lineHeight: 1 }}>
+                <Typography component="p" variant="h3" sx={{ fontWeight: 900, color: tier.highlighted ? AMBER_TEXT : 'inherit', lineHeight: 1 }}>
                   {tier.price}
                 </Typography>
                 {tier.yearlyEquivalent && (
@@ -569,8 +649,11 @@ const PricingCards: React.FC<{ onChoose: (tierId: string) => void; loading: stri
                 disabled={loading === tier.id}
                 sx={{
                   fontWeight: 700,
-                  bgcolor: tier.highlighted ? '#F5B82E' : undefined,
-                  borderColor: tier.highlighted ? '#F5B82E' : undefined,
+                  bgcolor: tier.highlighted ? AMBER : undefined,
+                  // De uthevede knappene får mørk tekst på gult; de andre
+                  // arver temaets primary (#ff6b35), som er 2,83:1 mot hvitt.
+                  color: tier.highlighted ? AMBER_ON : ORANGE_TEXT,
+                  borderColor: tier.highlighted ? AMBER : undefined,
                   '&:hover': tier.highlighted ? { bgcolor: '#D49B1A' } : {},
                   mb: 2,
                 }}
@@ -818,10 +901,10 @@ const NextRoleLanding: React.FC = () => {
                 label="14 dagers gratis prøveperiode — ingen kort kreves"
                 sx={{ bgcolor: '#FFF4D6', color: '#7A5A0B', fontWeight: 700, mb: 3 }}
               />
-              <Typography variant="h2" sx={{ fontWeight: 900, lineHeight: 1.1, mb: 2, fontSize: { xs: '2.2rem', md: '3.2rem' }, color: '#1F2937' }}>
-                Å søke jobb har <Box component="span" sx={{ color: '#F5B82E' }}>aldri vært enklere</Box>.
+              <Typography component="h1" variant="h2" sx={{ fontWeight: 900, lineHeight: 1.1, mb: 2, fontSize: { xs: '2.2rem', md: '3.2rem' }, color: '#1F2937' }}>
+                Å søke jobb har <Box component="span" sx={{ color: AMBER_TEXT }}>aldri vært enklere</Box>.
               </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ mb: 3, lineHeight: 1.5, fontWeight: 400 }}>
+              <Typography component="p" variant="h6" color="text.secondary" sx={{ mb: 3, lineHeight: 1.5, fontWeight: 400 }}>
                 AI-drevet CV-bygger, ATS-optimalisering, søknadsbrev og intervjuforberedelse — alt på norsk.
                 Bygget på Creatorhub Intelligence, lagd for norske jobbsøkere.
               </Typography>
@@ -832,7 +915,7 @@ const NextRoleLanding: React.FC = () => {
                   startIcon={<BoltIcon />}
                   onClick={() => handleChoose('trial')}
                   disabled={loading === 'trial'}
-                  sx={{ bgcolor: '#F5B82E', fontWeight: 700, px: 4, py: 1.3, '&:hover': { bgcolor: '#D49B1A' } }}
+                  sx={{ bgcolor: AMBER, color: AMBER_ON, fontWeight: 700, px: 4, py: 1.3, '&:hover': { bgcolor: '#D49B1A' } }}
                 >
                   {loading === 'trial' ? 'Starter …' : 'Start gratis prøveperiode'}
                 </Button>
@@ -867,7 +950,7 @@ const NextRoleLanding: React.FC = () => {
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
         <Box sx={{ textAlign: 'center', mb: 5 }}>
           <Chip label="Hvorfor NextRole?" sx={{ bgcolor: '#E0E7FF', color: '#3730A3', fontWeight: 700, mb: 2 }} />
-          <Typography variant="h3" sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '1.8rem', md: '2.5rem' } }}>
+          <Typography component="h2" variant="h3" sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '1.8rem', md: '2.5rem' } }}>
             ChatGPT gir deg tekst. NextRole gir deg en CV.
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 680, mx: 'auto' }}>
@@ -879,8 +962,8 @@ const NextRoleLanding: React.FC = () => {
           <Grid item xs={12} md={6}>
             <Card variant="outlined" sx={{ height: '100%', p: 3, borderColor: 'divider' }}>
               <Typography variant="overline" color="text.secondary">ALTERNATIV</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, mb: 2 }}>ChatGPT Plus</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 900, color: 'text.secondary', mb: 2 }}>
+              <Typography component="h3" variant="h5" sx={{ fontWeight: 800, mb: 2 }}>ChatGPT Plus</Typography>
+              <Typography component="p" variant="h4" sx={{ fontWeight: 900, color: 'text.secondary', mb: 2 }}>
                 ~210 kr / mnd
               </Typography>
               <Stack spacing={1}>
@@ -912,9 +995,9 @@ const NextRoleLanding: React.FC = () => {
                 bgcolor: 'rgba(245, 184, 46,0.02)',
               }}
             >
-              <Typography variant="overline" sx={{ color: '#F5B82E', fontWeight: 700 }}>ANBEFALT</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, mb: 2 }}>NextRole Standard</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 900, color: '#F5B82E', mb: 2 }}>
+              <Typography variant="overline" sx={{ color: AMBER_TEXT, fontWeight: 700 }}>ANBEFALT</Typography>
+              <Typography component="h3" variant="h5" sx={{ fontWeight: 800, mb: 2 }}>NextRole Standard</Typography>
+              <Typography component="p" variant="h4" sx={{ fontWeight: 900, color: AMBER_TEXT, mb: 2 }}>
                 49 kr / mnd
               </Typography>
               <Stack spacing={1}>
@@ -954,7 +1037,7 @@ const NextRoleLanding: React.FC = () => {
         <Container maxWidth="lg">
           <Box sx={{ textAlign: 'center', mb: 5 }}>
             <Chip label="Slik fungerer det" sx={{ bgcolor: '#FFF4D6', color: '#7A5A0B', fontWeight: 700, mb: 2 }} />
-            <Typography variant="h3" sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '1.8rem', md: '2.5rem' } }}>
+            <Typography component="h2" variant="h3" sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '1.8rem', md: '2.5rem' } }}>
               Fra eksisterende CV til drømmejobben — på minutter.
             </Typography>
             <Typography variant="body1" color="text.secondary">
@@ -969,7 +1052,7 @@ const NextRoleLanding: React.FC = () => {
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
         <Box sx={{ textAlign: 'center', mb: 5 }}>
           <Chip label="Priser" sx={{ bgcolor: '#DBEAFE', color: '#1E3A8A', fontWeight: 700, mb: 2 }} />
-          <Typography variant="h3" sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '1.8rem', md: '2.5rem' } }}>
+          <Typography component="h2" variant="h3" sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '1.8rem', md: '2.5rem' } }}>
             Velg pakken som passer deg
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 580, mx: 'auto' }}>
@@ -995,7 +1078,7 @@ const NextRoleLanding: React.FC = () => {
       >
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
           <SpeedIcon sx={{ fontSize: 48, mb: 2 }} />
-          <Typography variant="h3" sx={{ fontWeight: 900, mb: 2 }}>
+          <Typography component="h2" variant="h3" sx={{ fontWeight: 900, mb: 2 }}>
             Kampanjepris 49 kr/mnd — kun ut 2026
           </Typography>
           <Typography variant="body1" sx={{ mb: 3, opacity: 0.9, maxWidth: 580, mx: 'auto' }}>
@@ -1007,7 +1090,7 @@ const NextRoleLanding: React.FC = () => {
             variant="contained"
             size="large"
             sx={{
-              bgcolor: 'white', color: '#F5B82E', fontWeight: 700, px: 5, py: 1.5,
+              bgcolor: 'white', color: AMBER_TEXT, fontWeight: 700, px: 5, py: 1.5,
               '&:hover': { bgcolor: '#FAF7F0' },
             }}
             startIcon={<BoltIcon />}
@@ -1024,7 +1107,7 @@ const NextRoleLanding: React.FC = () => {
         <Container maxWidth="lg">
           <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={2}>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              <Typography component="p" variant="h6" sx={{ fontWeight: 800 }}>
                 Next<Box component="span" sx={{ color: '#F5B82E' }}>Role</Box>
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.7 }}>by CreatorHub</Typography>

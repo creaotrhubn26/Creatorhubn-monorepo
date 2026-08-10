@@ -38,6 +38,179 @@ const nokPerUsd = (): number => {
 // Bruker env-override hvis admin vil justere.
 const DEFAULT_COST_NOK_PER_GB_MONTH = 0.5;
 
+// ── Kost per backend ────────────────────────────────────────────────
+//
+// Den blandede faktoren over ble regnet da alt lå i Cloudflare. B2 er nå
+// primærlager, og B2 er vesentlig billigere per GB enn R2. Blandingen
+// alene overvurderer derfor kostnaden, og en pris satt på den er høyere
+// enn den trenger å være — marginen ser mindre ut enn den er.
+//
+// Tallene her er listepriser i USD per juli 2026 og skal overstyres med
+// de faktiske avtaleprisene. En reseller- eller B2 Reserve-avtale ligger
+// under listepris; til da er defaulten konservativ i riktig retning.
+
+export type CostBackend = "b2" | "r2" | "cloudflare_stream" | "filesystem";
+
+export interface BackendCostBasis {
+  /** USD per GB lagret per måned. */
+  storagePerGbMonthUsd: number;
+  /** USD per GB egress ut over gratiskvantumet. */
+  egressPerGbUsd: number;
+  /**
+   * Gratis egress som multiplum av lagret mengde per måned. B2 gir 3×.
+   * R2 har fri egress — derfor Infinity. 0 betyr at all egress koster.
+   */
+  freeEgressMultiplier: number;
+}
+
+const envNum = (raw: string | undefined, fallback: number): number => {
+  if (!raw) return fallback;
+  const parsed = parseFloat(raw.trim());
+  // NaN eller negativ pris er alltid en konfigurasjonsfeil, aldri en
+  // gyldig avtale. Defaulten er da et bedre svar enn et tall som gir
+  // negativ margin i en faktura.
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+export function backendCostBasis(): Record<CostBackend, BackendCostBasis> {
+  return {
+    b2: {
+      storagePerGbMonthUsd: envNum(process.env.STORAGE_COST_B2_PER_GB_MONTH, 0.006),
+      egressPerGbUsd: envNum(process.env.STORAGE_COST_B2_EGRESS_PER_GB, 0.01),
+      freeEgressMultiplier: envNum(
+        process.env.STORAGE_COST_B2_FREE_EGRESS_MULTIPLIER,
+        3,
+      ),
+    },
+    r2: {
+      storagePerGbMonthUsd: envNum(process.env.STORAGE_COST_R2_PER_GB_MONTH, 0.015),
+      egressPerGbUsd: 0,
+      freeEgressMultiplier: Infinity,
+    },
+    cloudflare_stream: {
+      // Stream prises per lagret og levert minutt, ikke per GB. Vi fører
+      // den i GB her så én modell dekker alt; omregningen er en
+      // tilnærming, siden faktisk bitrate varierer med oppløsning.
+      storagePerGbMonthUsd: envNum(
+        process.env.STORAGE_COST_STREAM_PER_GB_MONTH,
+        0.1,
+      ),
+      egressPerGbUsd: envNum(process.env.STORAGE_COST_STREAM_EGRESS_PER_GB, 0.05),
+      freeEgressMultiplier: 0,
+    },
+    filesystem: {
+      // Disk på vår egen server er en fast kostnad som ikke skalerer per
+      // fil. Å prise den per GB ville fakturert den to ganger.
+      storagePerGbMonthUsd: 0,
+      egressPerGbUsd: 0,
+      freeEgressMultiplier: Infinity,
+    },
+  };
+}
+
+export interface BackendUsage {
+  backend: CostBackend;
+  storedBytes: number;
+  /** Bytes lastet ned i perioden. Utelatt = 0. */
+  egressBytes?: number;
+}
+
+export interface BackendCostResult {
+  backend: CostBackend;
+  storedGb: number;
+  egressGb: number;
+  /** Egress som lå innenfor gratiskvantumet. */
+  freeEgressGb: number;
+  billableEgressGb: number;
+  storageCostNok: number;
+  egressCostNok: number;
+  totalCostNok: number;
+}
+
+const GIB = 1024 * 1024 * 1024;
+
+/**
+ * Hva ett forbruk på én backend koster oss i én måned.
+ *
+ * Lagring og egress holdes atskilt fordi de oppfører seg ulikt: lagring
+ * løper så lenge fila finnes, egress hver gang noen henter den. En
+ * produksjon som laster ned dailies daglig kan koste mer i egress enn i
+ * lagring, og en modell som bare teller GB lagret ville ikke sett det.
+ */
+export function costForBackendUsage(usage: BackendUsage): BackendCostResult {
+  const basis = backendCostBasis()[usage.backend];
+  const rate = nokPerUsd();
+  const storedGb = Math.max(0, usage.storedBytes) / GIB;
+  const egressGb = Math.max(0, usage.egressBytes ?? 0) / GIB;
+
+  // Gratiskvantumet følger lagret mengde, ikke en fast grense: lagrer du
+  // mer, får du hente mer gratis. Slik regner B2 det.
+  const freeEgressGb = Number.isFinite(basis.freeEgressMultiplier)
+    ? Math.min(egressGb, storedGb * basis.freeEgressMultiplier)
+    : egressGb;
+  const billableEgressGb = Math.max(0, egressGb - freeEgressGb);
+
+  const storageCostNok = storedGb * basis.storagePerGbMonthUsd * rate;
+  const egressCostNok = billableEgressGb * basis.egressPerGbUsd * rate;
+
+  return {
+    backend: usage.backend,
+    storedGb,
+    egressGb,
+    freeEgressGb,
+    billableEgressGb,
+    storageCostNok,
+    egressCostNok,
+    totalCostNok: storageCostNok + egressCostNok,
+  };
+}
+
+export interface MarginResult {
+  costNok: number;
+  revenueNok: number;
+  marginNok: number;
+  /** Andel av inntekten som er margin. null når inntekten er null. */
+  marginFraction: number | null;
+}
+
+/**
+ * Marginen på et forbruk, gitt hva kunden faktisk faktureres for
+ * perioden — ikke listeprisen. Rabatt, inkludert kvote og fastpris er
+ * allerede trukket fra når tallet kommer hit.
+ */
+export function marginForUsage(
+  usages: BackendUsage[],
+  revenueNok: number,
+): MarginResult {
+  const costNok = usages.reduce(
+    (sum, u) => sum + costForBackendUsage(u).totalCostNok,
+    0,
+  );
+  return {
+    costNok,
+    revenueNok,
+    marginNok: revenueNok - costNok,
+    // Margin på null inntekt er udefinert, ikke 0 %. Å returnere 0 ville
+    // sett ut som "vi går i null" i en admin-graf.
+    marginFraction: revenueNok > 0 ? (revenueNok - costNok) / revenueNok : null,
+  };
+}
+
+/**
+ * Prisen vi må ta per GB for å nå en ønsket margin. Brukes til å sette
+ * prisliste, ikke til å fakturere.
+ */
+export function priceForTargetMargin(
+  backend: CostBackend,
+  targetMarginFraction: number,
+): number | null {
+  // 100 % margin krever uendelig pris på en kostnad over null, og
+  // Infinity ville forplantet seg rett inn i en prisliste.
+  if (targetMarginFraction >= 1 || targetMarginFraction < 0) return null;
+  const costNok = backendCostBasis()[backend].storagePerGbMonthUsd * nokPerUsd();
+  return costNok / (1 - targetMarginFraction);
+}
+
 export const costNokPerGbMonth = (): number => {
   const env = process.env.STORAGE_COST_NOK_PER_GB_MONTH;
   if (env) {

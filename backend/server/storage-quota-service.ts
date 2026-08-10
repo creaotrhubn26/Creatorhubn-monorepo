@@ -335,7 +335,10 @@ export async function recordStorageUsage(
   pool: Pool,
   userId: string,
   bytes: number,
-  backend: "filesystem" | "r2" | "cloudflare_stream",
+  // Må matche verdiene apply_storage_consumption_delta kjenner igjen
+  // (se 0464_storage_ledger_b2_backend.sql) — en ukjent backend her ville
+  // øke total_bytes uten å havne i noen breakdown-kolonne.
+  backend: "filesystem" | "b2" | "r2" | "cloudflare_stream",
   reason: string,
   relatedResourceId?: string,
   metadata: Record<string, unknown> = {},

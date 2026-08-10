@@ -108,6 +108,14 @@ struct BackendUploadPlan: Decodable, Sendable {
     let partCount: Int
     let signedUrlTtlSeconds: Int
     let partUrlBatchMax: Int
+    /// Versjonen serveren reserverte for denne opplastingen. Sendes
+    /// tilbake ved complete slik at riktig rad markeres ferdig — uten den
+    /// kan en parallell opplasting av samme kind vinne kappløpet.
+    ///
+    /// Valgfri fordi en server som ennå ikke har versjonering ikke sender
+    /// den. Da faller complete tilbake til å skrive nøkkelen direkte.
+    let versionId: String?
+    let versionNumber: Int?
 }
 
 struct BackendSignPartsRequest: Encodable, Sendable {
@@ -137,6 +145,8 @@ struct BackendUploadCompleteRequest: Encodable, Sendable {
     let parts: [BackendCompletedPart]
     let checksumSha256: String
     let sizeBytes: Int64
+    /// Fra BackendUploadPlan. Utelates når serveren ikke oppga noen.
+    let versionId: String?
 }
 
 // MARK: - Handoff

@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OutboxKit
 
 struct AppDatabase: Sendable {
     let dbWriter: any DatabaseWriter
@@ -35,3 +36,7 @@ struct AppDatabase: Sendable {
             .appendingPathComponent("CaptureApp/capture.sqlite")
     }
 }
+
+/// Lar ``Outbox`` skrive gjennom appens database uten at OutboxKit kjenner
+/// typen. Én linje er hele koblingen — se `OutboxDatabase` i pakken.
+extension AppDatabase: OutboxDatabase {}

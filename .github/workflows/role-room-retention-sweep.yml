@@ -1,0 +1,61 @@
+name: Role Room GDPR retention sweep
+
+# Automatisk sletting av casting-data når lagringsfristen er ute
+# (Del A punkt 35). Feiingen er en TØRRKJØRING inntil RR_RETENTION_ENFORCE=true
+# er satt i backend-miljøet — fristene i migrering 0443 er ikke juridisk
+# vurdert ennå, og ingenting skal slettes før de er det.
+#
+# Kjører etter leadgrid-retention (03:00) for å spre lasten.
+
+on:
+  schedule:
+    # 03:30 UTC daglig
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger retention-sweep
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_TOKEN: ${{ secrets.RR_RETENTION_CRON_TOKEN || secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
+        run: |
+          if [ -z "$BACKEND_URL" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "Mangler BACKEND_URL eller cron-token-secret"
+            exit 1
+          fi
+          RESP=$(curl -sf -X POST "${BACKEND_URL%/}/api/role-room/cron/retention-sweep" \
+            -H "x-cron-trigger-token: $CRON_TOKEN" \
+            -H "content-type: application/json" \
+            -d '{}')
+          echo "$RESP" | jq
+          OK=$(echo "$RESP" | jq -r .ok)
+          if [ "$OK" != "true" ]; then
+            echo "::error::Retention-feiing feilet"
+            exit 1
+          fi
+
+          # Gjør tørrkjøring synlig i kjøringsloggen, slik at ingen tror
+          # sletting er aktiv før den faktisk er det.
+          DRY=$(echo "$RESP" | jq -r .dryRun)
+          if [ "$DRY" = "true" ]; then
+            echo "::notice::Tørrkjøring — ingen data ble slettet. Sett RR_RETENTION_ENFORCE=true når fristene er godkjent."
+          fi
+
+          # En kategori som feiler stopper ikke feiingen, men skal synes.
+          SKIPPED=$(echo "$RESP" | jq -r '[.categories[] | select(.skippedReason != null and (.skippedReason | startswith("feilet")))] | length')
+          if [ "$SKIPPED" != "0" ]; then
+            echo "::warning::$SKIPPED kategori(er) feilet — se detaljer over"
+          fi
+
+      - name: Slack-varsel ved feil
+        if: failure()
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\":\"Role Room GDPR retention-feiing feilet — sjekk backend-logger\"}"
+          fi

@@ -19,6 +19,7 @@ import {
   RESUME_COLOR_SCHEMES,
   RESUME_TEMPLATES,
   ModernATSTemplate,
+  PAGE_HEIGHT_PX,
 } from './templates/ResumeTemplates';
 import NextRoleStatsBanner from './NextRoleStatsBanner';
 import NextRoleTrialBanner from './NextRoleTrialBanner';
@@ -311,6 +312,92 @@ const SCHEME_AWARE_TEMPLATE_IDS = new Set<string>([
   'timeline-centered',
 ]);
 
+// Layout-verdien er en intern nøkkel. Kortet viste den rått, så brukeren
+// fikk «single-column» i et ellers norsk grensesnitt.
+const LAYOUT_LABELS: Record<string, string> = {
+  'single-column': 'Én kolonne',
+  'two-column': 'To kolonner',
+  'modern-split': 'Delt oppsett',
+};
+
+/**
+ * Sidetelling i forhåndsvisningen.
+ *
+ * Norske kilder er samstemte: 1–2 sider. Nyutdannet holder seg til én,
+ * ti års erfaring tåler to. Brukeren fikk ingen indikasjon på hvor hun lå
+ * — hun så et skalert utsnitt i en scrollboks, og oppdaget lengden først
+ * ved utskrift.
+ *
+ * Måler den urendrede høyden på malen og deler på A4. `PAGE_HEIGHT_PX`
+ * kommer fra samme konstant malene bruker til `minHeight`, så telleren
+ * ikke kan komme i utakt med arket.
+ *
+ * Tallet er et anslag: hvor sidebruddet faktisk lander avhenger av
+ * nettleserens paginering, og malene har ingen `break-inside`-styring
+ * ennå. Derfor «omtrent», ikke et eksakt sidetall.
+ */
+function usePageCount(ref: React.RefObject<HTMLElement>, deps: unknown[]): number | null {
+  const [pages, setPages] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      // scrollHeight er den ustransformerte høyden — forhåndsvisningen er
+      // skalert med CSS transform, som ikke påvirker layoutboksen.
+      const h = el.scrollHeight;
+      if (!h) { setPages(null); return; }
+      const raw = h / PAGE_HEIGHT_PX;
+      // En CV som fyller arket nøyaktig maalte 1123 px mot en side paa
+      // 1122,5 og ble rapportert som 1,1 sider. Snap til hel side naar vi
+      // er innenfor to prosent, ellers rund opp til naermeste tidel.
+      const nearest = Math.round(raw);
+      const snapped = Math.abs(raw - nearest) < 0.02 ? nearest : Math.ceil(raw * 10) / 10;
+      setPages(Math.max(1, snapped));
+    };
+    measure();
+    // Innholdet endrer seg mens brukeren skriver. ResizeObserver fanger
+    // det uten at vi må gjette på når.
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return pages;
+}
+
+/** Én linje under forhåndsvisningen: hvor lang CV-en er, og om det er greit. */
+const PageCountHint: React.FC<{ pages: number | null }> = ({ pages }) => {
+  if (pages === null) return null;
+
+  // Grensene er hentet fra norsk CV-veiledning, ikke funnet på: under to
+  // sider er trygt, over to bør begrunnes, over tre blir sjelden lest.
+  const tone = pages <= 2 ? 'success' : pages <= 3 ? 'warning' : 'error';
+  const note =
+    pages <= 1.15
+      ? 'Én side — trygt for de fleste stillinger.'
+      : pages <= 2
+        ? 'Innenfor anbefalingen på 1–2 sider.'
+        : pages <= 3
+          ? 'Over to sider. Vurder å korte ned de eldste jobbene.'
+          : 'Over tre sider blir sjelden lest i sin helhet.';
+
+  return (
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.75 }}>
+      <Chip
+        size="small"
+        color={tone}
+        variant="outlined"
+        label={`≈ ${pages.toLocaleString('nb-NO')} ${pages <= 1.15 ? 'side' : 'sider'}`}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {note}
+      </Typography>
+    </Stack>
+  );
+};
+
 /**
  * Galleri-kort for én CV-mal. Viser previewImage + (for skjema-bevisste maler) en rad
  * fargeskjema-swatches. Klikk på en swatch bytter forhåndsvisnings-bildet til den
@@ -325,6 +412,11 @@ function TemplateGalleryCard({
 }) {
   const [scheme, setScheme] = useState<string | null>(null);
   const schemeAware = SCHEME_AWARE_TEMPLATE_IDS.has(template.id);
+  // Designmetadata (bransje, veiledning) bor i frontend-registeret, mens
+  // selve mallisten kommer fra API-et. Oppslag på id knytter dem sammen.
+  const reg = RESUME_TEMPLATES[template.id as keyof typeof RESUME_TEMPLATES] as
+    | { industries?: string[]; guidance?: string }
+    | undefined;
   const previewSrc = scheme
     ? `/templates/${template.id}-${scheme}-preview.jpg`
     : template.previewImage;
@@ -357,9 +449,38 @@ function TemplateGalleryCard({
         <Typography variant="body2" color="text.secondary">
           {template.description}
         </Typography>
+
+        {/* Bransje og veiledning.
+            Galleriet henter maler fra API-et, mens bransjedataene ligger i
+            RESUME_TEMPLATES i frontend. Derfor slås de opp på id her i
+            stedet for å dupliseres inn i databasen — designmetadata hører
+            sammen med malen, ikke i en tabell som må migreres. */}
+        {reg?.industries?.length ? (
+          <Stack direction="row" spacing={0.5} sx={{ mt: 1.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+            {reg.industries.map((bransje) => (
+              <Chip key={bransje} label={bransje} size="small" variant="outlined" />
+            ))}
+          </Stack>
+        ) : null}
+        {reg?.guidance && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, fontSize: 13, lineHeight: 1.55 }}>
+            {reg.guidance}
+          </Typography>
+        )}
+
         <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-          <Chip label={template.layout} size="small" />
-          <Chip label={`ATS ${template.atsScore}%`} size="small" color="success" />
+          <Chip label={LAYOUT_LABELS[template.layout] ?? template.layout} size="small" />
+          {/* ATS-tallet er hardkodet per mal, ikke målt. Det sto grønt, som
+              leser som en verifisert score — og motsa veiledningen over på
+              maler der to kolonner er en reell parse-risiko. Nøytral farge
+              og en tooltip som sier hva tallet er. Å måle det på ekte er
+              fortsatt ugjort. */}
+          <Tooltip
+            arrow
+            title="Anslag basert på malens oppbygging, ikke en måling av en faktisk eksport."
+          >
+            <Chip label={`ATS-anslag ${template.atsScore}`} size="small" variant="outlined" />
+          </Tooltip>
           {template.isPremium && <Chip label="Premium" size="small" color="warning" />}
         </Stack>
         {schemeAware && (
@@ -548,6 +669,17 @@ export default function ResumeBuilder() {
       window.localStorage.setItem('resumeBuilder:showLivePreview', String(showLivePreview));
     }
   }, [showLivePreview]);
+
+  // Sidetelling for forhåndsvisningen. Ref-en peker på det samme elementet
+  // utskriften bruker, så telleren måler nøyaktig det som blir papir.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const previewPages = usePageCount(previewRef, [
+    selectedResume?.id,
+    selectedResume?.templateId,
+    selectedResume?.updatedAt,
+    showLivePreview,
+  ]);
+
   const [showLanguageDialog, setShowLanguageDialog] = useState(false);
   const [editingLanguage, setEditingLanguage] = useState<ResumeLanguage | null>(null);
   const [languageFormData, setLanguageFormData] = useState<{
@@ -4076,14 +4208,29 @@ export default function ResumeBuilder() {
   // for 1:1 match med live-preview. Åpner et nytt vindu med kun
   // template-rendering, injiserer minimal CSS, og trigger window.print()
   // som lar brukeren lagre som PDF eller printe.
+  /**
+   * Lager PDF-en brukeren faktisk har designet.
+   *
+   * Dette er den ENE PDF-veien. Tidligere fantes to: denne, som klonet
+   * malen 1:1, og `handleExport('pdf')`, som gikk til serverens PDFKit-
+   * generator og ignorerte malvalget fullstendig — Helvetica og blå
+   * overskrifter uansett hvilken av de femten malene brukeren hadde valgt.
+   *
+   * Den serversiden var i tillegg merket «PDF (Anbefalt)». Samme handling,
+   * to vidt forskjellige dokumenter, og det anbefalte alternativet var det
+   * som ikke lignet forhåndsvisningen.
+   *
+   * Serverruten finnes fortsatt for DOCX/TXT/HTML/JSON — de er dataformater
+   * og har ingen mal å bryte med.
+   */
   const handlePrintPdf = useCallback(() => {
     if (!selectedResume) return;
     const previewEl = document.querySelector('[data-resume-print-source]') as HTMLElement | null;
     if (!previewEl) {
       setSnackbar({
         open: true,
-        severity: 'warning',
-        message: 'Slå på forhåndsvisning først for å printe.',
+        severity: 'error',
+        message: 'Fant ikke CV-en å skrive ut. Last siden på nytt.',
       });
       return;
     }
@@ -6236,6 +6383,7 @@ export default function ResumeBuilder() {
                         </Stack>
                         <Box
                           data-resume-print-source
+                          ref={previewRef}
                           sx={{
                             transform: 'scale(0.62)',
                             transformOrigin: 'top left',
@@ -6249,8 +6397,43 @@ export default function ResumeBuilder() {
                             return <Component resume={selectedResume} preview />;
                           })()}
                         </Box>
+                        <PageCountHint pages={previewPages} />
                       </Box>
                     </Grid>
+                  )}
+
+                  {/*
+                    Skjult printkilde naar forhaandsvisningen er av.
+
+                    Utskriften kloner DOM-en til `[data-resume-print-source]`.
+                    Uten dette fantes elementet bare naar forhaandsvisningen
+                    var paa, og brukeren fikk «Slaa paa forhaandsvisning
+                    foerst for aa printe» — som er en merkelig ting aa be om
+                    naar hun akkurat har trykket «Last ned PDF».
+
+                    Bare én av de to finnes om gangen, saa selektoren treffer
+                    alltid nøyaktig ett element. Plassert utenfor skjermen i
+                    stedet for `display: none`, fordi et skjult element ikke
+                    faar layout — og da hadde det ikke vaert noe aa klone.
+                  */}
+                  {!showLivePreview && (
+                    <Box
+                      aria-hidden="true"
+                      data-resume-print-source
+                      sx={{
+                        position: 'absolute',
+                        left: -99999,
+                        top: 0,
+                        width: '210mm',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {(() => {
+                        const reg = RESUME_TEMPLATES[selectedResume.templateId as keyof typeof RESUME_TEMPLATES];
+                        const Component = reg?.component ?? ModernATSTemplate;
+                        return <Component resume={selectedResume} preview />;
+                      })()}
+                    </Box>
                   )}
                 </Grid>{/* /split */}
 
@@ -8411,17 +8594,22 @@ export default function ResumeBuilder() {
             Velg format for eksport:
           </Typography>
           <Stack spacing={2} sx={{ mt: 2 }}>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              onClick={() => handleExport('pdf')}
+            {/*
+              PDF gaar til utskriftsveien, ikke til serverens eksportrute.
+              Serverens PDF ignorerer malvalget — se handlePrintPdf. De
+              oevrige formatene er dataformater og har ingen mal aa bryte med.
+            */}
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={() => { setShowExportDialog(false); handlePrintPdf(); }}
               startIcon={<DownloadIcon />}
             >
-              PDF (Anbefalt)
+              PDF — slik den ser ut nå
             </Button>
-            <Button 
-              variant="outlined" 
-              fullWidth 
+            <Button
+              variant="outlined"
+              fullWidth
               onClick={() => handleExport('docx')}
               startIcon={<DownloadIcon />}
             >

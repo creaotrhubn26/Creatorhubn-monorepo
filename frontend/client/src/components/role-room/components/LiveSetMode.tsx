@@ -91,12 +91,17 @@ import {
   ZoomIn as ZoomIcon,
   OpenInNew as ExternalLinkIcon,
   SwapHoriz as LayoutSwapIcon,
+  Group as GroupIcon,
 } from '@mui/icons-material';
 import authSessionService from '../services/authSessionService';
 import { useLiveSet, type LiveSetCameraMetadata, type LiveSetNote, type LiveSetTake } from '../hooks/useLiveSet';
 import { useLiveSetContext, type ShotOption, type StoryboardTile } from '../hooks/useLiveSetContext';
 import { useLiveWeather, type LiveWeatherRiskLevel, type LiveWeatherState } from '../hooks/useLiveWeather';
 import LiveSetDitPanel from './LiveSetDitPanel';
+// ── Overtatt fra production/LiveSetMode ────────────────────────────────────
+import { buildCan, ROLE_LABELS, type LiveSetRole } from '../services/liveSetPermissionsService';
+import { useLiveSetRealtime } from '../services/liveSetRealtimeService';
+import LiveSetAiActions from './production/LiveSetAiActions';
 import LiveSetSlateOverlay, { buildSlateFromLiveSet } from './LiveSetSlateOverlay';
 import { useShotListSync, type ShotListSyncState, type TakeCaptureForm } from '../hooks/useShotListSync';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
@@ -2650,9 +2655,27 @@ export interface LiveSetModeProps {
   shootingDay?: string; // ISO date
   initialScene?: LiveSetScene;
   onExit?: () => void;
+
+  // ── Fra production/LiveSetMode, som denne skjermen erstatter ────────────
+  /** Opptaksdagen. Kreves for tilstedeværelse og for å avgrense loggen. */
+  shootingDayId?: string;
+  /** Innlogget bruker. Følger med på hendelsene som operatør. */
+  userId?: string;
+  /** Rollen avgjør hvilke knapper som er aktive. Uten den: full tilgang. */
+  userRole?: LiveSetRole;
+  /** Brukes i eksportfilnavn og PDF-topptekst. */
+  projectTitle?: string;
+  /** Alias for onExit — production-varianten kalte den onClose. */
+  onClose?: () => void;
 }
 
-function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, onExit }: LiveSetModeProps) {
+function LiveSetModeInner({
+  projectId, projectName, shootingDay, initialScene, onExit,
+  shootingDayId, userId, userRole, projectTitle, onClose,
+}: LiveSetModeProps) {
+  // De to inngangene het ulike ting. Samles her framfor å tvinge kallerne til
+  // å endre seg — manusvisningen sendte onClose, Live Set-fanen onExit.
+  const exit = onExit ?? onClose;
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const touchUi = useMediaQuery('(pointer: coarse)');
@@ -2719,11 +2742,41 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
   } = useLiveSet({
     initialScene,
     projectId,
-    shootingDayId: shootingDay,
-    operatorId: 'script-supervisor',
+    // Id-en når den finnes. `shootingDay` er en visningsstreng og duger ikke
+    // som nøkkel — den ville merket hendelsene med «mandag 15. mars 2027»,
+    // og serverprojeksjonen filtrerer på dette feltet.
+    shootingDayId: shootingDayId ?? undefined,
+    operatorId: userId ?? 'script-supervisor',
   });
 
   const noteInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ── Rollerettigheter (overtatt fra production/LiveSetMode) ──────────────
+  // Uten oppgitt rolle beholdes den gamle oppførselen på denne skjermen:
+  // alt er tillatt. Å defaulte til en snever rolle ville låst knapper for
+  // alle som kom inn via Live Set-fanen, som aldri har sendt en rolle.
+  const can = useMemo(
+    () => (userRole ? buildCan(userRole) : null),
+    [userRole],
+  );
+  const allow = useCallback(
+    (permission: keyof ReturnType<typeof buildCan>) => (can ? can[permission] : true),
+    [can],
+  );
+
+  // ── Tilstedeværelse (overtatt fra production/LiveSetMode) ───────────────
+  // Kobles bare når vi vet hvilken dag og hvem — ellers ville hver fane
+  // åpnet en socket uten identitet.
+  // Merk: `shootingDay` er en visningsstreng («mandag 15. mars 2027») fra
+  // Live Set-fanen, ikke en id. Bare `shootingDayId` duger som nøkkel — den
+  // avgrenser både hendelsesloggen og tilstedeværelsen.
+  const { connected: realtimeConnected, activeUsers } = useLiveSetRealtime({
+    projectId,
+    shootingDayId: shootingDayId ?? '',
+    userId: userId ?? 'ukjent',
+    role: userRole ?? 'script_sup',
+    enabled: Boolean(projectId && shootingDayId && userId),
+  });
 
   // Flash overlay state (CUT effect)
   const [flashVisible, setFlashVisible] = useState(false);
@@ -3120,12 +3173,78 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
     return () => clearInterval(id);
   }, [state.liveState, state.timerStartedAt]);
 
-  // CUT flash effect
+
+  // ── AI-handlinger (overtatt fra production/LiveSetMode) ─────────────────
+  // Inndataene utledes av live-tilstanden. Take-loggen alene gir nok kontekst
+  // til dekningssjekk og kontinuitet selv uten full shot-liste.
+  const aiShotsCompleted = useMemo(() => {
+    const byShot = new Map<string, { notes: string[]; takeCount: number; sceneId: string; completedAt: string }>();
+    for (const t of state.takes) {
+      const shotId = t.shotId;
+      if (!shotId) continue;
+      const entry = byShot.get(shotId) ?? {
+        notes: [], takeCount: 0, sceneId: t.sceneId ?? '', completedAt: t.loggedAt,
+      };
+      if (t.notes) entry.notes.push(t.notes);
+      entry.takeCount += 1;
+      entry.completedAt = t.loggedAt;
+      byShot.set(shotId, entry);
+    }
+    return [...byShot.entries()].map(([shotId, v]) => ({
+      id: shotId,
+      sceneId: v.sceneId,
+      notes: v.notes.join(' | '),
+      description: `${v.takeCount} take(s)`,
+      completedAt: v.completedAt,
+      status: 'completed',
+    }));
+  }, [state.takes]);
+
+  // Kontinuitetssjekken sammenlikner den nyeste taken med de øvrige i scenen.
+  const aiNewShot = useMemo(() => {
+    const latest = state.takes[0];
+    if (!latest) return undefined;
+    const noteText = state.notes
+      .filter((n) => n.sceneId === latest.sceneId)
+      .map((n) => `[${n.tag}] ${n.content}`)
+      .join(' | ');
+    return {
+      id: latest.shotId ?? latest.id,
+      sceneId: latest.sceneId,
+      notes: [latest.notes, noteText].filter(Boolean).join(' | '),
+      description: latest.setupLabel ?? undefined,
+    };
+  }, [state.takes, state.notes]);
+
+  const aiPreviousShots = useMemo(() => {
+    const latest = state.takes[0];
+    if (!latest) return [];
+    return state.takes
+      .filter((t) => t.sceneId === latest.sceneId && t.id !== latest.id)
+      .map((t) => ({ id: t.shotId ?? t.id, sceneId: t.sceneId, notes: t.notes ?? '' }));
+  }, [state.takes]);
+
+  const aiCrew = useMemo(
+    () => crewRoster.map((member) => ({
+      name: compactText(member.name) || 'Ukjent',
+      role: compactText(member.subtitle) || undefined,
+    })),
+    [crewRoster],
+  );
+
+  // CUT flash effect. Rettighetssjekken ligger her og ikke bare på knappen,
+  // fordi tastatursnarveien (T) går utenom knappen.
   const handleCut = useCallback(() => {
+    if (!allow('cut')) return;
     cut();
     setFlashVisible(true);
     setTimeout(() => setFlashVisible(false), 400);
-  }, [cut]);
+  }, [cut, allow]);
+
+  const handleRoll = useCallback(() => {
+    if (!allow('roll')) return;
+    roll();
+  }, [roll, allow]);
 
   // ── Keyboard shortcuts ──
   const activeTabRef = useRef(state.activityTab);
@@ -3139,7 +3258,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
       if (e.key === 'Escape') {
         if (isInput) { (e.target as HTMLElement).blur(); return; }
         if (state.liveState === 'setup-complete') { advanceScene(); return; }
-        onExit?.();
+        exit?.();
         return;
       }
 
@@ -3147,7 +3266,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
 
       switch (e.key.toUpperCase()) {
         case 'R':
-          if (state.liveState !== 'rolling') roll();
+          if (state.liveState !== 'rolling') handleRoll();
           break;
         case 'C':
           if (state.liveState === 'rolling') handleCut();
@@ -3179,7 +3298,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [state.liveState, state.focusedTakeIndex, state.takes, roll, handleCut, advanceScene, focusTake, setActivityTab, setTakeStatus, onExit]);
+  }, [state.liveState, state.focusedTakeIndex, state.takes, handleRoll, handleCut, advanceScene, focusTake, setActivityTab, setTakeStatus, exit]);
 
   const parsedShootingDay = shootingDay ? new Date(shootingDay) : null;
   const formattedDay = parsedShootingDay && !Number.isNaN(parsedShootingDay.getTime())
@@ -3330,6 +3449,51 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               letterSpacing: '0.06em',
             }}
           />
+
+          {/* CREW (n) — hvem andre er inne på settet nå. Overtatt fra
+              production/LiveSetMode; vises bare når socketen faktisk er
+              koblet, ellers ville «CREW (0)» lest som «ingen er her» når det
+              egentlig betyr «vi vet ikke». */}
+          {realtimeConnected && (
+            <Tooltip
+              title={
+                activeUsers.length > 0
+                  ? activeUsers.map((u) => `${u.userId}${u.role ? ` (${ROLE_LABELS[u.role as LiveSetRole] ?? u.role})` : ''}`).join(', ')
+                  : 'Ingen andre er inne nå'
+              }
+            >
+              <Chip
+                icon={<GroupIcon sx={{ fontSize: '14px !important' }} />}
+                label={`CREW (${activeUsers.length})`}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  color: 'rgba(255,255,255,0.75)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                }}
+              />
+            </Tooltip>
+          )}
+
+          {/* Rollen som styrer hvilke knapper som er aktive. */}
+          {userRole && (
+            <Tooltip title={`Din rolle på settet: ${ROLE_LABELS[userRole] ?? userRole}`}>
+              <Chip
+                label={ROLE_LABELS[userRole] ?? userRole}
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(139,92,246,0.14)',
+                  color: '#c4b5fd',
+                  border: '1px solid rgba(139,92,246,0.3)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}
+              />
+            </Tooltip>
+          )}
 
           {/* Offline / sync indicators */}
           {state.isOffline ? (
@@ -3525,7 +3689,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               ditTakeStatus={ditTakeStatus}
               onTabChange={setActivityTab}
               onFocusTake={focusTake}
-              onStatusChange={setTakeStatus}
+              onStatusChange={(id, status) => { if (allow('circleTake')) setTakeStatus(id, status); }}
               onNoteInput={setNoteInput}
               onNoteTag={setNoteTag}
               onAddNote={addNote}
@@ -3551,13 +3715,13 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               activeSetup={state.activeSetup}
               activeCam={state.activeCam}
               touchUi={touchUi}
-              onRoll={roll}
+              onRoll={handleRoll}
               onCut={handleCut}
-              onSetupComplete={setupComplete}
+              onSetupComplete={() => { if (allow('completeSetup')) setupComplete(); }}
               onAddFlag={addFlag}
               onSetSetup={setSetup}
               onSetCam={setCam}
-              onSetCamera={setCamera}
+              onSetCamera={(m) => { if (allow('updateCameraMetadata')) setCamera(m); }}
               noteInputRef={noteInputRef}
               dockSide="left"
             />
@@ -3610,13 +3774,13 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               activeSetup={state.activeSetup}
               activeCam={state.activeCam}
               touchUi={touchUi}
-              onRoll={roll}
+              onRoll={handleRoll}
               onCut={handleCut}
-              onSetupComplete={setupComplete}
+              onSetupComplete={() => { if (allow('completeSetup')) setupComplete(); }}
               onAddFlag={addFlag}
               onSetSetup={setSetup}
               onSetCam={setCam}
-              onSetCamera={setCamera}
+              onSetCamera={(m) => { if (allow('updateCameraMetadata')) setCamera(m); }}
               noteInputRef={noteInputRef}
               dockSide="right"
             />
@@ -3650,7 +3814,7 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
               ditTakeStatus={ditTakeStatus}
               onTabChange={setActivityTab}
               onFocusTake={focusTake}
-              onStatusChange={setTakeStatus}
+              onStatusChange={(id, status) => { if (allow('circleTake')) setTakeStatus(id, status); }}
               onNoteInput={setNoteInput}
               onNoteTag={setNoteTag}
               onAddNote={addNote}
@@ -4070,6 +4234,33 @@ function LiveSetModeInner({ projectId, projectName, shootingDay, initialScene, o
         onClose={() => setDitDrawerOpen(false)}
         projectId={projectId}
       />
+
+      {/* ── AI-handlinger (overtatt fra production/LiveSetMode) ──────────
+          Krever aktiv scene og opptaksdag: dekningssjekk, omplanlegging og
+          dagsbrief gir ingen mening uten begge. Rendres som eget panel
+          nederst, ikke i en fane, fordi den brukes ved siden av arbeidet. */}
+      {activeSceneId && shootingDayId && allow('viewFeed') && (
+        <Box sx={{ px: 2, pb: 1 }}>
+          <LiveSetAiActions
+            projectId={projectId}
+            sceneId={activeSceneId}
+            scene={{
+              sceneNumber: state.currentScene?.sceneNumber,
+              heading: compactText(state.currentScene?.heading),
+              intExt: compactText(state.currentScene?.intExt),
+              timeOfDay: compactText(state.currentScene?.timeOfDay),
+            }}
+            shotsCompleted={aiShotsCompleted}
+            plannedShots={activeShotOptions.map((shot) => ({ id: shot.id, description: shot.label }))}
+            shotsRemaining={[]}
+            newShot={aiNewShot}
+            previousShots={aiPreviousShots}
+            dayId={shootingDayId}
+            minutesRemaining={0}
+            crew={aiCrew}
+          />
+        </Box>
+      )}
 
       {/* ── Slate-overlay (hotkey 'M' for marker) ── */}
       <LiveSetSlateOverlay

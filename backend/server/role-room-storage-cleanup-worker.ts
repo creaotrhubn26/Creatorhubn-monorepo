@@ -23,24 +23,15 @@
 
 import type { Pool } from "pg";
 import { DeleteObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { b2StoreFor } from "./b2-client-factory.js";
 
 const BATCH_SIZE = 100;
 const B2_REGION = process.env.B2_REGION || "eu-central-003";
 
 function getAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: `https://s3.${B2_REGION}.backblazeb2.com`,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  // Purge-worker'en rydder soft-slettede brukerfiler, og deler derfor
+  // rolle med flaten som opprettet dem.
+  return b2StoreFor("user-storage", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 export interface CleanupResult {

@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaptureApp
+import OutboxKit
 
 /// Tests for the ``OutboxWorker`` drain loop. We use a mock sender
 /// so no networking is involved; all tests run against an in-memory

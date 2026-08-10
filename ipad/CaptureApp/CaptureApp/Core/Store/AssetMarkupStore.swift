@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OutboxKit
 
 /// Read + mutate markup layers on capture assets. Markups are
 /// photographer notes drawn with Apple Pencil on top of a preview

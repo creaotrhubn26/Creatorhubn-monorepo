@@ -1,4 +1,5 @@
 import Foundation
+import NetworkingKit
 
 /// HTTP client for the CreatorHub capture backend. Wraps the REST surface
 /// the iPad needs for the sync + handoff track (`POST /sessions`,
@@ -11,9 +12,12 @@ import Foundation
 /// can retry / surface a readable message; HTTP failures are surfaced
 /// as `BackendError.httpStatus`.
 actor BackendClient {
+    /// Røret. Timeout, feilmapping og retry-på-idempotente-kall ligger der;
+    /// denne typen eier bare endepunktene. Se NetworkingKit.
+    private let transport: HTTPTransport
+    /// Beholdes fordi noen kall bygger absolutte URL-er (preview-lenker,
+    /// render-endepunkter) framfor å gå gjennom transporten.
     private let baseURL: URL
-    private let session: URLSession
-    private var authHeaders: [String: String]
 
     init(
         baseURL: URL,
@@ -21,12 +25,15 @@ actor BackendClient {
         authHeaders: [String: String] = [:],
     ) {
         self.baseURL = baseURL
-        self.session = session
-        self.authHeaders = authHeaders
+        self.transport = HTTPTransport(
+            baseURL: baseURL,
+            session: session,
+            authHeaders: authHeaders,
+        )
     }
 
-    func setAuthHeaders(_ headers: [String: String]) {
-        self.authHeaders = headers
+    func setAuthHeaders(_ headers: [String: String]) async {
+        await transport.setAuthHeaders(headers)
     }
 
     // MARK: - Sessions
@@ -153,12 +160,8 @@ actor BackendClient {
     ) async throws -> BackendCreatedReview {
         let boundary = "boundary-\(UUID().uuidString)"
         let path = "/api/capture/assets/\(assetId.uuidString.lowercased())/reviews/audio"
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = "POST"
+        var request = await transport.makeRequest(path: path, method: "POST")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
         var body = Data()
         body.appendMultipartField(name: "duration", value: "\(durationSeconds)", boundary: boundary)
         body.appendMultipartFile(
@@ -219,12 +222,8 @@ actor BackendClient {
         imageMimeType: String,
     ) async throws -> BackendDistractionsResponse {
         let boundary = "boundary-\(UUID().uuidString)"
-        var request = URLRequest(url: baseURL.appendingPathComponent("/api/photo-enhancer/detect-distractions"))
-        request.httpMethod = "POST"
+        var request = await transport.makeRequest(path: "/api/photo-enhancer/detect-distractions", method: "POST")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
         var body = Data()
         body.appendMultipartFile(
             name: "image",
@@ -269,12 +268,8 @@ actor BackendClient {
     ) async throws -> BackendCleanedVariantResponse {
         let boundary = "boundary-\(UUID().uuidString)"
         let path = "/api/capture/sessions/\(sessionId.uuidString.lowercased())/assets/\(assetId.uuidString.lowercased())/upload-cleaned-variant"
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = "POST"
+        var request = await transport.makeRequest(path: path, method: "POST")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
         var body = Data()
         body.appendMultipartFile(
             name: "cleaned",
@@ -324,12 +319,8 @@ actor BackendClient {
         intensity: Double = 1.0,
     ) async throws -> BackendInpaintResponse {
         let boundary = "boundary-\(UUID().uuidString)"
-        var request = URLRequest(url: baseURL.appendingPathComponent("/api/photo-enhancer/inpaint"))
-        request.httpMethod = "POST"
+        var request = await transport.makeRequest(path: "/api/photo-enhancer/inpaint", method: "POST")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
         var body = Data()
         body.appendMultipartFile(
             name: "image",
@@ -585,59 +576,13 @@ actor BackendClient {
         path: String,
         body: RequestBody,
     ) async throws {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw BackendError.transport("invalid path \(path)")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
-        request.httpBody = try JSONEncoder().encode(body)
-        let (data, response) = try await self.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw BackendError.transport("not HTTPURLResponse")
-        }
-        if http.statusCode == 401 || http.statusCode == 403 { throw BackendError.unauthorized }
-        if http.statusCode == 404 { throw BackendError.notFound }
-        guard (200..<300).contains(http.statusCode) else {
-            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
-        }
+        do { try await transport.patchIgnoringResponse(path, body: body) }
+        catch let error as HTTPError { throw Self.asBackendError(error) }
     }
 
     private func getJSON<Response: Decodable>(path: String) async throws -> Response {
-        // Path may carry a query string (?limit=…&offset=…) so we resolve
-        // it via URL(string:relativeTo:) instead of appendingPathComponent,
-        // which would percent-escape the '?' and break the request.
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw BackendError.transport("invalid path \(path)")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
-        let (data, response) = try await self.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw BackendError.transport("not HTTPURLResponse")
-        }
-        if http.statusCode == 401 || http.statusCode == 403 {
-            throw BackendError.unauthorized
-        }
-        if http.statusCode == 404 {
-            throw BackendError.notFound
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
-        }
-        do {
-            return try JSONDecoder().decode(Response.self, from: data)
-        } catch {
-            throw BackendError.decode(String(describing: error))
-        }
+        do { return try await transport.get(path) }
+        catch let error as HTTPError { throw Self.asBackendError(error) }
     }
 
     /// Registrer denne enhetens APNs-token for push-varsler (kunde signerte,
@@ -683,11 +628,9 @@ actor BackendClient {
             "text": text,
             "metadata": ["shotUpdate": shotUpdate]
         ]
-        var request = URLRequest(url: baseURL.appendingPathComponent("/api/communication/messages"))
-        request.httpMethod = "POST"
+        var request = await transport.makeRequest(path: "/api/communication/messages", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         _ = try await self.data(for: request)
     }
@@ -785,9 +728,7 @@ actor BackendClient {
     /// Les team-flagget for shot-list auto-huk (delt via projects.settings).
     /// Default PÅ hvis ukjent/feil.
     func fetchShotListAutoCheck(projectId: String) async -> Bool {
-        var request = URLRequest(url: baseURL.appendingPathComponent("/api/projects/\(projectId)/capture-settings"))
-        request.httpMethod = "GET"
-        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        var request = await transport.makeRequest(path: "/api/projects/\(projectId)/capture-settings", method: "GET")
         guard let (data, response) = try? await self.data(for: request),
               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return true }
         struct Resp: Decodable { let shotListAutoCheck: Bool? }
@@ -797,10 +738,8 @@ actor BackendClient {
     /// Skru auto-huk av/på for teamet. Eier-gated i backend → 403 kastes som
     /// `ShotAutoCheckError.notOwner` så UI kan vise «kun eier kan endre».
     func setShotListAutoCheck(projectId: String, enabled: Bool, updatedBy: String?) async throws {
-        var request = URLRequest(url: baseURL.appendingPathComponent("/api/projects/\(projectId)/capture-settings"))
-        request.httpMethod = "PUT"
+        var request = await transport.makeRequest(path: "/api/projects/\(projectId)/capture-settings", method: "PUT")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        for (name, value) in authHeaders { request.setValue(value, forHTTPHeaderField: name) }
         struct Body: Encodable { let shotListAutoCheck: Bool; let updatedBy: String? }
         request.httpBody = try JSONEncoder().encode(Body(shotListAutoCheck: enabled, updatedBy: updatedBy))
         let (_, response) = try await self.data(for: request)
@@ -813,43 +752,37 @@ actor BackendClient {
         path: String,
         body: RequestBody,
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        for (name, value) in authHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .useDefaultKeys
-        request.httpBody = try encoder.encode(body)
+        do { return try await transport.post(path, body: body) }
+        catch let error as HTTPError { throw Self.asBackendError(error) }
+    }
 
-        let (data, response) = try await self.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw BackendError.transport("not HTTPURLResponse")
-        }
-        if http.statusCode == 401 || http.statusCode == 403 {
-            throw BackendError.unauthorized
-        }
-        if http.statusCode == 404 {
-            throw BackendError.notFound
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw BackendError.httpStatus(http.statusCode, body: String(data: data, encoding: .utf8))
-        }
+    /// Rå forespørsel for kallene som ikke er JSON inn/JSON ut — multipart,
+    /// signerte PUT-er.
+    ///
+    /// Bruker ``rawData`` og ikke ``send``, fordi kallstedene under gjør sin
+    /// egen statusbehandling og trenger responsen. De arver fortsatt timeout
+    /// og retry-stigen fra transporten.
+    private func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(Response.self, from: data)
-        } catch {
-            throw BackendError.decode(String(describing: error))
+            return try await transport.rawData(for: request)
+        } catch let error as HTTPError {
+            throw Self.asBackendError(error)
         }
     }
 
-    private func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await session.data(for: request)
-        } catch let urlError as URLError {
-            throw BackendError.transport(String(describing: urlError.code))
+    /// Oversetter transportens feil til appens vokabular.
+    ///
+    /// Uten dette ville `catch BackendError.unauthorized` i
+    /// ``QuickTeaserService`` sluttet å matche — og det ville kompilert fint.
+    /// Feiltypen er en del av klientens API, ikke en implementasjonsdetalj.
+    private static func asBackendError(_ error: HTTPError) -> BackendError {
+        switch error {
+        case .unauthorized:               return .unauthorized
+        case .notFound:                   return .notFound
+        case let .httpStatus(code, body): return .httpStatus(code, body: body)
+        case let .decode(message):        return .decode(message)
+        case let .transport(message):     return .transport(message)
+        case .notConfigured:              return .notConfigured
         }
     }
 }

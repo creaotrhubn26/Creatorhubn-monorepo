@@ -9,7 +9,12 @@
 import type { Pool } from "pg";
 import type { Request } from "express";
 
-export type AuditBackend = "cloudflare_stream" | "r2" | "filesystem" | "unknown";
+export type AuditBackend =
+  | "cloudflare_stream"
+  | "b2"
+  | "r2"
+  | "filesystem"
+  | "unknown";
 export type AuditAccessType =
   | "download"
   | "stream_playback"

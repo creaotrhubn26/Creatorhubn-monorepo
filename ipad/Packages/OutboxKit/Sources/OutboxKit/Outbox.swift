@@ -19,10 +19,12 @@ import GRDB
 ///     doesn't overwrite an earlier one that hasn't landed yet.
 ///   * Idempotency tokens (``clientMutationId``) must survive app
 ///     restarts, which rules out in-memory queues.
-actor Outbox {
-    private let database: AppDatabase
+public actor Outbox {
+    private let database: any OutboxDatabase
 
-    init(database: AppDatabase) {
+    /// Konsumenten sender sin egen database-type; kravet er bare at den
+    /// conformer ``OutboxDatabase``. Se protokollen for hvorfor.
+    public init(database: any OutboxDatabase) {
         self.database = database
     }
 
@@ -32,7 +34,7 @@ actor Outbox {
     /// the same transaction that performed the local row update, so
     /// the local state and queued sync can never disagree.
     @discardableResult
-    func enqueue(
+    public func enqueue(
         endpoint: String,
         method: OutboxMutation.Method,
         body: Encodable? = nil,
@@ -85,7 +87,7 @@ actor Outbox {
     /// inside ``dbWriter.write { db in ... }`` blocks without hop-
     /// ping to the actor, which is required under Swift 6 strict
     /// concurrency because the write closure is ``@Sendable``.
-    nonisolated func enqueueInTransaction(
+    public nonisolated func enqueueInTransaction(
         _ db: Database,
         endpoint: String,
         method: OutboxMutation.Method,
@@ -112,7 +114,7 @@ actor Outbox {
 
     /// Fetch up to ``limit`` pending mutations in FIFO order. The
     /// worker claims batches by calling this + ``markSyncing``.
-    func nextPending(limit: Int = 25) async throws -> [OutboxMutation] {
+    public func nextPending(limit: Int = 25) async throws -> [OutboxMutation] {
         try await database.dbWriter.read { db in
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.pending.rawValue)
@@ -126,7 +128,7 @@ actor Outbox {
     /// a single transaction before sending them over the wire, so a
     /// concurrent actor invocation (unlikely but possible) can't
     /// re-send the same row.
-    func markSyncing(_ mutations: [OutboxMutation]) async throws {
+    public func markSyncing(_ mutations: [OutboxMutation]) async throws {
         guard !mutations.isEmpty else { return }
         try await database.dbWriter.write { db in
             for var m in mutations {
@@ -140,7 +142,7 @@ actor Outbox {
     /// Move a mutation to ``succeeded`` after a 2xx response. Rows
     /// that have succeeded are kept for 24h in case the UI wants to
     /// show a "sync log" and then pruned by ``sweep()``.
-    func markSucceeded(_ mutation: OutboxMutation) async throws {
+    public func markSucceeded(_ mutation: OutboxMutation) async throws {
         try await database.dbWriter.write { db in
             var m = mutation
             m.status = .succeeded
@@ -155,7 +157,7 @@ actor Outbox {
     /// remain the worker will re-flip it back to ``pending``; if
     /// ``attemptCount`` reaches ``maxAttempts`` it stays ``failed``
     /// and the UI surfaces it as needing manual resolution.
-    func markFailed(_ mutation: OutboxMutation, error: String) async throws {
+    public func markFailed(_ mutation: OutboxMutation, error: String) async throws {
         // Increment attemptCount via SQL so repeated calls with a
         // stale ``mutation`` snapshot still advance the DB row — the
         // counter is "how many times has this row been tried" and
@@ -185,7 +187,7 @@ actor Outbox {
     /// Reset a retry-eligible failed mutation to pending. The worker
     /// calls this with a backoff delay between attempts so we don't
     /// hammer a degraded backend.
-    func requeue(_ mutation: OutboxMutation) async throws {
+    public func requeue(_ mutation: OutboxMutation) async throws {
         guard mutation.attemptCount < OutboxMutation.maxAttempts else { return }
         try await database.dbWriter.write { db in
             var m = mutation
@@ -198,7 +200,7 @@ actor Outbox {
 
     /// Count of mutations awaiting sync — drives the UI banner ("3
     /// endringer venter sync").
-    func pendingCount() async throws -> Int {
+    public func pendingCount() async throws -> Int {
         try await database.dbWriter.read { db in
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.pending.rawValue
@@ -211,7 +213,7 @@ actor Outbox {
     /// needed" UI and the App Store review checkpoint: any deployed
     /// build with non-zero stuck outbox rows in telemetry triggers a
     /// bug report.
-    func failedCount() async throws -> Int {
+    public func failedCount() async throws -> Int {
         try await database.dbWriter.read { db in
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.failed.rawValue
@@ -223,7 +225,7 @@ actor Outbox {
     /// Failed rows that still have retries left. The ``OutboxWorker``
     /// reads this on every tick and requeues rows whose backoff delay
     /// has elapsed.
-    func failedRetryable() async throws -> [OutboxMutation] {
+    public func failedRetryable() async throws -> [OutboxMutation] {
         try await database.dbWriter.read { db in
             try OutboxMutation
                 .filter(Column("status") == OutboxMutation.Status.failed.rawValue
@@ -235,7 +237,7 @@ actor Outbox {
 
     /// Prune succeeded rows older than 24h. Called from a background
     /// timer; pure maintenance, never on the hot path.
-    func sweep() async throws {
+    public func sweep() async throws {
         let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
         try await database.dbWriter.write { db in
             try OutboxMutation

@@ -315,6 +315,7 @@ actor DeliveryService {
                 parts: completed,
                 checksumSha256: checksum,
                 sizeBytes: Int64(data.count),
+                versionId: plan.versionId,
             )
         )
 
@@ -474,6 +475,7 @@ actor DeliveryService {
                 parts: completed,
                 checksumSha256: sha256Hex(of: data),
                 sizeBytes: Int64(data.count),
+                versionId: plan.versionId,
             )
         )
         return assetUUID

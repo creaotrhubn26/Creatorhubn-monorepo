@@ -1,8 +1,18 @@
 /**
  * Production Workflow Service
  * Handles Stripboard, Call Sheets, Shooting Schedule, and Live Set tracking
- * Mock data based on TROLL (2022) Norwegian film
+ *
+ * Stripboard-delen går mot ekte data (Del A punkt 72/87) — se
+ * stripboardAdapter.ts. Resten av filen er fortsatt TROLL-demodata; det er
+ * merket per metode.
  */
+
+import { apiRequest } from '../../../lib/queryClient';
+import {
+  adaptStripboard,
+  stripStatus,
+  type ApiStripboard,
+} from './stripboardAdapter';
 
 // ============================================
 // TYPES & INTERFACES
@@ -81,7 +91,11 @@ export interface StripboardStrip {
   location: string;
   pages: number;
   cast: string[]; // Character IDs
-  status: 'not-scheduled' | 'scheduled' | 'shot' | 'postponed';
+  // «partial» og «omitted» kommer fra basen (casting_scenes.shoot_status). En
+  // strøket scene er ikke en utsatt scene — den skal ikke telle som
+  // gjenstående arbeid — så de holdes adskilt framfor å presses inn i
+  // «postponed».
+  status: 'not-scheduled' | 'scheduled' | 'partial' | 'shot' | 'omitted' | 'postponed';
   estimatedTime: number; // minutes
   notes?: string;
 }
@@ -1255,62 +1269,106 @@ export const TROLL_LIVE_SET_STATUS: LiveSetStatus = {
 // SERVICE CLASS
 // ============================================
 
-const API_BASE = '/api/production';
+
+/** Speiler role-room-live-set-projection.ts på serversiden. */
+interface LiveSetProjectedTake {
+  id: string;
+  sceneId: string | null;
+  shotId: string | null;
+  setupLabel: string | null;
+  takeNumber: number;
+  duration: number | null;
+  status: string;
+  camera: string | null;
+  lens: string | null;
+  fps: number | null;
+  flags: string[];
+  notes: string | null;
+  loggedBy: string | null;
+  loggedAt: string;
+}
+
+interface LiveSetProjection {
+  liveState: 'idle' | 'rolling' | 'cut' | 'setup-complete';
+  currentSceneId: string | null;
+  currentShotId: string | null;
+  activeSetup: string | null;
+  activeCam: string | null;
+  rollingSince: string | null;
+  nextTakeNumber: number;
+  takes: LiveSetProjectedTake[];
+  lastAction: string | null;
+  lastActionAt: string | null;
+  lastActionBy: string | null;
+  eventCount: number;
+}
+
+/**
+ * Projeksjonens take → tjenestens Take.
+ *
+ * Projeksjonen bruker klientens kvalitetsvokabular («normal», «ng»), mens
+ * Take-typen her er den eldre firedelingen. `normal` blir `good`; ukjent
+ * verdi blir `ok` framfor å gjettes til noe bedre enn den er.
+ */
+function toTake(t: LiveSetProjectedTake): Take {
+  const status: Take['status'] =
+    t.status === 'circle' || t.status === 'print' ? t.status
+    : t.status === 'bad' || t.status === 'ng' ? 'bad'
+    : t.status === 'good' || t.status === 'normal' ? 'good'
+    : 'ok';
+  return {
+    id: t.id,
+    sceneId: t.sceneId ?? '',
+    shotId: t.shotId ?? '',
+    takeNumber: t.takeNumber,
+    status,
+    // Målt mellom ROLL og CUT på serversiden. 0 betyr «ikke målt», ikke
+    // «varte null sekunder» — tjenesten fant tidligere på et tall her.
+    duration: t.duration ?? 0,
+    notes: t.notes ?? undefined,
+    recordedAt: t.loggedAt,
+    loggedAt: t.loggedAt,
+    loggedBy: t.loggedBy ?? undefined,
+    camera: t.camera ?? undefined,
+    lens: t.lens ?? undefined,
+    fps: t.fps ?? undefined,
+  };
+}
 
 class ProductionWorkflowService {
   // In-memory cache for fallback
-  private shootingDaysCache: ShootingDay[] = [...TROLL_SHOOTING_DAYS];
-  private stripboardCache: StripboardStrip[] = [...TROLL_STRIPBOARD];
-  private castCache: CastMember[] = [...TROLL_CAST];
-  private crewCache: CrewMember[] = [...TROLL_CREW];
-  private liveSetStatus: LiveSetStatus = { ...TROLL_LIVE_SET_STATUS };
-  private takes: Take[] = [...TROLL_LIVE_SET_STATUS.todayTakes];
+  // Stripboardet og opptaksdagene starter tomme, ikke med TROLL-demoen. Et
+  // kall som kommer før første last skal se en tom cache — ikke en annen
+  // produksjons plan som den så tar for gitt.
+  private shootingDaysCache: ShootingDay[] = [];
+  private stripboardCache: StripboardStrip[] = [];
+  private castCache: CastMember[] = [];
+  private crewCache: CrewMember[] = [];
+  // Øyeblikkstilstand på settet. Ingen tabell bak den ennå, så den lever i
+  // økten — men den starter tom, ikke med TROLL sine takes.
+  private liveSetStatus: LiveSetStatus = {
+    currentScene: null,
+    currentShot: null,
+    currentTake: 0,
+    isRolling: false,
+    lastAction: '',
+    lastActionTime: '',
+    todayTakes: [],
+    todayProgress: {
+      plannedScenes: 0, completedScenes: 0, partialScenes: 0,
+      totalSetups: 0, completedSetups: 0, pagesPlanned: 0, pagesShot: 0,
+    },
+  };
+  private takes: Take[] = [];
   private useApi: boolean = true;
+  // Settes når stripboardet eller opptaksdagene hentes. Skrivekallene under
+  // trenger prosjektet, og signaturene deres er panelets — ikke våre å endre.
+  private currentProjectId: string | null = null;
+  // Cast følger med stripboard-svaret. Se getStripboardCast().
+  private stripboardCastCache: CastMember[] = [];
 
   // Helper to convert API response to frontend format
-  private convertShootingDay(row: any): ShootingDay {
-    return {
-      id: row.id,
-      projectId: row.project_id,
-      dayNumber: row.day_number,
-      date: row.date,
-      callTime: row.call_time,
-      wrapTime: row.wrap_time,
-      location: row.location,
-      locationAddress: row.location_address,
-      notes: row.notes,
-      scenes: row.scenes || [],
-      status: row.status || 'planned',
-      weather: row.weather,
-      crewCallTimes: row.crew_call_times || {},
-      castCallTimes: row.cast_call_times || {},
-      equipmentNeeded: row.equipment_needed || [],
-      meals: row.meals || [],
-      actualStartTime: row.actual_start_time,
-      actualWrapTime: row.actual_wrap_time,
-      dailyReport: row.daily_report,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
-  }
 
-  private convertStripboardStrip(row: any): StripboardStrip {
-    return {
-      id: row.id,
-      sceneId: row.scene_id,
-      sceneNumber: row.scene_number,
-      shootingDayId: row.shooting_day_id,
-      dayNumber: row.day_number,
-      sortOrder: row.sort_order,
-      color: row.color || '#4A5568',
-      location: row.location || '',
-      pages: parseFloat(row.pages) || 0,
-      cast: row.cast_ids || [],
-      status: row.status || 'not-scheduled',
-      estimatedTime: row.estimated_time || 60,
-      notes: row.notes,
-    };
-  }
 
   private convertCastMember(row: any): CastMember {
     return {
@@ -1346,109 +1404,133 @@ class ProductionWorkflowService {
   // SHOOTING DAYS
   // ============================================
 
+  /**
+   * Opptaksdagene fra basen.
+   *
+   * Gikk tidligere mot `/api/production/:projectId/shooting-days`, som ikke
+   * finnes, og falt tilbake på TROLL-dagene. Stripboardet leser ekte scener,
+   * så dagene må komme fra samme prosjekt — ellers hadde scenene vært
+   * brukerens og dagene en annen produksjons.
+   *
+   * Dagnummeret utledes av datorekkefølgen: «dag 3» er den tredje
+   * opptaksdagen, og settes en dag inn i midten flytter de bak seg.
+   */
   async getShootingDays(projectId: string): Promise<ShootingDay[]> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/${projectId}/shooting-days`);
-        const result = await response.json();
-        if (result.success && result.data) {
-          const days = result.data.map((row: any) => this.convertShootingDay(row));
-          this.shootingDaysCache = days;
-          return days;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using cache:', error);
-      }
+    this.currentProjectId = projectId;
+    const response = await apiRequest(
+      `/api/role-room/projects/${projectId}/production-days`,
+    );
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente opptaksdager (HTTP ${response.status})`);
     }
-    // Fallback to cache
-    await new Promise(resolve => setTimeout(resolve, 200));
-    return this.shootingDaysCache.filter(d => d.projectId === projectId || projectId === 'troll-2022');
+    const { productionDays } = (await response.json()) as { productionDays: any[] };
+
+    const days: ShootingDay[] = (productionDays ?? [])
+      .slice()
+      .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
+      .map((row, index) => ({
+        id: String(row.id),
+        projectId,
+        dayNumber: index + 1,
+        date: String(row.date ?? ''),
+        callTime: typeof row.callTime === 'string' ? row.callTime : '',
+        wrapTime: typeof row.wrapTime === 'string' ? row.wrapTime : undefined,
+        location: typeof row.location === 'string' ? row.location : (row.locationId ?? ''),
+        locationAddress: row.locationAddress,
+        notes: row.notes,
+        scenes: Array.isArray(row.scenes) ? row.scenes.map(String) : [],
+        status: (row.status ?? 'planned') as ShootingDay['status'],
+        crewCallTimes: row.crewCallTimes ?? {},
+        castCallTimes: row.castCallTimes ?? {},
+        equipmentNeeded: Array.isArray(row.equipmentNeeded) ? row.equipmentNeeded : [],
+        meals: Array.isArray(row.meals) ? row.meals : [],
+        createdAt: String(row.createdAt ?? ''),
+        updatedAt: String(row.updatedAt ?? ''),
+      }));
+
+    this.shootingDaysCache = days;
+    return days;
   }
 
-  async getShootingDay(dayId: string): Promise<ShootingDay | null> {
-    await new Promise(resolve => setTimeout(resolve, 100));
+  /**
+   * Én opptaksdag fra cachen, med henting hvis den er kald.
+   *
+   * LiveSetMode kaller denne parallelt med getLiveSetStatus, altså uten at
+   * noen har hentet dagene først. Før var det greit fordi cachen kom
+   * forhåndsfylt med TROLL-dager — nå starter den tom, og en kald cache ville
+   * gitt null og en tom skjerm.
+   */
+  async getShootingDay(dayId: string, projectId?: string): Promise<ShootingDay | null> {
+    const cached = this.shootingDaysCache.find(d => d.id === dayId);
+    if (cached) return cached;
+    // Prosjektet oppgis eksplisitt der kalleren kjenner det, slik at dette
+    // ikke avhenger av at et annet kall tilfeldigvis kjørte først.
+    const project = projectId ?? this.currentProjectId;
+    if (!project) return null;
+    await this.getShootingDays(project);
     return this.shootingDaysCache.find(d => d.id === dayId) || null;
   }
 
+  /**
+   * Oppretter en opptaksdag i basen.
+   *
+   * Gikk tidligere mot `/api/production/...` og falt tilbake på en rad i
+   * minnet med `id: day-<timestamp>`. Dagen så opprettet ut, forsvant ved
+   * neste last, og stripboardet kunne aldri legge scener på den — id-en
+   * fantes ikke i basen.
+   */
   async createShootingDay(day: Omit<ShootingDay, 'id' | 'createdAt' | 'updatedAt'>): Promise<ShootingDay> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/${day.projectId}/shooting-days`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(day),
-        });
-        const result = await response.json();
-        if (result.success && result.data) {
-          const newDay = this.convertShootingDay(result.data);
-          this.shootingDaysCache.push(newDay);
-          return newDay;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using local storage:', error);
-      }
+    const response = await apiRequest('/api/role-room/production-days', {
+      method: 'POST',
+      body: JSON.stringify({ ...day, projectId: day.projectId }),
+    });
+    if (!response.ok) {
+      throw new Error(`Kunne ikke opprette opptaksdag (HTTP ${response.status})`);
     }
-    // Fallback to local
-    const now = new Date().toISOString();
-    const newDay: ShootingDay = {
-      ...day,
-      id: `day-${Date.now()}`,
-      createdAt: now,
-      updatedAt: now,
+    const { productionDay } = (await response.json()) as { productionDay: any };
+    const created: ShootingDay = {
+      ...(day as ShootingDay),
+      id: String(productionDay.id),
+      createdAt: String(productionDay.createdAt ?? ''),
+      updatedAt: String(productionDay.updatedAt ?? ''),
     };
-    this.shootingDaysCache.push(newDay);
-    return newDay;
+    this.shootingDaysCache.push(created);
+    return created;
   }
 
+  /**
+   * Oppdaterer en opptaksdag.
+   *
+   * POST-ruta er en upsert på id, så den dekker begge deler. Feltene slås
+   * sammen med den kjente dagen først — en delvis oppdatering skal ikke tømme
+   * scenelista fordi kalleren bare ville endre klokkeslettet.
+   */
   async updateShootingDay(dayId: string, updates: Partial<ShootingDay>): Promise<ShootingDay | null> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/shooting-days/${dayId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        });
-        const result = await response.json();
-        if (result.success && result.data) {
-          const updated = this.convertShootingDay(result.data);
-          const index = this.shootingDaysCache.findIndex(d => d.id === dayId);
-          if (index !== -1) this.shootingDaysCache[index] = updated;
-          return updated;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using local storage:', error);
-      }
+    const known = this.shootingDaysCache.find(d => d.id === dayId);
+    if (!known) return null;
+
+    const merged = { ...known, ...updates, id: dayId };
+    const response = await apiRequest('/api/role-room/production-days', {
+      method: 'POST',
+      body: JSON.stringify(merged),
+    });
+    if (!response.ok) {
+      throw new Error(`Kunne ikke lagre opptaksdagen (HTTP ${response.status})`);
     }
-    // Fallback to local
     const index = this.shootingDaysCache.findIndex(d => d.id === dayId);
-    if (index === -1) return null;
-    
-    this.shootingDaysCache[index] = {
-      ...this.shootingDaysCache[index],
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    return this.shootingDaysCache[index];
+    const saved = { ...merged, updatedAt: new Date().toISOString() };
+    if (index !== -1) this.shootingDaysCache[index] = saved;
+    return saved;
   }
 
   async deleteShootingDay(dayId: string): Promise<boolean> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/shooting-days/${dayId}`, { method: 'DELETE' });
-        const result = await response.json();
-        if (result.success) {
-          const index = this.shootingDaysCache.findIndex(d => d.id === dayId);
-          if (index !== -1) this.shootingDaysCache.splice(index, 1);
-          return true;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using local storage:', error);
-      }
-    }
-    // Fallback to local
+    const response = await apiRequest(
+      `/api/role-room/production-days/${dayId}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) return false;
     const index = this.shootingDaysCache.findIndex(d => d.id === dayId);
-    if (index === -1) return false;
-    this.shootingDaysCache.splice(index, 1);
+    if (index !== -1) this.shootingDaysCache.splice(index, 1);
     return true;
   }
 
@@ -1456,95 +1538,195 @@ class ProductionWorkflowService {
   // STRIPBOARD
   // ============================================
 
+  /**
+   * Stripboardet fra basen (Del A punkt 72).
+   *
+   * Tidligere gikk dette mot `/api/production/:projectId/stripboard` — et
+   * endepunkt som ikke fantes i backend. Kallet feilet hver gang, ble fanget
+   * av en `console.warn`, og panelet viste demodata for produksjonen «TROLL»
+   * som om det var brukerens eget stripboard.
+   *
+   * Feil kastes nå videre framfor å svelges. Et stripboard som ikke lot seg
+   * hente skal se ut som en feil, ikke som en tom produksjon.
+   */
   async getStripboard(projectId: string): Promise<StripboardStrip[]> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/${projectId}/stripboard`);
-        const result = await response.json();
-        if (result.success && result.data) {
-          const strips = result.data.map((row: any) => this.convertStripboardStrip(row));
-          this.stripboardCache = strips;
-          return strips;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using cache:', error);
-      }
+    this.currentProjectId = projectId;
+    const response = await apiRequest(`/api/role-room/projects/${projectId}/stripboard`);
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente stripboardet (HTTP ${response.status})`);
     }
-    await new Promise(resolve => setTimeout(resolve, 150));
-    return this.stripboardCache;
+    const board = (await response.json()) as ApiStripboard;
+    const strips = adaptStripboard(board) as StripboardStrip[];
+    this.stripboardCache = strips;
+    // Karakterene følger med stripboardet, så DOOD-matrisen settes opp mot de
+    // samme scenene som stripene. Et eget cast-kall var nettopp der den gamle
+    // flaten hentet TROLL-skuespillere fra.
+    this.stripboardCastCache = (board.cast ?? []).map((member) => ({
+      id: member.id,
+      name: member.name,
+      character: member.character,
+      scenes: member.scenes,
+      phone: '',
+      email: '',
+      availability: {},
+    })) as CastMember[];
+    return strips;
   }
 
+  /** Medvirkende fra siste stripboard-henting. Tom før første last. */
+  getStripboardCast(): CastMember[] {
+    return this.stripboardCastCache;
+  }
+
+  /**
+   * Ny rekkefølge innad i en dag.
+   *
+   * Hele dagens rekkefølge sendes samlet — den er en egenskap ved dagen, og
+   * en scene om gangen ville etterlatt to scener med samme sortOrder hvis en
+   * drag-operasjon ble avbrutt.
+   */
   async updateStripOrder(strips: StripboardStrip[]): Promise<StripboardStrip[]> {
-    this.stripboardCache = strips.map((s, idx) => ({ ...s, sortOrder: idx }));
-    return this.stripboardCache;
+    const ordered = strips.map((s, idx) => ({ ...s, sortOrder: idx }));
+    this.stripboardCache = ordered;
+
+    const projectId = this.currentProjectId;
+    if (!projectId) return ordered;
+
+    // Grupper per dag: rekkefølgen lagres per dag, og «ikke planlagt»-bunken
+    // har ingen rekkefølge å lagre.
+    const byDay = new Map<string, string[]>();
+    for (const strip of ordered) {
+      if (!strip.shootingDayId) continue;
+      const list = byDay.get(strip.shootingDayId) ?? [];
+      list.push(strip.sceneId);
+      byDay.set(strip.shootingDayId, list);
+    }
+
+    await Promise.all(
+      [...byDay.entries()].map(([productionDayId, sceneIds]) =>
+        apiRequest(`/api/role-room/projects/${projectId}/stripboard/reorder`, {
+          method: 'POST',
+          body: JSON.stringify({ productionDayId, sceneIds }),
+        }),
+      ),
+    );
+    return ordered;
   }
 
+  /**
+   * Flytter en scene til en dag, eller tilbake i «ikke planlagt» når dayId er
+   * null. Backend gjør en upsert, så en scene som dras til en ny dag ikke
+   * etterlater seg raden på den gamle.
+   */
   async assignSceneToDay(sceneId: string, dayId: string | null): Promise<StripboardStrip | null> {
+    const projectId = this.currentProjectId;
+    if (!projectId) return null;
+
+    const response = await apiRequest(
+      `/api/role-room/projects/${projectId}/stripboard/assign`,
+      { method: 'POST', body: JSON.stringify({ sceneId, productionDayId: dayId }) },
+    );
+    if (!response.ok) {
+      throw new Error(
+        (await response.json().catch(() => ({}))).error ?? 'Kunne ikke flytte scenen',
+      );
+    }
+
+    const { entryId } = (await response.json()) as { entryId: string };
     const strip = this.stripboardCache.find(s => s.sceneId === sceneId);
     if (!strip) return null;
 
     const day = dayId ? this.shootingDaysCache.find(d => d.id === dayId) : null;
+    strip.id = entryId;
     strip.shootingDayId = dayId || undefined;
     strip.dayNumber = day?.dayNumber;
-    strip.status = dayId ? 'scheduled' : 'not-scheduled';
-    
-    // Update via API if available
-    if (this.useApi && strip.id) {
-      try {
-        await fetch(`${API_BASE}/stripboard/${strip.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            shootingDayId: dayId,
-            dayNumber: day?.dayNumber,
-            status: dayId ? 'scheduled' : 'not-scheduled',
-          }),
-        });
-      } catch (error) {
-        console.warn('API unavailable for stripboard update:', error);
-      }
+    // Skutt og strøket overlever en flytting — de sier noe om scenen, ikke om
+    // hvor den ligger i planen.
+    if (strip.status !== 'shot' && strip.status !== 'omitted' && strip.status !== 'partial') {
+      strip.status = dayId ? 'scheduled' : 'not-scheduled';
     }
-    
     return strip;
+  }
+
+  /** Skutt-status på en scene (Del A punkt 87). */
+  async setSceneShootStatus(
+    sceneId: string,
+    shootStatus: 'not_shot' | 'partial' | 'shot' | 'omitted',
+    takeCount?: number,
+  ): Promise<boolean> {
+    const projectId = this.currentProjectId;
+    if (!projectId) return false;
+
+    const response = await apiRequest(
+      `/api/role-room/projects/${projectId}/scenes/${sceneId}/shoot-status`,
+      { method: 'PATCH', body: JSON.stringify({ shootStatus, takeCount }) },
+    );
+    if (!response.ok) return false;
+
+    const strip = this.stripboardCache.find(s => s.sceneId === sceneId);
+    if (strip) {
+      strip.status = stripStatus(shootStatus, Boolean(strip.shootingDayId)) as StripboardStrip['status'];
+    }
+    return true;
   }
 
   // ============================================
   // CAST & CREW
   // ============================================
 
+  /**
+   * Medvirkende, utledet av scenene i basen.
+   *
+   * Gikk tidligere mot `/api/production/:projectId/cast`, som ikke finnes, og
+   * falt tilbake på TROLL-skuespillere. I DOOD-matrisen ble de satt opp mot
+   * brukerens egne scener — en matrise av ekte dager og oppdiktede folk.
+   */
   async getCast(projectId: string): Promise<CastMember[]> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/${projectId}/cast`);
-        const result = await response.json();
-        if (result.success && result.data) {
-          const cast = result.data.map((row: any) => this.convertCastMember(row));
-          this.castCache = cast;
-          return cast;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using cache:', error);
-      }
+    this.currentProjectId = projectId;
+    const response = await apiRequest(`/api/role-room/projects/${projectId}/cast`);
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente medvirkende (HTTP ${response.status})`);
     }
-    await new Promise(resolve => setTimeout(resolve, 100));
+    const { cast } = (await response.json()) as {
+      cast: Array<{ id: string; name: string; character: string; scenes: string[] }>;
+    };
+    this.castCache = (cast ?? []).map((member) => ({
+      id: member.id,
+      name: member.name,
+      character: member.character,
+      scenes: member.scenes,
+      phone: '',
+      email: '',
+      availability: {},
+    })) as CastMember[];
     return this.castCache;
   }
 
+  /**
+   * Crew fra `casting_crew`.
+   *
+   * Ruta finnes fra før i role-room-routes.ts og svarer med radene direkte —
+   * derfor snake_case-feltene her. Det gamle kallet gikk mot `/api/production`
+   * og falt tilbake på TROLL-crewet.
+   */
   async getCrew(projectId: string): Promise<CrewMember[]> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/${projectId}/crew`);
-        const result = await response.json();
-        if (result.success && result.data) {
-          const crew = result.data.map((row: any) => this.convertCrewMember(row));
-          this.crewCache = crew;
-          return crew;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using cache:', error);
-      }
+    this.currentProjectId = projectId;
+    const response = await apiRequest(`/api/role-room/projects/${projectId}/crew`);
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente crew (HTTP ${response.status})`);
     }
-    await new Promise(resolve => setTimeout(resolve, 100));
+    const rows = (await response.json()) as any[];
+    this.crewCache = (Array.isArray(rows) ? rows : []).map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? ''),
+      role: String(row.role ?? ''),
+      department: String(row.department ?? ''),
+      phone: String(row.phone ?? ''),
+      email: String(row.email ?? ''),
+      availability: row.availability ?? {},
+      rate: row.rate === null || row.rate === undefined ? undefined : Number(row.rate),
+      notes: row.notes ?? undefined,
+    }));
     return this.crewCache;
   }
 
@@ -1581,139 +1763,163 @@ class ProductionWorkflowService {
   }
 
   // ============================================
-  // CALL SHEETS
+  // LIVE SET
   // ============================================
+  //
+  // On-set-tilstanden lagres allerede: `useLiveSet` skriver en hendelseslogg
+  // som synkroniseres offline-først via /live-set/events/batch. Denne
+  // tjenesten skrev derimot bare til minnet, så alt forsvant ved en
+  // oppfriskning. Mutatorene under sender nå til samme logg, med samme
+  // vokabular, slik at de to live-set-skjermene ser samme virkelighet.
 
-  async generateCallSheet(dayId: string): Promise<CallSheet> {
-    const day = await this.getShootingDay(dayId);
-    if (!day) throw new Error('Shooting day not found');
+  private liveSetSessionId: string | null = null;
+  private liveSetSeq = 1;
+  private currentShootingDayId: string | null = null;
 
-    const scenes = this.stripboardCache.filter(s => s.shootingDayId === dayId);
-    
-    const callSheet: CallSheet = {
-      id: `callsheet-${dayId}`,
-      shootingDayId: dayId,
-      projectTitle: 'TROLL',
-      productionCompany: 'Motion Blur Pictures',
-      director: 'Roar Uthaug',
-      producer: 'Espen Horn',
-      date: day.date,
-      dayNumber: day.dayNumber,
-      totalDays: this.shootingDaysCache.length,
-      generalCallTime: day.callTime,
-      crewCallTimes: this.crewCache.map(c => ({
-        id: c.id,
-        name: c.name,
-        role: c.role,
-        department: c.department,
-        callTime: day.crewCallTimes[c.id] || day.callTime,
-        phone: c.phone,
-        email: c.email,
-      })),
-      castCallTimes: this.castCache
-        .filter(c => scenes.some(s => s.cast.includes(c.character)))
-        .map(c => ({
-          id: c.id,
-          name: c.name,
-          character: c.character,
-          callTime: day.castCallTimes[c.id] || day.callTime,
-          scenes: scenes.filter(s => s.cast.includes(c.character)).map(s => s.sceneNumber),
-          phone: c.phone,
-        })),
-      scenes: scenes.map(s => ({
-        sceneNumber: s.sceneNumber,
-        description: `Scene ${s.sceneNumber}`,
-        location: s.location,
-        intExt: s.color === '#fff9c4' || s.color === '#4a148c' ? 'INT' : 'EXT',
-        timeOfDay: s.color.includes('1a237e') ? 'NIGHT' : s.color.includes('ffccbc') ? 'DAWN' : 'DAY',
-        pages: s.pages,
-        cast: s.cast,
-        estimatedTime: `${Math.floor(s.estimatedTime / 60)}t ${s.estimatedTime % 60}m`,
-      })),
-      locations: [{
-        name: day.location,
-        address: day.locationAddress || '',
-        parking: 'Se kart i vedlegg',
-      }],
-      equipment: day.equipmentNeeded,
-      meals: day.meals,
-      contacts: [
-        { name: 'Roar Uthaug', role: 'Regissør', phone: '+47 900 10 001', department: 'Regi' },
-        { name: 'Kristin Horntvedt', role: 'Innspillingsleder', phone: '+47 900 10 003', department: 'Produksjon' },
-        { name: 'Thomas Nilsen', role: '1st AD', phone: '+47 900 10 020', department: 'Regi' },
-      ],
-      notes: day.notes ? [day.notes] : [],
-      weather: day.weather,
-      nearestHospital: 'Oslo Universitetssykehus - Ullevål, tlf: 22 11 80 80',
-      parking: 'Avsatt område ved lokasjon. Se vedlagt kart.',
-      createdAt: new Date().toISOString(),
-      version: 1,
-    };
-
-    // Store call sheet via API if available
-    if (this.useApi) {
-      try {
-        await fetch(`${API_BASE}/${day.projectId}/call-sheets`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(callSheet),
-        });
-      } catch (error) {
-        console.warn('API unavailable for call sheet save:', error);
-      }
-    }
-
-    return callSheet;
+  /** Sesjonen opprettes ved første hendelse, ikke ved oppstart. */
+  private async ensureLiveSetSession(projectId: string): Promise<string | null> {
+    if (this.liveSetSessionId) return this.liveSetSessionId;
+    const response = await apiRequest(`/api/role-room/projects/${projectId}/live-set/sessions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        operatorId: 'production-workflow',
+        deviceId: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : 'ukjent',
+        shootingDayId: this.currentShootingDayId ?? undefined,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { session?: { sessionId?: string } };
+    this.liveSetSessionId = data.session?.sessionId ?? null;
+    return this.liveSetSessionId;
   }
 
-  // ============================================
-  // LIVE SET TRACKING
-  // ============================================
-
-  async getLiveSetStatus(projectId: string): Promise<LiveSetStatus> {
-    if (this.useApi) {
-      try {
-        const response = await fetch(`${API_BASE}/${projectId}/live-set-status`);
-        const result = await response.json();
-        if (result.success && result.data) {
-          // Convert from API format
-          this.liveSetStatus = {
-            currentScene: result.data.current_scene_id,
-            currentShot: result.data.current_shot_id,
-            currentTake: result.data.current_setup || 0,
-            isRolling: result.data.status === 'rolling',
-            lastAction: result.data.notes || '',
-            lastActionTime: result.data.updated_at || new Date().toISOString(),
-            todayTakes: result.data.today_takes || [],
-            todayProgress: {
-              plannedScenes: result.data.total_setups || 0,
-              completedScenes: (result.data.scenes_completed || []).length,
-              partialScenes: (result.data.scenes_partial || []).length,
-              totalSetups: result.data.total_setups || 0,
-              completedSetups: result.data.current_setup || 0,
-              pagesPlanned: 0,
-              pagesShot: parseFloat(result.data.pages_shot) || 0,
-            },
-          };
-          return this.liveSetStatus;
-        }
-      } catch (error) {
-        console.warn('API unavailable, using cache:', error);
-      }
+  /**
+   * Sender én eller flere hendelser til loggen.
+   *
+   * `eventId` er idempotensnøkkelen på serversiden og må derfor være unik per
+   * hendelse, ikke per batch.
+   *
+   * Feil logges og svelges. Det er en svakere garanti enn `useLiveSet`, som
+   * køer i IndexedDB og prøver igjen — den skjermen er den som brukes på
+   * settet, og den eneste med kallere til mutatorene under i dag.
+   */
+  private async emitLiveSetEvents(
+    projectId: string,
+    events: Array<{ type: string; payload?: Record<string, unknown> }>,
+  ): Promise<void> {
+    if (!projectId || events.length === 0) return;
+    try {
+      const sessionId = await this.ensureLiveSetSession(projectId);
+      if (!sessionId) return;
+      const capturedAt = new Date().toISOString();
+      await apiRequest(`/api/role-room/projects/${projectId}/live-set/events/batch`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId,
+          events: events.map((event, index) => ({
+            eventId: `pw-${sessionId}-${this.liveSetSeq + index}`,
+            sessionId,
+            seq: this.liveSetSeq + index,
+            type: event.type,
+            payload: event.payload ?? {},
+            capturedAt,
+            deviceId: 'production-workflow',
+            operatorId: 'production-workflow',
+            projectId,
+            shootingDayId: this.currentShootingDayId ?? undefined,
+          })),
+        }),
+      });
+      this.liveSetSeq += events.length;
+    } catch (error) {
+      console.warn('Live-set-hendelse ikke synkronisert:', error);
     }
-    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+
+  /**
+   * Live-set-status: fremdrift fra stripboardet, øyeblikkstilstand fra loggen.
+   *
+   * Begge deler er nå ekte. Fremdriften regnes ut av scenene og skutt-status
+   * (Del A punkt 73/84/87); øyeblikkstilstanden utledes av hendelsesloggen på
+   * serversiden, av samme regler som klientens reducer. Tidligere sto den
+   * halvdelen tom fordi ingen leste loggen — og før det falt hele objektet
+   * tilbake på TROLL-demodata.
+   */
+  async getLiveSetStatus(projectId: string, shootingDayId?: string): Promise<LiveSetStatus> {
+    this.currentProjectId = projectId;
+    if (shootingDayId) this.currentShootingDayId = shootingDayId;
+
+    const dayQuery = this.currentShootingDayId
+      ? `?shootingDayId=${encodeURIComponent(this.currentShootingDayId)}`
+      : '';
+    const [progressRes, stateRes] = await Promise.all([
+      apiRequest(`/api/role-room/projects/${projectId}/stripboard/progress`),
+      apiRequest(`/api/role-room/projects/${projectId}/live-set/state${dayQuery}`),
+    ]);
+    if (!progressRes.ok) {
+      throw new Error(`Kunne ikke hente fremdrift (HTTP ${progressRes.status})`);
+    }
+    const progress = (await progressRes.json()) as {
+      scenesTotal: number; scenesShot: number; scenesPartial: number;
+      scenesOmitted: number; eighthsTotal: number; eighthsShot: number;
+    };
+
+    // Loggen kan være tom på en dag som ikke har begynt. Det er ikke en feil.
+    const projected = stateRes.ok
+      ? ((await stateRes.json()) as { state?: LiveSetProjection }).state
+      : undefined;
+
+    const plannedScenes = Math.max(progress.scenesTotal - progress.scenesOmitted, 0);
+    this.takes = (projected?.takes ?? []).map(toTake);
+
+    this.liveSetStatus = {
+      currentScene: projected?.currentSceneId ?? null,
+      currentShot: projected?.currentShotId ?? null,
+      currentTake: projected?.nextTakeNumber ?? 1,
+      isRolling: projected?.liveState === 'rolling',
+      lastAction: projected?.lastAction ?? '',
+      lastActionTime: projected?.lastActionAt ?? '',
+      todayTakes: this.takes,
+      todayProgress: {
+        // Strøkne scener er ikke planlagt arbeid.
+        plannedScenes,
+        completedScenes: progress.scenesShot,
+        partialScenes: progress.scenesPartial,
+        // Oppsett per scene registreres ikke som eget begrep ennå — scener er
+        // nærmeste sannhet, og et oppdiktet oppsett-tall ville blitt lest som
+        // målt.
+        totalSetups: plannedScenes,
+        completedSetups: progress.scenesShot,
+        pagesPlanned: progress.eighthsTotal / 8,
+        pagesShot: progress.eighthsShot / 8,
+      },
+    };
     return this.liveSetStatus;
   }
 
+  /**
+   * Kameraet ruller.
+   *
+   * Scenen sendes med som egen hendelse først: serverens utledning avviser
+   * ROLL uten aktiv scene, akkurat som klientens reducer gjør. Uten
+   * set_scene ville rullingen blitt stille forkastet.
+   */
   async startRolling(sceneId: string, shotId: string): Promise<LiveSetStatus> {
+    const now = new Date().toISOString();
     this.liveSetStatus = {
       ...this.liveSetStatus,
       currentScene: sceneId,
       currentShot: shotId,
       isRolling: true,
       lastAction: 'ROLLING',
-      lastActionTime: new Date().toISOString(),
+      lastActionTime: now,
     };
+    if (this.currentProjectId) {
+      await this.emitLiveSetEvents(this.currentProjectId, [
+        { type: 'set_scene', payload: { sceneId } },
+        { type: 'roll' },
+      ]);
+    }
     return this.liveSetStatus;
   }
 
@@ -1738,13 +1944,15 @@ class ProductionWorkflowService {
       shotId:     this.liveSetStatus.currentShot!,
       takeNumber: this.liveSetStatus.currentTake,
       status,
-      duration:   Math.floor(Math.random() * 30) + 20, // TODO: real duration from timer
+      // Varigheten måles på serversiden, mellom ROLL- og CUT-hendelsen. Her
+      // står 0 til neste henting — tidligere sto det et tilfeldig tall, som
+      // så ut som en måling i nettopp den loggen man leter etter målinger i.
+      duration:   0,
       notes,
       recordedAt: now,
       loggedAt:   now,
       loggedBy,
       slate: `${this.liveSetStatus.currentScene?.replace('scene-', '')}-${this.liveSetStatus.currentTake}`,
-      // Multi-camera metadata
       cameraId:           cameraMetadata?.cameraId  ?? 'A',
       camera:             cameraMetadata?.camera    ?? 'A-cam',
       lens:               cameraMetadata?.lens,
@@ -1763,13 +1971,16 @@ class ProductionWorkflowService {
       lastAction:  `CUT - ${status.toUpperCase()}${notes ? `: ${notes}` : ''}`,
       lastActionTime: now,
       todayTakes: [...this.liveSetStatus.todayTakes, take],
-      todayProgress: {
-        ...this.liveSetStatus.todayProgress,
-        completedSetups:
-          this.liveSetStatus.todayProgress.completedSetups +
-          (status === 'circle' || status === 'print' ? 1 : 0),
-      },
     };
+
+    if (this.currentProjectId) {
+      const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+      // Kameradata er egen hendelse i vokabularet — den gjelder oppsettet,
+      // ikke taken, og skal derfor gjelde videre til den endres.
+      if (cameraMetadata) events.push({ type: 'set_camera', payload: { ...cameraMetadata } });
+      events.push({ type: 'cut' });
+      await this.emitLiveSetEvents(this.currentProjectId, events);
+    }
 
     return take;
   }
@@ -1797,6 +2008,9 @@ class ProductionWorkflowService {
         completedSetups: this.liveSetStatus.todayProgress.completedSetups + 1,
       },
     };
+    if (this.currentProjectId) {
+      await this.emitLiveSetEvents(this.currentProjectId, [{ type: 'setup_complete' }]);
+    }
     return this.liveSetStatus;
   }
 
@@ -1806,6 +2020,7 @@ class ProductionWorkflowService {
    * TODO [Studio]: Wire to real stripboard order endpoint.
    */
   async nextSetup(shootingDayId: string): Promise<{ sceneId: string; shotId: string } | null> {
+    this.currentShootingDayId = shootingDayId;
     const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
     if (!day) return null;
     const idx = day.scenes.indexOf(this.liveSetStatus.currentScene ?? '');
@@ -1820,13 +2035,24 @@ class ProductionWorkflowService {
       lastAction:     'NEXT SETUP',
       lastActionTime: new Date().toISOString(),
     };
+    if (this.currentProjectId) {
+      // advance_scene nullstiller opptakstilstanden, set_scene peker på den
+      // nye. Rekkefølgen er viktig: motsatt vei ville nullstillingen slettet
+      // scenen som nettopp ble satt.
+      await this.emitLiveSetEvents(this.currentProjectId, [
+        { type: 'advance_scene' },
+        { type: 'set_scene', payload: { sceneId: nextScene } },
+      ]);
+    }
     return { sceneId: nextScene, shotId: nextShotId };
   }
 
+  /** Dagens takes fra loggen. Henter på nytt så en annen enhets takes er med. */
   async getTodayTakes(shootingDayId: string): Promise<Take[]> {
-    const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
-    if (!day) return [];
-    return this.takes.filter(take => day.scenes.includes(take.sceneId));
+    this.currentShootingDayId = shootingDayId;
+    if (!this.currentProjectId) return [];
+    await this.getLiveSetStatus(this.currentProjectId, shootingDayId);
+    return this.takes;
   }
 
   async circleTake(takeId: string, circledBy: string): Promise<Take | null> {
@@ -1834,6 +2060,13 @@ class ProductionWorkflowService {
     if (!take) return null;
     take.status = 'circle';
     take.circledBy = circledBy;
+    if (this.currentProjectId) {
+      // Id-en er projeksjonens («take:<eventId>»), som utledningen kjenner
+      // igjen — sirklingen blir derfor synlig også på den andre skjermen.
+      await this.emitLiveSetEvents(this.currentProjectId, [
+        { type: 'set_take_status', payload: { id: takeId, status: 'circle' } },
+      ]);
+    }
     return take;
   }
 
@@ -1899,27 +2132,6 @@ class ProductionWorkflowService {
   // ============================================
   // DATA SEEDING
   // ============================================
-
-  async seedTrollData(projectId: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const response = await fetch(`${API_BASE}/${projectId}/seed-troll`, {
-        method: 'POST',
-      });
-      const result = await response.json();
-      if (result.success) {
-        // Refresh caches
-        await this.getShootingDays(projectId);
-        await this.getStripboard(projectId);
-        await this.getCast(projectId);
-        await this.getCrew(projectId);
-        return { success: true, message: result.message || 'Troll data seeded successfully' };
-      }
-      return { success: false, message: result.error || 'Failed to seed data' };
-    } catch (error) {
-      console.warn('API unavailable for seeding:', error);
-      return { success: false, message: 'API unavailable' };
-    }
-  }
 
   // ============================================
   // UTILITY METHODS

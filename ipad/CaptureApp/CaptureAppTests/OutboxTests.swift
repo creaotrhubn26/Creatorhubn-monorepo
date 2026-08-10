@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 @testable import CaptureApp
+import OutboxKit
 
 /// Tests for the offline-first mutation Outbox. All run against an
 /// in-memory GRDB so they're fast and don't touch the filesystem.

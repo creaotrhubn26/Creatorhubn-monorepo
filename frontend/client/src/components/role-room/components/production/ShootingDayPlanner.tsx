@@ -77,6 +77,7 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [strips, setStrips] = useState<StripboardStrip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<ShootingDay | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -96,6 +97,7 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const [dayData, castData, crewData, stripData] = await Promise.all([
           productionWorkflowService.getShootingDays(projectId),
@@ -121,7 +123,10 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
         }
         setConflicts(conflictMap);
       } catch (error) {
+        // Kallene faller ikke lenger tilbake på TROLL-demodata, så en feil er
+        // en feil. Uten denne beskjeden ville panelet bare stått tomt.
         console.error('Failed to load data:', error);
+        setLoadError(error instanceof Error ? error.message : 'Kunne ikke hente opptaksplanen.');
       } finally {
         setLoading(false);
       }
@@ -465,6 +470,14 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
         <Typography sx={{ mt: 2, textAlign: 'center' }}>
           Laster opptaksplan...
         </Typography>
+      </Box>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">{loadError}</Alert>
       </Box>
     );
   }

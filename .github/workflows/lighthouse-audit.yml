@@ -1,0 +1,138 @@
+name: Lighthouse-revisjon
+
+# Måler ytelse og tilgjengelighet på de publiserte flatene.
+#
+# Bakgrunn: lighthouserc.json har ligget i repoet en stund med reelle
+# terskler, men ingen workflow kalte den. En terskel ingen kjører er en
+# terskel som ikke finnes — den ser ut som en vaktpost i kodegjennomgangen
+# og fanger ingenting i drift. Denne fila er det som gjør den ekte.
+#
+# Hvorfor planlagt og ikke en PR-gate: konfigurasjonen måler PRODUKSJON
+# (creatorhubn.com og theroleroom.com), ikke greina i pull requesten. En
+# PR endrer ikke det som er utrullet, så en PR-gate ville målt noe annet
+# enn det den blokkerte. Ytelse i drift er overvåking, ikke portvakt.
+#
+# ── Hva som ble rettet, og hvorfor ────────────────────────────────────
+#
+# 1. `preset: "desktop"` → mobil med simulert treg 4G.
+#    Kravet (Del B punkt 249) er «under 2 sekunder på 4G». Desktop-preset
+#    slår av mobilemulering OG throttling, så den gamle konfigurasjonen
+#    målte det motsatte av kravet. Tallene under `throttling` er
+#    Lighthouse sine egne mobileSlow4G-konstanter, skrevet ut i klartekst
+#    framfor å arves fra en default som kan endre seg.
+#
+# 2. URL-ene dekket bare markedsføringssider.
+#    Lagt til theroleroom.com/talentportal — inngangen et talent faktisk
+#    møter. Merk at den måler den UINNLOGGEDE skjermen: portalen krever
+#    innlogging, så Lighthouse kommer ikke inn. Det er fortsatt det
+#    riktige å måle, fordi det er samme bundle og samme first paint, og
+#    det er nettopp den delen 4G straffer.
+#
+#    Verdt å vite: /talentportal bootstrapper bare på theroleroom.com.
+#    På creatorhubn.com laster ikke Role Room i det hele tatt (se
+#    ROLE_ROOM_DEDICATED_HOSTS i frontend/client/src/.../utils/runtime.ts),
+#    så URL-en MÅ ha den hosten for å måle noe som helst.
+#
+# 3. `numberOfRuns: 1` → 3.
+#    Mobil-Lighthouse varierer nok mellom kjøringer til at ett enkelt tall
+#    ikke bærer en terskel. LHCI tar medianen.
+#
+# ── Om tersklene ──────────────────────────────────────────────────────
+#
+# Ingenting er strammet inn eller løsnet i denne omgangen, med ett unntak:
+# FCP og LCP er satt til kravet (2000 ms) og Core Web Vitals «god»
+# (2500 ms) i stedet for de gamle desktop-tallene. Begge er `warn`.
+#
+# `cumulative-layout-shift` står fortsatt som `error`. Det er den ene
+# regelen jeg ikke har kunnet etterprøve under det nye oppsettet — CLS er
+# viewport-følsom, og mobilemulering kan avdekke forskyvning som desktop
+# skjulte. Går den første kjøringen rød på CLS: undersøk forskyvningen,
+# ikke løsne terskelen. 0,1 er Core Web Vitals-grensen, ikke et tall vi
+# fant på.
+#
+# Når det finnes noen ukers historikk: flytt ytelsestersklene fra `warn`
+# til `error`. De står som `warn` nå fordi en baseline på mobil ikke
+# eksisterer ennå, og en rød gate uten baseline blir ignorert i stedet for
+# fikset.
+
+on:
+  schedule:
+    # 04:15 UTC daglig — etter retention-feiingen (03:30), før arbeidsdagen.
+    - cron: '15 4 * * *'
+  workflow_dispatch:
+  # Kjør også når selve konfigurasjonen endres, slik at en feil i den
+  # oppdages i pull requesten og ikke først neste natt.
+  pull_request:
+    paths:
+      - 'frontend/lighthouserc.json'
+      - '.github/workflows/lighthouse-audit.yml'
+
+concurrency:
+  group: lighthouse-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    name: Lighthouse (mobil, treg 4G)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lighthouse CI
+        # `audit:lighthouse` er `lhci autorun --config=./lighthouserc.json`.
+        # Chrome ligger forhåndsinstallert på ubuntu-latest; chrome-launcher
+        # finner den selv.
+        #
+        # `continue-on-error` KUN på pull requests, og det er en bevisst
+        # asymmetri: en PR som rører konfigurasjonen skal avsløre at
+        # konfigurasjonen er ødelagt, men den skal ikke blokkeres av at
+        # PRODUKSJON har et problem. PR-en endrer ikke det som er utrullet.
+        #
+        # Uten dette gjentar workflowen nøyaktig den feilen kommentaren
+        # øverst advarer mot — å blokkere på noe annet enn det som måles.
+        # Første kjøring gjorde det: en PR om Lighthouse-oppsettet ble rød
+        # fordi /nextrole har 0,87 i tilgjengelighet.
+        #
+        # Den planlagte kjøringen har INGEN continue-on-error. Der skal
+        # `error`-reglene stoppe alt. Det er hele poenget med å koble
+        # konfigurasjonen til noe.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: npm run audit:lighthouse
+
+      - name: Hvilke revisjoner feilet
+        # `lhci assert` sier hvilken kategori som falt, ikke hvilke regler
+        # som brøt. Det sto bare i rapportene — 8,8 MB artefakt man måtte
+        # laste ned og pakke ut. En rød kjøring fortalte deg dermed ikke
+        # hva du skulle fikse, bare at du måtte begynne å lete.
+        #
+        # Skriptet avslutter alltid med 0; `lhci assert` eier avgjørelsen.
+        if: always()
+        run: node scripts/lighthouse-summary.mjs ./lighthouse-reports
+
+      - name: Last opp rapportene
+        # `if: always()` — rapportene er mest verdt akkurat når kjøringen
+        # feilet. Uten denne må den som feilsøker gjette hva som var rødt.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: frontend/lighthouse-reports/
+          retention-days: 30
+          if-no-files-found: warn

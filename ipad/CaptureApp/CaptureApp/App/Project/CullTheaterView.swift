@@ -1,4 +1,5 @@
 import SwiftUI
+import OutboxKit
 
 // MARK: - Source picker (capture session vs loose photos)
 

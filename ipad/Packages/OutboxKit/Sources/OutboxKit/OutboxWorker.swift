@@ -26,18 +26,18 @@ import Foundation
 /// often reconnect within that window between location and the car;
 /// longer outages are the "sit at home editing" case where nothing's
 /// time-critical anyway.
-actor OutboxWorker {
+public actor OutboxWorker {
     private let outbox: Outbox
     private let sender: OutboxSender
     private let clock: @Sendable () -> Date
     /// ``nonisolated`` so the polling ``Task`` can read it without
     /// hopping back onto the actor just to learn the interval.
-    nonisolated let pollInterval: TimeInterval
+    public nonisolated let pollInterval: TimeInterval
     private var runningTask: Task<Void, Never>?
 
     /// ``pollInterval`` defaults to 5s; tests pass 0 to drain
     /// immediately.
-    init(
+    public init(
         outbox: Outbox,
         sender: OutboxSender,
         clock: @escaping @Sendable () -> Date = { Date() },
@@ -51,7 +51,7 @@ actor OutboxWorker {
 
     /// Start the poll loop. Idempotent — calling start twice is a
     /// no-op (returns without spawning a second task).
-    func start() {
+    public func start() {
         guard runningTask == nil else { return }
         let interval = pollInterval
         runningTask = Task { [self] in
@@ -62,7 +62,7 @@ actor OutboxWorker {
         }
     }
 
-    func stop() {
+    public func stop() {
         runningTask?.cancel()
         runningTask = nil
     }
@@ -75,7 +75,7 @@ actor OutboxWorker {
     /// requeued but not yet due don't count — they remain in the
     /// failed bucket until their delay elapses.
     @discardableResult
-    func drainOnce() async -> Int {
+    public func drainOnce() async -> Int {
         await requeueReadyFailedRows()
 
         // Claim a bounded batch so one bad drain can't lock the actor
@@ -144,7 +144,7 @@ actor OutboxWorker {
 
     /// Backoff ladder. Table-driven so the retry timing is obvious
     /// from the code and easy to tune.
-    static func backoff(forAttempts attempts: Int) -> TimeInterval {
+    public static func backoff(forAttempts attempts: Int) -> TimeInterval {
         switch attempts {
         case 0: return 1
         case 1: return 2

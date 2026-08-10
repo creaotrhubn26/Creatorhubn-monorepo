@@ -126,6 +126,7 @@ import LeadMapMarketplaceCard from './LeadMapMarketplaceCard';
 import InviteManagementDashboard from './InviteManagementDashboard';
 import AdminNotificationManager from './AdminNotificationManager';
 import AdminConfigStatusCard from './AdminConfigStatusCard';
+import AdminStorageStatusPanel from './AdminStorageStatusPanel';
 import AdminPaymentStatusCard from './AdminPaymentStatusCard';
 import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
@@ -3661,7 +3662,14 @@ export default function AdminDashboard({
       case 'system-backup':
         return <SystemBackupDashboard {...sharedPanelProps} />;
       case 'b2-archive':
-        return <B2ArchiveTab />;
+        return (
+          <>
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2, pb: 3 }}>
+              <AdminStorageStatusPanel />
+            </Box>
+            <B2ArchiveTab />
+          </>
+        );
       case 'gdpr-compliance':
         return <GDPRCompliancePanel />;
       case 'development-tools':

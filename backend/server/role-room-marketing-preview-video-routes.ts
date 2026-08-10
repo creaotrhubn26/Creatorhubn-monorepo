@@ -24,9 +24,10 @@ import multer from "multer";
 import crypto from "crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
-  buildCaptureR2Config,
+  captureWriteStore,
   signAssetReadUrlForDelivery,
 } from "./capture-upload-service.js";
+import { bucketForClass, keyMarkerFor } from "./b2-bucket-registry.js";
 import {
   isStreamEnabled,
   uploadToStream,
@@ -240,21 +241,35 @@ export function registerRoleRoomMarketingPreviewVideoRoutes(
         }
       }
 
-      // ── Pipeline 2: R2 fallback ────────────────────────────────────
-      const cfg = buildCaptureR2Config();
+      // ── Pipeline 2: objektlager-fallback ───────────────────────────
+      // Marketing-previews er en leveranse til kunde, ikke en arbeidsfil.
+      const baseCfg = captureWriteStore();
+      const deliverables =
+        baseCfg.backend === 'b2' ? bucketForClass('deliverables') : null;
+      const cfg = deliverables
+        ? {
+            ...baseCfg,
+            bucket: deliverables.bucket,
+            prefix: `${baseCfg.prefix}${keyMarkerFor('deliverables')}`,
+          }
+        : baseCfg;
       if (!cfg.enabled || !cfg.bucket) {
         res.status(503).json({ error: "ingen_storage_konfigurert" }); return;
       }
       const client = new S3Client({
-        region: "auto",
+        // Fra konfigen, ikke hardkodet: B2 krever path-style og en ekte
+        // region, R2 bruker 'auto'.
+        region: cfg.region,
         endpoint: cfg.endpoint,
         credentials: {
           accessKeyId: cfg.accessKeyId!,
           secretAccessKey: cfg.secretAccessKey!,
         },
+        ...(cfg.forcePathStyle ? { forcePathStyle: true } : {}),
       });
 
-      const key = buildPreviewKey(projectId, postId, file.originalname || "preview.mp4");
+      // Prefikset lar signeringen finne nøkkelen igjen i riktig lager.
+      const key = `${cfg.prefix}${buildPreviewKey(projectId, postId, file.originalname || "preview.mp4")}`;
       try {
         await client.send(new PutObjectCommand({
           Bucket: cfg.bucket,

@@ -24,6 +24,7 @@
 
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { b2StoreFor } from "./b2-client-factory.js";
 
 // NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
 // b2_authorize_account 2026-06-08). Defaulten var feil (us-west-001) → all
@@ -33,18 +34,9 @@ const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 
 function getRoleRoomB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-
-  const client = new S3Client({
-    region: B2_REGION,
-    endpoint: B2_ENDPOINT,
-    credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    forcePathStyle: true,
-  });
-  return { client, bucket };
+  // Arkivrollen leser og skriver, men sletter ikke. Et arkiv som kan
+  // slette seg selv er ikke et arkiv.
+  return b2StoreFor("archive", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 /**

@@ -39,6 +39,7 @@ import type { Pool } from "pg";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { b2ClientFor, b2StoreFor } from "./b2-client-factory.js";
 
 // ── Backblaze B2 (S3-kompatibel) ─────────────────────────────────────
 // Samme oppsett som admin-academy-b2-routes.ts — Academy-video lagres på
@@ -50,17 +51,11 @@ const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 const PLAYBACK_URL_TTL_SECONDS = 30 * 60;
 
 function getB2Config(): { bucketName: string; client: S3Client } | null {
-  const keyId = process.env.B2_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_APPLICATION_KEY;
-  const bucketName = process.env.B2_BUCKET_NAME;
-  if (!keyId || !appKey || !bucketName) return null;
-  const client = new S3Client({
-    region: B2_REGION,
-    endpoint: B2_ENDPOINT,
-    credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    forcePathStyle: true,
-  });
-  return { bucketName, client };
+  const store = b2StoreFor("documents", process.env.B2_BUCKET_NAME);
+  if (!store) return null;
+  const client = b2ClientFor("documents", B2_REGION);
+  if (!client) return null;
+  return { bucketName: store.bucket, client };
 }
 
 type SessionUser = {

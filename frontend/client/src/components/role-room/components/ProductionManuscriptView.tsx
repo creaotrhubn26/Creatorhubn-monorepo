@@ -156,7 +156,9 @@ import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoi
 import { ProductionEstimateDialog } from "./ProductionEstimateDialog";
 import CallSheetGenerator from "./CallSheetGenerator";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
-import LiveSetMode from "./production/LiveSetMode";
+// Én live-set-skjerm for hele produktet. production/LiveSetMode er
+// slått sammen inn i denne — se LiveSetMode.tsx.
+import { LiveSetMode } from "./LiveSetMode";
 import StripboardPanel from "./production/StripboardPanel";
 import ShootingDayPlanner from "./production/ShootingDayPlanner";
 import {
@@ -8428,6 +8430,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         <LiveSetMode
           projectId={projectId}
           shootingDayId={selectedShootingDayId}
+          projectTitle={manuscript?.title}
           onClose={() => {
             dispatchWorkflow({ type: 'CLOSE_VIEW' });
             setIsLiveSetConnected(false);

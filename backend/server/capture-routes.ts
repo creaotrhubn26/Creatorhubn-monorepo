@@ -32,7 +32,21 @@ import {
   startMultipartUpload,
   uploadCaptureObject,
   type UploadError,
+  signAssetReadUrlForMirror,
+  getAssetProjectId,
+  captureStoreForKey,
 } from './capture-upload-service.js';
+import { mirrorUploadToUserB2 } from './user-b2-mirror-worker.js';
+import {
+  canUserUpload,
+  recordStorageUsage,
+  pushStorageUsageToStripe,
+} from './storage-quota-service.js';
+import {
+  canProductionStore,
+  recordStorageForProduction,
+} from './production-storage-service.js';
+import { recordEgress } from './storage-egress-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
@@ -224,6 +238,9 @@ const uploadCompleteBody = z.object({
   kind: z.enum(['preview', 'full', 'raw']),
   uploadId: z.string().min(1),
   key: z.string().min(1),
+  // Versjonen som ble reservert ved start. Valgfri: en iPad som ennå
+  // ikke er oppdatert sender den ikke, og skal fortsatt kunne fullføre.
+  versionId: z.string().uuid().optional(),
   parts: z
     .array(
       z.object({
@@ -909,8 +926,58 @@ export function createCaptureRouter(
     const parsed = uploadStartBody.safeParse(req.body);
     if (!handleZod(res, parsed)) return;
     const { userId } = req as AuthedRequest;
+
+    // Kvotesjekk før vi åpner en multipart-opplasting. Denne veien bærer
+    // det største volumet i produktet — kameramedier, dailies, RAW — og
+    // var fram til nå den eneste opplastingsveien uten kvote i det hele
+    // tatt. En produksjon kunne dermed skyve inn terabyte uten at noe
+    // stoppet den eller talte den.
+    //
+    // Sjekken skjer her, ikke ved complete: da har bytene allerede
+    // passert nettet, og et avslag ville vært et løfte vi ikke kan holde.
+    // Hører sesjonen til en produksjon, måles det mot produksjonens tak
+    // og kontoen som betaler for den. Ellers mot brukerens egen plan.
+    const wantedBytes = parsed.data?.sizeBytes ?? 0;
+    const projectId = await getAssetProjectId(db, userId, req.params.id);
+    if (projectId) {
+      const decision = await canProductionStore(pool, projectId, wantedBytes);
+      if (!decision.ok) {
+        // 402 framfor 507: dette er en betalingsgrense, ikke en full
+        // disk. Klienten skal tilby oppgradering, ikke be om ny forsøk.
+        res.status(402).json({
+          error: decision.reason,
+          message: decision.message,
+          quota: {
+            scope: 'production',
+            productionUsedBytes: decision.productionUsedBytes,
+            productionCapBytes: decision.productionCapBytes,
+            tier: decision.account?.user.tier ?? null,
+            usedBytes: decision.account?.usedBytes ?? null,
+            limitBytes: decision.account?.user.storageLimitBytes ?? null,
+          },
+        });
+        return;
+      }
+    } else {
+      const quota = await canUserUpload(pool, userId, wantedBytes);
+      if (!quota.ok) {
+        res.status(402).json({
+          error: quota.reason ?? 'plan_limit_reached_no_overage',
+          message: quota.message,
+          quota: {
+            scope: 'user',
+            tier: quota.status.user.tier,
+            usedBytes: quota.status.usedBytes,
+            limitBytes: quota.status.user.storageLimitBytes,
+          },
+        });
+        return;
+      }
+    }
+
     const r = await startMultipartUpload(
       db,
+      pool,
       userId,
       req.params.id,
       parsed.data.kind,
@@ -950,6 +1017,7 @@ export function createCaptureRouter(
     const { userId } = req as AuthedRequest;
     const r = await completeMultipartUpload(
       db,
+      pool,
       userId,
       req.params.id,
       parsed.data.kind,
@@ -958,11 +1026,115 @@ export function createCaptureRouter(
       parsed.data.parts,
       parsed.data.checksumSha256,
       parsed.data.sizeBytes,
+      // `parsed.data?` framfor `parsed.data`: narrowingen fra handleZod er
+      // brutt av zod-versjonen i repoet. Resten av fila bærer allerede den
+      // feilen; ny kode skal ikke legge til flere.
+      parsed.data?.versionId ?? null,
     );
     if (!r.ok) {
       res.status(uploadErrorStatus(r.error)).json({ error: r.error });
       return;
     }
+
+    // Bokfør bytene. Uten dette teller kameramediene — den desidert
+    // største posten i produktet — som null i lagringsregnskapet, og
+    // hverken kvote, faktura eller admin-oversikt ser dem.
+    //
+    // Vi bruker den verifiserte størrelsen fra HeadObject, ikke tallet
+    // klienten oppga, slik at regnskapet følger det som faktisk ligger
+    // i bøtta. Feiler bokføringen brytes ikke opplastingen — den er
+    // fullført, og en manglende ledger-rad rettes ved reconcile.
+    //
+    // Hører sesjonen til en produksjon, er det produksjonen som eier
+    // bytene og kontoen bak den som betaler — ikke han som tilfeldigvis
+    // trykket opplast på iPad-en. Uten prosjekt finnes ingen produksjon
+    // å bokføre på, og da eier brukeren dem alene.
+    const ledgerRef = `${req.params.id}:${parsed.data?.kind ?? 'unknown'}`;
+    const ledgerMeta = {
+      objectKey: r.result.key,
+      fileName: r.result.originalFilename,
+    };
+    let billedUserId = userId;
+    try {
+      if (r.result.projectId) {
+        const booked = await recordStorageForProduction(
+          pool,
+          {
+            projectId: r.result.projectId,
+            actorUserId: userId,
+            deltaBytes: r.result.sizeBytes,
+            backend: r.result.backend,
+            reason: 'capture_upload',
+            relatedResourceId: ledgerRef,
+            metadata: ledgerMeta,
+          },
+          (billingUserId, bytes, backend) =>
+            recordStorageUsage(
+              pool, billingUserId, bytes, backend, 'capture_upload', ledgerRef,
+              { ...ledgerMeta, projectId: r.result.projectId, uploadedBy: userId },
+            ),
+        );
+        // Uten en fakturerbar konto ble ingenting bokført over. Da må
+        // bytene fortsatt havne et sted, ellers er de gratis.
+        if (booked.billingUserId) {
+          billedUserId = booked.billingUserId;
+        } else {
+          await recordStorageUsage(
+            pool, userId, r.result.sizeBytes, r.result.backend,
+            'capture_upload', ledgerRef, ledgerMeta,
+          );
+        }
+      } else {
+        await recordStorageUsage(
+          pool, userId, r.result.sizeBytes, r.result.backend,
+          'capture_upload', ledgerRef, ledgerMeta,
+        );
+      }
+    } catch (ledgerErr) {
+      console.error('[capture] lagringsregnskapet kunne ikke oppdateres:', ledgerErr);
+    }
+
+    void pushStorageUsageToStripe(pool, billedUserId).catch((err) => {
+      console.error('[capture] Stripe usage push feilet:', err);
+    });
+
+    // Speil originalen til fotografens egen B2 hvis de har satt opp creds.
+    //
+    // Dette manglet: fire andre opplastingsveier speiler, denne gjorde det
+    // ikke — så alt iPad-en lastet opp via multipart havnet i vår R2 og
+    // aldri i brukerens egen bøtte.
+    //
+    // ALDRI await. Primæropplastingen skal ikke blokkeres av B2-svartid
+    // eller -feil, og worker'en hopper stille over brukere uten creds.
+    //
+    // Bare originalene. `preview` er en avledet miniatyr vi kan lage på nytt
+    // når som helst; å speile den ville brent fotografens egen lagringsplass
+    // på noe de ikke har bruk for.
+    // `parsed.data?` framfor `parsed.data`: narrowingen fra handleZod er
+    // brutt av zod-versjonen i repoet, og resten av fila bærer allerede den
+    // feilen. Ny kode skal ikke legge til flere.
+    const mirrorKind = parsed.data?.kind;
+    if (mirrorKind === 'full' || mirrorKind === 'raw') {
+      void signAssetReadUrlForMirror(r.result.key)
+        .then((url) => {
+          if (!url) return;
+          mirrorUploadToUserB2(
+            { pool },
+            {
+              userId,
+              source: 'capture',
+              sourceId: `${req.params.id}:${mirrorKind}`,
+              fileName: r.result.originalFilename,
+              contentType: r.result.mime,
+              primaryUrl: url,
+            },
+          );
+        })
+        .catch((err) => {
+          console.error('[capture] B2-speiling kunne ikke signere URL:', err);
+        });
+    }
+
     res.json(r.result);
   });
 
@@ -972,6 +1144,7 @@ export function createCaptureRouter(
     const { userId } = req as AuthedRequest;
     const r = await abortMultipartUpload(
       db,
+      pool,
       userId,
       req.params.id,
       parsed.data.uploadId,
@@ -1547,10 +1720,39 @@ export function createCaptureRouter(
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    const fullUrl = await signAssetReadUrl(row.fullKey);
+
+    // Egress-estimat på originalen. Bare den — previews er miniatyrer, og
+    // å telle dem ville druknet signalet i støy uten å flytte kostnaden
+    // nevneverdig. Belastes økt-eieren og produksjonen, ikke klienten som
+    // ser på: det er produsenten som betaler for båndbredden.
+    if (fullUrl && row.fullKey) {
+      void db
+        .select({
+          ownerUserId: captureSessions.ownerUserId,
+          projectId: captureSessions.projectId,
+        })
+        .from(captureSessions)
+        .where(eq(captureSessions.id, auth.sessionId))
+        .limit(1)
+        .then(([owner]) => {
+          if (!owner?.ownerUserId) return;
+          recordEgress(pool, {
+            userId: owner.ownerUserId,
+            projectId: owner.projectId,
+            backend: captureStoreForKey(row.fullKey!).backend,
+            estimatedBytes: Number(row.sizeBytes ?? 0),
+            source: 'client_gallery_download',
+            relatedResourceId: row.id,
+          });
+        })
+        .catch(() => undefined);
+    }
+
     res.json({
       ...row,
       previewUrl: await signAssetReadUrl(row.previewKey),
-      fullUrl: await signAssetReadUrl(row.fullKey),
+      fullUrl,
     });
   });
 

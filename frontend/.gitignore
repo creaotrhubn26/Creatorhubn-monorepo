@@ -55,3 +55,7 @@ client/src/assets/_L9A8606.ppm
 # Demo-opptak (genererte screenshots)
 demo-artifacts/
 /client/dist-geo
+
+# Lighthouse-revisjon (lighthouse-audit.yml laster dem opp som artefakt)
+lighthouse-reports/
+.lighthouseci/

@@ -28,6 +28,7 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { b2ClientFor } from "./b2-client-factory.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface AdminIntegrationTestsRoutesDeps {
@@ -281,23 +282,20 @@ async function testBackblazeB2(): Promise<TestResult> {
   const name = "Backblaze B2";
   const t0 = Date.now();
   const region = process.env.B2_REGION || "us-west-001";
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
   const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) {
+  // Helsesjekken bruker admin-rollen: den er den eneste som uansett har
+  // listFiles på alt, og en integrasjonstest skal ikke være grunnen til
+  // at en snevrere nøkkel må utvides.
+  const client = bucket ? b2ClientFor("admin", region) : null;
+  if (!client || !bucket) {
     return {
       name,
       status: "skipped",
       duration_ms: Date.now() - t0,
-      error: "B2_ROLE_ROOM_* env-vars mangler",
+      error: "B2-konfigurasjon mangler",
     };
   }
   try {
-    const client = new S3Client({
-      region,
-      endpoint: `https://s3.${region}.backblazeb2.com`,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    });
     const result = await Promise.race<
       | { kind: "ok" }
       | { kind: "err"; msg: string }

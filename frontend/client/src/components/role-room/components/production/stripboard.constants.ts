@@ -1,5 +1,5 @@
 import React, { type ReactElement } from "react";
-import { Home as IntIcon, Landscape as ExtIcon, WbTwilight as TwilightIcon, EventNote as EventNoteIcon, PhotoCamera as PhotoCameraIcon, AccessTime as AccessTimeIcon, Pending as PendingIcon } from "@mui/icons-material";
+import { Home as IntIcon, Landscape as ExtIcon, WbTwilight as TwilightIcon, EventNote as EventNoteIcon, PhotoCamera as PhotoCameraIcon, AccessTime as AccessTimeIcon, Pending as PendingIcon, HourglassBottom as PartialIcon, Block as OmittedIcon } from "@mui/icons-material";
 import type { StripColorConfig } from "./stripboard.types";
 
 // ─── Norwegian Film Standard colour codes ─────────────────────────────────────
@@ -36,6 +36,10 @@ export const STATUS_CONFIG: Record<
 > = {
   'not-scheduled': { color: 'default',  label: 'Ikke planlagt', icon: React.createElement(PendingIcon) },
   'scheduled':     { color: 'primary',  label: 'Planlagt',      icon: React.createElement(EventNoteIcon) },
+  'partial':       { color: 'warning',  label: 'Delvis skutt',  icon: React.createElement(PartialIcon) },
   'shot':          { color: 'success',  label: 'Skutt',         icon: React.createElement(PhotoCameraIcon) },
+  // Strøket, ikke utsatt. En strøket scene kommer ikke tilbake i køen, og
+  // teller derfor ikke som gjenstående arbeid.
+  'omitted':       { color: 'default',  label: 'Strøket',       icon: React.createElement(OmittedIcon) },
   'postponed':     { color: 'warning',  label: 'Utsatt',        icon: React.createElement(AccessTimeIcon) },
 } as const;

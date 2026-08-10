@@ -32,6 +32,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { b2StoreFor } from "./b2-client-factory.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -56,19 +57,7 @@ const MIME_TO_EXT: Record<string, string> = {
 };
 
 function getB2(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  return b2StoreFor("documents", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 // ─────────────────────────────────────────────────────────────────

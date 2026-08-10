@@ -29,6 +29,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getByoCreds } from "./role-room-byo-storage-service";
+import { b2StoreFor } from "./b2-client-factory.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Staging-bøtte: Creatorhub-styrt Role Room B2 (samme env som b2-archive)
@@ -37,17 +38,8 @@ const STAGING_REGION = process.env.B2_REGION || "eu-central-003";
 const STAGING_ENDPOINT = `https://s3.${STAGING_REGION}.backblazeb2.com`;
 
 function getStagingClient(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  const client = new S3Client({
-    region: STAGING_REGION,
-    endpoint: STAGING_ENDPOINT,
-    credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    forcePathStyle: true,
-  });
-  return { client, bucket };
+  // Redigeringsjobber lager og rydder avledet media, derfor media-worker.
+  return b2StoreFor("media-worker", process.env.B2_ROLE_ROOM_BUCKET_NAME);
 }
 
 export function stagingPrefix(jobId: string): string {
