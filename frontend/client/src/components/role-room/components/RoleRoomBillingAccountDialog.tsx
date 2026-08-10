@@ -170,6 +170,118 @@ function getGoogleStatusLabel(t: ReturnType<typeof useT>['t'], status?: RoleRoom
   }
 }
 
+const darkFieldSx = {
+  '& .MuiInputBase-input': { color: '#f8fafc' },
+  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' },
+  '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.5)' },
+} as const;
+
+type TeamMember = {
+  userId: string | null;
+  email: string;
+  role: string;
+  status: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+};
+
+// Én rad per team-medlem. Admin kan redigere navn + avatar (PATCH
+// /api/user/team/members/:userId); ellers vises den skrivebeskyttet.
+const TeamMemberRow: FC<{
+  member: TeamMember;
+  isAdmin: boolean;
+  t: ReturnType<typeof useT>['t'];
+  onSaved: () => void;
+}> = ({ member, isAdmin, t, onSaved }) => {
+  const [editing, setEditing] = useState(false);
+  const [firstName, setFirstName] = useState(member.firstName ?? '');
+  const [lastName, setLastName] = useState(member.lastName ?? '');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(member.avatarUrl ?? null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const displayName = `${member.firstName ?? ''} ${member.lastName ?? ''}`.trim() || member.email;
+  const initials = getInitials(displayName);
+  const canEdit = isAdmin && !!member.userId;
+
+  const pickAvatar = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 1_500_000) { setErr(t('billAcct.profileAvatarTooLarge')); return; }
+    setErr(null);
+    const reader = new FileReader();
+    reader.onload = () => setAvatarUrl(typeof reader.result === 'string' ? reader.result : avatarUrl);
+    reader.readAsDataURL(file);
+  };
+
+  const save = async () => {
+    if (!member.userId) return;
+    setSaving(true); setErr(null);
+    try {
+      await apiRequest(`/api/user/team/members/${member.userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ firstName, lastName, avatarUrl }),
+      });
+      setEditing(false);
+      onSaved();
+    } catch {
+      setErr(t('billAcct.teamMemberSaveError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.5)', border: '1px solid rgba(148,163,184,0.14)' }}>
+      <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
+        <Avatar src={(editing ? avatarUrl : member.avatarUrl) || undefined} sx={{ width: 40, height: 40, bgcolor: 'rgba(125,211,252,0.14)', color: '#e0f2fe', fontWeight: 800, fontSize: '0.85rem' }}>
+          {initials}
+        </Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: '#f8fafc' }} noWrap>{displayName}</Typography>
+          <Typography sx={{ fontSize: '0.76rem', color: 'rgba(226,232,240,0.6)' }} noWrap>{member.email}</Typography>
+        </Box>
+        <Chip size="small" label={member.role} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#cbd5e1', height: 20, fontSize: '0.7rem' }} />
+        {canEdit && !editing ? (
+          <Button size="small" variant="outlined" onClick={() => setEditing(true)} sx={{ textTransform: 'none' }}>
+            {t('billAcct.teamMemberEdit')}
+          </Button>
+        ) : null}
+      </Stack>
+      {editing ? (
+        <Stack spacing={1.25} sx={{ mt: 1.25 }}>
+          <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
+            <Button component="label" variant="outlined" size="small" sx={{ textTransform: 'none' }}>
+              {t('billAcct.profileChangePhoto')}
+              <input type="file" accept="image/*" hidden onChange={pickAvatar} />
+            </Button>
+            {avatarUrl ? (
+              <Button size="small" color="inherit" onClick={() => setAvatarUrl(null)} sx={{ textTransform: 'none', color: 'rgba(255,255,255,0.72)' }}>
+                {t('billAcct.profileRemovePhoto')}
+              </Button>
+            ) : null}
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+            <TextField fullWidth size="small" sx={darkFieldSx} label={t('billAcct.profileFirstName')} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            <TextField fullWidth size="small" sx={darkFieldSx} label={t('billAcct.profileLastName')} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          </Stack>
+          {err ? <Alert severity="error">{err}</Alert> : null}
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Button size="small" color="inherit" onClick={() => { setEditing(false); setFirstName(member.firstName ?? ''); setLastName(member.lastName ?? ''); setAvatarUrl(member.avatarUrl ?? null); setErr(null); }} sx={{ textTransform: 'none', color: 'rgba(255,255,255,0.72)' }}>
+              {t('billAcct.teamMemberCancel')}
+            </Button>
+            <Button size="small" variant="contained" disabled={saving} onClick={save} sx={{ textTransform: 'none' }}>
+              {saving ? t('billAcct.profileSaving') : t('billAcct.teamMemberSave')}
+            </Button>
+          </Stack>
+        </Stack>
+      ) : null}
+    </Box>
+  );
+};
+
 const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   open,
   onClose,
@@ -279,12 +391,24 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
     }
   }, [profileDraft, t]);
 
-  const darkFieldSx = {
-    '& .MuiInputBase-input': { color: '#f8fafc' },
-    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' },
-    '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.5)' },
-  } as const;
+  // Team (Enterprise-org) den innloggede brukeren tilhører — «se hvilket team du
+  // er i» + (admin) redigere medlemmer.
+  const [team, setTeam] = useState<{ organizationId: string; organizationName: string | null; role: string; isAdmin: boolean; members: TeamMember[] } | null>(null);
+  const [teamLoading, setTeamLoading] = useState(false);
+
+  const loadTeam = useCallback(() => {
+    setTeamLoading(true);
+    return apiRequest('/api/user/team')
+      .then((r) => { setTeam(r?.team ?? null); })
+      .catch(() => { setTeam(null); })
+      .finally(() => { setTeamLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadTeam();
+  }, [open, loadTeam]);
+
   const [googleStatus, setGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [googleStatusLoading, setGoogleStatusLoading] = useState(false);
   const [googleStatusError, setGoogleStatusError] = useState<string | null>(null);
@@ -797,6 +921,25 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
             </Stack>
           )}
         </Box>
+        {team ? (
+          <Box sx={{ mb: 2, p: 2, borderRadius: 2.5, border: '1px solid rgba(148,163,184,0.18)' }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }} flexWrap="wrap" useFlexGap>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#f8fafc' }}>
+                {t('billAcct.teamSectionTitle')}{team.organizationName ? ` · ${team.organizationName}` : ''}
+              </Typography>
+              <Chip size="small" label={`${t('billAcct.teamYourRole')}: ${team.role}`} sx={{ bgcolor: 'rgba(125,211,252,0.14)', color: '#e0f2fe', height: 22 }} />
+            </Stack>
+            {teamLoading ? (
+              <Stack alignItems="center" sx={{ py: 1.5 }}><CircularProgress size={20} /></Stack>
+            ) : (
+              <Stack spacing={1}>
+                {team.members.map((m) => (
+                  <TeamMemberRow key={m.userId ?? m.email} member={m} isAdmin={team.isAdmin} t={t} onSaved={loadTeam} />
+                ))}
+              </Stack>
+            )}
+          </Box>
+        ) : null}
         <Stack spacing={2} sx={{ mb: 2 }}>
           <Stack
             direction={{ xs: 'column', md: 'row' }}

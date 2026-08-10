@@ -171,6 +171,103 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
     } catch (e: any) { console.error("[user/profile] update failed", e); res.status(500).json({ error: "update_failed" }); }
   });
 
+  // Hvilket team (Enterprise-organisasjon) den innloggede brukeren tilhører, +
+  // medlemmene med profil. Brukes av konto-dialogen: «se hvilket team du er i»
+  // og (for admin) redigere andre medlemmers profil/avatar.
+  const readCallerEmail = async (uid: string): Promise<string | null> => {
+    try {
+      const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
+      return u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch { return null; }
+  };
+
+  app.get("/api/user/team", async (req, res) => {
+    const uid = compatResolveUserId(req);
+    if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
+    try {
+      const email = await readCallerEmail(uid);
+      const m = await pool.query(
+        `SELECT organization_id, role FROM enterprise_team_members
+          WHERE status = 'active' AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
+          ORDER BY (role = 'admin') DESC, joined_at DESC NULLS LAST, invited_at DESC LIMIT 1`,
+        [uid, email],
+      );
+      if (!m.rows.length) return res.json({ team: null });
+      const organizationId = m.rows[0].organization_id;
+      const role = m.rows[0].role;
+      const org = await pool.query(`SELECT name FROM organizations WHERE id = $1`, [organizationId]);
+      const mem = await pool.query(
+        `SELECT etm.user_id, etm.email, etm.role, etm.status,
+                u.first_name, u.last_name, u.profile_image_url
+           FROM enterprise_team_members etm
+           LEFT JOIN users u ON u.id = etm.user_id
+          WHERE etm.organization_id = $1
+          ORDER BY etm.role, etm.email`,
+        [organizationId],
+      );
+      res.json({
+        team: {
+          organizationId,
+          organizationName: org.rows[0]?.name ?? null,
+          role,
+          isAdmin: role === "admin",
+          members: mem.rows.map((r: any) => ({
+            userId: r.user_id ?? null,
+            email: r.email,
+            role: r.role,
+            status: r.status,
+            firstName: r.first_name ?? null,
+            lastName: r.last_name ?? null,
+            avatarUrl: r.profile_image_url ?? null,
+          })),
+        },
+      });
+    } catch (e: any) {
+      console.error("[user/team] fetch failed", e?.message);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  // Admin redigerer et team-medlems profil (navn/telefon/firma/avatar). Tillatt
+  // KUN når kalleren er admin i en org der målbrukeren er aktivt medlem (hindrer
+  // IDOR). Profesjon endres aldri her (gated i onboarding, som self-profil).
+  app.patch("/api/user/team/members/:userId", async (req, res) => {
+    const uid = compatResolveUserId(req);
+    if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
+    const targetId = String(req.params.userId || "");
+    if (!isUuid(targetId)) return res.status(400).json({ error: "Ugyldig bruker-id" });
+    try {
+      const email = await readCallerEmail(uid);
+      const chk = await pool.query(
+        `SELECT 1 FROM enterprise_team_members admin
+           JOIN enterprise_team_members target ON target.organization_id = admin.organization_id
+          WHERE admin.role = 'admin' AND admin.status = 'active'
+            AND (admin.user_id = $1 OR ($2::text IS NOT NULL AND LOWER(admin.email) = $2))
+            AND target.user_id = $3 AND target.status = 'active'
+          LIMIT 1`,
+        [uid, email, targetId],
+      );
+      if (!chk.rowCount) return res.status(403).json({ error: "forbidden" });
+      const b = req.body ?? {};
+      const colMap: Record<string, string> = {
+        firstName: "first_name", lastName: "last_name", phone: "phone_number",
+        avatarUrl: "profile_image_url", profileImageUrl: "profile_image_url", companyName: "company_name",
+      };
+      const sets: string[] = []; const params: any[] = []; let n = 1;
+      for (const [key, col] of Object.entries(colMap)) {
+        if (key in b) { const v = b[key]; if (typeof v === "string" || v === null) { sets.push(`${col} = $${n++}`); params.push(typeof v === "string" ? v.trim() : null); } }
+      }
+      if (!sets.length) return res.status(400).json({ error: "Ingen felter å oppdatere" });
+      sets.push("updated_at = now()"); params.push(targetId);
+      const r = await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${PROFILE_COLS}`, params);
+      if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
+      res.json({ profile: shapeUserProfile(r.rows[0]) });
+    } catch (e: any) {
+      console.error("[user/team/members] update failed", e?.message);
+      res.status(500).json({ error: "update_failed" });
+    }
+  });
+
   app.get("/api/user/subscription-status", async (req, res) => {
     try {
       const userId = compatResolveUserId(req);
