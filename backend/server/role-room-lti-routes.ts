@@ -22,6 +22,8 @@ import {
   signDeepLinkingResponse, groupStudentsBySection, isStudentRole,
   type PlatformJwk, type RosterMember,
 } from "./role-room-lti-service.js";
+import { createEducationProductionRow } from "./role-room-education-productions-routes.js";
+import { insertEducationAssignmentRow } from "./role-room-education-assignments-routes.js";
 
 const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
 const APP_URL = process.env.LTI_APP_URL?.trim() || "https://www.theroleroom.com/";
@@ -693,11 +695,30 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
     }
   });
 
-  // ── Deep Linking-respons: lærer valgte/opprettet produksjon → signert JWT ─
-  // tilbake til Canvas (ltiResourceLink som launcher produksjonen). Frontend
-  // auto-poster {jwt} til deep_link_return_url.
+  // ── Deep Linking-respons: lærer valgte/opprettet produksjon (evt. + en full
+  // oppgave m/ artefakt-targeting) → signert JWT tilbake til Canvas
+  // (ltiResourceLink som launcher produksjonen). Frontend auto-poster {jwt}
+  // til deep_link_return_url.
+  //
+  // To payload-former:
+  //  - GAMMEL (bakoverkompatibel): { projectId, title? } — velger kun en
+  //    produksjon, ingen oppgave opprettes. custom bærer kun production_id.
+  //  - RIK (Task 7-plukkeren): { title, cohortId, productionId?|createProduction,
+  //    artifactKind?, artifactView?, brief?, learningGoals?, dueAt?,
+  //    isArbeidskrav?, isExam?, vurderingsform? } — oppretter en publisert
+  //    role_room_education_assignments-rad, custom bærer production_id +
+  //    artifact_kind + artifact_view + assignment_id.
   router.post("/lti/launches/:id/deep-link-response", requireSession, async (req, res) => {
-    const body = (req.body ?? {}) as { projectId?: string; title?: string };
+    const body = (req.body ?? {}) as {
+      projectId?: string; title?: string;
+      cohortId?: string; productionId?: string; createProduction?: boolean;
+      artifactKind?: string; artifactView?: string; brief?: string; learningGoals?: string;
+      dueAt?: string; isArbeidskrav?: boolean; isExam?: boolean; vurderingsform?: string;
+    };
+    const uid = (req as Request & { userId: string }).userId;
+    // Rikt payload kjennetegnes av cohortId (det gamle payloadet har det aldri).
+    const cohortId = typeof body.cohortId === "string" ? body.cohortId.trim() : "";
+    const isRichPayload = !!cohortId;
     try {
       const lr = await pool.query(
         `SELECT l.deep_link_return_url, l.deep_link_data, p.client_id, p.issuer, p.deployment_id
@@ -708,15 +729,65 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       const launch = lr.rows[0];
       if (!launch) { res.status(404).json({ error: "not_found" }); return; }
       if (!launch.deep_link_return_url) { res.status(400).json({ error: "not_a_deep_link_launch" }); return; }
+
+      let title: string;
+      let projectId: string;
+      let custom: Record<string, unknown>;
+
+      if (isRichPayload) {
+        title = typeof body.title === "string" ? body.title.trim() : "";
+        if (!title) { res.status(400).json({ error: "title_required" }); return; }
+        // Eierskap: faglærer-sesjonen MÅ eie kullet (samme mønster som education-cohorts-routes).
+        const cohortOwn = await pool.query(
+          `SELECT 1 FROM role_room_education_cohorts WHERE id = $1 AND owner_user_id = $2`,
+          [cohortId, uid],
+        );
+        if (cohortOwn.rows.length === 0) { res.status(400).json({ error: "cohort_not_found" }); return; }
+
+        let productionRow: Record<string, unknown>;
+        if (body.createProduction === true) {
+          // Gjenbruker /education/productions' create-logikk (casting_projects + education-rad).
+          productionRow = await createEducationProductionRow(pool, uid, { title, cohortId });
+        } else {
+          const productionId = typeof body.productionId === "string" ? body.productionId.trim() : "";
+          if (!productionId) { res.status(400).json({ error: "production_required" }); return; }
+          // Eierskap: faglærer-sesjonen MÅ eie produksjonen (samme mønster som productions-create).
+          const prodOwn = await pool.query(
+            `SELECT * FROM role_room_education_productions WHERE id = $1 AND owner_user_id = $2`,
+            [productionId, uid],
+          );
+          if (prodOwn.rows.length === 0) { res.status(400).json({ error: "production_not_found" }); return; }
+          productionRow = prodOwn.rows[0];
+        }
+
+        const artifactKind = (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null;
+        const artifactView = (typeof body.artifactView === "string" && body.artifactView.trim()) ? body.artifactView.trim() : null;
+        const assignmentRow = await insertEducationAssignmentRow(pool, uid, {
+          title, cohortId, productionId: String(productionRow.id),
+          brief: body.brief, learningGoals: body.learningGoals, dueAt: body.dueAt,
+          status: "published", artifactKind, artifactView,
+          isArbeidskrav: body.isArbeidskrav === true, isExam: body.isExam === true,
+          vurderingsform: body.vurderingsform,
+        });
+
+        projectId = String(assignmentRow.production_project_id ?? productionRow.project_id ?? "");
+        custom = { production_id: projectId, assignment_id: String(assignmentRow.id) };
+        if (artifactKind) custom.artifact_kind = artifactKind;
+        if (artifactView) custom.artifact_view = artifactView;
+      } else {
+        // Gammel sti: kun velg/opprett produksjon, ingen oppgave.
+        title = (typeof body.title === "string" && body.title.trim()) ? body.title.trim() : "The Role Room-produksjon";
+        projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+        custom = { production_id: projectId };
+      }
+
       const key = await ensureToolKey(pool);
-      const title = (typeof body.title === "string" && body.title.trim()) ? body.title.trim() : "The Role Room-produksjon";
-      const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
       // ltiResourceLink → neste launch bærer custom.production_id og åpner produksjonen.
       const contentItems: Record<string, unknown>[] = [{
         type: "ltiResourceLink",
         title,
         url: `${TOOL_BASE}/lti/launch`,
-        custom: { production_id: projectId },
+        custom,
       }];
       const jwtStr = signDeepLinkingResponse({
         clientId: String(launch.client_id), issuer: String(launch.issuer), deploymentId: launch.deployment_id ?? null,

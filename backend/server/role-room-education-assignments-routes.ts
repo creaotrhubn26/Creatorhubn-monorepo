@@ -139,6 +139,43 @@ function isMissingTable(err: unknown): boolean {
   return (err as { code?: string })?.code === "42P01";
 }
 
+/**
+ * Kjernen i POST /education/assignments — trukket ut slik at andre ruter
+ * (LTI deep-link-response) kan opprette en oppgave-rad uten å duplisere
+ * insert-logikken. Kalleren har allerede validert title (+ evt. eierskap på
+ * cohortId/productionId); denne funksjonen setter bare inn raden.
+ */
+export async function insertEducationAssignmentRow(
+  pool: Pool,
+  ownerId: string,
+  input: {
+    title: string; cohortId?: string | null; productionId?: string | null; brief?: string | null;
+    learningGoals?: string | null; dueAt?: string | null; status?: string; artifactKind?: string | null;
+    artifactView?: string | null; isArbeidskrav?: boolean; vurderingsform?: string | null;
+    courseId?: string | null; isExam?: boolean;
+  },
+): Promise<Record<string, unknown>> {
+  const status = input.status && ASSIGNMENT_STATUSES.has(input.status) ? input.status : "draft";
+  const vurderingsform = input.vurderingsform && VURDERINGSFORMER.has(input.vurderingsform) ? input.vurderingsform : null;
+  const id = newEntityId("edassign");
+  const r = await pool.query(
+    `INSERT INTO role_room_education_assignments
+       (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status, artifact_kind, is_arbeidskrav, vurderingsform, course_id, is_exam, artifact_view)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     RETURNING *, 0 AS submitted_count, 0 AS reviewed_count,
+       (SELECT title FROM role_room_education_productions WHERE id = $4) AS production_title,
+       (SELECT project_id FROM role_room_education_productions WHERE id = $4) AS production_project_id`,
+    [
+      id, ownerId, input.cohortId || null, input.productionId || null, input.title,
+      input.brief?.trim() || null, input.learningGoals?.trim() || null,
+      input.dueAt || null, status, (typeof input.artifactKind === "string" && input.artifactKind.trim()) ? input.artifactKind.trim() : null,
+      input.isArbeidskrav === true, vurderingsform, input.courseId || null, input.isExam === true,
+      (typeof input.artifactView === "string" && input.artifactView.trim()) ? input.artifactView.trim() : null,
+    ],
+  );
+  return r.rows[0];
+}
+
 export interface CreateEducationAssignmentsRouterDeps {
   activeSessions?: Map<string, SessionData>;
 }
@@ -206,26 +243,9 @@ export function createEducationAssignmentsRouter(
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
     if (!title) { res.status(400).json({ error: "title_required" }); return; }
-    const status = body.status && ASSIGNMENT_STATUSES.has(body.status) ? body.status : "draft";
-    const vurderingsform = body.vurderingsform && VURDERINGSFORMER.has(body.vurderingsform) ? body.vurderingsform : null;
     try {
-      const id = newEntityId("edassign");
-      const r = await pool.query(
-        `INSERT INTO role_room_education_assignments
-           (id, owner_user_id, cohort_id, production_id, title, brief, learning_goals, due_at, status, artifact_kind, is_arbeidskrav, vurderingsform, course_id, is_exam, artifact_view)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-         RETURNING *, 0 AS submitted_count, 0 AS reviewed_count,
-           (SELECT title FROM role_room_education_productions WHERE id = $4) AS production_title,
-           (SELECT project_id FROM role_room_education_productions WHERE id = $4) AS production_project_id`,
-        [
-          id, uid(req), body.cohortId || null, body.productionId || null, title,
-          body.brief?.trim() || null, body.learningGoals?.trim() || null,
-          body.dueAt || null, status, (typeof body.artifactKind === "string" && body.artifactKind.trim()) ? body.artifactKind.trim() : null,
-          body.isArbeidskrav === true, vurderingsform, body.courseId || null, body.isExam === true,
-          (typeof body.artifactView === "string" && body.artifactView.trim()) ? body.artifactView.trim() : null,
-        ],
-      );
-      res.status(201).json({ assignment: assignmentRowToView(r.rows[0]) });
+      const row = await insertEducationAssignmentRow(pool, uid(req), { ...body, title });
+      res.status(201).json({ assignment: assignmentRowToView(row) });
     } catch (err) {
       console.error("[education-assignments] create failed:", (err as Error).message);
       res.status(500).json({ error: "create_failed" });
