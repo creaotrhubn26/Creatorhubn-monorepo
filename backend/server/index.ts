@@ -889,7 +889,6 @@ import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-co
 import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
-import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
@@ -66750,10 +66749,6 @@ registerLeadgridBriefRoutes({ app, pool, requireUserSession });
 // Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
 // alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
 registerLeadgridEnturRoutes({ app, requireUserSession });
-
-// Bilparkering (Statens vegvesen Parkeringsregister, NLOD): nærmeste
-// p-områder for en lead + «Åpne parkering»-app-lenker.
-registerLeadgridParkingRoutes({ app, requireUserSession });
 
 // NVDB v4 (Nasjonal vegdatabank, NLOD): fartsgrense (skilt i nav) + bom-
 // stasjoner (ekte takst i kjøregodtgjørelse). Krever X-Client (env NVDB_CLIENT).
