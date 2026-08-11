@@ -221,3 +221,19 @@ ipad/LeadMapApp/LeadMapWidget/Generated
 ipad/CaptureApp/CaptureApp/Resources/_MG_9300.CR2
 ipad/CaptureApp/CaptureAppTests/Resources/_MG_9300.CR2
 ipad/LeadMapApp/qa-galleri/
+
+# Generated assets and local scripts (untracked)
+.agents/skills/
+.codex/
+.github/hooks/
+.github/skills/
+The role room ipad  virtual studio/
+backend/scripts/_*.mjs
+ipad/StageOne/
+skills-lock.json
+
+# XcodeGen / fastlane / playwright run-artifacts (regenerable)
+ipad/CaptureApp/CaptureWidgets/Generated/
+ipad/CaptureApp/fastlane/report.xml
+ipad/CaptureApp/fastlane/README.md
+**/.tiktok-dev-playwright-state/
