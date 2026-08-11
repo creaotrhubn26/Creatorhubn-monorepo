@@ -1219,79 +1219,43 @@ actor APIClient {
         return try Self.decoder.decode(LeadgridImportCommit.self, from: data)
     }
 
-    // MARK: - URL Research (mig 328) — URL → draft-lead → pin på kartet
-    //
-    // Gjenbruker Role Room Agents orchestrator-stack (Brreg + Places +
-    // Claude). Brukeren limer inn EN URL, vi oppretter en draft, kjører
-    // research, og lar brukeren bekrefte/justere før commit.
-
-    /// Steg 1 — opprett draft-rad i crm_customers og returner ID-er.
-    func startUrlResearch(_ url: String) async throws -> UrlResearchStartResponse {
-        let body: [String: Any] = ["url": url]
-        var req = makeRequest("/api/leadgrid/url-research/start", method: "POST")
+    /// Research én URL via eksisterende Role Room Agent-stack (runBrandScan
+    /// + Market Scan). Returnerer draft-lead-id + brand-kit-utdrag +
+    /// market-scan-id slik at iPad kan vise preview-rapporten direkte.
+    func researchUrlAsLead(_ url: URL) async throws -> LeadgridUrlResearchResult {
+        let body: [String: Any] = ["url": url.absoluteString]
+        var req = makeRequest("/api/leadgrid/import/url/research", method: "POST")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: req)
         try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchStartResponse.self, from: data)
+        return try Self.decoder.decode(LeadgridUrlResearchResult.self, from: data)
     }
 
-    /// Steg 2 — kjør orchestrator-pipeline. Returnerer companyProfile +
-    /// resolved lokasjon (m/ confidence-badge).
-    func runUrlResearch(draftLeadId: String) async throws -> UrlResearchRunResponse {
-        let body: [String: Any] = ["draft_lead_id": draftLeadId]
-        var req = makeRequest("/api/leadgrid/url-research/run", method: "POST")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchRunResponse.self, from: data)
+    /// Hent samlet preview-objekt for en pågående/komplett draft (brand
+    /// kit + market scan + lead-snapshot i ÉN response).
+    func fetchUrlImportPreview(draftLeadId: String) async throws -> LeadgridUrlImportPreview {
+        try await get("/api/leadgrid/import/url/preview/\(draftLeadId)")
     }
 
-    /// Steg 3 — bruker aksepterer (eller forkaster). overrides lar UI
-    /// sende kirurgiske rettelser (manuell pin, korrigert by, navn).
+    /// Marker draft-leaden som ekte lead (accept=true) eller forkast den
+    /// (accept=false). Overrides overstyrer felter fra brand-scan.
     func commitDraftLead(
-        draftLeadId: String,
+        _ draftId: String,
         accept: Bool,
-        overrides: UrlResearchOverrides? = nil,
-    ) async throws -> UrlResearchCommitResponse {
+        overrides: LeadgridUrlCommitOverrides? = nil
+    ) async throws -> LeadgridUrlCommitResult {
         var body: [String: Any] = [
-            "draft_lead_id": draftLeadId,
+            "draft_lead_id": draftId,
             "accept": accept,
         ]
-        if let o = overrides {
-            body["overrides"] = o.toDict()
+        if let overrides {
+            body["overrides"] = overrides.toDict()
         }
-        var req = makeRequest("/api/leadgrid/url-research/commit", method: "POST")
+        var req = makeRequest("/api/leadgrid/import/url/commit", method: "POST")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: req)
         try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchCommitResponse.self, from: data)
-    }
-
-    /// Hent preview-state for en draft-lead (brukes når UI re-monteres).
-    func fetchUrlResearchPreview(
-        draftLeadId: String,
-    ) async throws -> UrlResearchPreviewResponse {
-        return try await get("/api/leadgrid/url-research/preview/\(draftLeadId)")
-    }
-
-    /// Rekjør én del av research (orchestrator-driv hele pipeline igjen
-    /// for nå; backend respekterer `section` for fremtidig optimering).
-    func refreshUrlResearchSection(
-        draftLeadId: String,
-        section: String,
-    ) async throws -> UrlResearchRefreshResponse {
-        let body: [String: Any] = [
-            "draft_lead_id": draftLeadId,
-            "section": section,
-        ]
-        var req = makeRequest(
-            "/api/leadgrid/url-research/refresh-section",
-            method: "POST",
-        )
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(UrlResearchRefreshResponse.self, from: data)
+        return try Self.decoder.decode(LeadgridUrlCommitResult.self, from: data)
     }
 
     // MARK: - Internal
