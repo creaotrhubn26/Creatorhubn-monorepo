@@ -67,7 +67,7 @@ export interface AudioStorageDevice {
   sourceReferences: AudioStorageReference[];
 }
 
-const categoryValues: AudioStorageDeviceCategory[] = [
+const categoryValues = [
   'field-recorder',
   'mixer-recorder',
   'pocket-recorder',
@@ -75,9 +75,9 @@ const categoryValues: AudioStorageDeviceCategory[] = [
   'on-camera-recorder',
   'camera-attached-digital-mic',
   'desktop-production-console',
-];
+] as const satisfies readonly AudioStorageDeviceCategory[];
 
-const storageMediumValues: AudioStorageMedium[] = [
+const storageMediumValues = [
   'internal-flash',
   'microSD',
   'microSDHC',
@@ -87,10 +87,10 @@ const storageMediumValues: AudioStorageMedium[] = [
   'SDXC',
   'usb-storage',
   'camera-media',
-];
+] as const satisfies readonly AudioStorageMedium[];
 
-const sourceValues: AudioStorageSource[] = ['seed', 'manual', 'api', 'discovery'];
-const precisionValues: DatePrecision[] = ['exact', 'month', 'year', 'first-verified'];
+const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly AudioStorageSource[];
+const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly DatePrecision[];
 
 const referenceSchema = z.object({
   title: z.string().min(1),
@@ -1077,4 +1077,3 @@ export const searchAudioStorageDevices = (params?: {
     return a.model.localeCompare(b.model, 'nb');
   });
 };
-
