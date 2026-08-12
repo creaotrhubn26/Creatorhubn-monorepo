@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/queryClient';
+import { apiFetch } from '../lib/queryClient';
 
 // Currency types
 export type Currency = 'NOK' | 'SEK' | 'DKK' | 'USD';
