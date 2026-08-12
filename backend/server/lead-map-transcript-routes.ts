@@ -179,7 +179,7 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           }>(
             `SELECT o.name, o.description, o.website, o.industry, o.meta
                FROM organizations o
-               JOIN casting_projects cp ON cp.organization_id = o.id
+               JOIN leadgrid_projects cp ON cp.organization_id = o.id
               WHERE cp.id = $1 LIMIT 1`,
             [lead.project_id],
           );
@@ -193,8 +193,8 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           const wonRes = await pool.query<{ name: string; notes: string | null }>(
             `SELECT c.name, c.notes
                FROM crm_customers c
-               JOIN casting_projects cp ON cp.id = c.project_id
-               JOIN casting_projects cp2 ON cp2.organization_id = cp.organization_id
+               JOIN leadgrid_projects cp ON cp.id = c.project_id
+               JOIN leadgrid_projects cp2 ON cp2.organization_id = cp.organization_id
               WHERE cp2.id = $1
                 AND c.lead_status = 'won'
                 AND c.id != $2

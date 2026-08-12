@@ -59,6 +59,36 @@ export const educationProductionsService = {
 };
 
 /**
+ * artifact_kind (studioAccessModel tab-nøkkel, f.eks. fra en oppgaves
+ * `artifactKind`) → CastingPlannerPanel sin SPA-tab-slug (`?tab=`,
+ * matchet mot `tabpanel-<slug>`). Indeksene i STUDIO_TABS
+ * (studioAccessModel.ts) og TAB_IDS (CastingPlannerPanel.tsx) er 1:1 —
+ * de fleste nøklene har en annen (norsk) slug enn den engelske
+ * artifact_kind-nøkkelen. `shotlist` (index 99) har ingen egen tabpanel-
+ * slug (den lever som en view inni story-arc-studio), så den faller
+ * tilbake til identity som alle ukjente nøkler.
+ */
+const ARTIFACT_KIND_TO_TAB_SLUG: Record<string, string> = {
+  'story-arc': 'story-arc-studio',
+  roles: 'roller',
+  candidates: 'kandidater',
+  selection: 'utvelgelse',
+  locations: 'lokasjoner',
+  callsheet: 'produksjonsplan',
+  crew: 'team',
+  equipment: 'rekvisitter',
+  workspace: 'producer-media',
+  economy: 'producer-okonomi',
+  timeline: 'producer-tidslinje',
+  approval: 'producer-reviews',
+  delivery: 'producer-eksport',
+};
+
+export function artifactToTab(artifactKind: string): string {
+  return ARTIFACT_KIND_TO_TAB_SLUG[artifactKind] ?? artifactKind;
+}
+
+/**
  * Åpner det ekte Role Room-prosjektet (production-modus + deep-link
  * ?project=<id>). URL-param `mode` vinner over lagret education-modus, så
  * utdannings-fanen blir uberørt.
@@ -69,18 +99,29 @@ export const educationProductionsService = {
  * headeren kan vise en «Min side»-knapp tilbake. Uten dette har studenten
  * ingen vei tilbake til oppgavene sine på iPad/iPhone (ingen ny-fane-støtte
  * der de kan bytte tilbake).
+ *
+ * `tab` er en artifact_kind (f.eks. `a.artifactKind` fra AssignmentsTab) —
+ * den mappes internt via `artifactToTab` før den blir `?tab=`. `opts.view`
+ * blir `?view=` (f.eks. `story-logic`) for dyp-lenking inn i en spesifikk
+ * visning i Story Arc Studio. `opts.assignmentId` blir `?assignment=` — lar
+ * ankomst-stripen i produksjons-modus (EduAssignmentArrivalStripe) hente
+ * riktig oppgave-kontekst (tittel/brief/frist) uten et eget deep-link-signal.
  */
 export function openProductionInRoleRoom(
   projectId: string,
   tab?: string,
-  opts?: { asStudent?: boolean },
+  opts?: { asStudent?: boolean; view?: string; assignmentId?: string },
 ): void {
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('mode', 'production');
     url.searchParams.set('project', projectId);
-    if (tab) url.searchParams.set('tab', tab);
+    if (tab) url.searchParams.set('tab', artifactToTab(tab));
     else url.searchParams.delete('tab');
+    if (opts?.view) url.searchParams.set('view', opts.view);
+    else url.searchParams.delete('view');
+    if (opts?.assignmentId) url.searchParams.set('assignment', opts.assignmentId);
+    else url.searchParams.delete('assignment');
     if (opts?.asStudent) {
       url.searchParams.set('edu', '1');
       window.location.assign(url.toString());

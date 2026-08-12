@@ -889,7 +889,6 @@ import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-co
 import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
 import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
 import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
-import { registerLeadgridParkingRoutes } from "./leadgrid-parking-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
@@ -66753,7 +66752,6 @@ registerLeadgridEnturRoutes({ app, requireUserSession });
 
 // Bilparkering (Statens vegvesen Parkeringsregister, NLOD): nærmeste
 // p-områder for en lead + «Åpne parkering»-app-lenker.
-registerLeadgridParkingRoutes({ app, requireUserSession });
 
 // NVDB v4 (Nasjonal vegdatabank, NLOD): fartsgrense (skilt i nav) + bom-
 // stasjoner (ekte takst i kjøregodtgjørelse). Krever X-Client (env NVDB_CLIENT).
@@ -66770,15 +66768,63 @@ registerLeadgridTripsRoutes({ app, pool, requireUserSession });
 // Kvalitet-avdelingen — verifiseringskø for vunnede salg + samtale-maler
 // (mig 0377). Roller: kvalitet/admin/salgssjef.
 registerLeadgridQualityRoutes({ app, pool, requireUserSession });
-registerLeadgridDoffinRoutes({ app, pool, requireUserSession });
+registerLeadgridDoffinRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
 // Fler-stopp besøksruter — salgssjef tildeler rute til selger (push → Kart).
-registerLeadgridRuteRoutes({ app, pool, requireUserSession });
-registerLeadgridOversiktRoutes({ app, pool, requireUserSession });
-registerLeadgridCanvasRoutes({ app, pool, requireUserSession });
-registerLeadgridCpvRoutes({ app, pool, requireUserSession });
-registerLeadgridParkeringRoutes({ app, requireUserSession });
+registerLeadgridRuteRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridOversiktRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridCanvasRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridCpvRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridParkeringRoutes({
+  app,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
 // AI-møtebrief — «aldri uforberedt til møte» (Brreg+regnskap+Doffin+case).
-registerLeadgridMotebriefRoutes({ app, pool, requireUserSession });
+registerLeadgridMotebriefRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
 
 // Leadbook Eksempler — org-egne salgssamtale-caser + leder-tilbakemeldinger
 // m/ dialog og visningstall (mig 0379-0382). Fylles fra Kvalitet-flagget
@@ -66816,7 +66862,13 @@ setupInspirationsRoutes({ app, pool, requireUserSession });
 // /api/cms/* — 11 endpoints (admin fields/content-types CRUD + stats +
 // public content GET + write). Dep-injiserer ensureCmsSchema (initialiserer
 // cms_fields/types/content-tabeller ved første kall) + requireUserSession.
-setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession, requireAdminSession });
+setupCmsRoutes({
+  app,
+  pool,
+  ensureCmsSchema,
+  requireUserSession,
+  requireAdminSession,
+});
 
 // /api/payments/* + /api/google-pay/process-payment — 10 endpoints
 // (kompat-fallback for betalings-flyt: history, receipt/invoice HTML-docs,
@@ -75452,7 +75504,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
           activeSessions.set(row.token, {
             userId: row.user_id,
             email: row.email ?? "",
+            name: row.email ?? row.user_id,
             role: row.role ?? "member",
+            loginAt: new Date().toISOString(),
           });
           hydrated++;
         }

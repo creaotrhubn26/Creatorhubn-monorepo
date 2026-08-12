@@ -109,7 +109,7 @@ async function fetchLeadsForExport(pool: Pool, opts: {
             c.lost_at::text, c.lost_reason,
             c.created_at::text
        FROM crm_customers c
-       JOIN casting_projects p ON p.id = c.project_id
+       JOIN leadgrid_projects p ON p.id = c.project_id
        LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
        LEFT JOIN users rep ON rep.id = c.assigned_user_id
       WHERE ${where}
@@ -446,7 +446,7 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
     const summary = await pool.query<any>(
       `WITH base AS (
          SELECT c.* FROM crm_customers c
-         JOIN casting_projects p ON p.id = c.project_id
+         JOIN leadgrid_projects p ON p.id = c.project_id
          WHERE p.organization_id::text = $1
            AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
                > now() - ($2::int * INTERVAL '1 day')
@@ -465,7 +465,7 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
 
     const lostR = await pool.query(
       `SELECT lost_reason, COUNT(*) AS n FROM crm_customers c
-       JOIN casting_projects p ON p.id = c.project_id
+       JOIN leadgrid_projects p ON p.id = c.project_id
        WHERE p.organization_id::text = $1 AND status = 'lost'
          AND lost_at > now() - ($2::int * INTERVAL '1 day')
        GROUP BY lost_reason ORDER BY n DESC LIMIT 5`,
@@ -476,7 +476,7 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
               COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
               COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
          FROM crm_customers c
-         JOIN casting_projects p ON p.id = c.project_id
+         JOIN leadgrid_projects p ON p.id = c.project_id
          LEFT JOIN users u ON u.id = c.assigned_user_id
         WHERE p.organization_id::text = $1
           AND c.assigned_user_id IS NOT NULL
@@ -496,7 +496,7 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
          COUNT(*) FILTER (WHERE status = 'won') AS won,
          COUNT(*) FILTER (WHERE status = 'lost') AS lost
         FROM crm_customers c
-        JOIN casting_projects p ON p.id = c.project_id
+        JOIN leadgrid_projects p ON p.id = c.project_id
        WHERE p.organization_id::text = $1
          AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
       [orgId, days],

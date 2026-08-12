@@ -85,6 +85,67 @@ function isMissingTable(err: unknown): boolean {
   return (err as { code?: string })?.code === "42P01";
 }
 
+// Aksepterer Pool ELLER PoolClient (begge har bare .query som brukes her) —
+// slik at kallere kan kjøre denne inni en transaksjon (BEGIN på en client)
+// uten en egen overload. Speiler PgQueryRunner-mønsteret i index.ts.
+type Queryable = Pick<Pool, "query">;
+
+/**
+ * Kjernen i POST /education/productions — trukket ut slik at andre ruter
+ * (LTI deep-link-response) kan opprette en ekte produksjon uten å duplisere
+ * eierskaps-/insert-logikken. Uten projectId opprettes et EKTE casting_projects
+ * (faglærer = created_by); MED projectId må prosjektet allerede eies av brukeren
+ * (kaster "project_not_found" ellers).
+ */
+export async function createEducationProductionRow(
+  pool: Queryable,
+  ownerId: string,
+  input: { title: string; cohortId?: string | null; projectId?: string },
+): Promise<Record<string, unknown>> {
+  let projectId = input.projectId?.trim() || "";
+  if (projectId) {
+    const owns = await pool.query(`SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2`, [projectId, ownerId]);
+    if (owns.rows.length === 0) throw new Error("project_not_found");
+  } else {
+    projectId = newEntityId("project");
+    await pool.query(
+      `INSERT INTO casting_projects (id, name, status, created_by, created_at, updated_at)
+       VALUES ($1, $2, 'active', $3, now(), now())`,
+      [projectId, input.title, ownerId],
+    );
+    // Produksjonsmodus-UI-et (CastingPlannerPanel/loadProjects) leser IKKE
+    // fra casting_projects — det leser fra en separat legacy KV-compat-
+    // butikk via GET /api/casting/projects (compatStoreListByPrefix
+    // "casting:project:"). Uten denne skrivingen finnes prosjektet i
+    // Postgres (role-room-API-familien ser det fint), men UI-et selv viser
+    // "Opprett ditt første prosjekt" — E2E-verifisert 2026-08-10. Speiler
+    // shapen POST /api/casting/projects setter (begge cases på owner/
+    // created_by-felt, se casting-projects-routes.ts) med samme id, så
+    // begge lagre peker på ETT prosjekt.
+    const compatNow = new Date().toISOString();
+    const compatProject = {
+      id: projectId, name: input.title, status: "active",
+      ownerId, owner_id: ownerId, createdBy: ownerId, created_by: ownerId,
+      createdAt: compatNow, created_at: compatNow,
+      updatedAt: compatNow, updated_at: compatNow,
+    };
+    await pool.query(
+      `INSERT INTO legacy_compat_store (store_key, store_value, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (store_key) DO UPDATE SET store_value = EXCLUDED.store_value, updated_at = NOW()`,
+      [`casting:project:${projectId}`, JSON.stringify(compatProject)],
+    );
+  }
+  const id = newEntityId("edprod");
+  const r = await pool.query(
+    `INSERT INTO role_room_education_productions (id, owner_user_id, cohort_id, project_id, title)
+     VALUES ($1,$2,$3,$4,$5)
+     RETURNING *, 0 AS assignment_count, NULL AS project_status`,
+    [id, ownerId, input.cohortId || null, projectId, input.title],
+  );
+  return r.rows[0];
+}
+
 export interface CreateEducationProductionsRouterDeps {
   activeSessions?: Map<string, SessionData>;
 }
@@ -135,35 +196,10 @@ export function createEducationProductionsRouter(
     const givenProjectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
     if (!title) { res.status(400).json({ error: "title_required" }); return; }
     try {
-      let projectId = givenProjectId;
-      if (projectId) {
-        // Eksisterende prosjekt MÅ eies av innlogget bruker (created_by).
-        const owns = await pool.query(
-          `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2`,
-          [projectId, uid(req)],
-        );
-        if (owns.rows.length === 0) { res.status(404).json({ error: "project_not_found" }); return; }
-      } else {
-        // Ingen projectId → opprett et EKTE casting_projects for faglæreren
-        // (studentproduksjon). Studenter oppretter aldri prosjekter; faglærer
-        // er eier (created_by) og får dermed leder-tilgang til alle verktøyene.
-        // Minimal insert (id, name, created_by, status) — resten fylles i verktøyene.
-        projectId = newEntityId("project");
-        await pool.query(
-          `INSERT INTO casting_projects (id, name, status, created_by, created_at, updated_at)
-           VALUES ($1, $2, 'active', $3, now(), now())`,
-          [projectId, title, uid(req)],
-        );
-      }
-      const id = newEntityId("edprod");
-      const r = await pool.query(
-        `INSERT INTO role_room_education_productions (id, owner_user_id, cohort_id, project_id, title)
-         VALUES ($1,$2,$3,$4,$5)
-         RETURNING *, 0 AS assignment_count, NULL AS project_status`,
-        [id, uid(req), body.cohortId || null, projectId, title],
-      );
-      res.status(201).json({ production: productionRowToView(r.rows[0]) });
+      const row = await createEducationProductionRow(pool, uid(req), { title, cohortId: body.cohortId, projectId: givenProjectId });
+      res.status(201).json({ production: productionRowToView(row) });
     } catch (err) {
+      if ((err as Error).message === "project_not_found") { res.status(404).json({ error: "project_not_found" }); return; }
       console.error("[education-productions] create failed:", (err as Error).message);
       res.status(500).json({ error: "create_failed" });
     }

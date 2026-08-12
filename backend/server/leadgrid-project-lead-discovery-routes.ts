@@ -174,7 +174,7 @@ async function loadProjectContext(
     organization_id: string | null;
   }>(
     `SELECT id::text, name, NULL::text AS organization_id
-       FROM casting_projects WHERE id = $1 LIMIT 1`,
+       FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
     [projectId],
   );
   if (pr.rows.length === 0) return null;
@@ -924,7 +924,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         }
         if (!projectName) {
           const pn = await pool.query<{ name: string }>(
-            `SELECT name FROM casting_projects WHERE id = $1 LIMIT 1`,
+            `SELECT name FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
             [projectId],
           );
           projectName = pn.rows[0]?.name ?? null;

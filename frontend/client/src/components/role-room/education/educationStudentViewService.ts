@@ -27,6 +27,8 @@ export interface StudentViewAssignment {
   dueAt: string | null;
   productionTitle: string | null;
   productionProjectId: string | null;
+  artifactKind?: string | null;
+  artifactView?: string | null;
   submissionStatus: 'not_started' | 'submitted' | 'reviewed';
   grade: string | null;
   feedback: string | null;

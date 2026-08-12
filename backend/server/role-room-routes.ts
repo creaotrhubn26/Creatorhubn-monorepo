@@ -22,6 +22,7 @@ import {
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { resolveOrgIdForUser, invalidateOrgCache } from './leadgrid-org-resolver.js';
 import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
 import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
 import { canAccessProjectAds, readProjectAccessUser } from './role-room-project-access.js';
@@ -18572,6 +18573,205 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       );
       res.json({ success: true });
     } catch (err) {
+      res.status(500).json({ error: 'Avinstallering feilet' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Marketplace — org-scoped (Fase 2: Leadgrid som tjeneste)
+  // De user-scoped rutene over er NextRole-bundet (marketplace_installations,
+  // mig 0137). Disse er org-scoped (role_room_app_installs, mig 0450) og
+  // brukes av innholdsprodusenter som installerer Leadgrid i
+  // innholdsproduksjonsmodus. Install → sikre/opprett leadgrid-org → bro til
+  // gating (module_feature_entitlements: module='leadgrid', feature='core').
+  // ═══════════════════════════════════════════════════════════
+
+  const MARKETPLACE_TRIAL_DAYS = 14;
+
+  // Sikrer at brukeren har en leadgrid-org å scope installasjonen til.
+  // Rekkefølge: resolver (override/enterprise) → admin-medlemskap i
+  // organizations → opprett ny org (samme mønster som lead-map-org-routes
+  // POST /organizations). Ved solo-brukere settes override slik at katalog,
+  // installerte og gating resolver til samme org.
+  const ensureOrgForMarketplaceInstall = async (userId: string): Promise<{ organizationId: string; isNewOrg: boolean }> => {
+    const resolved = await resolveOrgIdForUser(pool, userId);
+    const isSoloFallback = resolved === userId;
+    if (!isSoloFallback) return { organizationId: resolved, isNewOrg: false };
+
+    // Eier brukeren allerede en org? Gjenbruk — ikke lag duplikater.
+    let orgId: string | null = null;
+    const existing = await pool.query<{ id: string }>(
+      `SELECT organization_id::text AS id FROM organization_members
+        WHERE user_id = $1 AND role = 'admin'
+        ORDER BY created_at DESC NULLS LAST LIMIT 1`,
+      [userId],
+    );
+    if (existing.rows[0]?.id) orgId = existing.rows[0].id;
+
+    let isNewOrg = false;
+    if (!orgId) {
+      const userRes = await pool.query<{ display_name: string | null; email: string | null }>(
+        `SELECT display_name, email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      const userName = userRes.rows[0]?.display_name ?? userRes.rows[0]?.email ?? 'Innholdsprodusent';
+      const orgRes = await pool.query<{ id: string }>(
+        `INSERT INTO organizations (name, slug, owner_user_id)
+         VALUES ($1, $2, $3) RETURNING id::text`,
+        [`${userName} — Leadgrid`, null, userId],
+      );
+      orgId = orgRes.rows[0].id;
+      await pool.query(
+        `INSERT INTO organization_members (organization_id, user_id, role, invited_by)
+         VALUES ($1, $2, 'admin', $2)`,
+        [orgId, userId],
+      );
+      isNewOrg = true;
+    }
+
+    // Gjør org-et til brukerens leadgrid-org (konsistent resolusjon +
+    // broen install→gating).
+    await pool.query(
+      `INSERT INTO leadgrid_org_overrides (user_id, override_org_id, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (user_id) DO UPDATE SET override_org_id = $2, updated_at = now()`,
+      [userId, orgId],
+    );
+    invalidateOrgCache(userId);
+
+    return { organizationId: orgId!, isNewOrg };
+  };
+
+  // GET /marketplace/apps — katalog med installasjonsstate for org-et
+  router.get('/marketplace/apps', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    try {
+      const organizationId = await resolveOrgIdForUser(pool, userId);
+      const r = await pool.query(
+        `SELECT a.id, a.name, a.description, a.logo_url, a.category,
+                i.state AS install_state,
+                i.trial_ends_at::text AS trial_ends_at,
+                i.installed_at::text AS installed_at
+           FROM role_room_apps a
+           LEFT JOIN role_room_app_installs i
+             ON i.app_id = a.id AND i.organization_id = $1
+            AND i.state IN ('trial', 'active')
+          WHERE a.is_active = TRUE
+          ORDER BY a.display_order ASC, a.name ASC`,
+        [organizationId],
+      );
+      res.json({ apps: r.rows, organizationId });
+    } catch (err) {
+      console.error('[role-room] marketplace apps failed:', err);
+      res.status(500).json({ error: 'Kunne ikke hente app-katalog' });
+    }
+  });
+
+  // GET /marketplace/organizations/installed — org-ens installasjoner
+  router.get('/marketplace/organizations/installed', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    try {
+      const organizationId = await resolveOrgIdForUser(pool, userId);
+      const r = await pool.query(
+        `SELECT i.id::text, i.app_id, a.name AS app_name, i.state,
+                i.trial_ends_at::text AS trial_ends_at,
+                i.installed_at::text AS installed_at
+           FROM role_room_app_installs i
+           JOIN role_room_apps a ON a.id = i.app_id
+          WHERE i.organization_id = $1 AND i.state IN ('trial', 'active')
+          ORDER BY i.installed_at DESC`,
+        [organizationId],
+      );
+      res.json({ installations: r.rows, organizationId });
+    } catch (err) {
+      console.error('[role-room] marketplace installed failed:', err);
+      res.status(500).json({ error: 'Kunne ikke hente installasjoner' });
+    }
+  });
+
+  // POST /marketplace/organizations/install — installer app (trial) for org-et
+  router.post('/marketplace/organizations/install', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    const { appId } = (req.body ?? {}) as { appId?: string };
+    if (!appId || typeof appId !== 'string') {
+      return res.status(400).json({ error: 'appId er påkrevd' });
+    }
+    try {
+      const app = await pool.query(
+        `SELECT id FROM role_room_apps WHERE id = $1 AND is_active = TRUE`,
+        [appId],
+      );
+      if (app.rows.length === 0) return res.status(404).json({ error: 'app_ikke_funnet' });
+
+      const { organizationId, isNewOrg } = await ensureOrgForMarketplaceInstall(userId);
+
+      // 1. Opprett/forny installasjon (trial 14 dager)
+      const trialEndsAt = new Date(Date.now() + MARKETPLACE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+      await pool.query(
+        `INSERT INTO role_room_app_installs
+            (organization_id, app_id, state, installed_by, installed_at, trial_ends_at)
+         VALUES ($1, $2, 'trial', $3, now(), $4)
+         ON CONFLICT (organization_id, app_id)
+         DO UPDATE SET state = 'trial', trial_ends_at = $4, updated_at = now()`,
+        [organizationId, appId, userId, trialEndsAt],
+      );
+
+      // 2. Bro: install → gating (module_feature_entitlements)
+      await pool.query(
+        `INSERT INTO module_feature_entitlements
+            (organization_id, workspace_id, module_key, feature_key, state,
+             trial_ends_at, environment, updated_by, updated_at)
+         VALUES ($1, NULL, 'leadgrid', 'core', 'trial', $2, 'production', $3, now())
+         ON CONFLICT (organization_id, module_key, feature_key, environment)
+         DO UPDATE SET state = 'trial', trial_ends_at = $2, updated_by = $3, updated_at = now()`,
+        [organizationId, trialEndsAt, userId],
+      );
+
+      res.json({
+        success: true,
+        appId,
+        state: 'trial',
+        trialEndsAt: trialEndsAt.toISOString(),
+        organizationId,
+        isNewOrg,
+      });
+    } catch (err) {
+      console.error('[role-room] marketplace install failed:', err);
+      res.status(500).json({ error: 'Installasjon feilet' });
+    }
+  });
+
+  // POST /marketplace/organizations/uninstall — deaktiver + steng tilgang (behold data)
+  router.post('/marketplace/organizations/uninstall', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    const { appId } = (req.body ?? {}) as { appId?: string };
+    if (!appId || typeof appId !== 'string') {
+      return res.status(400).json({ error: 'appId er påkrevd' });
+    }
+    try {
+      const organizationId = await resolveOrgIdForUser(pool, userId);
+      await pool.query(
+        `UPDATE role_room_app_installs SET state = 'cancelled', updated_at = now()
+          WHERE organization_id = $1 AND app_id = $2`,
+        [organizationId, appId],
+      );
+      // Steng tilgang — behold data (locked er absolutt i resolver-kaskaden)
+      await pool.query(
+        `INSERT INTO module_feature_entitlements
+            (organization_id, workspace_id, module_key, feature_key, state,
+             environment, updated_by, updated_at)
+         VALUES ($1, NULL, 'leadgrid', 'core', 'locked', 'production', $2, now())
+         ON CONFLICT (organization_id, module_key, feature_key, environment)
+         DO UPDATE SET state = 'locked', updated_by = $2, updated_at = now()`,
+        [organizationId, userId],
+      );
+      res.json({ success: true, appId, state: 'cancelled', organizationId });
+    } catch (err) {
+      console.error('[role-room] marketplace uninstall failed:', err);
       res.status(500).json({ error: 'Avinstallering feilet' });
     }
   });

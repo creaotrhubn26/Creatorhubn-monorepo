@@ -13,7 +13,7 @@
  *   }), async (req, res) => { ... });
  *
  * Den ene store kompleksiteten: legacy-leads har ikke organization_id
- * på rad-nivå; vi resolver via casting_projects.organization_id eller
+ * på rad-nivå; vi resolver via leadgrid_projects.organization_id eller
  * lead.owner_user_id → bruker → eier-org. Hvis ingen finnes, faller
  * vi tilbake til Daniels default-org (Creatorhub AS).
  */
@@ -75,7 +75,7 @@ async function defaultResolveOrgId(
     ?? req.params?.projectId;
   if (typeof projectId === "string" && projectId.length > 0) {
     const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT organization_id::text FROM casting_projects WHERE id = $1 LIMIT 1`,
+      `SELECT organization_id::text FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
       [projectId],
     );
     if (r.rows[0]?.organization_id) return r.rows[0].organization_id;
@@ -89,7 +89,7 @@ async function defaultResolveOrgId(
       `SELECT COALESCE(c.organization_id::text, cp.organization_id::text)
                 AS organization_id
          FROM crm_customers c
-         LEFT JOIN casting_projects cp ON cp.id = c.project_id
+         LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
         WHERE c.id = $1 LIMIT 1`,
       [leadId],
     );

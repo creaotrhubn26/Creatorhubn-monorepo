@@ -422,7 +422,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
         `SELECT c.id::text, c.name, c.latitude, c.longitude,
                 c.postal_code, c.municipality_code
            FROM crm_customers c
-           LEFT JOIN casting_projects cp ON cp.id = c.project_id
+           LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
           WHERE (c.owner_user_id IN (
                     SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid
                  )

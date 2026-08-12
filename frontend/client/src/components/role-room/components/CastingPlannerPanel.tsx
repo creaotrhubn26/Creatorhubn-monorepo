@@ -244,6 +244,9 @@ const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ def
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
 const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
+// Student-ankomststripe i produksjons-modus (edu=1 + assignment=<id>) — se
+// EduAssignmentArrivalStripe.tsx for detaljer. Lazy som søsknene over.
+const EduAssignmentArrivalStripe = lazy(() => import('../education/EduAssignmentArrivalStripe').then(m => ({ default: m.EduAssignmentArrivalStripe })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -775,6 +778,34 @@ export function CastingPlannerPanel({
       return false;
     }
   });
+  // Dyp-lenke-intent (project/tab/view) fanget ÉN gang ved mount — samme
+  // lazy-initializer-mønster som «?edu=1» over — FØR URL-sync-effekten
+  // (pushState) rekker å skrive currentProject='' og strippe params.
+  // Prosjekt-lista kan være tom ved mount (LTI-token ikke satt da
+  // getProjects() kjørte); vi anvender intent når prosjektet dukker opp i
+  // lista (ikke bare on mount, jf. apply-effekten lenger ned).
+  const [deepLinkProjectId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    try { return new URLSearchParams(window.location.search).get('project') ?? ''; }
+    catch { return ''; }
+  });
+  const [deepLinkTabSlug] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return new URLSearchParams(window.location.search).get('tab'); }
+    catch { return null; }
+  });
+  const [deepLinkView] = useState<StoryArcView | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const v = new URLSearchParams(window.location.search).get('view');
+      return (v === 'main' || v === 'story-logic' || v === 'story-writer'
+        || v === 'shot-list' || v === 'planning') ? v : null;
+    } catch { return null; }
+  });
+  // resolved = intent er anvendt (eller avklart) → URL-sync får igjen skrive.
+  // refetched = vi har trigget ÉN refetch for å hente en tom liste på nytt.
+  const deepLinkResolvedRef = useRef(false);
+  const deepLinkRefetchedRef = useRef(false);
   // Utvidet fra max-width 1720 til 1920 i Sprint 6.7 — dense-header
   // (Flere handlinger-meny i stedet for individuelle ikoner) gjelder nå
   // på alle vanlige desktop-størrelser inkludert 1080p og 1440p. Kun
@@ -4729,6 +4760,11 @@ type RoleRoomProjectWorkspaceState = {
     // desiredProject='' BEFORE seed-effekten leser URL, og ?project=<id>
     // i delelenke strippes før det får materialisert seg som state.
     if (!bootstrapComplete) return;
+    // Ikke la sync-en strippe en dyp-lenke (project/view/tab) før den er
+    // anvendt. Vent til prosjektet er valgt (resolved). Når resolved settes
+    // følger det alltid et state-bytte (currentProject/tab/view) som
+    // re-trigger denne effekten, så URL-en skrives korrekt straks etter.
+    if (deepLinkProjectId && !deepLinkResolvedRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
@@ -6205,6 +6241,67 @@ type RoleRoomProjectWorkspaceState = {
     isTrollProject,
     loadPersistedWorkspaceState,
     profession,
+  ]);
+
+  // Anvend dyp-lenke-intent når prosjekt-lista blir tilgjengelig — ikke bare
+  // on mount. Lista kan lastes ETTER mount (LTI-token settler sent) eller ha
+  // vært tom ved første fetch. Kjører kun for dyp-lenke-sesjoner
+  // (deepLinkProjectId satt); vanlig produsent-navigasjon er uendret.
+  useEffect(() => {
+    if (!deepLinkProjectId || deepLinkResolvedRef.current) return;
+    if (isExternalClientPortalMode) { deepLinkResolvedRef.current = true; return; }
+    const found = projects.find((project) => project.id === deepLinkProjectId);
+    if (!found) {
+      // Lista kan ha blitt hentet før token var klar (tom respons). Trigg
+      // ÉN refetch. Hvis prosjektet fortsatt mangler etterpå, gi opp og
+      // slipp URL-sync fri (unngå permanent blokade). Apply-once via refs.
+      if (bootstrapComplete && !deepLinkRefetchedRef.current) {
+        deepLinkRefetchedRef.current = true;
+        void loadProjects();
+      } else if (deepLinkRefetchedRef.current) {
+        deepLinkResolvedRef.current = true;
+      }
+      return;
+    }
+    const applyTabView = () => {
+      if (deepLinkTabSlug) {
+        const byName = TAB_IDS.findIndex((id) => id === `tabpanel-${deepLinkTabSlug}`);
+        const parsed = byName >= 0 ? byName : parseInt(deepLinkTabSlug, 10);
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          setActiveTab((previous) => (previous === parsed ? previous : parsed));
+        }
+      }
+      if (deepLinkView) {
+        setStoryArcView((previous) => (previous === deepLinkView ? previous : deepLinkView));
+      }
+    };
+    if (currentProject?.id === found.id) {
+      // loadProjects rakk å velge prosjektet allerede — bare tab/view.
+      applyTabView();
+      deepLinkResolvedRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    void castingService.getProject(found.id).then((full) => {
+      if (cancelled) return;
+      setCurrentProject(full ?? found);
+      setCurrentProjectId(found.id);
+      applyTabView();
+      // Marker FØRST som resolved når prosjektet faktisk er valgt — ellers
+      // kunne URL-sync skrevet desiredProject='' (strippe) mens getProject
+      // fortsatt pågikk og currentProject var null.
+      deepLinkResolvedRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [
+    projects,
+    currentProject?.id,
+    bootstrapComplete,
+    deepLinkProjectId,
+    deepLinkTabSlug,
+    deepLinkView,
+    isExternalClientPortalMode,
+    loadProjects,
   ]);
 
   const handleQuickContactsChange = useCallback((ids: string[]) => {
@@ -9779,6 +9876,16 @@ type RoleRoomProjectWorkspaceState = {
           },
         }}
       />
+
+      {/* Student-ankomststripe (edu=1 + assignment=<id>) — tynt, ikke-blokkerende
+          oppgavekontekst-bånd over produksjonsverktøyet for bro-studenter.
+          Selvstyrt (leser egne URL-param + henter oppgave), returnerer null
+          når vilkårene ikke er oppfylt. Se EduAssignmentArrivalStripe.tsx. */}
+      {isEduStudentSession && (
+        <Suspense fallback={null}>
+          <EduAssignmentArrivalStripe />
+        </Suspense>
+      )}
 
       {/* Tabs */}
       <Box

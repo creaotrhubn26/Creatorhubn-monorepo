@@ -212,6 +212,76 @@ function PrototypeWelcome({
   );
 }
 
+// Førstegangs-dialog for ALLE nylig godkjente partnere (ikke bare prototype-
+// testere): landing i workspaceshellet skal alltid gi en tydelig, umulig-å-
+// overse ledetekst mot verifisering — den inline banneret (linje ~705)
+// alene kan skrolles forbi. Vises én gang per bruker (localStorage), lukkes
+// enten via CTA (→ compliance-fanen) eller "Senere".
+function ComplianceWelcome({
+  userId,
+  vendorName,
+  locale,
+  onStartVerification,
+}: {
+  userId: string;
+  vendorName: string | null;
+  locale: "no" | "en";
+  onStartVerification: () => void;
+}) {
+  const en = locale === "en";
+  const key = `ch_compliance_welcome_${userId}`;
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(key)) setOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [key]);
+
+  const dismiss = () => {
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      /* ignore */
+    }
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onClose={dismiss} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>
+        {en ? `Welcome, ${vendorName || "partner"} 👋` : `Velkommen, ${vendorName || "partner"} 👋`}
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body1" sx={{ mb: 1 }}>
+          {en
+            ? "You're approved as a Creatorhub partner. One step remains before you can accept jobs:"
+            : "Du er godkjent som Creatorhub-partner. Ett steg gjenstår før du kan ta imot oppdrag:"}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {en
+            ? "Complete verification (agreements, storage, delivery standards) in the Compliance tab — it takes a few minutes."
+            : "Fullfør verifisering (avtaler, lagring, leveransestandard) i Compliance-fanen — det tar noen minutter."}
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={dismiss}>{en ? "Later" : "Senere"}</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            dismiss();
+            onStartVerification();
+          }}
+        >
+          {en ? "Complete verification" : "Fullfør verifisering"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // Improvement B — micro-feedback per leverte jobb. Lett friksjon (👍/👎 + valgfri
 // linje) rett etter levering, kun for prototype-testere. Gjenbruker det eksisterende
 // /api/prototype-testing/feedback-endepunktet (syntetiserer tittel/beskrivelse).
@@ -634,8 +704,40 @@ export default function EditingVendorWorkspace({ userId }: Props) {
     );
   }
 
-  // Self-gating: vis kun for redigeringsvendors (vendor_type='editing')
-  if (me && !me.isEditingVendor) return null;
+  // Profil-henting feilet (nettverk/500) — vis en tydelig feilmelding m/
+  // gjenforsøk i stedet for et tomt shell. Bekymring flagget: en frisk
+  // partner som lander her skal ALDRI se en blank side uten forklaring.
+  // `locale` ikke resolvbar ennå (`me` mangler) → vis begge språk her, det
+  // ENE unntaket fra "vis kun aktivt språk"-mønsteret ellers i fila.
+  if (meQuery.isError) {
+    return (
+      <Box sx={{ maxWidth: 460, mx: "auto", textAlign: "center", py: 6 }}>
+        <Alert severity="error" sx={{ mb: 2, textAlign: "left" }}>
+          Kunne ikke laste partnerprofilen din. / Could not load your partner profile.
+        </Alert>
+        <Button variant="outlined" onClick={() => meQuery.refetch()}>
+          Prøv igjen / Retry
+        </Button>
+      </Box>
+    );
+  }
+
+  // Self-gating: vis kun for redigeringsvendors (vendor_type='editing').
+  // Aldri en STILLE blank side her — hvis en godkjent partner logger inn
+  // og profilen av en eller annen grunn ikke matcher, må de se HVORFOR.
+  // `locale` er trygt resolvert her (`me` finnes) — vis kun aktivt språk,
+  // som resten av fila.
+  if (me && !me.isEditingVendor) {
+    return (
+      <Box sx={{ maxWidth: 460, mx: "auto", textAlign: "center", py: 6, color: "#f6f2ea" }}>
+        <Alert severity="warning" sx={{ mb: 2, textAlign: "left" }}>
+          {locale === "en"
+            ? "Your account isn't linked as an editing partner yet. Please contact our partner team."
+            : "Kontoen din er ikke koblet som redigeringspartner ennå. Kontakt partnerteamet vårt."}
+        </Alert>
+      </Box>
+    );
+  }
 
   const compliance = me?.compliance;
   const required = requiredFor(compliance?.isForeign ?? false, compliance?.requiresExtraGdpr ?? false);
@@ -651,6 +753,18 @@ export default function EditingVendorWorkspace({ userId }: Props) {
 
   return (
     <Box>
+      {/* Compliance-dialog: vises én gang for ALLE partnere (ikke bare
+          prototype) som har landet i shellet uten å ha fullført verifisering
+          — inline-banneret nedenfor alene kan skrolles forbi. */}
+      {compliance && !compliance.cleared && (
+        <ComplianceWelcome
+          userId={userId}
+          vendorName={me?.vendorName ?? null}
+          locale={locale === "en" ? "en" : "no"}
+          onStartVerification={() => setTab(1)}
+        />
+      )}
+
       {/* Partnerprogram-/verifiserings-dashboard — alltid øverst */}
       <PartnerProgramDashboard me={me} locale={locale} onStartVerification={() => setTab(1)} />
 
