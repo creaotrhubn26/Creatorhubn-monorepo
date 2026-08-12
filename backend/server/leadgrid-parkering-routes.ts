@@ -81,7 +81,7 @@ function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): num
 
 export function registerLeadgridParkeringRoutes(deps: {
   app: Express;
-  requireUserSession: (req: Request, res: Response) => Promise<{ userId: string } | null>;
+  requireUserSession: (req: Request, res: Response) => { userId: string } | null | Promise<{ userId: string } | null>;
 }): void {
   const { app, requireUserSession } = deps;
 
