@@ -14,6 +14,7 @@ import {
   HelpOutline as UnknownIcon,
 } from '@mui/icons-material';
 import type { ComponentType } from 'react';
+import { useT, type TranslationKey } from '../../../i18n';
 
 export type WorkspaceMode =
   | 'content_producer'
@@ -83,6 +84,7 @@ const MODE_CONFIGS: Record<WorkspaceMode, ModeConfig> = {
 };
 
 export const WorkspaceModeBadge = ({ mode, tooltip, onClick }: WorkspaceModeBadgeProps) => {
+  const { t } = useT();
   const config = MODE_CONFIGS[mode];
   const Icon = config.icon;
   const isInteractive = Boolean(onClick);
@@ -94,9 +96,9 @@ export const WorkspaceModeBadge = ({ mode, tooltip, onClick }: WorkspaceModeBadg
       label={(
         <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
           <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
-            Modus:
+            {t('mode.prefix')}
           </Box>
-          <Box component="span" sx={{ fontWeight: 800 }}>{config.label}</Box>
+          <Box component="span" sx={{ fontWeight: 800 }}>{t(`mode.${mode}` as TranslationKey)}</Box>
         </Box>
       )}
       onClick={onClick}

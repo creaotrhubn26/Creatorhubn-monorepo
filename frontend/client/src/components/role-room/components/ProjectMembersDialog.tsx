@@ -22,6 +22,7 @@ import { roleRoomProjectMembersService } from '../services/roleRoomProjectMember
 import type { ProjectMember } from '../services/roleRoomProjectMembersService';
 import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 import { summarizeAvailabilityForToday } from '../utils/crewAvailabilitySync';
+import { useT } from '../../../i18n';
 
 export interface ProjectMembersDialogProps {
   open: boolean;
@@ -34,6 +35,7 @@ export interface ProjectMembersDialogProps {
 export function ProjectMembersDialog({
   open, onClose, projectId, onMembershipChanged,
 }: ProjectMembersDialogProps) {
+  const { t } = useT();
   const [tab, setTab] = useState<0 | 1>(0);
   const [active, setActive] = useState<ProjectMember[]>([]);
   const [removed, setRemoved] = useState<ProjectMember[]>([]);
@@ -79,7 +81,7 @@ export function ProjectMembersDialog({
       await load();
       onMembershipChanged?.();
       if (res.stripeWarning) {
-        setError(`Medlemmet er fjernet, men abonnementet ble ikke oppdatert: ${res.stripeWarning}. Kontakt support hvis det vedvarer.`);
+        setError(t('projMembers.deactivateWarning', { warning: res.stripeWarning }));
       }
     } catch (err) {
       setError(String(err));
@@ -95,7 +97,7 @@ export function ProjectMembersDialog({
       await load();
       onMembershipChanged?.();
       if (res.stripeWarning) {
-        setError(`Medlemmet er aktivert, men abonnementet ble ikke oppdatert: ${res.stripeWarning}. Kontakt support hvis det vedvarer.`);
+        setError(t('projMembers.reactivateWarning', { warning: res.stripeWarning }));
       }
     } catch (err) {
       setError(String(err));
@@ -111,18 +113,18 @@ export function ProjectMembersDialog({
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-              Medlemmer
+              {t('projMembers.title')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Administrer hvem som har tilgang. Å fjerne et medlem frigir seat-billing.
+              {t('projMembers.subtitle')}
             </Typography>
           </Box>
           <IconButton size="small" onClick={onClose}><Close /></IconButton>
         </DialogTitle>
 
         <Tabs value={tab} onChange={(_, v) => setTab(v as 0 | 1)} sx={{ px: 3, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-          <Tab label={`Aktive (${active.length})`} />
-          <Tab label={`Fjernede (${removed.length})`} />
+          <Tab label={t('projMembers.tabActive', { n: active.length })} />
+          <Tab label={t('projMembers.tabRemoved', { n: removed.length })} />
         </Tabs>
 
         <DialogContent sx={{ p: 0 }}>
@@ -137,8 +139,8 @@ export function ProjectMembersDialog({
             <Stack divider={<Divider />}>
               {active.length === 0 && (
                 <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                  <Typography>Ingen aktive medlemmer ennå.</Typography>
-                  <Typography variant="caption">Legg dem til via Crew-fanen.</Typography>
+                  <Typography>{t('projMembers.noActive')}</Typography>
+                  <Typography variant="caption">{t('projMembers.addViaCrew')}</Typography>
                 </Box>
               )}
               {active.map((m) => (
@@ -151,7 +153,7 @@ export function ProjectMembersDialog({
                     <Button size="small" color="error" startIcon={<PersonOff />}
                             disabled={busy === m.userId}
                             onClick={() => setConfirmRemove(m)}>
-                      Fjern
+                      {t('projMembers.remove')}
                     </Button>
                   }
                 />
@@ -163,7 +165,7 @@ export function ProjectMembersDialog({
             <Stack divider={<Divider />}>
               {removed.length === 0 && (
                 <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                  <Typography>Ingen fjernede medlemmer.</Typography>
+                  <Typography>{t('projMembers.noRemoved')}</Typography>
                 </Box>
               )}
               {removed.map((m) => (
@@ -176,12 +178,12 @@ export function ProjectMembersDialog({
                       <Button size="small" color="error" startIcon={<DeleteForever />}
                               disabled={busy === m.userId}
                               onClick={() => setPermanentNotice(true)}>
-                        Slett permanent
+                        {t('projMembers.deletePermanent')}
                       </Button>
                       <Button size="small" variant="outlined" color="primary" startIcon={<PersonAdd />}
                               disabled={busy === m.userId}
                               onClick={() => void handleReactivate(m)}>
-                        Aktiver igjen
+                        {t('projMembers.reactivate')}
                       </Button>
                     </Stack>
                   }
@@ -194,45 +196,38 @@ export function ProjectMembersDialog({
 
       {/* Soft-delete bekreftelse */}
       <Dialog open={!!confirmRemove} onClose={() => setConfirmRemove(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Fjern medlem</DialogTitle>
+        <DialogTitle>{t('projMembers.removeMemberTitle')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            <strong>{confirmRemove?.displayName ?? confirmRemove?.email ?? 'Medlem'}</strong>{' '}
-            mister tilgang til prosjektet.
+            <strong>{confirmRemove?.displayName ?? confirmRemove?.email ?? t('projMembers.memberFallback')}</strong>{' '}
+            {t('projMembers.losesAccess')}
           </Typography>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Dette frigir seat-billing for denne brukeren. Alt bruker-data (kommentarer,
-            kandidater, opplastinger) <strong>beholdes</strong>. Du kan aktivere
-            brukeren igjen senere fra "Fjernede"-fanen — da starter billing for
-            denne seaten igjen.
+            {t('projMembers.freesSeatPre')}<strong>{t('projMembers.freesSeatBold')}</strong>{t('projMembers.freesSeatPost')}
           </Alert>
-          <TextField fullWidth size="small" label="Årsak (valgfritt)"
+          <TextField fullWidth size="small" label={t('projMembers.reasonLabel')}
                      value={removeReason}
                      onChange={(e) => setRemoveReason(e.target.value)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmRemove(null)}>Avbryt</Button>
+          <Button onClick={() => setConfirmRemove(null)}>{t('projMembers.cancel')}</Button>
           <Button color="error" variant="contained" startIcon={<Delete />}
                   disabled={busy === confirmRemove?.userId}
                   onClick={() => void handleDeactivate()}>
-            Fjern medlem
+            {t('projMembers.removeMemberTitle')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Permanent-slett notice */}
       <Dialog open={permanentNotice} onClose={() => setPermanentNotice(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Permanent sletting</DialogTitle>
+        <DialogTitle>{t('projMembers.permanentTitle')}</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Permanent sletting av bruker og all data de har laget er ikke
-            aktivert ennå. Det krever ekstra forarbeid pr. tabell (kommentarer,
-            casting-data, opplastinger osv.) før vi kan tilby det trygt.
+            {t('projMembers.permanentNotice1')}
           </Alert>
           <Typography variant="body2">
-            Frem til da kan du fjerne brukeren (soft-delete) — det frigir seat
-            og skjuler dem fra listene, men beholder data slik at du kan
-            gjenopprette senere.
+            {t('projMembers.permanentNotice2')}
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -247,6 +242,7 @@ function MemberRow({ member, actions, busy, availabilityLabel }: {
   member: ProjectMember; actions: React.ReactNode; busy: boolean;
   availabilityLabel?: string | null;
 }) {
+  const { t } = useT();
   return (
     <Box sx={{ p: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5,
                 opacity: member.isActive ? 1 : 0.75 }}>
@@ -255,15 +251,15 @@ function MemberRow({ member, actions, busy, availabilityLabel }: {
       </Avatar>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
-          {member.displayName ?? member.email ?? '(uten navn)'}
+          {member.displayName ?? member.email ?? t('projMembers.noName')}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {member.role ?? 'Uten rolle'}
+          {member.role ?? t('projMembers.noRole')}
           {member.email && ` · ${member.email}`}
         </Typography>
         {!member.isActive && member.deactivatedAt && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Fjernet {new Date(member.deactivatedAt).toLocaleDateString('nb-NO')}
+            {t('projMembers.removedOn', { date: new Date(member.deactivatedAt).toLocaleDateString('nb-NO') })}
             {member.deactivationReason ? ` — ${member.deactivationReason}` : ''}
           </Typography>
         )}
@@ -282,7 +278,7 @@ function MemberRow({ member, actions, busy, availabilityLabel }: {
               variant="outlined"
               sx={{ height: 18, fontSize: 11, borderColor: '#a030c0', color: '#c07fe0' }}
             />
-            <Tooltip title="Synket fra medlemmets egen kalender" arrow>
+            <Tooltip title={t('projMembers.syncedTooltip')} arrow>
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#a030c0',
                          boxShadow: '0 0 4px rgba(160,48,192,0.9)' }} />
             </Tooltip>

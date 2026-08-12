@@ -20,66 +20,13 @@ import IconButton from '@mui/material/IconButton';
 import { Close as CloseIcon, Help as HelpIcon } from '@mui/icons-material';
 
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
 
 interface KeyBindGroup {
+  id: string;
   title: string;
   binds: ReadonlyArray<{ keys: string; description: string }>;
 }
-
-const KEYBIND_GROUPS: readonly KeyBindGroup[] = [
-  {
-    title: 'Video & Transport',
-    binds: [
-      { keys: 'Space', description: 'Play / Pause' },
-      { keys: 'J / K / L', description: 'Rewind / Pause / Play (NLE-konvensjon)' },
-      { keys: '← / →', description: 'Hopp 5 sekunder bakover / fremover' },
-      { keys: ', / .', description: 'Frame-by-frame ±1 ramme' },
-    ],
-  },
-  {
-    title: 'Timeline',
-    binds: [
-      { keys: 'Klikk bakgrunn', description: 'Søk video til klikk-tid' },
-      { keys: 'Dobbeltklikk bakgrunn', description: 'Opprett formasjon ved den tiden' },
-      { keys: 'Klikk formasjons-blokk', description: 'Aktiver formasjon' },
-    ],
-  },
-  {
-    title: 'Formasjon-redigering',
-    binds: [
-      { keys: 'Drag puck', description: 'Flytt danser på scenen' },
-      { keys: '⌘ Z', description: 'Angre siste handling' },
-      { keys: '⌘ ⇧ Z', description: 'Gjør om' },
-      { keys: 'Enter', description: 'I tids-felt: bekreft og lukk' },
-    ],
-  },
-  {
-    title: 'Navigasjon',
-    binds: [
-      { keys: 'Tab', description: 'Bytt mellom Annotate / Formation / Dancers / Analysis / Review' },
-      { keys: 'Swipe', description: 'Mobile/tablet: bytt fane med horisontal sveip' },
-      { keys: '⌘ K', description: 'Command palette (hopp direkte)' },
-    ],
-  },
-  {
-    title: 'Eksport',
-    binds: [
-      { keys: 'Eksporter PNG', description: 'Snapshot av nåværende scene' },
-      { keys: 'Eksporter Backup', description: 'JSON-fil for re-import / deling' },
-      { keys: 'Eksporter Stage plot', description: 'PDF m/ alle formasjoner — print eller lagre' },
-    ],
-  },
-  {
-    title: 'Tips',
-    binds: [
-      { keys: 'BPM-counts', description: 'Vises på timeline-bunn. Default 120 BPM (2 beats/sek)' },
-      { keys: 'Show IDs', description: 'Slå på under stagen for å se D1-D5-merker på pucks' },
-      { keys: 'Show Paths', description: 'Visualiser bevegelses-baner mellom formasjoner' },
-      { keys: 'Curve-mode', description: 'Klikk to dansere for å koble dem med bue i stedet for rett linje' },
-      { keys: '? (Shift + /)', description: 'Vis denne cheat-sheeten' },
-    ],
-  },
-];
 
 export interface DanceCheatSheetProps {
   open: boolean;
@@ -87,6 +34,69 @@ export interface DanceCheatSheetProps {
 }
 
 export function DanceCheatSheet({ open, onClose }: DanceCheatSheetProps): React.ReactElement {
+  const { t } = useT();
+
+  const KEYBIND_GROUPS: readonly KeyBindGroup[] = React.useMemo(() => [
+    {
+      id: 'video',
+      title: t('danceCheat.grpVideo'),
+      binds: [
+        { keys: 'Space', description: t('danceCheat.dPlayPause') },
+        { keys: 'J / K / L', description: t('danceCheat.dJKL') },
+        { keys: '← / →', description: t('danceCheat.dArrows') },
+        { keys: ', / .', description: t('danceCheat.dComma') },
+      ],
+    },
+    {
+      id: 'timeline',
+      title: t('danceCheat.grpTimeline'),
+      binds: [
+        { keys: t('danceCheat.kClickBg'), description: t('danceCheat.dClickBg') },
+        { keys: t('danceCheat.kDblBg'), description: t('danceCheat.dDblBg') },
+        { keys: t('danceCheat.kClickBlock'), description: t('danceCheat.dClickBlock') },
+      ],
+    },
+    {
+      id: 'formation',
+      title: t('danceCheat.grpFormation'),
+      binds: [
+        { keys: 'Drag puck', description: t('danceCheat.dDragPuck') },
+        { keys: '⌘ Z', description: t('danceCheat.dUndo') },
+        { keys: '⌘ ⇧ Z', description: t('danceCheat.dRedo') },
+        { keys: 'Enter', description: t('danceCheat.dEnter') },
+      ],
+    },
+    {
+      id: 'navigation',
+      title: t('danceCheat.grpNav'),
+      binds: [
+        { keys: 'Tab', description: t('danceCheat.dTab') },
+        { keys: 'Swipe', description: t('danceCheat.dSwipe') },
+        { keys: '⌘ K', description: t('danceCheat.dCmdK') },
+      ],
+    },
+    {
+      id: 'export',
+      title: t('danceCheat.grpExport'),
+      binds: [
+        { keys: t('danceCheat.kExportPng'), description: t('danceCheat.dExportPng') },
+        { keys: t('danceCheat.kExportBackup'), description: t('danceCheat.dExportBackup') },
+        { keys: t('danceCheat.kExportStage'), description: t('danceCheat.dExportStage') },
+      ],
+    },
+    {
+      id: 'tips',
+      title: t('danceCheat.grpTips'),
+      binds: [
+        { keys: 'BPM-counts', description: t('danceCheat.dBpm') },
+        { keys: 'Show IDs', description: t('danceCheat.dShowIds') },
+        { keys: 'Show Paths', description: t('danceCheat.dShowPaths') },
+        { keys: 'Curve-mode', description: t('danceCheat.dCurve') },
+        { keys: '? (Shift + /)', description: t('danceCheat.dCheat') },
+      ],
+    },
+  ], [t]);
+
   return (
     <Dialog
       open={open}
@@ -115,7 +125,7 @@ export function DanceCheatSheet({ open, onClose }: DanceCheatSheetProps): React.
         <Typography component="span" sx={{ flex: 1, fontWeight: 700, fontSize: 16 }}>
           DanceFlow keybinds & tips
         </Typography>
-        <IconButton onClick={onClose} size="small" aria-label="Lukk" data-testid="dance-cheat-sheet-close">
+        <IconButton onClick={onClose} size="small" aria-label={t('danceCheat.closeAria')} data-testid="dance-cheat-sheet-close">
           <CloseIcon sx={{ color: danceFlowColors.textMuted }} />
         </IconButton>
       </DialogTitle>
@@ -128,7 +138,7 @@ export function DanceCheatSheet({ open, onClose }: DanceCheatSheetProps): React.
           }}
         >
           {KEYBIND_GROUPS.map((group) => (
-            <Box key={group.title} data-testid={`cheat-sheet-group-${group.title}`}>
+            <Box key={group.id} data-testid={`cheat-sheet-group-${group.id}`}>
               <Typography
                 variant="overline"
                 sx={{

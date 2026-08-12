@@ -33,6 +33,8 @@ import {
 import { normalizeProducerProjectPlanning } from '../../utils/producerProjectPlanning';
 import { normalizeProjectFileRecords, type ProjectFileRecord } from '../../utils/projectFiles';
 import { getRoleRoomReturnPath } from '../../utils/runtime';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface RoleRoomGoogleContextBarProps {
   project: CastingProject;
@@ -50,18 +52,18 @@ const hasText = (value: unknown): value is string => (
   typeof value === 'string' && value.trim().length > 0
 );
 
-const CONNECTION_STATE_LABELS: Record<string, string> = {
-  disconnected: 'Ikke koblet',
-  connected: 'Koblet',
-  expired: 'Utløpt',
-  error: 'Feil',
-};
+const buildCONNECTION_STATE_LABELS = (t: TFn): Record<string, string> => ({
+  disconnected: t('googleContextBar.s008'),
+  connected: t('googleContextBar.s011'),
+  expired: t('googleContextBar.s032'),
+  error: t('googleContextBar.s002'),
+});
 
-const ACTION_LABELS: Record<'drive-sync' | 'calendar-sync' | 'meet-session', string> = {
-  'drive-sync': 'Synk Drive',
-  'calendar-sync': 'Synk kalender',
-  'meet-session': 'Opprett Meet',
-};
+const buildACTION_LABELS = (t: TFn): Record<'drive-sync' | 'calendar-sync' | 'meet-session', string> => ({
+  'drive-sync': t('googleContextBar.s030'),
+  'calendar-sync': t('googleContextBar.s031'),
+  'meet-session': t('googleContextBar.s023'),
+});
 
 const renderActionIcon = (action: 'drive-sync' | 'calendar-sync' | 'meet-session') => {
   if (action === 'calendar-sync') {
@@ -117,6 +119,9 @@ export default function RoleRoomGoogleContextBar({
   canManage = false,
   onOpenWorkspace,
 }: RoleRoomGoogleContextBarProps) {
+  const { t } = useT();
+  const CONNECTION_STATE_LABELS = useMemo(() => buildCONNECTION_STATE_LABELS(t), [t]);
+  const ACTION_LABELS = useMemo(() => buildACTION_LABELS(t), [t]);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { enqueueSnackbar } = useSnackbar();
@@ -161,7 +166,7 @@ export default function RoleRoomGoogleContextBar({
         return;
       }
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke hente Workspace-informasjon.',
+        error instanceof Error ? error.message : t('googleContextBar.s013'),
         { variant: 'error' },
       );
     } finally {
@@ -192,7 +197,7 @@ export default function RoleRoomGoogleContextBar({
       }
       console.error('[RoleRoomGoogleContextBar] Failed to load project data', error);
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke hente prosjektgrunnlaget for Google Workspace.',
+        error instanceof Error ? error.message : t('googleContextBar.s014'),
         { variant: 'error' },
       );
     } finally {
@@ -285,12 +290,12 @@ export default function RoleRoomGoogleContextBar({
         returnPath: getReturnPath(),
       });
       if (!hasText(response.authorizationUrl)) {
-        throw new Error('Mangler autorisasjonslenke fra Google Workspace.');
+        throw new Error(t('googleContextBar.s020'));
       }
       window.location.assign(response.authorizationUrl);
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke starte Google-aktiveringen.',
+        error instanceof Error ? error.message : t('googleContextBar.s017'),
         { variant: 'error' },
       );
       setActionKey(null);
@@ -301,11 +306,11 @@ export default function RoleRoomGoogleContextBar({
     try {
       setActionKey('binding');
       await googleWorkspaceApi.provisionProjectWorkspace(projectId, binding?.contactsContext ?? {});
-      enqueueSnackbar('Google Workspace er klart for prosjektet.', { variant: 'success' });
+      enqueueSnackbar(t('googleContextBar.s006'), { variant: 'success' });
       await refreshAll();
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke sette opp Google Workspace for prosjektet.',
+        error instanceof Error ? error.message : t('googleContextBar.s016'),
         { variant: 'error' },
       );
     } finally {
@@ -324,7 +329,7 @@ export default function RoleRoomGoogleContextBar({
 
   const handleDriveSync = useCallback(async () => {
     if (projectFileIds.length === 0 && generatedArtifacts.length === 0) {
-      enqueueSnackbar('Fant ingen filer eller genererte artefakter å synkronisere.', { variant: 'warning' });
+      enqueueSnackbar(t('googleContextBar.s000'), { variant: 'warning' });
       return;
     }
 
@@ -334,11 +339,11 @@ export default function RoleRoomGoogleContextBar({
         fileIds: projectFileIds,
         generatedArtifacts,
       });
-      enqueueSnackbar('Workspace-filer og artefakter er synket til Google Drive.', { variant: 'success' });
+      enqueueSnackbar(t('googleContextBar.s033'), { variant: 'success' });
       await refreshAll();
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke synkronisere prosjektet til Google Drive.',
+        error instanceof Error ? error.message : t('googleContextBar.s019'),
         { variant: 'error' },
       );
     } finally {
@@ -348,7 +353,7 @@ export default function RoleRoomGoogleContextBar({
 
   const handleCalendarSync = useCallback(async () => {
     if (calendarEvents.length === 0) {
-      enqueueSnackbar('Fant ingen planhendelser å synkronisere til kalenderen.', { variant: 'warning' });
+      enqueueSnackbar(t('googleContextBar.s001'), { variant: 'warning' });
       return;
     }
 
@@ -359,11 +364,11 @@ export default function RoleRoomGoogleContextBar({
         calendarId: binding?.calendarId ?? undefined,
       });
       lastAutoSyncedCalendarSignatureRef.current = calendarEventsSignature;
-      enqueueSnackbar('Plan og milepæler er synket til Google Kalender.', { variant: 'success' });
+      enqueueSnackbar(t('googleContextBar.s025'), { variant: 'success' });
       await refreshAll();
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke synkronisere kalenderhendelser.',
+        error instanceof Error ? error.message : t('googleContextBar.s018'),
         { variant: 'error' },
       );
     } finally {
@@ -376,14 +381,14 @@ export default function RoleRoomGoogleContextBar({
       setActionKey('meet-session');
       const response = await googleWorkspaceApi.createMeetSession(projectId, meetSession);
       const meetUrl = typeof response.event?.meetUrl === 'string' ? response.event.meetUrl.trim() : '';
-      enqueueSnackbar('Klientsync med Google Meet er opprettet.', { variant: 'success' });
+      enqueueSnackbar(t('googleContextBar.s010'), { variant: 'success' });
       await refreshAll();
       if (meetUrl) {
         window.open(meetUrl, '_blank', 'noopener,noreferrer');
       }
     } catch (error) {
       enqueueSnackbar(
-        error instanceof Error ? error.message : 'Kunne ikke opprette Google Meet-sesjon.',
+        error instanceof Error ? error.message : t('googleContextBar.s015'),
         { variant: 'error' },
       );
     } finally {
@@ -424,7 +429,7 @@ export default function RoleRoomGoogleContextBar({
           await refreshAll();
         } catch (error) {
           enqueueSnackbar(
-            error instanceof Error ? error.message : 'Kunne ikke automatisk synkronisere kalenderhendelser.',
+            error instanceof Error ? error.message : t('googleContextBar.s012'),
             { variant: 'error' },
           );
         } finally {
@@ -532,7 +537,7 @@ export default function RoleRoomGoogleContextBar({
         }
         console.warn('[RoleRoomGoogleContextBar] Automatic Google Workspace bootstrap failed', error);
         setAutoBootstrapFailed(true);
-        enqueueSnackbar('Google Workspace er aktivert, men prosjektet kunne ikke fullføre automatisk oppsett ennå.', {
+        enqueueSnackbar(t('googleContextBar.s005'), {
           variant: 'warning',
         });
       })
@@ -562,14 +567,14 @@ export default function RoleRoomGoogleContextBar({
 
   const quickActionSummary = useMemo(() => {
     if (primaryAction === 'calendar-sync') {
-      return `${calendarEvents.length} planhendelser er klare for Google Kalender.`;
+      return t('googleContextBar.p11', { v0: calendarEvents.length });
     }
     if (primaryAction === 'meet-session') {
       return reviewItems.length > 0
-        ? `${reviewItems.filter((item) => item.status !== 'approved').length} åpne reviews kan brukes i neste klientsync.`
-        : 'Meet-flyten bruker samme review- og planstatus som resten av Role Room.';
+        ? t('googleContextBar.p12', { v0: reviewItems.filter((item) => item.status !== 'approved').length })
+        : t('googleContextBar.s021');
     }
-    return `${generatedArtifacts.length} genererte artefakter og ${projectFileIds.length} prosjektfiler kan synkes til Drive.`;
+    return t('googleContextBar.p09', { v0: generatedArtifacts.length, v1: projectFileIds.length });
   }, [calendarEvents.length, generatedArtifacts.length, primaryAction, projectFileIds.length, reviewItems]);
 
   const connectionTone = useMemo(() => {
@@ -578,7 +583,7 @@ export default function RoleRoomGoogleContextBar({
         background: 'rgba(148,163,184,0.12)',
         border: 'rgba(148,163,184,0.22)',
         color: '#e2e8f0',
-        label: 'Henter status',
+        label: t('googleContextBar.s007'),
       };
     }
 
@@ -587,7 +592,7 @@ export default function RoleRoomGoogleContextBar({
         background: 'rgba(245,158,11,0.12)',
         border: 'rgba(245,158,11,0.28)',
         color: '#fde68a',
-        label: 'Server ikke klar',
+        label: t('googleContextBar.s027'),
       };
     }
 
@@ -605,7 +610,7 @@ export default function RoleRoomGoogleContextBar({
         background: 'rgba(245,158,11,0.12)',
         border: 'rgba(245,158,11,0.28)',
         color: '#fde68a',
-        label: autoBootstrapFailed ? 'Oppsett feilet' : 'Setter opp arbeidsflate',
+        label: autoBootstrapFailed ? t('googleContextBar.s024') : t('googleContextBar.s029'),
       };
     }
 
@@ -613,29 +618,29 @@ export default function RoleRoomGoogleContextBar({
       background: 'rgba(34,197,94,0.12)',
       border: 'rgba(34,197,94,0.26)',
       color: '#bbf7d0',
-      label: 'Koblet',
+      label: t('googleContextBar.s011'),
     };
   }, [autoBootstrapFailed, connectionState, projectIsBound, status?.configured]);
 
   const summaryTokens = useMemo(() => [
-    `${artifacts.length} artefakter`,
-    `${materials.length} materiale`,
+    t('googleContextBar.p05', { v0: artifacts.length }),
+    t('googleContextBar.p10', { v0: materials.length }),
     `${reviewItems.length} reviews`,
   ], [artifacts.length, materials.length, reviewItems.length]);
 
   const workspaceStateTokens = useMemo(() => [
-    `Drive ${hasText(binding?.driveRootFolderId) ? 'klar' : connectionState === 'connected' ? (actionKey === 'binding' ? 'settes opp' : 'mangler') : 'ikke koblet'}`,
-    `Kalender ${hasText(binding?.calendarId) ? 'klar' : connectionState === 'connected' ? (actionKey === 'binding' ? 'settes opp' : 'mangler') : 'ikke koblet'}`,
-    `Meet ${recentMeetUrl ? 'klar' : connectionState === 'connected' ? 'klar ved behov' : 'ikke koblet'}`,
+    t('googleContextBar.p01', { v0: hasText(binding?.driveRootFolderId) ? t('googleContextBar.s035') : connectionState === 'connected' ? (actionKey === 'binding' ? t('googleContextBar.s038') : t('googleContextBar.s037')) : t('googleContextBar.s034') }),
+    t('googleContextBar.p03', { v0: hasText(binding?.calendarId) ? t('googleContextBar.s035') : connectionState === 'connected' ? (actionKey === 'binding' ? t('googleContextBar.s038') : t('googleContextBar.s037')) : t('googleContextBar.s034') }),
+    t('googleContextBar.p04', { v0: recentMeetUrl ? t('googleContextBar.s035') : connectionState === 'connected' ? t('googleContextBar.s036') : t('googleContextBar.s034') }),
   ], [actionKey, binding?.calendarId, binding?.driveRootFolderId, connectionState, recentMeetUrl]);
 
   const compactDescription = useMemo(() => {
     if (status?.configured && connectionState === 'connected' && projectIsBound) {
-      return `${projectName} bruker samme Workspace-grunnlag som resten av Role Room.`;
+      return t('googleContextBar.p08', { v0: projectName });
     }
     return isMobile
-      ? `${projectName} bruker samme Google-lag som resten av workspacet.`
-      : `${projectName} bruker samme Google-lag på tvers av fanene. Denne flaten peker inn i riktig workspace-side og samme Drive-/kalendergrunnlag.`;
+      ? t('googleContextBar.p07', { v0: projectName })
+      : t('googleContextBar.p06', { v0: projectName });
   }, [connectionState, isMobile, projectIsBound, projectName, status?.configured]);
 
   const statusStripText = useMemo(() => {
@@ -644,19 +649,19 @@ export default function RoleRoomGoogleContextBar({
     }
     if (!status.configured) {
       const missingCount = status.missing?.length ?? 0;
-      return `Google Workspace er ikke konfigurert på serveren ennå.${missingCount > 0 ? ` Mangler ${missingCount} miljøvariabler.` : ''}`;
+      return t('googleContextBar.p02', { v0: missingCount > 0 ? t('googleContextBar.p00', { v0: missingCount }) : '' });
     }
     if (connectionState !== 'connected') {
       return '';
     }
     if (!projectIsFullyReady && actionKey === 'binding') {
-      return 'Setter opp Drive og kalender automatisk for prosjektet.';
+      return t('googleContextBar.s028');
     }
     if (!projectIsFullyReady && autoBootstrapFailed) {
-      return 'Google Workspace er aktivert, men automatisk prosjektoppsett feilet. Bruk retry hvis Drive eller kalender fortsatt mangler.';
+      return t('googleContextBar.s004');
     }
     if (!projectIsBound) {
-      return 'Prosjektet settes opp automatisk ved første Google-bruk.';
+      return t('googleContextBar.s026');
     }
     return quickActionSummary;
   }, [actionKey, autoBootstrapFailed, connectionState, projectIsBound, projectIsFullyReady, quickActionSummary, status]);
@@ -672,7 +677,7 @@ export default function RoleRoomGoogleContextBar({
 
     return {
       key: primaryAction,
-      label: actionKey === primaryAction ? 'Jobber...' : ACTION_LABELS[primaryAction],
+      label: actionKey === primaryAction ? t('googleContextBar.s009') : ACTION_LABELS[primaryAction],
       icon: renderActionIcon(primaryAction),
       onClick: () => {
         void handleContextAction(primaryAction);
@@ -695,7 +700,7 @@ export default function RoleRoomGoogleContextBar({
 
     return {
       key: secondaryAction,
-      label: actionKey === secondaryAction ? 'Jobber...' : ACTION_LABELS[secondaryAction],
+      label: actionKey === secondaryAction ? t('googleContextBar.s009') : ACTION_LABELS[secondaryAction],
       icon: renderActionIcon(secondaryAction),
       onClick: () => {
         void handleContextAction(secondaryAction);
@@ -716,13 +721,13 @@ export default function RoleRoomGoogleContextBar({
   const supportLinks = useMemo(() => {
     const links: Array<{ key: string; label: string; href: string }> = [];
     if (driveUrl) {
-      links.push({ key: 'drive', label: 'Åpne Drive', href: driveUrl });
+      links.push({ key: 'drive', label: t('googleContextBar.s039'), href: driveUrl });
     }
     if (calendarUrl) {
-      links.push({ key: 'calendar', label: 'Åpne kalender', href: calendarUrl });
+      links.push({ key: 'calendar', label: t('googleContextBar.s040'), href: calendarUrl });
     }
     if (recentMeetUrl) {
-      links.push({ key: 'meet', label: 'Åpne siste Meet', href: recentMeetUrl });
+      links.push({ key: 'meet', label: t('googleContextBar.s041'), href: recentMeetUrl });
     }
     return links;
   }, [calendarUrl, driveUrl, recentMeetUrl]);
@@ -827,7 +832,7 @@ export default function RoleRoomGoogleContextBar({
             }}
             sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
           >
-            Flere
+            {t('googleContextBar.s003')}
           </Button>
         </Stack>
       </Stack>
@@ -858,7 +863,7 @@ export default function RoleRoomGoogleContextBar({
           sx={{ gap: 1, fontSize: '0.88rem' }}
         >
           <LaunchOutlinedIcon sx={{ fontSize: 17 }} />
-          Åpne workspace
+          {t('googleContextBar.s042')}
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -869,7 +874,7 @@ export default function RoleRoomGoogleContextBar({
           sx={{ gap: 1, fontSize: '0.88rem' }}
         >
           <RefreshOutlinedIcon sx={{ fontSize: 17 }} />
-          Oppdater
+          {t('googleContextBar.s022')}
         </MenuItem>
         {supportLinks.map((link) => (
           <MenuItem

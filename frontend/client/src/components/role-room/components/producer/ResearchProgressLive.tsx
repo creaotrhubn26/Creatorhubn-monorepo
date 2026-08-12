@@ -8,7 +8,7 @@
  * proportional time once a stage finishes.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -17,21 +17,23 @@ import {
   WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 import type { ResearchStage, ResearchStageKey, ResearchProgressStatus } from '../../hooks/useResearchProgress';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
-const STAGE_LABELS: Record<ResearchStageKey, string> = {
+const buildSTAGE_LABELS = (t: TFn): Record<ResearchStageKey, string> => ({
   brreg: 'Brønnøysundregistrene',
-  website: 'Nettsidescraping',
-  googlePlacesBusiness: 'Google Places (bedrift)',
-  googlePlacesCompetitors: 'Google Places (konkurrenter)',
-  googlePlacesLocal: 'Google Places (nærområde)',
-  competitorAnalysis: 'Konkurrentanalyse',
-  localPresence: 'Lokal tilstedeværelse',
-  merchSuppliers: 'Merch-leverandører',
-  metaPagesEnrichment: 'Meta Pages-berikelse',
-  colorExtraction: 'Logo-paletten',
-  claudeSynthesis: 'CI-syntese',
-  openaiSynthesis: 'OpenAI-syntese',
-};
+  website: t('researchLive.s009'),
+  googlePlacesBusiness: t('researchLive.s001'),
+  googlePlacesCompetitors: t('researchLive.s002'),
+  googlePlacesLocal: t('researchLive.s003'),
+  competitorAnalysis: t('researchLive.s004'),
+  localPresence: t('researchLive.s006'),
+  merchSuppliers: t('researchLive.s007'),
+  metaPagesEnrichment: t('researchLive.s008'),
+  colorExtraction: t('researchLive.s005'),
+  claudeSynthesis: t('researchLive.s000'),
+  openaiSynthesis: t('researchLive.s010'),
+});
 
 interface ResearchProgressLiveProps {
   status: ResearchProgressStatus;
@@ -46,6 +48,8 @@ function formatMs(ms: number | undefined): string {
 }
 
 const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, stages, error }) => {
+  const { t } = useT();
+  const STAGE_LABELS = useMemo(() => buildSTAGE_LABELS(t), [t]);
   if (status === 'idle') return null;
   const totalDone = stages.filter((s) => s.status === 'done').length;
   const totalRunning = stages.filter((s) => s.status === 'running').length;
@@ -64,11 +68,11 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, sta
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
         <Stack spacing={0.2}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
-            {status === 'streaming' ? 'Research kjører…' : status === 'done' ? 'Research fullført' : 'Research feilet'}
+            {status === 'streaming' ? t('researchLive.s013') : status === 'done' ? t('researchLive.s012') : t('researchLive.s011')}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.65)', fontSize: '0.78rem' }}>
-            {totalDone} fullført{totalRunning > 0 ? ` · ${totalRunning} pågår` : ''}
-            {totalError > 0 ? ` · ${totalError} feil` : ''}
+            {totalDone} {t('researchLive.s015')}{totalRunning > 0 ? t('researchLive.p01', { v0: totalRunning }) : ''}
+            {totalError > 0 ? t('researchLive.p00', { v0: totalError }) : ''}
           </Typography>
         </Stack>
         {status === 'streaming' ? (
@@ -81,7 +85,7 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, sta
       <Stack spacing={0.5}>
         {stages.length === 0 ? (
           <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem' }}>
-            Venter på første stage…
+            {t('researchLive.s014')}
           </Typography>
         ) : (
           stages.map((stage) => {

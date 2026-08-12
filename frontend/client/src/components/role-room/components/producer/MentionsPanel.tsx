@@ -12,13 +12,15 @@ import {
 import { CampaignOutlined as MentionsIcon, OpenInNew as OpenIcon, AutoAwesome as AiIcon } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
 import { LoadingSkeleton, PanelHeader } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type Status = 'svart' | 'lead' | 'skjult';
-const STATUSES: { key: Status; label: string; color: string }[] = [
-  { key: 'svart', label: 'Svart', color: '#38bdf8' },
-  { key: 'lead', label: 'Mulig kunde', color: '#22c55e' },
-  { key: 'skjult', label: 'Skjult', color: '#94a3b8' },
-];
+const buildSTATUSES = (t: TFn): { key: Status; label: string; color: string }[] => ([
+  { key: 'svart', label: t('mentions.s014'), color: '#38bdf8' },
+  { key: 'lead', label: t('mentions.s010'), color: '#22c55e' },
+  { key: 'skjult', label: t('mentions.s012'), color: '#94a3b8' },
+]);
 
 interface IgConnection {
   id: string;
@@ -41,6 +43,8 @@ function fmt(iso: string | null): string {
 }
 
 export default function MentionsPanel() {
+  const { t } = useT();
+  const STATUSES = useMemo(() => buildSTATUSES(t), [t]);
   const [connectionId, setConnectionId] = useState('');
   const [statusFilter, setStatusFilter] = useState<Status | 'alle'>('alle');
   const queryClient = useQueryClient();
@@ -82,7 +86,7 @@ export default function MentionsPanel() {
         method: 'POST',
         body: JSON.stringify({ connectionId, from: m.from, message: m.message }),
       }) as { success: boolean; reply?: string; error?: string };
-      setDrafts((d) => ({ ...d, [m.id]: r.success ? (r.reply || '') : (r.error || 'AI-svar feilet — prøv igjen.') }));
+      setDrafts((d) => ({ ...d, [m.id]: r.success ? (r.reply || '') : (r.error || t('mentions.s003')) }));
     } catch (e) {
       setDrafts((d) => ({ ...d, [m.id]: e instanceof Error ? e.message : String(e) }));
     } finally {
@@ -102,28 +106,27 @@ export default function MentionsPanel() {
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
       <PanelHeader
         icon={<MentionsIcon />}
-        title="Hvem snakker om kunden"
-        subtitle="Innlegg der kundens Facebook-side er tagget eller nevnt. Følg med, svar, og gjør positive omtaler til innhold eller varme leads."
-        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg Facebook-side" />}
+        title={t('mentions.s004')}
+        subtitle={t('mentions.s007')}
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label={t('mentions.s016')} />}
       />
 
       {connLoading ? (
         <LoadingSkeleton variant="list" />
       ) : connections.length === 0 ? (
-        <Alert severity="info">Koble til kundens Facebook-side først (under Feed-planner) for å se omtaler.</Alert>
+        <Alert severity="info">{t('mentions.s008')}</Alert>
       ) : (
         <>
           {graphError ? (
             <Alert severity="info">
-              Omtale-henting er ikke aktivert ennå (venter på godkjenning av <code>Page Mentions</code> fra Meta).
-              Når det er godkjent dukker omtaler av kundens side opp her automatisk.
+              {t('mentions.s011')} <code>Page Mentions</code> {t('mentions.s017')}
             </Alert>
           ) : null}
 
           {/* Status filter */}
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
             <Chip
-              size="small" label={`Alle (${counts.alle})`} clickable
+              size="small" label={t('mentions.p00', { v0: counts.alle })} clickable
               onClick={() => setStatusFilter('alle')}
               variant={statusFilter === 'alle' ? 'filled' : 'outlined'}
               sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: statusFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
@@ -145,7 +148,7 @@ export default function MentionsPanel() {
             <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
           ) : visible.length === 0 ? (
             <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>
-              {mentions.length === 0 ? 'Ingen omtaler funnet ennå.' : 'Ingen omtaler i denne gruppen ennå.'}
+              {mentions.length === 0 ? t('mentions.s005') : t('mentions.s006')}
             </Typography>
           ) : (
             <Stack spacing={1}>
@@ -155,13 +158,13 @@ export default function MentionsPanel() {
                   <Box key={m.id} sx={{ border: '1px solid', borderColor: active ? `${active.color}55` : 'divider', borderRadius: 2, p: 1.4, bgcolor: 'rgba(15,23,41,0.4)' }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.86rem' }}>{m.from || 'Ukjent avsender'}</Typography>
-                        <Typography sx={{ color: '#e2e8f0', fontSize: '0.88rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{m.message || '(uten tekst)'}</Typography>
+                        <Typography sx={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.86rem' }}>{m.from || t('mentions.s015')}</Typography>
+                        <Typography sx={{ color: '#e2e8f0', fontSize: '0.88rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{m.message || t('mentions.s000')}</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', mt: 0.6 }}>{fmt(m.createdTime)}</Typography>
                       </Box>
                       {m.permalinkUrl ? (
                         <Link href={m.permalinkUrl} target="_blank" rel="noopener" sx={{ flexShrink: 0, fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>
-                          Åpne <OpenIcon sx={{ fontSize: 14 }} />
+                          {t('mentions.s018')} <OpenIcon sx={{ fontSize: 14 }} />
                         </Link>
                       ) : null}
                     </Stack>
@@ -177,7 +180,7 @@ export default function MentionsPanel() {
                       ))}
                       <Chip
                         size="small" clickable icon={<AiIcon sx={{ fontSize: 14 }} />}
-                        label={drafting === m.id ? 'Skriver…' : 'AI-svar'}
+                        label={drafting === m.id ? t('mentions.s013') : t('mentions.s002')}
                         onClick={() => draftReply(m)}
                         sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: 'rgba(168,85,247,0.16)', color: '#d8b4fe', '& .MuiChip-icon': { color: '#d8b4fe' } }}
                       />
@@ -188,17 +191,17 @@ export default function MentionsPanel() {
                           size="small" multiline fullWidth minRows={2}
                           value={drafts[m.id]}
                           onChange={(e) => setDrafts((d) => ({ ...d, [m.id]: e.target.value }))}
-                          label="AI-forslag (rediger før du svarer)"
+                          label={t('mentions.s001')}
                         />
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button size="small" sx={{ textTransform: 'none', fontSize: '0.74rem' }}
                             onClick={() => { try { navigator.clipboard?.writeText(drafts[m.id]); } catch { /* ignore */ } }}>
-                            Kopier
+                            {t('mentions.s009')}
                           </Button>
                           {m.permalinkUrl ? (
                             <Button size="small" variant="outlined" sx={{ textTransform: 'none', fontSize: '0.74rem' }}
                               href={m.permalinkUrl} target="_blank" rel="noopener">
-                              Åpne for å svare
+                              {t('mentions.s019')}
                             </Button>
                           ) : null}
                         </Stack>

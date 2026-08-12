@@ -13,7 +13,7 @@
  * om gtag faktisk landet.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   IconButton, Stack, Tab, Tabs, Tooltip, Typography,
@@ -23,6 +23,8 @@ import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import VerifiedOutlinedIcon from '@mui/icons-material/VerifiedOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type TrackingMethod = 'pending' | 'proxy' | 'gtag_snippets' | 'gtm_api' | 'wordpress_plugin' | 'manual';
 
@@ -58,14 +60,14 @@ interface ValidationResult {
   error?: string;
 }
 
-const METHOD_META: Record<TrackingMethod, { label: string; description: string; color: string }> = {
-  pending: { label: 'Ikke valgt', description: 'Velg en metode først', color: '#8b7ec4' },
-  gtag_snippets: { label: 'gtag-snippets', description: 'Lim-inn-koden er enkelest for de fleste', color: '#c084fc' },
-  gtm_api: { label: 'GTM API', description: 'Vi sender tags via API til klientens GTM', color: '#60a5fa' },
-  proxy: { label: 'Server-side proxy', description: 'Mest sikkert — token aldri i browser', color: '#34d399' },
-  wordpress_plugin: { label: 'WordPress-plugin', description: 'Vår plugin pull-er config automatisk', color: '#fbbf24' },
-  manual: { label: 'Manuell', description: 'For custom-stacks vi ikke kan automatisere', color: '#fb923c' },
-};
+const buildMETHOD_META = (t: TFn): Record<TrackingMethod, { label: string; description: string; color: string }> => ({
+  pending: { label: t('clientAdsDeploy.s003'), description: t('clientAdsDeploy.s018'), color: '#8b7ec4' },
+  gtag_snippets: { label: 'gtag-snippets', description: t('clientAdsDeploy.s009'), color: '#c084fc' },
+  gtm_api: { label: 'GTM API', description: t('clientAdsDeploy.s021'), color: '#60a5fa' },
+  proxy: { label: 'Server-side proxy', description: t('clientAdsDeploy.s015'), color: '#34d399' },
+  wordpress_plugin: { label: t('clientAdsDeploy.s023'), description: t('clientAdsDeploy.s022'), color: '#fbbf24' },
+  manual: { label: t('clientAdsDeploy.s013'), description: t('clientAdsDeploy.s002'), color: '#fb923c' },
+});
 
 const palette = {
   bg: '#150b2e',
@@ -81,6 +83,8 @@ const palette = {
 export default function ClientAdsDeploymentPanel({
   configId,
 }: { configId: string }) {
+  const { t } = useT();
+  const METHOD_META = useMemo(() => buildMETHOD_META(t), [t]);
   const [selectedMethod, setSelectedMethod] = useState<TrackingMethod>('gtag_snippets');
   const [payload, setPayload] = useState<DeploymentPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,7 +174,7 @@ export default function ClientAdsDeploymentPanel({
               Deploy tracking
             </Typography>
             <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-              Velg metoden som passer klientens stack
+              {t('clientAdsDeploy.s019')}
             </Typography>
           </Stack>
         </Stack>
@@ -214,13 +218,13 @@ export default function ClientAdsDeploymentPanel({
             {payload?.ready ? (
               <Chip
                 size="small" icon={<CheckCircleOutlineIcon sx={{ color: '#34d399 !important', fontSize: 14 }} />}
-                label="KLAR"
+                label={t('clientAdsDeploy.s005')}
                 sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 700, fontSize: '0.68rem' }}
               />
             ) : (
               <Chip
                 size="small" icon={<ErrorOutlineOutlinedIcon sx={{ color: '#fbbf24 !important', fontSize: 14 }} />}
-                label="MANGLER OPPSETT"
+                label={t('clientAdsDeploy.s010')}
                 sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700, fontSize: '0.68rem' }}
               />
             )}
@@ -232,7 +236,7 @@ export default function ClientAdsDeploymentPanel({
             <CircularProgress size={24} sx={{ color: palette.accent }} />
           </Box>
         ) : error || !payload ? (
-          <Alert severity="warning">{error ?? 'Ingen data'}</Alert>
+          <Alert severity="warning">{error ?? t('clientAdsDeploy.s004')}</Alert>
         ) : (
           <Stack spacing={2}>
             {/* Warnings */}
@@ -244,7 +248,7 @@ export default function ClientAdsDeploymentPanel({
             {payload.instructions.length > 0 && (
               <Box sx={{ p: 1.6, borderRadius: 1.4, bgcolor: palette.bgSubtle, border: `1px solid ${palette.border}` }}>
                 <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: palette.textPrimary, mb: 1 }}>
-                  Slik gjør du
+                  {t('clientAdsDeploy.s017')}
                 </Typography>
                 <Stack spacing={0.6}>
                   {payload.instructions.map((step, i) => (
@@ -263,7 +267,7 @@ export default function ClientAdsDeploymentPanel({
                 bgcolor: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.28)',
               }}>
                 <Typography sx={{ fontWeight: 700, fontSize: '0.84rem', color: '#34d399', mb: 1.2 }}>
-                  Proxy-token (KUN i klient-backend, IKKE eksponer i browser)
+                  {t('clientAdsDeploy.s016')}
                 </Typography>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.2 }}>
                   <Box sx={{
@@ -273,7 +277,7 @@ export default function ClientAdsDeploymentPanel({
                   }}>
                     {payload.proxyConfig.proxyToken}
                   </Box>
-                  <Tooltip title={copiedKey === 'token' ? 'Kopiert!' : 'Kopier token'}>
+                  <Tooltip title={copiedKey === 'token' ? t('clientAdsDeploy.s008') : t('clientAdsDeploy.s007')}>
                     <IconButton size="small" onClick={() => copyToClipboard(payload.proxyConfig!.proxyToken, 'token')} sx={{ color: palette.accent }}>
                       {copiedKey === 'token' ? <CheckCircleOutlineIcon fontSize="small" /> : <ContentCopyOutlinedIcon fontSize="small" />}
                     </IconButton>
@@ -301,7 +305,7 @@ export default function ClientAdsDeploymentPanel({
                       {s.description}
                     </Typography>
                   </Stack>
-                  <Tooltip title={copiedKey === `s${i}` ? 'Kopiert!' : 'Kopier'}>
+                  <Tooltip title={copiedKey === `s${i}` ? t('clientAdsDeploy.s008') : t('clientAdsDeploy.s006')}>
                     <IconButton size="small" onClick={() => copyToClipboard(s.code, `s${i}`)} sx={{ color: palette.accent }}>
                       {copiedKey === `s${i}` ? <CheckCircleOutlineIcon fontSize="small" /> : <ContentCopyOutlinedIcon fontSize="small" />}
                     </IconButton>
@@ -329,7 +333,7 @@ export default function ClientAdsDeploymentPanel({
                   '&:hover': { bgcolor: palette.accent, filter: 'brightness(0.9)' },
                 }}
               >
-                Marker som deployet
+                {t('clientAdsDeploy.s014')}
               </Button>
               <Button
                 variant="outlined" onClick={validate}
@@ -341,7 +345,7 @@ export default function ClientAdsDeploymentPanel({
                   '&:hover': { borderColor: palette.accent, bgcolor: 'rgba(168,85,247,0.06)' },
                 }}
               >
-                Verifiser
+                {t('clientAdsDeploy.s020')}
               </Button>
             </Stack>
 
@@ -358,22 +362,21 @@ export default function ClientAdsDeploymentPanel({
                     : <ErrorOutlineOutlinedIcon sx={{ color: '#fbbf24', fontSize: 18 }} />
                   }
                   <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: palette.textPrimary }}>
-                    {validation.ok ? 'Deployment verifisert' : 'Mangler fortsatt deler'}
+                    {validation.ok ? t('clientAdsDeploy.s000') : t('clientAdsDeploy.s011')}
                   </Typography>
                 </Stack>
                 <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-                  Conversion-ID: {validation.conversionIdFound ? '✓ funnet' : '✗ mangler'} ·
-                  Actions: {validation.actionsFound.length} OK / {validation.actionsMissing.length} mangler ·
-                  URL: <code style={{ color: palette.accent }}>{validation.url}</code>
+                  Conversion-ID: {validation.conversionIdFound ? t('clientAdsDeploy.s025') : t('clientAdsDeploy.s026')} ·
+                  Actions: {validation.actionsFound.length} OK / {validation.actionsMissing.length} {t('clientAdsDeploy.s024')} <code style={{ color: palette.accent }}>{validation.url}</code>
                 </Typography>
                 {validation.actionsMissing.length > 0 && (
                   <Typography sx={{ fontSize: '0.74rem', color: '#fbbf24', mt: 0.6 }}>
-                    Mangler: {validation.actionsMissing.join(', ')}
+                    {t('clientAdsDeploy.s012')} {validation.actionsMissing.join(', ')}
                   </Typography>
                 )}
                 {validation.error && (
                   <Typography sx={{ fontSize: '0.74rem', color: '#f87171', mt: 0.6 }}>
-                    Feil: {validation.error}
+                    {t('clientAdsDeploy.s001')} {validation.error}
                   </Typography>
                 )}
               </Box>

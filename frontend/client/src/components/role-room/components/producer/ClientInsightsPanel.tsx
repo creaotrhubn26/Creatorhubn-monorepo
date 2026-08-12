@@ -8,7 +8,7 @@
  * Backend: GET /api/admin-room/agent/ads/configs/:id/insights?range=28
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
   LinearProgress, Stack, Table, TableBody, TableCell, TableHead, TableRow,
@@ -24,6 +24,8 @@ import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bgCard: '#150b2e',
@@ -64,11 +66,11 @@ interface Insights {
   observations: string[];
 }
 
-const RANGE_OPTIONS = [
-  { value: 7, label: '7 dager' },
-  { value: 28, label: '28 dager' },
-  { value: 90, label: '90 dager' },
-];
+const buildRANGE_OPTIONS = (t: TFn) => ([
+  { value: 7, label: t('clientInsights.s001') },
+  { value: 28, label: t('clientInsights.s000') },
+  { value: 90, label: t('clientInsights.s002') },
+]);
 
 const fmt = (n: number) => Math.round(n).toLocaleString('nb-NO');
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -81,6 +83,8 @@ export default function ClientInsightsPanel({
   configId: string;
   clientName: string;
 }) {
+  const { t } = useT();
+  const RANGE_OPTIONS = useMemo(() => buildRANGE_OPTIONS(t), [t]);
   const [data, setData] = useState<Insights | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +102,7 @@ export default function ClientInsightsPanel({
       if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
       setData(body);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Insights-henting feilet');
+      setError(err instanceof Error ? err.message : t('clientInsights.s007'));
     } finally {
       setLoading(false);
     }
@@ -146,10 +150,10 @@ export default function ClientInsightsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1rem' }}>
-              Innsikt — full stack
+              {t('clientInsights.s006')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem' }}>
-              Google Ads + GA4 + Search Console + tracked events — én oversikt.
+              {t('clientInsights.s004')}
             </Typography>
           </Box>
           <Stack direction="row" spacing={0.6}>
@@ -185,7 +189,7 @@ export default function ClientInsightsPanel({
         {loading && !data ? (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 3, justifyContent: 'center' }}>
             <CircularProgress size={20} />
-            <Typography sx={{ color: palette.textMuted }}>Henter data fra Google…</Typography>
+            <Typography sx={{ color: palette.textMuted }}>{t('clientInsights.s005')}</Typography>
           </Stack>
         ) : null}
 
@@ -201,31 +205,31 @@ export default function ClientInsightsPanel({
               mb: 2,
             }}>
               <KpiBox
-                label="Økter (GA4)"
+                label={t('clientInsights.s022')}
                 value={fmt(data.summary.totalSessions)}
                 color={palette.ga4}
                 source="Google Analytics"
               />
               <KpiBox
-                label="Klikk (Ads + organisk)"
+                label={t('clientInsights.s009')}
                 value={fmt(data.summary.totalAdsClicks + data.summary.totalOrganicClicks)}
                 color={palette.ads}
-                sub={`${fmt(data.summary.totalAdsClicks)} betalt · ${fmt(data.summary.totalOrganicClicks)} organisk`}
+                sub={t('clientInsights.p03', { v0: fmt(data.summary.totalAdsClicks), v1: fmt(data.summary.totalOrganicClicks) })}
                 source="Google Ads + GSC"
               />
               <KpiBox
-                label="Konverteringer"
+                label={t('clientInsights.s010')}
                 value={fmt(data.summary.totalConversions)}
                 color={palette.gsc}
                 sub={data.summary.avgCostPerConversion > 0 ? `${fmtMoney(data.summary.avgCostPerConversion)} CPA` : undefined}
                 source={data.trackedEvents.total > 0 ? `${data.trackedEvents.total} events tracked` : 'Ads + GA4'}
               />
               <KpiBox
-                label="Ads-spend"
+                label={t('clientInsights.s003')}
                 value={fmtMoney(data.summary.totalSpendNok)}
                 color={palette.accent}
                 sub={data.ads?.roas ? `${data.ads.roas.toFixed(1)}x ROAS` : undefined}
-                source={`Siste ${data.range.days} dager`}
+                source={t('clientInsights.p00', { v0: data.range.days })}
               />
             </Box>
 
@@ -241,7 +245,7 @@ export default function ClientInsightsPanel({
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                   <LightbulbOutlinedIcon sx={{ color: palette.accent, fontSize: 18 }} />
                   <Typography sx={{ fontWeight: 800, fontSize: '0.86rem' }}>
-                    Observasjoner & anbefalinger
+                    {t('clientInsights.s013')}
                   </Typography>
                   <Box sx={{ flex: 1 }} />
                   <Button
@@ -253,7 +257,7 @@ export default function ClientInsightsPanel({
                       textTransform: 'none', fontWeight: 700,
                     }}
                   >
-                    {copied ? 'Kopiert' : 'Kopier som rapport'}
+                    {copied ? t('clientInsights.s012') : t('clientInsights.s011')}
                   </Button>
                 </Stack>
                 <Stack spacing={0.8}>
@@ -273,7 +277,7 @@ export default function ClientInsightsPanel({
             {data.ga4?.trafficByChannel?.length > 0 ? (
               <Box sx={{ mb: 2 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.8 }}>
-                  Trafikk per kanal (GA4)
+                  {t('clientInsights.s018')}
                 </Typography>
                 <Stack spacing={0.8}>
                   {data.ga4.trafficByChannel.slice(0, 6).map((c: any) => {
@@ -286,7 +290,7 @@ export default function ClientInsightsPanel({
                             {c.channel}
                           </Typography>
                           <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem' }}>
-                            {fmt(c.sessions)} økter · {fmt(c.conversions)} konv.
+                            {fmt(c.sessions)} {t('clientInsights.s023')} {fmt(c.conversions)} {t('clientInsights.s020')}
                           </Typography>
                         </Stack>
                         <LinearProgress
@@ -315,24 +319,24 @@ export default function ClientInsightsPanel({
               {data.gsc?.topQueries?.length > 0 ? (
                 <DataTable
                   icon={<SearchOutlinedIcon sx={{ color: palette.gsc }} />}
-                  title="Topp Google-søk"
-                  source={`Søkeposisjon ⌀ ${data.gsc.averagePosition?.toFixed(1) ?? '—'}`}
+                  title={t('clientInsights.s016')}
+                  source={t('clientInsights.p01', { v0: data.gsc.averagePosition?.toFixed(1) ?? '—' })}
                   rows={data.gsc.topQueries.slice(0, 8).map((q: any) => ({
                     label: q.query,
-                    primary: `${fmt(q.clicks)} klikk`,
-                    secondary: `pos ${q.position.toFixed(1)} · ${fmt(q.impressions)} visn.`,
+                    primary: t('clientInsights.p04', { v0: fmt(q.clicks) }),
+                    secondary: t('clientInsights.p02', { v0: q.position.toFixed(1), v1: fmt(q.impressions) }),
                   }))}
                 />
               ) : null}
               {data.ads?.topCampaigns?.length > 0 ? (
                 <DataTable
                   icon={<AdsClickOutlinedIcon sx={{ color: palette.ads }} />}
-                  title="Topp Google Ads-kampanjer"
+                  title={t('clientInsights.s015')}
                   source={`CTR ⌀ ${data.ads.ctr ? fmtPct(data.ads.ctr) : '—'}`}
                   rows={data.ads.topCampaigns.map((c: any) => ({
                     label: c.campaignName,
                     primary: fmtMoney(c.cost),
-                    secondary: `${fmt(c.clicks)} klikk · ${fmt(c.conversions)} konv.`,
+                    secondary: t('clientInsights.p05', { v0: fmt(c.clicks), v1: fmt(c.conversions) }),
                   }))}
                 />
               ) : null}
@@ -342,14 +346,14 @@ export default function ClientInsightsPanel({
             {data.gsc?.topPages?.length > 0 ? (
               <Box sx={{ mb: 2 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.8 }}>
-                  Topp landing-sider (Search Console)
+                  {t('clientInsights.s017')}
                 </Typography>
                 <Table size="small" sx={{ '& td, & th': { borderColor: palette.border, color: palette.textPrimary } }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }}>URL</TableCell>
-                      <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }} align="right">Klikk</TableCell>
-                      <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }} align="right">Visn.</TableCell>
+                      <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }} align="right">{t('clientInsights.s008')}</TableCell>
+                      <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }} align="right">{t('clientInsights.s019')}</TableCell>
                       <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }} align="right">CTR</TableCell>
                       <TableCell sx={{ color: palette.textMuted, fontSize: '0.72rem' }} align="right">Pos</TableCell>
                     </TableRow>
@@ -375,7 +379,7 @@ export default function ClientInsightsPanel({
             {data.summary.spendByPlatform?.length > 1 ? (
               <Box sx={{ mb: 2 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.8 }}>
-                  Spend-fordeling per plattform
+                  {t('clientInsights.s014')}
                 </Typography>
                 <Stack spacing={0.8}>
                   {data.summary.spendByPlatform.map((p) => (
@@ -507,10 +511,11 @@ function DataTable({
 }
 
 function SourceChip({ label, connected, color }: { label: string; connected: boolean; color: string }) {
+  const { t } = useT();
   return (
     <Chip
       size="small"
-      label={`${label} ${connected ? '✓' : 'venter'}`}
+      label={`${label} ${connected ? '✓' : t('clientInsights.s021')}`}
       sx={{
         bgcolor: connected ? `${color}28` : 'rgba(148,163,184,0.18)',
         color: connected ? color : palette.textMuted,

@@ -10,7 +10,7 @@
  *   POST /api/role-room/ads-configs/:id/permissions/revoke
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
@@ -19,6 +19,8 @@ import {
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
 import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined';
 import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -42,30 +44,32 @@ interface State {
   needsReaccept: boolean;
 }
 
-const ACTIONS: Array<{ key: string; title: string; body: string }> = [
+const buildACTIONS = (t: TFn): Array<{ key: string; title: string; body: string }> => ([
   {
     key: 'audience_upload',
-    title: 'Bygge målgrupper fra e-postlister',
-    body: 'Producer kan laste opp e-postlister fra deres CRM til TikTok som målgrupper. Alle e-poster krypteres (SHA256) før de sendes — TikTok ser bare hashen, aldri rådata.',
+    title: t('tiktokPerm.s006'),
+    body: t('tiktokPerm.s019'),
   },
   {
     key: 'crm_event_sync',
-    title: 'Sende konverteringer til TikTok',
-    body: 'Når noen registrerer seg, betaler eller avbryter hos dere, sender vi en hendelse til TikTok så annonsealgoritmen lærer hvilke annonser som faktisk gir salg.',
+    title: t('tiktokPerm.s021'),
+    body: t('tiktokPerm.s016'),
   },
   {
     key: 'plugin_install',
-    title: 'Binde nettside/butikk til TikTok',
-    body: 'Producer kan binde domenet deres (f.eks. example.no) til TikTok Business som plugin — slik at annonser kan sende folk rett til kassen.',
+    title: t('tiktokPerm.s005'),
+    body: t('tiktokPerm.s017'),
   },
   {
     key: 'creator_invitation',
-    title: 'Invitere creators på deres vegne',
-    body: 'Producer kan invitere TikTok-skapere til samarbeid med deres merkevare. Hver avtale går ALLTID gjennom dere for endelig godkjenning av pris og innhold.',
+    title: t('tiktokPerm.s008'),
+    body: t('tiktokPerm.s018'),
   },
-];
+]);
 
 export default function ClientTiktokPermissionsPanel({ configId }: { configId: string }) {
+  const { t } = useT();
+  const ACTIONS = useMemo(() => buildACTIONS(t), [t]);
   const [state, setState] = useState<State | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +85,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
     try {
       const r = await fetch(`/api/role-room/ads-configs/${configId}/permissions`, { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Kunne ikke hente tillatelser');
+      if (!r.ok) throw new Error(d.error || t('tiktokPerm.s010'));
       setState(d);
       const next: Record<string, boolean> = {};
       for (const a of ACTIONS) next[a.key] = d.permissions?.[a.key] === 'approved';
@@ -108,7 +112,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Lagring feilet');
-      setSuccess('Tillatelser lagret. Producer kan nå utføre handlinger du har godkjent.');
+      setSuccess(t('tiktokPerm.s022'));
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lagring feilet');
@@ -128,7 +132,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Tilbaketrekking feilet');
-      setSuccess('Samarbeidet er avsluttet. Alle automatiske handlinger har stoppet.');
+      setSuccess(t('tiktokPerm.s020'));
       setRevokeOpen(false);
       await load();
     } catch (err) {
@@ -156,21 +160,21 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Tillatelser og vilkår
+              {t('tiktokPerm.s023')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Bestem hva producer får lov til å gjøre på deres vegne mot TikTok.
+              {t('tiktokPerm.s004')}
             </Typography>
           </Box>
           {accepted ? (
             <Chip
               icon={<VerifiedUserOutlinedIcon sx={{ color: '#34d399 !important' }} />}
-              label="Godkjent"
+              label={t('tiktokPerm.s007')}
               sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 700 }}
             />
           ) : (
             <Chip
-              label={state?.revokedAt ? 'Trukket tilbake' : 'Venter på godkjenning'}
+              label={state?.revokedAt ? t('tiktokPerm.s024') : t('tiktokPerm.s025')}
               sx={{
                 bgcolor: state?.revokedAt ? 'rgba(248,113,113,0.18)' : 'rgba(251,191,36,0.18)',
                 color: state?.revokedAt ? '#f87171' : '#fbbf24',
@@ -192,14 +196,14 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
           mb: 2,
         }}>
           <Typography sx={{ fontSize: '2.2rem', fontWeight: 800, color: palette.tiktok, lineHeight: 1 }}>
-            {activeCount} av {ACTIONS.length}
+            {activeCount} {t('tiktokPerm.s029')} {ACTIONS.length}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-            handlinger producer har lov til å utføre
+            {t('tiktokPerm.s030')}
           </Typography>
           {accepted && state?.acceptedAt ? (
             <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem', mt: 1.2 }}>
-              Godkjent {new Date(state.acceptedAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })} · versjon {state.termsVersion}
+              {t('tiktokPerm.s007')} {new Date(state.acceptedAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })} · versjon {state.termsVersion}
             </Typography>
           ) : null}
         </Box>
@@ -249,17 +253,17 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
           mb: 2,
         }}>
           <Typography sx={{ color: palette.textPrimary, fontSize: '0.92rem', fontWeight: 600, mb: 0.6 }}>
-            Vilkår for fullmakt (versjon {state?.termsVersion ?? '—'})
+            {t('tiktokPerm.s028')} {state?.termsVersion ?? '—'})
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 1 }}>
-            Når du lagrer tillatelsene, signerer du elektronisk at du har lest og forstått hele vilkåravtalen.
+            {t('tiktokPerm.s015')}
           </Typography>
           <Button
             onClick={() => setTermsOpen(true)}
             size="small"
             sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600, px: 0 }}
           >
-            Les hele vilkåravtalen
+            {t('tiktokPerm.s013')}
           </Button>
         </Box>
 
@@ -276,7 +280,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
               '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
             }}
           >
-            {accepted ? 'Lagre endringer + bekreft vilkår' : 'Aksepter vilkår og lagre tillatelser'}
+            {accepted ? t('tiktokPerm.s011') : t('tiktokPerm.s000')}
           </Button>
           {accepted ? (
             <Button
@@ -285,7 +289,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
               startIcon={<HighlightOffOutlinedIcon />}
               sx={{ color: '#f87171', textTransform: 'none', fontWeight: 700 }}
             >
-              Avslutt samarbeid
+              {t('tiktokPerm.s003')}
             </Button>
           ) : null}
         </Stack>
@@ -299,7 +303,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
         fullWidth
         PaperProps={{ sx: { bgcolor: palette.bg, color: palette.textPrimary } }}
       >
-        <DialogTitle sx={{ fontWeight: 800 }}>Vilkår (versjon {state?.termsVersion ?? '—'})</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{t('tiktokPerm.s027')} {state?.termsVersion ?? '—'})</DialogTitle>
         <DialogContent>
           <Box sx={{
             whiteSpace: 'pre-wrap',
@@ -311,28 +315,27 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
             overflow: 'auto',
             pr: 1,
           }}>
-            {state?.termsText ?? 'Laster vilkår…'}
+            {state?.termsText ?? t('tiktokPerm.s012')}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTermsOpen(false)} sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600 }}>
-            Lukk
+            {t('tiktokPerm.s014')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Avslutt-bekreftelse */}
       <Dialog open={revokeOpen} onClose={() => setRevokeOpen(false)} PaperProps={{ sx: { bgcolor: palette.bg, color: palette.textPrimary } }}>
-        <DialogTitle sx={{ fontWeight: 800 }}>Vil du virkelig avslutte samarbeidet?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{t('tiktokPerm.s026')}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: palette.textSecondary }}>
-            Alle automatiske handlinger stoppes umiddelbart. Producer kan ikke lenger laste opp lister, sende konverteringer eller installere plugins på deres vegne. Eksisterende annonser i TikTok påvirkes ikke.
-            Du kan starte samarbeidet igjen når som helst ved å akseptere vilkårene på nytt.
+            {t('tiktokPerm.s001')}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRevokeOpen(false)} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-            Avbryt
+            {t('tiktokPerm.s002')}
           </Button>
           <Button
             onClick={revoke}
@@ -340,7 +343,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
             startIcon={saving ? <CircularProgress size={16} /> : <HighlightOffOutlinedIcon />}
             sx={{ bgcolor: 'rgba(248,113,113,0.2)', color: '#f87171', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: 'rgba(248,113,113,0.3)' } }}
           >
-            Ja, avslutt samarbeidet
+            {t('tiktokPerm.s009')}
           </Button>
         </DialogActions>
       </Dialog>

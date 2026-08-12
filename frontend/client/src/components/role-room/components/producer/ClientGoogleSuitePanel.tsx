@@ -38,6 +38,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import HealthAndSafetyOutlinedIcon from '@mui/icons-material/HealthAndSafetyOutlined';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bgCard: '#150b2e',
@@ -68,6 +70,7 @@ export default function ClientGoogleSuitePanel({
   clientName: string;
   clientWebsiteUrl: string;
 }) {
+  const { t } = useT();
   const [expanded, setExpanded] = useState<'ga4' | 'gsc' | 'gtm' | null>('gsc');
   const [diagnosing, setDiagnosing] = useState(false);
   const [checks, setChecks] = useState<DiagnoseCheck[] | null>(null);
@@ -84,23 +87,22 @@ export default function ClientGoogleSuitePanel({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setChecks(data.checks ?? []);
     } catch (err) {
-      setDiagnoseError(err instanceof Error ? err.message : 'Diagnose feilet');
+      setDiagnoseError(err instanceof Error ? err.message : t('googleSuite.s008'));
     } finally {
       setDiagnosing(false);
     }
   };
 
-  const groupedChecks = checks ? groupChecks(checks) : null;
+  const groupedChecks = checks ? groupChecks(t, checks) : null;
 
   return (
     <Card sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
       <CardContent>
         <Typography sx={{ fontWeight: 800, fontSize: '1rem', mb: 0.6 }}>
-          Google-suiten — full stack per klient
+          {t('googleSuite.s012')}
         </Typography>
         <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 1.6 }}>
-          GA4 + Search Console + Tag Manager — alt knyttet til din MCC-OAuth.
-          Kjør full klient-diagnose først for å se hva som allerede er satt opp eller har feil.
+          {t('googleSuite.s011')}
         </Typography>
 
         {/* Full-stack diagnose */}
@@ -122,10 +124,10 @@ export default function ClientGoogleSuitePanel({
                 '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
               }}
             >
-              {diagnosing ? 'Skanner klient-siten…' : checks ? 'Kjør på nytt' : 'Sjekk klient-status'}
+              {diagnosing ? t('googleSuite.s036') : checks ? t('googleSuite.s022') : t('googleSuite.s034')}
             </Button>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', flex: 1 }}>
-              Skanner HTML for GA4/Ads/GTM/Meta/LI/TikTok + Consent Mode + SEO + sitemap + GSC-verifisering + indekserings-status.
+              {t('googleSuite.s035')}
             </Typography>
           </Stack>
           {diagnoseError ? <Alert severity="error" onClose={() => setDiagnoseError(null)}>{diagnoseError}</Alert> : null}
@@ -177,6 +179,7 @@ export default function ClientGoogleSuitePanel({
 function Ga4Section({
   configId, clientName, expanded, onToggle,
 }: { configId: string; clientName: string; expanded: boolean; onToggle: () => void }) {
+  const { t } = useT();
   const [accounts, setAccounts] = useState<Array<{ name: string; displayName: string }>>([]);
   const [accountName, setAccountName] = useState('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
@@ -230,7 +233,7 @@ function Ga4Section({
     <SectionFrame
       icon={<AnalyticsOutlinedIcon sx={{ color: '#fbbf24' }} />}
       title="GA4 — Google Analytics 4"
-      subtitle="Opprett property + web-data-stream → få G-XXX measurement-ID."
+      subtitle={t('googleSuite.s027')}
       expanded={expanded}
       onToggle={onToggle}
       status={result ? 'ok' : 'pending'}
@@ -238,7 +241,7 @@ function Ga4Section({
       <Stack spacing={1.4}>
         <Box>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Velg GA4-konto
+            {t('googleSuite.s044')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Select
@@ -251,7 +254,7 @@ function Ga4Section({
             >
               <MenuItem value="">
                 <em style={{ color: palette.textMuted }}>
-                  {loadingAccounts ? 'Henter…' : accounts.length === 0 ? 'Ingen kontoer funnet' : 'Velg konto'}
+                  {loadingAccounts ? t('googleSuite.s014') : accounts.length === 0 ? t('googleSuite.s021') : t('googleSuite.s046')}
                 </em>
               </MenuItem>
               {accounts.map((a) => (
@@ -259,7 +262,7 @@ function Ga4Section({
               ))}
             </Select>
             <Button onClick={loadAccounts} size="small" sx={{ color: palette.accent, textTransform: 'none' }}>
-              Last på nytt
+              {t('googleSuite.s024')}
             </Button>
           </Stack>
         </Box>
@@ -275,16 +278,16 @@ function Ga4Section({
             '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
           }}
         >
-          {provisioning ? 'Oppretter…' : `Opprett GA4-property for ${clientName}`}
+          {provisioning ? t('googleSuite.s028') : t('googleSuite.p01', { v0: clientName })}
         </Button>
 
         {error ? <Alert severity="error" onClose={() => setError(null)}>{error}</Alert> : null}
 
         {result ? (
           <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
-            Property opprettet:&nbsp;
+            {t('googleSuite.j00a')}&nbsp;
             <strong style={{ fontFamily: 'monospace' }}>{result.measurementId}</strong>
-            &nbsp;— lim inn i klientens gtag.js eller GTM.
+            &nbsp;{t('googleSuite.j00b')}
             <CopyButton text={result.measurementId} />
           </Alert>
         ) : null}
@@ -300,6 +303,7 @@ function Ga4Section({
 function GscSection({
   configId, clientWebsiteUrl, expanded, onToggle,
 }: { configId: string; clientWebsiteUrl: string; expanded: boolean; onToggle: () => void }) {
+  const { t } = useT();
   const [verifying, setVerifying] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [metaTag, setMetaTag] = useState<string | null>(null);
@@ -321,7 +325,7 @@ function GscSection({
       setToken(data.token);
       setMetaTag(data.metaTag);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Token-henting feilet');
+      setError(err instanceof Error ? err.message : t('googleSuite.s042'));
     } finally {
       setVerifying(false);
     }
@@ -339,7 +343,7 @@ function GscSection({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setVerified(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verifisering feilet (sjekk at meta-tagen er lagt inn).');
+      setError(err instanceof Error ? err.message : t('googleSuite.s049'));
     } finally {
       setVerifying(false);
     }
@@ -359,7 +363,7 @@ function GscSection({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setSitemapResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sitemap-submit feilet');
+      setError(err instanceof Error ? err.message : t('googleSuite.s033'));
     } finally {
       setSubmittingSitemap(false);
     }
@@ -368,8 +372,8 @@ function GscSection({
   return (
     <SectionFrame
       icon={<SearchOutlinedIcon sx={{ color: '#60a5fa' }} />}
-      title="Search Console — verifisering + sitemap"
-      subtitle="Sørg for at hele klient-siten blir indeksert av Google."
+      title={t('googleSuite.s031')}
+      subtitle={t('googleSuite.s040')}
       expanded={expanded}
       onToggle={onToggle}
       status={verified || sitemapResult?.success ? 'ok' : 'pending'}
@@ -378,7 +382,7 @@ function GscSection({
         {/* Verifisering */}
         <Box>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 1 — Verifiser eierskap (meta-tag)
+            {t('googleSuite.s037')}
           </Typography>
           {!token ? (
             <Button
@@ -387,12 +391,12 @@ function GscSection({
               startIcon={verifying ? <CircularProgress size={14} /> : null}
               sx={{ border: `1px solid ${palette.borderStrong}`, color: palette.accent, textTransform: 'none' }}
             >
-              {verifying ? 'Henter…' : 'Hent verifiserings-meta-tag'}
+              {verifying ? t('googleSuite.s014') : t('googleSuite.s013')}
             </Button>
           ) : (
             <Box>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', mb: 0.6 }}>
-                Lim følgende inn i <code style={{ color: palette.accent }}>&lt;head&gt;</code> på {clientWebsiteUrl}, så trykk "Verifiser nå":
+                {t('googleSuite.s025')} <code style={{ color: palette.accent }}>&lt;head&gt;</code> {t('googleSuite.s051')} {clientWebsiteUrl}{t('googleSuite.s000')}
               </Typography>
               <Box sx={{
                 bgcolor: '#0a0a1a',
@@ -422,10 +426,10 @@ function GscSection({
                     '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                   }}
                 >
-                  {verifying ? 'Verifiserer…' : 'Verifiser nå'}
+                  {verifying ? t('googleSuite.s048') : t('googleSuite.s047')}
                 </Button>
               ) : (
-                <Alert severity="success">Site verifisert + lagt til Search Console.</Alert>
+                <Alert severity="success">{t('googleSuite.s032')}</Alert>
               )}
             </Box>
           )}
@@ -436,7 +440,7 @@ function GscSection({
         {/* Sitemap */}
         <Box>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 2 — Indekser hele siten (sitemap + URL-prioritering)
+            {t('googleSuite.s038')}
           </Typography>
           <Button
             onClick={submitSitemap}
@@ -447,24 +451,21 @@ function GscSection({
               color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
             }}
           >
-            {submittingSitemap ? 'Submitter…' : 'Auto-submit sitemap + prioriter conversion-URL-er'}
+            {submittingSitemap ? t('googleSuite.s039') : t('googleSuite.s004')}
           </Button>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-            Vi leser robots.txt → finner alle <code>Sitemap:</code>-linjer, fallback til
-            /sitemap.xml. Conversion-URL'er (fra dine actions) sendes også til
-            Indexing API for raskere indeksering.
+            {t('googleSuite.s050')} <code>Sitemap:</code>{t('googleSuite.s001')}
           </Typography>
           {sitemapResult ? (
             <Box sx={{ mt: 1.2 }}>
               <Alert severity={sitemapResult.success ? 'success' : 'warning'}>
-                Discovery-kilde: <strong>{sitemapResult.discoverySource}</strong> · funnet{' '}
-                <strong>{sitemapResult.discovered?.length ?? 0}</strong> sitemap(s) ·
-                submittet <strong>{sitemapResult.submitted?.filter((s: any) => s.ok).length ?? 0}/{sitemapResult.submitted?.length ?? 0}</strong>.
+                {t('googleSuite.s009')} <strong>{sitemapResult.discoverySource}</strong> {t('googleSuite.s054')}{' '}
+                <strong>{sitemapResult.discovered?.length ?? 0}</strong> {t('googleSuite.s052')} <strong>{sitemapResult.submitted?.filter((s: any) => s.ok).length ?? 0}/{sitemapResult.submitted?.length ?? 0}</strong>.
               </Alert>
               {sitemapResult.indexing?.results?.length > 0 ? (
                 <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem', mt: 0.6 }}>
-                  Indexing-API: {sitemapResult.indexing.results.filter((r: any) => r.ok).length}/
-                  {sitemapResult.indexing.results.length} URL'er sendt til prioritert indeksering.
+                  {t('googleSuite.s019')} {sitemapResult.indexing.results.filter((r: any) => r.ok).length}/
+                  {sitemapResult.indexing.results.length} {t('googleSuite.s043')}
                 </Typography>
               ) : null}
             </Box>
@@ -478,13 +479,13 @@ function GscSection({
 }
 
 /** Grupperer diagnose-checks i seksjoner så UI'et kan vise dem ryddig. */
-function groupChecks(checks: DiagnoseCheck[]): Array<{ title: string; checks: DiagnoseCheck[] }> {
+function groupChecks(t: TFn, checks: DiagnoseCheck[]): Array<{ title: string; checks: DiagnoseCheck[] }> {
   const groups: Record<string, { title: string; checks: DiagnoseCheck[]; order: number }> = {
     tracking: { title: 'Tracking & tags', checks: [], order: 1 },
-    consent: { title: 'Samtykke & EU', checks: [], order: 2 },
-    seo: { title: 'SEO & indeksering', checks: [], order: 3 },
+    consent: { title: t('googleSuite.s030'), checks: [], order: 2 },
+    seo: { title: t('googleSuite.s029'), checks: [], order: 3 },
     search: { title: 'Search Console', checks: [], order: 4 },
-    other: { title: 'Andre signaler', checks: [], order: 5 },
+    other: { title: t('googleSuite.s003'), checks: [], order: 5 },
   };
   const map: Record<string, keyof typeof groups> = {
     'html-fetch': 'tracking',
@@ -546,6 +547,7 @@ function DiagnoseRow({ check }: { check: DiagnoseCheck }) {
 function GtmSection({
   configId, clientName, expanded, onToggle,
 }: { configId: string; clientName: string; expanded: boolean; onToggle: () => void }) {
+  const { t } = useT();
   const [accounts, setAccounts] = useState<Array<{ accountId: string; name: string }>>([]);
   const [accountId, setAccountId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -565,7 +567,7 @@ function GtmSection({
       setAccounts(data.accounts ?? []);
       if (data.accounts?.length === 1) setAccountId(data.accounts[0].accountId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke hente GTM-kontoer');
+      setError(err instanceof Error ? err.message : t('googleSuite.s023'));
     } finally {
       setLoading(false);
     }
@@ -586,7 +588,7 @@ function GtmSection({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setContainer({ publicId: data.publicId, containerId: data.containerId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Container-opprettelse feilet');
+      setError(err instanceof Error ? err.message : t('googleSuite.s006'));
     } finally {
       setProvisioning(false);
     }
@@ -604,7 +606,7 @@ function GtmSection({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setTagImportResult({ imported: data.imported, failed: data.failed });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Tag-import feilet');
+      setError(err instanceof Error ? err.message : t('googleSuite.s041'));
     } finally {
       setImportingTags(false);
     }
@@ -619,7 +621,7 @@ function GtmSection({
     <SectionFrame
       icon={<LocalOfferOutlinedIcon sx={{ color: '#34d399' }} />}
       title="Google Tag Manager"
-      subtitle="Opprett container + auto-importer alle conversion-tags fra synket Google Ads."
+      subtitle={t('googleSuite.s026')}
       expanded={expanded}
       onToggle={onToggle}
       status={container && tagImportResult ? 'ok' : container ? 'partial' : 'pending'}
@@ -627,7 +629,7 @@ function GtmSection({
       <Stack spacing={1.4}>
         <Box>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Velg GTM-konto
+            {t('googleSuite.s045')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Select
@@ -640,7 +642,7 @@ function GtmSection({
             >
               <MenuItem value="">
                 <em style={{ color: palette.textMuted }}>
-                  {loading ? 'Henter…' : accounts.length === 0 ? 'Ingen kontoer' : 'Velg konto'}
+                  {loading ? t('googleSuite.s014') : accounts.length === 0 ? t('googleSuite.s020') : t('googleSuite.s046')}
                 </em>
               </MenuItem>
               {accounts.map((a) => (
@@ -648,7 +650,7 @@ function GtmSection({
               ))}
             </Select>
             <Button onClick={loadAccounts} size="small" sx={{ color: palette.accent, textTransform: 'none' }}>
-              Last på nytt
+              {t('googleSuite.s024')}
             </Button>
           </Stack>
         </Box>
@@ -664,12 +666,12 @@ function GtmSection({
             '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
           }}
         >
-          {provisioning ? 'Oppretter…' : `Opprett GTM-container for ${clientName}`}
+          {provisioning ? t('googleSuite.s028') : t('googleSuite.p02', { v0: clientName })}
         </Button>
 
         {container ? (
           <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
-            Container opprettet: <strong style={{ fontFamily: 'monospace' }}>{container.publicId}</strong>
+            {t('googleSuite.s005')} <strong style={{ fontFamily: 'monospace' }}>{container.publicId}</strong>
             <CopyButton text={container.publicId} />
           </Alert>
         ) : null}
@@ -678,7 +680,7 @@ function GtmSection({
           <Box>
             <Divider sx={{ borderColor: palette.borderSubtle, mb: 1.4 }} />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-              Importer alle conversion-actions som GTM-tags
+              {t('googleSuite.s017')}
             </Typography>
             <Button
               onClick={importTags}
@@ -689,15 +691,15 @@ function GtmSection({
                 color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
               }}
             >
-              {importingTags ? 'Importerer…' : 'Importer Google Ads-tags til GTM'}
+              {importingTags ? t('googleSuite.s018') : t('googleSuite.s016')}
             </Button>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-              Forutsetter at "Synk til Google Ads" har kjørt (vi trenger AW-labels per action).
+              {t('googleSuite.s010')}
             </Typography>
             {tagImportResult ? (
               <Alert severity={tagImportResult.failed > 0 ? 'warning' : 'success'} sx={{ mt: 1 }}>
-                {tagImportResult.imported} tags importert
-                {tagImportResult.failed > 0 ? ` — ${tagImportResult.failed} feilet` : '. Publiser containeren fra GTM-UI for å aktivere.'}
+                {tagImportResult.imported} {t('googleSuite.s053')}
+                {tagImportResult.failed > 0 ? t('googleSuite.p00', { v0: tagImportResult.failed }) : t('googleSuite.s002')}
               </Alert>
             ) : null}
           </Box>
@@ -724,11 +726,12 @@ function SectionFrame({
   status: 'ok' | 'partial' | 'pending';
   children: React.ReactNode;
 }) {
+  const { t } = useT();
   const statusChip = status === 'ok'
     ? { label: 'OK', color: '#34d399', bg: 'rgba(52,211,153,0.18)' }
     : status === 'partial'
-      ? { label: 'Delvis', color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' }
-      : { label: 'Ikke satt opp', color: palette.textMuted, bg: 'rgba(148,163,184,0.18)' };
+      ? { label: t('googleSuite.s007'), color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' }
+      : { label: t('googleSuite.s015'), color: palette.textMuted, bg: 'rgba(148,163,184,0.18)' };
 
   return (
     <Box sx={{

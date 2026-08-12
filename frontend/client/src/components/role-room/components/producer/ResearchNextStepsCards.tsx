@@ -29,6 +29,8 @@ import {
 } from '@mui/icons-material';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 import authSessionService from '../../services/authSessionService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ChecklistItem {
   label: string;
@@ -65,6 +67,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
   onInviteTeam,
   onExportToNotion,
 }) => {
+  const { t } = useT();
   const profile = result.companyProfile;
 
   // Items #48 + #49 — fetch cost estimate + remaining quota on mount.
@@ -100,37 +103,37 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
   // see the same wording in both surfaces.
   const checklist: ChecklistItem[] = [
     {
-      label: 'Bedriftsnavn',
+      label: t('researchNextSteps.s000'),
       done: Boolean(profile?.companyName),
       fillInTargetId: 'role-room-field-company-name',
     },
     {
-      label: 'Bransje',
+      label: t('researchNextSteps.s001'),
       done: Boolean(profile?.industry),
       fillInTargetId: 'role-room-field-industry',
     },
     {
-      label: 'Minst én målgruppe',
+      label: t('researchNextSteps.s013'),
       done: (profile?.targetAudience?.length ?? 0) >= 1,
       fillInTargetId: 'role-room-field-target-audience',
     },
     {
-      label: 'Minst tre tone-signaler',
+      label: t('researchNextSteps.s012'),
       done: (profile?.toneAndBrandSignals?.length ?? 0) >= 3,
       fillInTargetId: 'role-room-field-tone',
     },
     {
-      label: 'Forretningsmål (storyLogic)',
+      label: t('researchNextSteps.s004'),
       done: Boolean((result.storyLogicDraft as { contentStoryLogic?: { businessObjective?: string } } | undefined)?.contentStoryLogic?.businessObjective),
       fillInTargetId: 'role-room-field-story-objective',
     },
     {
-      label: 'Målgruppeproblem (storyLogic)',
+      label: t('researchNextSteps.s014'),
       done: Boolean((result.storyLogicDraft as { contentStoryLogic?: { audienceProblem?: string } } | undefined)?.contentStoryLogic?.audienceProblem),
       fillInTargetId: 'role-room-field-story-problem',
     },
     {
-      label: 'Nøkkelløfte (storyLogic)',
+      label: t('researchNextSteps.s015'),
       done: Boolean((result.storyLogicDraft as { contentStoryLogic?: { keyPromise?: string } } | undefined)?.contentStoryLogic?.keyPromise),
       fillInTargetId: 'role-room-field-story-promise',
     },
@@ -162,7 +165,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
       }}
     >
       <Typography sx={{ color: '#f8fafc', fontWeight: 800, mb: 1.4 }}>
-        Hva vil du gjøre nå?
+        {t('researchNextSteps.s008')}
       </Typography>
 
       {/* Three action cards */}
@@ -178,8 +181,8 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
         <Tooltip
           title={
             ready
-              ? 'Genererer strategi + 3-5 pillars + KPI-mål basert på research-resultatet.'
-              : `Trenger ${missingItems.length} flere felt før plan kan genereres. Se sjekklisten under.`
+              ? t('researchNextSteps.s007')
+              : t('researchNextSteps.p02', { v0: missingItems.length })
           }
           placement="top"
         >
@@ -204,15 +207,15 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
             >
               <MarketingPlanIcon sx={{ color: ready ? '#a5b4fc' : 'rgba(226,232,240,0.4)' }} />
               <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', textAlign: 'left' }}>
-                Generer Marketing Plan
+                {t('researchNextSteps.s006')}
               </Typography>
               <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)', textAlign: 'left' }}>
-                {ready ? 'Klar — strategi + pillars + KPI' : `${missingItems.length} felt mangler`}
+                {ready ? t('researchNextSteps.s010') : t('researchNextSteps.p03', { v0: missingItems.length })}
               </Typography>
               {costEstimate ? (
                 <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mt: 0.4 }}>
                   <Tooltip
-                    title={`Estimert: ~${(costEstimate.estimatedInputTokens / 1000).toFixed(1)}k input + ~${(costEstimate.estimatedOutputTokens / 1000).toFixed(1)}k output tokens via CI`}
+                    title={t('researchNextSteps.p01', { v0: (costEstimate.estimatedInputTokens / 1000).toFixed(1), v1: (costEstimate.estimatedOutputTokens / 1000).toFixed(1) })}
                   >
                     <Chip
                       size="small"
@@ -228,11 +231,11 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
                   </Tooltip>
                   {costEstimate.remainingCalls !== null ? (
                     <Tooltip
-                      title={`Du har ${costEstimate.remainingCalls} AI-kall igjen i ${costEstimate.entitlementStatus ?? 'denne perioden'}`}
+                      title={t('researchNextSteps.p00', { v0: costEstimate.remainingCalls, v1: costEstimate.entitlementStatus ?? t('researchNextSteps.s018') })}
                     >
                       <Chip
                         size="small"
-                        label={`${costEstimate.remainingCalls} igjen`}
+                        label={t('researchNextSteps.p04', { v0: costEstimate.remainingCalls })}
                         sx={{
                           height: 18,
                           fontSize: '0.66rem',
@@ -271,10 +274,10 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
         >
           <InviteIcon sx={{ color: '#34d399' }} />
           <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', textAlign: 'left' }}>
-            Inviter teammedlem
+            {t('researchNextSteps.s009')}
           </Typography>
           <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)', textAlign: 'left' }}>
-            {onInviteTeam ? 'Del research med kollega' : 'Kommer snart'}
+            {onInviteTeam ? t('researchNextSteps.s002') : t('researchNextSteps.s011')}
           </Typography>
         </Button>
 
@@ -300,10 +303,10 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
         >
           <NotionIcon sx={{ color: '#fbbf24' }} />
           <Typography sx={{ fontWeight: 800, fontSize: '0.96rem', textAlign: 'left' }}>
-            Eksporter til Notion
+            {t('researchNextSteps.s003')}
           </Typography>
           <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)', textAlign: 'left' }}>
-            {onExportToNotion ? 'Synk til Notion-database' : 'Kommer snart'}
+            {onExportToNotion ? t('researchNextSteps.s017') : t('researchNextSteps.s011')}
           </Typography>
         </Button>
       </Box>
@@ -312,7 +315,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
       <Box>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}>
           <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem' }}>
-            Sjekkliste for marketing plan
+            {t('researchNextSteps.s016')}
           </Typography>
           <Chip
             size="small"
@@ -371,7 +374,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
                     '&:hover': { bgcolor: 'rgba(239,68,68,0.12)' },
                   }}
                 >
-                  Fyll inn
+                  {t('researchNextSteps.s005')}
                 </Button>
               ) : null}
             </Stack>

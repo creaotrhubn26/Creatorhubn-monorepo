@@ -23,6 +23,8 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -53,6 +55,7 @@ export default function ClientTiktokAudiencesPanel({
   advertiserId?: string | null;
   isOwnAccount?: boolean;
 }) {
+  const { t } = useT();
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [audiences, setAudiences] = useState<Audience[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,10 +86,10 @@ export default function ClientTiktokAudiencesPanel({
     try {
       const r = await fetch(`/api/admin-room/agent/ads/tiktok/audiences?advertiserId=${advertiserId}`, { credentials: 'include' });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Kunne ikke hente mottakerlister');
+      if (!r.ok) throw new Error(data.error || t('tiktokAudiences.s010'));
       setAudiences(data.audiences ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å hente lister');
+      setError(err instanceof Error ? err.message : t('tiktokAudiences.s008'));
     } finally {
       setLoading(false);
     }
@@ -104,7 +107,7 @@ export default function ClientTiktokAudiencesPanel({
     }).filter((id) => id.email || id.phone);
 
     if (identifiers.length === 0) {
-      setError('Fant ingen e-poster eller telefonnumre i listen. Sjekk formatet.');
+      setError(t('tiktokAudiences.s005'));
       return;
     }
 
@@ -122,7 +125,7 @@ export default function ClientTiktokAudiencesPanel({
         }),
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Opprettelse feilet');
+      if (!r.ok) throw new Error(data.error || t('tiktokAudiences.s016'));
       setCreatedAudience({ audienceId: data.audienceId, uploadCount: data.uploadCount });
       // Refresh audiences
       setTimeout(() => loadAudiences(), 800);
@@ -133,7 +136,7 @@ export default function ClientTiktokAudiencesPanel({
         setStep('overview');
       }, 4000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å opprette listen');
+      setError(err instanceof Error ? err.message : t('tiktokAudiences.s009'));
     } finally {
       setCreating(false);
     }
@@ -157,10 +160,10 @@ export default function ClientTiktokAudiencesPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Mottakerlister på TikTok
+              {t('tiktokAudiences.s013')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Last opp en e-postliste — vi gjør den om til en målgruppe på TikTok.
+              {t('tiktokAudiences.s011')}
             </Typography>
           </Box>
         </Stack>
@@ -181,7 +184,7 @@ export default function ClientTiktokAudiencesPanel({
                 {audiences.length}
               </Typography>
               <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-                {audiences.length === 0 ? 'Ingen mottakerlister opprettet ennå' : audiences.length === 1 ? 'mottakerliste klar til bruk' : 'mottakerlister klare til bruk'}
+                {audiences.length === 0 ? t('tiktokAudiences.s006') : audiences.length === 1 ? t('tiktokAudiences.s021') : t('tiktokAudiences.s022')}
               </Typography>
             </Box>
 
@@ -200,7 +203,7 @@ export default function ClientTiktokAudiencesPanel({
                 '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
               }}
             >
-              Last opp ny mottakerliste
+              {t('tiktokAudiences.s012')}
             </Button>
 
             {audiences.length > 0 ? (
@@ -208,11 +211,11 @@ export default function ClientTiktokAudiencesPanel({
                 <Divider sx={{ borderColor: palette.border, mb: 1.8 }} />
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
                   <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                    Eksisterende lister
+                    {t('tiktokAudiences.s003')}
                   </Typography>
                   <Button onClick={loadAudiences} disabled={loading} size="small" startIcon={loading ? <CircularProgress size={14} /> : <RefreshOutlinedIcon fontSize="small" />}
                     sx={{ color: palette.accent, textTransform: 'none' }}>
-                    Oppdater
+                    {t('tiktokAudiences.s015')}
                   </Button>
                 </Stack>
                 <Stack spacing={1}>
@@ -229,12 +232,12 @@ export default function ClientTiktokAudiencesPanel({
                             {a.name}
                           </Typography>
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mt: 0.4 }}>
-                            {a.size ? `${a.size.toLocaleString('nb-NO')} personer i målgruppen` : 'Behandles…'}
-                            {a.matchRate ? ` · ${a.matchRate.toFixed(0)}% gjenkjent` : ''}
+                            {a.size ? t('tiktokAudiences.p01', { v0: a.size.toLocaleString('nb-NO') }) : t('tiktokAudiences.s002')}
+                            {a.matchRate ? t('tiktokAudiences.p00', { v0: a.matchRate.toFixed(0) }) : ''}
                           </Typography>
                         </Box>
                         <Chip
-                          label={a.status === 'ready' || a.status === 'READY' ? 'KLAR' : a.status === 'processing' || a.status === 'PROCESSING' ? 'BEHANDLES' : a.status}
+                          label={a.status === 'ready' || a.status === 'READY' ? t('tiktokAudiences.s007') : a.status === 'processing' || a.status === 'PROCESSING' ? t('tiktokAudiences.s001') : a.status}
                           size="small"
                           sx={{
                             bgcolor: (a.status === 'ready' || a.status === 'READY') ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)',
@@ -255,32 +258,31 @@ export default function ClientTiktokAudiencesPanel({
           <Box>
             {createdAudience ? (
               <Alert severity="success" icon={<CheckCircleOutlineIcon />} sx={{ mb: 2 }}>
-                ✓ Liste lastet opp! {createdAudience.uploadCount} rader sendt til TikTok.
-                TikTok bruker noen minutter på å gjenkjenne brukerne. Du finner listen under "Eksisterende lister" om litt.
+                {t('tiktokAudiences.s025')} {createdAudience.uploadCount} {t('tiktokAudiences.s023')}
               </Alert>
             ) : null}
 
             <Typography sx={{ color: palette.textPrimary, fontSize: '1rem', fontWeight: 700, mb: 0.6 }}>
-              Steg 1 — Gi listen et navn
+              {t('tiktokAudiences.s019')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              Et navn du selv kjenner igjen. F.eks. "Nyhetsbrev-abonnenter Q2 2026".
+              {t('tiktokAudiences.s004')}
             </Typography>
             <TextField
               fullWidth
               size="small"
               value={audienceName}
               onChange={(e) => setAudienceName(e.target.value)}
-              placeholder="Nyhetsbrev-abonnenter Q2 2026"
+              placeholder={t('tiktokAudiences.s014')}
               InputProps={{ sx: { color: palette.textPrimary } }}
               sx={{ mb: 3 }}
             />
 
             <Typography sx={{ color: palette.textPrimary, fontSize: '1rem', fontWeight: 700, mb: 0.6 }}>
-              Steg 2 — Lim inn e-postliste
+              {t('tiktokAudiences.s020')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              Én e-postadresse per linje. Vi kryptererer alt før det sendes til TikTok — ingen rå-data lagres.
+              {t('tiktokAudiences.s024')}
             </Typography>
             <TextField
               fullWidth
@@ -309,13 +311,13 @@ export default function ClientTiktokAudiencesPanel({
                   '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
                 }}
               >
-                {creating ? 'Sender til TikTok…' : 'Send listen til TikTok'}
+                {creating ? t('tiktokAudiences.s018') : t('tiktokAudiences.s017')}
               </Button>
               <Button
                 onClick={() => { setStep('overview'); setCreatedAudience(null); }}
                 sx={{ color: palette.textMuted, textTransform: 'none' }}
               >
-                Avbryt
+                {t('tiktokAudiences.s000')}
               </Button>
             </Stack>
           </Box>

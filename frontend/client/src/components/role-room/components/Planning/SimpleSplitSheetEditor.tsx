@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import { Box, Typography, TextField, Button, Stack, Card, CardContent, IconButton, Alert, FormControl, InputLabel, Select, MenuItem, Chip, Divider } from "@mui/material";
 import { Add as AddIcon, Delete as DeleteIcon, Person as PersonIcon } from "@mui/icons-material";
 import { ROLE_DISPLAY_NAMES, type SplitSheetContributor, type ContributorRole } from "../split-sheets/types";
+import { useT } from '../../../../i18n';
 
 interface SimpleSplitSheetEditorProps {
   contributors: SplitSheetContributor[];
@@ -28,6 +29,7 @@ export default function SimpleSplitSheetEditor({
   profession = 'photographer',
   onChange,
 }: SimpleSplitSheetEditorProps) {
+  const { t } = useT();
   const availableRoles = useMemo(() => getAvailableRoles(profession), [profession]);
 
   // Calculate total percentage
@@ -79,7 +81,7 @@ export default function SimpleSplitSheetEditor({
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Bidragsytere
+            {t('simpleSplit.title')}
           </Typography>
           <Button
             startIcon={<AddIcon />}
@@ -87,7 +89,7 @@ export default function SimpleSplitSheetEditor({
             variant="outlined"
             size="small"
           >
-            Legg til
+            {t('simpleSplit.add')}
           </Button>
         </Box>
 
@@ -98,11 +100,11 @@ export default function SimpleSplitSheetEditor({
         >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="body2">
-              Totalt: {totalPercentage.toFixed(2)}% {percentageError && '(må være 100%)'}
+              {t('simpleSplit.total', { percentage: totalPercentage.toFixed(2) })} {percentageError && t('simpleSplit.mustBe100')}
             </Typography>
             {contributors.length > 1 && (
               <Button size="small" onClick={handleDistributeEvenly}>
-                Fordel jevnt
+                {t('simpleSplit.distributeEvenly')}
               </Button>
             )}
           </Box>
@@ -113,7 +115,7 @@ export default function SimpleSplitSheetEditor({
           <Card>
             <CardContent>
               <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
-                Ingen bidragsytere lagt til. Klikk "Legg til" for å legge til en bidragsyter.
+                {t('simpleSplit.emptyState')}
               </Typography>
             </CardContent>
           </Card>
@@ -126,7 +128,7 @@ export default function SimpleSplitSheetEditor({
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <PersonIcon sx={{ color: 'text.secondary' }} />
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        Bidragsyter {index + 1}
+                        {t('simpleSplit.contributorNumber', { number: index + 1 })}
                       </Typography>
                     </Box>
                     {contributors.length > 1 && (
@@ -134,7 +136,7 @@ export default function SimpleSplitSheetEditor({
                         size="small"
                         onClick={() => handleRemoveContributor(index)}
                         color="error"
-                        aria-label="Fjern bidragsyter"
+                        aria-label={t('simpleSplit.removeContributor')}
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
@@ -144,7 +146,7 @@ export default function SimpleSplitSheetEditor({
                   <Stack spacing={2}>
                     {/* Name */}
                     <TextField
-                      label="Navn"
+                      label={t('simpleSplit.name')}
                       fullWidth
                       size="small"
                       value={contributor.name}
@@ -154,7 +156,7 @@ export default function SimpleSplitSheetEditor({
 
                     {/* Email */}
                     <TextField
-                      label="E-post (valgfritt)"
+                      label={t('simpleSplit.emailOptional')}
                       fullWidth
                       size="small"
                       type="email"
@@ -164,10 +166,10 @@ export default function SimpleSplitSheetEditor({
 
                     {/* Role */}
                     <FormControl fullWidth size="small">
-                      <InputLabel>Rolle</InputLabel>
+                      <InputLabel>{t('simpleSplit.role')}</InputLabel>
                       <Select
                         value={contributor.role}
-                        label="Rolle"
+                        label={t('simpleSplit.role')}
                         onChange={(e) => handleContributorChange(index, 'role', e.target.value)}
                       >
                         {availableRoles.map((role) => (
@@ -180,7 +182,7 @@ export default function SimpleSplitSheetEditor({
 
                     {/* Percentage */}
                     <TextField
-                      label="Prosentandel (%)"
+                      label={t('simpleSplit.percentage')}
                       fullWidth
                       size="small"
                       type="number"
@@ -191,7 +193,7 @@ export default function SimpleSplitSheetEditor({
                         handleContributorChange(index, 'percentage', Math.min(100, Math.max(0, value)));
                       }}
                       error={contributor.percentage < 0 || contributor.percentage > 100}
-                      helperText={contributor.percentage < 0 || contributor.percentage > 100 ? 'Må være mellom 0 og 100' : ''}
+                      helperText={contributor.percentage < 0 || contributor.percentage > 100 ? t('simpleSplit.percentageRange') : ''}
                       required
                     />
                   </Stack>
@@ -204,7 +206,7 @@ export default function SimpleSplitSheetEditor({
         {/* Validation Message */}
         {!isValid && contributors.length > 0 && (
           <Alert severity="error">
-            Alle bidragsytere må ha navn og prosentandeler, og totalen må være 100%.
+            {t('simpleSplit.validationError')}
           </Alert>
         )}
       </Stack>

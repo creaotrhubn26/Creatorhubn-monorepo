@@ -38,6 +38,7 @@ import {
 import type {
   TabAccessMap, TabAccessLevel, TabAccessState, StudioTabCluster,
 } from '../models/studioAccessModel';
+import { useT } from '../../../i18n';
 
 export interface ProjectTabAccessDialogProps {
   open: boolean;
@@ -62,6 +63,7 @@ function effectiveAccess(
 }
 
 export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabAccessDialogProps) {
+  const { t } = useT();
   const [config, setConfig] = useState<ProjectTabConfigResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -150,10 +152,10 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-            Tilganger
+            {t('tabAccess.title')}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Bestem hvem som ser og hvem som administrerer hver fane på dette prosjektet.
+            {t('tabAccess.subtitle')}
           </Typography>
         </Box>
         <IconButton size="small" onClick={onClose}><Close /></IconButton>
@@ -164,8 +166,8 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v as 0 | 1)} sx={{ px: 3, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-        <Tab label="Pr. rolle" />
-        <Tab label="Pr. bruker" />
+        <Tab label={t('tabAccess.perRole')} />
+        <Tab label={t('tabAccess.perUser')} />
       </Tabs>
 
       <DialogContent sx={{ p: 0 }}>
@@ -185,8 +187,8 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
           <Stack divider={<Divider />}>
             {uniqueRoles.length === 0 && (
               <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                <Typography>Ingen roller på prosjektet ennå.</Typography>
-                <Typography variant="caption">Legg til team-medlemmer først, så dukker rollene opp her.</Typography>
+                <Typography>{t('tabAccess.noRoles')}</Typography>
+                <Typography variant="caption">{t('tabAccess.noRolesHint')}</Typography>
               </Box>
             )}
             {uniqueRoles.map((role) => {
@@ -197,7 +199,7 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
                   <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                       {ROLE_LABELS[role] ?? role}
-                      <Chip label={isOverride ? 'Overstyrt' : 'Default'} size="small"
+                      <Chip label={isOverride ? t('tabAccess.overridden') : 'Default'} size="small"
                             color={isOverride ? 'primary' : 'default'}
                             sx={{ ml: 1, height: 18 }} />
                     </Typography>
@@ -205,7 +207,7 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
                       <Button size="small" startIcon={<RestartAlt />}
                               disabled={saving === key}
                               onClick={() => handleReset('role', role)}>
-                        Tilbakestill
+                        {t('tabAccess.reset')}
                       </Button>
                     )}
                   </Stack>
@@ -224,7 +226,7 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
           <Stack divider={<Divider />}>
             {config.members.length === 0 && (
               <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                <Typography>Ingen team-medlemmer ennå.</Typography>
+                <Typography>{t('tabAccess.noMembers')}</Typography>
               </Box>
             )}
             {config.members.map((m) => {
@@ -238,19 +240,19 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
-                        {m.displayName ?? m.email ?? '(uten navn)'}
+                        {m.displayName ?? m.email ?? t('tabAccess.noName')}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {m.role ? (ROLE_LABELS[m.role] ?? m.role) : 'Uten rolle'}
+                        {m.role ? (ROLE_LABELS[m.role] ?? m.role) : t('tabAccess.noRole')}
                         {' · '}
-                        {isOverride ? 'Personlig overstyring' : 'Følger rolle-default'}
+                        {isOverride ? t('tabAccess.personalOverride') : t('tabAccess.followsRoleDefault')}
                       </Typography>
                     </Box>
                     {isOverride && (
                       <Button size="small" startIcon={<RestartAlt />}
                               disabled={saving === key}
                               onClick={() => handleReset('user', m.userId)}>
-                        Tilbakestill
+                        {t('tabAccess.reset')}
                       </Button>
                     )}
                   </Stack>
@@ -272,19 +274,20 @@ export function ProjectTabAccessDialog({ open, onClose, projectId }: ProjectTabA
 // ── Underkomponenter ────────────────────────────────────────────────────
 
 function AccessLegend() {
+  const { t } = useT();
   return (
     <Stack direction="row" spacing={2} sx={{ color: 'text.secondary' }}>
       <Stack direction="row" spacing={0.5} alignItems="center">
         <VisibilityOff sx={{ fontSize: 16 }} />
-        <Typography variant="caption">Skjult</Typography>
+        <Typography variant="caption">{t('tabAccess.hidden')}</Typography>
       </Stack>
       <Stack direction="row" spacing={0.5} alignItems="center">
         <Visibility sx={{ fontSize: 16 }} />
-        <Typography variant="caption">Se (les)</Typography>
+        <Typography variant="caption">{t('tabAccess.viewRead')}</Typography>
       </Stack>
       <Stack direction="row" spacing={0.5} alignItems="center">
         <EditNote sx={{ fontSize: 16 }} />
-        <Typography variant="caption">Administrere (skriv)</Typography>
+        <Typography variant="caption">{t('tabAccess.manageWrite')}</Typography>
       </Stack>
     </Stack>
   );
@@ -295,10 +298,11 @@ function TabAccessMatrix({ access, onSetLevel, disabled }: {
   onSetLevel: (tabKey: string, level: TabAccessState) => void;
   disabled?: boolean;
 }) {
+  const { t } = useT();
   return (
     <Stack spacing={1.25}>
       {CLUSTER_ORDER.map((cluster) => {
-        const tabs = STUDIO_TABS.filter((t) => t.cluster === cluster);
+        const tabs = STUDIO_TABS.filter((td) => td.cluster === cluster);
         if (tabs.length === 0) return null;
         return (
           <Box key={cluster}>
@@ -311,33 +315,33 @@ function TabAccessMatrix({ access, onSetLevel, disabled }: {
               gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
               columnGap: 2, rowGap: 0.5,
             }}>
-              {tabs.map((t) => {
+              {tabs.map((td) => {
                 const level: TabAccessState =
-                  access[t.key] === 'manage' ? 'manage'
-                  : access[t.key] === 'view' ? 'view' : 'hidden';
+                  access[td.key] === 'manage' ? 'manage'
+                  : access[td.key] === 'view' ? 'view' : 'hidden';
                 return (
-                  <Stack key={t.key} direction="row" alignItems="center"
+                  <Stack key={td.key} direction="row" alignItems="center"
                          justifyContent="space-between" spacing={1}
                          sx={{ py: 0.25 }}>
                     <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
-                      {t.label}
+                      {td.label}
                     </Typography>
                     <ToggleButtonGroup
                       exclusive
                       size="small"
                       value={level}
                       disabled={disabled}
-                      onChange={(_, v) => { if (v) onSetLevel(t.key, v as TabAccessState); }}
+                      onChange={(_, v) => { if (v) onSetLevel(td.key, v as TabAccessState); }}
                       sx={{ '& .MuiToggleButton-root': { px: 0.75, py: 0.25, border: '1px solid rgba(0,0,0,0.12)' } }}
                     >
-                      <ToggleButton value="hidden" aria-label="Skjult">
-                        <Tooltip title="Skjult"><VisibilityOff sx={{ fontSize: 16 }} /></Tooltip>
+                      <ToggleButton value="hidden" aria-label={t('tabAccess.hidden')}>
+                        <Tooltip title={t('tabAccess.hidden')}><VisibilityOff sx={{ fontSize: 16 }} /></Tooltip>
                       </ToggleButton>
-                      <ToggleButton value="view" aria-label="Se">
-                        <Tooltip title="Se (les)"><Visibility sx={{ fontSize: 16 }} /></Tooltip>
+                      <ToggleButton value="view" aria-label={t('tabAccess.view')}>
+                        <Tooltip title={t('tabAccess.viewRead')}><Visibility sx={{ fontSize: 16 }} /></Tooltip>
                       </ToggleButton>
-                      <ToggleButton value="manage" aria-label="Administrere">
-                        <Tooltip title="Administrere (skriv)"><EditNote sx={{ fontSize: 16 }} /></Tooltip>
+                      <ToggleButton value="manage" aria-label={t('tabAccess.manage')}>
+                        <Tooltip title={t('tabAccess.manageWrite')}><EditNote sx={{ fontSize: 16 }} /></Tooltip>
                       </ToggleButton>
                     </ToggleButtonGroup>
                   </Stack>

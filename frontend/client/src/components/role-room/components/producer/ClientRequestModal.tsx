@@ -31,6 +31,7 @@ import {
   generateClientOnboardingTemplate,
   type DataSourcePlatformKey,
 } from '../../utils/dataSourceClientOnboarding';
+import { useT } from '../../../../i18n';
 
 export type ClientRequestKind =
   | 'data_source_access'
@@ -67,14 +68,6 @@ export interface ClientRequestModalProps {
   onCreated?: (requestId: string) => void;
 }
 
-const KIND_LABELS: Record<ClientRequestKind, string> = {
-  data_source_access: 'Datakilde-tilgang',
-  brand_assets: 'Brand-assets',
-  kpi_baseline: 'KPI-baseline',
-  approval: 'Godkjenning',
-  general_info: 'Generell informasjon',
-};
-
 const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
   open,
   onClose,
@@ -83,14 +76,26 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
   contextArea,
   contextKey,
   platformKey,
-  marketerName = 'Markedsfører',
+  marketerName: marketerNameProp,
   marketerEmail = '',
-  companyName = 'bedriften din',
+  companyName: companyNameProp,
   bookingUrl,
   defaultClientEmail = '',
   defaultClientName = '',
   onCreated,
 }) => {
+  const { t } = useT();
+  const marketerName = marketerNameProp ?? t('clientReq.defaultMarketerName');
+  const companyName = companyNameProp ?? t('clientReq.defaultCompanyName');
+
+  const kindLabels = useMemo<Record<ClientRequestKind, string>>(() => ({
+    data_source_access: t('clientReq.kind.dataSourceAccess'),
+    brand_assets: t('clientReq.kind.brandAssets'),
+    kpi_baseline: t('clientReq.kind.kpiBaseline'),
+    approval: t('clientReq.kind.approval'),
+    general_info: t('clientReq.kind.generalInfo'),
+  }), [t]);
+
   const template = useMemo(() => {
     if (!platformKey) return null;
     return generateClientOnboardingTemplate(platformKey, {
@@ -111,22 +116,22 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    setTitle(template?.emailSubject ?? `Forespørsel om ${KIND_LABELS[kind].toLowerCase()}`);
+    setTitle(template?.emailSubject ?? t('clientReq.titleFallback', { kind: kindLabels[kind].toLowerCase() }));
     setBodyMarkdown(template?.emailBody ?? '');
     setClientEmail(defaultClientEmail);
     setClientName(defaultClientName);
     setIncludeBookingLink(Boolean(bookingUrl));
     setError(null);
     setSuccess(null);
-  }, [open, template, kind, defaultClientEmail, defaultClientName, bookingUrl]);
+  }, [open, template, kind, defaultClientEmail, defaultClientName, bookingUrl, t, kindLabels]);
 
   const handleSubmit = async (): Promise<void> => {
     if (!clientEmail.trim()) {
-      setError('Klientens e-postadresse må fylles ut.');
+      setError(t('clientReq.error.clientEmailRequired'));
       return;
     }
     if (!title.trim() || !bodyMarkdown.trim()) {
-      setError('Tittel og melding kan ikke være tomme.');
+      setError(t('clientReq.error.titleAndBodyRequired'));
       return;
     }
     setSubmitting(true);
@@ -146,16 +151,18 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
         bookingUrl: includeBookingLink ? bookingUrl ?? null : null,
       });
       if (!result) {
-        setError('Forespørsel kunne ikke opprettes. Sjekk e-postadressen og prøv igjen.');
+        setError(t('clientReq.error.createFailed'));
         return;
       }
       const id = String(result.request?.id ?? '');
       if (result.emailSent) {
-        setSuccess(`Forespørsel sendt til ${clientEmail.trim()}`);
+        setSuccess(t('clientReq.success.emailSent', { email: clientEmail.trim() }));
       } else if (result.emailReason === 'missing_email_config') {
-        setSuccess(`Forespørselen ble lagret in-app. E-post kunne ikke sendes (Gmail SMTP er ikke konfigurert).`);
+        setSuccess(t('clientReq.success.savedNoEmailConfig'));
+      } else if (result.emailReason) {
+        setSuccess(t('clientReq.success.savedEmailFailedWithReason', { reason: result.emailReason }));
       } else {
-        setSuccess(`Forespørselen ble lagret in-app, men e-postutsending feilet${result.emailReason ? `: ${result.emailReason}` : ''}.`);
+        setSuccess(t('clientReq.success.savedEmailFailed'));
       }
       onCreated?.(id);
       setTimeout(() => { onClose(); }, 1400);
@@ -175,10 +182,10 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Stack spacing={0.2}>
           <Typography sx={{ fontWeight: 800 }}>
-            Be klienten om {KIND_LABELS[kind].toLowerCase()}
+            {t('clientReq.dialogTitle', { kind: kindLabels[kind].toLowerCase() })}
           </Typography>
           <Typography sx={{ fontSize: '0.78rem', color: 'rgba(226,232,240,0.6)' }}>
-            Sender e-post + lagrer i in-app tråd. Klienten kan svare uten å logge inn.
+            {t('clientReq.dialogSubtitle')}
           </Typography>
         </Stack>
         <IconButton onClick={onClose} disabled={submitting} sx={{ color: '#cbd5e1' }}>
@@ -194,22 +201,22 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
               sx={{ bgcolor: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}
             >
               <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, mb: 0.4 }}>
-                Du venter på følgende fra klienten:
+                {t('clientReq.waitingForClient')}
               </Typography>
               {template.expectedReturnData.map((r, i) => (
                 <Typography key={i} sx={{ fontSize: '0.78rem' }}>
-                  • <strong>{r.field}</strong> — f.eks. <code>{r.example}</code>
+                  • <strong>{r.field}</strong> — {t('clientReq.egLabel')} <code>{r.example}</code>
                 </Typography>
               ))}
               <Typography sx={{ fontSize: '0.72rem', mt: 0.4, opacity: 0.8 }}>
-                Estimert klient-tid: {template.estimatedMinutes} min
+                {t('clientReq.estimatedClientTime', { min: template.estimatedMinutes })}
               </Typography>
             </Alert>
           ) : null}
 
           <Stack direction="row" spacing={1.2}>
             <TextField
-              label="Klientens navn"
+              label={t('clientReq.field.clientName')}
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
               fullWidth
@@ -217,7 +224,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
               sx={textFieldSx}
             />
             <TextField
-              label="Klientens e-post"
+              label={t('clientReq.field.clientEmail')}
               value={clientEmail}
               onChange={(e) => setClientEmail(e.target.value)}
               required
@@ -229,7 +236,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
           </Stack>
 
           <TextField
-            label="Tittel (også e-post-subject)"
+            label={t('clientReq.field.title')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             fullWidth
@@ -238,7 +245,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
           />
 
           <TextField
-            label="Melding til klienten"
+            label={t('clientReq.field.message')}
             value={bodyMarkdown}
             onChange={(e) => setBodyMarkdown(e.target.value)}
             fullWidth
@@ -246,7 +253,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
             minRows={10}
             maxRows={22}
             variant="outlined"
-            helperText="Markdown støttes. Klienten får denne som e-post + en lenke for å svare direkte i nettleser uten innlogging."
+            helperText={t('clientReq.field.messageHelperText')}
             sx={textFieldSx}
           />
 
@@ -258,12 +265,12 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
                 onChange={(e) => setIncludeBookingLink(e.target.checked)}
               />
               <Typography sx={{ fontSize: '0.84rem', color: 'rgba(226,232,240,0.85)' }}>
-                Legg ved booking-lenke: <code>{bookingUrl}</code>
+                {t('clientReq.includeBookingLinkLabel')} <code>{bookingUrl}</code>
               </Typography>
             </Stack>
           ) : (
             <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.5)' }}>
-              Tips: Legg inn en Calendly/Cal.com-URL i prosjekt-config for å tilby klienten en booking-lenke automatisk.
+              {t('clientReq.bookingUrlTip')}
             </Typography>
           )}
 
@@ -282,7 +289,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={submitting} sx={{ color: '#cbd5e1', textTransform: 'none' }}>
-          Avbryt
+          {t('clientReq.cancel')}
         </Button>
         <Button
           onClick={() => void handleSubmit()}
@@ -297,7 +304,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
             '&:hover': { bgcolor: '#06b6d4' },
           }}
         >
-          {submitting ? 'Sender…' : 'Send forespørsel'}
+          {submitting ? t('clientReq.submitting') : t('clientReq.submit')}
         </Button>
       </DialogActions>
     </Dialog>

@@ -9,6 +9,8 @@ import {
   Typography,
   Button,
   IconButton,
+  Switch,
+  FormControlLabel,
   TextField,
   Select,
   Menu,
@@ -133,21 +135,6 @@ const DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT: ManuscriptCoverFocalPoint = { x: 50,
 const clampCoverFocalPointValue = (value: number): number => Math.max(0, Math.min(100, value));
 const normalizeProjectKey = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
 
-// Trekker ut normaliserte scene-headinger fra Fountain-tekst. Brukes til å
-// oppdage at DB-scenene er ute av synk med manuset (ulik sekvens av headinger).
-const SCENE_HEADING_DETECT_RE = /^(\.)?((?:INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s])/i;
-const extractFountainSceneHeadings = (content: string | undefined): string[] => {
-  if (!content) return [];
-  const out: string[] = [];
-  for (const raw of content.split('\n')) {
-    const line = raw.trim();
-    if (SCENE_HEADING_DETECT_RE.test(line)) {
-      out.push(line.replace(/^\./, '').trim().toUpperCase().replace(/\s+/g, ' '));
-    }
-  }
-  return out;
-};
-
 const getManuscriptCoverFocalPoint = (manuscript: Manuscript | null | undefined): ManuscriptCoverFocalPoint => {
   const raw = manuscript?.coverFocalPoint;
   if (typeof raw !== 'object' || raw === null) {
@@ -183,9 +170,6 @@ const manuscriptBelongsToProject = (manuscript: Manuscript, projectId: string | 
   if (!projectId) return true;
   return normalizeProjectKey(manuscript.projectId) === normalizeProjectKey(projectId);
 };
-
-const EXAMPLE_PROJECT_NOTICE =
-  'Dette er et eksempelprosjekt. Manuskriptet er fiktivt og brukes kun til demo/opplæring i The Role Room. Ikke publiser eller bruk innholdet kommersielt uten avklart rettighetsgrunnlag.';
 
 const getResponsiveValues = (tier: ScreenTier) => {
   const values = {
@@ -478,6 +462,56 @@ import { generateSuggestions } from '../services/aiSuggestionsClient';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 import type { StoryArcNavigationFocus } from '../utils/storyArcFocus';
+import { useT, type TranslationKey } from '../../../i18n';
+
+// Lokalisert, uppercased status-etikett for manus-pillen. Ukjent status → rå uppercase.
+const MANUSCRIPT_STATUS_KEYS: Record<string, TranslationKey> = {
+  draft: 'status.draft', review: 'status.review', approved: 'status.approved',
+  shooting: 'status.shooting', completed: 'status.completed',
+};
+function manuscriptStatusLabel(status: string | undefined, t: (k: TranslationKey) => string): string {
+  const s = (status ?? 'draft').toLowerCase();
+  const key = MANUSCRIPT_STATUS_KEYS[s];
+  return key ? t(key).toUpperCase() : (status ?? 'draft').toUpperCase();
+}
+
+// Delt tid-of-day-normalisering (norsk → enum). Brukes av begge parse-veiene
+// (handleParseToScenes + handleAutoBreakdown). Faller tilbake til DAY.
+function normalizeTimeOfDay(raw?: string): SceneBreakdown['timeOfDay'] {
+  const t = (raw || '').toUpperCase().replace(/\.$/, '').trim();
+  const nb: Record<string, NonNullable<SceneBreakdown['timeOfDay']>> = {
+    KVELD: 'EVENING', NATT: 'NIGHT', DAG: 'DAY', MORGEN: 'MORNING',
+    DEMRING: 'DAWN', GRYNING: 'DAWN', SKUMRING: 'DUSK',
+    KONTINUERLIG: 'CONTINUOUS', SENERE: 'LATER', SAME: 'CONTINUOUS',
+  };
+  return nb[t] ?? ((t || 'DAY') as SceneBreakdown['timeOfDay']);
+}
+
+// Robust scene-heading-parse: deler på bindestrek OG tankestrek (- – —), og leser
+// tid-of-day på både norsk og engelsk. Returnerer null hvis linja ikke er en heading.
+function parseSceneHeadingLine(
+  line: string,
+): { intExt: SceneBreakdown['intExt']; location: string; timeOfDay: SceneBreakdown['timeOfDay'] } | null {
+  const m = line
+    .trim()
+    .match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|KVELD|NATT|DAG|MORGEN|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE)\.?)?$/i);
+  if (!m) return null;
+  const raw = m[1].toUpperCase();
+  const intExt: SceneBreakdown['intExt'] =
+    raw.startsWith('INT/') || raw === 'I/E' ? 'INT/EXT' : raw.startsWith('EXT') || raw === 'EST' ? 'EXT' : 'INT';
+  return { intExt, location: (m[2] || '').trim(), timeOfDay: normalizeTimeOfDay(m[3]) };
+}
+
+// Norsk visningstekst for scene-status (enum-verdien beholdes uendret i data).
+function sceneStatusLabel(status: string | undefined, t: (k: TranslationKey) => string): string {
+  switch (status) {
+    case 'not-scheduled': return t('mscript.statusNotScheduled');
+    case 'scheduled': return t('mscript.statusScheduled');
+    case 'in-progress': return t('mscript.statusInProgress');
+    case 'completed': return t('mscript.statusCompleted');
+    default: return status || '—';
+  }
+}
 
 interface ManuscriptPanelProps {
   projectId?: string;
@@ -487,6 +521,10 @@ interface ManuscriptPanelProps {
   onManuscriptChange?: (manuscript: Manuscript) => void;
   storyLogicData?: StoryLogicState | null;
   headerLeftContent?: React.ReactNode;
+  // Primitiv-nøkkel som endres når headerLeftContent-innholdet endres (f.eks. språk).
+  // React.memo-komparatoren ignorerer JSX-noden (ny ref hver render), så uten denne
+  // ville en språkendring i headerLeftContent aldri nå det memoiserte panelet.
+  headerLeftContentKey?: string | number;
   onStoryArcFocusChange?: (focus?: StoryArcNavigationFocus | null) => void;
   onUnsavedStateChange?: (hasUnsaved: boolean, reason?: string) => void;
   /**
@@ -559,6 +597,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   const hasProjectContext = Boolean(projectId);
   
+  const { t } = useT();
+
   // Dirty tracking to prevent circular saves and unnecessary re-renders
   const isDirtyRef = useRef(false);
   const lastSavedContentRef = useRef<string>('');
@@ -635,6 +675,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     return (key && memberNameMapRef.current[key]) || key || 'En annen i teamet';
   };
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [manuscriptMenuAnchor, setManuscriptMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
@@ -745,8 +786,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         const scene = scenes.find((s) => s.id === targetSceneId);
         if (scene) setSelectedScene(scene);
       }
+      // Rute hver tråd dit hensikten hører hjemme:
+      //  - skrive-tråder (fortsett/begynn å skrive) → EDITOR (skriveflaten)
+      //  - planlegging (uplanlagte scener) → PRODUKSJON
+      //  - gjennomgang (gamle utkast) → SCENER
       if (thread.type === 'unscheduled') {
         setActiveTab('production');
+      } else if (thread.type === 'last-edited' || thread.type === 'empty-scaffold') {
+        setActiveTab('editor');
       } else {
         setActiveTab('scenes');
       }
@@ -941,7 +988,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         duration: 2800,
       });
     } catch (error) {
-      showError('Feil ved lasting av manuskripter');
+      showError(t('mscript.errLoadManuscripts'));
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -953,7 +1000,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       const response = await manuscriptService.getScenes(manuscriptId);
       setScenes(response);
     } catch (error) {
-      showError('Feil ved lasting av scener');
+      showError(t('mscript.errLoadScenes'));
       console.error(error);
     }
   };
@@ -963,7 +1010,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       const response = await manuscriptService.getActs(manuscriptId);
       setActs(response);
     } catch (error) {
-      showError('Feil ved lasting av akter');
+      showError(t('mscript.errLoadActs'));
       console.error(error);
     }
   };
@@ -973,7 +1020,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       const response = await manuscriptService.getDialogue(manuscriptId);
       setDialogueLines(response);
     } catch (error) {
-      showError('Feil ved lasting av dialog');
+      showError(t('mscript.errLoadDialogue'));
       console.error(error);
     }
   };
@@ -983,7 +1030,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       const response = await manuscriptService.getRevisions(manuscriptId);
       setRevisions(response);
     } catch (error) {
-      showError('Feil ved lasting av revisjoner');
+      showError(t('mscript.errLoadRevisions'));
       console.error(error);
     }
   };
@@ -993,7 +1040,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // anvendte endringen faktisk blir synlig — i stedet for at kortet bare
   // forsvinner uten effekt.
   const handleSuggestionAccepted = (_suggestion: AISuggestion): void => {
-    showSuccess('AI-forslag godtatt og brukt på manuset');
+    showSuccess(t('mscript.suggestionAccepted'));
     const manuscriptId = selectedManuscript?.id;
     if (manuscriptId) {
       void loadScenes(manuscriptId);
@@ -1014,7 +1061,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const handleBackToManuscriptList = (): void => {
     if (manuscriptSaveStatus !== 'saved') {
       const ok = typeof window !== 'undefined' && typeof window.confirm === 'function'
-        ? window.confirm('Du har ulagrede endringer i dette utkastet. Gå til utkast-oversikten likevel?')
+        ? window.confirm(t('mscript.confirmUnsavedBackToList'))
         : true;
       if (!ok) return;
     }
@@ -1046,11 +1093,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      showSuccess('Tilkoblet nettverk');
+      showSuccess(t('mscript.online'));
     };
     const handleOffline = () => {
       setIsOnline(false);
-      showWarning('Frakoblet - arbeider i offline-modus');
+      showWarning(t('mscript.offline'));
     };
     
     window.addEventListener('online', handleOnline);
@@ -1124,8 +1171,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           });
           showWarning(
             lockErr.lockedBy
-              ? `${resolveMemberName(lockErr.lockedBy)} redigerer dette manuset nå. Endringene dine lagres ikke før låsen frigis.`
-              : 'En annen i teamet redigerer dette manuset nå.',
+              ? t('mscript.lockWarnNamed', { name: resolveMemberName(lockErr.lockedBy) })
+              : t('mscript.lockWarnGeneric'),
           );
         }
       }
@@ -1259,7 +1306,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   const handleCreateManuscript = async () => {
     if (!newManuscript.title.trim()) {
-      showWarning('Vennligst fyll inn tittel');
+      showWarning(t('mscript.pleaseEnterTitle'));
       return;
     }
 
@@ -1332,15 +1379,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       });
       showSuccess(
         selectedTemplate && selectedTemplate.beats.length > 0
-          ? `Manuskript opprettet med ${selectedTemplate.beats.length} scene-slot fra "${selectedTemplate.name}"`
-          : 'Manuskript opprettet',
+          ? t('mscript.manuscriptCreatedWithScaffold', { count: selectedTemplate.beats.length, name: selectedTemplate.name })
+          : t('mscript.manuscriptCreated'),
       );
 
       if (onManuscriptChange) {
         onManuscriptChange(createdManuscript);
       }
     } catch (error) {
-      showError('Feil ved opprettelse av manuskript');
+      showError(t('mscript.errCreateManuscript'));
       console.error(error);
     }
   };
@@ -1370,33 +1417,22 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       setLastManuscriptSaved(new Date(persistedTimestamp));
       setManuscriptSaveStatus('saved');
       
-      showSuccess('Manuskript lagret');
+      showSuccess(t('mscript.manuscriptSaved'));
       
       if (onManuscriptChange) {
         onManuscriptChange(manuscriptToPersist);
       }
     } catch (error) {
       setManuscriptSaveStatus('error');
-      showError('Feil ved lagring av manuskript');
+      showError(t('mscript.errSaveManuscript'));
       console.error(error);
     }
   };
 
-  // Er DB-scenene ute av synk med manuset? (Ulik sekvens av scene-headinger.)
-  // Stateless: sammenligner Fountain-headinger mot scene-listas headinger.
-  const scenesOutOfSync = useMemo(() => {
-    if (!selectedManuscript || scenes.length === 0) return false;
-    const contentHeadings = extractFountainSceneHeadings(selectedManuscript.content);
-    if (contentHeadings.length === 0) return false;
-    const sceneHeadings = scenes.map((s) => (s.sceneHeading || s.heading || '').trim().toUpperCase().replace(/\s+/g, ' '));
-    if (contentHeadings.length !== sceneHeadings.length) return true;
-    return contentHeadings.some((h, i) => h !== sceneHeadings[i]);
-  }, [selectedManuscript, scenes]);
-
   const handleAutoBreakdown = async () => {
     if (!selectedManuscript) return;
     if (!autoBreakdownEnabled) {
-      showWarning('Auto Breakdown er slått av. Aktiver bryteren for å kjøre.');
+      showWarning(t('mscript.autoBreakdownOffRun'));
       return;
     }
 
@@ -1411,8 +1447,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       let sceneNumber = 1;
       let currentScene: Partial<SceneBreakdown> | null = null;
       let currentCharacters: string[] = [];
-      const validSceneTimesOfDay = ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER', 'MORNING', 'EVENING'] as const;
-      type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -1432,28 +1466,21 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             currentCharacters = [];
           }
 
-          // Parse new scene heading
-          const parts = line.split('-').map(p => p.trim());
-          const intExt = parts[0].startsWith('INT') ? 'INT' : 'EXT';
-          const location = parts[0].replace(/^(INT\.|EXT\.)\s*/i, '');
-          const timeRaw = parts[1] || 'DAY';
-          const timeOfDay: SceneTimeOfDay =
-            validSceneTimesOfDay.includes(timeRaw.toUpperCase() as SceneTimeOfDay)
-              ? timeRaw.toUpperCase() as SceneTimeOfDay
-              : 'DAY';
-
+          // Parse new scene heading (robust: bindestrek/tankestrek + norsk/engelsk tid)
+          const parsed = parseSceneHeadingLine(line);
           currentScene = {
             sceneHeading: line,
-            intExt,
-            locationName: location,
-            timeOfDay,
+            intExt: parsed?.intExt ?? (line.toUpperCase().startsWith('INT') ? 'INT' : 'EXT'),
+            locationName: parsed?.location ?? line.replace(/^(INT\.|EXT\.)\s*/i, ''),
+            timeOfDay: parsed?.timeOfDay ?? 'DAY',
             estimatedDuration: 3,
           };
           sceneNumber++;
         }
         
-        // Character name detection (ALL CAPS)
-        else if (line === line.toUpperCase() && line.length > 0 && line.length < 30 && !line.match(/^(FADE|CUT)/)) {
+        // Character name detection (ALL CAPS) — ekskluder overganger på norsk OG
+        // engelsk (KLIPP TIL SVART., CUT TO:, TONE UT, OVERGANG …) så de ikke blir karakterer.
+        else if (line === line.toUpperCase() && line.length > 0 && line.length < 30 && !line.match(/^(FADE|CUT|KLIPP|TONE|OVERGANG|SMASH|MATCH|DISSOLVE|INTERCUT)\b/i) && !line.endsWith(':')) {
           const characterName = line.replace(/\(.*\)/, '').trim();
           if (characterName && !currentCharacters.includes(characterName)) {
             currentCharacters.push(characterName);
@@ -1544,11 +1571,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       // Antall scener der vi gjenbrukte (matchet) en eksisterende scene.
       const reusedCount = Array.from(autoIdToFinalId.entries()).filter(([autoId, finalId]) => autoId !== finalId).length;
       showSuccess(
-        `Automatisk breakdown fullført: ${mergedScenes.length} scener, ${uniqueCharacters.length} karakterer`
-        + (reusedCount > 0 ? ` · beholdt produksjonsdata for ${reusedCount} eksisterende scene${reusedCount === 1 ? '' : 'r'}` : ''),
+        t('mscript.autoBreakdownDone', { scenes: mergedScenes.length, characters: uniqueCharacters.length })
+        + (reusedCount > 0 ? t('mscript.autoBreakdownReused', { count: reusedCount, sceneWord: reusedCount === 1 ? t('mscript.sceneWordSingular') : t('mscript.sceneWordPlural') }) : ''),
       );
     } catch (error) {
-      showError('Feil ved automatisk breakdown');
+      showError(t('mscript.errAutoBreakdown'));
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -1574,10 +1601,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       );
 
       showSuccess(
-        `Eksportert som JSON: ${acts.length} akter · ${scenes.length} scener · ${characterList.length} karakterer · ${revisions.length} revisjoner`,
+        t('mscript.exportedJson', { acts: acts.length, scenes: scenes.length, characters: characterList.length, revisions: revisions.length }),
       );
     } catch (error) {
-      showError('Feil ved eksport');
+      showError(t('mscript.errExport'));
       console.error(error);
     }
   };
@@ -1606,10 +1633,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      showSuccess(format === 'fdx' ? 'Eksportert som Final Draft (FDX)' : 'Eksportert som Fountain');
+      showSuccess(format === 'fdx' ? t('mscript.exportedFdx') : t('mscript.exportedFountain'));
     } catch (error) {
       console.error('Screenplay export failed:', error);
-      showError('Kunne ikke eksportere manuset i dette formatet. Prøv igjen.');
+      showError(t('mscript.errExportFormat'));
     }
   };
 
@@ -1630,9 +1657,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         restored.manuscript,
       ]);
 
-      showSuccess('Manuskript importert og klar for bruk');
+      showSuccess(t('mscript.manuscriptImported'));
     } catch (error) {
-      showError('Feil ved import');
+      showError(t('mscript.errImport'));
       console.error(error);
     }
   };
@@ -1660,9 +1687,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         .then(created => {
           setManuscripts([...manuscripts, created]);
           setSelectedManuscript(created);
-          showSuccess(`Mal "${template.name}" brukt`);
+          showSuccess(t('mscript.templateApplied', { name: template.name }));
         })
-        .catch(() => showError('Feil ved bruk av mal'));
+        .catch(() => showError(t('mscript.errApplyTemplate')));
     } else {
       // Apply to existing manuscript
       const updatedContent = manuscriptTemplateService.applyTemplate(
@@ -1680,7 +1707,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       pendingContentRef.current = updatedContent;
       isDirtyRef.current = true;
       setManuscriptSaveStatus('unsaved');
-      showSuccess(`Mal "${template.name}" satt inn`);
+      showSuccess(t('mscript.templateInserted', { name: template.name }));
     }
   };
   const scheduleAutoCreatedEntitiesToast = useCallback(() => {
@@ -1695,13 +1722,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
       const messageParts: string[] = [];
       if (roleNames.length > 0) {
-        messageParts.push(`Roller: ${roleNames.join(', ')}`);
+        messageParts.push(t('mscript.autoCreatedRoles', { names: roleNames.join(', ') }));
       }
       if (locationNames.length > 0) {
-        messageParts.push(`Lokasjoner: ${locationNames.join(', ')}`);
+        messageParts.push(t('mscript.autoCreatedLocations', { names: locationNames.join(', ') }));
       }
 
-      showSuccess(`Auto-opprettet fra manus. ${messageParts.join(' | ')}`);
+      showSuccess(t('mscript.autoCreatedFromScript', { parts: messageParts.join(' | ') }));
       autoCreatedRoleNamesRef.current.clear();
       autoCreatedLocationNamesRef.current.clear();
       autoCreatedToastTimerRef.current = null;
@@ -1744,7 +1771,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       const newRole: Role = {
         id: `role-${Date.now()}`,
         name: normalizedName,
-        description: `Character from screenplay`,
+        description: `Karakter fra manuskriptet`,
         requirements: {},
         status: 'draft',
       };
@@ -1775,7 +1802,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         name: normalizedName,
         type: 'indoor', // Default
         address: '',
-        notes: 'Location from screenplay',
+        notes: 'Lokasjon fra manuskriptet',
         availability: {},
         assignedScenes: [],
         createdAt: new Date().toISOString(),
@@ -1805,6 +1832,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     pendingContentRef.current = content;
     isDirtyRef.current = true;
     setManuscriptSaveStatus((previous) => (previous === 'unsaved' ? previous : 'unsaved'));
+
+    // Skjul «Hvor du var»-banneret så snart man begynner å skrive → mer skriveplass.
+    // Funksjonell oppdatering leser fersk state og skriver kun én gang (ingen re-render
+    // eller lagrings-skriv hvis allerede skjult).
+    setResumeDismissedMap((prev) => {
+      const mid = selectedManuscriptRef.current?.id;
+      if (mid && !prev[mid]) { dismissResumeBanner(mid); return { ...prev, [mid]: true }; }
+      return prev;
+    });
     
     // Debounce the save to avoid constant saves while typing
     if (autoSaveTimerRef.current) {
@@ -1866,8 +1902,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           setManuscriptSaveStatus('error');
           showWarning(
             lockErr.lockedBy
-              ? `Manuset redigeres av ${resolveMemberName(lockErr.lockedBy)} akkurat nå — endringene dine er ikke lagret. De beholdes til låsen frigis.`
-              : 'Manuset er låst av en annen i teamet — endringene dine er ikke lagret ennå.',
+              ? t('mscript.lockSaveNamed', { name: resolveMemberName(lockErr.lockedBy) })
+              : t('mscript.lockSaveGeneric'),
           );
           return;
         }
@@ -1892,16 +1928,21 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   // Memoized handler for parsing screenplay content to scenes
   const handleParseToScenes = useCallback((content: string) => {
     if (!autoBreakdownEnabled) {
-      showWarning('Auto Breakdown er deaktivert. Aktiver bryteren først.');
+      showWarning(t('mscript.autoBreakdownOffFirst'));
       return;
     }
     if (!selectedManuscript) {
-      showWarning('Velg et manuskript først.');
+      showWarning(t('mscript.selectManuscriptFirstDot'));
       return;
     }
     // Parse Fountain content to create scenes
     const lines = content.split('\n');
     const newScenes: SceneBreakdown[] = [];
+    // Dialog-linjer parses samtidig, slik at DIALOG-fanen fylles på lik linje
+    // med SCENER/KARAKTERER. Uten dette ga «Parser til Scener» scener+karakterer
+    // men 0 replikker (kun «Auto Breakdown» fylte dialog) — forvirrende for bruker.
+    const newDialogue: DialogueLine[] = [];
+    let currentSpeaker: string | null = null;
     let currentSceneData: {
       heading: string;
       intExt: string;
@@ -1936,46 +1977,78 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     
     lines.forEach((line, lineIndex) => {
       const trimmed = line.trim();
-      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
+      // Skille-tegn: bindestrek, tanke­strek (–) og lang tankestrek (—) — ekte
+      // manus bruker ofte «–». Tid-of-day dekker både engelsk og NORSK (norsk-først).
+      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|KVELD|NATT|DAG|MORGEN|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE)\.?)?$/i);
       
       if (sceneMatch) {
         // Save previous scene
         saveCurrentScene();
-        
+        currentSpeaker = null;
+
         // Start new scene
         currentSceneData = {
           heading: trimmed,
           intExt: sceneMatch[1].toUpperCase().replace('.', '').replace('/', '/'),
           location: sceneMatch[2]?.trim() || '',
-          timeOfDay: sceneMatch[3]?.toUpperCase() || 'DAY',
+          timeOfDay: normalizeTimeOfDay(sceneMatch[3]) || '',
           description: '',
           characters: [],
           lineCount: 0,
         };
       } else if (currentSceneData) {
         currentSceneData.lineCount++;
-        
+
+        // Blank linje avslutter en dialog-blokk (skiller replikk fra påfølgende action).
+        if (trimmed.length === 0) {
+          currentSpeaker = null;
+          return;
+        }
+
         // Check for character names (all caps followed by dialogue)
         const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]+)(\s*\(.*\))?$/);
-        if (characterMatch && lines[lineIndex + 1]?.trim() && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)) {
-          const charName = characterMatch[1].replace(/\s*\(.*\)$/, '').trim();
+        const isCue = !!characterMatch
+          && !!lines[lineIndex + 1]?.trim()
+          && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)
+          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP|TONE|OVERGANG|SMASH|MATCH|DISSOLVE|INTERCUT)\b/i)
+          && !trimmed.endsWith(':');
+        const isParenthetical = /^\(.*\)$/.test(trimmed);
+
+        if (isCue) {
+          const charName = characterMatch![1].replace(/\s*\(.*\)$/, '').trim();
           if (charName.length > 1 && charName.length < 40) {
             currentSceneData.characters.push(charName);
+            currentSpeaker = charName;
           }
+        } else if (isParenthetical) {
+          // Wryly/parentetisk regi — behold gjeldende taler, ikke en replikk.
+        } else if (currentSpeaker) {
+          // Replikk for gjeldende taler.
+          newDialogue.push({
+            id: `dialogue-${newDialogue.length + 1}`,
+            sceneId: `scene-${newScenes.length + 1}`,
+            manuscriptId: selectedManuscript.id,
+            characterName: currentSpeaker,
+            dialogueText: trimmed,
+            dialogueType: 'dialogue' as const,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
     });
-    
+
     // Save final scene
     saveCurrentScene();
-    
-    // Update scenes
+
+    // Update scenes + dialog (parses sammen så DIALOG-fanen samsvarer med SCENER/KARAKTERER)
     setScenes(newScenes);
-    showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);
+    setDialogueLines(newDialogue);
+    showSuccess(t('mscript.parsedScenesDialogue', { scenes: newScenes.length, lines: newDialogue.length }));
   }, [activeProjectId, autoBreakdownEnabled, selectedManuscript, showSuccess, showWarning]);
 
   const handleDeleteManuscript = async (manuscript: Manuscript) => {
-    if (!confirm(`Er du sikker på at du vil slette "${manuscript.title}"?`)) return;
+    if (!confirm(t('mscript.confirmDeleteManuscript', { title: manuscript.title }))) return;
 
     try {
       await manuscriptService.deleteManuscript(manuscript.id);
@@ -1984,9 +2057,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       if (selectedManuscript?.id === manuscript.id) {
         setSelectedManuscript(null);
       }
-      showSuccess('Manuskript slettet');
+      showSuccess(t('mscript.manuscriptDeleted'));
     } catch (error) {
-      showError('Feil ved sletting av manuskript');
+      showError(t('mscript.errDeleteManuscript'));
       console.error(error);
     }
   };
@@ -2081,13 +2154,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   const handleSaveScene = async () => {
     if (!selectedManuscript) {
-      showWarning('Velg et manuskript først');
+      showWarning(t('mscript.selectManuscriptFirst'));
       return;
     }
 
     const heading = sceneForm.sceneHeading.trim();
     if (!heading) {
-      showWarning('Scene heading er påkrevd');
+      showWarning(t('mscript.sceneHeadingRequired'));
       return;
     }
 
@@ -2148,7 +2221,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       if (!selectedScene || selectedScene.id === sceneToSave.id) {
         setSelectedScene({ ...sceneToSave, ...persistedScene });
       }
-      showSuccess(editingScene ? 'Scene oppdatert' : 'Scene opprettet');
+      showSuccess(editingScene ? t('mscript.sceneUpdated') : t('mscript.sceneCreated'));
 
       // Auto-trigger breakdown-agent når scene-tekst endres. Krav:
       //  - eksisterende scene (ikke første gang den opprettes)
@@ -2192,13 +2265,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     } catch (error) {
       console.error('Failed to save scene:', error);
       setScenes(previousScenes);
-      showError('Kunne ikke lagre scene');
+      showError(t('mscript.errSaveScene'));
     }
   };
 
   const handleDeleteScene = async () => {
     if (!editingScene) return;
-    if (!window.confirm(`Er du sikker på at du vil slette scene ${editingScene.sceneNumber ?? ''}?`)) {
+    if (!window.confirm(t('mscript.confirmDeleteScene', { number: editingScene.sceneNumber ?? '' }))) {
       return;
     }
 
@@ -2214,11 +2287,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
     try {
       await manuscriptService.deleteScene(sceneId);
-      showSuccess('Scene slettet');
+      showSuccess(t('mscript.sceneDeleted'));
     } catch (error) {
       console.error('Failed to delete scene:', error);
       setScenes(previousScenes);
-      showError('Kunne ikke slette scene');
+      showError(t('mscript.errDeleteScene'));
     }
   };
 
@@ -2240,9 +2313,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         p: responsive.padding,
       }}>
         <DescriptionIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, opacity: 0.3 }} />
-        <Typography variant="h6" sx={{ fontSize: responsive.headerFontSize }}>Velg et prosjekt</Typography>
+        <Typography variant="h6" sx={{ fontSize: responsive.headerFontSize }}>{t('mscript.selectProject')}</Typography>
         <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 300, fontSize: responsive.bodyFontSize }}>
-          Velg eller opprett et prosjekt fra oversikten for å begynne å skrive manus.
+          {t('mscript.selectProjectBody')}
         </Typography>
       </Box>
     );
@@ -2312,70 +2385,46 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             {selectedManuscript && (
               <>
                 {manuscriptViewers.length > 0 && (
-                  <Tooltip title={`Også her nå: ${manuscriptViewers.map((v) => v.displayName).join(', ')}`}>
+                  <Tooltip title={t('mscript.alsoHereNow', { names: manuscriptViewers.map((v) => v.displayName).join(', ') })}>
                     <Chip
                       size="small"
                       icon={<GroupIcon sx={{ fontSize: 14 }} />}
                       color="info"
                       label={manuscriptViewers.length === 1
-                        ? `${manuscriptViewers[0].displayName} er her`
-                        : `${manuscriptViewers.length} andre her`}
+                        ? t('mscript.viewerHere', { name: manuscriptViewers[0].displayName })
+                        : t('mscript.viewersHere', { count: manuscriptViewers.length })}
                       sx={{ fontSize: responsive.captionFontSize }}
                     />
                   </Tooltip>
                 )}
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleBackToManuscriptList}
-                  title="Tilbake til utkast-oversikten — bytt mellom utkast, gi nytt navn eller opprett nytt"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Utkast' : 'Dine manuskripter'}
-                </Button>
-                <ToggleButton
-                  value="auto-breakdown"
-                  selected={autoBreakdownEnabled}
-                  size={isMobile ? 'small' : 'medium'}
-                  onChange={(_, isEnabled) => {
-                    setAutoBreakdownEnabled(isEnabled);
-                    showInfo(isEnabled ? 'Auto Breakdown aktivert' : 'Auto Breakdown deaktivert');
-                  }}
-                  sx={{
-                    fontSize: responsive.captionFontSize,
-                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
-                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
-                    '&.Mui-selected': {
-                      color: branding.colors.accent,
-                      bgcolor: `${branding.colors.accent}22`,
-                      borderColor: `${branding.colors.accent}88`,
-                    },
-                  }}
-                >
-                  {autoBreakdownEnabled ? 'Auto Breakdown På' : 'Auto Breakdown Av'}
-                </ToggleButton>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleAutoBreakdown}
-                  disabled={isLoading || !autoBreakdownEnabled}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Auto' : 'Auto Breakdown'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <FileDownloadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleExport}
-                  disabled={isLoading}
-                  title="Eksporter hele manuskriptet med produksjondata som JSON"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'JSON' : 'Eksporter JSON'}
-                </Button>
+                {/* «Dine manuskripter» ligger nå i Manuskript-menyen (samlet) */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={autoBreakdownEnabled}
+                      onChange={(_, isEnabled) => {
+                        setAutoBreakdownEnabled(isEnabled);
+                        showInfo(isEnabled ? t('mscript.autoReviewOn') : t('mscript.autoReviewOff'));
+                      }}
+                    />
+                  }
+                  label={<Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>{isMobile ? t('toolbar.autoReviewShort') : t('toolbar.autoReview')}</Typography>}
+                  sx={{ ml: 0, mr: 0.25, userSelect: 'none' }}
+                />
+                <Tooltip title={t('toolbar.runReview')}>
+                  <span>
+                    <IconButton
+                      size={responsive.buttonSize}
+                      onClick={handleAutoBreakdown}
+                      disabled={isLoading || !autoBreakdownEnabled}
+                      sx={{ color: branding.colors.accent }}
+                    >
+                      <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                {/* JSON-eksport ligger nå i Eksporter-menyen under */}
                 <Button
                   variant="outlined"
                   startIcon={!isMobile ? <DescriptionIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
@@ -2383,10 +2432,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   size={responsive.buttonSize}
                   onClick={(e) => setExportMenuAnchor(e.currentTarget)}
                   disabled={isLoading}
-                  title="Eksporter manuset som Fountain eller Final Draft (FDX) for bruk i manus-verktøy"
+                  title={t('mscript.exportTooltip')}
                   sx={{ fontSize: responsive.bodyFontSize }}
                 >
-                  {isMobile ? 'Manus' : 'Eksporter manus'}
+                  {isMobile ? t('toolbar.exportShort') : t('toolbar.export')}
                 </Button>
                 <Menu
                   anchorEl={exportMenuAnchor}
@@ -2395,35 +2444,33 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 >
                   <MenuItem onClick={() => handleExportScreenplay('fountain')}>
                     <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="Fountain (.fountain)" secondary="Åpen tekst-standard for manus" />
+                    <ListItemText primary="Fountain (.fountain)" secondary={t('mscript.fountainDesc')} />
                   </MenuItem>
                   <MenuItem onClick={() => handleExportScreenplay('fdx')}>
                     <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="Final Draft (.fdx)" secondary="For Final Draft og de fleste manus-verktøy" />
+                    <ListItemText primary="Final Draft (.fdx)" secondary={t('mscript.fdxDesc')} />
+                  </MenuItem>
+                  <Divider />
+                  <MenuItem onClick={() => { setExportMenuAnchor(null); handleExport(); }}>
+                    <ListItemIcon><FileDownloadIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText primary={t('mscript.prodDataJson')} secondary={t('mscript.prodDataJsonDesc')} />
                   </MenuItem>
                 </Menu>
-                <Button
-                  variant="contained"
-                  startIcon={!isMobile ? <SaveIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleSaveManuscript}
-                  disabled={isLoading}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  Lagre
-                </Button>
-                {onSendToApproval && (
-                  <Button
-                    variant="outlined"
-                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                    size={responsive.buttonSize}
-                    onClick={onSendToApproval}
-                    title="Send manuset videre til klient-/godkjenningsflaten"
-                    sx={{ fontSize: responsive.bodyFontSize }}
-                  >
-                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
-                  </Button>
-                )}
+                {/* Kun en stille «Lagre nå»-handling — status vises allerede i editoren
+                    (pille-rad «✓ Lagret …» + verktøylinje), så ingen redundant status her. */}
+                <Tooltip title={t('toolbar.saveNowTooltip')}>
+                  <span>
+                    <IconButton
+                      size={responsive.buttonSize}
+                      onClick={handleSaveManuscript}
+                      disabled={isLoading}
+                      aria-label={t('toolbar.saveNow')}
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      <SaveIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
                 {onTargetDurationChange && (() => {
                   const estRuntime = Math.round(selectedManuscript?.pageCount || 0);
                   const target = typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 ? targetDurationMinutes : null;
@@ -2431,10 +2478,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   return (
                     <Tooltip title={
                       target == null
-                        ? 'Sett en mål-lengde for å få varsel når manuset blir for langt/kort'
+                        ? t('mscript.targetTooltipUnset')
                         : deviates
-                          ? `Manuset er ~${estRuntime} min, men målet er ${target} min`
-                          : `Mål-lengde ${target} min (manus ~${estRuntime} min)`
+                          ? t('mscript.targetTooltipDeviates', { est: estRuntime, target })
+                          : t('mscript.targetTooltipOk', { target, est: estRuntime })
                     }>
                       <Chip
                         size="small"
@@ -2442,47 +2489,62 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         color={deviates ? 'warning' : 'default'}
                         variant={target == null ? 'outlined' : 'filled'}
                         onClick={() => { setTargetDraft(target != null ? String(target) : ''); setShowTargetDialog(true); }}
-                        label={target == null ? 'Sett mål-lengde' : `Mål ${target} min`}
+                        label={target == null ? t('toolbar.setTargetLength') : t('toolbar.targetLength', { min: target })}
                         sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
                       />
                     </Tooltip>
                   );
                 })()}
+                <Box sx={{ flexGrow: 1, minWidth: 4 }} />
+                {onSendToApproval && (
+                  <Button
+                    variant="contained"
+                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+                    size={responsive.buttonSize}
+                    onClick={onSendToApproval}
+                    title={t('toolbar.sendApprovalTooltip')}
+                    sx={{ fontSize: responsive.bodyFontSize }}
+                  >
+                    {isMobile ? t('toolbar.sendApprovalShort') : t('toolbar.sendApproval')}
+                  </Button>
+                )}
               </>
             )}
-            <Button
-              variant="outlined"
-              startIcon={!isMobile ? <FileUploadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowImportDialog(true)}
-              title="Importer manuskript fra tidligere eksport"
-              sx={{ fontSize: responsive.bodyFontSize }}
-            >
-              Importer
-            </Button>
+            {/* Manuskript-meny: samler Dine manuskripter / Nytt / Fra mal / Importer */}
             <Button
               variant="outlined"
               startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
+              endIcon={<ArrowDropDownIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
               size={responsive.buttonSize}
-              onClick={() => setShowTemplatePanel(true)}
-              sx={{ 
-                borderColor: `${branding.colors.accent}aa`,
-                color: branding.colors.accent,
-                fontSize: responsive.bodyFontSize,
-                '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` } 
-              }}
-            >
-              Maler
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={!isMobile ? <AddIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowNewManuscriptDialog(true)}
+              onClick={(e) => setManuscriptMenuAnchor(e.currentTarget)}
               sx={{ fontSize: responsive.bodyFontSize }}
             >
-              {isMobile ? 'Nytt' : 'Nytt Manuskript'}
+              {isMobile ? t('toolbar.manuscriptShort') : t('toolbar.manuscript')}
             </Button>
+            <Menu
+              anchorEl={manuscriptMenuAnchor}
+              open={Boolean(manuscriptMenuAnchor)}
+              onClose={() => setManuscriptMenuAnchor(null)}
+            >
+              {selectedManuscript && (
+                <MenuItem onClick={() => { setManuscriptMenuAnchor(null); handleBackToManuscriptList(); }}>
+                  <ListItemIcon><MenuBookIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary={t('menu.yourManuscripts')} secondary={t('menu.yourManuscriptsDesc')} />
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowNewManuscriptDialog(true); }}>
+                <ListItemIcon><AddIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary={t('menu.newManuscript')} />
+              </MenuItem>
+              <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowTemplatePanel(true); }}>
+                <ListItemIcon><MenuBookIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary={t('menu.fromTemplate')} />
+              </MenuItem>
+              <MenuItem onClick={() => { setManuscriptMenuAnchor(null); setShowImportDialog(true); }}>
+                <ListItemIcon><FileUploadIcon fontSize="small" /></ListItemIcon>
+                <ListItemText primary={t('menu.importFile')} secondary={t('menu.importFileDesc')} />
+              </MenuItem>
+            </Menu>
           </Stack>
         </Stack>
         {isLoading && selectedManuscript && (
@@ -2502,32 +2564,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             sx={{ mt: responsive.spacing }}
           >
             {manuscriptLockConflict.lockedBy
-              ? `${memberNameMap[String(manuscriptLockConflict.lockedBy)] || manuscriptLockConflict.lockedBy} redigerer dette manuset nå`
-              : 'En annen i teamet redigerer dette manuset nå'}
+              ? t('mscript.lockAlertNamed', { name: memberNameMap[String(manuscriptLockConflict.lockedBy)] || manuscriptLockConflict.lockedBy })
+              : t('mscript.lockAlertGeneric')}
             {manuscriptLockConflict.lockedAt
-              ? ` (siden ${new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })})`
+              ? t('mscript.lockSince', { time: new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }) })
               : ''}
-            . Endringene dine lagres ikke før låsen frigis — men de beholdes i editoren.
-          </Alert>
-        )}
-
-        {selectedManuscript && scenesOutOfSync && (
-          <Alert
-            severity="info"
-            icon={<WarningAmberIcon fontSize="inherit" />}
-            sx={{ mt: responsive.spacing }}
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                disabled={isLoading || !autoBreakdownEnabled}
-                onClick={handleAutoBreakdown}
-              >
-                Kjør Auto Breakdown
-              </Button>
-            }
-          >
-            Scene-listen er ute av synk med manuset (ulike scene-overskrifter). Kjør Auto Breakdown for å oppdatere — produksjonsdata (storyboard, props) på scener som fortsatt finnes beholdes.
+            {t('mscript.lockAlertSuffix')}
           </Alert>
         )}
 
@@ -2543,7 +2585,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 fontSize: responsive.titleFontSize,
               }}
             >
-              Dine Manuskripter
+              {t('mscript.yourManuscriptsHeading')}
             </Typography>
             <Box
               sx={{
@@ -2615,7 +2657,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                               fontSize: responsive.captionFontSize,
                             }}
                           >
-                            Klikk for å åpne
+                            {t('mscript.clickToOpen')}
                           </Typography>
                         </Box>
                       )}
@@ -2657,13 +2699,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                 };
                                 await manuscriptService.updateManuscript(updatedManuscript);
                                 loadManuscripts();
-                                showSuccess('Cover oppdatert');
+                                showSuccess(t('mscript.coverUpdated'));
                               };
                               reader.readAsDataURL(file);
                             }
                           }}
                         />
-                        <Tooltip title="Last opp cover">
+                        <Tooltip title={t('mscript.uploadCover')}>
                           <IconButton
                             size="small"
                             onClick={(e) => {
@@ -2687,10 +2729,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
                       {/* Status Badge on Cover */}
                       <Chip 
-                        label={manuscript.status === 'shooting' ? 'PRODUKSJON' : 
-                               manuscript.status === 'approved' ? 'GODKJENT' : 
-                               manuscript.status === 'review' ? 'GJENNOMGANG' :
-                               manuscript.status === 'completed' ? 'FULLFØRT' : 'UTKAST'}
+                        label={manuscriptStatusLabel(manuscript.status, t)}
                         size={responsive.chipSize}
                         sx={{
                           position: 'absolute',
@@ -2725,7 +2764,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         >
                           {manuscript.title}
                         </Typography>
-                        <Tooltip title="Rediger manuskript">
+                        <Tooltip title={t('mscript.editManuscript')}>
                           <IconButton
                             size="small"
                             onClick={(e) => {
@@ -2752,7 +2791,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       {isExampleProject && (
                         <Box sx={{ mb: 1.25 }}>
                           <Chip
-                            label="Eksempelprosjekt"
+                            label={t('mscript.exampleProjectBadge')}
                             size={responsive.chipSize}
                             sx={{
                               mb: 0.75,
@@ -2772,7 +2811,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                               fontSize: responsive.captionFontSize,
                             }}
                           >
-                            {EXAMPLE_PROJECT_NOTICE}
+                            {t('mscript.exampleProjectNotice')}
                           </Typography>
                         </Box>
                       )}
@@ -2804,7 +2843,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       >
                         <PersonIcon sx={{ fontSize: responsive.iconSize - 6 }} />
-                        {manuscript.author || 'Ukjent forfatter'}
+                        {manuscript.author || t('mscript.unknownAuthor')}
                       </Typography>
 
                       {/* Stats Row */}
@@ -2822,7 +2861,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <DescriptionIcon sx={{ fontSize: responsive.iconSize - 6, color: branding.colors.primary }} />
                           <Typography variant="caption" sx={{ color: branding.colors.textSecondary, fontWeight: 500, fontSize: responsive.captionFontSize }}>
-                            {manuscript.pageCount || 0} sider
+                            {t('mscript.pagesCount', { count: manuscript.pageCount || 0 })}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -2834,7 +2873,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <SceneIcon sx={{ fontSize: responsive.iconSize - 6, color: branding.colors.primary }} />
                           <Typography variant="caption" sx={{ color: branding.colors.textSecondary, fontWeight: 500, fontSize: responsive.captionFontSize }}>
-                            {manuscript.wordCount || 0} ord
+                            {t('mscript.wordsCount', { count: manuscript.wordCount || 0 })}
                           </Typography>
                         </Box>
                       </Box>
@@ -2856,10 +2895,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                             '&:hover': { bgcolor: branding.colors.secondary },
                           }}
                           endIcon={<ChevronRightIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
-                        >
-                          Åpne
-                        </Button>
-                        <Tooltip title="Slett manuskript">
+                        >{t('mscript.open')}</Button>
+                        <Tooltip title={t('mscript.deleteManuscript')}>
                           <IconButton
                             size="small"
                             onClick={(e) => {
@@ -2897,10 +2934,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           }}>
             <DescriptionIcon sx={{ fontSize: is4K ? 80 : isDesktop ? 64 : 48, color: `${branding.colors.textSecondary}99`, mb: 2 }} />
             <Typography variant="h6" sx={{ color: branding.colors.textPrimary, mb: 1, fontSize: responsive.titleFontSize }}>
-              Ingen manuskripter ennå
+              {t('mscript.noManuscriptsYet')}
             </Typography>
             <Typography variant="body2" sx={{ color: branding.colors.textSecondary, mb: responsive.spacing, fontSize: responsive.bodyFontSize }}>
-              Opprett ditt første manuskript eller importer et eksisterende
+              {t('mscript.noManuscriptsBody')}
             </Typography>
             <Button
               variant="contained"
@@ -2914,7 +2951,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 '&:hover': { bgcolor: branding.colors.secondary },
               }}
             >
-              Opprett nytt manuskript
+              {t('mscript.createNewManuscript')}
             </Button>
           </Box>
         )}
@@ -2937,7 +2974,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 },
               }}
             >
-              <strong>Eksempelprosjekt:</strong> {EXAMPLE_PROJECT_NOTICE}
+              <strong>{t('mscript.exampleProjectLabel')}</strong> {t('mscript.exampleProjectNotice')}
             </Alert>
           )}
 
@@ -2969,19 +3006,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             scrollButtons="auto"
           >
             <Tab 
-              label={responsive.showTabLabels ? "Editor" : ""} 
+              label={responsive.showTabLabels ? t('tabs.editor') : ""}
               value="editor" 
               icon={<EditIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Akter" : ""} 
+              label={responsive.showTabLabels ? t('tabs.acts') : ""}
               value="acts" 
               icon={<MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Scener" : ""} 
+              label={responsive.showTabLabels ? t('tabs.scenes') : ""}
               value="scenes" 
               icon={
                 <Badge color="secondary" badgeContent={sceneStats.total} max={99}>
@@ -2991,7 +3028,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Karakterer" : ""} 
+              label={responsive.showTabLabels ? t('tabs.characters') : ""}
               value="characters" 
               icon={
                 <Badge color="secondary" badgeContent={characterList.length} max={99}>
@@ -3001,7 +3038,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Dialog" : ""} 
+              label={responsive.showTabLabels ? t('tabs.dialogue') : ""}
               value="dialogue" 
               icon={
                 <Badge color="secondary" badgeContent={dialogueLines.length} max={99}>
@@ -3011,13 +3048,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Breakdown" : ""} 
-              value="breakdown" 
+              label={responsive.showTabLabels ? t('tabs.breakdown') : ""}
+              value="breakdown"
               icon={<AssessmentIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Revisjoner" : ""} 
+              label={responsive.showTabLabels ? t('tabs.revisions') : ""}
               value="revisions" 
               icon={
                 <Badge color="secondary" badgeContent={revisions.length} max={99}>
@@ -3027,20 +3064,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Timeline" : ""} 
-              value="timeline" 
+              label={responsive.showTabLabels ? t('tabs.timeline') : ""}
+              value="timeline"
               icon={<TimelineIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Storyboard" : ""} 
+              label={responsive.showTabLabels ? t('tabs.storyboard') : ""}
               value="production" 
               icon={<ViewModuleIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
             <Tab 
-              label={responsive.showTabLabels ? "Production View" : ""} 
-              value="productionview" 
+              label={responsive.showTabLabels ? t('tabs.production') : ""}
+              value="productionview"
               icon={<MovieIcon sx={{ fontSize: responsive.iconSize - 4 }} />} 
               iconPosition="start" 
             />
@@ -3137,7 +3174,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       sourceId: activeProjectId,
                       suggestionType: 'casting.role-stub',
                     }}
-                    title="AI-foreslåtte roller"
+                    title={t('mscript.aiSuggestedRoles')}
                     onGenerate={async () => {
                       if (!activeProjectId) return;
                       await generateSuggestions(activeProjectId, {
@@ -3167,7 +3204,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       sourceId: activeProjectId,
                       suggestionType: 'story.continuity-issue',
                     }}
-                    title="Continuity-feil"
+                    title={t('mscript.continuityIssues')}
                     onGenerate={async () => {
                       if (!activeProjectId) return;
                       await generateSuggestions(activeProjectId, {
@@ -3197,7 +3234,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       sourceType: 'project',
                       sourceId: activeProjectId,
                     }}
-                    title="Story-utvikling (logline · synopsis · beats)"
+                    title={t('mscript.storyDevelopment')}
                     onGenerate={async () => {
                       if (!activeProjectId) return;
                       await generateSuggestions(activeProjectId, {
@@ -3329,7 +3366,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     justifyContent="space-between"
                   >
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      Velg scene for storyboard
+                      {t('mscript.selectSceneForStoryboard')}
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mr: { xs: 0, md: 1 } }}>
                       <ToggleButtonGroup
@@ -3342,12 +3379,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         }}
                       >
                         <ToggleButton value="storyboard">
-                          <Tooltip title="Storyboard-visning">
+                          <Tooltip title={t('mscript.storyboardView')}>
                             <ViewModuleIcon sx={{ fontSize: responsive.iconSize - 6 }} />
                           </Tooltip>
                         </ToggleButton>
                         <ToggleButton value="split">
-                          <Tooltip title="Script + Storyboard side ved side">
+                          <Tooltip title={t('mscript.scriptStoryboardSideBySide')}>
                             <PreviewIcon sx={{ fontSize: responsive.iconSize - 6 }} />
                           </Tooltip>
                         </ToggleButton>
@@ -3372,7 +3409,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                 ★
                               </Box>
                             )}
-                            Scene {scene.sceneNumber || '?'} · {scene.sceneHeading || scene.heading || scene.locationName || 'Uten tittel'}
+                            Scene {scene.sceneNumber || '?'} · {scene.sceneHeading || scene.heading || scene.locationName || t('mscript.untitled')}
                           </MenuItem>
                         ))}
                       </Select>
@@ -3417,17 +3454,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   runtimeMinutes: Math.max(0, Math.round(selectedManuscript.pageCount || 0)),
                                   sceneCount: scenes.length,
                                   characterCount: sceneCharactersMemo.length,
-                                  statusLabel: (selectedManuscript.status ?? 'draft').toUpperCase(),
+                                  statusLabel: manuscriptStatusLabel(selectedManuscript.status, t),
                                   saveLabel:
                                     manuscriptSaveStatus === 'saved'
                                       ? (lastManuscriptSaved
-                                          ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                                          : 'Lagret')
+                                          ? t('editor.saved', { time: lastManuscriptSaved.toLocaleTimeString('nb-NO') })
+                                          : t('editor.savedNoTime'))
                                       : manuscriptSaveStatus === 'saving'
-                                        ? 'Lagrer...'
+                                        ? t('editor.saving')
                                         : manuscriptSaveStatus === 'error'
-                                          ? 'Lagringsfeil'
-                                          : 'Ulagret',
+                                          ? t('editor.saveError')
+                                          : t('editor.unsaved'),
                                   saveState: manuscriptSaveStatus,
                                 }}
                                 characters={sceneCharactersMemo}
@@ -3488,8 +3525,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
                     <Typography variant="body2" color="text.secondary">
                       {productionSceneOptions.length > 0
-                        ? 'Velg en scene i listen over for å åpne storyboard'
-                        : 'Ingen scener enda. Opprett en scene i Scener-fanen først.'}
+                        ? t('mscript.selectSceneToOpenStoryboard')
+                        : t('mscript.noScenesCreateInTab')}
                     </Typography>
                   </Box>
                 )}
@@ -3512,11 +3549,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     // Persist to service
                     try {
                       await manuscriptService.saveScene(updatedScene);
-                      showSuccess('Scene lagret');
+                      showSuccess(t('mscript.sceneSaved'));
                       if (DEV_LOG) console.log('Scene saved:', updatedScene.id);
                     } catch (error) {
                       console.error('Failed to save scene:', error);
-                      showError('Kunne ikke lagre scene-endringer');
+                      showError(t('mscript.errSaveSceneChanges'));
                     }
                   }}
                   onSceneDelete={async (sceneId) => {
@@ -3525,10 +3562,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     setScenes(scenes.filter(s => s.id !== sceneId));
                     try {
                       await manuscriptService.deleteScene(sceneId);
-                      showSuccess('Scene slettet');
+                      showSuccess(t('mscript.sceneDeleted'));
                     } catch (error) {
                       console.error('Failed to delete scene:', error);
-                      showError('Kunne ikke slette scene');
+                      showError(t('mscript.errDeleteScene'));
                       // Rollback on error
                       setScenes(oldScenes);
                     }
@@ -3539,10 +3576,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     // Persist to service
                     try {
                       await manuscriptService.saveScene(newScene);
-                      showSuccess('Ny scene opprettet');
+                      showSuccess(t('mscript.newSceneCreated'));
                     } catch (error) {
                       console.error('Failed to create scene:', error);
-                      showError('Kunne ikke opprette scene');
+                      showError(t('mscript.errCreateScene'));
                       // Rollback on error
                       setScenes(scenes.filter(s => s.id !== newScene.id));
                     }
@@ -3557,10 +3594,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       await Promise.all(
                         reorderedScenes.map(scene => manuscriptService.saveScene(scene))
                       );
-                      showSuccess('Scene-rekkefølge oppdatert');
+                      showSuccess(t('mscript.sceneOrderUpdated'));
                     } catch (error) {
                       console.error('Failed to reorder scenes:', error);
-                      showError('Kunne ikke oppdatere scene-rekkefølge');
+                      showError(t('mscript.errSceneOrder'));
                       // Rollback on error
                       setScenes(oldScenes);
                     }
@@ -3576,7 +3613,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       if (DEV_LOG) console.log('Manuscript saved:', updatedManuscript.id);
                     } catch (error) {
                       console.error('Failed to save manuscript:', error);
-                      showError('Kunne ikke lagre manuskript-endringer');
+                      showError(t('mscript.errSaveManuscriptChanges'));
                     }
                   }}
                   onClose={() => setActiveTab('editor')}
@@ -3613,7 +3650,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>{editingScene ? 'Rediger scene' : 'Ny scene'}</DialogTitle>
+        <DialogTitle>{editingScene ? t('mscript.editSceneTitle') : t('mscript.newSceneTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
@@ -3645,9 +3682,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 </Select>
               </FormControl>
               <FormControl fullWidth>
-                <InputLabel>Tid på dagen</InputLabel>
+                <InputLabel>{t('mscript.timeOfDay')}</InputLabel>
                 <Select
-                  label="Tid på dagen"
+                  label={t('mscript.timeOfDay')}
                   value={sceneForm.timeOfDay}
                   onChange={(event) =>
                     setSceneForm((prev) => ({
@@ -3670,13 +3707,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
-                label="Lokasjon"
+                label={t('mscript.location')}
                 fullWidth
                 value={sceneForm.locationName}
                 onChange={(event) => setSceneForm((prev) => ({ ...prev, locationName: event.target.value }))}
               />
               <TextField
-                label="Sidelengde"
+                label={t('mscript.pageLength')}
                 type="number"
                 inputProps={{ min: 0, step: 0.1 }}
                 value={sceneForm.pageLength}
@@ -3690,10 +3727,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   value={sceneForm.status}
                   onChange={(event) => setSceneForm((prev) => ({ ...prev, status: String(event.target.value) }))}
                 >
-                  <MenuItem value="not-scheduled">Ikke planlagt</MenuItem>
-                  <MenuItem value="scheduled">Planlagt</MenuItem>
-                  <MenuItem value="in-progress">Pågår</MenuItem>
-                  <MenuItem value="completed">Fullført</MenuItem>
+                  <MenuItem value="not-scheduled">{t('mscript.statusNotScheduled')}</MenuItem>
+                  <MenuItem value="scheduled">{t('mscript.statusScheduled')}</MenuItem>
+                  <MenuItem value="in-progress">{t('mscript.statusInProgress')}</MenuItem>
+                  <MenuItem value="completed">{t('mscript.statusCompleted')}</MenuItem>
                 </Select>
               </FormControl>
             </Stack>
@@ -3715,14 +3752,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Hvem er i scenen?"
-                  placeholder={castingRoles.length ? 'Velg fra eksisterende roller eller skriv nytt navn' : 'Skriv karakter-navn'}
+                  label={t('mscript.whoInScene')}
+                  placeholder={castingRoles.length ? t('mscript.charPickerPlaceholder') : t('mscript.charTypePlaceholder')}
                 />
               )}
             />
 
             <TextField
-              label="Beskrivelse"
+              label={t('mscript.description')}
               fullWidth
               multiline
               minRows={4}
@@ -3732,23 +3769,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
             <Divider>
               <Typography variant="caption" color="text.secondary">
-                Valgfritt — hjelper å fokusere
+                {t('mscript.optionalHelpsFocus')}
               </Typography>
             </Divider>
 
             <TextField
-              label="Hva endrer seg fra start til slutt av scenen?"
+              label={t('mscript.sceneChangeQuestion')}
               fullWidth
               value={sceneForm.sceneIntent}
               onChange={(event) => setSceneForm((prev) => ({ ...prev, sceneIntent: event.target.value }))}
-              placeholder="Én setning"
+              placeholder={t('mscript.oneSentence')}
             />
             <TextField
-              label="Hva vil hovedpersonen her?"
+              label={t('mscript.protagonistWantQuestion')}
               fullWidth
               value={sceneForm.protagonistGoal}
               onChange={(event) => setSceneForm((prev) => ({ ...prev, protagonistGoal: event.target.value }))}
-              placeholder="Én setning"
+              placeholder={t('mscript.oneSentence')}
             />
 
             {editingScene?.id && activeProjectId && (
@@ -3764,7 +3801,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 {/* ── Fase 1: Pre-produksjon ──────────────────────────── */}
                 <Accordion defaultExpanded={false}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="subtitle2">📝 Pre-produksjon</Typography>
+                    <Typography variant="subtitle2">{t('mscript.phasePreProduction')}</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
                     <Stack spacing={1.5}>
@@ -3772,7 +3809,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'breakdown.prop' }}
-                        title="Breakdown — props/locations/kostymer/VFX/risk"
+                        title={t('mscript.breakdownTitle')}
                         onGenerate={async () => {
                           if (!editingScene?.id || !activeProjectId) return;
                           await generateSuggestions(activeProjectId, {
@@ -3830,7 +3867,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'coverage.best-take' }}
-                        title="Best take-anbefaling"
+                        title={t('mscript.bestTakeRec')}
                       />
                     </Stack>
                   </AccordionDetails>
@@ -3839,7 +3876,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 {/* ── Fase 3: Post-produksjon ──────────────────────── */}
                 <Accordion defaultExpanded={false}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="subtitle2">✂️ Post-produksjon</Typography>
+                    <Typography variant="subtitle2">{t('mscript.phasePostProduction')}</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
                     <Stack spacing={1.5}>
@@ -3862,7 +3899,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.color-consistency-issue' }}
-                        title="Color-konsistens"
+                        title={t('mscript.colorConsistency')}
                         onGenerate={async () => {
                           if (!editingScene?.id || !activeProjectId) return;
                           await generateSuggestions(activeProjectId, {
@@ -3907,7 +3944,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     onAccepted={handleSuggestionAccepted}
                         projectId={activeProjectId}
                         filter={{ sourceType: 'scene', sourceId: editingScene.id, suggestionType: 'post.music-bed-suggestion' }}
-                        title="Musikk-bed"
+                        title={t('mscript.musicBed')}
                         onGenerate={async () => {
                           if (!editingScene?.id || !activeProjectId) return;
                           await generateSuggestions(activeProjectId, {
@@ -3957,7 +3994,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           <Box>
             {editingScene && (
               <Button color="error" onClick={handleDeleteScene} startIcon={<DeleteIcon />}>
-                Slett scene
+                {t('mscript.deleteSceneBtn')}
               </Button>
             )}
           </Box>
@@ -3976,9 +4013,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 ● LIVE SET PRO
               </Button>
             )}
-            <Button onClick={closeSceneDialog}>Avbryt</Button>
+            <Button onClick={closeSceneDialog}>{t('mscript.cancel')}</Button>
             <Button onClick={handleSaveScene} variant="contained">
-              {editingScene ? 'Lagre scene' : 'Begynn å skrive'}
+              {editingScene ? t('mscript.saveScene') : t('mscript.startWriting')}
             </Button>
           </Stack>
         </DialogActions>
@@ -3988,7 +4025,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       {editingScene && activeProjectId && (
         <LiveSetWorkspace
           projectId={activeProjectId}
-          projectName={selectedManuscript?.title ?? 'Prosjekt'}
+          projectName={selectedManuscript?.title ?? t('mscript.projectFallback')}
           scene={editingScene}
           open={showLiveSetPro}
           onClose={() => setShowLiveSetPro(false)}
@@ -4011,7 +4048,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         }}
       >
         <DialogTitle sx={{ color: branding.colors.textPrimary, fontWeight: 700 }}>
-          Eksempelprosjekt
+          {t('mscript.exampleProjectBadge')}
         </DialogTitle>
         <DialogContent>
           <Alert
@@ -4025,17 +4062,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             }}
           >
             <Typography variant="body2" sx={{ color: 'inherit' }}>
-              {EXAMPLE_PROJECT_NOTICE}
+              {t('mscript.exampleProjectNotice')}
             </Typography>
           </Alert>
           <Typography variant="body2" sx={{ mt: 2, color: branding.colors.textSecondary }}>
-            Ved å åpne prosjektet bekrefter du at du forstår at innholdet kun er demo/fiktivt.
+            {t('mscript.exampleConfirmBody')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
-          <Button onClick={closeExampleProjectDisclaimerDialog} sx={{ color: branding.colors.textSecondary }}>
-            Avbryt
-          </Button>
+          <Button onClick={closeExampleProjectDisclaimerDialog} sx={{ color: branding.colors.textSecondary }}>{t('mscript.cancel')}</Button>
           <Button
             variant="contained"
             onClick={confirmOpenExampleProject}
@@ -4045,27 +4080,66 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               '&:hover': { bgcolor: branding.colors.secondary },
             }}
           >
-            Åpne Eksempelprosjekt
+            {t('mscript.openExampleProject')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* New Manuscript Dialog */}
       <Dialog open={showTargetDialog} onClose={() => setShowTargetDialog(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Mål-lengde</DialogTitle>
+        <DialogTitle>{t('mscript.targetLengthTitle')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Sett ønsket lengde på ferdig film/episode i minutter. Du får et varsel når manuset (~1 side per minutt) avviker mer enn 15 % fra målet.
+            {t('mscript.targetDialogBody')}
           </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            type="number"
-            label="Mål-lengde (minutter)"
-            value={targetDraft}
-            onChange={(e) => setTargetDraft(e.target.value)}
-            inputProps={{ min: 0, step: 1 }}
-          />
+          {(() => {
+            const est = Math.max(0, Math.round((selectedManuscript?.pageCount || ((selectedManuscript?.content?.split('\n').length || 0) / 55)) || 0));
+            const tgt = Math.round(Number(targetDraft));
+            const hasTarget = Number.isFinite(tgt) && tgt > 0;
+            const diffPct = hasTarget && est > 0 ? Math.round(((est - tgt) / tgt) * 100) : 0;
+            const saveIfValid = () => { if (hasTarget) { onTargetDurationChange?.(tgt); setShowTargetDialog(false); } };
+            return (
+              <>
+                <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mb: 1.5 }}>
+                  {t('mscript.targetCurrentPre')}~<strong>{est}</strong>{t('mscript.targetCurrentPost', { est, unit: est === 1 ? t('mscript.pageSingular') : t('mscript.pagePlural') })}
+                </Typography>
+                <Stack direction="row" sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                  {[{ l: t('mscript.lenShort'), m: 15 }, { l: 'TV', m: 30 }, { l: 'TV', m: 45 }, { l: t('mscript.lenFeature'), m: 90 }, { l: t('mscript.lenLong'), m: 120 }].map((p, i) => (
+                    <Chip
+                      key={i}
+                      size="small"
+                      label={`${p.l} · ${p.m}m`}
+                      onClick={() => setTargetDraft(String(p.m))}
+                      color={targetDraft === String(p.m) ? 'primary' : 'default'}
+                      variant={targetDraft === String(p.m) ? 'filled' : 'outlined'}
+                    />
+                  ))}
+                </Stack>
+                <TextField
+                  autoFocus
+                  fullWidth
+                  type="number"
+                  label={t('mscript.targetLengthMinutes')}
+                  value={targetDraft}
+                  onChange={(e) => setTargetDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveIfValid(); }}
+                  inputProps={{ min: 1, step: 1 }}
+                />
+                {hasTarget && est > 0 && (
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', mt: 1.5, fontWeight: 600, color: Math.abs(diffPct) > 15 ? 'warning.main' : 'success.main' }}
+                  >
+                    {diffPct > 15
+                      ? t('mscript.targetTooLong', { pct: diffPct, est, target: tgt })
+                      : diffPct < -15
+                        ? t('mscript.targetTooShort', { pct: Math.abs(diffPct), est, target: tgt })
+                        : t('mscript.targetWithin', { est, target: tgt })}
+                  </Typography>
+                )}
+              </>
+            );
+          })()}
         </DialogContent>
         <DialogActions>
           {typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 && (
@@ -4073,42 +4147,41 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               color="inherit"
               onClick={() => { onTargetDurationChange?.(null); setShowTargetDialog(false); }}
             >
-              Fjern mål
+              {t('mscript.removeTarget')}
             </Button>
           )}
-          <Button onClick={() => setShowTargetDialog(false)}>Avbryt</Button>
+          <Button onClick={() => setShowTargetDialog(false)}>{t('mscript.cancel')}</Button>
           <Button
             variant="contained"
+            disabled={!(Number.isFinite(Math.round(Number(targetDraft))) && Math.round(Number(targetDraft)) > 0)}
             onClick={() => {
               const parsed = Math.round(Number(targetDraft));
               onTargetDurationChange?.(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
               setShowTargetDialog(false);
             }}
-          >
-            Lagre
-          </Button>
+          >{t('mscript.save')}</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={showNewManuscriptDialog} onClose={() => setShowNewManuscriptDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Nytt Manuskript</DialogTitle>
+        <DialogTitle>{t('mscript.newManuscriptTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="Tittel"
+              label={t('mscript.title')}
               fullWidth
               required
               value={newManuscript.title}
               onChange={(e) => setNewManuscript({ ...newManuscript, title: e.target.value })}
             />
             <TextField
-              label="Undertittel"
+              label={t('mscript.subtitle')}
               fullWidth
               value={newManuscript.subtitle}
               onChange={(e) => setNewManuscript({ ...newManuscript, subtitle: e.target.value })}
             />
             <TextField
-              label="Forfatter"
+              label={t('mscript.author')}
               fullWidth
               value={newManuscript.author}
               onChange={(e) => setNewManuscript({ ...newManuscript, author: e.target.value })}
@@ -4120,7 +4193,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 onChange={(e) => setNewManuscript({ ...newManuscript, format: e.target.value as NonNullable<Manuscript['format']> })}
                 label="Format"
               >
-                <MenuItem value="fountain">Fountain (anbefalt)</MenuItem>
+                <MenuItem value="fountain">{t('mscript.fountainRecommended')}</MenuItem>
                 <MenuItem value="markdown">Markdown</MenuItem>
                 <MenuItem value="final-draft">Final Draft</MenuItem>
               </Select>
@@ -4128,18 +4201,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
             <Divider>
               <Typography variant="caption" color="text.secondary">
-                Struktur — gir deg scene-slot å skrive inn i
+                {t('mscript.structureHelp')}
               </Typography>
             </Divider>
 
             <FormControl fullWidth>
-              <InputLabel>Struktur-mal</InputLabel>
+              <InputLabel>{t('mscript.structureTemplate')}</InputLabel>
               <Select
                 value={newManuscript.scaffoldTemplateId}
                 onChange={(e) =>
                   setNewManuscript({ ...newManuscript, scaffoldTemplateId: String(e.target.value) })
                 }
-                label="Struktur-mal"
+                label={t('mscript.structureTemplate')}
               >
                 {MANUSCRIPT_SCAFFOLD_TEMPLATES.map((template) => (
                   <MenuItem key={template.id} value={template.id}>
@@ -4148,7 +4221,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         {template.name}
                         {template.beats.length > 0 && (
                           <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                            ({template.beats.length} scener)
+                            ({t('mscript.scenesWord', { count: template.beats.length })})
                           </Typography>
                         )}
                       </Typography>
@@ -4163,8 +4236,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowNewManuscriptDialog(false)}>Avbryt</Button>
-          <Button onClick={handleCreateManuscript} variant="contained">Opprett</Button>
+          <Button onClick={() => setShowNewManuscriptDialog(false)}>{t('mscript.cancel')}</Button>
+          <Button onClick={handleCreateManuscript} variant="contained">{t('mscript.create')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -4210,7 +4283,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <EditIcon sx={{ color: branding.colors.primary }} />
               <Box>
-                <Typography sx={{ fontWeight: 700, color: branding.colors.textPrimary }}>Rediger Manuskript</Typography>
+                <Typography sx={{ fontWeight: 700, color: branding.colors.textPrimary }}>{t('mscript.editManuscriptTitle')}</Typography>
                 <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
                   {branding.identity.appName}
                 </Typography>
@@ -4234,7 +4307,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             {/* Cover Image Upload */}
             <Box>
               <Typography variant="subtitle2" sx={{ color: branding.colors.textPrimary, mb: 1 }}>
-                Cover-bilde
+                {t('mscript.coverImage')}
               </Typography>
               <Box sx={{ 
                 display: 'flex', 
@@ -4315,7 +4388,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       '&:hover': { borderColor: branding.colors.primary, bgcolor: `${branding.colors.primary}1a` },
                     }}
                   >
-                    Last opp cover
+                    {t('mscript.uploadCover')}
                   </Button>
                   {editingManuscript?.coverImage && (
                     <Button
@@ -4329,21 +4402,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         })
                       }
                       sx={{ ml: 1 }}
-                    >
-                      Fjern
-                    </Button>
+                    >{t('mscript.remove')}</Button>
                   )}
                   <Typography variant="caption" sx={{ display: 'block', color: branding.colors.textSecondary, mt: 0.5 }}>
-                    Anbefalt størrelse: 600x900px
+                    {t('mscript.recommendedSize')}
                   </Typography>
                   {editingManuscript?.coverImage && (
                     <Box sx={{ mt: 1.25 }}>
                       <Typography variant="caption" sx={{ display: 'block', color: branding.colors.textSecondary, mb: 0.5 }}>
-                        Fokuser cover (klikk i bildet eller bruk sliders)
+                        {t('mscript.focusCover')}
                       </Typography>
                       <Box sx={{ px: 0.5 }}>
                         <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
-                          Horisontal: {Math.round(editingCoverFocalPoint.x)}%
+                          {t('mscript.horizontal')}: {Math.round(editingCoverFocalPoint.x)}%
                         </Typography>
                         <Slider
                           size="small"
@@ -4359,7 +4430,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       </Box>
                       <Box sx={{ px: 0.5, mt: 0.5 }}>
                         <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
-                          Vertikal: {Math.round(editingCoverFocalPoint.y)}%
+                          {t('mscript.vertical')}: {Math.round(editingCoverFocalPoint.y)}%
                         </Typography>
                         <Slider
                           size="small"
@@ -4381,7 +4452,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                         )}
                         sx={{ mt: 0.5, color: branding.colors.textSecondary }}
                       >
-                        Nullstill fokus
+                        {t('mscript.resetFocus')}
                       </Button>
                     </Box>
                   )}
@@ -4390,7 +4461,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             </Box>
 
             <TextField
-              label="Tittel"
+              label={t('mscript.title')}
               fullWidth
               required
               value={editManuscriptForm.title}
@@ -4406,7 +4477,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               }}
             />
             <TextField
-              label="Undertittel"
+              label={t('mscript.subtitle')}
               fullWidth
               value={editManuscriptForm.subtitle}
               onChange={(e) => setEditManuscriptForm({ ...editManuscriptForm, subtitle: e.target.value })}
@@ -4421,7 +4492,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               }}
             />
             <TextField
-              label="Forfatter"
+              label={t('mscript.author')}
               fullWidth
               value={editManuscriptForm.author}
               onChange={(e) => setEditManuscriptForm({ ...editManuscriptForm, author: e.target.value })}
@@ -4448,11 +4519,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: branding.colors.primary },
                 }}
               >
-                <MenuItem value="draft">Utkast</MenuItem>
-                <MenuItem value="review">Gjennomgang</MenuItem>
-                <MenuItem value="approved">Godkjent</MenuItem>
-                <MenuItem value="shooting">Produksjon</MenuItem>
-                <MenuItem value="completed">Fullført</MenuItem>
+                <MenuItem value="draft">{t('status.draft')}</MenuItem>
+                <MenuItem value="review">{t('status.review')}</MenuItem>
+                <MenuItem value="approved">{t('status.approved')}</MenuItem>
+                <MenuItem value="shooting">{t('status.shooting')}</MenuItem>
+                <MenuItem value="completed">{t('status.completed')}</MenuItem>
               </Select>
             </FormControl>
           </Stack>
@@ -4473,9 +4544,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           <Button 
             onClick={() => setShowEditManuscriptDialog(false)}
             sx={{ color: branding.colors.textSecondary }}
-          >
-            Avbryt
-          </Button>
+          >{t('mscript.cancel')}</Button>
           <Button 
             onClick={async () => {
               if (editingManuscript) {
@@ -4491,7 +4560,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 await manuscriptService.updateManuscript(updated);
                 loadManuscripts();
                 setShowEditManuscriptDialog(false);
-                showSuccess('Manuskript oppdatert');
+                showSuccess(t('mscript.manuscriptUpdated'));
               }
             }} 
             variant="contained"
@@ -4503,7 +4572,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               '&:hover': { bgcolor: branding.colors.secondary },
             }}
           >
-            Lagre endringer
+            {t('mscript.saveChanges')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4551,6 +4620,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   onLocationAdd,
   storyLogicData = null,
 }) => {
+  const { t } = useT();
   const { showSuccess } = useToast();
   const branding = useBrandingSettings();
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(true);
@@ -4672,7 +4742,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   const handleParseToScenes = () => {
     if (onParseToScenes) {
       onParseToScenes(editorContent);
-      showSuccess(`Parsert ${contentStats.sceneHeadings} scener fra manuskriptet`);
+      showSuccess(t('mscript.parsedScenes', { count: contentStats.sceneHeadings }));
     }
     setShowParseDialog(false);
   };
@@ -4689,8 +4759,8 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
         >
           <Alert severity="info" sx={{ flex: 1 }}>
             <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-              Skriv manuskriptet i {manuscript.format === 'fountain' ? 'Fountain' : manuscript.format} format.
-              {manuscript.format === 'fountain' && ' Sceneoverskrifter starter med INT. eller EXT.'}
+              {t('mscript.writeInFormat', { format: manuscript.format === 'fountain' ? 'Fountain' : (manuscript.format ?? '') })}
+              {manuscript.format === 'fountain' && t('mscript.sceneHeadingsHint')}
             </Typography>
           </Alert>
           <Button
@@ -4699,7 +4769,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
             onClick={() => setShowAdvancedEditor(true)}
             sx={{ fontSize: responsive.bodyFontSize }}
           >
-            Avansert Editor
+            {t('mscript.advancedEditor')}
           </Button>
         </Stack>
         <TextField
@@ -4760,16 +4830,16 @@ Anna går raskt gjennom regnet.
         justifyContent="space-between"
       >
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-          <Chip 
-            label={isMobile ? 'Fountain' : 'Fountain Editor'} 
-            color="primary" 
+          <Chip
+            label={isMobile ? t('editor.fountainShort') : t('editor.fountain')}
+            color="primary"
             size={responsive.chipSize}
             icon={<CodeIcon sx={{ fontSize: responsive.iconSize - 6 }} />}
             sx={{ fontSize: responsive.captionFontSize }}
           />
           {!isMobile && (
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-              Profesjonell screenplay-editor med syntax highlighting
+              {t('editor.fountainDesc')}
             </Typography>
           )}
         </Stack>
@@ -4782,7 +4852,7 @@ Anna går raskt gjennom regnet.
               onClick={() => setShowParseDialog(true)}
               sx={{ fontSize: responsive.captionFontSize }}
             >
-              {isMobile ? `Parser (${contentStats.sceneHeadings})` : `Parser til Scener (${contentStats.sceneHeadings})`}
+              {isMobile ? t('editor.parseToScenesShort', { n: contentStats.sceneHeadings }) : t('editor.parseToScenes', { n: contentStats.sceneHeadings })}
             </Button>
           )}
           <ErrorBoundary componentName="manuscript-pdf-export">
@@ -4800,7 +4870,7 @@ Anna går raskt gjennom regnet.
             onClick={() => setShowAdvancedEditor(false)}
             sx={{ fontSize: responsive.captionFontSize }}
           >
-            {isMobile ? 'Enkel' : 'Enkel Editor'}
+            {isMobile ? t('editor.simpleEditorShort') : t('editor.simpleEditor')}
           </Button>
         </Stack>
       </Stack>
@@ -4823,17 +4893,17 @@ Anna går raskt gjennom regnet.
               runtimeMinutes: Math.max(0, Math.round(manuscript.pageCount || contentStats.estimatedMinutes)),
               sceneCount: scenes.length,
               characterCount: allCharacters.length,
-              statusLabel: (manuscript.status ?? 'draft').toUpperCase(),
+              statusLabel: manuscriptStatusLabel(manuscript.status, t),
               saveLabel:
                 manuscriptSaveStatus === 'saved'
                   ? (lastManuscriptSaved
-                      ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                      : 'Lagret')
+                      ? t('editor.saved', { time: lastManuscriptSaved.toLocaleTimeString('nb-NO') })
+                      : t('editor.savedNoTime'))
                   : manuscriptSaveStatus === 'saving'
-                    ? 'Lagrer...'
+                    ? t('editor.saving')
                     : manuscriptSaveStatus === 'error'
-                      ? 'Lagringsfeil'
-                      : 'Ulagret',
+                      ? t('editor.saveError')
+                      : t('editor.unsaved'),
               saveState: manuscriptSaveStatus,
             }}
             characters={allCharacters}
@@ -4869,7 +4939,7 @@ Anna går raskt gjennom regnet.
         }}
       >
         <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>
-          Rolleprofil: {selectedRoleMention?.role?.name || selectedRoleMention?.characterName}
+          {t('mscript.roleProfile')}: {selectedRoleMention?.role?.name || selectedRoleMention?.characterName}
         </DialogTitle>
         <DialogContent dividers>
           <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mb: 1.5 }}>
@@ -4877,7 +4947,7 @@ Anna går raskt gjennom regnet.
               size={responsive.chipSize}
               color="primary"
               variant="outlined"
-              label={`Status: ${selectedRoleMention?.role?.status || 'ukjent'}`}
+              label={t('mscript.statusLabelVal', { value: selectedRoleMention?.role?.status || t('mscript.unknown') })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             {typeof selectedRoleMention?.role?.roleType === 'string' && selectedRoleMention.role.roleType.trim() && (
@@ -4895,14 +4965,12 @@ Anna går raskt gjennom regnet.
             </Typography>
           ) : (
             <Typography color="text.secondary" sx={{ fontSize: responsive.bodyFontSize }}>
-              Ingen rollebeskrivelse tilgjengelig.
+              {t('mscript.noRoleDescription')}
             </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeProfileDialogs} size={responsive.buttonSize}>
-            Lukk
-          </Button>
+          <Button onClick={closeProfileDialogs} size={responsive.buttonSize}>{t('mscript.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -4926,7 +4994,7 @@ Anna går raskt gjennom regnet.
         }}
       >
         <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>
-          Kandidat for {selectedRoleMention?.role?.name || selectedRoleMention?.characterName}
+          {t('mscript.candidateFor')} {selectedRoleMention?.role?.name || selectedRoleMention?.characterName}
         </DialogTitle>
         <DialogContent dividers>
           {selectedRoleMention?.candidate ? (
@@ -4939,7 +5007,7 @@ Anna går raskt gjennom regnet.
                   size={responsive.chipSize}
                   color="success"
                   variant="outlined"
-                  label={`Status: ${selectedRoleMention.candidate.status || 'ukjent'}`}
+                  label={t('mscript.statusLabelVal', { value: selectedRoleMention.candidate.status || t('mscript.unknown') })}
                   sx={{ fontSize: responsive.captionFontSize }}
                 />
                 {typeof selectedRoleMention.candidate.agency === 'string' && selectedRoleMention.candidate.agency.trim() && (
@@ -4959,22 +5027,20 @@ Anna går raskt gjennom regnet.
                 </Typography>
               ) : (
                 <Typography color="text.secondary" sx={{ fontSize: responsive.bodyFontSize }}>
-                  Ingen kontaktinfo registrert.
+                  {t('mscript.noContactInfo')}
                 </Typography>
               )}
             </>
           ) : (
             <Alert severity="warning">
               <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-                Ingen kandidat er koblet til denne rollen ennå.
+                {t('mscript.noCandidateLinked')}
               </Typography>
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeProfileDialogs} size={responsive.buttonSize}>
-            Lukk
-          </Button>
+          <Button onClick={closeProfileDialogs} size={responsive.buttonSize}>{t('mscript.close')}</Button>
         </DialogActions>
       </Dialog>
       
@@ -4982,8 +5048,8 @@ Anna går raskt gjennom regnet.
       {castingRoles.length > 0 && (
         <Alert severity="success" sx={{ mt: responsive.spacing }}>
           <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-            <strong>{castingRoles.length}</strong> roller fra The Role Room er tilgjengelig i autocomplete.
-            {castingLocations.length > 0 && ` ${castingLocations.length} lokasjoner tilgjengelig.`}
+            <strong>{castingRoles.length}</strong> {t('mscript.rolesAvailableAutocomplete')}
+            {castingLocations.length > 0 && ' ' + t('mscript.locationsAvailable', { count: castingLocations.length })}
           </Typography>
         </Alert>
       )}
@@ -4997,23 +5063,21 @@ Anna går raskt gjennom regnet.
         fullScreen={isMobile}
       >
         <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>
-          Parser Manuskript til Scener
+          {t('mscript.parseToScenesTitle')}
         </DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: responsive.spacing }}>
             <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-              Denne funksjonen vil analysere manuskriptet og opprette scener basert på sceneoverskrifter 
-              (INT./EXT.). Eksisterende scener vil bli oppdatert.
+              {t('mscript.parseDialogInfo')}
             </Typography>
           </Alert>
           <Typography variant="body1" sx={{ mb: responsive.spacing, fontSize: responsive.bodyFontSize }}>
-            Fant <strong>{contentStats.sceneHeadings}</strong> sceneoverskrifter og 
-            <strong> {contentStats.uniqueCharacters.length}</strong> karakterer i manuskriptet.
+            {t('mscript.foundPrefix')} <strong>{contentStats.sceneHeadings}</strong> {t('mscript.sceneHeadingsWord')} <strong> {contentStats.uniqueCharacters.length}</strong> {t('mscript.charactersInScript')}
           </Typography>
           {contentStats.uniqueCharacters.length > 0 && (
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontSize: responsive.captionFontSize }}>
-                Karakterer funnet:
+                {t('mscript.charactersFound')}
               </Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
                 {contentStats.uniqueCharacters.slice(0, isMobile ? 10 : 15).map(char => (
@@ -5027,7 +5091,7 @@ Anna går raskt gjennom regnet.
                 ))}
                 {contentStats.uniqueCharacters.length > (isMobile ? 10 : 15) && (
                   <Chip 
-                    label={`+${contentStats.uniqueCharacters.length - (isMobile ? 10 : 15)} til`} 
+                    label={t('mscript.plusMore', { count: contentStats.uniqueCharacters.length - (isMobile ? 10 : 15) })} 
                     size={responsive.chipSize}
                     sx={{ fontSize: responsive.captionFontSize }}
                   />
@@ -5041,9 +5105,7 @@ Anna går raskt gjennom regnet.
             onClick={() => setShowParseDialog(false)}
             size={responsive.buttonSize}
             sx={{ fontSize: responsive.bodyFontSize }}
-          >
-            Avbryt
-          </Button>
+          >{t('mscript.cancel')}</Button>
           <Button 
             variant="contained" 
             onClick={handleParseToScenes}
@@ -5051,7 +5113,7 @@ Anna går raskt gjennom regnet.
             size={responsive.buttonSize}
             sx={{ fontSize: responsive.bodyFontSize }}
           >
-            Parser Scener
+            {t('mscript.parseScenesBtn')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -5113,6 +5175,7 @@ const ActsTab: React.FC<{
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const tableDensity: 'small' | 'medium' = isTablet ? 'small' : isDesktop ? 'medium' : 'small';
+  const { t } = useT();
   const dialogMaxWidth: 'sm' | 'md' = is4K ? 'md' : 'sm';
 
   const handleCreate = () => {
@@ -5164,29 +5227,29 @@ const ActsTab: React.FC<{
       if (editingAct) {
         await manuscriptService.updateAct(act);
         onActsChange(acts.map(a => a.id === act.id ? act : a));
-        showSuccess('Akt oppdatert');
+        showSuccess(t('mscript.actUpdated'));
       } else {
         await manuscriptService.createAct(act);
         onActsChange([...acts, act]);
-        showSuccess('Akt opprettet');
+        showSuccess(t('mscript.actCreated'));
       }
 
       setShowDialog(false);
     } catch (error) {
-      showError('Feil ved lagring av akt');
+      showError(t('mscript.errSaveAct'));
       console.error(error);
     }
   };
 
   const handleDelete = async (actId: string) => {
-    if (!confirm('Er du sikker på at du vil slette denne akten?')) return;
+    if (!confirm(t('mscript.confirmDeleteAct'))) return;
 
     try {
       await manuscriptService.deleteAct(actId, manuscriptId);
       onActsChange(acts.filter(a => a.id !== actId));
-      showSuccess('Akt slettet');
+      showSuccess(t('mscript.actDeleted'));
     } catch (error) {
-      showError('Feil ved sletting av akt');
+      showError(t('mscript.errDeleteAct'));
       console.error(error);
     }
   };
@@ -5201,7 +5264,7 @@ const ActsTab: React.FC<{
         sx={{ mb: responsive.spacing }}
       >
         <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>
-          Akter / Kapitler
+          {t('mscript.actsChapters')}
         </Typography>
         <Button 
           startIcon={!isMobile ? <AddIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined} 
@@ -5210,14 +5273,14 @@ const ActsTab: React.FC<{
           onClick={handleCreate}
           sx={{ fontSize: responsive.bodyFontSize }}
         >
-          {isMobile ? 'Ny Akt' : 'Legg til Akt'}
+          {isMobile ? t('mscript.newAct') : t('mscript.addAct')}
         </Button>
       </Stack>
 
       {acts.length === 0 ? (
         <Alert severity="info">
           <Typography sx={{ fontSize: responsive.bodyFontSize }}>
-            Ingen akter ennå. Opprett akter for å strukturere manuskriptet i kapitler eller akter.
+            {t('mscript.noActsBody')}
           </Typography>
         </Alert>
       ) : isMobile ? (
@@ -5228,14 +5291,14 @@ const ActsTab: React.FC<{
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: responsive.titleFontSize }}>
-                    Akt {act.actNumber}: {act.title}
+                    {t('mscript.actLabel')} {act.actNumber}: {act.title}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize, mt: 0.5 }}>
-                    {act.description || 'Ingen beskrivelse'}
+                    {act.description || t('mscript.noDescription')}
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                     <Chip 
-                      label={act.pageStart && act.pageEnd ? `s. ${act.pageStart}-${act.pageEnd}` : 'Ingen sider'} 
+                      label={act.pageStart && act.pageEnd ? t('mscript.pagesRange', { start: act.pageStart, end: act.pageEnd }) : t('mscript.noPages')} 
                       size="small" 
                       sx={{ fontSize: responsive.captionFontSize }}
                     />
@@ -5263,12 +5326,12 @@ const ActsTab: React.FC<{
           <Table size={tableDensity}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Akt #</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Tittel</TableCell>
-                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Beskrivelse</TableCell>}
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Sider</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Varighet</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Handlinger</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.actNumberCol')}</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.title')}</TableCell>
+                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.description')}</TableCell>}
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.pagesCol')}</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.durationCol')}</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.actionsCol')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -5298,11 +5361,11 @@ const ActsTab: React.FC<{
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onClose={() => setShowDialog(false)} maxWidth={dialogMaxWidth} fullWidth fullScreen={isMobile}>
-        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{editingAct ? 'Rediger Akt' : 'Ny Akt'}</DialogTitle>
+        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{editingAct ? t('mscript.editActTitle') : t('mscript.newAct')}</DialogTitle>
         <DialogContent>
           <Stack spacing={responsive.spacing} sx={{ mt: 1 }}>
             <TextField
-              label="Akt Nummer"
+              label={t('mscript.actNumberLabel')}
               type="number"
               value={formData.actNumber}
               onChange={(e) => setFormData({ ...formData, actNumber: parseInt(e.target.value) })}
@@ -5310,14 +5373,14 @@ const ActsTab: React.FC<{
               size={isMobile ? 'small' : 'medium'}
             />
             <TextField
-              label="Tittel"
+              label={t('mscript.title')}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
             />
             <TextField
-              label="Beskrivelse"
+              label={t('mscript.description')}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               multiline
@@ -5326,7 +5389,7 @@ const ActsTab: React.FC<{
             />
             <Stack direction={isMobile ? 'column' : 'row'} spacing={responsive.spacing}>
               <TextField
-                label="Start Side"
+                label={t('mscript.startPage')}
                 type="number"
                 value={formData.pageStart}
                 onChange={(e) => setFormData({ ...formData, pageStart: parseInt(e.target.value) })}
@@ -5334,7 +5397,7 @@ const ActsTab: React.FC<{
                 size={isMobile ? 'small' : 'medium'}
               />
               <TextField
-                label="Slutt Side"
+                label={t('mscript.endPage')}
                 type="number"
                 value={formData.pageEnd}
                 onChange={(e) => setFormData({ ...formData, pageEnd: parseInt(e.target.value) })}
@@ -5343,7 +5406,7 @@ const ActsTab: React.FC<{
               />
             </Stack>
             <TextField
-              label="Estimert Varighet (minutter)"
+              label={t('mscript.estimatedRuntime')}
               type="number"
               value={formData.estimatedRuntime}
               onChange={(e) => setFormData({ ...formData, estimatedRuntime: parseInt(e.target.value) })}
@@ -5351,7 +5414,7 @@ const ActsTab: React.FC<{
               size={isMobile ? 'small' : 'medium'}
             />
             <TextField
-              label="Fargekode (hex)"
+              label={t('mscript.colorCode')}
               value={formData.colorCode}
               onChange={(e) => setFormData({ ...formData, colorCode: e.target.value })}
               placeholder={branding.colors.primary}
@@ -5361,11 +5424,9 @@ const ActsTab: React.FC<{
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: responsive.padding }}>
-          <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize} sx={{ fontSize: responsive.bodyFontSize }}>
-            Avbryt
-          </Button>
+          <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize} sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.cancel')}</Button>
           <Button onClick={handleSave} variant="contained" size={responsive.buttonSize} sx={{ fontSize: responsive.bodyFontSize }}>
-            {editingAct ? 'Oppdater' : 'Opprett'}
+            {editingAct ? t('mscript.update') : t('mscript.create')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -5390,6 +5451,7 @@ const ScenesTab: React.FC<{
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const sceneHeadingMaxWidth = isTablet ? 150 : is4K ? 420 : 300;
+  const { t } = useT();
 
   // Auto-scroll til første highlightede scene når sett endres. Brukes av
   // resume-banner-actions (stale-draft / unscheduled / empty-scaffold) så
@@ -5426,7 +5488,7 @@ const ScenesTab: React.FC<{
             onClick={onAddScene}
             sx={{ fontSize: responsive.bodyFontSize }}
           >
-            {isMobile ? 'Ny Scene' : 'Legg til Scene'}
+            {isMobile ? t('mscript.newScene') : t('mscript.addScene')}
           </Button>
           <Divider orientation="vertical" flexItem />
           <ToggleButtonGroup
@@ -5439,7 +5501,7 @@ const ScenesTab: React.FC<{
               <FormatListNumberedIcon sx={{ fontSize: responsive.iconSize - 4 }} />
               {isDesktop && (
                 <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
-                  Liste
+                  {t('mscript.listView')}
                 </Typography>
               )}
             </ToggleButton>
@@ -5447,7 +5509,7 @@ const ScenesTab: React.FC<{
               <DragIcon sx={{ fontSize: responsive.iconSize - 4 }} />
               {isDesktop && (
                 <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
-                  Dra
+                  {t('mscript.dragView')}
                 </Typography>
               )}
             </ToggleButton>
@@ -5466,7 +5528,7 @@ const ScenesTab: React.FC<{
       {scenes.length === 0 ? (
         <Alert severity="info">
           <Typography sx={{ fontSize: responsive.bodyFontSize }}>
-            Ingen scener ennå. Bruk "Auto Breakdown" for å generere scener fra manuskriptet.
+            {t('mscript.noScenesAutoBreakdown')}
           </Typography>
         </Alert>
       ) : viewMode === 'drag' ? (
@@ -5476,14 +5538,34 @@ const ScenesTab: React.FC<{
           onSceneSelect={onSelectScene}
           selectedScene={selectedScene}
         />
-      ) : viewMode === 'storyboard' && selectedScene ? (
-        <StoryboardIntegrationView
-          scene={selectedScene}
-          projectCinemaFormat={projectCinemaFormat}
-          onUpdate={(updatedScene) => {
-            onReorderScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
-          }}
-        />
+      ) : viewMode === 'storyboard' && scenes.length > 0 ? (
+        // Scene-velger så ALLE scener er tilgjengelige (før viste den kun scene 1).
+        <Stack spacing={2}>
+          <FormControl size="small" sx={{ maxWidth: 520 }}>
+            <InputLabel>Scene</InputLabel>
+            <Select
+              label="Scene"
+              value={(selectedScene ?? scenes[0]).id}
+              onChange={(event) => {
+                const next = scenes.find((s) => s.id === event.target.value);
+                if (next) onSelectScene(next);
+              }}
+            >
+              {scenes.map((s) => (
+                <MenuItem key={s.id} value={s.id}>
+                  Scene {s.sceneNumber} — {s.sceneHeading}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <StoryboardIntegrationView
+            scene={selectedScene ?? scenes[0]}
+            projectCinemaFormat={projectCinemaFormat}
+            onUpdate={(updatedScene) => {
+              onReorderScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
+            }}
+          />
+        </Stack>
       ) : isMobile ? (
         // Mobile: Card-based layout
         <Stack spacing={1}>
@@ -5515,10 +5597,10 @@ const ScenesTab: React.FC<{
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
                     <Typography variant="caption" sx={{ fontSize: responsive.captionFontSize }}>
-                      {scene.pageLength?.toFixed(1) || '-'} sider
+                      {scene.pageLength?.toFixed(1) || '-'} {t('mscript.pagesWord')}
                     </Typography>
                     <Typography variant="caption" sx={{ fontSize: responsive.captionFontSize }}>
-                      {scene.characters?.length || 0} karakterer
+                      {scene.characters?.length || 0} {t('mscript.charactersWord')}
                     </Typography>
                   </Stack>
                 </Box>
@@ -5534,14 +5616,14 @@ const ScenesTab: React.FC<{
           <Table size={isTablet ? 'small' : 'medium'}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Scene #</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Heading</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Scene</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.headingCol')}</TableCell>
                 <TableCell sx={{ fontSize: responsive.bodyFontSize }}>INT/EXT</TableCell>
-                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Time</TableCell>}
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Pages</TableCell>
-                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Characters</TableCell>}
+                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.timeCol')}</TableCell>}
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.pagesCol')}</TableCell>
+                {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.charactersCol')}</TableCell>}
                 <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Status</TableCell>
-                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>Actions</TableCell>
+                <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{t('mscript.actionsCol')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -5566,7 +5648,7 @@ const ScenesTab: React.FC<{
                   {!isTablet && <TableCell sx={{ fontSize: responsive.bodyFontSize }}>{scene.characters?.length || 0}</TableCell>}
                   <TableCell>
                     <Chip
-                      label={scene.status}
+                      label={sceneStatusLabel(scene.status, t)}
                       size={responsive.chipSize}
                       color={scene.status === 'completed' ? 'success' : 'default'}
                       sx={{ fontSize: responsive.captionFontSize }}
@@ -5615,6 +5697,7 @@ const CharactersTab: React.FC<{
   const [showDialog, setShowDialog] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<string | null>(null);
   const [characterProfiles, setCharacterProfiles] = useState<Record<string, StoredCharacterProfile>>({});
+  const { t } = useT();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -5655,7 +5738,7 @@ const CharactersTab: React.FC<{
         }
       } catch (error) {
         console.error('Error loading character profiles:', error);
-        showError('Kunne ikke laste karakterprofiler');
+        showError(t('mscript.errLoadCharProfiles'));
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -5678,7 +5761,7 @@ const CharactersTab: React.FC<{
         if (DEV_LOG) console.log('✓ Character profiles saved to database');
       } catch (error) {
         console.error('Error saving character profiles:', error);
-        showError('Kunne ikke lagre karakterprofiler');
+        showError(t('mscript.errSaveCharProfiles'));
       } finally {
         setIsSaving(false);
       }
@@ -5692,27 +5775,38 @@ const CharactersTab: React.FC<{
   // Build character profiles from dialogue and scenes
   const characterData = useMemo(() => {
     const profiles: CharacterProfile[] = [];
-    
+
+    // Rolle-størrelse klassifiseres RELATIVT (andel av den mest aktive karakteren)
+    // så det tilpasser seg manuslengden — en kortfilm får ikke alle som «minor».
+    const lineCounts = characters.map((name) => dialogueLines.filter((l) => l.characterName === name).length);
+    const maxLines = Math.max(1, ...lineCounts);
+    const classifyRole = (count: number): 'lead' | 'supporting' | 'minor' => {
+      const share = count / maxLines;
+      if (share >= 0.5) return 'lead';
+      if (share >= 0.2) return 'supporting';
+      return 'minor';
+    };
+
     characters.forEach(name => {
       const lines = dialogueLines.filter(l => l.characterName === name);
-      const appearingScenes = scenes.filter(s => 
+      const appearingScenes = scenes.filter(s =>
         s.characters?.includes(name) || lines.some(l => l.sceneId === s.id)
       );
-      
+
       const savedProfile = characterProfiles[name];
-      
+
       profiles.push({
         name,
         alias: savedProfile?.alias,
         description: savedProfile?.description,
         age: savedProfile?.age,
-        role: savedProfile?.role || (lines.length > 10 ? 'lead' : lines.length > 5 ? 'supporting' : 'minor'),
+        role: savedProfile?.role || classifyRole(lines.length),
         sceneCount: appearingScenes.length,
         dialogueCount: lines.length,
         scenesAppearing: appearingScenes.map((s) => String(s.sceneNumber ?? '')),
       });
     });
-    
+
     return profiles.sort((a, b) => b.dialogueCount - a.dialogueCount);
   }, [characters, dialogueLines, scenes, characterProfiles]);
 
@@ -5757,7 +5851,7 @@ const CharactersTab: React.FC<{
       },
     }));
     
-    showSuccess('Karakterprofil oppdatert');
+    showSuccess(t('mscript.charProfileUpdated'));
     setShowDialog(false);
   };
 
@@ -5773,10 +5867,10 @@ const CharactersTab: React.FC<{
 
   const getRoleLabel = (role: string) => {
     switch (role) {
-      case 'lead': return 'Hovedrolle';
-      case 'supporting': return 'Birolle';
-      case 'minor': return 'Liten rolle';
-      case 'extra': return 'Statist';
+      case 'lead': return t('mscript.roleLead');
+      case 'supporting': return t('mscript.roleSupporting');
+      case 'minor': return t('mscript.roleMinor');
+      case 'extra': return t('mscript.roleExtra');
       default: return role;
     }
   };
@@ -5809,12 +5903,12 @@ const CharactersTab: React.FC<{
         sx={{ mb: responsive.spacing }}
       >
         <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>
-          Karakterer ({characters.length})
+          {t('mscript.charactersHeading', { count: characters.length })}
         </Typography>
         <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
           {isSaving && (
             <Chip
-              label="Lagrer profiler..."
+              label={t('mscript.savingProfiles')}
               color="info"
               size={responsive.chipSize}
               icon={<CircularProgress size={14} />}
@@ -5822,7 +5916,7 @@ const CharactersTab: React.FC<{
             />
           )}
           <TextField
-            placeholder="Søk karakterer..."
+            placeholder={t('mscript.searchCharacters')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             size={isMobile ? 'small' : 'medium'}
@@ -5834,21 +5928,21 @@ const CharactersTab: React.FC<{
       {/* Statistics */}
       <Stack direction="row" spacing={isMobile ? 1 : 2} sx={{ mb: responsive.spacing }} flexWrap="wrap" useFlexGap>
         <Chip 
-          label={`${characterData.filter(c => c.role === 'lead').length} hovedroller`} 
+          label={t('mscript.leadRolesCount', { count: characterData.filter(c => c.role === 'lead').length })} 
           color="error" 
           variant="outlined" 
           size={responsive.chipSize}
           sx={{ fontSize: responsive.captionFontSize }}
         />
         <Chip 
-          label={`${characterData.filter(c => c.role === 'supporting').length} biroller`} 
+          label={t('mscript.supportingRolesCount', { count: characterData.filter(c => c.role === 'supporting').length })} 
           color="primary" 
           variant="outlined" 
           size={responsive.chipSize}
           sx={{ fontSize: responsive.captionFontSize }}
         />
         <Chip 
-          label={`${characterData.filter(c => c.role === 'minor' || c.role === 'extra').length} mindre roller`} 
+          label={t('mscript.minorRolesCount', { count: characterData.filter(c => c.role === 'minor' || c.role === 'extra').length })} 
           variant="outlined" 
           size={responsive.chipSize}
           sx={{ fontSize: responsive.captionFontSize }}
@@ -5858,7 +5952,7 @@ const CharactersTab: React.FC<{
       {filteredCharacters.length === 0 ? (
         <Alert severity="info">
           <Typography sx={{ fontSize: responsive.bodyFontSize }}>
-            Ingen karakterer funnet. Karakterer hentes fra dialog og scenedata.
+            {t('mscript.noCharactersFound')}
           </Typography>
         </Alert>
       ) : (
@@ -5919,7 +6013,7 @@ const CharactersTab: React.FC<{
                   
                   {character.age && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: responsive.bodyFontSize }}>
-                      Alder: {character.age}
+                      {t('mscript.age')}: {character.age}
                     </Typography>
                   )}
                   
@@ -5934,17 +6028,17 @@ const CharactersTab: React.FC<{
                   
                   <Stack direction="row" spacing={isMobile ? 1 : 2}>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                      <strong>{character.dialogueCount}</strong> replikker
+                      <strong>{character.dialogueCount}</strong> {t('mscript.linesWord')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                      <strong>{character.sceneCount}</strong> scener
+                      <strong>{character.sceneCount}</strong> {t('mscript.scenesWordPlain')}
                     </Typography>
                   </Stack>
                   
                   {character.scenesAppearing.length > 0 && !isMobile && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontSize: responsive.captionFontSize }}>
-                      Scener: {character.scenesAppearing.slice(0, 5).join(', ')}
-                      {character.scenesAppearing.length > 5 && ` +${character.scenesAppearing.length - 5} til`}
+                      {t('mscript.scenesColon')}: {character.scenesAppearing.slice(0, 5).join(', ')}
+                      {character.scenesAppearing.length > 5 && ' ' + t('mscript.plusMore', { count: character.scenesAppearing.length - 5 })}
                     </Typography>
                   )}
                 </CardContent>
@@ -5956,55 +6050,53 @@ const CharactersTab: React.FC<{
 
       {/* Edit Dialog */}
       <Dialog open={showDialog} onClose={() => setShowDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
-        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>Rediger Karakter: {editingCharacter}</DialogTitle>
+        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{t('mscript.editCharacter')}: {editingCharacter}</DialogTitle>
         <DialogContent>
           <Stack spacing={responsive.spacing} sx={{ mt: 1 }}>
             <TextField
-              label="Kallenavn / Alias"
+              label={t('mscript.aliasLabel')}
               value={formData.alias}
               onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
-              placeholder="F.eks. 'Dr. N' eller 'Paleontologen'"
+              placeholder={t('mscript.aliasPlaceholder')}
             />
             <TextField
-              label="Alder"
+              label={t('mscript.age')}
               value={formData.age}
               onChange={(e) => setFormData({ ...formData, age: e.target.value })}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
-              placeholder="F.eks. '30s' eller '45'"
+              placeholder={t('mscript.agePlaceholder')}
             />
             <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
-              <InputLabel>Rolletype</InputLabel>
+              <InputLabel>{t('mscript.roleType')}</InputLabel>
               <Select
                 value={formData.role}
-                label="Rolletype"
+                label={t('mscript.roleType')}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as 'lead' | 'supporting' | 'minor' | 'extra' })}
               >
-                <MenuItem value="lead">Hovedrolle</MenuItem>
-                <MenuItem value="supporting">Birolle</MenuItem>
-                <MenuItem value="minor">Liten rolle</MenuItem>
-                <MenuItem value="extra">Statist</MenuItem>
+                <MenuItem value="lead">{t('mscript.roleLead')}</MenuItem>
+                <MenuItem value="supporting">{t('mscript.roleSupporting')}</MenuItem>
+                <MenuItem value="minor">{t('mscript.roleMinor')}</MenuItem>
+                <MenuItem value="extra">{t('mscript.roleExtra')}</MenuItem>
               </Select>
             </FormControl>
             <TextField
-              label="Beskrivelse"
+              label={t('mscript.description')}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               fullWidth
               multiline
               rows={isMobile ? 2 : 3}
               size={isMobile ? 'small' : 'medium'}
-              placeholder="Karakterbeskrivelse, bakgrunn, motivasjon..."
+              placeholder={t('mscript.charDescPlaceholder')}
             />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: responsive.padding }}>
-          <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize}>Avbryt</Button>
-          <Button variant="contained" onClick={handleSave} size={responsive.buttonSize} disabled={isSaving}>
-            Lagre
-          </Button>
+          <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize}>{t('mscript.cancel')}</Button>
+          <Button variant="contained" onClick={handleSave} size={responsive.buttonSize} disabled={isSaving}>{t('mscript.save')}</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -6027,6 +6119,7 @@ const DialogueTab: React.FC<{
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const previewLimit = is4K ? 220 : isDesktop ? 160 : isTablet ? 120 : 80;
+  const { t } = useT();
   const [showDialog, setShowDialog] = useState(false);
   const [editingLine, setEditingLine] = useState<DialogueLine | null>(null);
   const [filterCharacter, setFilterCharacter] = useState<string>('');
@@ -6099,21 +6192,21 @@ const DialogueTab: React.FC<{
         // Update existing in local state
         const updated = dialogueLines.map(l => l.id === line.id ? line : l);
         onDialogueChange?.(updated);
-        showSuccess('Dialog oppdatert og synkronisert');
+        showSuccess(t('mscript.dialogueUpdated'));
       } else {
         // Create new in local state
         onDialogueChange?.([...dialogueLines, line]);
-        showSuccess('Dialog opprettet og synkronisert');
+        showSuccess(t('mscript.dialogueCreated'));
       }
       setShowDialog(false);
     } catch (error) {
-      showError('Feil ved lagring av dialog');
+      showError(t('mscript.errSaveDialogue'));
       console.error(error);
     }
   };
 
   const handleDelete = async (lineId: string) => {
-    if (!confirm('Er du sikker på at du vil slette denne replikken?')) return;
+    if (!confirm(t('mscript.confirmDeleteLine'))) return;
     
     try {
       // Delete from database
@@ -6121,9 +6214,9 @@ const DialogueTab: React.FC<{
       
       // Update local state
       onDialogueChange?.(dialogueLines.filter(l => l.id !== lineId));
-      showSuccess('Dialog slettet og synkronisert');
+      showSuccess(t('mscript.dialogueDeleted'));
     } catch (error) {
-      showError('Feil ved sletting av dialog');
+      showError(t('mscript.errDeleteDialogue'));
       console.error(error);
     }
   };
@@ -6132,7 +6225,7 @@ const DialogueTab: React.FC<{
     <Box>
       <Stack direction={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'stretch' : 'center'} spacing={isMobile ? 1 : 0} sx={{ mb: responsive.spacing }}>
         <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize, color: branding.colors.textPrimary }}>
-          All Dialog ({filteredLines.length})
+          {t('mscript.allDialogue', { count: filteredLines.length })}
         </Typography>
         <Button
           startIcon={<AddIcon />}
@@ -6149,33 +6242,33 @@ const DialogueTab: React.FC<{
             },
           }}
         >
-          Legg til Replikk
+          {t('mscript.addLine')}
         </Button>
       </Stack>
 
       {/* Filters */}
       <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 1 : 2} sx={{ mb: responsive.spacing }}>
         <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 150 }}>
-          <InputLabel>Filtrer karakter</InputLabel>
+          <InputLabel>{t('mscript.filterCharacter')}</InputLabel>
           <Select
             value={filterCharacter}
-            label="Filtrer karakter"
+            label={t('mscript.filterCharacter')}
             onChange={(e) => setFilterCharacter(e.target.value)}
           >
-            <MenuItem value="">Alle</MenuItem>
+            <MenuItem value="">{t('mscript.all')}</MenuItem>
             {uniqueCharacters.map(char => (
               <MenuItem key={char} value={char}>{char}</MenuItem>
             ))}
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 200 }}>
-          <InputLabel>Filtrer scene</InputLabel>
+          <InputLabel>{t('mscript.filterScene')}</InputLabel>
           <Select
             value={filterScene}
-            label="Filtrer scene"
+            label={t('mscript.filterScene')}
             onChange={(e) => setFilterScene(e.target.value)}
           >
-            <MenuItem value="">Alle</MenuItem>
+            <MenuItem value="">{t('mscript.all')}</MenuItem>
             {scenes.map(s => (
               <MenuItem key={s.id} value={s.id}>Scene {s.sceneNumber}: {s.sceneHeading?.substring(0, isMobile ? 15 : 30)}</MenuItem>
             ))}
@@ -6186,7 +6279,7 @@ const DialogueTab: React.FC<{
       {filteredLines.length === 0 ? (
         <Alert severity="info">
           <Typography sx={{ fontSize: responsive.bodyFontSize }}>
-            Ingen dialog funnet ennå. Klikk "Legg til Replikk" for å starte.
+            {t('mscript.noDialogueFound')}
           </Typography>
         </Alert>
       ) : (
@@ -6266,17 +6359,17 @@ const DialogueTab: React.FC<{
 
       {/* Edit Dialog */}
       <Dialog open={showDialog} onClose={() => setShowDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
-        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{editingLine ? 'Rediger Replikk' : 'Ny Replikk'}</DialogTitle>
+        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{editingLine ? t('mscript.editLineTitle') : t('mscript.newLineTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={responsive.spacing} sx={{ mt: 1 }}>
             <TextField
-              label="Karakter"
+              label={t('mscript.characterLabel')}
               value={formData.characterName}
               onChange={(e) => setFormData({ ...formData, characterName: e.target.value })}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
-              placeholder="F.eks. NORA TIDEMANN"
-              helperText="Skriv karakternavnet i store bokstaver"
+              placeholder={t('mscript.characterPlaceholder')}
+              helperText={t('mscript.characterHelper')}
             />
             <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Scene</InputLabel>
@@ -6293,57 +6386,57 @@ const DialogueTab: React.FC<{
               </Select>
             </FormControl>
             <TextField
-              label="Dialog"
+              label={t('mscript.dialogueLabel')}
               value={formData.dialogueText}
               onChange={(e) => setFormData({ ...formData, dialogueText: e.target.value })}
               fullWidth
               multiline
               rows={isMobile ? 2 : 3}
               size={isMobile ? 'small' : 'medium'}
-              placeholder="Hva sier karakteren?"
+              placeholder={t('mscript.dialoguePlaceholder')}
             />
             <TextField
-              label="Parentetisk (valgfritt)"
+              label={t('mscript.parentheticalLabel')}
               value={formData.parenthetical}
               onChange={(e) => setFormData({ ...formData, parenthetical: e.target.value })}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
-              placeholder="F.eks. smilende, bekymret, til Anna"
-              helperText="Regiinstruksjoner for skuespilleren"
+              placeholder={t('mscript.parentheticalPlaceholder')}
+              helperText={t('mscript.parentheticalHelper')}
             />
             <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
-              <InputLabel>Emosjon (valgfritt)</InputLabel>
+              <InputLabel>{t('mscript.emotionLabel')}</InputLabel>
               <Select
                 value={formData.emotionTag}
-                label="Emosjon (valgfritt)"
+                label={t('mscript.emotionLabel')}
                 onChange={(e) => setFormData({ ...formData, emotionTag: e.target.value })}
               >
-                <MenuItem value="">Ingen</MenuItem>
-                <MenuItem value="neutral">Nøytral</MenuItem>
-                <MenuItem value="happy">Glad</MenuItem>
-                <MenuItem value="sad">Trist</MenuItem>
-                <MenuItem value="angry">Sint</MenuItem>
-                <MenuItem value="frightened">Redd</MenuItem>
-                <MenuItem value="surprised">Overrasket</MenuItem>
-                <MenuItem value="confused">Forvirret</MenuItem>
-                <MenuItem value="determined">Bestemt</MenuItem>
-                <MenuItem value="hopeful">Håpefull</MenuItem>
-                <MenuItem value="desperate">Desperat</MenuItem>
-                <MenuItem value="wistful">Vemodig</MenuItem>
-                <MenuItem value="mysterious">Mystisk</MenuItem>
+                <MenuItem value="">{t('mscript.emotionNone')}</MenuItem>
+                <MenuItem value="neutral">{t('mscript.emotionNeutral')}</MenuItem>
+                <MenuItem value="happy">{t('mscript.emotionHappy')}</MenuItem>
+                <MenuItem value="sad">{t('mscript.emotionSad')}</MenuItem>
+                <MenuItem value="angry">{t('mscript.emotionAngry')}</MenuItem>
+                <MenuItem value="frightened">{t('mscript.emotionFrightened')}</MenuItem>
+                <MenuItem value="surprised">{t('mscript.emotionSurprised')}</MenuItem>
+                <MenuItem value="confused">{t('mscript.emotionConfused')}</MenuItem>
+                <MenuItem value="determined">{t('mscript.emotionDetermined')}</MenuItem>
+                <MenuItem value="hopeful">{t('mscript.emotionHopeful')}</MenuItem>
+                <MenuItem value="desperate">{t('mscript.emotionDesperate')}</MenuItem>
+                <MenuItem value="wistful">{t('mscript.emotionWistful')}</MenuItem>
+                <MenuItem value="mysterious">{t('mscript.emotionMysterious')}</MenuItem>
               </Select>
             </FormControl>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: responsive.padding }}>
-          <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize}>Avbryt</Button>
+          <Button onClick={() => setShowDialog(false)} size={responsive.buttonSize}>{t('mscript.cancel')}</Button>
           <Button 
             variant="contained" 
             onClick={handleSave}
             size={responsive.buttonSize}
             disabled={!formData.characterName || !formData.dialogueText}
           >
-            {editingLine ? 'Oppdater' : 'Opprett'}
+            {editingLine ? t('mscript.update') : t('mscript.create')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -6362,6 +6455,7 @@ const BreakdownTab: React.FC<{
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const statsGridColumns = isDesktop ? 'repeat(4, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))';
+  const { t } = useT();
 
   return (
     <Box>
@@ -6385,7 +6479,7 @@ const BreakdownTab: React.FC<{
           onClick={onAddScene}
           sx={{ fontSize: responsive.bodyFontSize }}
         >
-          Legg til scene
+          {t('mscript.addSceneBtn')}
         </Button>
       </Stack>
 
@@ -6446,7 +6540,7 @@ const BreakdownTab: React.FC<{
       {scenes.length === 0 && (
         <Alert severity="info">
           <Typography sx={{ fontSize: responsive.bodyFontSize }}>
-            Ingen scener ennå. Bruk "Auto Breakdown" eller legg til en scene manuelt.
+            {t('mscript.noScenesBreakdown')}
           </Typography>
         </Alert>
       )}
@@ -6525,7 +6619,7 @@ const BreakdownTab: React.FC<{
                       {scene.vehicles && scene.vehicles.length > 0 && <Chip label="Vehicles" size={responsive.chipSize} sx={{ fontSize: responsive.captionFontSize }} />}
                     </TableCell>
                     <TableCell>
-                      <Tooltip title="Åpne scene">
+                      <Tooltip title={t('mscript.openScene')}>
                         <IconButton
                           size="small"
                           onClick={(event) => {
@@ -6536,7 +6630,7 @@ const BreakdownTab: React.FC<{
                           <VisibilityIcon sx={{ fontSize: responsive.iconSize - 4 }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger scene">
+                      <Tooltip title={t('mscript.editSceneTooltip')}>
                         <IconButton
                           size="small"
                           onClick={(event) => {
@@ -6577,6 +6671,7 @@ const RevisionsTab: React.FC<{
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const { t } = useT();
   const [revisionName, setRevisionName] = useState('');
   const [revisionNotes, setRevisionNotes] = useState('');
   const [selectedRevision, setSelectedRevision] = useState<ScriptRevision | null>(null);
@@ -6600,7 +6695,7 @@ const RevisionsTab: React.FC<{
 
   const handleCreateRevision = async () => {
     if (!revisionName.trim()) {
-      showError('Revisjonsnavn er påkrevd');
+      showError(t('mscript.revisionNameRequired'));
       return;
     }
 
@@ -6614,7 +6709,7 @@ const RevisionsTab: React.FC<{
         session.adminUser?.name?.trim() ||
         session.adminUser?.email?.trim() ||
         session.currentUserId ||
-        'Ukjent bruker';
+        t('mscript.unknownUser');
       const newRevision: ScriptRevision = {
         id: `rev-${Date.now()}`,
         manuscriptId: manuscript.id,
@@ -6633,40 +6728,40 @@ const RevisionsTab: React.FC<{
       await manuscriptService.createRevision(newRevision);
       await onCreateRevision?.(newRevision);
       
-      showSuccess(`Revisjon "${revisionName}" opprettet`);
+      showSuccess(t('mscript.revisionCreated', { name: revisionName }));
       setShowCreateDialog(false);
       setRevisionName('');
       setRevisionNotes('');
       setUseRichNotes(false);
     } catch (error) {
-      showError('Feil ved opprettelse av revisjon');
+      showError(t('mscript.errCreateRevision'));
       console.error(error);
     }
   };
 
   const handleDeleteRevision = async (revisionId: string) => {
-    if (!confirm('Er du sikker på at du vil slette denne revisjonen?')) return;
+    if (!confirm(t('mscript.confirmDeleteRevision'))) return;
 
     try {
       const updatedRevisions = revisions.filter(r => r.id !== revisionId);
       onRevisionsChange?.(updatedRevisions);
-      showSuccess('Revisjon slettet');
+      showSuccess(t('mscript.revisionDeleted'));
     } catch (error) {
-      showError('Feil ved sletting av revisjon');
+      showError(t('mscript.errDeleteRevision'));
       console.error('Kunne ikke slette revisjon:', error);
     }
   };
 
   const handleRestoreRevision = async (revision: ScriptRevision) => {
-    if (!confirm('Vil du gjenopprette denne versjonen? Gjeldende endringer vil bli overskrevet.')) return;
+    if (!confirm(t('mscript.confirmRestoreRevision'))) return;
     
     try {
       await onRestoreRevision?.(revision);
       setSelectedRevision(revision);
       setCompareMode(true);
-      showSuccess(`Revisjon ${revision.version} gjenopprettet`);
+      showSuccess(t('mscript.revisionRestored', { version: revision.version }));
     } catch (error) {
-      showError('Kunne ikke gjenopprette revisjon');
+      showError(t('mscript.errRestoreRevision'));
       console.error('Feil ved gjenoppretting av revisjon:', error);
     }
   };
@@ -6677,10 +6772,10 @@ const RevisionsTab: React.FC<{
         <Stack direction="row" spacing={isMobile ? 1 : 2} alignItems="center" flexWrap="wrap" useFlexGap>
           <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>
             {isMobile
-              ? 'Revisjoner'
+              ? t('mscript.revisionsShort')
               : isTablet
-                ? 'Revisjoner & Diff'
-                : 'Script Revisjoner & Diff Viewer'}
+                ? t('mscript.revisionsMedium')
+                : t('mscript.revisionsLong')}
           </Typography>
           <Chip 
             label={`v${manuscript.version || '1.0'}`} 
@@ -6703,7 +6798,7 @@ const RevisionsTab: React.FC<{
               <HistoryIcon sx={{ fontSize: responsive.iconSize - 6 }} />
               {isDesktop && (
                 <Typography component="span" sx={{ ml: 0.75, fontSize: responsive.captionFontSize }}>
-                  Liste
+                  {t('mscript.listView')}
                 </Typography>
               )}
             </ToggleButton>
@@ -6723,7 +6818,7 @@ const RevisionsTab: React.FC<{
             onClick={() => setShowCreateDialog(true)}
             fullWidth={isMobile}
           >
-            {isMobile ? 'Ny' : 'Ny Revisjon'}
+            {isMobile ? t('mscript.newShort') : t('mscript.newRevision')}
           </Button>
         </Stack>
       </Stack>
@@ -6732,8 +6827,8 @@ const RevisionsTab: React.FC<{
         <Alert severity="info" sx={{ mb: responsive.spacing }}>
           <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
             {isMobile 
-              ? 'Ingen revisjoner ennå. Opprett en for å lagre snapshots.'
-              : 'Ingen revisjoner ennå. Opprett en revisjon for å lagre et snapshot av manuskriptet og kunne sammenligne endringer over tid.'
+              ? t('mscript.noRevisionsShort')
+              : t('mscript.noRevisionsLong')
             }
           </Typography>
         </Alert>
@@ -6742,7 +6837,7 @@ const RevisionsTab: React.FC<{
           {/* Revision List */}
           <Paper sx={{ mb: responsive.spacing, p: isMobile ? 1 : 1.5 }}>
             <Typography variant="subtitle2" sx={{ mb: 1, fontSize: responsive.bodyFontSize }}>
-              Revisjonshistorikk ({revisions.length})
+              {t('mscript.revisionHistory', { count: revisions.length })}
             </Typography>
             <Stack spacing={1}>
               {revisions.slice().reverse().map((revision, index) => (
@@ -6766,7 +6861,7 @@ const RevisionsTab: React.FC<{
                         sx={{ fontSize: responsive.captionFontSize }}
                       />
                       <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-                        {stripHtmlTags(revision.changesSummary || revision.revisionNotes || 'Ingen beskrivelse') || 'Ingen beskrivelse'}
+                        {stripHtmlTags(revision.changesSummary || revision.revisionNotes || t('mscript.noDescription')) || t('mscript.noDescription')}
                       </Typography>
                     </Stack>
                     <Stack direction="row" spacing={0.5} alignItems="center">
@@ -6787,7 +6882,7 @@ const RevisionsTab: React.FC<{
                           e.stopPropagation();
                           void handleRestoreRevision(revision);
                         }}
-                        title="Gjenopprett"
+                        title={t('mscript.restore')}
                       >
                         <HistoryIcon sx={{ fontSize: responsive.iconSize }} />
                       </IconButton>
@@ -6797,7 +6892,7 @@ const RevisionsTab: React.FC<{
                           e.stopPropagation();
                           handleDeleteRevision(revision.id);
                         }}
-                        title="Slett"
+                        title={t('mscript.delete')}
                       >
                         <DeleteIcon sx={{ fontSize: responsive.iconSize }} />
                       </IconButton>
@@ -6829,36 +6924,36 @@ const RevisionsTab: React.FC<{
       {revisions.length > 0 && !compareMode && (
         <Alert severity="info">
           <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-            Slå på Compare for å se diff mellom gjeldende manus og valgt revisjon.
+            {t('mscript.enableCompareHint')}
           </Typography>
         </Alert>
       )}
 
       {/* Create Revision Dialog */}
       <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
-        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>Opprett Ny Revisjon</DialogTitle>
+        <DialogTitle sx={{ fontSize: responsive.titleFontSize }}>{t('mscript.createRevisionTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={responsive.spacing} sx={{ mt: 1 }}>
             <Alert severity="info">
               <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
                 {isMobile 
-                  ? 'En revisjon lagrer et snapshot av manuskriptet.'
-                  : 'En revisjon lagrer et snapshot av gjeldende manuskript. Du kan senere sammenligne revisjoner og se endringer over tid.'
+                  ? t('mscript.revisionInfoShort')
+                  : t('mscript.revisionInfoLong')
                 }
               </Typography>
             </Alert>
             <TextField
-              label="Revisjonsnavn"
+              label={t('mscript.revisionNameLabel')}
               value={revisionName}
               onChange={(e) => setRevisionName(e.target.value)}
               fullWidth
               size={isMobile ? 'small' : 'medium'}
-              placeholder="F.eks. 'Draft 2' eller 'Etter regimøte'"
+              placeholder={t('mscript.revisionNamePlaceholder')}
               required
             />
             <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems={isMobile ? 'stretch' : 'center'}>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                Notatformat
+                {t('mscript.noteFormat')}
               </Typography>
               <ToggleButtonGroup
                 size="small"
@@ -6869,45 +6964,45 @@ const RevisionsTab: React.FC<{
                   setUseRichNotes(value === 'rich');
                 }}
               >
-                <ToggleButton value="plain">Tekst</ToggleButton>
-                <ToggleButton value="rich">Rik tekst</ToggleButton>
+                <ToggleButton value="plain">{t('mscript.plainText')}</ToggleButton>
+                <ToggleButton value="rich">{t('mscript.richText')}</ToggleButton>
               </ToggleButtonGroup>
             </Stack>
             {useRichNotes ? (
               <RichTextEditor
                 value={revisionNotes}
                 onChange={setRevisionNotes}
-                placeholder="Beskriv hva som er endret i denne revisjonen..."
+                placeholder={t('mscript.revisionNotesPlaceholder')}
                 minHeight={isMobile ? 120 : 180}
                 accentColor={branding.colors.primary}
               />
             ) : (
               <TextField
-                label="Notater / Endringsbeskrivelse"
+                label={t('mscript.revisionNotesLabel')}
                 value={revisionNotes}
                 onChange={(e) => setRevisionNotes(e.target.value)}
                 fullWidth
                 multiline
                 rows={isMobile ? 2 : 3}
                 size={isMobile ? 'small' : 'medium'}
-                placeholder="Beskriv hva som er endret i denne revisjonen..."
+                placeholder={t('mscript.revisionNotesPlaceholder')}
               />
             )}
             <GlobalMentionHelper
               text={revisionNotes}
               localCandidates={mentionCandidates}
               onApplySuggestion={(name) => setRevisionNotes((prev) => applyMentionSuggestion(prev, name))}
-              autoTagTitle="Auto-tagget i notater"
-              suggestionTitle="Mener du?"
+              autoTagTitle={t('mscript.autoTagged')}
+              suggestionTitle={t('mscript.didYouMean')}
             />
             <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 1 : 2}>
               <Chip 
-                label={`Gjeldende: v${manuscript.version || '1.0'}`} 
+                label={t('mscript.currentVersion', { version: manuscript.version || '1.0' })} 
                 size={responsive.chipSize}
                 sx={{ fontSize: responsive.captionFontSize }}
               />
               <Chip 
-                label={`Ny: v${manuscript.version || 1}.${revisions.length + 1}`} 
+                label={t('mscript.newVersion', { version: `${manuscript.version || 1}.${revisions.length + 1}` })} 
                 size={responsive.chipSize}
                 color="primary"
                 sx={{ fontSize: responsive.captionFontSize }}
@@ -6916,7 +7011,7 @@ const RevisionsTab: React.FC<{
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: responsive.padding }}>
-          <Button onClick={() => setShowCreateDialog(false)} size={responsive.buttonSize}>Avbryt</Button>
+          <Button onClick={() => setShowCreateDialog(false)} size={responsive.buttonSize}>{t('mscript.cancel')}</Button>
           <Button 
             variant="contained" 
             onClick={handleCreateRevision}
@@ -6924,7 +7019,7 @@ const RevisionsTab: React.FC<{
             startIcon={<SaveIcon sx={{ fontSize: responsive.iconSize }} />}
             size={responsive.buttonSize}
           >
-            {isMobile ? 'Lagre' : 'Lagre Revisjon'}
+            {isMobile ? t('mscript.save') : t('mscript.saveRevision')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -6940,7 +7035,14 @@ export const ManuscriptPanel = React.memo(ManuscriptPanelComponent, (prevProps, 
   // Check critical props
   if (prevProps.projectId !== nextProps.projectId) return false;
   if (prevProps.onManuscriptChange !== nextProps.onManuscriptChange) return false;
-  
+  // Mål-lengde er en primitiv som styrer toolbar-chip-en; uten denne re-rendret
+  // ikke panelet når målet ble satt, så «Mål X min» oppdaterte seg aldri.
+  if (prevProps.targetDurationMinutes !== nextProps.targetDurationMinutes) return false;
+  // headerLeftContent er en JSX-node (ny ref hver render) — vi kan ikke sammenligne den
+  // direkte uten å oppheve memoen. Sammenlign i stedet en primitiv nøkkel som endres når
+  // innholdet faktisk endres (typisk språkbytte NO↔EN på breadcrumb/Tilbake-knappen).
+  if (prevProps.headerLeftContentKey !== nextProps.headerLeftContentKey) return false;
+
   // All checks passed - props are effectively equal, skip re-render
   return true;
 });

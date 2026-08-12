@@ -64,6 +64,8 @@ import {
   saveResearchSnapshot,
   type ResearchDiff,
 } from '../../utils/researchDiff';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const SEEN_RESEARCH_KEY = 'roleRoom.researchOverlay.seenResearchIds';
 const SOUND_PREF_KEY = 'roleRoom.researchOverlay.soundEnabled';
@@ -75,21 +77,21 @@ interface ServiceTimelineEntry {
   ms: number;
 }
 
-const SERVICE_LABELS: Record<keyof RoleRoomAgentServiceLatencies, { label: string; source: string }> = {
+const buildSERVICE_LABELS = (t: TFn): Record<keyof RoleRoomAgentServiceLatencies, { label: string; source: string }> => ({
   brreg: { label: 'Brønnøysundregistrene', source: 'data.brreg.no' },
-  website: { label: 'Nettsidescraping', source: 'kundens domene' },
-  googlePlacesBusiness: { label: 'Google Places (bedrift)', source: 'places.googleapis.com' },
-  googlePlacesCompetitors: { label: 'Google Places (konkurrenter)', source: 'places.googleapis.com' },
-  googlePlacesLocal: { label: 'Google Places (nærområde)', source: 'places.googleapis.com' },
-  competitorAnalysis: { label: 'Konkurrentanalyse', source: 'aggregert' },
-  localPresence: { label: 'Lokal tilstedeværelse', source: 'aggregert' },
-  merchSuppliers: { label: 'Merch-leverandører', source: 'Brreg + Google Places' },
-  metaPagesEnrichment: { label: 'Meta Pages-berikelse', source: 'graph.facebook.com' },
-  colorExtraction: { label: 'Logo-paletten', source: 'node-vibrant' },
-  claudeSynthesis: { label: 'CI-syntese', source: 'Creatorhub Intelligence' },
-  openaiSynthesis: { label: 'OpenAI-syntese', source: 'api.openai.com' },
-  totalMs: { label: 'Totaltid', source: 'wall clock' },
-};
+  website: { label: t('researchComplete.s022'), source: t('researchComplete.s034') },
+  googlePlacesBusiness: { label: t('researchComplete.s006'), source: 'places.googleapis.com' },
+  googlePlacesCompetitors: { label: t('researchComplete.s007'), source: 'places.googleapis.com' },
+  googlePlacesLocal: { label: t('researchComplete.s008'), source: 'places.googleapis.com' },
+  competitorAnalysis: { label: t('researchComplete.s012'), source: t('researchComplete.s032') },
+  localPresence: { label: t('researchComplete.s016'), source: t('researchComplete.s032') },
+  merchSuppliers: { label: t('researchComplete.s019'), source: 'Brreg + Google Places' },
+  metaPagesEnrichment: { label: t('researchComplete.s020'), source: 'graph.facebook.com' },
+  colorExtraction: { label: t('researchComplete.s015'), source: 'node-vibrant' },
+  claudeSynthesis: { label: t('researchComplete.s002'), source: 'Creatorhub Intelligence' },
+  openaiSynthesis: { label: t('researchComplete.s023'), source: 'api.openai.com' },
+  totalMs: { label: t('researchComplete.s028'), source: 'wall clock' },
+});
 
 function readSeenResearchIds(): Set<string> {
   try {
@@ -163,8 +165,10 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
   result,
   projectId = null,
   onPrimaryAction,
-  primaryActionLabel = 'Fortsett til neste steg',
+  primaryActionLabel,
 }) => {
+  const { t } = useT();
+  const SERVICE_LABELS = useMemo(() => buildSERVICE_LABELS(t), [t]);
   const researchId = result?.researchId ?? null;
 
   // #15 — researchVersion. Prefers the server-side counter (multi-user-
@@ -243,10 +247,10 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
   const missingCriticalFields = useMemo<string[]>(() => {
     if (!result) return [];
     const missing: string[] = [];
-    if (!result.companyProfile?.companyName) missing.push('Bedriftsnavn');
-    if (!result.companyProfile?.industry) missing.push('Bransje');
-    if (!result.companyProfile?.targetAudience?.length) missing.push('Målgruppe');
-    if ((result.companyProfile?.toneAndBrandSignals?.length ?? 0) < 3) missing.push('Tone-signaler (minst 3)');
+    if (!result.companyProfile?.companyName) missing.push(t('researchComplete.s000'));
+    if (!result.companyProfile?.industry) missing.push(t('researchComplete.s001'));
+    if (!result.companyProfile?.targetAudience?.length) missing.push(t('researchComplete.s021'));
+    if ((result.companyProfile?.toneAndBrandSignals?.length ?? 0) < 3) missing.push(t('researchComplete.s027'));
     return missing;
   }, [result]);
 
@@ -342,11 +346,11 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               variant="h6"
               sx={{ fontWeight: 800, color: '#f8fafc' }}
             >
-              Research er ferdig
+              {t('researchComplete.s024')}
             </Typography>
           </Stack>
           <Stack direction="row" spacing={0.4} alignItems="center">
-            <Tooltip title={soundEnabled ? 'Slå av lyd ved ferdig research' : 'Slå på lyd ved ferdig research'}>
+            <Tooltip title={soundEnabled ? t('researchComplete.s025') : t('researchComplete.s026')}>
               <IconButton size="small" onClick={toggleSound} sx={{ color: '#cbd5e1' }}>
                 {soundEnabled ? <VolumeUpIcon fontSize="small" /> : <VolumeOffIcon fontSize="small" />}
               </IconButton>
@@ -385,11 +389,11 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                 />
               ) : null}
               <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>
-                {result.companyProfile?.companyName || 'Ukjent bedrift'}
+                {result.companyProfile?.companyName || t('researchComplete.s029')}
               </Typography>
               <Chip
                 size="small"
-                label={result.companyProfile?.industry || 'ukjent bransje'}
+                label={result.companyProfile?.industry || t('researchComplete.s035')}
                 sx={{ bgcolor: 'rgba(99,102,241,0.18)', color: '#e0e7ff', fontWeight: 600 }}
               />
               {result.companyProfile?.businessModel ? (
@@ -403,8 +407,8 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                 <Tooltip
                   title={
                     versionTotal !== null
-                      ? `Versjon ${versionNumber} av ${versionTotal} for denne kunden — synlig på tvers av nettlesere/team-medlemmer.`
-                      : 'Versjon for denne kunden i denne nettleseren — server-versjonering ikke tilgjengelig.'
+                      ? t('researchComplete.p02', { v0: versionNumber, v1: versionTotal })
+                      : t('researchComplete.s030')
                   }
                 >
                   <Chip
@@ -416,12 +420,12 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               ) : null}
             </Stack>
             <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.86rem' }}>
-              Vi fant <strong>{datapoints}</strong> datapunkter på{' '}
+              {t('researchComplete.s031')} <strong>{datapoints}</strong> {t('researchComplete.s033')}{' '}
               <strong>{formatMs(totalMs)}</strong>.
               {missingCriticalFields.length === 0 ? (
-                <> Klar for markedsplan</>
+                <> {t('researchComplete.s011')}</>
               ) : (
-                <> Mangler {missingCriticalFields.length} kritisk{missingCriticalFields.length === 1 ? '' : 'e'} felt før marketing plan.</>
+                <> {t('researchComplete.jMissing', { v0: missingCriticalFields.length })}</>
               )}
             </Typography>
             {/* #42 — Claude-generert executive summary, render kun hvis den
@@ -458,7 +462,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               '& .MuiAlert-icon': { color: '#fbbf24' },
             }}
           >
-            <Typography sx={{ fontWeight: 700, mb: 0.4 }}>Manglende felt før marketing plan</Typography>
+            <Typography sx={{ fontWeight: 700, mb: 0.4 }}>{t('researchComplete.s018')}</Typography>
             <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
               {missingCriticalFields.map((field) => (
                 <Chip
@@ -476,7 +480,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
         {fallbacksUsed.length > 0 ? (
           <Box sx={{ mb: 2 }}>
             <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.82rem', mb: 0.6 }}>
-              Fallbacks vi brukte (research kom gjennom, men noen kilder svarte tomt):
+              {t('researchComplete.s004')}
             </Typography>
             <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
               {fallbacksUsed.map((fallback) => (
@@ -499,21 +503,19 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
         {/* #7 + #8 + #11 Timeline with source attribution + tooltips */}
         <Box sx={{ mb: 2 }}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 1 }}>
-            Hvordan vi fant dette
+            {t('researchComplete.s009')}
           </Typography>
           <Stack spacing={0.4}>
             {timeline.length === 0 ? (
               <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem' }}>
-                Ingen latency-data tilgjengelig.
+                {t('researchComplete.s010')}
               </Typography>
             ) : (
               timeline.map((entry) => {
                 const pct = totalMs && totalMs > 0 ? Math.min(100, (entry.ms / totalMs) * 100) : 0;
-                const tooltipBody = `Bygget på ${entry.source} – sist sjekket ${
-                  result.bootstrapFinishedAt
+                const tooltipBody = t('researchComplete.p00', { v0: entry.source, v1: result.bootstrapFinishedAt
                     ? new Date(result.bootstrapFinishedAt).toLocaleString('nb-NO')
-                    : 'ukjent tid'
-                }`;
+                    : t('researchComplete.s036') });
                 return (
                   <Tooltip key={entry.key} title={tooltipBody} placement="left" arrow>
                     <Box
@@ -626,7 +628,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               px: 0,
             }}
           >
-            Debug-data
+            {t('researchComplete.s003')}
           </Button>
           <Collapse in={showDebug} unmountOnExit>
             <Box
@@ -679,7 +681,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
           {/* #12 — Export JSON / CSV / PDF. Keep buttons text-only so they
               read as secondary actions next to the primary CTA. */}
           <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-            <Tooltip title="Last ned hele research-resultatet som JSON">
+            <Tooltip title={t('researchComplete.s014')}>
               <Button
                 size="small"
                 onClick={() => exportResearchAsJson(result)}
@@ -695,7 +697,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                 JSON
               </Button>
             </Tooltip>
-            <Tooltip title="Last ned firmaprofil som CSV (åpnes i Excel/Google Sheets)">
+            <Tooltip title={t('researchComplete.s013')}>
               <Button
                 size="small"
                 onClick={() => exportResearchAsCsv(result)}
@@ -711,13 +713,13 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                 CSV
               </Button>
             </Tooltip>
-            <Tooltip title="Generer pitchklar PDF med brandfarger fra logo">
+            <Tooltip title={t('researchComplete.s005')}>
               <Button
                 size="small"
                 onClick={() =>
                   exportResearchAsPdf(
                     result,
-                    versionNumber !== null ? `Versjon ${versionNumber}` : null,
+                    versionNumber !== null ? t('researchComplete.p01', { v0: versionNumber }) : null,
                   )
                 }
                 startIcon={<DownloadIcon fontSize="small" />}
@@ -735,7 +737,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
           </Stack>
           <Stack direction="row" spacing={1}>
             <Button onClick={handleClose} sx={{ color: '#cbd5e1', textTransform: 'none' }}>
-              Lukk
+              {t('researchComplete.s017')}
             </Button>
             {onPrimaryAction ? (
               <Button
@@ -750,7 +752,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                   fontWeight: 700,
                 }}
               >
-                {primaryActionLabel}
+                {primaryActionLabel ?? t('researchComplete.continueNext')}
               </Button>
             ) : null}
           </Stack>

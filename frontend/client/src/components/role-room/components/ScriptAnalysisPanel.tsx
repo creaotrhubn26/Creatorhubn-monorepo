@@ -47,6 +47,7 @@ import {
   type ScriptAnalysisResult,
 } from '../services/scriptAnalysisService';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { useT } from '../../../i18n';
 
 interface ScriptAnalysisPanelProps {
   content: string;
@@ -80,6 +81,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
   content,
   onGotoLine,
 }) => {
+  const { t } = useT();
   const [expanded, setExpanded] = useState<string | false>('conflicts');
 
   // Analyze script
@@ -127,9 +129,9 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         <Stack direction="row" alignItems="center" spacing={2}>
           <Typography variant="h6" sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
             <CheckIcon color="primary" />
-            Manus-analyse
+            {t('scriptanalysis.title')}
           </Typography>
-          <Tooltip title="Analyser på nytt">
+          <Tooltip title={t('scriptanalysis.reanalyze')}>
             <IconButton size="small">
               <RefreshIcon />
             </IconButton>
@@ -141,7 +143,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           {totalIssues === 0 ? (
             <Chip
               icon={<CheckIcon />}
-              label="Ingen problemer funnet"
+              label={t('scriptanalysis.noIssues')}
               color="success"
               size="small"
             />
@@ -150,7 +152,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               {errors > 0 && (
                 <Chip
                   icon={<ErrorIcon />}
-                  label={`${errors} feil`}
+                  label={t('scriptanalysis.errorCount', { n: errors })}
                   size="small"
                   sx={{ bgcolor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
                 />
@@ -158,7 +160,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               {warnings > 0 && (
                 <Chip
                   icon={<WarningIcon />}
-                  label={`${warnings} advarsler`}
+                  label={t('scriptanalysis.warningCount', { n: warnings })}
                   size="small"
                   sx={{ bgcolor: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
                 />
@@ -191,7 +193,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           <AccordionSummary expandIcon={<ExpandIcon />}>
             <Stack direction="row" alignItems="center" spacing={1}>
               <SceneIcon color="primary" />
-              <Typography variant="subtitle2">Statistikk</Typography>
+              <Typography variant="subtitle2">{t('scriptanalysis.stats')}</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails>
@@ -210,7 +212,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                     {analysis.stats.totalScenes}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Scener
+                    {t('scriptanalysis.scenes')}
                   </Typography>
                 </Paper>
                 <Paper
@@ -226,7 +228,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                     {analysis.stats.totalCharacters}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Karakterer
+                    {t('scriptanalysis.characters')}
                   </Typography>
                 </Paper>
               </Stack>
@@ -235,7 +237,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                  Lengste scene
+                  {t('scriptanalysis.longestScene')}
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <Chip
@@ -244,14 +246,14 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                     color="primary"
                   />
                   <Typography variant="body2">
-                    {analysis.stats.longestScene.lines} linjer
+                    {t('scriptanalysis.lineCount', { n: analysis.stats.longestScene.lines })}
                   </Typography>
                 </Stack>
               </Box>
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                  Korteste scene
+                  {t('scriptanalysis.shortestScene')}
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <Chip
@@ -259,7 +261,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                     size="small"
                   />
                   <Typography variant="body2">
-                    {analysis.stats.shortestScene.lines} linjer
+                    {t('scriptanalysis.lineCount', { n: analysis.stats.shortestScene.lines })}
                   </Typography>
                 </Stack>
               </Box>
@@ -282,13 +284,13 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               <Badge badgeContent={analysis.characterConflicts.length} color="warning">
                 <CharacterIcon color="primary" />
               </Badge>
-              <Typography variant="subtitle2">Karakternavn-konflikter</Typography>
+              <Typography variant="subtitle2">{t('scriptanalysis.characterConflicts')}</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>
             {analysis.characterConflicts.length === 0 ? (
               <Alert severity="success" sx={{ m: 2 }}>
-                Ingen karakternavn-konflikter funnet!
+                {t('scriptanalysis.noCharacterConflicts')}
               </Alert>
             ) : (
               <List dense>
@@ -300,7 +302,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                       mb: 0.5,
                     }}
                     secondaryAction={
-                      <Tooltip title="Gå til linje">
+                      <Tooltip title={t('scriptanalysis.gotoLine')}>
                         <IconButton
                           edge="end"
                           size="small"
@@ -373,13 +375,13 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
               <Badge badgeContent={analysis.consistencyIssues.length} color="info">
                 <TimelineIcon color="primary" />
               </Badge>
-              <Typography variant="subtitle2">Kontinuitetsproblemer</Typography>
+              <Typography variant="subtitle2">{t('scriptanalysis.consistencyIssues')}</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>
             {analysis.consistencyIssues.length === 0 ? (
               <Alert severity="success" sx={{ m: 2 }}>
-                Ingen kontinuitetsproblemer funnet!
+                {t('scriptanalysis.noConsistencyIssues')}
               </Alert>
             ) : (
               <List dense>
@@ -391,7 +393,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                       mb: 0.5,
                     }}
                     secondaryAction={
-                      <Tooltip title="Gå til linje">
+                      <Tooltip title={t('scriptanalysis.gotoLine')}>
                         <IconButton
                           edge="end"
                           size="small"
@@ -415,7 +417,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                             sx={{ fontSize: '0.65rem', height: 18, textTransform: 'uppercase' }}
                           />
                           <Typography variant="caption" color="text.secondary">
-                            Linje {issue.lineNumber}
+                            {t('scriptanalysis.lineNo', { n: issue.lineNumber })}
                           </Typography>
                         </Stack>
                       }
@@ -462,13 +464,13 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
           <AccordionSummary expandIcon={<ExpandIcon />}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1 }}>
               <SceneIcon color="primary" />
-              <Typography variant="subtitle2">Scene-fullstendighet</Typography>
+              <Typography variant="subtitle2">{t('scriptanalysis.sceneCompleteness')}</Typography>
             </Stack>
           </AccordionSummary>
           <AccordionDetails>
             {analysis.beatCards.length === 0 ? (
               <Alert severity="info">
-                Ingen scener funnet i manuset
+                {t('scriptanalysis.noScenes')}
               </Alert>
             ) : (
               <Stack spacing={1}>
@@ -495,7 +497,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                         {isComplete ? (
                           <Chip
                             icon={<CheckIcon />}
-                            label="Komplett"
+                            label={t('scriptanalysis.complete')}
                             size="small"
                             color="success"
                             sx={{ fontSize: '0.65rem', height: 20 }}
@@ -503,7 +505,7 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
                         ) : (
                           <Chip
                             icon={<WarningIcon />}
-                            label={hasDialogue ? 'Kort' : 'Mangler dialog'}
+                            label={hasDialogue ? t('scriptanalysis.short') : t('scriptanalysis.missingDialogue')}
                             size="small"
                             color="warning"
                             sx={{ fontSize: '0.65rem', height: 20 }}

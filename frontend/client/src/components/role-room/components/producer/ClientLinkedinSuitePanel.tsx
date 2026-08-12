@@ -24,6 +24,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bgCard: '#150b2e',
@@ -44,6 +46,7 @@ export default function ClientLinkedinSuitePanel({
   configId: string;
   clientName: string;
 }) {
+  const { t } = useT();
   const [accounts, setAccounts] = useState<Array<{ id: string; urn: string; name: string; currency: string }>>([]);
   const [accountUrn, setAccountUrn] = useState('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
@@ -67,7 +70,7 @@ export default function ClientLinkedinSuitePanel({
       setAccounts(data.accounts ?? []);
       if (data.accounts?.length === 1) setAccountUrn(data.accounts[0].urn);
     } catch (err) {
-      setAccountsError(err instanceof Error ? err.message : 'Kunne ikke hente LinkedIn-kontoer');
+      setAccountsError(err instanceof Error ? err.message : t('liSuite.s007'));
     } finally {
       setLoadingAccounts(false);
     }
@@ -80,7 +83,7 @@ export default function ClientLinkedinSuitePanel({
       if (!r.ok || !data.authUrl) throw new Error(data.error || `HTTP ${r.status}`);
       window.location.href = data.authUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'OAuth-start feilet');
+      setError(err instanceof Error ? err.message : t('liSuite.s012'));
     }
   };
 
@@ -103,7 +106,7 @@ export default function ClientLinkedinSuitePanel({
         tagSnippet: data.tagSnippet,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Provisioning feilet');
+      setError(err instanceof Error ? err.message : t('liSuite.s014'));
     } finally {
       setProvisioning(false);
     }
@@ -124,7 +127,7 @@ export default function ClientLinkedinSuitePanel({
         failed: data.failed?.length ?? 0,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sync feilet');
+      setError(err instanceof Error ? err.message : t('liSuite.s020'));
     } finally {
       setSyncing(false);
     }
@@ -144,7 +147,7 @@ export default function ClientLinkedinSuitePanel({
       setCapiSaved(true);
       setTimeout(() => setCapiSaved(false), 2400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Token-lagring feilet');
+      setError(err instanceof Error ? err.message : t('liSuite.s023'));
     }
   };
 
@@ -169,7 +172,7 @@ export default function ClientLinkedinSuitePanel({
               LinkedIn — Insight Tag + conversion-rules
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem' }}>
-              Speil av Google-flowen for B2B-trafikk. Opprett Insight Tag for {clientName} og sync alle godkjente conversion-actions.
+              {t('liSuite.s015')} {clientName} {t('liSuite.s026')}
             </Typography>
           </Box>
         </Stack>
@@ -179,7 +182,7 @@ export default function ClientLinkedinSuitePanel({
         {/* Steg 1: OAuth + konto-velger */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 1 — Koble LinkedIn Ad Account
+            {t('liSuite.s016')}
           </Typography>
           {accountsError || accounts.length === 0 ? (
             <Stack direction="row" spacing={1} alignItems="center">
@@ -188,10 +191,10 @@ export default function ClientLinkedinSuitePanel({
                 startIcon={<OpenInNewIcon fontSize="small" />}
                 sx={{ border: `1px solid ${palette.borderStrong}`, color: palette.accent, textTransform: 'none', fontWeight: 700 }}
               >
-                Koble LinkedIn
+                {t('liSuite.s002')}
               </Button>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                {accountsError ? `${accountsError} — koble på nytt for å løse.` : 'Krever LinkedIn Marketing Developer Platform-tilgang.'}
+                {accountsError ? t('liSuite.p02', { v0: accountsError }) : t('liSuite.s005')}
               </Typography>
             </Stack>
           ) : (
@@ -204,13 +207,13 @@ export default function ClientLinkedinSuitePanel({
                 displayEmpty
                 sx={{ minWidth: 280, color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
               >
-                <MenuItem value=""><em style={{ color: palette.textMuted }}>Velg ad account</em></MenuItem>
+                <MenuItem value=""><em style={{ color: palette.textMuted }}>{t('liSuite.s024')}</em></MenuItem>
                 {accounts.map((a) => (
                   <MenuItem key={a.urn} value={a.urn}>{a.name} ({a.currency})</MenuItem>
                 ))}
               </Select>
               <Button onClick={loadAccounts} size="small" sx={{ color: palette.accent, textTransform: 'none' }}>
-                Last på nytt
+                {t('liSuite.s010')}
               </Button>
             </Stack>
           )}
@@ -221,7 +224,7 @@ export default function ClientLinkedinSuitePanel({
         {/* Steg 2: Provision Insight Tag */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 2 — Opprett Insight Tag (klient-pixel)
+            {t('liSuite.s017')}
           </Typography>
           <Button
             onClick={provisionInsightTag}
@@ -233,12 +236,12 @@ export default function ClientLinkedinSuitePanel({
               '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
             }}
           >
-            {provisioning ? 'Oppretter…' : `Opprett Insight Tag for ${clientName}`}
+            {provisioning ? t('liSuite.s013') : t('liSuite.p01', { v0: clientName })}
           </Button>
           {insightTag ? (
             <Box sx={{ mt: 1.2 }}>
               <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
-                Insight Tag opprettet. Partner-ID: <strong>{insightTag.partnerId}</strong>. Pixel-snippet er klar til klient.
+                {t('liSuite.s001')} <strong>{insightTag.partnerId}</strong>{t('liSuite.s000')}
               </Alert>
               <Box sx={{
                 mt: 1.2,
@@ -265,7 +268,7 @@ export default function ClientLinkedinSuitePanel({
                 startIcon={tagSnippetCopied ? <CheckCircleOutlineIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
                 sx={{ mt: 0.8, color: tagSnippetCopied ? '#34d399' : palette.accent, textTransform: 'none' }}
               >
-                {tagSnippetCopied ? 'Kopiert' : 'Kopier snippet'}
+                {tagSnippetCopied ? t('liSuite.s004') : t('liSuite.s003')}
               </Button>
             </Box>
           ) : null}
@@ -276,7 +279,7 @@ export default function ClientLinkedinSuitePanel({
         {/* Steg 3: Sync conversion-rules */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 3 — Sync conversion-rules
+            {t('liSuite.s018')}
           </Typography>
           <Button
             onClick={syncConversions}
@@ -287,16 +290,16 @@ export default function ClientLinkedinSuitePanel({
               color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
             }}
           >
-            {syncing ? 'Synker…' : 'Sync til LinkedIn'}
+            {syncing ? t('liSuite.s022') : t('liSuite.s021')}
           </Button>
           {syncResult ? (
             <Alert severity={syncResult.failed > 0 ? 'warning' : 'success'} sx={{ mt: 1 }}>
-              {syncResult.created} conversion rule{syncResult.created === 1 ? '' : 's'} opprettet
-              {syncResult.failed > 0 ? ` — ${syncResult.failed} feilet (sjekk LinkedIn-tilgang + scope)` : ''}.
+              {syncResult.created} conversion rule{syncResult.created === 1 ? '' : 's'} {t('liSuite.s027')}
+              {syncResult.failed > 0 ? t('liSuite.p00', { v0: syncResult.failed }) : ''}.
             </Alert>
           ) : null}
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-            Krever approval_status = 'approved'. Per action lages én rule med riktig conversion-type (LEAD/PURCHASE/etc.) basert på goal_category.
+            {t('liSuite.s006')}
           </Typography>
         </Box>
 
@@ -307,16 +310,16 @@ export default function ClientLinkedinSuitePanel({
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}>
             <LockOutlinedIcon sx={{ color: '#fbbf24', fontSize: 18 }} />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-              Steg 4 — Conversions API (server-side)
+              {t('liSuite.s019')}
             </Typography>
             <Chip
               size="small"
-              label="Venter på LinkedIn-godkjenning"
+              label={t('liSuite.s025')}
               sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700, height: 20, fontSize: '0.68rem' }}
             />
           </Stack>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', mb: 1 }}>
-            LinkedIn CAPI lar oss sende conversion-events server-side (kritisk for ITP/ETP-blokkering og offline-konverteringer). LinkedIn Conversions API (Standard tier) er "Review in progress" — token-feltet er klart for når godkjenning lander.
+            {t('liSuite.s011')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
@@ -344,7 +347,7 @@ export default function ClientLinkedinSuitePanel({
                 },
               }}
             >
-              {capiSaved ? 'Lagret' : 'Lagre'}
+              {capiSaved ? t('liSuite.s009') : t('liSuite.s008')}
             </Button>
           </Stack>
         </Box>

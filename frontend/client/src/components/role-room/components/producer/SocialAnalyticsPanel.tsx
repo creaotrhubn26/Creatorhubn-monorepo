@@ -41,6 +41,8 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import { useSequencedFetch } from '../../hooks/useSequencedFetch';
 import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert, MetricCard } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PLATFORM_COLOR: Record<string, string> = {
   instagram: '#ec4899',
@@ -108,6 +110,7 @@ function pivotDailySentiment(rows: RoleRoomDailySentimentEntry[]): TimeSeriesPoi
 }
 
 export default function SocialAnalyticsPanel(): React.ReactElement {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RoleRoomSocialAnalyticsSummary | null>(null);
@@ -178,11 +181,11 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
     <Stack spacing={2} data-testid="social-analytics-panel">
       <PanelHeader
         icon={<AnalyticsHeaderIcon />}
-        title="Analyse"
-        subtitle="Måler resultatene av strategien — henvendelser, stemning og rekkevidde."
+        title={t('socialAnalytics.s000')}
+        subtitle={t('socialAnalytics.s006')}
         actions={
-          <Tooltip title="Oppdater">
-            <IconButton size="small" aria-label="Oppdater analyse" onClick={() => void refresh()} disabled={loading}>
+          <Tooltip title={t('socialAnalytics.s010')}>
+            <IconButton size="small" aria-label={t('socialAnalytics.s011')} onClick={() => void refresh()} disabled={loading}>
               <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
             </IconButton>
           </Tooltip>
@@ -200,14 +203,14 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
             <MetricCard
               label="Events 7d"
               value={formatNumber(summary?.last7d.totalEvents ?? 0)}
-              caption={`${summary?.last7d.totalUnread ?? 0} ulest`}
+              caption={t('socialAnalytics.p00', { v0: summary?.last7d.totalUnread ?? 0 })}
               accent="#22d3ee"
               testId="kpi-events-7d"
             />
             <MetricCard
               label="Events 30d"
               value={formatNumber(summary?.last30d.totalEvents ?? 0)}
-              caption="totalt"
+              caption={t('socialAnalytics.s022')}
               accent="#86efac"
               testId="kpi-events-30d"
             />
@@ -233,7 +236,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
               }}
             >
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700, mb: 1 }}>
-                Daglige events siste 30 dager — per plattform
+                {t('socialAnalytics.s002')}
               </Typography>
               <Box sx={{ width: '100%', height: 240 }}>
                 <ResponsiveContainer>
@@ -280,7 +283,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
                   }}
                 >
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700, mb: 1 }}>
-                    Sentiment-fordeling siste 30 dager
+                    {t('socialAnalytics.s016')}
                   </Typography>
                   <Box sx={{ width: '100%', height: 220 }}>
                     <ResponsiveContainer>
@@ -322,7 +325,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
                   }}
                 >
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700, mb: 1 }}>
-                    Sentiment-trend siste 30 dager
+                    {t('socialAnalytics.s017')}
                   </Typography>
                   <Box sx={{ width: '100%', height: 220 }}>
                     <ResponsiveContainer>
@@ -341,25 +344,25 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
                           dataKey="negative"
                           stackId="s"
                           fill={SENTIMENT_COLOR.negative}
-                          name="Negativ"
+                          name={t('socialAnalytics.s007')}
                         />
                         <Bar
                           dataKey="neutral"
                           stackId="s"
                           fill={SENTIMENT_COLOR.neutral}
-                          name="Nøytral"
+                          name={t('socialAnalytics.s009')}
                         />
                         <Bar
                           dataKey="positive"
                           stackId="s"
                           fill={SENTIMENT_COLOR.positive}
-                          name="Positiv"
+                          name={t('socialAnalytics.s013')}
                         />
                         <Bar
                           dataKey="mixed"
                           stackId="s"
                           fill={SENTIMENT_COLOR.mixed}
-                          name="Blandet"
+                          name={t('socialAnalytics.s001')}
                         />
                       </BarChart>
                     </ResponsiveContainer>
@@ -381,7 +384,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
               }}
             >
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700, mb: 1 }}>
-                Publish-rytme siste 30 dager
+                {t('socialAnalytics.s015')}
               </Typography>
               <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
                 {publishesPerPlatform.map((p) => {
@@ -418,12 +421,12 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
                       <Stack direction="row" spacing={0.6} sx={{ mt: 0.4 }}>
                         {p.published > 0 ? (
                           <Typography sx={{ color: '#86efac', fontSize: '0.7rem', fontWeight: 600 }}>
-                            {formatNumber(p.published)} publisert
+                            {formatNumber(p.published)} {t('socialAnalytics.s021')}
                           </Typography>
                         ) : null}
                         {p.scheduled > 0 ? (
                           <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: '0.7rem', fontWeight: 600 }}>
-                            {formatNumber(p.scheduled)} planlagt
+                            {formatNumber(p.scheduled)} {t('socialAnalytics.s020')}
                           </Typography>
                         ) : null}
                       </Stack>
@@ -445,7 +448,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
               }}
             >
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700, mb: 1 }}>
-                Følger-tall (siste snapshot per konto)
+                {t('socialAnalytics.s004')}
               </Typography>
               <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
                 {followerSnapshots.map((m) => (
@@ -499,16 +502,16 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
               }}
             >
               <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 700, mb: 1 }}>
-                Top posts siste 30 dager
+                {t('socialAnalytics.s018')}
               </Typography>
               <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(148,163,184,0.12)' } }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>Plattform</TableCell>
-                    <TableCell sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>Post-ID</TableCell>
+                    <TableCell sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>{t('socialAnalytics.s012')}</TableCell>
+                    <TableCell sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>{t('socialAnalytics.s014')}</TableCell>
                     <TableCell sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>Metric</TableCell>
                     <TableCell sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }} align="right">
-                      Verdi
+                      {t('socialAnalytics.s019')}
                     </TableCell>
                   </TableRow>
                 </TableHead>
@@ -551,12 +554,10 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
           {/* Empty state when truly nothing */}
           {(summary?.last30d.totalEvents ?? 0) === 0 && topPosts.length === 0 ? (
             <EmptyState
-              title="Ingen data å analysere ennå"
+              title={t('socialAnalytics.s005')}
               description={
                 <>
-                  Når du publiserer poster og mottar comments/mentions, vil tall, sentiment-trender og top-posts
-                  dukke opp her. Inbound webhook-events går automatisk til Inbox-fanen, og insights-snapshots tas
-                  via <code>POST /api/role-room/social/metrics/snapshot</code>.
+                  {t('socialAnalytics.s008')} <code>POST /api/role-room/social/metrics/snapshot</code>.
                 </>
               }
             />
@@ -564,7 +565,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
           <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.7rem', textAlign: 'center' }}>
-            Data fra <code>social_events</code> + <code>social_metrics</code> · Auto-refresh er av — klikk Oppdater for ferske tall
+            {t('socialAnalytics.s003')} <code>social_events</code> + <code>social_metrics</code> {t('socialAnalytics.s023')}
           </Typography>
         </>
       )}

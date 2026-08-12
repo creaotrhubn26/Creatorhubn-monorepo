@@ -26,6 +26,8 @@ import { listFormations } from './danceFormationService';
 import { listRehearsals } from './danceRehearsalService';
 import { listDancerProfiles } from './dancerProfileService';
 import { DANCE_MOVEMENT_CATEGORIES, categoryById } from './danceMovementCategories';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface DanceAnalysisPanelProps {
   projectId: string | null;
@@ -42,6 +44,7 @@ interface AnalysisData {
 }
 
 export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): React.ReactElement {
+  const { t } = useT();
   const [data, setData] = React.useState<AnalysisData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -124,7 +127,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
           });
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Kunne ikke laste analyse');
+        if (!cancelled) setError(err instanceof Error ? err.message : t('danceAnalysis.s005'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -142,7 +145,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
   if (error || !data) {
     return (
       <Box data-testid="dance-analysis-panel" sx={{ p: 3 }}>
-        <Typography sx={{ color: danceFlowColors.errorSoft }}>{error ?? 'Ingen data'}</Typography>
+        <Typography sx={{ color: danceFlowColors.errorSoft }}>{error ?? t('danceAnalysis.s002')}</Typography>
       </Box>
     );
   }
@@ -162,7 +165,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
         </Typography>
         <Chip
           size="small"
-          label={`${data.totalAnnotations} annotasjoner · ${data.formationsCount} formasjoner · ${data.rehearsalsCount} prøver`}
+          label={t('danceAnalysis.p00', { v0: data.totalAnnotations, v1: data.formationsCount, v2: data.rehearsalsCount })}
           sx={{ ml: 1, height: 22, fontSize: 11, bgcolor: 'rgba(167,139,250,0.18)', color: danceFlowColors.lavenderLight }}
         />
       </Stack>
@@ -213,7 +216,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
               {(data.annotationsByCategory.get('__uncat__') ?? 0) > 0 ? (
                 <Box>
                   <Stack direction="row" justifyContent="space-between">
-                    <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontWeight: 700 }}>Uten kategori</Typography>
+                    <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontWeight: 700 }}>{t('danceAnalysis.s008')}</Typography>
                     <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted }}>
                       {data.annotationsByCategory.get('__uncat__')}
                     </Typography>
@@ -235,12 +238,12 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
             </Stack>
             {totalOutcomes === 0 ? (
               <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
-                Ingen segment-reviews ennå.
+                {t('danceAnalysis.s004')}
               </Typography>
             ) : (
               <Stack spacing={0.75}>
-                <OutcomeBar label="Godkjent" color="#34d399" count={data.reviewOutcomes.approved} total={totalOutcomes} testId="approved" />
-                <OutcomeBar label="Må repeteres" color="#fbbf24" count={data.reviewOutcomes.needs_repeat} total={totalOutcomes} testId="needs-repeat" />
+                <OutcomeBar label={t('danceAnalysis.s000')} color="#34d399" count={data.reviewOutcomes.approved} total={totalOutcomes} testId="approved" />
+                <OutcomeBar label={t('danceAnalysis.s007')} color="#fbbf24" count={data.reviewOutcomes.needs_repeat} total={totalOutcomes} testId="needs-repeat" />
                 <OutcomeBar label="Avventer" color="#9ca3af" count={data.reviewOutcomes.pending} total={totalOutcomes} testId="pending" />
               </Stack>
             )}
@@ -253,12 +256,12 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
               <PeopleIcon sx={{ fontSize: 16, color: danceFlowColors.infoLight }} />
               <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: danceFlowColors.lavender, fontWeight: 700 }}>
-                MEST ANNOTERTE DANSERE
+                {t('danceAnalysis.s006')}
               </Typography>
             </Stack>
             {data.topDancers.length === 0 ? (
               <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
-                Ingen danser-annotasjoner ennå.
+                {t('danceAnalysis.s001')}
               </Typography>
             ) : (
               <Stack spacing={0.75}>
@@ -298,7 +301,7 @@ export function DanceAnalysisPanel({ projectId }: DanceAnalysisPanelProps): Reac
             </Stack>
             {data.formationsByTag.size === 0 ? (
               <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
-                Ingen formasjoner har tags ennå.
+                {t('danceAnalysis.s003')}
               </Typography>
             ) : (
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>

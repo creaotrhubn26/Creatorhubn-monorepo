@@ -52,6 +52,7 @@ import {
 } from '@mui/icons-material';
 import { LocationsIcon as LocationOn, TeamIcon as Groups } from '../icons/CastingIcons';
 import settingsService from '../../services/settingsService';
+import { useT } from '../../../../i18n';
 
 interface SplitSheetPortalViewProps {
   contributorEmail?: string;
@@ -73,6 +74,7 @@ export default function SplitSheetPortalView({
       if (cached) return cached;
       return '';
     };
+  const { t } = useT();
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const queryClient = useQueryClient();
@@ -390,16 +392,16 @@ export default function SplitSheetPortalView({
                 Split Sheet Portal
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' } }}>
-                {step === 'accessCode' 
-                  ? 'Skriv inn tilgangskoden du har fått fra musikkprodusenten for å se split sheets.'
-                  : 'Skriv inn PIN og/eller passord for å fortsette.'}
+                {step === 'accessCode'
+                  ? t('splitPortal.introAccessCode')
+                  : t('splitPortal.introCredentials')}
               </Typography>
             </Box>
 
             {step === 'accessCode' && (
               <TextField
                 fullWidth
-                label="Tilgangskode"
+                label={t('splitPortal.accessCodeLabel')}
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
                 variant="outlined"
@@ -414,7 +416,7 @@ export default function SplitSheetPortalView({
                     fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' },
                   },
                 }}
-                placeholder="F.eks: ABC123XYZ"
+                placeholder={t('splitPortal.accessCodePlaceholder')}
                 InputProps={{
                   startAdornment: (
                     <Box sx={{ mr: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }, display: 'flex', alignItems: 'center', color: brandColor }}>
@@ -436,7 +438,7 @@ export default function SplitSheetPortalView({
                     onChange={(e) => setPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
                     variant="outlined"
                     sx={{ mb: 3 }}
-                    placeholder="4 siffer"
+                    placeholder={t('splitPortal.pinPlaceholder')}
                     inputProps={{ maxLength: 4, inputMode: 'numeric' }}
                     InputProps={{
                       startAdornment: (
@@ -450,13 +452,13 @@ export default function SplitSheetPortalView({
                 {requiresPassword && (
                   <TextField
                     fullWidth
-                    label="Passord"
+                    label={t('splitPortal.password')}
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     variant="outlined"
                     sx={{ mb: 3 }}
-                    placeholder="Skriv inn passord"
+                    placeholder={t('splitPortal.passwordPlaceholder')}
                     InputProps={{
                       startAdornment: (
                         <Box sx={{ mr: 1, display: 'flex', alignItems: 'center', color: brandColor }}>
@@ -482,7 +484,7 @@ export default function SplitSheetPortalView({
                 minHeight: { xs: 48, sm: 50, md: 52, lg: 54, xl: 56 },
               }}
             >
-              {step === 'accessCode' ? 'Fortsett' : 'Logg inn'}
+              {step === 'accessCode' ? t('splitPortal.continue') : t('splitPortal.logIn')}
             </Button>
           </CardContent>
         </Card>
@@ -501,7 +503,7 @@ export default function SplitSheetPortalView({
   if (splitSheets.length === 0) {
     return (
       <Alert severity="info" sx={{ mt: 2 }}>
-        Ingen split sheets funnet for din e-postadresse.
+        {t('splitPortal.noSplitSheets')}
       </Alert>
     );
   }
@@ -509,7 +511,7 @@ export default function SplitSheetPortalView({
   return (
     <Box sx={{ px: { xs: 1, sm: 1.5, md: 2, lg: 2.5, xl: 3 } }}>
       <Typography variant="h5" gutterBottom sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, color: brandColor, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }, fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }}>
-        <SplitSheetIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} /> Mine Split Sheets
+        <SplitSheetIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} /> {t('splitPortal.mySplitSheets')}
       </Typography>
 
       {splitSheets.map((splitSheet: any) => (
@@ -527,9 +529,9 @@ export default function SplitSheetPortalView({
                 )}
               </Box>
               <Chip
-                label={splitSheet.status === 'completed' ? 'Fullført' : 
-                       splitSheet.status === 'pending_signatures' ? 'Venter signaturer' : 
-                       'Utkast'}
+                label={splitSheet.status === 'completed' ? t('splitPortal.statusCompleted') :
+                       splitSheet.status === 'pending_signatures' ? t('splitPortal.statusPending') :
+                       t('splitPortal.statusDraft')}
                 sx={{
                   bgcolor: getStatusColor(splitSheet.status),
                   color: 'white',
@@ -545,7 +547,7 @@ export default function SplitSheetPortalView({
             {/* Contributor Information */}
             <Box sx={{ mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
               <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' }, mb: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
-                Din andel
+                {t('splitPortal.yourShare')}
               </Typography>
               <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, flexWrap: 'wrap' }}>
                 <Chip
@@ -559,7 +561,7 @@ export default function SplitSheetPortalView({
                   }}
                 />
                 <Chip
-                  label={splitSheet.role || 'Bidragsyter'}
+                  label={splitSheet.role || t('splitPortal.contributor')}
                   variant="outlined"
                   sx={{
                     fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
@@ -570,7 +572,7 @@ export default function SplitSheetPortalView({
                 {splitSheet.signed_at ? (
                   <Chip
                     icon={<CheckCircle sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />}
-                    label="Signert"
+                    label={t('splitPortal.signed')}
                     color="success"
                     sx={{
                       fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
@@ -581,7 +583,7 @@ export default function SplitSheetPortalView({
                 ) : (
                   <Chip
                     icon={<Schedule sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />}
-                    label="Ikke signert"
+                    label={t('splitPortal.notSigned')}
                     color="warning"
                     sx={{
                       fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' },
@@ -596,15 +598,15 @@ export default function SplitSheetPortalView({
             {/* All Contributors Table */}
             <Box sx={{ mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
               <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' }, mb: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
-                Alle bidragsytere ({splitSheet.signed_contributors}/{splitSheet.total_contributors} signert)
+                {t('splitPortal.allContributors', { signed: splitSheet.signed_contributors ?? 0, total: splitSheet.total_contributors ?? 0 })}
               </Typography>
               <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>Navn</TableCell>
-                      <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>Rolle</TableCell>
-                      <TableCell align="right" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>Andel</TableCell>
+                      <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{t('splitPortal.colName')}</TableCell>
+                      <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{t('splitPortal.colRole')}</TableCell>
+                      <TableCell align="right" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{t('splitPortal.colShare')}</TableCell>
                       <TableCell align="center" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>Status</TableCell>
                     </TableRow>
                   </TableHead>
@@ -614,32 +616,32 @@ export default function SplitSheetPortalView({
                       splitSheet.contributors.map((contributor: any, index: number) => (
                         <TableRow key={contributor.id || index}>
                           <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
-                            {contributor.name || 'Ukjent'}
+                            {contributor.name || t('splitPortal.unknown')}
                             {contributor.email === contributorEmail && (
-                              <Chip label="Deg" size="small" sx={{ ml: 1, fontSize: '0.7rem', height: 20 }} />
+                              <Chip label={t('splitPortal.you')} size="small" sx={{ ml: 1, fontSize: '0.7rem', height: 20 }} />
                             )}
                           </TableCell>
                           <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{contributor.role || 'collaborator'}</TableCell>
                           <TableCell align="right" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{contributor.percentage?.toFixed(2) || '0'}%</TableCell>
                           <TableCell align="center" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
                             {contributor.signed_at ? (
-                              <Chip label="Signert" size="small" color="success" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
+                              <Chip label={t('splitPortal.signed')} size="small" color="success" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
                             ) : (
-                              <Chip label="Ikke signert" size="small" color="warning" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
+                              <Chip label={t('splitPortal.notSigned')} size="small" color="warning" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
                             )}
                           </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{splitSheet.name || 'Deg'}</TableCell>
-                        <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{splitSheet.role || 'Bidragsyter'}</TableCell>
+                        <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{splitSheet.name || t('splitPortal.you')}</TableCell>
+                        <TableCell sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{splitSheet.role || t('splitPortal.contributor')}</TableCell>
                         <TableCell align="right" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>{splitSheet.percentage}%</TableCell>
                         <TableCell align="center" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, py: { xs: 1, sm: 1.25, md: 1.5, lg: 1.75, xl: 2 } }}>
                           {splitSheet.signed_at ? (
-                            <Chip label="Signert" size="small" color="success" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
+                            <Chip label={t('splitPortal.signed')} size="small" color="success" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
                           ) : (
-                            <Chip label="Ikke signert" size="small" color="warning" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
+                            <Chip label={t('splitPortal.notSigned')} size="small" color="warning" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, height: { xs: 24, sm: 26, md: 28, lg: 30, xl: 32 } }} />
                           )}
                         </TableCell>
                       </TableRow>
@@ -667,7 +669,7 @@ export default function SplitSheetPortalView({
                   minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
                 }}
               >
-                Signer Split Sheet
+                {t('splitPortal.signSplitSheet')}
               </Button>
             )}
           </CardContent>
@@ -690,20 +692,20 @@ export default function SplitSheetPortalView({
         }}
       >
         <DialogTitle sx={{ fontSize: { xs: '1.1rem', sm: '1.188rem', md: '1.25rem', lg: '1.313rem', xl: '1.375rem' }, px: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, py: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
-          Signer Split Sheet
+          {t('splitPortal.signSplitSheet')}
         </DialogTitle>
         <DialogContent sx={{ px: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, pb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           {selectedSplitSheet && (
             <Box>
               <Alert severity="info" sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                Du er i ferd med å signere: <strong>{selectedSplitSheet.title}</strong>
+                {t('splitPortal.aboutToSign')} <strong>{selectedSplitSheet.title}</strong>
               </Alert>
               <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                For å signere, skriv inn ditt navn nedenfor.
+                {t('splitPortal.signInstructions')}
               </Typography>
               <TextField
                 fullWidth
-                label="Ditt navn"
+                label={t('splitPortal.yourName')}
                 value={signatureName}
                 onChange={(e) => setSignatureName(e.target.value)}
                 required
@@ -725,12 +727,12 @@ export default function SplitSheetPortalView({
                 <>
                   <Divider sx={{ my: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }} />
                   <Typography variant="subtitle2" sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontWeight: 600, fontSize: { xs: '0.938rem', sm: '1rem', md: '1.063rem', lg: '1.125rem', xl: '1.188rem' } }}>
-                    Sikkerhetsbekreftelse
+                    {t('splitPortal.securityConfirmation')}
                   </Typography>
                   {selectedSplitSheet.require_pin_for_signature && (
                     <TextField
                       fullWidth
-                      label="PIN (4 siffer)"
+                      label={t('splitPortal.pinFourDigits')}
                       type="password"
                       value={signaturePin}
                       onChange={(e) => setSignaturePin(e.target.value.replace(/\D/g, '').substring(0, 4))}
@@ -758,7 +760,7 @@ export default function SplitSheetPortalView({
                   {selectedSplitSheet.require_password_for_signature && (
                     <TextField
                       fullWidth
-                      label="Passord"
+                      label={t('splitPortal.password')}
                       type="password"
                       value={signaturePassword}
                       onChange={(e) => setSignaturePassword(e.target.value)}
@@ -793,7 +795,7 @@ export default function SplitSheetPortalView({
                   <Box sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
                     <Typography variant="subtitle2" sx={{ mb: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }, fontWeight: 700, fontSize: { xs: '1rem', sm: '1.063rem', md: '1.125rem', lg: '1.188rem', xl: '1.25rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                       <Folder sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} />
-                      Prosjektdetaljer
+                      {t('splitPortal.projectDetails')}
                     </Typography>
                     
                     {loadingProject ? (
@@ -813,7 +815,7 @@ export default function SplitSheetPortalView({
                             {projectData.name && (
                               <Box>
                                 <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, display: 'block', mb: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 } }}>
-                                  Prosjektnavn
+                                  {t('splitPortal.projectName')}
                                 </Typography>
                                 <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.938rem', md: '1rem', lg: '1.063rem', xl: '1.125rem' }, color: 'text.primary' }}>
                                   {projectData.name}
@@ -828,7 +830,7 @@ export default function SplitSheetPortalView({
                                 <Box>
                                   <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 }, mb: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 } }}>
                                     <PersonIcon sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem', lg: '1.25rem', xl: '1.375rem' } }} />
-                                    Prosjektansvarlig
+                                    {t('splitPortal.projectLead')}
                                   </Typography>
                                   <Stack spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }} sx={{ mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                                     {projectData.clientName && (
@@ -867,7 +869,7 @@ export default function SplitSheetPortalView({
                                 <Box>
                                   <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 }, mb: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 } }}>
                                     <LocationOn sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem', lg: '1.25rem', xl: '1.375rem' } }} />
-                                    Lokasjon
+                                    {t('splitPortal.location')}
                                   </Typography>
                                   <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, color: 'text.primary', mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                                     {projectData.location}
@@ -883,7 +885,7 @@ export default function SplitSheetPortalView({
                                 <Box>
                                   <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 }, mb: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 } }}>
                                     <Event sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem', lg: '1.25rem', xl: '1.375rem' } }} />
-                                    Arrangementsdato
+                                    {t('splitPortal.eventDate')}
                                   </Typography>
                                   <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, color: 'text.primary', mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                                     {new Date(projectData.eventDate).toLocaleDateString('no-NO', {
@@ -902,7 +904,7 @@ export default function SplitSheetPortalView({
                                 <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                                 <Box>
                                   <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, display: 'block', mb: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 } }}>
-                                    Beskrivelse
+                                    {t('splitPortal.description')}
                                   </Typography>
                                   <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, color: 'text.primary', whiteSpace: 'pre-wrap' }}>
                                     {projectData.description}
@@ -918,7 +920,7 @@ export default function SplitSheetPortalView({
                                 <Box>
                                   <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 600, fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 }, mb: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                                     <Groups sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem', lg: '1.25rem', xl: '1.375rem' } }} />
-                                    Produksjonsteam
+                                    {t('splitPortal.productionTeam')}
                                   </Typography>
                                   <Stack spacing={{ xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }} sx={{ mt: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                                     {(projectData.collaborators || projectData.crew || []).slice(0, 5).map((member: any, index: number) => (
@@ -926,7 +928,7 @@ export default function SplitSheetPortalView({
                                         <PersonIcon sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' }, color: 'text.secondary' }} />
                                         <Box sx={{ flex: 1 }}>
                                           <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, color: 'text.primary', fontWeight: 500 }}>
-                                            {member.name || member.contactInfo?.name || 'Ukjent'}
+                                            {member.name || member.contactInfo?.name || t('splitPortal.unknown')}
                                           </Typography>
                                           {(member.email || member.contactInfo?.email) && (
                                             <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, color: 'text.secondary' }}>
@@ -948,7 +950,7 @@ export default function SplitSheetPortalView({
                                     ))}
                                     {((projectData.collaborators?.length || projectData.crew?.length || 0) > 5) && (
                                       <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.813rem', lg: '0.875rem', xl: '0.938rem' }, color: 'text.secondary', fontStyle: 'italic' }}>
-                                        + {((projectData.collaborators?.length || projectData.crew?.length || 0) - 5)} flere teammedlemmer
+                                        {t('splitPortal.moreTeamMembers', { n: (projectData.collaborators?.length || projectData.crew?.length || 0) - 5 })}
                                       </Typography>
                                     )}
                                   </Stack>
@@ -962,10 +964,10 @@ export default function SplitSheetPortalView({
                       // Project not found or not loaded - show error message
                       <Alert severity="error" sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 1, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>
-                          Prosjektdetaljer kunne ikke lastes inn
+                          {t('splitPortal.projectDetailsLoadError')}
                         </Typography>
                         <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.813rem', md: '0.875rem', lg: '0.938rem', xl: '1rem' } }}>
-                          Prosjektet må være lagret i databasen før split sheet kan signeres. Vennligst kontakt prosjektlederen.
+                          {t('splitPortal.projectMustBeSaved')}
                         </Typography>
                       </Alert>
                     )}
@@ -991,7 +993,7 @@ export default function SplitSheetPortalView({
                         }
                         label={
                           <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' }, fontWeight: 500 }}>
-                            Jeg bekrefter at jeg har lest og aksepterer prosjektdetaljene over
+                            {t('splitPortal.acceptProjectDetails')}
                           </Typography>
                         }
                         sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}
@@ -1005,7 +1007,7 @@ export default function SplitSheetPortalView({
               {/* Email and Download Options */}
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, fontWeight: 600, fontSize: { xs: '0.938rem', sm: '1rem', md: '1.063rem', lg: '1.125rem', xl: '1.188rem' } }}>
-                  Etter signering
+                  {t('splitPortal.afterSigning')}
                 </Typography>
                 
                 <Stack spacing={{ xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }}>
@@ -1028,7 +1030,7 @@ export default function SplitSheetPortalView({
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                         <DownloadIcon sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />
-                        <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>Last ned signert PDF</Typography>
+                        <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>{t('splitPortal.downloadSignedPdf')}</Typography>
                       </Box>
                     }
                   />
@@ -1057,7 +1059,7 @@ export default function SplitSheetPortalView({
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 } }}>
                         <EmailIcon sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.25rem', lg: '1.375rem', xl: '1.5rem' } }} />
-                        <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>Send kopi til e-post</Typography>
+                        <Typography variant="body2" sx={{ fontSize: { xs: '0.813rem', sm: '0.875rem', md: '0.938rem', lg: '1rem', xl: '1.063rem' } }}>{t('splitPortal.sendCopyEmail')}</Typography>
                       </Box>
                     }
                   />
@@ -1065,15 +1067,15 @@ export default function SplitSheetPortalView({
                   {sendEmailCopy && (
                     <TextField
                       fullWidth
-                      label="E-postadresse"
+                      label={t('splitPortal.emailAddress')}
                       type="email"
                       inputMode="email"
                       autoComplete="email"
                       value={emailForCopy}
                       onChange={(e) => setEmailForCopy(e.target.value)}
                       required
-                      placeholder="din@epost.no"
-                      helperText="En kopi av den signerte split sheet vil bli sendt til denne adressen"
+                      placeholder={t('splitPortal.emailPlaceholder')}
+                      helperText={t('splitPortal.emailCopyHelper')}
                       sx={{ 
                         ml: { xs: 3.5, sm: 4, md: 4.5, lg: 5, xl: 5.5 },
                         '& .MuiInputBase-input': {
@@ -1114,7 +1116,7 @@ export default function SplitSheetPortalView({
               minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
             }}
           >
-            Avbryt
+            {t('splitPortal.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -1137,7 +1139,7 @@ export default function SplitSheetPortalView({
               minHeight: { xs: 44, sm: 46, md: 48, lg: 50, xl: 52 },
             }}
           >
-            {signMutation.isPending ? 'Signerer...' : 'Signer'}
+            {signMutation.isPending ? t('splitPortal.signing') : t('splitPortal.sign')}
           </Button>
         </DialogActions>
       </Dialog>

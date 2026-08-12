@@ -10,7 +10,7 @@
  * No advanced fields — the desktop has the rich creator.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -42,6 +42,7 @@ import type {
   CreateProducerTimelineItemInput,
   ProducerPhase,
 } from '../../services/producerWorkflowService';
+import { useT } from '../../../../i18n';
 
 export type PlannerCreateType = 'meeting' | 'milestone' | 'task' | 'delivery';
 
@@ -53,18 +54,6 @@ interface MobilePlannerCreateSheetProps {
   onCreate: (payload: CreateProducerTimelineItemInput) => Promise<void>;
 }
 
-const TYPE_CHOICES: {
-  value: PlannerCreateType;
-  label: string;
-  icon: React.ReactNode;
-  metadata: Record<string, unknown>;
-}[] = [
-  { value: 'meeting', label: 'Møte', icon: <MeetingIcon />, metadata: { entryType: 'meeting' } },
-  { value: 'milestone', label: 'Milepæl', icon: <MilestoneIcon />, metadata: { entryType: 'milestone' } },
-  { value: 'task', label: 'Oppgave', icon: <TaskIcon />, metadata: { entryType: 'task' } },
-  { value: 'delivery', label: 'Levering', icon: <DeliveryIcon />, metadata: { entryType: 'delivery' } },
-];
-
 export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> = ({
   open,
   onClose,
@@ -72,6 +61,21 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
   anchorEl,
   onCreate,
 }) => {
+  const { t } = useT();
+  const TYPE_CHOICES = useMemo(
+    (): {
+      value: PlannerCreateType;
+      label: string;
+      icon: React.ReactNode;
+      metadata: Record<string, unknown>;
+    }[] => [
+      { value: 'meeting', label: t('mobPlanner.type.meeting'), icon: <MeetingIcon />, metadata: { entryType: 'meeting' } },
+      { value: 'milestone', label: t('mobPlanner.type.milestone'), icon: <MilestoneIcon />, metadata: { entryType: 'milestone' } },
+      { value: 'task', label: t('mobPlanner.type.task'), icon: <TaskIcon />, metadata: { entryType: 'task' } },
+      { value: 'delivery', label: t('mobPlanner.type.delivery'), icon: <DeliveryIcon />, metadata: { entryType: 'delivery' } },
+    ],
+    [t],
+  );
   const usePopover = mode === 'tabletPortrait' || mode === 'tabletLandscape';
   const [selectedType, setSelectedType] = useState<PlannerCreateType | null>(null);
   const [title, setTitle] = useState('');
@@ -95,7 +99,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
     setPending(true);
     setLocalError(null);
     try {
-      const typeChoice = TYPE_CHOICES.find((t) => t.value === selectedType)!;
+      const typeChoice = TYPE_CHOICES.find((choice) => choice.value === selectedType)!;
       await onCreate({
         phase,
         title: title.trim(),
@@ -105,7 +109,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
       });
       resetAndClose();
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Kunne ikke opprette');
+      setLocalError(err instanceof Error ? err.message : t('mobPlanner.error.createFailed'));
     } finally {
       setPending(false);
     }
@@ -114,7 +118,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
   const typeStep = (
     <Stack spacing={1.5} sx={{ p: 2 }}>
       <Typography variant="body2" color="text.secondary">
-        Hva vil du legge til?
+        {t('mobPlanner.typeStep.prompt')}
       </Typography>
       <ToggleButtonGroup
         exclusive
@@ -145,7 +149,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
   const formStep = (
     <Stack spacing={2} sx={{ p: 2 }}>
       <TextField
-        label="Tittel"
+        label={t('mobPlanner.form.titleLabel')}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         fullWidth
@@ -153,7 +157,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
         autoFocus
       />
       <TextField
-        label="Fase"
+        label={t('mobPlanner.form.phaseLabel')}
         value={phase}
         onChange={(event) => setPhase(event.target.value as ProducerPhase)}
         select
@@ -164,7 +168,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
         <MenuItem value="postproduction">Post-production</MenuItem>
       </TextField>
       <TextField
-        label="Frist"
+        label={t('mobPlanner.form.dueLabel')}
         type="datetime-local"
         value={dueAt}
         onChange={(event) => setDueAt(event.target.value)}
@@ -187,11 +191,15 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
       }}
     >
       <Typography variant="h6" fontWeight={700}>
-        {selectedType ? 'Nytt ' + TYPE_CHOICES.find((t) => t.value === selectedType)!.label.toLowerCase() : 'Opprett'}
+        {selectedType
+          ? t('mobPlanner.header.newItem', {
+              type: TYPE_CHOICES.find((choice) => choice.value === selectedType)!.label.toLowerCase(),
+            })
+          : t('mobPlanner.create')}
       </Typography>
       <IconButton
         onClick={resetAndClose}
-        aria-label="Lukk"
+        aria-label={t('mobPlanner.close')}
         sx={{ width: 'var(--rr-touch-target-min, 44px)', height: 'var(--rr-touch-target-min, 44px)' }}
       >
         <CloseIcon />
@@ -215,7 +223,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
       }}
     >
       <Button onClick={() => setSelectedType(null)} disabled={pending}>
-        Tilbake
+        {t('mobPlanner.actions.back')}
       </Button>
       <Box sx={{ flex: 1 }} />
       <Button
@@ -224,7 +232,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
         disabled={!title.trim() || pending}
         sx={{ minHeight: 'var(--rr-touch-target-min, 44px)', fontWeight: 700 }}
       >
-        {pending ? <CircularProgress size={20} color="inherit" /> : 'Opprett'}
+        {pending ? <CircularProgress size={20} color="inherit" /> : t('mobPlanner.create')}
       </Button>
     </Box>
   ) : null;
@@ -269,7 +277,7 @@ export const MobilePlannerCreateSheet: React.FC<MobilePlannerCreateSheetProps> =
       }}
     >
       <DialogTitle id="rr-planner-create-title" sx={{ p: 0 }}>
-        <span className="sr-only">Opprett</span>
+        <span className="sr-only">{t('mobPlanner.create')}</span>
       </DialogTitle>
       <DialogContent sx={{ p: 0 }}>{content}</DialogContent>
     </Dialog>

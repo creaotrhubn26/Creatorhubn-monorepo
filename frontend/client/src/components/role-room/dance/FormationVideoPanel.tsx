@@ -35,6 +35,8 @@ import {
 import VideoRefPlayer from './VideoRefPlayer';
 import { SELECT_CLIP_EVENT, type SelectClipDetail } from './ClipsSidebar';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const VIDEO_TIME_EVENT = 'dance:video-time' as const;
 const VIDEO_SEEK_EVENT = 'dance:video-seek' as const;
@@ -74,6 +76,7 @@ const HlsAttacher: React.FC<{
   onTimeUpdate: () => void;
   testId: string;
 }> = ({ src, videoElRef, onTimeUpdate, testId }) => {
+  const { t } = useT();
   const localRef = React.useRef<HTMLVideoElement | null>(null);
   const [hlsError, setHlsError] = React.useState<string | null>(null);
 
@@ -110,7 +113,7 @@ const HlsAttacher: React.FC<{
       if (cancelled || !localRef.current) return;
       const Hls = mod.default;
       if (!Hls.isSupported()) {
-        setHlsError('Nettleseren støtter ikke HLS-avspilling.');
+        setHlsError(t('formationVideo.s002'));
         return;
       }
       const instance = new Hls();
@@ -118,7 +121,7 @@ const HlsAttacher: React.FC<{
       instance.attachMedia(localRef.current);
       hls = instance;
     }).catch(() => {
-      if (!cancelled) setHlsError('Kunne ikke laste HLS-bibliotek (hls.js).');
+      if (!cancelled) setHlsError(t('formationVideo.s001'));
     });
 
     return () => {
@@ -193,6 +196,7 @@ export default function FormationVideoPanel({
   'data-testid': testId = 'formation-video-panel',
   hideHeader = false,
 }: FormationVideoPanelProps): React.ReactElement {
+  const { t } = useT();
   const [selected, setSelected] = React.useState<SelectedClip | null>(null);
   const videoElRef = React.useRef<HTMLVideoElement | null>(null);
   const lastDispatchRef = React.useRef<number>(0);
@@ -326,7 +330,7 @@ export default function FormationVideoPanel({
               }}
               data-testid={`${testId}-empty`}
             >
-              Velg en clip fra venstre kolonne for å spille av.
+              {t('formationVideo.s003')}
             </Typography>
           </Stack>
         ) : selected.signedUrl && (sourceKind === 'hls' || sourceKind === 'direct') ? (
@@ -353,8 +357,7 @@ export default function FormationVideoPanel({
             sx={{ color: danceFlowColors.errorPrimary, p: 2 }}
             data-testid={`${testId}-no-url`}
           >
-            Klippet mangler avspilbar URL — last opp på nytt eller sjekk
-            backend.
+            {t('formationVideo.s000')}
           </Typography>
         )}
       </Box>

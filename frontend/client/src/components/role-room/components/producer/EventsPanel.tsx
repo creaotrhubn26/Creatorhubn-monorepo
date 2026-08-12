@@ -11,6 +11,8 @@ import {
 import { EventOutlined as EventIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
 import { LoadingSkeleton, PanelHeader } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface IgConnection { id: string; igUsername: string | null; facebookPageName: string | null }
 interface IgEvent {
@@ -26,6 +28,7 @@ function fmt(v: string | null): string {
 }
 
 export default function EventsPanel() {
+  const { t } = useT();
   const [connectionId, setConnectionId] = useState('');
   const [name, setName] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -70,60 +73,60 @@ export default function EventsPanel() {
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
       <PanelHeader
         icon={<EventIcon />}
-        title="Arrangement"
-        subtitle="Lag Instagram-arrangement (åpen dag, gratis konsultasjon, webinar) som følgere kan melde seg på — en kilde til nye leads."
-        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />}
+        title={t('events.s001')}
+        subtitle={t('events.s010')}
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label={t('events.s019')} />}
       />
 
       {connLoading ? (
         <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
       ) : connections.length === 0 ? (
-        <Alert severity="info">Koble til kundens Instagram-bedriftskonto først (under Feed-planner) for å lage arrangement.</Alert>
+        <Alert severity="info">{t('events.s008')}</Alert>
       ) : (
         <>
           {graphError ? (
             <Alert severity="info">
-              Arrangement er ikke aktivert ennå (venter på godkjenning av <code>instagram_manage_events</code> fra Meta). Du kan fylle ut under nå; det publiseres når det er godkjent.
+              {t('events.s002')} <code>instagram_manage_events</code> {t('events.s020')}
             </Alert>
           ) : null}
 
           {/* Create form */}
           <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.6 }}>
-            <Typography sx={{ fontWeight: 800, color: '#f8fafc', mb: 1 }}>Nytt arrangement</Typography>
+            <Typography sx={{ fontWeight: 800, color: '#f8fafc', mb: 1 }}>{t('events.s011')}</Typography>
             <Stack spacing={1.2}>
-              <TextField size="small" label="Tittel" fullWidth value={name} onChange={(e) => setName(e.target.value)} placeholder="Gratis tannsjekk-dag" />
+              <TextField size="small" label={t('events.s018')} fullWidth value={name} onChange={(e) => setName(e.target.value)} placeholder={t('events.s005')} />
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
-                <TextField size="small" type="datetime-local" label="Start" fullWidth InputLabelProps={{ shrink: true }} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-                <TextField size="small" type="datetime-local" label="Slutt (valgfritt)" fullWidth InputLabelProps={{ shrink: true }} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                <TextField size="small" type="datetime-local" label={t('events.s016')} fullWidth InputLabelProps={{ shrink: true }} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                <TextField size="small" type="datetime-local" label={t('events.s015')} fullWidth InputLabelProps={{ shrink: true }} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
               </Stack>
-              <TextField size="small" label="Sted (valgfritt)" fullWidth value={placeName} onChange={(e) => setPlaceName(e.target.value)} placeholder="Klinikken, Storgata 1" />
-              <TextField size="small" label="Beskrivelse (valgfritt)" fullWidth multiline minRows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+              <TextField size="small" label={t('events.s017')} fullWidth value={placeName} onChange={(e) => setPlaceName(e.target.value)} placeholder={t('events.s007')} />
+              <TextField size="small" label={t('events.s004')} fullWidth multiline minRows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
               <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                 {create.data && create.data.success === false ? <Typography sx={{ fontSize: '0.78rem', color: '#fca5a5' }}>{create.data.error}</Typography> : null}
-                {create.data?.success ? <Typography sx={{ fontSize: '0.78rem', color: '#86efac' }}>Arrangement opprettet</Typography> : null}
+                {create.data?.success ? <Typography sx={{ fontSize: '0.78rem', color: '#86efac' }}>{t('events.s003')}</Typography> : null}
                 <Button variant="contained" size="small" onClick={() => create.mutate()} disabled={!name || !startTime || create.isPending}>
-                  {create.isPending ? 'Oppretter…' : 'Opprett arrangement'}
+                  {create.isPending ? t('events.s013') : t('events.s012')}
                 </Button>
               </Stack>
             </Stack>
           </Box>
 
-          <Divider>Kommende arrangement</Divider>
+          <Divider>{t('events.s009')}</Divider>
           {isLoading ? (
             <LoadingSkeleton variant="list" count={3} />
           ) : events.length === 0 ? (
-            <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen kommende arrangement ennå.</Typography>
+            <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>{t('events.s006')}</Typography>
           ) : (
             <Stack spacing={1}>
               {events.map((ev) => (
                 <Box key={ev.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.2, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{ev.title || '(uten tittel)'}</Typography>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{ev.title || t('events.s000')}</Typography>
                     <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: '0.78rem', mt: 0.2 }}>{fmt(ev.startTime)}{ev.endTime ? ` – ${fmt(ev.endTime)}` : ''}</Typography>
                     {ev.venue ? <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>{ev.venue}</Typography> : null}
                     {ev.description ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{ev.description}</Typography> : null}
                   </Box>
-                  <IconButton size="small" onClick={() => remove.mutate(ev.id)} disabled={remove.isPending} aria-label="Slett arrangement">
+                  <IconButton size="small" onClick={() => remove.mutate(ev.id)} disabled={remove.isPending} aria-label={t('events.s014')}>
                     <DeleteIcon fontSize="small" sx={{ color: '#fca5a5' }} />
                   </IconButton>
                 </Box>

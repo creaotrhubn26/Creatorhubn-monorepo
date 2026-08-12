@@ -23,6 +23,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bgCard: '#150b2e',
@@ -57,6 +59,7 @@ export default function ClientMetaSuitePanel({
   configId: string;
   clientName: string;
 }) {
+  const { t } = useT();
   const [accounts, setAccounts] = useState<MetaAdAccount[]>([]);
   const [adAccountId, setAdAccountId] = useState('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
@@ -87,7 +90,7 @@ export default function ClientMetaSuitePanel({
       setAccounts(data.accounts ?? []);
       if (data.accounts?.length === 1) setAdAccountId(data.accounts[0].id);
     } catch (err) {
-      setAccountsError(err instanceof Error ? err.message : 'Kunne ikke hente Meta Ad Accounts');
+      setAccountsError(err instanceof Error ? err.message : t('metaSuite.s010'));
     } finally {
       setLoadingAccounts(false);
     }
@@ -127,7 +130,7 @@ export default function ClientMetaSuitePanel({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setPixel({ pixelId: data.pixelId, pixelName: data.pixelName, baseCode: data.baseCode });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Pixel-provisioning feilet');
+      setError(err instanceof Error ? err.message : t('metaSuite.s017'));
     } finally {
       setProvisioning(false);
     }
@@ -148,7 +151,7 @@ export default function ClientMetaSuitePanel({
         failed: data.failed?.length ?? 0,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sync feilet');
+      setError(err instanceof Error ? err.message : t('metaSuite.s022'));
     } finally {
       setSyncing(false);
     }
@@ -168,7 +171,7 @@ export default function ClientMetaSuitePanel({
       setCapiSaved(true);
       setTimeout(() => setCapiSaved(false), 2400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Token-lagring feilet');
+      setError(err instanceof Error ? err.message : t('metaSuite.s025'));
     }
   };
 
@@ -197,7 +200,7 @@ export default function ClientMetaSuitePanel({
               Meta — Pixel + Custom Conversions
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem' }}>
-              Facebook + Instagram. Bruker producerens eksisterende Meta-tilkobling. CAPI gated på App Review.
+              {t('metaSuite.s003')}
             </Typography>
           </Box>
           <Chip
@@ -213,7 +216,7 @@ export default function ClientMetaSuitePanel({
         {/* Steg 1: velg Ad Account */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 1 — Velg Meta Ad Account
+            {t('metaSuite.s018')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Select
@@ -225,14 +228,14 @@ export default function ClientMetaSuitePanel({
               sx={{ minWidth: 320, color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
             >
               <MenuItem value=""><em style={{ color: palette.textMuted }}>
-                {loadingAccounts ? 'Henter…' : accounts.length === 0 ? 'Ingen kontoer' : 'Velg ad account'}
+                {loadingAccounts ? t('metaSuite.s004') : accounts.length === 0 ? t('metaSuite.s005') : t('metaSuite.s026')}
               </em></MenuItem>
               {accounts.map((a) => (
                 <MenuItem key={a.id} value={a.id}>{a.name} {a.businessName ? `· ${a.businessName}` : ''} ({a.currency})</MenuItem>
               ))}
             </Select>
             <Button onClick={loadAccounts} size="small" sx={{ color: palette.accent, textTransform: 'none' }}>
-              Last på nytt
+              {t('metaSuite.s013')}
             </Button>
           </Stack>
         </Box>
@@ -242,7 +245,7 @@ export default function ClientMetaSuitePanel({
         {/* Steg 2: opprett eller velg Pixel */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 2 — Pixel
+            {t('metaSuite.s019')}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
             <Button
@@ -256,7 +259,7 @@ export default function ClientMetaSuitePanel({
                 textTransform: 'none', fontWeight: 700,
               }}
             >
-              Opprett ny
+              {t('metaSuite.s015')}
             </Button>
             <Button
               size="small"
@@ -269,7 +272,7 @@ export default function ClientMetaSuitePanel({
                 textTransform: 'none', fontWeight: 700,
               }}
             >
-              Bruk eksisterende {pixels.length > 0 ? `(${pixels.length})` : ''}
+              {t('metaSuite.s000')} {pixels.length > 0 ? `(${pixels.length})` : ''}
             </Button>
           </Stack>
 
@@ -282,7 +285,7 @@ export default function ClientMetaSuitePanel({
               displayEmpty
               sx={{ minWidth: 320, color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
             >
-              <MenuItem value=""><em style={{ color: palette.textMuted }}>Velg eksisterende pixel</em></MenuItem>
+              <MenuItem value=""><em style={{ color: palette.textMuted }}>{t('metaSuite.s027')}</em></MenuItem>
               {pixels.map((p) => (
                 <MenuItem key={p.id} value={p.id}>{p.name} ({p.id})</MenuItem>
               ))}
@@ -300,13 +303,13 @@ export default function ClientMetaSuitePanel({
               '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
             }}
           >
-            {provisioning ? 'Klargjør…' : pixelMode === 'existing' ? 'Bruk valgt pixel' : `Opprett pixel for ${clientName}`}
+            {provisioning ? t('metaSuite.s006') : pixelMode === 'existing' ? t('metaSuite.s001') : t('metaSuite.p01', { v0: clientName })}
           </Button>
 
           {pixel ? (
             <Box sx={{ mt: 1.2 }}>
               <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
-                Pixel klar: <strong>{pixel.pixelName}</strong> ({pixel.pixelId})
+                {t('metaSuite.s016')} <strong>{pixel.pixelName}</strong> ({pixel.pixelId})
               </Alert>
               {pixel.baseCode ? (
                 <>
@@ -335,7 +338,7 @@ export default function ClientMetaSuitePanel({
                     startIcon={snippetCopied ? <CheckCircleOutlineIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
                     sx={{ mt: 0.8, color: snippetCopied ? '#34d399' : palette.accent, textTransform: 'none' }}
                   >
-                    {snippetCopied ? 'Kopiert' : 'Kopier base-code'}
+                    {snippetCopied ? t('metaSuite.s008') : t('metaSuite.s007')}
                   </Button>
                 </>
               ) : null}
@@ -348,7 +351,7 @@ export default function ClientMetaSuitePanel({
         {/* Steg 3: sync custom conversions */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 3 — Sync custom conversions
+            {t('metaSuite.s020')}
           </Typography>
           <Button
             onClick={syncConversions}
@@ -359,16 +362,16 @@ export default function ClientMetaSuitePanel({
               color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
             }}
           >
-            {syncing ? 'Synker…' : 'Sync til Meta'}
+            {syncing ? t('metaSuite.s024') : t('metaSuite.s023')}
           </Button>
           {syncResult ? (
             <Alert severity={syncResult.failed > 0 ? 'warning' : 'success'} sx={{ mt: 1 }}>
-              {syncResult.created} custom conversion{syncResult.created === 1 ? '' : 's'} opprettet
-              {syncResult.failed > 0 ? ` — ${syncResult.failed} feilet (sjekk Meta scope-tilgang)` : ''}.
+              {syncResult.created} custom conversion{syncResult.created === 1 ? '' : 's'} {t('metaSuite.s028')}
+              {syncResult.failed > 0 ? t('metaSuite.p00', { v0: syncResult.failed }) : ''}.
             </Alert>
           ) : null}
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-            Krever approval_status = 'approved'. Per action: goal_category → Meta standard event (Lead/Purchase/AddToCart/Schedule/…).
+            {t('metaSuite.s009')}
           </Typography>
         </Box>
 
@@ -379,16 +382,16 @@ export default function ClientMetaSuitePanel({
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}>
             <LockOutlinedIcon sx={{ color: '#fbbf24', fontSize: 18 }} />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-              Steg 4 — Conversions API (server-side)
+              {t('metaSuite.s021')}
             </Typography>
             <Chip
               size="small"
-              label="Live krever App Review per scope"
+              label={t('metaSuite.s014')}
               sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700, height: 20, fontSize: '0.68rem' }}
             />
           </Stack>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', mb: 1 }}>
-            CAPI håndterer iOS ATT-blokkering + offline-konverteringer. Token kan lagres nå — fungerer for app admins/testere, går live når Meta godkjenner.
+            {t('metaSuite.s002')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
@@ -416,7 +419,7 @@ export default function ClientMetaSuitePanel({
                 },
               }}
             >
-              {capiSaved ? 'Lagret' : 'Lagre'}
+              {capiSaved ? t('metaSuite.s012') : t('metaSuite.s011')}
             </Button>
           </Stack>
         </Box>

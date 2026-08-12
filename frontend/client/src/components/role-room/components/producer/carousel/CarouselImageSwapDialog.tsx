@@ -38,6 +38,7 @@ import {
   type GalleryAssetMatch,
   type AiImageResult,
 } from '../../../../../services/carouselService';
+import { useT } from '../../../../../i18n';
 
 interface Props {
   open: boolean;
@@ -54,6 +55,7 @@ export default function CarouselImageSwapDialog({
   onApply,
   brandColors,
 }: Props) {
+  const { t } = useT();
   const [tab, setTab] = useState<'gallery' | 'ai' | 'stock'>('gallery');
   const [prompt, setPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -149,7 +151,7 @@ export default function CarouselImageSwapDialog({
       }}
     >
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        Bytt bilde for slide {slide ? slide.slide_index + 1 : ''}
+        {t('carouselSwap.title', { n: slide ? slide.slide_index + 1 : '' })}
         <IconButton onClick={onClose} sx={{ color: 'rgba(226,232,240,0.65)' }}>
           <CloseIcon />
         </IconButton>
@@ -169,9 +171,9 @@ export default function CarouselImageSwapDialog({
             '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #22d3ee)' },
           }}
         >
-          <Tab value="gallery" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Mine galleri" />
-          <Tab value="ai" icon={<AutoAwesomeIcon fontSize="small" />} iconPosition="start" label="AI-generer" />
-          <Tab value="stock" disabled label="Stock (kommer)" />
+          <Tab value="gallery" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label={t('carouselSwap.tabGallery')} />
+          <Tab value="ai" icon={<AutoAwesomeIcon fontSize="small" />} iconPosition="start" label={t('carouselSwap.tabAi')} />
+          <Tab value="stock" disabled label={t('carouselSwap.tabStock')} />
         </Tabs>
 
         <Box sx={{ pt: 2 }}>
@@ -188,7 +190,7 @@ export default function CarouselImageSwapDialog({
                 <TextField
                   fullWidth
                   size="small"
-                  placeholder="Søk i dine galleri…"
+                  placeholder={t('carouselSwap.gallerySearchPlaceholder')}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   sx={{
@@ -204,7 +206,7 @@ export default function CarouselImageSwapDialog({
                   disabled={galleryLoading}
                   sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
                 >
-                  Søk
+                  {t('carouselSwap.searchButton')}
                 </Button>
               </Stack>
               {galleryLoading ? (
@@ -213,7 +215,7 @@ export default function CarouselImageSwapDialog({
                 </Box>
               ) : galleryMatches.length === 0 ? (
                 <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.65)' }}>
-                  Ingen treff. Prøv et annet søk eller bruk AI-fanen.
+                  {t('carouselSwap.noGalleryMatches')}
                 </Typography>
               ) : (
                 <ImageList cols={3} gap={8}>
@@ -267,7 +269,7 @@ export default function CarouselImageSwapDialog({
                 fullWidth
                 multiline
                 minRows={2}
-                label="Bildeprompt"
+                label={t('carouselSwap.aiPromptLabel')}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 InputLabelProps={{ shrink: true }}
@@ -290,10 +292,10 @@ export default function CarouselImageSwapDialog({
                     textTransform: 'none',
                   }}
                 >
-                  {aiLoading ? 'Genererer (~20s)…' : 'Generer bilde'}
+                  {aiLoading ? t('carouselSwap.generatingButton') : t('carouselSwap.generateImageButton')}
                 </Button>
                 <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.65)' }}>
-                  ~3 NOK per bilde · cache 30 dager
+                  {t('carouselSwap.aiCostCaption')}
                 </Typography>
               </Stack>
               {aiResult && (
@@ -310,7 +312,9 @@ export default function CarouselImageSwapDialog({
                     }}
                   />
                   <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.65)' }}>
-                    {aiResult.cached ? 'Cached (gratis)' : `Generert · model: ${aiResult.model}`}
+                    {aiResult.cached
+                      ? t('carouselSwap.cachedFree')
+                      : t('carouselSwap.generatedModel', { model: aiResult.model ?? '' })}
                   </Typography>
                   <Button
                     variant="contained"
@@ -324,7 +328,7 @@ export default function CarouselImageSwapDialog({
                       alignSelf: 'flex-start',
                     }}
                   >
-                    Bruk dette bildet
+                    {t('carouselSwap.useThisImageButton')}
                   </Button>
                 </Stack>
               )}

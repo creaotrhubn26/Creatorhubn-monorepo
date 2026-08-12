@@ -35,6 +35,8 @@ import ClientAdsPerformancePanel from './ClientAdsPerformancePanel';
 import ClientAdsApprovalSection from './ClientAdsApprovalSection';
 import MonthlyManagementFeeBox from './MonthlyManagementFeeBox';
 import ClientEconomyTiktokSection from './ClientEconomyTiktokSection';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 /**
  * Client-facing economy hub (MedInnova-avtalen §5.3): the simplest possible view
@@ -74,12 +76,12 @@ const PLATFORM_LABEL: Record<string, string> = {
 };
 
 // Pacing-status → Alert-severity + tekst (Lag 3: aktiv budsjett-vakt).
-const PACE_META: Record<string, { severity: 'success' | 'info' | 'warning' | 'error'; label: string }> = {
+const buildPACE_META = (t: TFn): Record<string, { severity: 'success' | 'info' | 'warning' | 'error'; label: string }> => ({
   on_track: { severity: 'success', label: 'I rute' },
-  at_risk: { severity: 'warning', label: 'Nærmer seg taket' },
-  over_pace: { severity: 'warning', label: 'På vei til å sprenge budsjettet' },
-  exhausted: { severity: 'error', label: 'Budsjettet er brukt opp' },
-};
+  at_risk: { severity: 'warning', label: t('clientEconomy.s029') },
+  over_pace: { severity: 'warning', label: t('clientEconomy.s034') },
+  exhausted: { severity: 'error', label: t('clientEconomy.s014') },
+});
 
 const dayMonth = (iso: string | null) => {
   if (!iso) return null;
@@ -94,6 +96,8 @@ export default function ClientEconomyPanel({
   projectId: string;
   userRole: string | null;
 }) {
+  const { t } = useT();
+  const PACE_META = useMemo(() => buildPACE_META(t), [t]);
   const months = useMemo(() => lastMonths(6), []);
   const [period, setPeriod] = useState(months[0]);
   const [summary, setSummary] = useState<RoleRoomAdsSpendSummary | null>(null);
@@ -150,7 +154,7 @@ export default function ClientEconomyPanel({
           setRecommendations(recs);
         }
       } catch {
-        if (!cancelled) setError('Klarte ikke å hente forbruket.');
+        if (!cancelled) setError(t('clientEconomy.s025'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -239,7 +243,7 @@ export default function ClientEconomyPanel({
                 {results.totals.roas.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '13px', mt: 0.6, maxWidth: 360 }}>
-                For hver krone investert fikk dere <Box component="span" sx={{ color: '#86efac', fontWeight: 700 }}>{results.totals.roas.toLocaleString('nb-NO', { maximumFractionDigits: 1 })} kroner</Box> tilbake i målbar omsetning.
+                {t('clientEconomy.s016')} <Box component="span" sx={{ color: '#86efac', fontWeight: 700 }}>{results.totals.roas.toLocaleString('nb-NO', { maximumFractionDigits: 1 })} kroner</Box> {t('clientEconomy.s046')}
               </Typography>
             </Box>
             <Stack spacing={1} sx={{ minWidth: { sm: 200 } }}>
@@ -283,7 +287,7 @@ export default function ClientEconomyPanel({
         </Stack>
 
         <Typography sx={SUBTLE}>
-          Faktisk annonsekostnad + {feeRatePct}% påslag (eks. mva) — grunnlaget for fakturaen denne perioden.
+          Faktisk annonsekostnad + {feeRatePct}{t('clientEconomy.s003')}
         </Typography>
 
         {loading ? (
@@ -296,14 +300,14 @@ export default function ClientEconomyPanel({
         ) : summary ? (
           <Stack spacing={0.5}>
             <Row label="Faktisk annonsekostnad" value={nok(summary.spendNok)} />
-            <Row label={`Påslag (${feeRatePct}%)`} value={nok(summary.managementFeeNok)} />
+            <Row label={t('clientEconomy.p00', { v0: feeRatePct })} value={nok(summary.managementFeeNok)} />
             <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)', my: 0.5 }} />
-            <Row label="Sum eks. mva" value={nok(summary.totalClientCostExVatNok)} strong />
-            <Row label="Påslag inkl. 25% mva" value={nok(summary.managementFeeInclVatNok)} subtle />
+            <Row label={t('clientEconomy.s042')} value={nok(summary.totalClientCostExVatNok)} strong />
+            <Row label={t('clientEconomy.s037')} value={nok(summary.managementFeeInclVatNok)} subtle />
 
             {platformRows.length > 0 && (
               <Box sx={{ mt: 1 }}>
-                <Typography sx={{ ...SUBTLE, mb: 0.5 }}>Påslag per plattform:</Typography>
+                <Typography sx={{ ...SUBTLE, mb: 0.5 }}>{t('clientEconomy.s038')}</Typography>
                 {platformRows.map(([platform, fee]) => (
                   <Row
                     key={platform}
@@ -317,7 +321,7 @@ export default function ClientEconomyPanel({
 
             {summary.spendNok === 0 && (
               <Typography sx={{ ...SUBTLE, mt: 0.5 }}>
-                Ingen registrert annonsekostnad i denne perioden ennå.
+                {t('clientEconomy.s024')}
               </Typography>
             )}
           </Stack>
@@ -329,10 +333,10 @@ export default function ClientEconomyPanel({
         <Stack spacing={1.1} sx={CARD_SX}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <InsightsIcon sx={{ fontSize: 20, color: '#a5b4fc' }} />
-            <Typography sx={LABEL}>Resultater per kanal</Typography>
+            <Typography sx={LABEL}>{t('clientEconomy.s039')}</Typography>
           </Stack>
           <Typography sx={SUBTLE}>
-            Forbruk, klikk, konverteringer og avkastning (ROAS) per annonsekanal. Rapportering — ikke en garantert ytelse.
+            {t('clientEconomy.s018')}
           </Typography>
 
           {results.perChannel.map((ch) => (
@@ -365,7 +369,7 @@ export default function ClientEconomyPanel({
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)', my: 0.3 }} />
           <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.85rem' }}>Totalt</Typography>
+            <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.85rem' }}>{t('clientEconomy.s043')}</Typography>
             <Typography sx={{ color: '#a5b4fc', fontWeight: 800, fontSize: '0.85rem' }}>
               {results.totals.roas != null ? `ROAS ${results.totals.roas}×` : 'ROAS —'}
             </Typography>
@@ -407,11 +411,11 @@ export default function ClientEconomyPanel({
               onClick={triggerRegenerate}
               sx={{ textTransform: 'none', color: '#fbbf24', fontWeight: 700 }}
             >
-              {regenerating ? 'Genererer…' : 'Generer på nytt'}
+              {regenerating ? 'Genererer…' : t('clientEconomy.s019')}
             </Button>
           </Stack>
           <Typography sx={SUBTLE}>
-            Agentens forslag basert på faktiske tall denne perioden. Ingen automatisk handling — du eller produsenten bestemmer.
+            {t('clientEconomy.s005')}
             {recommendations.generatedAt && (
               <> Sist generert {new Date(recommendations.generatedAt).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</>
             )}
@@ -451,21 +455,21 @@ export default function ClientEconomyPanel({
       <Stack spacing={1.2} sx={CARD_SX}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <SavingsIcon sx={{ fontSize: 20, color: '#fcd34d' }} />
-          <Typography sx={LABEL}>Budsjett denne perioden</Typography>
+          <Typography sx={LABEL}>{t('clientEconomy.s013')}</Typography>
         </Stack>
         <Typography sx={SUBTLE}>
-          Maks annonsekostnad (eks. påslag). Annonser stoppes når taket er nådd — kunden kan godkjenne en høyere ramme (§2.3).
+          {t('clientEconomy.s028')}
         </Typography>
 
         {budget?.status.hasBudget ? (
           <Stack spacing={0.6}>
-            <Row label="Budsjett (tak)" value={nok(budget.status.maxSpendNok)} />
+            <Row label={t('clientEconomy.s012')} value={nok(budget.status.maxSpendNok)} />
             {budget.status.approvedOverageNok > 0 && (
-              <Row label="Godkjent ekstra-ramme" value={nok(budget.status.approvedOverageNok)} subtle />
+              <Row label={t('clientEconomy.s023')} value={nok(budget.status.approvedOverageNok)} subtle />
             )}
-            <Row label="Brukt så langt" value={nok(budget.status.actualSpendNok)} />
+            <Row label={t('clientEconomy.s011')} value={nok(budget.status.actualSpendNok)} />
             <Row
-              label={budget.status.remainingNok >= 0 ? 'Gjenstår' : 'Over budsjett'}
+              label={budget.status.remainingNok >= 0 ? t('clientEconomy.s020') : t('clientEconomy.s031')}
               value={nok(Math.abs(budget.status.remainingNok))}
               strong
             />
@@ -484,8 +488,8 @@ export default function ClientEconomyPanel({
             />
             <Typography sx={{ ...SUBTLE, textAlign: 'right' }}>
               {budget.status.utilizationPct}% brukt
-              {budget.status.isOverBudget && ' — taket er nådd'}
-              {!budget.status.isOverBudget && budget.status.isNearBudget && ' — nærmer seg taket'}
+              {budget.status.isOverBudget && t('clientEconomy.s002')}
+              {!budget.status.isOverBudget && budget.status.isNearBudget && t('clientEconomy.s001')}
             </Typography>
 
             {/* ── Pacing: er vi PÅ VEI til å sprenge budsjettet? (Lag 3) ── */}
@@ -501,19 +505,19 @@ export default function ClientEconomyPanel({
                 <Stack spacing={0.2} sx={{ mt: 0.3 }}>
                   {budget.pacing.dailyRunRateNok > 0 && (
                     <Typography sx={{ fontSize: '0.74rem' }}>
-                      Tempo: {nok(budget.pacing.dailyRunRateNok)}/dag · projisert månedsslutt{' '}
+                      Tempo: {nok(budget.pacing.dailyRunRateNok)}{t('clientEconomy.s004')}{' '}
                       <strong>{nok(budget.pacing.projectedPeriodSpendNok)}</strong>
                       {budget.pacing.projectedOverspendNok > 0 && ` (${nok(budget.pacing.projectedOverspendNok)} over taket)`}
                     </Typography>
                   )}
                   {budget.pacing.projectedExhaustionDate && (
                     <Typography sx={{ fontSize: '0.74rem' }}>
-                      Ved dagens tempo er budsjettet brukt opp <strong>{dayMonth(budget.pacing.projectedExhaustionDate)}</strong>.
+                      {t('clientEconomy.s044')} <strong>{dayMonth(budget.pacing.projectedExhaustionDate)}</strong>.
                     </Typography>
                   )}
                   {budget.pacing.daysRemaining > 0 && budget.pacing.recommendedDailyBudgetNok > 0 && (
                     <Typography sx={{ fontSize: '0.74rem' }}>
-                      For å lande på taket: maks <strong>{nok(budget.pacing.recommendedDailyBudgetNok)}/dag</strong> de neste {budget.pacing.daysRemaining} dagene.
+                      {t('clientEconomy.s017')} <strong>{nok(budget.pacing.recommendedDailyBudgetNok)}/dag</strong> {t('clientEconomy.s045')} {budget.pacing.daysRemaining} dagene.
                     </Typography>
                   )}
                 </Stack>
@@ -526,13 +530,13 @@ export default function ClientEconomyPanel({
                 action={
                   budget.canEdit ? (
                     <Button size="small" disabled={savingBudget} onClick={approveOverage}>
-                      Godkjenn {nok(budget.status.overageRequestedNok)}
+                      {t('clientEconomy.s021')} {nok(budget.status.overageRequestedNok)}
                     </Button>
                   ) : undefined
                 }
                 sx={{ '& .MuiAlert-message': { fontSize: '0.78rem' } }}
               >
-                Produsenten har bedt om en økt ramme på {nok(budget.status.overageRequestedNok)}.
+                {t('clientEconomy.s033')} {nok(budget.status.overageRequestedNok)}.
               </Alert>
             )}
 
@@ -540,15 +544,15 @@ export default function ClientEconomyPanel({
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.3, pt: 0.5, borderTop: '1px solid rgba(148,163,184,0.12)' }}>
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
-                  Pause kampanjer automatisk når taket nås
+                  {t('clientEconomy.s032')}
                 </Typography>
                 <Typography sx={SUBTLE}>
                   {budget.autoPauseOnCap
-                    ? 'På — agenten pauser aktive Meta/Google/LinkedIn-kampanjer i neste daglige sjekk hvis perioden går over taket.'
-                    : 'Av — du må selv pause hvis taket nås.'}
+                    ? t('clientEconomy.s035')
+                    : t('clientEconomy.s006')}
                 </Typography>
               </Box>
-              <Tooltip title={budget.canEdit ? '' : 'Bare kunden kan styre auto-pause (§2.3)'}>
+              <Tooltip title={budget.canEdit ? '' : t('clientEconomy.s010')}>
                 <span>
                   <Switch
                     checked={!!budget.autoPauseOnCap}
@@ -561,7 +565,7 @@ export default function ClientEconomyPanel({
           </Stack>
         ) : (
           <Typography sx={SUBTLE}>
-            {budget?.canEdit ? 'Sett et budsjett for perioden nedenfor.' : 'Kunden har ikke satt et budsjett for denne perioden ennå.'}
+            {budget?.canEdit ? t('clientEconomy.s041') : t('clientEconomy.s027')}
           </Typography>
         )}
 
@@ -581,7 +585,7 @@ export default function ClientEconomyPanel({
               }}
             />
             <Button variant="contained" size="small" disabled={savingBudget} onClick={saveBudget} sx={{ textTransform: 'none', fontWeight: 700 }}>
-              {budget?.status.hasBudget ? 'Oppdater' : 'Sett budsjett'}
+              {budget?.status.hasBudget ? t('clientEconomy.s030') : t('clientEconomy.s040')}
             </Button>
           </Stack>
         )}
@@ -591,14 +595,14 @@ export default function ClientEconomyPanel({
       <Stack spacing={1} sx={CARD_SX}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <AdminIcon sx={{ fontSize: 20, color: '#93c5fd' }} />
-          <Typography sx={LABEL}>Godkjenning av materiell</Typography>
+          <Typography sx={LABEL}>{t('clientEconomy.s022')}</Typography>
         </Stack>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <Tooltip
             title={
               policy?.canEdit
-                ? 'Av: produsenten kan også godkjenne. På: bare du (kunden) godkjenner før publisering.'
-                : 'Bare kunden kan endre denne innstillingen.'
+                ? t('clientEconomy.s008')
+                : t('clientEconomy.s009')
             }
           >
             <Box>
@@ -611,13 +615,13 @@ export default function ClientEconomyPanel({
           </Tooltip>
           <Box>
             <Typography sx={{ color: '#e2e8f0', fontSize: '0.85rem', fontWeight: 600 }}>
-              Krev at kunden godkjenner før publisering
+              {t('clientEconomy.s026')}
             </Typography>
             <Typography sx={SUBTLE}>
               {policy?.requireClientApproval ?? true
-                ? 'På — ingenting publiseres uten din godkjenning (svarer du ikke innen fristen, auto-godkjennes det).'
-                : 'Av — produsenten kan også godkjenne og publisere.'}
-              {!policy?.canEdit && ' (kun kunden kan endre)'}
+                ? t('clientEconomy.s036')
+                : t('clientEconomy.s007')}
+              {!policy?.canEdit && t('clientEconomy.s000')}
             </Typography>
           </Box>
         </Stack>
@@ -632,7 +636,7 @@ export default function ClientEconomyPanel({
 
       {!['client', 'client_reviewer'].includes((userRole ?? '').toLowerCase()) && (
         <Typography sx={{ ...SUBTLE, textAlign: 'center' }}>
-          Du ser kundens økonomivisning. Godkjenningspolicy kan kun kunden endre.
+          {t('clientEconomy.s015')}
         </Typography>
       )}
     </Stack>

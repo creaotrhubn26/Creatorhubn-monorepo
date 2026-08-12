@@ -36,6 +36,7 @@ import {
   type EntitlementConfig,
   type EntitlementResult,
 } from '../../services/roleRoomAgentEntitlementApi';
+import { useT } from '../../../../i18n';
 
 interface AgentPaywallDialogProps {
   open: boolean;
@@ -54,6 +55,7 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
   config,
   onEntitlementChanged,
 }) => {
+  const { t } = useT();
   const [pending, setPending] = useState<null | 'trial' | 'addon' | 'upgrade'>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,18 +78,18 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
       if (!result.ok) {
         setError(
           result.error === 'trial_already_used'
-            ? 'Du har allerede brukt prøveperioden — velg add-on eller oppgrader.'
-            : `Kunne ikke starte prøve: ${result.error}`,
+            ? t('agentPaywall.trialAlreadyUsed')
+            : t('agentPaywall.trialStartFailed', { error: result.error }),
         );
         return;
       }
-      setMessage('Prøveperiode startet! Agenten er åpen nå.');
+      setMessage(t('agentPaywall.trialStarted'));
       onEntitlementChanged?.();
       window.setTimeout(onClose, 1200);
     } finally {
       setPending(null);
     }
-  }, [onClose, onEntitlementChanged]);
+  }, [onClose, onEntitlementChanged, t]);
 
   const handleAddOnCheckout = useCallback(async () => {
     setPending('addon');
@@ -100,14 +102,14 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
         return;
       }
       if (result.status === 'not_configured') {
-        setError('Add-on er ikke helt klar ennå. Kontakt salg eller prøv gratis prøveperiode.');
+        setError(t('agentPaywall.addonNotReady'));
         return;
       }
-      setError(`Feil ved checkout: ${result.detail}`);
+      setError(t('agentPaywall.checkoutError', { detail: result.detail }));
     } finally {
       setPending(null);
     }
-  }, []);
+  }, [t]);
 
   const handleUpgradeToPro = useCallback(() => {
     setPending('upgrade');
@@ -120,21 +122,21 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
       <DialogTitle>
         The Role Room Agent
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          AI-assistansen er en betalt funksjon. Velg hvordan du vil ta den i bruk.
+          {t('agentPaywall.subtitle')}
         </Typography>
       </DialogTitle>
       <DialogContent>
         {entitlement?.reason ? (
           <Alert severity={entitlement.reason.startsWith('trial_') ? 'warning' : 'info'} sx={{ mb: 2 }}>
             {entitlement.reason.startsWith('trial_daily_cap_reached')
-              ? 'Dagens prøve-kvote er brukt opp. Prøv igjen i morgen, eller oppgrader nå for å fortsette.'
+              ? t('agentPaywall.reasonDailyCap')
               : entitlement.reason.startsWith('trial_total_cap_reached')
-                ? 'Prøveperioden din har nådd sitt maksimale bruksantall. Oppgrader for å fortsette.'
+                ? t('agentPaywall.reasonTotalCap')
                 : entitlement.status === 'expired'
-                  ? 'Prøveperioden din er over.'
+                  ? t('agentPaywall.reasonExpired')
                   : entitlement.status === 'revoked'
-                    ? 'Tilgangen din er trukket tilbake. Kontakt admin.'
-                    : 'AI-tilgang krever abonnement eller prøveperiode.'}
+                    ? t('agentPaywall.reasonRevoked')
+                    : t('agentPaywall.reasonDefault')}
           </Alert>
         ) : null}
 
@@ -142,9 +144,9 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
           {upsell.canStartTrial ? (
             <Option
               icon={<RocketIcon />}
-              title={`Start ${trialDays}-dagers prøve`}
-              detail="Gratis i hele prøveperioden. Ingen binding, ingen kortkrav."
-              cta={pending === 'trial' ? <CircularProgress size={20} /> : 'Start prøve'}
+              title={t('agentPaywall.trialTitle', { days: trialDays })}
+              detail={t('agentPaywall.trialDetail')}
+              cta={pending === 'trial' ? <CircularProgress size={20} /> : t('agentPaywall.trialCta')}
               onClick={handleStartTrial}
               disabled={pending !== null}
               emphasis
@@ -154,9 +156,9 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
           {upsell.canBuyAddOn ? (
             <Option
               icon={<CardIcon />}
-              title={`Legg til for ${addonPrice} kr/mnd + mva`}
-              detail="Månedlig abonnement som kan sies opp når som helst. 25% mva legges til ved checkout via Stripe Tax."
-              cta={pending === 'addon' ? <CircularProgress size={20} /> : 'Kjøp add-on'}
+              title={t('agentPaywall.addonTitle', { price: addonPrice })}
+              detail={t('agentPaywall.addonDetail')}
+              cta={pending === 'addon' ? <CircularProgress size={20} /> : t('agentPaywall.addonCta')}
               onClick={handleAddOnCheckout}
               disabled={pending !== null}
             />
@@ -165,9 +167,9 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
           {upsell.canUpgradeToPro ? (
             <Option
               icon={<UpgradeIcon />}
-              title="Bytt til Pro"
-              detail="Pro-planen inkluderer hele produktet inklusive agenten."
-              cta={pending === 'upgrade' ? <CircularProgress size={20} /> : 'Se Pro-planen'}
+              title={t('agentPaywall.upgradeTitle')}
+              detail={t('agentPaywall.upgradeDetail')}
+              cta={pending === 'upgrade' ? <CircularProgress size={20} /> : t('agentPaywall.upgradeCta')}
               onClick={handleUpgradeToPro}
               disabled={pending !== null}
             />
@@ -177,7 +179,7 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
         {upsell.currentPlanType ? (
           <Chip
             size="small"
-            label={`Nåværende plan: ${upsell.currentPlanType}`}
+            label={t('agentPaywall.currentPlan', { plan: upsell.currentPlanType })}
             variant="outlined"
             sx={{ mt: 2 }}
           />
@@ -188,7 +190,7 @@ export const AgentPaywallDialog: React.FC<AgentPaywallDialogProps> = ({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={pending !== null}>
-          Senere
+          {t('agentPaywall.laterBtn')}
         </Button>
       </DialogActions>
     </Dialog>

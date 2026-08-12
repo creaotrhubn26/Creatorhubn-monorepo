@@ -148,6 +148,7 @@ import {
   isTechnicalCrewMember as isTechnicalCrewMemberFromShared,
 } from './shared/technicalCrew';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT, type TranslationKey } from '../../../i18n';
 
 // ─── Sort / view types ────────────────────────────────────────────────────────
 type SortField = 'name' | 'role' | 'rate' | 'availability';
@@ -231,17 +232,17 @@ type DeptKey = 'production' | 'camera' | 'lighting' | 'sound' | 'post' | 'art' |
 
 const DEPT_ORDER: DeptKey[] = ['production', 'camera', 'lighting', 'sound', 'post', 'art', 'wardrobe', 'makeup_hair', 'transport', 'other'];
 
-const DEPT_LABELS: Record<DeptKey, string> = {
-  production: 'Produksjon',
-  camera: 'Kamera',
-  lighting: 'Lys',
-  sound: 'Lyd',
-  post: 'Post',
-  art: 'Art / Design',
-  wardrobe: 'Kostyme',
-  makeup_hair: 'Sminke & Hår',
-  transport: 'Transport',
-  other: 'Annet',
+const DEPT_LABEL_KEY: Record<DeptKey, TranslationKey> = {
+  production: 'crew.dept.production',
+  camera: 'crew.dept.camera',
+  lighting: 'crew.dept.lighting',
+  sound: 'crew.dept.sound',
+  post: 'crew.dept.post',
+  art: 'crew.dept.art',
+  wardrobe: 'crew.dept.wardrobe',
+  makeup_hair: 'crew.dept.makeup_hair',
+  transport: 'crew.dept.transport',
+  other: 'crew.dept.other',
 };
 
 const DEPT_COLORS: Record<DeptKey, string> = {
@@ -285,15 +286,24 @@ const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
 };
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
-const STATUS_META: Record<CrewStatus | 'none', { label: string; color: string; bg: string; Icon: React.ElementType }> = {
-  confirmed:   { label: 'Bekreftet',    color: '#10b981', bg: 'rgba(16,185,129,0.18)',  Icon: ConfirmedIcon },
-  pending:     { label: 'Venter',       color: '#ffb800', bg: 'rgba(255,184,0,0.18)',   Icon: PendingIcon },
-  invited:     { label: 'Invitert',     color: '#3b82f6', bg: 'rgba(59,130,246,0.18)',  Icon: InvitedIcon },
-  unavailable: { label: 'Utilgjengelig',color: '#ef4444', bg: 'rgba(239,68,68,0.18)',   Icon: UnavailableIcon },
-  none:        { label: '—',            color: '#64748b', bg: 'rgba(100,116,139,0.12)', Icon: PendingIcon },
+const STATUS_META: Record<CrewStatus | 'none', { color: string; bg: string; Icon: React.ElementType }> = {
+  confirmed:   { color: '#10b981', bg: 'rgba(16,185,129,0.18)',  Icon: ConfirmedIcon },
+  pending:     { color: '#ffb800', bg: 'rgba(255,184,0,0.18)',   Icon: PendingIcon },
+  invited:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.18)',  Icon: InvitedIcon },
+  unavailable: { color: '#ef4444', bg: 'rgba(239,68,68,0.18)',   Icon: UnavailableIcon },
+  none:        { color: '#64748b', bg: 'rgba(100,116,139,0.12)', Icon: PendingIcon },
+};
+
+const STATUS_LABEL_KEY: Record<CrewStatus | 'none', TranslationKey> = {
+  confirmed: 'crew.status.confirmed',
+  pending: 'crew.status.pending',
+  invited: 'crew.status.invited',
+  unavailable: 'crew.status.unavailable',
+  none: 'crew.status.none',
 };
 
 function StatusBadge({ status, size = 'small' }: { status?: CrewStatus; size?: 'small' | 'medium' }) {
+  const { t } = useT();
   const meta = STATUS_META[status ?? 'none'];
   const { Icon } = meta;
   return (
@@ -304,7 +314,7 @@ function StatusBadge({ status, size = 'small' }: { status?: CrewStatus; size?: '
     }}>
       <Icon sx={{ fontSize: size === 'small' ? 11 : 14, color: meta.color }} />
       <Typography sx={{ fontSize: size === 'small' ? 11 : 13, fontWeight: 600, color: meta.color, lineHeight: 1 }}>
-        {meta.label}
+        {t(STATUS_LABEL_KEY[status ?? 'none'])}
       </Typography>
     </Box>
   );
@@ -312,6 +322,7 @@ function StatusBadge({ status, size = 'small' }: { status?: CrewStatus; size?: '
 
 // ─── Availability week dots (Mon–Fri) ─────────────────────────────────────────
 function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; hasConflict?: boolean }) {
+  const { t } = useT();
   const today = new Date();
   // Start from Monday this week
   const monday = new Date(today);
@@ -336,7 +347,7 @@ function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; has
   return (
     <Box sx={{ display: 'flex', gap: 0.4, alignItems: 'center' }}>
       {days.map((d, i) => (
-        <Tooltip key={d} title={['Ma','Ti','On','To','Fr'][i]} arrow placement="top">
+        <Tooltip key={d} title={[t('crew.weekday.mon'),t('crew.weekday.tue'),t('crew.weekday.wed'),t('crew.weekday.thu'),t('crew.weekday.fri')][i]} arrow placement="top">
           <Box sx={{
             width: 8, height: 8, borderRadius: '50%',
             bgcolor: getColor(d), flexShrink: 0,
@@ -345,12 +356,12 @@ function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; has
         </Tooltip>
       ))}
       {hasConflict && (
-        <Tooltip title="Dobbeltbooket!" arrow>
+        <Tooltip title={t('crew.tooltip.doubleBooked')} arrow>
           <WarningAmberIcon sx={{ fontSize: 12, color: '#ef4444', ml: 0.3 }} />
         </Tooltip>
       )}
       {Boolean((member as { availabilitySynced?: boolean }).availabilitySynced) && (
-        <Tooltip title="Tilgjengelighet synket fra medlemmets egen kalender" arrow>
+        <Tooltip title={t('crew.tooltip.availabilitySynced')} arrow>
           <Box sx={{
             width: 6, height: 6, borderRadius: '50%', ml: 0.3, flexShrink: 0,
             bgcolor: '#a030c0', boxShadow: '0 0 4px rgba(160,48,192,0.9)',
@@ -373,6 +384,7 @@ interface DeptSidebarProps {
 }
 
 function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onAddRole }: DeptSidebarProps) {
+  const { t } = useT();
   const grouped = useMemo(() => {
     const map = new Map<DeptKey, CrewMember[]>();
     DEPT_ORDER.forEach(d => map.set(d, []));
@@ -417,9 +429,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
             letterSpacing: 0.8,
             textTransform: 'uppercase',
           }}
-        >
-          Roller & avdelinger
-        </Typography>
+        >{t('crew.sidebar.rolesDepartments')}</Typography>
         {onAddRole && (
           <Box
             component="button"
@@ -443,9 +453,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
               transition: 'background-color 160ms ease-out',
               '&:hover': { bgcolor: 'rgba(184,107,255,0.24)', color: '#fff' },
             }}
-          >
-            + Legg til rolle
-          </Box>
+          >{t('crew.sidebar.addRole')}</Box>
         )}
       </Box>
 
@@ -463,9 +471,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <GroupsDetailIcon sx={{ fontSize: 20, color: '#ffffff' }} />
-          <Typography sx={{ color: '#ffffff', fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>
-            Alle
-          </Typography>
+          <Typography sx={{ color: '#ffffff', fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>{t('crew.all')}</Typography>
         </Box>
         <Chip label={crewMembers.length} size="small" sx={{ height: 28, fontSize: 14, fontWeight: 700, color: '#ffffff', bgcolor: 'rgba(184,107,255,0.36)', border: '1px solid rgba(255,255,255,0.26)' }} />
       </Box>
@@ -497,7 +503,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <DeptIcon sx={{ fontSize: 18, color: '#ffffff' }} />
               <Typography sx={{ color: '#ffffff', fontSize: 16, fontWeight: active ? 800 : 700, lineHeight: 1.1 }}>
-                {DEPT_LABELS[dept]}
+                {t(DEPT_LABEL_KEY[dept])}
               </Typography>
             </Box>
             <Chip
@@ -525,7 +531,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites, onA
         <Box sx={{ px: 2, py: 1 }}>
           <Typography sx={{ color: '#ffffff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <StarIcon sx={{ fontSize: 12 }} />
-            Favoritter ({favorites.size})
+            {t('crew.favorites')} ({favorites.size})
           </Typography>
         </Box>
       )}
@@ -547,6 +553,7 @@ interface BulkBarProps {
 }
 
 function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChangeStatus, onDeselect, onAssignDay }: BulkBarProps) {
+  const { t } = useT();
   const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null);
   if (selectedIds.size === 0) return null;
   return (
@@ -566,7 +573,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             onChange={onSelectAll}
             sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: 'var(--role-accent, #b86bff)' }, p: 0.5 }}
           />
-          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Velg alle</Typography>
+          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>{t('crew.bulk.selectAll')}</Typography>
         </Box>
         {/* Assign to Day */}
         <Button
@@ -576,7 +583,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           sx={{ borderColor: 'rgba(184,107,255,0.45)', color: 'var(--role-accent, #b86bff)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' } }}
         >
-          Tilordne dag
+          {t('crew.bulk.assignDay')}
         </Button>
         {/* Change Status */}
         <Button
@@ -586,7 +593,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           sx={{ borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}
         >
-          Endre status
+          {t('crew.bulk.changeStatus')}
         </Button>
         <Menu
           anchorEl={statusAnchor}
@@ -601,7 +608,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
               <MenuItem key={s} onClick={() => { onChangeStatus(s); setStatusAnchor(null); }}
                 sx={{ gap: 1, fontSize: 13, '&:hover': { bgcolor: meta.bg } }}>
                 <Icon sx={{ fontSize: 15, color: meta.color }} />
-                <Typography sx={{ color: meta.color, fontSize: 13 }}>{meta.label}</Typography>
+                <Typography sx={{ color: meta.color, fontSize: 13 }}>{t(STATUS_LABEL_KEY[s])}</Typography>
               </MenuItem>
             );
           })}
@@ -614,7 +621,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           sx={{ borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
         >
-          Fjern {selectedIds.size}
+          {t('crew.remove')} {selectedIds.size}
         </Button>
         {/* Right side */}
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -624,16 +631,16 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             onDelete={onDeselect}
             sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: 'var(--role-accent, #b86bff)', fontWeight: 700, height: 22, fontSize: 12 }}
           />
-          <Tooltip title="Synkroniser">
+          <Tooltip title={t('crew.bulk.sync')}>
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><SyncIcon sx={{ fontSize: 18 }} /></IconButton>
           </Tooltip>
-          <Tooltip title="Eksporter">
+          <Tooltip title={t('crew.bulk.export')}>
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><CalendarMonthIcon sx={{ fontSize: 18 }} /></IconButton>
           </Tooltip>
-          <Tooltip title="Liste">
+          <Tooltip title={t('crew.bulk.list')}>
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><ViewListIcon sx={{ fontSize: 18 }} /></IconButton>
           </Tooltip>
-          <Tooltip title="Grid">
+          <Tooltip title={t('crew.bulk.grid')}>
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><ViewModuleIcon sx={{ fontSize: 18 }} /></IconButton>
           </Tooltip>
         </Box>
@@ -652,6 +659,7 @@ interface InviteDialogProps {
 }
 
 function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: InviteDialogProps) {
+  const { t } = useT();
   const [name, setName] = useState('');
   const [role, setRole] = useState<CrewRole>('other');
   const [email, setEmail] = useState('');
@@ -668,30 +676,30 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
       PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(184,107,255,0.32)' } }}>
       <DialogTitle sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <PersonAddIcon /> Inviter crewmedlem
+        <PersonAddIcon /> {t('crew.invite.title')}
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
-          <TextField label="Navn *" fullWidth value={name} onChange={e => setName(e.target.value)}
+          <TextField label={t('crew.field.nameRequired')} fullWidth value={name} onChange={e => setName(e.target.value)}
             sx={{ '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
           <FormControl fullWidth>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.7)' }}>Rolle</InputLabel>
-            <Select value={role} onChange={e => setRole(e.target.value as CrewRole)} label="Rolle"
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('crew.field.role')}</InputLabel>
+            <Select value={role} onChange={e => setRole(e.target.value as CrewRole)} label={t('crew.field.role')}
               sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }}>
               {crewRoles.map(r => <MenuItem key={r} value={r}>{getRoleLabel(r)}</MenuItem>)}
             </Select>
           </FormControl>
-          <TextField label="E-post" fullWidth type="email" value={email} onChange={e => setEmail(e.target.value)}
+          <TextField label={t('crew.field.email')} fullWidth type="email" value={email} onChange={e => setEmail(e.target.value)}
             sx={{ '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
-          <TextField label="Telefon" fullWidth type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+          <TextField label={t('crew.field.phone')} fullWidth type="tel" value={phone} onChange={e => setPhone(e.target.value)}
             sx={{ '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Avbryt</Button>
+        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('crew.action.cancel')}</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!name.trim()}
           sx={{ bgcolor: 'var(--role-accent, #b86bff)', color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}>
-          Send invitasjon
+          {t('crew.invite.send')}
         </Button>
       </DialogActions>
     </Dialog>
@@ -700,6 +708,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
 
 // ─── Offline banner ───────────────────────────────────────────────────────────
 function OfflineBanner({ pending }: { pending: number }) {
+  const { t } = useT();
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
     const on = () => setOnline(true);
@@ -718,7 +727,7 @@ function OfflineBanner({ pending }: { pending: number }) {
     }}>
       {online ? <SyncIcon sx={{ fontSize: 16, color: '#10b981' }} /> : <WifiOffIcon sx={{ fontSize: 16, color: '#ef4444' }} />}
       <Typography sx={{ fontSize: 13, color: online ? '#10b981' : '#ef4444' }}>
-        {online ? `Synkroniserer ${pending} ventende endringer…` : `Offline – ${pending} endringer venter`}
+        {online ? t('crew.offline.syncing', { n: pending }) : t('crew.offline.pending', { n: pending })}
       </Typography>
     </Box>
   );
@@ -780,6 +789,7 @@ interface DOODMiniStripProps {
 }
 
 function DOODMiniStrip({ member, productionDays, assignments }: DOODMiniStripProps) {
+  const { t } = useT();
   if (!productionDays.length) return null;
   const memberAssignments = assignments.filter(a => a.crewMemberId === member.id);
   if (!memberAssignments.length) return null;
@@ -793,7 +803,7 @@ function DOODMiniStrip({ member, productionDays, assignments }: DOODMiniStripPro
         {productionDays.map((day, idx) => {
           const code = getMemberDOODCode(member.id, day.id, assignments, productionDays);
           if (!code) return (
-            <Tooltip key={day.id} title={`Dag ${idx + 1} – ${day.date}`}>
+            <Tooltip key={day.id} title={t('crew.dayLabel', { n: idx + 1, date: day.date ?? '' })}>
               <Box sx={{ width: 22, height: 22, borderRadius: 0.5, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Typography sx={{ fontSize: 8, color: 'rgba(255,255,255,0.25)' }}>–</Typography>
               </Box>
@@ -801,7 +811,7 @@ function DOODMiniStrip({ member, productionDays, assignments }: DOODMiniStripPro
           );
           const colors = DOOD_COLORS[code];
           return (
-            <Tooltip key={day.id} title={`Dag ${idx + 1} – ${day.date} – ${code} (${day.callTime ?? ''})`}>
+            <Tooltip key={day.id} title={t('crew.dood.dayCodeTooltip', { n: idx + 1, date: day.date ?? '', code, call: day.callTime ?? '' })}>
               <Box sx={{ width: 26, height: 22, borderRadius: 0.5, bgcolor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'default' }}>
                 <Typography sx={{ fontSize: 8, fontWeight: 800, color: colors.text, fontFamily: 'monospace' }}>{code}</Typography>
               </Box>
@@ -828,6 +838,7 @@ interface AssignShootDayDialogProps {
 function AssignShootDayDialog({
   open, onClose, member, productionDays, assignments, onAssign, onUnassign,
 }: AssignShootDayDialogProps) {
+  const { t } = useT();
   const [unit, setUnit] = useState<'A' | 'B'>('A');
   if (!member) return null;
 
@@ -841,22 +852,22 @@ function AssignShootDayDialog({
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
         <CalendarMonthIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
-        Tilordne {member.name} til innspillingsdager
+        {t('crew.assign.title', { name: member.name })}
       </DialogTitle>
       <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.1)', p: 0 }}>
         <Box sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', mb: 0.5 }}>Enhet</Typography>
+          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', mb: 0.5 }}>{t('crew.assign.unit')}</Typography>
           <RadioGroup row value={unit} onChange={e => setUnit(e.target.value as 'A' | 'B')}>
             {(['A', 'B'] as const).map(u => (
               <FormControlLabel key={u} value={u} control={<Radio size="small" sx={{ color: 'var(--role-cyan, #00d4ff)', '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' } }} />}
-                label={<Typography sx={{ fontSize: 13, color: '#fff' }}>{u}-enhet</Typography>} />
+                label={<Typography sx={{ fontSize: 13, color: '#fff' }}>{t('crew.assign.unitOption', { u })}</Typography>} />
             ))}
           </RadioGroup>
         </Box>
         <List dense disablePadding>
           {productionDays.length === 0 && (
             <ListItem>
-              <ListItemText primary={<Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Ingen innspillingsdager planlagt ennå.</Typography>} />
+              <ListItemText primary={<Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{t('crew.assign.noShootDays')}</Typography>} />
             </ListItem>
           )}
           {productionDays.map((day, idx) => {
@@ -895,7 +906,7 @@ function AssignShootDayDialog({
                           sx={{ fontSize: 11, color: '#3b82f6', borderColor: '#3b82f6', minWidth: 36, py: 0.25, px: 0.5 }}>T</Button>
                       </>
                     ) : (
-                      <Tooltip title="Fjern fra denne dagen">
+                      <Tooltip title={t('crew.tt.removeFromThisDay')}>
                         <IconButton size="small" onClick={() => onUnassign(member.id, day.id)} sx={{ color: '#ff4444', ...focusVisibleStyles }}>
                           <UnassignIcon sx={{ fontSize: 16 }} />
                         </IconButton>
@@ -909,7 +920,7 @@ function AssignShootDayDialog({
         </List>
       </DialogContent>
       <DialogActions sx={{ px: 2, py: 1.5, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Lukk</Button>
+        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('crew.assign.close')}</Button>
       </DialogActions>
     </Dialog>
   );
@@ -927,6 +938,7 @@ interface DOODOverviewPanelProps {
 }
 
 function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignments, getRoleLabel }: DOODOverviewPanelProps) {
+  const { t } = useT();
   const crewWithAssignments = crewMembers.filter(m =>
     assignments.some(a => a.crewMemberId === m.id),
   );
@@ -951,7 +963,7 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Days Out Of Days</Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
-              {crewWithAssignments.length} crew · {productionDays.length} innspillingsdager
+              {t('crew.dood.subtitle', { crew: crewWithAssignments.length, days: productionDays.length })}
             </Typography>
           </Box>
         </Box>
@@ -963,13 +975,13 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
       {/* Legend */}
       <Box sx={{ display: 'flex', gap: 2, px: 2.5, pb: 1, flexShrink: 0, flexWrap: 'wrap' }}>
         {([
-          ['W',   'W – Arbeid'],
-          ['SW',  'SW – Start'],
-          ['WF',  'WF – Slutt'],
-          ['SWF', 'SWF – En dag'],
-          ['H',   'H – Hold'],
-          ['T',   'T – Reise'],
-          ['O',   'O – Av'],
+          ['W',   t('crew.dood.legendWork')],
+          ['SW',  t('crew.dood.legendStart')],
+          ['WF',  t('crew.dood.legendEnd')],
+          ['SWF', t('crew.dood.legendOneDay')],
+          ['H',   t('crew.dood.legendHold')],
+          ['T',   t('crew.dood.legendTravel')],
+          ['O',   t('crew.dood.legendOff')],
         ] as [CrewDOODCode, string][]).map(([code, label]) => (
           <Box key={code} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <DotIcon sx={{ fontSize: 14, color: DOOD_COLORS[code]?.bg }} />
@@ -980,8 +992,8 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
 
       {productionDays.length === 0 ? (
         <Box sx={{ p: 3, textAlign: 'center' }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>Ingen innspillingsdager planlagt ennå.</Typography>
-          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, mt: 0.5 }}>Legg til dager i Stripboard-modulen.</Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>{t('crew.assign.noShootDays')}</Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, mt: 0.5 }}>{t('crew.dood.addDays')}</Typography>
         </Box>
       ) : (
         <Box sx={{ overflowX: 'auto', overflowY: 'auto', flex: 1 }}>
@@ -989,7 +1001,7 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
             <TableHead>
               <TableRow>
                 <TableCell sx={{ bgcolor: '#1c2128', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: 12, minWidth: 160, borderColor: 'rgba(255,255,255,0.1)', position: 'sticky', left: 0, zIndex: 3 }}>
-                  Crewmedlem
+                  {t('crew.dood.crewMember')}
                 </TableCell>
                 {productionDays.map((day, idx) => (
                   <TableCell key={day.id} align="center" sx={{ bgcolor: '#1c2128', color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: 700, borderColor: 'rgba(255,255,255,0.1)', minWidth: 38, px: 0.5, whiteSpace: 'nowrap' }}>
@@ -1018,7 +1030,7 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
                       return (
                         <TableCell key={day.id} align="center" sx={{ borderColor: 'rgba(255,255,255,0.07)', p: 0.5 }}>
                           {code ? (
-                            <Tooltip title={`${member.name} – Dag ${day.date} – ${code}`}>
+                            <Tooltip title={t('crew.dood.cellTooltip', { name: member.name, date: day.date ?? '', code })}>
                               <Box sx={{ width: 28, height: 18, borderRadius: 0.5, bgcolor: DOOD_COLORS[code]?.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto' }}>
                                 <Typography sx={{ fontSize: 8, fontWeight: 800, color: DOOD_COLORS[code]?.text, fontFamily: 'monospace' }}>{code}</Typography>
                               </Box>
@@ -1056,6 +1068,7 @@ interface CallsheetDrawerProps {
 }
 
 function CallsheetDrawer({ open, onClose, projectId, crew, selectedDay: initialDay, scenes, productionDays }: CallsheetDrawerProps) {
+  const { t } = useT();
   const [currentDay, setCurrentDay] = useState<ProductionDay | null>(initialDay);
   // Sync if parent changes the initial day (e.g. user clicks a different day)
   useEffect(() => { setCurrentDay(initialDay); }, [initialDay]);
@@ -1082,9 +1095,9 @@ function CallsheetDrawer({ open, onClose, projectId, crew, selectedDay: initialD
                 sx={{ color: '#fff', fontSize: 13, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' } }}
                 MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
               >
-                <MenuItem value="">Alle dager</MenuItem>
+                <MenuItem value="">{t('crew.allDays')}</MenuItem>
                 {productionDays.map((d, idx) => (
-                  <MenuItem key={d.id} value={d.id} sx={{ fontSize: 13 }}>Dag {idx + 1} – {d.date}</MenuItem>
+                  <MenuItem key={d.id} value={d.id} sx={{ fontSize: 13 }}>{t('crew.dayLabel', { n: idx + 1, date: d.date ?? '' })}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1139,6 +1152,7 @@ export function CrewManagementPanel({
   productionDays: propProductionDays,
   scenes: propScenes,
 }: CrewManagementPanelProps) {
+  const { t } = useT();
   const resolvedProductionDays = propProductionDays ?? EMPTY_PRODUCTION_DAYS;
   const resolvedScenes = propScenes ?? EMPTY_SCENES;
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -1152,8 +1166,8 @@ export function CrewManagementPanel({
   const { user } = useAuth();
   const noteActorLabel = useMemo(() => {
     const raw = user?.displayName ?? user?.name ?? user?.email;
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
-  }, [user]);
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : t('crew.unknownUser');
+  }, [user, t]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
   const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
@@ -1415,7 +1429,7 @@ export function CrewManagementPanel({
     setPinNameColumn(state.pinNameColumn ?? true);
     setPinContactColumn(state.pinContactColumn ?? false);
     setSavedViewAnchor(null);
-    logActivity('Saved view', `Aktiverte visning "${view.name}"`);
+    logActivity('Saved view', t('crew.log.viewActivated', { name: view.name }));
   }, [logActivity]);
   
   // Load favorites from database (with settings cache fallback)
@@ -1633,31 +1647,31 @@ export function CrewManagementPanel({
 
   const getRoleLabel = (role: CrewRole): string => {
     const labels: Record<CrewRole, string> = {
-      director: 'Regissør',
-      producer: 'Produsent',
-      casting_director: 'Castingansvarlig',
-      production_manager: 'Produksjonsleder',
-      cinematographer: 'Filmfotograf',
-      camera_operator: 'Kameraoperatør',
-      camera_assistant: 'Kameraassistent',
-      drone_pilot: 'Dronepilot',
-      video_editor: 'Videoeditor',
-      colorist: 'Kolorist',
-      gaffer: 'Gaffer',
-      grip: 'Grip',
-      sound_engineer: 'Lydtekniker',
-      audio_mixer: 'Lydmikser',
-      vfx_artist: 'VFX-artist',
-      motion_graphics: 'Motion Graphics',
-      production_assistant: 'Produksjonsassistent',
-      script_supervisor: 'Script Supervisor',
-      location_manager: 'Lokasjonsansvarlig',
-      production_designer: 'Produksjonsdesigner',
-      makeup_artist: 'Sminkør',
-      wardrobe: 'Kostyme',
-      stylist: 'Stylist',
-      collaborator: 'Samarbeidspartner',
-      other: 'Annet',
+      director: t('crew.role.director'),
+      producer: t('crew.role.producer'),
+      casting_director: t('crew.role.casting_director'),
+      production_manager: t('crew.role.production_manager'),
+      cinematographer: t('crew.role.cinematographer'),
+      camera_operator: t('crew.role.camera_operator'),
+      camera_assistant: t('crew.role.camera_assistant'),
+      drone_pilot: t('crew.role.drone_pilot'),
+      video_editor: t('crew.role.video_editor'),
+      colorist: t('crew.role.colorist'),
+      gaffer: t('crew.role.gaffer'),
+      grip: t('crew.role.grip'),
+      sound_engineer: t('crew.role.sound_engineer'),
+      audio_mixer: t('crew.role.audio_mixer'),
+      vfx_artist: t('crew.role.vfx_artist'),
+      motion_graphics: t('crew.role.motion_graphics'),
+      production_assistant: t('crew.role.production_assistant'),
+      script_supervisor: t('crew.role.script_supervisor'),
+      location_manager: t('crew.role.location_manager'),
+      production_designer: t('crew.role.production_designer'),
+      makeup_artist: t('crew.role.makeup_artist'),
+      wardrobe: t('crew.role.wardrobe'),
+      stylist: t('crew.role.stylist'),
+      collaborator: t('crew.role.collaborator'),
+      other: t('crew.role.other'),
     };
     return labels[role] || role;
   };
@@ -1858,7 +1872,7 @@ export function CrewManagementPanel({
       averageRate,
       topRoles,
     };
-  }, [filteredAndSortedCrew, stats.roleCount]);
+  }, [filteredAndSortedCrew, stats.roleCount, t]);
 
   const riskInsights = useMemo(() => {
     const availabilityConflicts: CrewMember[] = [];
@@ -1922,15 +1936,15 @@ export function CrewManagementPanel({
 
     const recommendations: string[] = [];
     if (utilizationRatio !== null && utilizationRatio > 1) {
-      recommendations.push('Fast honorar overstiger budsjettet. Prioriter kjernecrew og flytt resten til behovsbasert booking.');
+      recommendations.push(t('crew.budgetRec.exceed'));
     } else if (utilizationRatio !== null && utilizationRatio > 0.8) {
-      recommendations.push('Budsjettutnyttelsen er høy. Vurder hold-status for roller med lav kritikalitet.');
+      recommendations.push(t('crew.budgetRec.high'));
     }
     if (riskInsights.overtimeRisk.length > 0) {
-      recommendations.push('Flere crew har høy dagbelastning. Spre dager for å redusere overtidsrisiko.');
+      recommendations.push(t('crew.budgetRec.dayLoad'));
     }
     if (recommendations.length === 0) {
-      recommendations.push('Kostnadsbildet er stabilt. Hold fokus på konfliktreduserende planlegging.');
+      recommendations.push(t('crew.budgetRec.stable'));
     }
 
     return {
@@ -1941,7 +1955,7 @@ export function CrewManagementPanel({
       highCostMembers,
       recommendations,
     };
-  }, [crewAssignments, crewMembers, effectiveBudget, riskInsights.overtimeRisk.length]);
+  }, [crewAssignments, crewMembers, effectiveBudget, riskInsights.overtimeRisk.length, t]);
 
   const proActionItems = useMemo<ProActionItem[]>(() => {
     const items: ProActionItem[] = [];
@@ -1955,8 +1969,8 @@ export function CrewManagementPanel({
     if (stats.totalConflicts > 0) {
       items.push({
         id: 'resolve-conflicts',
-        title: 'Løs dobbelbookinger',
-        detail: `${stats.totalConflicts} konflikt${stats.totalConflicts !== 1 ? 'er' : ''} trenger avklaring.`,
+        title: t('crew.pro.resolveTitle'),
+        detail: t(stats.totalConflicts === 1 ? 'crew.pro.resolveDetailOne' : 'crew.pro.resolveDetailMany', { n: stats.totalConflicts }),
         focus: 'risks',
         severity: 'high',
       });
@@ -1965,8 +1979,8 @@ export function CrewManagementPanel({
     if (riskInsights.overtimeRisk.length > 0) {
       items.push({
         id: 'reduce-overtime',
-        title: 'Reduser overtidsrisiko',
-        detail: `${riskInsights.overtimeRisk.length} crew ligger høyt på dagbelastning.`,
+        title: t('crew.pro.overtimeTitle'),
+        detail: t('crew.pro.overtimeDetail', { n: riskInsights.overtimeRisk.length }),
         focus: 'risks',
         severity: 'medium',
       });
@@ -1975,8 +1989,8 @@ export function CrewManagementPanel({
     if (riskInsights.missingContact.length > 0) {
       items.push({
         id: 'complete-contact',
-        title: 'Fyll inn kontaktinfo',
-        detail: `${riskInsights.missingContact.length} crew mangler e-post eller telefon.`,
+        title: t('crew.pro.contactTitle'),
+        detail: t('crew.pro.contactDetail', { n: riskInsights.missingContact.length }),
         focus: 'risks',
         severity: 'medium',
       });
@@ -1985,8 +1999,8 @@ export function CrewManagementPanel({
     if ((budgetIntelligence.utilizationRatio ?? 0) > 0.85) {
       items.push({
         id: 'review-budget',
-        title: 'Stram inn budsjett',
-        detail: `Budsjettutnyttelse på ${((budgetIntelligence.utilizationRatio ?? 0) * 100).toFixed(1)}%.`,
+        title: t('crew.pro.budgetTitle'),
+        detail: t('crew.pro.budgetDetail', { pct: ((budgetIntelligence.utilizationRatio ?? 0) * 100).toFixed(1) }),
         focus: 'budget',
         severity: (budgetIntelligence.utilizationRatio ?? 0) > 1 ? 'high' : 'medium',
       });
@@ -1995,8 +2009,8 @@ export function CrewManagementPanel({
     if (productionDays.length > 0 && unassignedCrewCount > 0) {
       items.push({
         id: 'staff-unassigned',
-        title: 'Fordel ubemannet crew',
-        detail: `${unassignedCrewCount} crew er ikke planlagt på dager.`,
+        title: t('crew.pro.staffTitle'),
+        detail: t('crew.pro.staffDetail', { n: unassignedCrewCount }),
         focus: 'planner',
         severity: 'low',
       });
@@ -2005,8 +2019,8 @@ export function CrewManagementPanel({
     if (items.length === 0) {
       items.push({
         id: 'maintain-plan',
-        title: 'Planen ser stabil ut',
-        detail: 'Ingen kritiske signaler nå. Hold fokus på fremdrift og oppdatering.',
+        title: t('crew.pro.maintainTitle'),
+        detail: t('crew.pro.maintainDetail'),
         focus: 'overview',
         severity: 'low',
       });
@@ -2021,6 +2035,7 @@ export function CrewManagementPanel({
     riskInsights.missingContact.length,
     riskInsights.overtimeRisk.length,
     stats.totalConflicts,
+    t,
   ]);
 
   const plannerCandidates = useMemo(() => {
@@ -2106,7 +2121,7 @@ export function CrewManagementPanel({
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (window.confirm(`Er du sikker på at du vil slette ${selectedIds.size} crewmedlem(mer)?`)) {
+    if (window.confirm(t('crew.confirm.bulkDelete', { n: selectedIds.size }))) {
       try {
         for (const id of selectedIds) {
           await castingService.deleteCrew(projectId, id);
@@ -2114,11 +2129,11 @@ export function CrewManagementPanel({
         const crew = await castingService.getCrew(projectId);
         setCrewMembers(Array.isArray(crew) ? crew : []);
         setSelectedIds(new Set());
-        logActivity('Bulk', `Slettet ${selectedIds.size} crewmedlem(mer)`);
+        logActivity('Bulk', t('crew.log.deletedMembers', { n: selectedIds.size }));
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting crew:', error);
-        showError('Feil ved sletting av crewmedlemmer');
+        showError(t('crew.toast.deleteMembersError'));
       }
     }
   };
@@ -2140,12 +2155,12 @@ export function CrewManagementPanel({
       await castingService.saveCrew(projectId, member);
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
-      showSuccess(`Invitasjon sendt til ${data.name}`, 3000);
-      logActivity('Crew', `Inviterte ${data.name}`);
+      showSuccess(t('crew.toast.invitationSent', { name: data.name }), 3000);
+      logActivity('Crew', t('crew.log.invited', { name: data.name }));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error inviting crew member:', error);
-      showError('Feil ved invitasjon av crewmedlem');
+      showError(t('crew.toast.inviteError'));
     }
   };
 
@@ -2160,12 +2175,12 @@ export function CrewManagementPanel({
       setCrewMembers(Array.isArray(crew) ? crew : []);
       const count = selectedIds.size;
       setSelectedIds(new Set());
-      showSuccess(`Status oppdatert for ${count} crewmedlem(mer)`, 3000);
-      logActivity('Bulk', `Oppdaterte status (${STATUS_META[status].label}) for ${count}`);
+      showSuccess(t('crew.toast.statusUpdated', { n: count }), 3000);
+      logActivity('Bulk', t('crew.log.updatedStatus', { status: t(STATUS_LABEL_KEY[status]), n: count }));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating crew status:', error);
-      showError('Feil ved statusoppdatering');
+      showError(t('crew.toast.statusUpdateError'));
     }
   };
 
@@ -2177,7 +2192,7 @@ export function CrewManagementPanel({
     if (member) {
       setAssigningMember(member);
       setAssignDayOpen(true);
-      logActivity('Bulk', `Åpnet dagtilordning for ${selectedIds.size} valgte`);
+      logActivity('Bulk', t('crew.log.openedDayAssign', { n: selectedIds.size }));
     }
   }, [selectedIds, crewMembers, logActivity]);
 
@@ -2208,16 +2223,16 @@ export function CrewManagementPanel({
     try {
       await castingService.saveCrewAssignment(projectId, newAssignment);
       const code = getMemberDOODCode(crewMemberId, dayId, updated, productionDays) ?? status.toUpperCase();
-      showSuccess(`${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet dag ${date} (${code})`, 3000);
+      showSuccess(t('crew.toast.assignedDay', { name: crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew', date, code }), 3000);
       roleRoomAnalytics.crewAssigned({
         project_id: projectId,
         crew_id: crewMemberId,
         role: crewMembers.find(m => m.id === crewMemberId)?.role ?? undefined,
       });
     } catch {
-      showInfo('Tilordning lagret lokalt (sync ved neste tilkobling)');
+      showInfo(t('crew.toast.assignSavedLocal'));
     }
-    logActivity('Plan', `${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet ${date}`);
+    logActivity('Plan', t('crew.log.assignedTo', { name: crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew', date }));
     if (onUpdate) onUpdate();
   }, [crewAssignments, projectId, productionDays, crewMembers, showSuccess, showInfo, onUpdate, logActivity]);
 
@@ -2226,11 +2241,11 @@ export function CrewManagementPanel({
     setCrewAssignments(updated);
     try {
       await castingService.deleteCrewAssignment(projectId, crewMemberId, dayId);
-      showSuccess('Tilordning fjernet', 2000);
+      showSuccess(t('crew.toast.assignRemoved'), 2000);
     } catch {
-      showInfo('Fjernet lokalt (sync ved neste tilkobling)');
+      showInfo(t('crew.toast.removedLocal'));
     }
-    logActivity('Plan', 'Fjernet dagtilordning');
+    logActivity('Plan', t('crew.log.removedDayAssign'));
     if (onUpdate) onUpdate();
   }, [crewAssignments, projectId, showSuccess, showInfo, onUpdate, logActivity]);
 
@@ -2256,7 +2271,7 @@ export function CrewManagementPanel({
   }, [sortField, sortDirection]);
 
   const handleSaveCurrentView = useCallback(() => {
-    const name = window.prompt('Navn på lagret visning?');
+    const name = window.prompt(t('crew.prompt.savedViewName'));
     const trimmedName = name?.trim();
     if (!trimmedName) return;
 
@@ -2268,13 +2283,13 @@ export function CrewManagementPanel({
     };
     setSavedViews((previous) => [nextView, ...previous].slice(0, 12));
     setSavedViewAnchor(null);
-    showSuccess(`Lagret visning: ${trimmedName}`, 2500);
-    logActivity('Saved view', `Lagret visning "${trimmedName}"`);
+    showSuccess(t('crew.toast.savedView', { name: trimmedName }), 2500);
+    logActivity('Saved view', t('crew.log.savedView', { name: trimmedName }));
   }, [captureViewState, showSuccess, logActivity]);
 
   const handleDeleteSavedView = useCallback((id: string) => {
     setSavedViews((previous) => previous.filter((view) => view.id !== id));
-    logActivity('Saved view', 'Slettet lagret visning');
+    logActivity('Saved view', t('crew.log.deletedSavedView'));
   }, [logActivity]);
 
   const handleBulkRoleChange = useCallback(async () => {
@@ -2290,12 +2305,12 @@ export function CrewManagementPanel({
       );
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
-      showSuccess(`Oppdaterte rolle for ${selectedMembers.length} crewmedlem(mer)`, 3000);
-      logActivity('Bulk', `Satte rolle til ${getRoleLabel(bulkRole)} for ${selectedMembers.length}`);
+      showSuccess(t('crew.toast.roleUpdated', { n: selectedMembers.length }), 3000);
+      logActivity('Bulk', t('crew.log.setRole', { role: getRoleLabel(bulkRole), n: selectedMembers.length }));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating bulk role:', error);
-      showError('Kunne ikke oppdatere roller');
+      showError(t('crew.toast.roleUpdateError'));
     }
   }, [bulkRole, selectedIds, crewMembers, projectId, showSuccess, showError, onUpdate, logActivity]);
 
@@ -2313,12 +2328,12 @@ export function CrewManagementPanel({
       );
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
-      showSuccess(`Oppdaterte fast honorar for ${selectedMembers.length} crewmedlem(mer)`, 3000);
-      logActivity('Bulk', `Satte fast honorar ${parsedRate.toLocaleString('nb-NO')} kr for ${selectedMembers.length}`);
+      showSuccess(t('crew.toast.rateUpdated', { n: selectedMembers.length }), 3000);
+      logActivity('Bulk', t('crew.log.setRate', { amount: parsedRate.toLocaleString('nb-NO'), n: selectedMembers.length }));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating bulk rate:', error);
-      showError('Kunne ikke oppdatere fast honorar');
+      showError(t('crew.toast.rateUpdateError'));
     }
   }, [bulkRateInput, selectedIds, crewMembers, projectId, showSuccess, showError, onUpdate, logActivity]);
 
@@ -2326,7 +2341,7 @@ export function CrewManagementPanel({
     const targetDay = productionDays.find((day) => day.id === dayId);
     if (!targetDay) return;
     void handleCrewAssign(crewMemberId, targetDay.id, targetDay.date ?? '', 'assigned', 'A', '08:00');
-    logActivity('Planner', `Drog crew til ${targetDay.date}`);
+    logActivity('Planner', t('crew.log.draggedCrew', { date: targetDay.date ?? '' }));
   }, [productionDays, handleCrewAssign, logActivity]);
 
   // Toggle favorite with database sync
@@ -2349,7 +2364,7 @@ export function CrewManagementPanel({
       } else {
         await favoritesApi.remove(projectId, 'crew', id);
       }
-      logActivity('Crew', `${isAdding ? 'La til' : 'Fjernet'} favoritt`);
+      logActivity('Crew', t(isAdding ? 'crew.log.addedFavorite' : 'crew.log.removedFavorite'));
     } catch (error) {
       console.warn('Database sync failed:', error);
     }
@@ -2413,7 +2428,7 @@ export function CrewManagementPanel({
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        alert('Prosjekt ikke funnet');
+        alert(t('crew.toast.projectNotFound'));
         return;
       }
 
@@ -2421,7 +2436,7 @@ export function CrewManagementPanel({
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        alert(t('crew.toast.exportWindowError'));
         return;
       }
 
@@ -2431,10 +2446,10 @@ export function CrewManagementPanel({
       setTimeout(() => {
         printWindow.print();
       }, 250);
-      logActivity('Export', `Eksporterte crewliste (${filteredAndSortedCrew.length} rader)`);
+      logActivity('Export', t('crew.log.exportedList', { n: filteredAndSortedCrew.length }));
     } catch (error) {
       console.error('Error exporting crew:', error);
-      alert('Kunne ikke eksportere crewliste');
+      alert(t('crew.toast.exportError'));
     }
   };
 
@@ -2519,21 +2534,21 @@ export function CrewManagementPanel({
         ${crewIconSVG}
         ${project.name} - Team
       </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('crew.export.exportedAt', { date: dateStr })}</div>
     </div>
     <div class="summary">
       <div class="summary-title">
         ${crewIconSVG}
-        Oversikt
+        ${t('crew.export.overview')}
       </div>
       <div class="summary-grid">
         <div class="summary-item">
           <span class="summary-number">${totalCrew}</span>
-          <span class="summary-label">Totale Teammedlemmer</span>
+          <span class="summary-label">${t('crew.export.totalMembers')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${Object.keys(crewByRole).length}</span>
-          <span class="summary-label">Forskjellige Roller</span>
+          <span class="summary-label">${t('crew.export.differentRoles')}</span>
         </div>
       </div>
     </div>
@@ -2543,22 +2558,22 @@ export function CrewManagementPanel({
           <span class="section-icon">${crewIconSVG}</span>
           Team
         </div>
-        <span class="section-count">${totalCrew} medlem${totalCrew !== 1 ? 'mer' : ''}</span>
+        <span class="section-count">${t(totalCrew === 1 ? 'crew.export.memberCountOne' : 'crew.export.memberCountMany', { n: totalCrew })}</span>
       </div>
       <div class="section-content">
         ${crew.length === 0
-          ? '<div class="empty-state">Ingen teammedlemmer ennå</div>'
+          ? `<div class="empty-state">${t('crew.noTeamMembers')}</div>`
           : `<table>
           <thead>
             <tr>
-              <th style="width: 18%;">Navn</th>
-              <th style="width: 12%;">Rolle</th>
-              <th style="width: 15%;">E-post</th>
-              <th style="width: 12%;">Telefon</th>
-              <th style="width: 18%;">Adresse</th>
-              <th style="width: 8%;">Fast honorar</th>
-              <th style="width: 12%;">Tilgjengelig</th>
-              <th style="width: 5%;">Notater</th>
+              <th style="width: 18%;">${t('crew.export.colName')}</th>
+              <th style="width: 12%;">${t('crew.export.colRole')}</th>
+              <th style="width: 15%;">${t('crew.export.colEmail')}</th>
+              <th style="width: 12%;">${t('crew.export.colPhone')}</th>
+              <th style="width: 18%;">${t('crew.export.colAddress')}</th>
+              <th style="width: 8%;">${t('crew.export.colRate')}</th>
+              <th style="width: 12%;">${t('crew.export.colAvail')}</th>
+              <th style="width: 5%;">${t('crew.export.colNotes')}</th>
             </tr>
           </thead>
           <tbody>
@@ -2566,7 +2581,7 @@ export function CrewManagementPanel({
               const availability = member.availability?.startDate && member.availability?.endDate 
                 ? `${new Date(member.availability.startDate).toLocaleDateString('nb-NO')} - ${new Date(member.availability.endDate).toLocaleDateString('nb-NO')}` 
                 : member.availability?.startDate 
-                  ? `Fra ${new Date(member.availability.startDate).toLocaleDateString('nb-NO')}` 
+                  ? t('crew.export.availFrom', { date: new Date(member.availability.startDate).toLocaleDateString('nb-NO') }) 
                   : '-';
               const notes = member.notes || '-';
               return `<tr>
@@ -2592,7 +2607,7 @@ export function CrewManagementPanel({
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
       <div class="footer-right">
-        <span class="page-number">Side </span>
+        <span class="page-number">${t('crew.export.page')}</span>
         <span>|</span>
         <span>${dateStr}</span>
       </div>
@@ -2615,11 +2630,11 @@ export function CrewManagementPanel({
       await castingService.saveCrew(projectId, duplicate);
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
-      logActivity('Crew', `Dupliserte ${member.name}`);
+      logActivity('Crew', t('crew.log.duplicated', { name: member.name }));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error duplicating crew member:', error);
-      showError('Feil ved duplisering av crewmedlem');
+      showError(t('crew.toast.duplicateError'));
     }
   };
 
@@ -2634,12 +2649,12 @@ export function CrewManagementPanel({
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
       setShowUndoSnackbar(true);
-      showInfo(`${member.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
-      logActivity('Crew', `Slettet ${member.name}`);
+      showInfo(t('crew.toast.deletedUndo', { name: member.name }), 6000);
+      logActivity('Crew', t('crew.log.deleted', { name: member.name }));
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error deleting crew member:', error);
-      showError('Feil ved sletting av crewmedlem');
+      showError(t('crew.toast.deleteError'));
     }
   };
 
@@ -2650,14 +2665,14 @@ export function CrewManagementPanel({
         await castingService.saveCrew(projectId, deletedCrew);
         const crew = await castingService.getCrew(projectId);
         setCrewMembers(Array.isArray(crew) ? crew : []);
-        showSuccess(`${deletedCrew.name} gjenopprettet`, 3000);
-        logActivity('Crew', `Gjenopprettet ${deletedCrew.name}`);
+        showSuccess(t('crew.toast.restored', { name: deletedCrew.name }), 3000);
+        logActivity('Crew', t('crew.log.restored', { name: deletedCrew.name }));
         setDeletedCrew(null);
         setShowUndoSnackbar(false);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error undoing delete:', error);
-        showError('Feil ved gjenoppretting av crewmedlem');
+        showError(t('crew.toast.restoreError'));
       }
     }
   };
@@ -2702,21 +2717,21 @@ export function CrewManagementPanel({
 
     const recommendations: string[] = [];
     if (periodBudget === null) {
-      recommendations.push('Legg inn totalbudsjett for å få budsjettavvik og risikonivå i kalkulatoren.');
+      recommendations.push(t('crew.calc.enterBudget'));
     } else if (budgetDelta !== null && budgetDelta > 0) {
-      recommendations.push(`Prognosen overstiger periodebudsjettet med ${budgetDelta.toLocaleString('nb-NO')} kr.`);
+      recommendations.push(t('crew.calc.overBudget', { amount: budgetDelta.toLocaleString('nb-NO') }));
     } else if (budgetDelta !== null && budgetDelta < 0) {
-      recommendations.push(`Prognosen ligger ${(Math.abs(budgetDelta)).toLocaleString('nb-NO')} kr under periodebudsjettet.`);
+      recommendations.push(t('crew.calc.underBudget', { amount: (Math.abs(budgetDelta)).toLocaleString('nb-NO') }));
     }
 
     if (selectedIds.size > 0) {
-      recommendations.push('Visningen er filtrert til valgte crewmedlemmer. Nullstill valg for totalprognose.');
+      recommendations.push(t('crew.calc.filteredSelection'));
     }
     if (riskInsights.overtimeRisk.length > 0) {
-      recommendations.push('Overtidsrisiko registrert. Spre oppgaver for å redusere kostnadsdrift.');
+      recommendations.push(t('crew.calc.overtimeRisk'));
     }
     if (recommendations.length === 0) {
-      recommendations.push('Kostnadsprognosen er innenfor ramme. Fortsett med nåværende bemanningsplan.');
+      recommendations.push(t('crew.calc.withinBudget'));
     }
 
     return {
@@ -2729,7 +2744,7 @@ export function CrewManagementPanel({
       severity,
       recommendations,
     };
-  }, [budgetIntelligence.assignedDailyCost, calculateCost, effectiveBudget, riskInsights.overtimeRisk.length, selectedIds.size]);
+  }, [budgetIntelligence.assignedDailyCost, calculateCost, effectiveBudget, riskInsights.overtimeRisk.length, selectedIds.size, t]);
 
   // Keyboard shortcuts
   const handleOpenDialog = useCallback((crewMember?: CrewMember) => {
@@ -2789,31 +2804,31 @@ export function CrewManagementPanel({
 
   const commandActions = useMemo(() => {
     return [
-      { id: 'new', label: 'Nytt crewmedlem', shortcut: 'Cmd/Ctrl+N', run: () => handleOpenDialog() },
-      { id: 'search', label: 'Fokuser søkefelt', shortcut: 'Cmd/Ctrl+F', run: () => searchInputRef.current?.focus() },
-      { id: 'export', label: 'Eksporter crewliste', shortcut: 'Cmd/Ctrl+E', run: () => exportToCSV() },
-      { id: 'toggle-view', label: workspaceView === 'pro' ? 'Bytt til Standard view' : 'Bytt til Pro view', shortcut: '', run: () => setWorkspaceView(workspaceView === 'pro' ? 'standard' : 'pro') },
+      { id: 'new', label: t('crew.btn.newMember'), shortcut: 'Cmd/Ctrl+N', run: () => handleOpenDialog() },
+      { id: 'search', label: t('crew.cmd.focusSearch'), shortcut: 'Cmd/Ctrl+F', run: () => searchInputRef.current?.focus() },
+      { id: 'export', label: t('crew.cmd.exportList'), shortcut: 'Cmd/Ctrl+E', run: () => exportToCSV() },
+      { id: 'toggle-view', label: workspaceView === 'pro' ? t('crew.cmd.switchStandard') : t('crew.cmd.switchPro'), shortcut: '', run: () => setWorkspaceView(workspaceView === 'pro' ? 'standard' : 'pro') },
       ...(workspaceView === 'pro'
         ? [
-            { id: 'focus-all', label: proViewFocus === 'all' ? 'Pro fokus: Alle seksjoner (aktiv)' : 'Pro fokus: Alle seksjoner', shortcut: '', run: () => setProViewFocus('all') },
-            { id: 'focus-overview', label: proViewFocus === 'overview' ? 'Pro fokus: Oversikt (aktiv)' : 'Pro fokus: Oversikt', shortcut: '', run: () => setProViewFocus('overview') },
-            { id: 'focus-risks', label: proViewFocus === 'risks' ? 'Pro fokus: Risiko (aktiv)' : 'Pro fokus: Risiko', shortcut: '', run: () => setProViewFocus('risks') },
-            { id: 'focus-budget', label: proViewFocus === 'budget' ? 'Pro fokus: Budsjett (aktiv)' : 'Pro fokus: Budsjett', shortcut: '', run: () => setProViewFocus('budget') },
-            { id: 'focus-planner', label: proViewFocus === 'planner' ? 'Pro fokus: Planlegger (aktiv)' : 'Pro fokus: Planlegger', shortcut: '', run: () => setProViewFocus('planner') },
+            { id: 'focus-all', label: proViewFocus === 'all' ? t('crew.cmd.focusAll') + t('crew.cmd.active') : t('crew.cmd.focusAll'), shortcut: '', run: () => setProViewFocus('all') },
+            { id: 'focus-overview', label: proViewFocus === 'overview' ? t('crew.cmd.focusOverview') + t('crew.cmd.active') : t('crew.cmd.focusOverview'), shortcut: '', run: () => setProViewFocus('overview') },
+            { id: 'focus-risks', label: proViewFocus === 'risks' ? t('crew.cmd.focusRisks') + t('crew.cmd.active') : t('crew.cmd.focusRisks'), shortcut: '', run: () => setProViewFocus('risks') },
+            { id: 'focus-budget', label: proViewFocus === 'budget' ? t('crew.cmd.focusBudget') + t('crew.cmd.active') : t('crew.cmd.focusBudget'), shortcut: '', run: () => setProViewFocus('budget') },
+            { id: 'focus-planner', label: proViewFocus === 'planner' ? t('crew.cmd.focusPlanner') + t('crew.cmd.active') : t('crew.cmd.focusPlanner'), shortcut: '', run: () => setProViewFocus('planner') },
           ]
         : []),
-      { id: 'toggle-density', label: compactMode ? 'Slå av kompakt modus' : 'Slå på kompakt modus', shortcut: '', run: () => setCompactMode((previous) => !previous) },
-      { id: 'open-dood', label: 'Åpne DOOD oversikt', shortcut: '', run: () => setDoodOpen(true) },
-      { id: 'open-callsheet', label: 'Åpne callsheet', shortcut: '', run: () => { setCallsheetCrewScope('all'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); } },
-      { id: 'open-technical-callsheet', label: 'Daglig teknisk callsheet', shortcut: '', run: () => { setCallsheetCrewScope('technical'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); } },
-      { id: 'clear-filters', label: 'Nullstill alle filter', shortcut: '', run: () => { setFilterStatus('all'); setFilterAvailable(false); setFilterAssignedToday(false); setFilterDept('all'); setFilterRole('all'); setSearchQuery(''); } },
-      { id: 'open-invite', label: 'Inviter crewmedlem', shortcut: 'F', run: () => setInviteDialogOpen(true) },
-      { id: 'open-log', label: 'Åpne aktivitetslogg', shortcut: '', run: () => setActivityOpen(true) },
+      { id: 'toggle-density', label: compactMode ? t('crew.cmd.compactOff') : t('crew.cmd.compactOn'), shortcut: '', run: () => setCompactMode((previous) => !previous) },
+      { id: 'open-dood', label: t('crew.cmd.openDood'), shortcut: '', run: () => setDoodOpen(true) },
+      { id: 'open-callsheet', label: t('crew.cmd.openCallsheet'), shortcut: '', run: () => { setCallsheetCrewScope('all'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); } },
+      { id: 'open-technical-callsheet', label: t('crew.tt.dailyTechCallsheet'), shortcut: '', run: () => { setCallsheetCrewScope('technical'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); } },
+      { id: 'clear-filters', label: t('crew.cmd.resetFilters'), shortcut: '', run: () => { setFilterStatus('all'); setFilterAvailable(false); setFilterAssignedToday(false); setFilterDept('all'); setFilterRole('all'); setSearchQuery(''); } },
+      { id: 'open-invite', label: t('crew.invite.title'), shortcut: 'F', run: () => setInviteDialogOpen(true) },
+      { id: 'open-log', label: t('crew.cmd.openLog'), shortcut: '', run: () => setActivityOpen(true) },
       ...(onOpenTechnicalTeamDashboard
-        ? [{ id: 'open-technical-dashboard', label: 'Åpne teknisk team dashboard', shortcut: 'Shift+T', run: () => onOpenTechnicalTeamDashboard() }]
+        ? [{ id: 'open-technical-dashboard', label: t('crew.cmd.openTechDashboard'), shortcut: 'Shift+T', run: () => onOpenTechnicalTeamDashboard() }]
         : []),
     ];
-  }, [handleOpenDialog, exportToCSV, workspaceView, proViewFocus, compactMode, productionDays, onOpenTechnicalTeamDashboard]);
+  }, [handleOpenDialog, exportToCSV, workspaceView, proViewFocus, compactMode, productionDays, onOpenTechnicalTeamDashboard, t]);
 
   const filteredCommandActions = useMemo(() => {
     const query = commandQuery.trim().toLowerCase();
@@ -2885,7 +2900,7 @@ export function CrewManagementPanel({
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
-      showError('Navn er påkrevd');
+      showError(t('crew.toast.nameRequired'));
       return;
     }
 
@@ -2951,18 +2966,18 @@ export function CrewManagementPanel({
           ...(typeof formData.splitSheet?.notes === 'string' ? globalTagService.parseExplicitMentions(formData.splitSheet.notes) : []),
         ])
         .catch((error) => {
-          console.warn('Kunne ikke oppdatere globalt tag-register fra crew-notater:', error);
+          console.warn('Could not update global tag registry from crew notes:', error);
         });
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
 
       // Show success notification
       if (editingCrewMember) {
-        showSuccess(`${formData.name} oppdatert`, 3000);
-        logActivity('Crew', `Oppdaterte ${formData.name}`);
+        showSuccess(t('crew.toast.memberUpdated', { name: formData.name }), 3000);
+        logActivity('Crew', t('crew.log.updated', { name: formData.name }));
       } else {
-        showSuccess(`${formData.name} lagt til i teamet`, 3000);
-        logActivity('Crew', `La til ${formData.name}`);
+        showSuccess(t('crew.toast.memberAddedTeam', { name: formData.name }), 3000);
+        logActivity('Crew', t('crew.log.added', { name: formData.name }));
       }
 
       if (isCreating) {
@@ -2974,7 +2989,7 @@ export function CrewManagementPanel({
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error saving crew member:', error);
-      showError('Feil ved lagring av crewmedlem');
+      showError(t('crew.toast.saveError'));
     }
   };
 
@@ -3039,20 +3054,18 @@ export function CrewManagementPanel({
             <GroupsIcon sx={{ color: roleTabAccent, fontSize: 26 }} />
           </Box>
           <Box>
-            <Typography variant="h5" sx={{ color: roleText, fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.4rem' } }}>
-              Produksjonsteam
-            </Typography>
+            <Typography variant="h5" sx={{ color: roleText, fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.4rem' } }}>{t('crew.header.title')}</Typography>
             <Typography sx={{ color: roleTextMuted, fontSize: 12 }}>
               <BadgeIcon sx={{ fontSize: 13, verticalAlign: 'middle', mr: 0.5, color: 'rgba(220,205,255,0.6)' }} />
-              {crewMembers.length} totalt · {stats.availableNow} tilgjengelig
-              {stats.assignedToday > 0 && ` · ${stats.assignedToday} tilordnet i dag`}
+              {t('crew.header.totalAvailable', { total: crewMembers.length, available: stats.availableNow })}
+              {stats.assignedToday > 0 && t('crew.header.assignedToday', { n: stats.assignedToday })}
               {stats.totalConflicts > 0 && (
                 <Typography component="span" sx={{ color: '#ef4444', fontSize: 12, ml: 0.5 }}>
                   · <WarningAmberIcon sx={{ fontSize: 11, verticalAlign: 'middle', mr: 0.25 }} />
-                  {stats.totalConflicts} konflikt{stats.totalConflicts !== 1 ? 'er' : ''}
+                  {t(stats.totalConflicts === 1 ? 'crew.header.conflictOne' : 'crew.header.conflictMany', { n: stats.totalConflicts })}
                 </Typography>
               )}
-              {filteredAndSortedCrew.length < crewMembers.length && ` · ${filteredAndSortedCrew.length} vises`}
+              {filteredAndSortedCrew.length < crewMembers.length && t('crew.header.shown', { n: filteredAndSortedCrew.length })}
             </Typography>
           </Box>
         </Box>
@@ -3072,7 +3085,7 @@ export function CrewManagementPanel({
               '&:hover': { bgcolor: 'rgba(34,197,94,0.12)', borderColor: '#22c55e' },
             }}
           >
-            WhatsApp-gruppe
+            {t('crew.btn.whatsappGroup')}
           </Button>
           <Button
             variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
@@ -3114,7 +3127,7 @@ export function CrewManagementPanel({
               '&:hover': { bgcolor: compactMode ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)' },
             }}
           >
-            Kompakt
+            {t('crew.btn.compact')}
           </Button>
           <Button
             variant={pinNameColumn ? 'contained' : 'outlined'}
@@ -3122,7 +3135,7 @@ export function CrewManagementPanel({
             onClick={() => setPinNameColumn((previous) => !previous)}
             sx={{ minHeight: 34, bgcolor: pinNameColumn ? roleTabAccentSoft : 'transparent', color: '#fff', borderColor: roleBorder }}
           >
-            Pin navn
+            {t('crew.btn.pinName')}
           </Button>
           <Button
             variant={pinContactColumn ? 'contained' : 'outlined'}
@@ -3130,7 +3143,7 @@ export function CrewManagementPanel({
             onClick={() => setPinContactColumn((previous) => !previous)}
             sx={{ minHeight: 34, bgcolor: pinContactColumn ? roleTabAccentSoft : 'transparent', color: '#fff', borderColor: roleBorder }}
           >
-            Pin kontakt
+            {t('crew.btn.pinContact')}
           </Button>
           <Button
             variant="outlined"
@@ -3148,10 +3161,10 @@ export function CrewManagementPanel({
           >
             <MenuItem onClick={handleSaveCurrentView} sx={{ fontWeight: 700 }}>
               <SaveIcon sx={{ fontSize: 16, mr: 1 }} />
-              Lagre nåværende visning
+              {t('crew.menu.saveCurrentView')}
             </MenuItem>
             {savedViews.length === 0 && (
-              <MenuItem disabled sx={{ opacity: 0.7 }}>Ingen lagrede visninger</MenuItem>
+              <MenuItem disabled sx={{ opacity: 0.7 }}>{t('crew.menu.noSavedViews')}</MenuItem>
             )}
             {savedViews.map((view) => (
               <MenuItem
@@ -3168,24 +3181,24 @@ export function CrewManagementPanel({
                   size="small"
                   onClick={() => handleDeleteSavedView(view.id)}
                   sx={{ color: 'rgba(255,255,255,0.55)' }}
-                  aria-label={`Slett lagret visning ${view.name}`}
+                  aria-label={t('crew.aria.deleteSavedView', { name: view.name })}
                 >
                   <DeleteIcon sx={{ fontSize: 16 }} />
                 </IconButton>
               </MenuItem>
             ))}
           </Menu>
-          <Tooltip title="Vis/skjul avdelinger">
+          <Tooltip title={t('crew.tt.showHideDepts')}>
             <IconButton onClick={() => setShowDeptSidebar(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               {showDeptSidebar ? <ChevronLeftIcon /> : <ChevronRightIcon />}
             </IconButton>
           </Tooltip>
-          <Tooltip title={showStats ? 'Skjul statistikk' : 'Vis statistikk'}>
+          <Tooltip title={showStats ? t('crew.tt.hideStats') : t('crew.tt.showStats')}>
             <IconButton onClick={() => setShowStats(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               {showStats ? <ExpandLessIcon /> : <ExpandMoreIcon />}
             </IconButton>
           </Tooltip>
-          <Tooltip title="Eksporter (Ctrl+E)">
+          <Tooltip title={t('crew.tt.exportCtrlE')}>
             <IconButton onClick={exportToCSV} sx={{ color: 'rgba(255,255,255,0.7)', ...focusVisibleStyles }}>
               <DownloadIcon />
             </IconButton>
@@ -3206,7 +3219,7 @@ export function CrewManagementPanel({
               <CallsheetIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Daglig teknisk callsheet">
+          <Tooltip title={t('crew.tt.dailyTechCallsheet')}>
             <IconButton
               onClick={() => { setCallsheetCrewScope('technical'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
               sx={{ color: '#38bdf8', ...focusVisibleStyles }}
@@ -3215,7 +3228,7 @@ export function CrewManagementPanel({
             </IconButton>
           </Tooltip>
           {onOpenTechnicalTeamDashboard && (
-            <Tooltip title="Åpne teknisk Team Dashboard (Shot List)">
+            <Tooltip title={t('crew.tt.openTechDashboard')}>
               <Button
                 variant="outlined"
                 size="small"
@@ -3228,16 +3241,16 @@ export function CrewManagementPanel({
                   '&:hover': { bgcolor: roleTabAccentSoft, borderColor: roleTabAccent },
                 }}
               >
-                Teknisk dashboard
+                {t('crew.btn.techDashboard')}
               </Button>
             </Tooltip>
           )}
-          <Tooltip title="Hjelp — Crew Management guide">
+          <Tooltip title={t('crew.tt.help')}>
             <IconButton onClick={() => setGuideOpen(true)} sx={{ color: '#ffffff', '&:hover': { color: '#ffffff' }, ...focusVisibleStyles }} aria-label="Open Crew Management guide">
               <HelpIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Kostnadskalkulator">
+          <Tooltip title={t('crew.tt.costCalculator')}>
             <IconButton onClick={() => setShowCostCalculator(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               <CalculateIcon />
             </IconButton>
@@ -3247,7 +3260,7 @@ export function CrewManagementPanel({
               <SearchIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Aktivitetslogg">
+          <Tooltip title={t('crew.tt.activityLog')}>
             <Badge badgeContent={activityLog.length > 99 ? '99+' : activityLog.length} color="primary" max={99}>
               <IconButton onClick={() => setActivityOpen(true)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
                 <ScheduleIcon />
@@ -3264,11 +3277,11 @@ export function CrewManagementPanel({
           </ToggleButtonGroup>
           <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={() => setInviteDialogOpen(true)}
             sx={{ borderColor: roleBorder, color: '#ffffff', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentSoft, borderColor: roleTabAccent } }}>
-            Inviter (F)
+            {t('crew.btn.inviteF')}
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}
             sx={{ bgcolor: roleTabAccent, color: '#ffffff', fontWeight: 800, '&:hover': { bgcolor: roleTabAccentHover } }}>
-            {isMobile ? 'Ny' : 'Nytt crewmedlem'}
+            {isMobile ? t('crew.btn.newShort') : t('crew.btn.newMember')}
           </Button>
         </Box>
       </Box>
@@ -3299,7 +3312,7 @@ export function CrewManagementPanel({
         <TextField
           inputRef={searchInputRef}
           size="small"
-          placeholder="Søk navn, e-post, telefon…"
+          placeholder={t('crew.search.placeholder')}
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 18 }} /></InputAdornment> } }}
@@ -3312,25 +3325,25 @@ export function CrewManagementPanel({
           return (
             <Chip
               key={s}
-              label={s === 'all' ? 'Alle' : meta!.label}
+              label={s === 'all' ? t('crew.all') : t(STATUS_LABEL_KEY[s as CrewStatus])}
               size="small"
               onClick={() => setFilterStatus(s as CrewStatus | 'all')}
               sx={{ fontWeight: active ? 700 : 500, bgcolor: active ? (meta?.bg ?? roleTabAccentSoft) : 'rgba(255,255,255,0.06)', color: '#ffffff', border: `1px solid ${active ? (meta?.color ?? roleTabAccent) + '55' : 'rgba(255,255,255,0.24)'}`, cursor: 'pointer' }}
             />
           );
         })}
-        <Tooltip title="Filtrer på tilgjengelighet">
+        <Tooltip title={t('crew.tt.filterAvailability')}>
           <Chip
-            label="Tilgjengelig nå"
+            label={t('crew.chip.availableNow')}
             size="small"
             onClick={() => setFilterAvailable(p => !p)}
             sx={{ bgcolor: filterAvailable ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)', color: filterAvailable ? '#10b981' : 'rgba(255,255,255,0.6)', border: `1px solid ${filterAvailable ? '#10b98155' : 'rgba(255,255,255,0.1)'}`, cursor: 'pointer', fontWeight: filterAvailable ? 700 : 400 }}
           />
         </Tooltip>
         {productionDays.length > 0 && (
-          <Tooltip title="Vis kun crew med innspillingstilordning i dag">
+          <Tooltip title={t('crew.tt.showAssignedTodayOnly')}>
             <Chip
-              label="Tilordnet i dag"
+              label={t('crew.chip.assignedTodayStatic')}
               size="small"
               onClick={() => setFilterAssignedToday(p => !p)}
               sx={{ bgcolor: filterAssignedToday ? roleTabAccentSoft : 'rgba(255,255,255,0.06)', color: '#ffffff', border: `1px solid ${filterAssignedToday ? `${roleTabAccent}55` : 'rgba(255,255,255,0.24)'}`, cursor: 'pointer', fontWeight: filterAssignedToday ? 700 : 500 }}
@@ -3339,7 +3352,7 @@ export function CrewManagementPanel({
         )}
         {(filterStatus !== 'all' || filterAvailable || filterAssignedToday || filterDept !== 'all' || filterRole !== 'all' || searchQuery) && (
           <Chip
-            label="Nullstill"
+            label={t('crew.chip.reset')}
             size="small"
             onDelete={() => { setFilterStatus('all'); setFilterAvailable(false); setFilterAssignedToday(false); setFilterDept('all'); setFilterRole('all'); setSearchQuery(''); }}
             sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#9333ea', border: '1px solid rgba(147,51,234,0.3)' }}
@@ -3349,12 +3362,12 @@ export function CrewManagementPanel({
         {(() => {
           const activeFilterCount = [filterRole !== 'all', filterDept !== 'all', filterStatus !== 'all', filterAvailable, filterAssignedToday].filter(Boolean).length;
           return (
-            <Tooltip title={showFilters ? 'Skjul rollefilter' : 'Vis rollefilter (Ctrl+F)'}>
+            <Tooltip title={showFilters ? t('crew.tt.hideRoleFilter') : t('crew.tt.showRoleFilter')}>
               <Badge badgeContent={activeFilterCount} color="primary" overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 10, minWidth: 16, height: 16 } }}>
                 <IconButton
                   onClick={() => setShowFilters(p => !p)}
                   sx={{ color: showFilters ? roleTabAccent : roleTextMuted, ...focusVisibleStyles }}
-                  aria-label="Vis/skjul rollefilter"
+                  aria-label={t('crew.aria.showHideRoleFilter')}
                 >
                   <FilterListIcon sx={{ fontSize: 20 }} />
                 </IconButton>
@@ -3369,7 +3382,7 @@ export function CrewManagementPanel({
         <Box sx={{ px: 2, pb: 0.75, pt: 0.25, mx: 2, display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
           {filterAssignedToday && (
             <Chip
-              label={`${stats.assignedToday} tilordnet i dag`}
+              label={t('crew.chip.assignedToday', { n: stats.assignedToday })}
               size="small"
               onDelete={() => setFilterAssignedToday(false)}
               sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#ffb800', border: '1px solid rgba(147,51,234,0.4)', fontWeight: 700, fontSize: 12 }}
@@ -3377,7 +3390,7 @@ export function CrewManagementPanel({
           )}
           {filterDept !== 'all' && (
             <Chip
-              label={`Dept: ${DEPT_LABELS[filterDept]}`}
+              label={t('crew.chip.dept', { dept: t(DEPT_LABEL_KEY[filterDept]) })}
               size="small"
               onDelete={() => setFilterDept('all')}
               sx={{ bgcolor: `${DEPT_COLORS[filterDept]}22`, color: DEPT_COLORS[filterDept], border: `1px solid ${DEPT_COLORS[filterDept]}44`, fontWeight: 600, fontSize: 12 }}
@@ -3385,7 +3398,7 @@ export function CrewManagementPanel({
           )}
           {filterStatus !== 'all' && (
             <Chip
-              label={STATUS_META[filterStatus as CrewStatus].label}
+              label={t(STATUS_LABEL_KEY[filterStatus as CrewStatus])}
               size="small"
               onDelete={() => setFilterStatus('all')}
               sx={{ bgcolor: STATUS_META[filterStatus as CrewStatus].bg, color: STATUS_META[filterStatus as CrewStatus].color, border: `1px solid ${STATUS_META[filterStatus as CrewStatus].color}55`, fontWeight: 600, fontSize: 12 }}
@@ -3412,23 +3425,21 @@ export function CrewManagementPanel({
             <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(255,255,255,0.7)' }} />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <PeopleIcon sx={{ fontSize: 16, color: '#ffffff' }} />
-                <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>Rollefilter</Typography>
+                <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>{t('crew.filter.roleFilter')}</Typography>
               </Box>
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0, pb: 1.5 }}>
               <FormControl size="small" fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Filtrer på rolle</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('crew.filter.byRole')}</InputLabel>
                 <Select
                   value={filterRole}
                   onChange={e => setFilterRole(e.target.value as CrewRole | 'all')}
-                  label="Filtrer på rolle"
+                  label={t('crew.filter.byRole')}
                   sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' } }}
                 >
                   <MenuItem value="all">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <PeopleIcon sx={{ fontSize: 18, color: '#ffffff' }} />
-                      Alle roller
-                    </Box>
+                      <PeopleIcon sx={{ fontSize: 18, color: '#ffffff' }} />{t('crew.filter.allRoles')}</Box>
                   </MenuItem>
                   {crewRoles.map(role => (
                     <MenuItem key={role} value={role}>{getRoleLabel(role)}</MenuItem>
@@ -3444,44 +3455,42 @@ export function CrewManagementPanel({
       <Collapse in={showCostCalculator}>
         <Box sx={{ mx: 2, mb: 1, p: 2, bgcolor: roleTabAccentSoft, borderRadius: 2, border: `1px solid ${roleBorder}` }}>
           <Typography sx={{ color: '#ffffff', fontWeight: 700, mb: 1.5, fontSize: 14 }}>
-            Kostnadsberegner {selectedIds.size > 0 && `(${selectedIds.size} valgte)`}
+            {t('crew.cost.estimator')} {selectedIds.size > 0 && t('crew.cost.selectedCount', { n: selectedIds.size })}
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-            <TextField type="date" label="Fra" size="small" value={costStartDate} onChange={e => setCostStartDate(e.target.value)}
+            <TextField type="date" label={t('crew.cost.from')} size="small" value={costStartDate} onChange={e => setCostStartDate(e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ '& .MuiOutlinedInput-root': { color: '#fff' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
-            <TextField type="date" label="Til" size="small" value={costEndDate} onChange={e => setCostEndDate(e.target.value)}
+            <TextField type="date" label={t('crew.cost.to')} size="small" value={costEndDate} onChange={e => setCostEndDate(e.target.value)}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ '& .MuiOutlinedInput-root': { color: '#fff' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
             {calculateCost && (
               <Box sx={{ display: 'flex', gap: 3 }}>
-                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Dager</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.days}</Typography></Box>
+                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{t('crew.cost.days')}</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.days}</Typography></Box>
                 <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Crew</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.crewCount}</Typography></Box>
-                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Daglig fast honorar</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.dailyRate.toLocaleString('nb-NO')} kr</Typography></Box>
+                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{t('crew.cost.dailyRate')}</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.dailyRate.toLocaleString('nb-NO')} kr</Typography></Box>
                 <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Total</Typography><Typography sx={{ color: '#4caf50', fontWeight: 700, fontSize: '1.1rem' }}>{calculateCost.total.toLocaleString('nb-NO')} kr</Typography></Box>
               </Box>
             )}
           </Box>
           {costCalculatorIntelligence && (
             <Box sx={{ mt: 1.75, p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${roleBorder}` }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
-                Budsjett-intelligens (kalkulator)
-              </Typography>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>{t('crew.cost.budgetIntel')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, mb: 0.85 }}>
                 {costCalculatorIntelligence.periodBudget !== null ? (
                   <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
-                    Periodebudsjett: <strong>{costCalculatorIntelligence.periodBudget.toLocaleString('nb-NO')} kr</strong>
+                    {t('crew.cost.periodBudget')} <strong>{costCalculatorIntelligence.periodBudget.toLocaleString('nb-NO')} kr</strong>
                   </Typography>
                 ) : (
                   <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                    Periodebudsjett: <strong>ikke satt</strong>
+                    {t('crew.cost.periodBudget')} <strong>{t('crew.cost.notSet')}</strong>
                   </Typography>
                 )}
                 <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
-                  Prognose: <strong>{costCalculatorIntelligence.projectedTotal.toLocaleString('nb-NO')} kr</strong>
+                  {t('crew.cost.forecast')} <strong>{costCalculatorIntelligence.projectedTotal.toLocaleString('nb-NO')} kr</strong>
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
-                  Tilordnet prognose: <strong>{costCalculatorIntelligence.assignedProjection.toLocaleString('nb-NO')} kr</strong>
+                  {t('crew.cost.assignedForecast')} <strong>{costCalculatorIntelligence.assignedProjection.toLocaleString('nb-NO')} kr</strong>
                 </Typography>
                 {costCalculatorIntelligence.budgetDelta !== null && (
                   <Typography
@@ -3491,7 +3500,7 @@ export function CrewManagementPanel({
                       fontWeight: 700,
                     }}
                   >
-                    Avvik: {costCalculatorIntelligence.budgetDelta > 0 ? '+' : ''}
+                    {t('crew.cost.deviation')} {costCalculatorIntelligence.budgetDelta > 0 ? '+' : ''}
                     {costCalculatorIntelligence.budgetDelta.toLocaleString('nb-NO')} kr
                   </Typography>
                 )}
@@ -3499,9 +3508,9 @@ export function CrewManagementPanel({
               {costCalculatorIntelligence.utilization !== null && (
                 <Box sx={{ mb: 0.85 }}>
                   <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', mb: 0.25 }}>
-                    Budsjettutnyttelse: {(costCalculatorIntelligence.utilization * 100).toFixed(1)}%
+                    {t('crew.budget.utilization')} {(costCalculatorIntelligence.utilization * 100).toFixed(1)}%
                     {costCalculatorIntelligence.assignedUtilization !== null
-                      ? ` · Tilordnet: ${(costCalculatorIntelligence.assignedUtilization * 100).toFixed(1)}%`
+                      ? t('crew.cost.assignedUtil', { pct: (costCalculatorIntelligence.assignedUtilization * 100).toFixed(1) })
                       : ''}
                   </Typography>
                   <LinearProgress
@@ -3545,12 +3554,12 @@ export function CrewManagementPanel({
         <Box sx={{ mx: 2, mb: 1.5 }}>
           <RoleStatPillRow
             pills={[
-              { icon: <PeopleIcon />, count: stats.total, label: 'Totalt medlemmer', color: '#a78bfa' },
-              { icon: <CheckCircleIcon />, count: stats.availableNow, label: 'Tilgjengelige nå', color: '#10b981' },
-              { icon: <ScheduleIcon />, count: stats.busyCount, label: 'Opptatt', color: '#f59e0b' },
-              { icon: <HourglassIcon />, count: stats.pendingCount, label: 'Venter på svar', color: '#c084fc' },
-              { icon: <PersonAddIcon />, count: stats.invitedCount, label: 'Invitert', color: '#60a5fa' },
-              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: 'var(--role-cyan, #22d3ee)' },
+              { icon: <PeopleIcon />, count: stats.total, label: t('crew.stat.totalMembers'), color: '#a78bfa' },
+              { icon: <CheckCircleIcon />, count: stats.availableNow, label: t('crew.stat.availableNow'), color: '#10b981' },
+              { icon: <ScheduleIcon />, count: stats.busyCount, label: t('crew.stat.busy'), color: '#f59e0b' },
+              { icon: <HourglassIcon />, count: stats.pendingCount, label: t('crew.stat.awaitingReply'), color: '#c084fc' },
+              { icon: <PersonAddIcon />, count: stats.invitedCount, label: t('crew.stat.invited'), color: '#60a5fa' },
+              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: t('crew.stat.totalCost'), color: 'var(--role-cyan, #22d3ee)' },
             ]}
           />
         </Box>
@@ -3572,19 +3581,15 @@ export function CrewManagementPanel({
         >
           <Box sx={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Box>
-              <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#ffffff' }}>
-                Pro kontrollsenter
-              </Typography>
-              <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
-                Bytt fokus mellom oversikt, risiko, budsjett og planlegger for en ryddigere arbeidsflate.
-              </Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#ffffff' }}>{t('crew.pro.controlCenter')}</Typography>
+              <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>{t('crew.pro.controlDesc')}</Typography>
             </Box>
             <Box sx={{ width: '100%', overflowX: 'auto', pb: 0.25 }}>
               <ToggleButtonGroup
                 value={proViewFocus}
                 exclusive
                 size="small"
-                aria-label="Velg fokus i Pro view"
+                aria-label={t('crew.aria.proFocus')}
                 onChange={(_, next) => {
                   if (next) setProViewFocus(next as ProViewFocus);
                 }}
@@ -3597,29 +3602,17 @@ export function CrewManagementPanel({
                   },
                 }}
               >
-                <ToggleButton value="all" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
-                  Alle
-                </ToggleButton>
-                <ToggleButton value="overview" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
-                  Oversikt
-                </ToggleButton>
-                <ToggleButton value="risks" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
-                  Risiko
-                </ToggleButton>
-                <ToggleButton value="budget" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
-                  Budsjett
-                </ToggleButton>
-                <ToggleButton value="planner" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
-                  Planlegger
-                </ToggleButton>
+                <ToggleButton value="all" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>{t('crew.all')}</ToggleButton>
+                <ToggleButton value="overview" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>{t('crew.focus.overview')}</ToggleButton>
+                <ToggleButton value="risks" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>{t('crew.focus.risks')}</ToggleButton>
+                <ToggleButton value="budget" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>{t('crew.focus.budget')}</ToggleButton>
+                <ToggleButton value="planner" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>{t('crew.focus.planner')}</ToggleButton>
               </ToggleButtonGroup>
             </Box>
           </Box>
 
           <Box sx={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Prioriterte neste steg
-            </Typography>
+            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('crew.pro.nextSteps')}</Typography>
           </Box>
 
           <Box sx={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0,1fr))' }, gap: 0.75 }}>
@@ -3668,19 +3661,19 @@ export function CrewManagementPanel({
           {showProOverview && (
             <>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Bekreftet</Typography>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('crew.pro.confirmed')}</Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.confirmed}</Typography>
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Venter / Invitert</Typography>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('crew.pro.pendingInvited')}</Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.pending + proInsights.invited}</Typography>
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Konflikter</Typography>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('crew.pro.conflicts')}</Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{stats.totalConflicts}</Typography>
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Snitt fast honorar</Typography>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('crew.pro.avgRate')}</Typography>
                 <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.averageRate.toLocaleString('nb-NO')} kr</Typography>
               </Box>
               {proInsights.topRoles.length > 0 && (
@@ -3702,16 +3695,14 @@ export function CrewManagementPanel({
                     sx={{ color: '#ffffff', borderColor: roleBorder }}
                     variant="outlined"
                   >
-                    Fokus: Venter
+                    {t('crew.pro.focusPending')}
                   </Button>
                   <Button
                     size="small"
                     onClick={() => setShowCostCalculator(true)}
                     sx={{ color: '#ffffff', borderColor: roleBorder }}
                     variant="outlined"
-                  >
-                    Åpne budsjettpanel
-                  </Button>
+                  >{t('crew.pro.openBudgetPanel')}</Button>
                 </Box>
               )}
             </>
@@ -3719,33 +3710,29 @@ export function CrewManagementPanel({
 
           {showProRisks && (
             <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.02)', border: `1px solid ${roleBorder}` }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
-                Konfliktmotor
-              </Typography>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>{t('crew.pro.conflictEngine')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                <Chip label={`Dobbelbooking: ${stats.totalConflicts}`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }} />
-                <Chip label={`Utenfor tilgjengelighet: ${riskInsights.availabilityConflicts.length}`} size="small" sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', border: '1px solid rgba(255,184,0,0.4)' }} />
-                <Chip label={`Overtidsrisiko: ${riskInsights.overtimeRisk.length}`} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }} />
-                <Chip label={`Manglende kontaktinfo: ${riskInsights.missingContact.length}`} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.4)' }} />
+                <Chip label={t('crew.pro.doubleBooking', { n: stats.totalConflicts })} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }} />
+                <Chip label={t('crew.pro.outsideAvail', { n: riskInsights.availabilityConflicts.length })} size="small" sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', border: '1px solid rgba(255,184,0,0.4)' }} />
+                <Chip label={t('crew.pro.overtimeRiskChip', { n: riskInsights.overtimeRisk.length })} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }} />
+                <Chip label={t('crew.pro.missingContact', { n: riskInsights.missingContact.length })} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.4)' }} />
               </Box>
             </Box>
           )}
 
           {showProBudget && (
             <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.02)', border: `1px solid ${roleBorder}` }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
-                Budsjett-intelligens
-              </Typography>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>{t('crew.budget.title')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
                 <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
-                  Planlagt daglig fast honorar: <strong>{budgetIntelligence.overallDailyCost.toLocaleString('nb-NO')} kr</strong>
+                  {t('crew.budget.plannedDaily')} <strong>{budgetIntelligence.overallDailyCost.toLocaleString('nb-NO')} kr</strong>
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
-                  Tilordnet daglig fast honorar: <strong>{budgetIntelligence.assignedDailyCost.toLocaleString('nb-NO')} kr</strong>
+                  {t('crew.budget.assignedDaily')} <strong>{budgetIntelligence.assignedDailyCost.toLocaleString('nb-NO')} kr</strong>
                 </Typography>
                 {effectiveBudget > 0 && (
                   <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
-                    Budsjettutnyttelse: <strong>{((budgetIntelligence.utilizationRatio ?? 0) * 100).toFixed(1)}%</strong>
+                    {t('crew.budget.utilization')} <strong>{((budgetIntelligence.utilizationRatio ?? 0) * 100).toFixed(1)}%</strong>
                   </Typography>
                 )}
               </Box>
@@ -3775,17 +3762,17 @@ export function CrewManagementPanel({
           {showProPlanner && selectedIds.size > 0 && (
             <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}`, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
               <Typography sx={{ color: '#ffffff', fontSize: 12, fontWeight: 700 }}>
-                Bulk tools ({selectedIds.size} valgt)
+                {t('crew.bulk.tools', { n: selectedIds.size })}
               </Typography>
               <FormControl size="small" sx={{ minWidth: 170 }}>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Rolle</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('crew.field.role')}</InputLabel>
                 <Select
                   value={bulkRole}
-                  label="Rolle"
+                  label={t('crew.field.role')}
                   onChange={(event) => setBulkRole(event.target.value as CrewRole | 'none')}
                   sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
                 >
-                  <MenuItem value="none">Ingen endring</MenuItem>
+                  <MenuItem value="none">{t('crew.pro.noRoleChange')}</MenuItem>
                   {crewRoles.map((role) => (
                     <MenuItem key={role} value={role}>{getRoleLabel(role)}</MenuItem>
                   ))}
@@ -3794,33 +3781,29 @@ export function CrewManagementPanel({
               <TextField
                 size="small"
                 type="number"
-                label="Fast honorar (kr)"
+                label={t('crew.field.rate')}
                 value={bulkRateInput}
                 onChange={(event) => setBulkRateInput(event.target.value)}
                 sx={{ width: 170, '& .MuiOutlinedInput-root': { color: '#fff' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' } }}
               />
               <Button size="small" variant="outlined" onClick={handleBulkRoleChange} sx={{ color: '#ffffff', borderColor: roleBorder }}>
-                Bruk rolle
+                {t('crew.pro.applyRole')}
               </Button>
               <Button size="small" variant="outlined" onClick={handleBulkRateUpdate} sx={{ color: '#ffffff', borderColor: roleBorder }}>
-                Bruk honorar
+                {t('crew.pro.applyFee')}
               </Button>
             </Box>
           )}
 
           {showProPlanner && productionDays.length > 0 && (
             <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
-                Drag-and-drop dagplanlegger
-              </Typography>
-              <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', mb: 0.75 }}>
-                Dra crew-chip til ønsket dag for rask tilordning (08:00, Unit A). Dagkortene viser hvem som er lagt inn.
-              </Typography>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>{t('crew.planner.title')}</Typography>
+              <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', mb: 0.75 }}>{t('crew.planner.desc')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
                 {plannerCandidates.map((member) => (
                   <Tooltip
                     key={member.id}
-                    title={`${getRoleLabel(member.role)} • ${plannerAssignmentCountByMember.get(member.id) ?? 0} dager planlagt`}
+                    title={t('crew.planner.memberTooltip', { role: getRoleLabel(member.role), n: plannerAssignmentCountByMember.get(member.id) ?? 0 })}
                     arrow
                   >
                     <Chip
@@ -3868,7 +3851,7 @@ export function CrewManagementPanel({
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.75 }}>
                         <Box>
                           <Typography sx={{ fontSize: 11, color: '#ffffff', fontWeight: 700 }}>
-                            Dag {index + 1}
+                            {t('crew.dayShort', { n: index + 1 })}
                           </Typography>
                           <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
                             {day.date}
@@ -3889,9 +3872,7 @@ export function CrewManagementPanel({
                       </Box>
                       <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5, maxHeight: 130, overflowY: 'auto', pr: 0.25 }}>
                         {dayAssignments.length === 0 ? (
-                          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
-                            Ingen crew lagt inn enda
-                          </Typography>
+                          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{t('crew.planner.noCrewYet')}</Typography>
                         ) : (
                           dayAssignments.map(({ member, assignment, doodCode, status }) => {
                             const statusColor =
@@ -3942,7 +3923,7 @@ export function CrewManagementPanel({
                                       }}
                                     />
                                   )}
-                                  <Tooltip title="Fjern fra dag">
+                                  <Tooltip title={t('crew.tt.removeFromDay')}>
                                     <IconButton
                                       size="small"
                                       onClick={() => void handleCrewUnassign(member.id, day.id)}
@@ -3966,9 +3947,7 @@ export function CrewManagementPanel({
 
           {showProPlanner && productionDays.length === 0 && (
             <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.02)', border: `1px dashed ${roleBorder}` }}>
-              <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}>
-                Planleggeren blir aktiv når produksjonsdager er lagt inn i prosjektet.
-              </Typography>
+              <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}>{t('crew.planner.inactive')}</Typography>
             </Box>
           )}
         </Box>
@@ -3992,14 +3971,14 @@ export function CrewManagementPanel({
           {enrichedCrew.length === 0 ? (
             <RoleRoomEmptyState
               iconSrc={crewPng}
-              title="Ingen teammedlemmer ennå"
-              subtitle="Legg til teammedlemmer for å organisere produksjonsteamet"
+              title={t('crew.noTeamMembers')}
+              subtitle={t('crew.empty.subtitle')}
               color={roleTabAccent}
             />
           ) : filteredAndSortedCrew.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.5)' }}>
               <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-              <Typography>Ingen treff – prøv å endre filter</Typography>
+              <Typography>{t('crew.noMatches')}</Typography>
             </Box>
           ) : viewMode === 'table' ? (
         /* Table View - Responsive with horizontal scroll */
@@ -4046,7 +4025,7 @@ export function CrewManagementPanel({
           }}
         >
           <Table
-            aria-label="Crewmedlemmer tabell"
+            aria-label={t('crew.aria.crewTable')}
             sx={{ minWidth: { xs: compactMode ? 520 : 600, sm: compactMode ? 620 : 700, md: compactMode ? 680 : 750, lg: compactMode ? 780 : 850, xl: compactMode ? 1000 : 1100 } }}
           >
             <TableHead>
@@ -4056,7 +4035,7 @@ export function CrewManagementPanel({
                     checked={selectedIds.size === filteredAndSortedCrew.length && filteredAndSortedCrew.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedCrew.length}
                     onChange={handleSelectAll}
-                    aria-label="Velg alle crewmedlemmer"
+                    aria-label={t('crew.aria.selectAllMembers')}
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
                       '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
@@ -4069,9 +4048,7 @@ export function CrewManagementPanel({
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
-                  >
-                    Navn
-                  </TableSortLabel>
+                  >{t('crew.sort.name')}</TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
@@ -4079,20 +4056,16 @@ export function CrewManagementPanel({
                     direction={sortField === 'role' ? sortDirection : 'asc'}
                     onClick={() => handleSort('role')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
-                  >
-                    Rolle
-                  </TableSortLabel>
+                  >{t('crew.field.role')}</TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Kontakt</TableCell>
+                <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('crew.col.contact')}</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'rate'}
                     direction={sortField === 'rate' ? sortDirection : 'asc'}
                     onClick={() => handleSort('rate')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
-                  >
-                    Fast honorar
-                  </TableSortLabel>
+                  >{t('crew.sort.rate')}</TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
@@ -4100,9 +4073,7 @@ export function CrewManagementPanel({
                     direction={sortField === 'availability' ? sortDirection : 'asc'}
                     onClick={() => handleSort('availability')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
-                  >
-                    Tilgjengelighet
-                  </TableSortLabel>
+                  >{t('crew.sort.availability')}</TableSortLabel>
                 </TableCell>
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Status</TableCell>
                 {productionDays.slice(0, 4).map((day, i) => (
@@ -4110,7 +4081,7 @@ export function CrewManagementPanel({
                     {(['Mon','Tue','Wed','Thu'] as const)[i] ?? new Date(day.date ?? '').toLocaleDateString('en', { weekday: 'short' })}
                   </TableCell>
                 ))}
-                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('crew.col.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -4126,13 +4097,13 @@ export function CrewManagementPanel({
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Box sx={{ width: 3, height: 14, bgcolor: dColor, borderRadius: 1, flexShrink: 0 }} />
                         <Typography sx={{ fontSize: 11, fontWeight: 700, color: dColor, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                          {DEPT_LABELS[deptKey]}
+                          {t(DEPT_LABEL_KEY[deptKey])}
                         </Typography>
                         <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>({deptCount})</Typography>
                             <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => handleOpenDialog()}
                               sx={{ ml: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.45)', textTransform: 'none', minHeight: 'auto', py: 0.2, px: 1,
                                 '&:hover': { color: roleTabAccent, bgcolor: roleTabAccentSoft } }}>
-                          + Nytt crewmedlem
+                          {t('crew.btn.newMemberPlus')}
                         </Button>
                       </Box>
                     </TableCell>
@@ -4153,7 +4124,7 @@ export function CrewManagementPanel({
                     <Checkbox
                       checked={selectedIds.has(member.id)}
                       onChange={() => handleSelectOne(member.id)}
-                      aria-label={`Velg ${member.name}`}
+                      aria-label={t('crew.aria.selectMember', { name: member.name })}
                       sx={{
                         color: 'rgba(255,255,255,0.87)',
                         '&.Mui-checked': { color: roleTabAccent },
@@ -4209,7 +4180,7 @@ export function CrewManagementPanel({
                           >
                             {member.contactInfo.email}
                           </Typography>
-                          <Tooltip title={copiedField === `email-${member.id}` ? 'Kopiert!' : 'Kopier'}>
+                          <Tooltip title={copiedField === `email-${member.id}` ? t('crew.copied') : t('crew.copy')}>
                             <IconButton
                               size="small"
                               onClick={() => handleCopy(member.contactInfo?.email ?? '', `email-${member.id}`)}
@@ -4230,7 +4201,7 @@ export function CrewManagementPanel({
                           >
                             {member.contactInfo.phone}
                           </Typography>
-                          <Tooltip title={copiedField === `phone-${member.id}` ? 'Kopiert!' : 'Kopier'}>
+                          <Tooltip title={copiedField === `phone-${member.id}` ? t('crew.copied') : t('crew.copy')}>
                             <IconButton
                               size="small"
                               onClick={() => handleCopy(member.contactInfo?.phone ?? '', `phone-${member.id}`)}
@@ -4256,7 +4227,7 @@ export function CrewManagementPanel({
                       </Box>
                     ) : (
                       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                        Ikke satt
+                        {t('crew.notSetCap')}
                       </Typography>
                     )}
                   </TableCell>
@@ -4264,10 +4235,10 @@ export function CrewManagementPanel({
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
                       <StatusBadge status={member.status} size="small" />
                       {conflictMap.has(member.id) && (
-                        <Tooltip title="Dobbeltbooket – sjekk DOOD for konfliktdetaljer">
+                        <Tooltip title={t('crew.tt.doubleBookedCheck')}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
                             <WarningAmberIcon sx={{ fontSize: 11, color: '#ef4444' }} />
-                            <Typography sx={{ fontSize: 10, color: '#ef4444', fontWeight: 700 }}>Konflikt</Typography>
+                            <Typography sx={{ fontSize: 10, color: '#ef4444', fontWeight: 700 }}>{t('crew.conflict')}</Typography>
                           </Box>
                         </Tooltip>
                       )}
@@ -4290,46 +4261,46 @@ export function CrewManagementPanel({
                   })}
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
-                      <Tooltip title={favorites.has(member.id) ? 'Fjern favoritt' : 'Legg til favoritt'}>
+                      <Tooltip title={favorites.has(member.id) ? t('crew.tt.removeFavorite') : t('crew.tt.addFavorite')}>
                         <IconButton
                           onClick={() => toggleFavorite(member.id)}
-                          aria-label={favorites.has(member.id) ? `Fjern ${member.name} fra favoritter` : `Legg til ${member.name} som favoritt`}
+                          aria-label={favorites.has(member.id) ? t('crew.aria.removeFavorite', { name: member.name }) : t('crew.aria.addFavorite', { name: member.name })}
                           sx={{ color: favorites.has(member.id) ? '#ffc107' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           {favorites.has(member.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Dupliser">
+                      <Tooltip title={t('crew.tt.duplicate')}>
                         <IconButton
                           onClick={() => handleDuplicate(member)}
-                          aria-label={`Dupliser ${member.name}`}
+                          aria-label={t('crew.aria.duplicate', { name: member.name })}
                           sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger">
+                      <Tooltip title={t('crew.tt.edit')}>
                         <IconButton
                           onClick={() => handleOpenDialog(member)}
-                          aria-label={`Rediger ${member.name}`}
+                          aria-label={t('crew.aria.edit', { name: member.name })}
                           sx={{ color: roleTabAccent, minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Tilordne til scene">
+                      <Tooltip title={t('crew.tt.assignScene')}>
                         <IconButton
                           onClick={() => handleAssignToScene(member)}
-                          aria-label={`Tilordne ${member.name} til scene`}
+                          aria-label={t('crew.aria.assignToScene', { name: member.name })}
                           sx={{ color: roleTabAccent, minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           <AssignIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('crew.tt.delete')}>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(member.id)}
-                          aria-label={`Slett ${member.name}`}
+                          aria-label={t('crew.aria.delete', { name: member.name })}
                           sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
@@ -4350,7 +4321,7 @@ export function CrewManagementPanel({
           container
           spacing={compactMode ? { xs: 1, sm: 1.25, md: 1.1, lg: 1.25, xl: 1.5 } : { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 }}
           role="list"
-          aria-label={`Liste over ${filteredAndSortedCrew.length} crewmedlemmer`}
+          aria-label={t('crew.aria.crewList', { n: filteredAndSortedCrew.length })}
         >
           {filteredAndSortedCrew.map((member) => (
             <Grid
@@ -4386,7 +4357,7 @@ export function CrewManagementPanel({
                       <Checkbox
                         checked={selectedIds.has(member.id)}
                         onChange={() => handleSelectOne(member.id)}
-                        aria-label={`Velg ${member.name}`}
+                        aria-label={t('crew.aria.selectMember', { name: member.name })}
                         sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#4dd0e1' } }}
                       />
                       <Box sx={{ flex: 1 }}>
@@ -4449,7 +4420,7 @@ export function CrewManagementPanel({
                                 {member.name}
                               </Typography>
                               {favorites.has(member.id) && (
-                                <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 }, color: '#ffc107' }} aria-label="Favoritt" />
+                                <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 }, color: '#ffc107' }} aria-label={t('crew.aria.favorite')} />
                               )}
                             </Box>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, mt: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
@@ -4468,7 +4439,7 @@ export function CrewManagementPanel({
                               <StatusBadge status={member.status} />
                               {isAvailableNow(member) && (
                                 <Chip
-                                  label="Tilgjengelig"
+                                  label={t('crew.card.available')}
                                   size="small"
                                   sx={{
                                     bgcolor: 'rgba(76,175,80,0.3)',
@@ -4487,7 +4458,7 @@ export function CrewManagementPanel({
                     </Box>
                     <IconButton
                       onClick={() => toggleFavorite(member.id)}
-                      aria-label={favorites.has(member.id) ? `Fjern ${member.name} fra favoritter` : `Legg til ${member.name} som favoritt`}
+                      aria-label={favorites.has(member.id) ? t('crew.aria.removeFavorite', { name: member.name }) : t('crew.aria.addFavorite', { name: member.name })}
                       sx={{
                         color: favorites.has(member.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
                         minWidth: TOUCH_TARGET_SIZE,
@@ -4538,9 +4509,7 @@ export function CrewManagementPanel({
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
                             }}
-                          >
-                            E-post
-                          </Typography>
+                          >{t('crew.field.email')}</Typography>
                           <Typography
                             component="a"
                             href={`mailto:${member.contactInfo.email}`}
@@ -4559,7 +4528,7 @@ export function CrewManagementPanel({
                             {member.contactInfo.email}
                           </Typography>
                         </Box>
-                        <Tooltip title={copiedField === `grid-email-${member.id}` ? 'Kopiert!' : 'Kopier'}>
+                        <Tooltip title={copiedField === `grid-email-${member.id}` ? t('crew.copied') : t('crew.copy')}>
                           <IconButton
                             size="small"
                             onClick={() => handleCopy(member.contactInfo?.email ?? '', `grid-email-${member.id}`)}
@@ -4605,9 +4574,7 @@ export function CrewManagementPanel({
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
                             }}
-                          >
-                            Telefon
-                          </Typography>
+                          >{t('crew.field.phone')}</Typography>
                           <Typography
                             component="a"
                             href={`tel:${member.contactInfo.phone}`}
@@ -4623,7 +4590,7 @@ export function CrewManagementPanel({
                             {member.contactInfo.phone}
                           </Typography>
                         </Box>
-                        <Tooltip title={copiedField === `grid-phone-${member.id}` ? 'Kopiert!' : 'Kopier'}>
+                        <Tooltip title={copiedField === `grid-phone-${member.id}` ? t('crew.copied') : t('crew.copy')}>
                           <IconButton
                             size="small"
                             onClick={() => handleCopy(member.contactInfo?.phone ?? '', `grid-phone-${member.id}`)}
@@ -4670,9 +4637,7 @@ export function CrewManagementPanel({
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
                             }}
-                          >
-                            Fast honorar
-                          </Typography>
+                          >{t('crew.sort.rate')}</Typography>
                           <Typography
                             sx={{
                               color: '#fff',
@@ -4710,9 +4675,7 @@ export function CrewManagementPanel({
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
                             }}
-                          >
-                            Adresse
-                          </Typography>
+                          >{t('crew.field.address')}</Typography>
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                             {member.contactInfo.address}
                           </Typography>
@@ -4738,9 +4701,7 @@ export function CrewManagementPanel({
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
                             }}
-                          >
-                            Notater
-                          </Typography>
+                          >{t('crew.field.notes')}</Typography>
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                             {member.notes}
                           </Typography>
@@ -4748,7 +4709,7 @@ export function CrewManagementPanel({
                             variant="caption"
                             sx={{ color: 'rgba(255,255,255,0.6)', fontSize: { xs: '0.7rem', sm: '0.75rem' }, mt: 0.5, display: 'block' }}
                           >
-                            Skrevet av:{' '}
+                            {t('crew.card.writtenBy')}{' '}
                             {(() => {
                               const rawAuthor =
                                 member.notesAuthorName
@@ -4756,7 +4717,7 @@ export function CrewManagementPanel({
                                 ?? member.notesBy;
                               return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                                 ? rawAuthor.trim()
-                                : 'Ikke registrert';
+                                : t('crew.notRegistered');
                             })()}
                             {(() => {
                               const rawUpdatedAt =
@@ -4803,9 +4764,7 @@ export function CrewManagementPanel({
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
                               }}
-                            >
-                              Tildelte scener
-                            </Typography>
+                            >{t('crew.card.assignedScenes')}</Typography>
                             <Typography
                               sx={{
                                 color: '#fff',
@@ -4813,7 +4772,7 @@ export function CrewManagementPanel({
                                 fontWeight: 700,
                               }}
                             >
-                              {member.assignedScenes.length} scene{member.assignedScenes.length !== 1 ? 'r' : ''}
+                              {t(member.assignedScenes.length === 1 ? 'crew.card.sceneOne' : 'crew.card.sceneMany', { n: member.assignedScenes.length })}
                             </Typography>
                           </Box>
                         </Box>
@@ -4824,11 +4783,9 @@ export function CrewManagementPanel({
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                               <DoodIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #00d4ff)' }} />
-                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'var(--role-cyan, #00d4ff)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                Innspillingsdager
-                              </Typography>
+                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'var(--role-cyan, #00d4ff)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('crew.card.shootDays')}</Typography>
                             </Box>
-                            <Tooltip title="Administrer tilordninger">
+                            <Tooltip title={t('crew.tt.manageAssignments')}>
                               <IconButton size="small" onClick={() => handleAssignToScene(member)} sx={{ color: 'rgba(0,212,255,0.7)', p: 0.5, ...focusVisibleStyles }}>
                                 <ScheduleIcon sx={{ fontSize: 15 }} />
                               </IconButton>
@@ -4836,9 +4793,7 @@ export function CrewManagementPanel({
                           </Box>
                           <DOODMiniStrip member={member} productionDays={productionDays} assignments={crewAssignments} />
                           {!crewAssignments.some(a => a.crewMemberId === member.id) && (
-                            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>
-                              Ikke tilordnet noen dager – klikk ScheduleIcon for å tilordne
-                            </Typography>
+                            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>{t('crew.card.notAssignedDays')}</Typography>
                           )}
                         </Box>
                       )}
@@ -4886,7 +4841,7 @@ export function CrewManagementPanel({
                       onClick={() => toggleExpanded(member.id)}
                       endIcon={expandedCards.has(member.id) ? <ExpandLessIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <ExpandMoreIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                       aria-expanded={expandedCards.has(member.id)}
-                      aria-label={expandedCards.has(member.id) ? 'Skjul detaljer' : 'Vis mer'}
+                      aria-label={expandedCards.has(member.id) ? t('crew.card.hideDetails') : t('crew.card.showMore')}
                       sx={{
                         bgcolor: expandedCards.has(member.id)
                           ? 'rgba(77,208,225,0.25)'
@@ -4915,13 +4870,13 @@ export function CrewManagementPanel({
                         ...focusVisibleStyles,
                       }}
                     >
-                      {expandedCards.has(member.id) ? 'Skjul detaljer' : 'Vis detaljer'}
+                      {expandedCards.has(member.id) ? t('crew.card.hideDetails') : t('crew.card.showDetails')}
                     </Button>
                     <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 1, md: 0.75, lg: 1, xl: 1.25 } }}>
-                      <Tooltip title="Dupliser" arrow>
+                      <Tooltip title={t('crew.tt.duplicate')} arrow>
                         <IconButton
                           onClick={() => handleDuplicate(member)}
-                          aria-label={`Dupliser ${member.name}`}
+                          aria-label={t('crew.aria.duplicate', { name: member.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -4933,10 +4888,10 @@ export function CrewManagementPanel({
                           <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger" arrow>
+                      <Tooltip title={t('crew.tt.edit')} arrow>
                         <IconButton
                           onClick={() => handleOpenDialog(member)}
-                          aria-label={`Rediger ${member.name}`}
+                          aria-label={t('crew.aria.edit', { name: member.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -4948,10 +4903,10 @@ export function CrewManagementPanel({
                           <EditIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Tilordne til scene" arrow>
+                      <Tooltip title={t('crew.tt.assignScene')} arrow>
                         <IconButton
                           onClick={() => handleAssignToScene(member)}
-                          aria-label={`Tilordne ${member.name} til scene`}
+                          aria-label={t('crew.aria.assignToScene', { name: member.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -4963,10 +4918,10 @@ export function CrewManagementPanel({
                           <AssignIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett" arrow>
+                      <Tooltip title={t('crew.tt.delete')} arrow>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(member.id)}
-                          aria-label={`Slett ${member.name}`}
+                          aria-label={t('crew.aria.delete', { name: member.name })}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -5064,7 +5019,7 @@ export function CrewManagementPanel({
         PaperProps={{ sx: { width: { xs: '100vw', sm: 420 }, bgcolor: '#13181e', color: '#fff', borderLeft: '1px solid rgba(184,107,255,0.32)' } }}
       >
         <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>Aktivitetslogg</Typography>
+          <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>{t('crew.tt.activityLog')}</Typography>
           <Button
             size="small"
             onClick={() => {
@@ -5077,13 +5032,13 @@ export function CrewManagementPanel({
             }}
             sx={{ color: 'rgba(255,255,255,0.75)' }}
           >
-            Tøm
+            {t('crew.activity.clear')}
           </Button>
         </Box>
         <List dense sx={{ py: 0 }}>
           {activityLog.length === 0 && (
             <ListItem>
-              <ListItemText primary="Ingen aktiviteter enda" secondary="Handlinger logges når du redigerer, planlegger og kjører bulk-operasjoner." />
+              <ListItemText primary={t('crew.activity.empty')} secondary={t('crew.activity.emptyDesc')} />
             </ListItem>
           )}
           {activityLog.map((entry) => (
@@ -5115,7 +5070,7 @@ export function CrewManagementPanel({
           <TextField
             inputRef={commandInputRef}
             fullWidth
-            placeholder="Søk etter handling..."
+            placeholder={t('crew.cmd.searchPlaceholder')}
             value={commandQuery}
             onChange={(event) => setCommandQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -5152,7 +5107,7 @@ export function CrewManagementPanel({
           setShowUndoSnackbar(false);
           setDeletedCrew(null);
         }}
-        message={deletedCrew ? `"${deletedCrew.name}" slettet` : 'Teammedlem slettet'}
+        message={deletedCrew ? t('crew.snackbar.deleted', { name: deletedCrew.name }) : t('crew.snackbar.memberDeleted')}
         action={
           <>
             <Button
@@ -5162,11 +5117,11 @@ export function CrewManagementPanel({
               startIcon={<UndoIcon />}
               sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}
             >
-              Angre
+              {t('crew.snackbar.undo')}
             </Button>
             <IconButton
               size="small"
-              aria-label="Lukk"
+              aria-label={t('crew.aria.close')}
               color="inherit"
               onClick={() => {
                 setShowUndoSnackbar(false);
@@ -5269,12 +5224,12 @@ export function CrewManagementPanel({
               <GroupsIcon sx={{ color: '#e9d5ff', fontSize: 18 }} />
             </Box>
             <Typography sx={{ fontSize: { xs: '1rem', sm: '1.1rem' }, fontWeight: 700 }}>
-              {editingCrewMember ? 'Rediger teammedlem' : 'Nytt teammedlem'}
+              {editingCrewMember ? t('crew.dialog.editMember') : t('crew.dialog.newMember')}
             </Typography>
           </Box>
           <IconButton
             onClick={handleCloseDialog}
-            aria-label="Lukk dialog"
+            aria-label={t('crew.aria.closeDialog')}
             sx={{
               color: 'rgba(255,255,255,0.87)',
               border: '1px solid rgba(184,107,255,0.34)',
@@ -5301,11 +5256,11 @@ export function CrewManagementPanel({
             variant="body2"
             sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}
           >
-            Fyll ut informasjon om teammedlemmet. Felter merket med * er påkrevd.
+            {t('crew.dialog.desc')}
           </Typography>
           <Stack spacing={{ xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }} sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <TextField
-              label="Navn *"
+              label={t('crew.field.nameRequired')}
               fullWidth
               value={formData.name || ''}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -5314,7 +5269,7 @@ export function CrewManagementPanel({
               slotProps={{
                 htmlInput: {
                   'aria-required': true,
-                  'aria-label': 'Navn på crewmedlem (påkrevd)',
+                  'aria-label': t('crew.aria.nameField'),
                 },
               }}
               InputProps={{
@@ -5353,14 +5308,14 @@ export function CrewManagementPanel({
                   '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                 }}
               >
-                Rolle
+                {t('crew.field.role')}
               </InputLabel>
               <Select
                 labelId="crew-role-label"
                 value={formData.role || 'other'}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as CrewRole })}
-                label="Rolle"
-                inputProps={{ 'aria-label': 'Velg rolle for crewmedlem' }}
+                label={t('crew.field.role')}
+                inputProps={{ 'aria-label': t('crew.aria.roleField') }}
                 MenuProps={{
                   sx: { zIndex: 100001 },
                   slotProps: {
@@ -5410,7 +5365,7 @@ export function CrewManagementPanel({
             </FormControl>
 
             <TextField
-              label="E-post"
+              label={t('crew.field.email')}
               fullWidth
               type="email"
               inputMode="email"
@@ -5422,7 +5377,7 @@ export function CrewManagementPanel({
                   contactInfo: { ...formData.contactInfo, email: e.target.value },
                 })
               }
-              slotProps={{ htmlInput: { 'aria-label': 'E-postadresse' } }}
+              slotProps={{ htmlInput: { 'aria-label': t('crew.aria.emailField') } }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -5451,7 +5406,7 @@ export function CrewManagementPanel({
             />
 
             <TextField
-              label="Telefon"
+              label={t('crew.field.phone')}
               fullWidth
               type="tel"
               inputMode="tel"
@@ -5463,7 +5418,7 @@ export function CrewManagementPanel({
                   contactInfo: { ...formData.contactInfo, phone: e.target.value },
                 })
               }
-              slotProps={{ htmlInput: { 'aria-label': 'Telefonnummer' } }}
+              slotProps={{ htmlInput: { 'aria-label': t('crew.aria.phoneField') } }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -5492,7 +5447,7 @@ export function CrewManagementPanel({
             />
 
             <TextField
-              label="Adresse"
+              label={t('crew.field.address')}
               fullWidth
               autoComplete="street-address"
               value={formData.contactInfo?.address || ''}
@@ -5502,7 +5457,7 @@ export function CrewManagementPanel({
                   contactInfo: { ...formData.contactInfo, address: e.target.value },
                 })
               }
-              slotProps={{ htmlInput: { 'aria-label': 'Adresse' } }}
+              slotProps={{ htmlInput: { 'aria-label': t('crew.aria.addressField') } }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -5531,12 +5486,12 @@ export function CrewManagementPanel({
             />
 
             <TextField
-              label="Fast honorar (kr)"
+              label={t('crew.field.rate')}
               fullWidth
               type="number"
               value={formData.rate || ''}
               onChange={(e) => setFormData({ ...formData, rate: parseInt(e.target.value) || undefined })}
-              slotProps={{ htmlInput: { 'aria-label': 'Fast honorar i kroner', min: 0 } }}
+              slotProps={{ htmlInput: { 'aria-label': t('crew.aria.rateField'), min: 0 } }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -5586,7 +5541,7 @@ export function CrewManagementPanel({
                 {/* Total Budget Input - only show if not provided via props */}
                 {totalBudget === 0 && (
                   <TextField
-                    label="Totalt budsjett (kr)"
+                    label={t('crew.split.totalBudget')}
                     fullWidth
                     type="number"
                     value={localBudget || ''}
@@ -5597,11 +5552,11 @@ export function CrewManagementPanel({
                     }}
                     slotProps={{ 
                       htmlInput: { 
-                        'aria-label': 'Totalt prosjektbudsjett i kroner', 
+                        'aria-label': t('crew.aria.budgetField'), 
                         min: 0 
                       } 
                     }}
-                    helperText="Sett totalt budsjett for å beregne prosentandel automatisk fra fast honorar"
+                    helperText={t('crew.split.budgetHelper')}
                     sx={{
                       '& .MuiOutlinedInput-root': {
                         color: '#fff',
@@ -5641,7 +5596,7 @@ export function CrewManagementPanel({
                     }}
                   >
                     <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                      <strong>Beregnet andel:</strong> {calculatedPercentage.toFixed(2)}% av budsjettet
+                      <strong>{t('crew.split.calculatedShare')}</strong> {calculatedPercentage.toFixed(2)}% {t('crew.split.ofBudget')}
                       <br />
                       <span style={{ fontSize: '0.85em', opacity: 0.8 }}>
                         ({formData.rate?.toLocaleString('no-NO')} kr / {effectiveBudget.toLocaleString('no-NO')} kr)
@@ -5651,7 +5606,7 @@ export function CrewManagementPanel({
                 )}
 
                 <TextField
-                  label="Prosentandel (%)"
+                  label={t('crew.split.percent')}
                   fullWidth
                   type="number"
                   value={formData.splitSheet?.percentage?.toFixed(2) ?? ''}
@@ -5664,7 +5619,7 @@ export function CrewManagementPanel({
                   })}
                   slotProps={{ 
                     htmlInput: { 
-                      'aria-label': 'Prosentandel av inntekt', 
+                      'aria-label': t('crew.aria.percentField'), 
                       min: 0, 
                       max: 100, 
                       step: 0.01,
@@ -5673,8 +5628,8 @@ export function CrewManagementPanel({
                   }}
                   helperText={
                     effectiveBudget > 0 && formData.rate 
-                      ? "Beregnes automatisk fra fast honorar og budsjett" 
-                      : "Andel av inntekt i prosent (0-100)"
+                      ? t('crew.split.percentHelperAuto')
+                      : t('crew.split.percentHelperManual')
                   }
                   sx={{
                     '& .MuiOutlinedInput-root': {
@@ -5713,7 +5668,7 @@ export function CrewManagementPanel({
                       '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                     }}
                   >
-                    Invitasjonsstatus
+                    {t('crew.split.invStatus')}
                   </InputLabel>
                   <Select
                     labelId="invitation-status-label"
@@ -5726,8 +5681,8 @@ export function CrewManagementPanel({
                         invitationStatus: e.target.value as 'not_sent' | 'sent' | 'viewed' | 'signed' | 'declined'
                       }
                     })}
-                    label="Invitasjonsstatus"
-                    inputProps={{ 'aria-label': 'Velg invitasjonsstatus' }}
+                    label={t('crew.split.invStatus')}
+                    inputProps={{ 'aria-label': t('crew.aria.invStatusField') }}
                     MenuProps={{
                       sx: { zIndex: 100001 },
                       slotProps: {
@@ -5756,25 +5711,25 @@ export function CrewManagementPanel({
                     }}
                   >
                     <MenuItem value="not_sent" sx={{ minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                      Ikke sendt
+                      {t('crew.invStatus.notSent')}
                     </MenuItem>
                     <MenuItem value="sent" sx={{ minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                      Sendt
+                      {t('crew.invStatus.sent')}
                     </MenuItem>
                     <MenuItem value="viewed" sx={{ minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                      Sett
+                      {t('crew.invStatus.viewed')}
                     </MenuItem>
                     <MenuItem value="signed" sx={{ minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                      Signert
+                      {t('crew.invStatus.signed')}
                     </MenuItem>
                     <MenuItem value="declined" sx={{ minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                      Avslått
+                      {t('crew.invStatus.declined')}
                     </MenuItem>
                   </Select>
                 </FormControl>
 
                 <TextField
-                  label="Split Sheet-notater"
+                  label={t('crew.split.notes')}
                   fullWidth
                   multiline
                   rows={2}
@@ -5787,8 +5742,8 @@ export function CrewManagementPanel({
                       notes: e.target.value 
                     }
                   })}
-                  placeholder="F.eks. spesielle vilkår, PRO-tilknytning, IPI-nummer..."
-                  slotProps={{ htmlInput: { 'aria-label': 'Split Sheet notater' } }}
+                  placeholder={t('crew.split.notesPlaceholder')}
+                  slotProps={{ htmlInput: { 'aria-label': t('crew.aria.splitNotesField') } }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       color: '#fff',
@@ -5823,11 +5778,11 @@ export function CrewManagementPanel({
                   const authorText =
                     typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                       ? rawAuthor.trim()
-                      : 'Ikke registrert';
+                      : t('crew.notRegistered');
                   const updatedText = formatCrewNoteTimestamp(rawUpdatedAt);
                   return (
                     <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
-                      Skrevet av (split sheet): {authorText}{updatedText ? ` • ${updatedText}` : ''}
+                      {t('crew.split.writtenBy')} {authorText}{updatedText ? ` • ${updatedText}` : ''}
                     </Typography>
                   );
                 })()}
@@ -5852,7 +5807,7 @@ export function CrewManagementPanel({
             </Box>
 
             <TextField
-              label="Tilgjengelig fra"
+              label={t('crew.field.availFrom')}
               fullWidth
               type="date"
               value={formData.availability?.startDate || ''}
@@ -5864,7 +5819,7 @@ export function CrewManagementPanel({
               }
               slotProps={{
                 inputLabel: { shrink: true },
-                htmlInput: { 'aria-label': 'Tilgjengelig fra dato' },
+                htmlInput: { 'aria-label': t('crew.aria.availFromField') },
               }}
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -5887,7 +5842,7 @@ export function CrewManagementPanel({
             />
 
             <TextField
-              label="Tilgjengelig til"
+              label={t('crew.field.availTo')}
               fullWidth
               type="date"
               value={formData.availability?.endDate || ''}
@@ -5899,7 +5854,7 @@ export function CrewManagementPanel({
               }
               slotProps={{
                 inputLabel: { shrink: true },
-                htmlInput: { 'aria-label': 'Tilgjengelig til dato' },
+                htmlInput: { 'aria-label': t('crew.aria.availToField') },
               }}
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -5922,13 +5877,13 @@ export function CrewManagementPanel({
             />
 
             <TextField
-              label="Notater"
+              label={t('crew.field.notes')}
               fullWidth
               multiline
               rows={3}
               value={formData.notes || ''}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              slotProps={{ htmlInput: { 'aria-label': 'Notater om crewmedlem' } }}
+              slotProps={{ htmlInput: { 'aria-label': t('crew.aria.notesField') } }}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
@@ -5948,14 +5903,14 @@ export function CrewManagementPanel({
               }}
             />
             <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
-              Skrevet av: {(() => {
+              {t('crew.card.writtenBy')} {(() => {
                 const rawAuthor =
                   formData.notesAuthorName
                   ?? formData.notesAuthor
                   ?? formData.notesBy;
                 return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                   ? rawAuthor.trim()
-                  : 'Ikke registrert';
+                  : t('crew.notRegistered');
               })()}
               {(() => {
                 const rawUpdatedAt =
@@ -5994,7 +5949,7 @@ export function CrewManagementPanel({
           <Button
             onClick={handleCloseDialog}
             startIcon={<CancelIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-            aria-label="Avbryt og lukk dialog"
+            aria-label={t('crew.aria.cancelDialog')}
             fullWidth={isMobile}
             sx={{
               color: 'rgba(255,255,255,0.87)',
@@ -6008,14 +5963,12 @@ export function CrewManagementPanel({
               ...focusVisibleStyles,
               '&:hover': { bgcolor: 'rgba(184,107,255,0.14)' },
             }}
-          >
-            Avbryt
-          </Button>
+          >{t('crew.action.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleSave}
             startIcon={<SaveIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-            aria-label={editingCrewMember ? 'Lagre endringer' : 'Opprett nytt crewmedlem'}
+            aria-label={editingCrewMember ? t('crew.aria.saveChanges') : t('crew.aria.createNew')}
             fullWidth={isMobile}
             sx={{
               bgcolor: roleTabAccent,
@@ -6030,9 +5983,7 @@ export function CrewManagementPanel({
               boxShadow: '0 10px 24px rgba(88,28,135,0.35)',
               '&:hover': { bgcolor: roleTabAccentHover, boxShadow: '0 12px 28px rgba(88,28,135,0.45)' },
             }}
-          >
-            Lagre
-          </Button>
+          >{t('crew.action.save')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -38,6 +38,7 @@ import type {
   RoleRoomAgentMerchSupplier,
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
 
 interface MerchOutreachDialogProps {
   open: boolean;
@@ -55,6 +56,7 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
   bootstrap,
   productCategory,
 }) => {
+  const { t } = useT();
   const initialDraft = useMemo(() => {
     if (!supplier) return null;
     return buildOutreachDraft({
@@ -98,12 +100,12 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
-        Tilbudsforespørsel — {supplier.name}
+        {t('merchOutreach.title', { name: supplier.name })}
         <IconButton
           onClick={onClose}
           size="small"
           sx={{ position: 'absolute', right: 8, top: 8 }}
-          aria-label="Lukk"
+          aria-label={t('merchOutreach.close')}
         >
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -123,7 +125,7 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
               <Chip
                 size="small"
                 icon={<EmailIcon fontSize="small" />}
-                label="E-post mangler — fyll inn manuelt"
+                label={t('merchOutreach.emailMissing')}
                 sx={{ bgcolor: 'rgba(250,204,21,0.12)', color: '#fde68a' }}
               />
             )}
@@ -144,14 +146,14 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
                 variant="text"
                 sx={{ textTransform: 'none' }}
               >
-                Kontaktside
+                {t('merchOutreach.contactPage')}
               </Button>
             ) : null}
           </Stack>
 
           {!supplier.contact?.email ? (
             <Alert severity="info">
-              Vi fant ingen e-post på {supplier.name} sin nettside. Slå opp manuelt under
+              {t('merchOutreach.noEmailFound', { name: supplier.name })}
               {supplier.organizationNumber ? (
                 <>
                   {' '}
@@ -164,12 +166,12 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
                   </a>
                 </>
               ) : null}
-              {' '}eller via 1881, og lim inn under "Til".
+              {' '}{t('merchOutreach.orPaste')}
             </Alert>
           ) : null}
 
           <TextField
-            label="Til"
+            label={t('merchOutreach.labelTo')}
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
             placeholder="post@leverandor.no"
@@ -177,7 +179,7 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
             size="small"
           />
           <TextField
-            label="Emne"
+            label={t('merchOutreach.labelSubject')}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             fullWidth
@@ -192,7 +194,7 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
           />
           <Box sx={{ position: 'relative' }}>
             <TextField
-              label="Melding"
+              label={t('merchOutreach.labelMessage')}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               fullWidth
@@ -209,19 +211,18 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
             </IconButton>
           </Box>
           <Typography sx={{ color: 'text.secondary', fontSize: '0.78rem' }}>
-            Mal-en er generisk og bevisst formulert som en kvalifisert forespørsel — ikke et formelt tilbud.
-            Endre fritt før du sender. Husk å bytte ut <code>[ditt navn]</code>.
+            {t('merchOutreach.templateNote')}<code>{t('merchOutreach.yourName')}</code>.
           </Typography>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose}>Lukk</Button>
+        <Button onClick={onClose}>{t('merchOutreach.close')}</Button>
         <Button
           startIcon={<CopyIcon />}
           onClick={() => handleCopy('body')}
           variant="outlined"
         >
-          {copied === 'body' ? 'Kopiert' : 'Kopier melding'}
+          {copied === 'body' ? t('merchOutreach.copied') : t('merchOutreach.copyMessage')}
         </Button>
         <Button
           startIcon={<EmailIcon />}
@@ -229,7 +230,7 @@ const MerchOutreachDialog: React.FC<MerchOutreachDialogProps> = ({
           disabled={!mailto}
           {...(mailto ? { href: mailto } : {})}
         >
-          Åpne i e-post
+          {t('merchOutreach.openInEmail')}
         </Button>
       </DialogActions>
     </Dialog>

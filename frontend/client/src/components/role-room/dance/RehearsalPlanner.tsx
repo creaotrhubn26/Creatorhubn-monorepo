@@ -73,6 +73,8 @@ import {
   type Dancer,
   type Formation,
 } from './formationTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 // ─── Props ──────────────────────────────────────────────────────────────
 
@@ -106,6 +108,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
   onChange,
   onOpenDancerProfile,
 }) => {
+  const { t } = useT();
   const [choreography] = useState<Choreography>(() => initialChoreo ?? buildDemoChoreography());
   const [rehearsal, setRehearsal] = useState<Rehearsal>(
     () => initialRehearsal ?? buildDemoRehearsal(choreography.id),
@@ -138,7 +141,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
   const addFocusArea = useCallback(() => {
     const newArea: RehearsalFocusArea = {
       id: `fa-${Date.now()}`,
-      title: 'Nytt fokus-område',
+      title: t('danceRehearsal.s019'),
       estimatedMinutes: 20,
     };
     update({ focusAreas: [...rehearsal.focusAreas, newArea] });
@@ -202,10 +205,10 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Box>
                 <Typography sx={{ fontSize: 10, letterSpacing: 1.8, color: danceFlowColors.lavender, fontWeight: 700 }}>
-                  FØR PRØVEN · FOKUS-OMRÅDER
+                  {t('danceRehearsal.s006')}
                 </Typography>
                 <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, mt: 0.25 }}>
-                  {rehearsal.focusAreas.length} områder · estimert {totalEstimatedMin} min av {rehearsal.estimatedMinutes} min
+                  {rehearsal.focusAreas.length} {t('danceRehearsal.s027')} {totalEstimatedMin} {t('danceRehearsal.s025')} {rehearsal.estimatedMinutes} min
                 </Typography>
               </Box>
               <Button
@@ -216,7 +219,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 variant="outlined"
                 data-testid="rehearsal-add-focus"
               >
-                Legg til
+                {t('danceRehearsal.s016')}
               </Button>
             </Stack>
 
@@ -250,7 +253,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
               ))}
               {rehearsal.focusAreas.length === 0 && (
                 <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic', textAlign: 'center', py: 2 }}>
-                  Ingen fokus-områder ennå. Legg til hva prøven skal handle om.
+                  {t('danceRehearsal.s012')}
                 </Typography>
               )}
             </Stack>
@@ -264,7 +267,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 size="small"
                 value={rehearsal.preNotes ?? ''}
                 onChange={(e) => update({ preNotes: e.target.value || undefined })}
-                placeholder="Ting å huske før prøven starter — kostyme-skifter, innfall i programmet, varselsignaler…"
+                placeholder={t('danceRehearsal.s022')}
                 sx={textareaSx}
               />
             </Box>
@@ -277,14 +280,14 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Box>
                 <Typography sx={{ fontSize: 10, letterSpacing: 1.8, color: '#fde68a', fontWeight: 700 }}>
-                  ETTER PRØVEN · REVIEW
+                  {t('danceRehearsal.s003')}
                 </Typography>
                 <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, mt: 0.25 }}>
-                  {approvedCount} godkjent · {repeatCount} må repeteres
+                  {approvedCount} {t('danceRehearsal.s024')} {repeatCount} {t('danceRehearsal.s026')}
                 </Typography>
               </Box>
               {rehearsal.recordingUrl && (
-                <Tooltip title="Åpne opptak">
+                <Tooltip title={t('danceRehearsal.s029')}>
                   <IconButton
                     size="small"
                     onClick={() => window.open(rehearsal.recordingUrl, '_blank', 'noopener')}
@@ -314,7 +317,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 })}
               {rehearsal.focusAreas.every((f) => !f.segmentId) && (
                 <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic', textAlign: 'center', py: 1 }}>
-                  Ingen segmenter er knyttet til fokus-områder ennå.
+                  {t('danceRehearsal.s014')}
                 </Typography>
               )}
             </Stack>
@@ -322,11 +325,11 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
             <Divider sx={{ borderColor: danceFlowColors.borderStrong, my: 1.5 }} />
 
             {/* Dancer follow-ups */}
-            <FieldLabel>Danser-oppfølging</FieldLabel>
+            <FieldLabel>{t('danceRehearsal.s002')}</FieldLabel>
             <Stack spacing={0.75}>
               {rehearsal.dancerFollowUps.length === 0 ? (
                 <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
-                  Ingen oppfølginger lagt til ennå.
+                  {t('danceRehearsal.s013')}
                 </Typography>
               ) : (
                 rehearsal.dancerFollowUps.map((fu) => {
@@ -344,10 +347,10 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                           {d?.name ?? fu.dancerId}
                         </Typography>
                         {onOpenDancerProfile && (
-                          <Tooltip title="Åpne danser-profil">
+                          <Tooltip title={t('danceRehearsal.s028')}>
                             <IconButton
                               size="small"
-                              aria-label="Åpne danser-profil"
+                              aria-label={t('danceRehearsal.s028')}
                               data-testid={`rehearsal-followup-profile-${fu.dancerId}`}
                               onClick={() => onOpenDancerProfile(fu.dancerId)}
                               sx={{ color: danceFlowColors.lavender, p: 0.25 }}
@@ -391,13 +394,13 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 size="small"
                 value={rehearsal.postNotes ?? ''}
                 onChange={(e) => update({ postNotes: e.target.value || undefined })}
-                placeholder="Hvordan gikk prøven? Hva må følges opp neste gang?"
+                placeholder={t('danceRehearsal.s010')}
                 sx={textareaSx}
               />
             </Box>
 
             <Box sx={{ mt: 1.5 }}>
-              <FieldLabel>Koreografi-endringer (versjons-logg)</FieldLabel>
+              <FieldLabel>{t('danceRehearsal.s015')}</FieldLabel>
               <TextField
                 fullWidth
                 multiline
@@ -405,7 +408,7 @@ export const RehearsalPlanner: React.FC<RehearsalPlannerProps> = ({
                 size="small"
                 value={rehearsal.choreographyChangelog ?? ''}
                 onChange={(e) => update({ choreographyChangelog: e.target.value || undefined })}
-                placeholder="Hvis prøven medførte endringer i koreografien, beskriv dem her."
+                placeholder={t('danceRehearsal.s009')}
                 sx={textareaSx}
               />
             </Box>
@@ -424,6 +427,7 @@ const RehearsalHeader: React.FC<{
   invitedCount: number;
   onUpdate: (patch: Partial<Rehearsal>) => void;
 }> = ({ rehearsal, choreographyTitle, invitedCount, onUpdate }) => {
+  const { t } = useT();
   return (
     <Card sx={{ bgcolor: danceFlowColors.bgPanel, border: '1px solid #1e2536', boxShadow: 'none' }}>
       <CardContent sx={{ p: 2 }}>
@@ -436,12 +440,12 @@ const RehearsalHeader: React.FC<{
               {rehearsal.title}
             </Typography>
             <Typography sx={{ fontSize: 11, color: danceFlowColors.textMuted, mt: 0.25 }}>
-              For: {choreographyTitle}
+              {t('danceRehearsal.s004')} {choreographyTitle}
             </Typography>
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
               <HeaderPill icon={<CalendarIcon sx={{ fontSize: 12 }} />} label={formatScheduledAt(rehearsal.scheduledAt)} />
-              <HeaderPill icon={<LocationIcon sx={{ fontSize: 12 }} />} label={rehearsal.location ?? 'Sted ikke valgt'} />
-              <HeaderPill icon={<GroupIcon sx={{ fontSize: 12 }} />} label={`${invitedCount} dansere`} />
+              <HeaderPill icon={<LocationIcon sx={{ fontSize: 12 }} />} label={rehearsal.location ?? t('danceRehearsal.s021')} />
+              <HeaderPill icon={<GroupIcon sx={{ fontSize: 12 }} />} label={t('danceRehearsal.p01', { v0: invitedCount })} />
               <HeaderPill label={`${rehearsal.estimatedMinutes} min`} />
             </Stack>
           </Box>
@@ -461,14 +465,16 @@ const HeaderPill: React.FC<{ label: string; icon?: React.ReactNode }> = ({ label
   </Stack>
 );
 
-const STATUS_META: Record<RehearsalStatus, { label: string; color: string }> = {
-  planned:     { label: 'Planlagt',     color: danceFlowColors.infoLight },
-  in_progress: { label: 'I gang',       color: danceFlowColors.gold },
-  completed:   { label: 'Fullført',     color: danceFlowColors.successPrimary },
-  cancelled:   { label: 'Avlyst',       color: danceFlowColors.textMuted },
-};
+const buildSTATUS_META = (t: TFn): Record<RehearsalStatus, { label: string; color: string }> => ({
+  planned:     { label: t('danceRehearsal.s020'),     color: danceFlowColors.infoLight },
+  in_progress: { label: t('danceRehearsal.s011'),       color: danceFlowColors.gold },
+  completed:   { label: t('danceRehearsal.s005'),     color: danceFlowColors.successPrimary },
+  cancelled:   { label: t('danceRehearsal.s000'),       color: danceFlowColors.textMuted },
+});
 
 const StatusChip: React.FC<{ status: RehearsalStatus; onChange: (s: RehearsalStatus) => void }> = ({ status, onChange }) => {
+  const { t } = useT();
+  const STATUS_META = useMemo(() => buildSTATUS_META(t), [t]);
   const m = STATUS_META[status];
   return (
     <TextField
@@ -511,6 +517,7 @@ interface FocusAreaCardProps {
 const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
   area, segment, formationFrom, formationTo, onUpdate, onDelete, onJumpToSegment, onJumpToFormation,
 }) => {
+  const { t } = useT();
   const [editing, setEditing] = useState(false);
   const meta = segment ? getSegmentMeta(segment.kind) : null;
 
@@ -561,7 +568,7 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
             size="small"
             label={`${segment.label ?? meta.kind} · ${formatTime(segment.startSec)}–${formatTime(segment.endSec)}`}
             onClick={() => onJumpToSegment?.(segment.id, area.startSec ?? segment.startSec)}
-            aria-label={`Hopp til segment ${segment.label ?? meta.kind}`}
+            aria-label={t('danceRehearsal.p00', { v0: segment.label ?? meta.kind })}
             sx={{
               height: 20, fontSize: 9.5, cursor: 'pointer',
               bgcolor: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}55`,
@@ -594,7 +601,7 @@ const FocusAreaCard: React.FC<FocusAreaCardProps> = ({
 
       {area.goal && (
         <Typography sx={{ fontSize: 10.5, color: danceFlowColors.textMuted, fontStyle: 'italic' }}>
-          Mål: {area.goal}
+          {t('danceRehearsal.s018')} {area.goal}
         </Typography>
       )}
     </Box>
@@ -649,10 +656,11 @@ const SegmentReviewRow: React.FC<{
 };
 
 const OutcomeButton: React.FC<{ outcome: RehearsalOutcome; active: boolean; onClick: () => void }> = ({ outcome, active, onClick }) => {
+  const { t } = useT();
   const cfg = {
-    approved:     { Icon: CheckIcon,   color: danceFlowColors.successPrimary, tip: 'Godkjent'        },
-    needs_repeat: { Icon: ReplayIcon,  color: danceFlowColors.gold, tip: 'Må repeteres'    },
-    pending:      { Icon: PendingIcon, color: danceFlowColors.textMuted, tip: 'Avventer'        },
+    approved:     { Icon: CheckIcon,   color: danceFlowColors.successPrimary, tip: t('danceRehearsal.s007')        },
+    needs_repeat: { Icon: ReplayIcon,  color: danceFlowColors.gold, tip: t('danceRehearsal.s017')    },
+    pending:      { Icon: PendingIcon, color: danceFlowColors.textMuted, tip: t('danceRehearsal.s001')        },
   }[outcome];
   return (
     <Tooltip title={cfg.tip}>
@@ -679,6 +687,7 @@ const DancerFollowUpAdder: React.FC<{
   dancers: readonly Dancer[];
   onAdd: (dancerId: string, followUp: string, dueBy?: string) => void;
 }> = ({ dancers, onAdd }) => {
+  const { t } = useT();
   const [dancerId, setDancerId] = useState<string>('');
   const [followUp, setFollowUp] = useState('');
 
@@ -698,7 +707,7 @@ const DancerFollowUpAdder: React.FC<{
         SelectProps={{ displayEmpty: true }}
         sx={inputSx}
       >
-        <MenuItem value="" sx={{ fontSize: 10, color: danceFlowColors.textDisabled }}>Velg…</MenuItem>
+        <MenuItem value="" sx={{ fontSize: 10, color: danceFlowColors.textDisabled }}>{t('danceRehearsal.s023')}</MenuItem>
         {dancers.map((d) => (
           <MenuItem key={d.id} value={d.id} sx={{ fontSize: 10 }}>{d.name}</MenuItem>
         ))}
@@ -708,7 +717,7 @@ const DancerFollowUpAdder: React.FC<{
         value={followUp}
         onChange={(e) => setFollowUp(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-        placeholder="Hva trenger danseren å jobbe med?"
+        placeholder={t('danceRehearsal.s008')}
         sx={inputSx}
       />
       <IconButton

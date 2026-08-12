@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { useT } from '../../../i18n';
 import {
   Box,
   Typography,
@@ -144,6 +145,7 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
   contactInfo = '',
   onExport,
 }) => {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -236,14 +238,14 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
         startIcon={<PdfIcon />}
         onClick={() => setOpen(true)}
       >
-        Eksporter PDF
+        {t('pdf.exportPdf')}
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           <Stack direction="row" spacing={2} alignItems="center">
             <PdfIcon color="primary" />
-            <Typography variant="h6">Eksporter Screenplay</Typography>
+            <Typography variant="h6">{t('pdf.dialogTitle')}</Typography>
           </Stack>
         </DialogTitle>
 
@@ -252,15 +254,15 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
             {/* Preview Stats */}
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Stack direction="row" spacing={2} flexWrap="wrap">
-                <Chip label={`${sceneCount} scener`} />
-                <Chip label={`~${estimatedPages} sider`} />
-                <Chip label={`${content.split(/\s+/).length} ord`} />
+                <Chip label={t('pdf.statScenes', { n: sceneCount })} />
+                <Chip label={t('pdf.statPages', { n: estimatedPages })} />
+                <Chip label={t('pdf.statWords', { n: content.split(/\s+/).length })} />
               </Stack>
             </Paper>
 
             {/* Title Page Settings */}
             <Box>
-              <Typography variant="subtitle2" gutterBottom>Tittelside</Typography>
+              <Typography variant="subtitle2" gutterBottom>{t('pdf.titlePageSection')}</Typography>
               <FormControlLabel
                 control={
                   <Checkbox
@@ -268,19 +270,19 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
                     onChange={(e) => setSettings({ ...settings, titlePage: e.target.checked })}
                   />
                 }
-                label="Inkluder tittelside"
+                label={t('pdf.includeTitlePage')}
               />
             </Box>
 
             {/* Page Settings */}
             <Box>
-              <Typography variant="subtitle2" gutterBottom>Sideinnstillinger</Typography>
+              <Typography variant="subtitle2" gutterBottom>{t('pdf.pageSettings')}</Typography>
               <Stack direction="row" spacing={2}>
                 <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Papirstørrelse</InputLabel>
+                  <InputLabel>{t('pdf.paperSize')}</InputLabel>
                   <Select
                     value={settings.paperSize}
-                    label="Papirstørrelse"
+                    label={t('pdf.paperSize')}
                     onChange={(e) => setSettings({ ...settings, paperSize: e.target.value as 'letter' | 'a4' })}
                   >
                     <MenuItem value="letter">US Letter</MenuItem>
@@ -294,7 +296,7 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
                       onChange={(e) => setSettings({ ...settings, includePageNumbers: e.target.checked })}
                     />
                   }
-                  label="Sidenummer"
+                  label={t('pdf.pageNumbers')}
                 />
                 <FormControlLabel
                   control={
@@ -303,20 +305,20 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
                       onChange={(e) => setSettings({ ...settings, includeSceneNumbers: e.target.checked })}
                     />
                   }
-                  label="Scenenummer"
+                  label={t('pdf.sceneNumbers')}
                 />
               </Stack>
             </Box>
 
             {/* Font Settings */}
             <Box>
-              <Typography variant="subtitle2" gutterBottom>Skrift</Typography>
+              <Typography variant="subtitle2" gutterBottom>{t('pdf.fontSection')}</Typography>
               <Stack direction="row" spacing={2}>
                 <FormControl size="small" sx={{ minWidth: 150 }}>
-                  <InputLabel>Skrifttype</InputLabel>
+                  <InputLabel>{t('pdf.fontFamily')}</InputLabel>
                   <Select
                     value={settings.fontFamily}
-                    label="Skrifttype"
+                    label={t('pdf.fontFamily')}
                     onChange={(e) => setSettings({ ...settings, fontFamily: e.target.value as 'courier' | 'courier-prime' })}
                   >
                     <MenuItem value="courier-prime">Courier Prime</MenuItem>
@@ -326,7 +328,7 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
                 <TextField
                   size="small"
                   type="number"
-                  label="Skriftstørrelse"
+                  label={t('pdf.fontSize')}
                   value={settings.fontSize}
                   onChange={(e) => setSettings({ ...settings, fontSize: parseInt(e.target.value) || 12 })}
                   inputProps={{ min: 10, max: 14 }}
@@ -337,24 +339,24 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
 
             {/* Revision Settings */}
             <Box>
-              <Typography variant="subtitle2" gutterBottom>Revisjon</Typography>
+              <Typography variant="subtitle2" gutterBottom>{t('pdf.revisionSection')}</Typography>
               <Stack direction="row" spacing={2}>
                 <TextField
                   size="small"
-                  label="Revisjonsnavn"
-                  placeholder="f.eks. Blue Revision"
+                  label={t('pdf.revisionName')}
+                  placeholder={t('pdf.revisionPlaceholder')}
                   value={settings.revision}
                   onChange={(e) => setSettings({ ...settings, revision: e.target.value })}
                   sx={{ flex: 1 }}
                 />
                 <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Farge</InputLabel>
+                  <InputLabel>{t('pdf.color')}</InputLabel>
                   <Select
                     value={settings.revisionColor}
-                    label="Farge"
+                    label={t('pdf.color')}
                     onChange={(e) => setSettings({ ...settings, revisionColor: e.target.value })}
                   >
-                    <MenuItem value="">Ingen</MenuItem>
+                    <MenuItem value="">{t('pdf.colorNone')}</MenuItem>
                     <MenuItem value="white">White</MenuItem>
                     <MenuItem value="blue">Blue</MenuItem>
                     <MenuItem value="pink">Pink</MenuItem>
@@ -378,7 +380,7 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
                 startIcon={<PreviewIcon />}
                 onClick={() => setShowPreview(!showPreview)}
               >
-                {showPreview ? 'Skjul forhåndsvisning' : 'Vis forhåndsvisning'}
+                {showPreview ? t('pdf.hidePreview') : t('pdf.showPreview')}
               </Button>
               
               {showPreview && (
@@ -433,7 +435,7 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
                     ))}
                     {parsedContent.length > 30 && (
                       <Typography sx={{ fontStyle: 'italic', color: '#666', mt: 2 }}>
-                        ... og {parsedContent.length - 30} flere linjer
+                        {t('pdf.moreLines', { n: parsedContent.length - 30 })}
                       </Typography>
                     )}
                   </Box>
@@ -444,14 +446,14 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setOpen(false)}>{t('pdf.cancel')}</Button>
           <Button
             variant="outlined"
             startIcon={isGenerating ? <CircularProgress size={16} /> : <PrintIcon />}
             onClick={() => handleExport('print')}
             disabled={isGenerating}
           >
-            Skriv ut
+            {t('pdf.print')}
           </Button>
           <Button
             variant="contained"
@@ -459,7 +461,7 @@ export const ScreenplayPDFExport: React.FC<ScreenplayPDFExportProps> = ({
             onClick={() => handleExport('pdf')}
             disabled={isGenerating}
           >
-            Last ned PDF
+            {t('pdf.download')}
           </Button>
         </DialogActions>
       </Dialog>

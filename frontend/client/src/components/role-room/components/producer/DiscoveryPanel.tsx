@@ -3,7 +3,7 @@
 // Lets the producer research competitors, partners and content angles in the
 // client's niche. Live data needs Public Content Access approval; until then the
 // panel explains the pending state.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -16,14 +16,16 @@ import {
 } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
 import { LoadingSkeleton, PanelHeader } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type Mode = 'hashtag' | 'ig-profile' | 'fb-page' | 'embed';
-const MODES: { key: Mode; label: string; icon: React.ReactNode; placeholder: string; hint: string }[] = [
-  { key: 'hashtag', label: 'Emneknagg', icon: <HashtagIcon fontSize="small" />, placeholder: 'f.eks. tannlege', hint: 'Se ferske innlegg på en emneknagg — innholdsinspirasjon i kundens nisje.' },
-  { key: 'ig-profile', label: 'IG-profil', icon: <ProfileIcon fontSize="small" />, placeholder: '@konkurrent', hint: 'Slå opp en konkurrents Instagram-bedriftskonto: følgere, bio og siste innlegg.' },
-  { key: 'fb-page', label: 'Facebook-side', icon: <PageIcon fontSize="small" />, placeholder: 'side-ID eller brukernavn', hint: 'Offentlig info + siste innlegg fra en Facebook-side (partner/konkurrent).' },
-  { key: 'embed', label: 'Bygg inn', icon: <EmbedIcon fontSize="small" />, placeholder: 'lim inn FB/IG-innleggslenke', hint: 'Forhåndsvis et offentlig innlegg og kopier innbyggingskoden til kundemateriell / landingsside.' },
-];
+const buildMODES = (t: TFn): { key: Mode; label: string; icon: React.ReactNode; placeholder: string; hint: string }[] => ([
+  { key: 'hashtag', label: t('discovery.s003'), icon: <HashtagIcon fontSize="small" />, placeholder: t('discovery.s024'), hint: t('discovery.s018') },
+  { key: 'ig-profile', label: t('discovery.s006'), icon: <ProfileIcon fontSize="small" />, placeholder: t('discovery.s001'), hint: t('discovery.s020') },
+  { key: 'fb-page', label: t('discovery.s004'), icon: <PageIcon fontSize="small" />, placeholder: t('discovery.s031'), hint: t('discovery.s013') },
+  { key: 'embed', label: t('discovery.s002'), icon: <EmbedIcon fontSize="small" />, placeholder: t('discovery.s029'), hint: t('discovery.s005') },
+]);
 
 interface IgConnection { id: string; igUsername: string | null; facebookPageName: string | null }
 interface Media { id: string; caption: string | null; mediaType: string | null; permalink: string | null; timestamp: string | null }
@@ -37,6 +39,8 @@ function num(n: number | null | undefined): string {
 }
 
 export default function DiscoveryPanel() {
+  const { t } = useT();
+  const MODES = useMemo(() => buildMODES(t), [t]);
   const [connectionId, setConnectionId] = useState('');
   const [mode, setMode] = useState<Mode>('hashtag');
   const [input, setInput] = useState('');
@@ -77,15 +81,15 @@ export default function DiscoveryPanel() {
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
       <PanelHeader
         icon={<DiscoveryIcon />}
-        title="Oppdag"
-        subtitle="Research på konkurrenter, samarbeidspartnere og innholdsidéer i kundens nisje."
-        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />}
+        title={t('discovery.s015')}
+        subtitle={t('discovery.s017')}
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label={t('discovery.s022')} />}
       />
 
       {connLoading ? (
         <LoadingSkeleton variant="lines" />
       ) : connections.length === 0 ? (
-        <Alert severity="info">Koble til kundens Facebook-/Instagram-konto først (under Feed-planner) for å bruke Oppdag.</Alert>
+        <Alert severity="info">{t('discovery.s009')}</Alert>
       ) : (
         <>
           {/* Mode picker */}
@@ -109,13 +113,13 @@ export default function DiscoveryPanel() {
               onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
               placeholder={activeMode.placeholder}
             />
-            <Button variant="contained" onClick={runSearch} disabled={!input.trim()}>Søk</Button>
+            <Button variant="contained" onClick={runSearch} disabled={!input.trim()}>{t('discovery.s021')}</Button>
           </Stack>
 
           {graphError ? (
             <Alert severity="info">
-              Oppdag er ikke aktivert ennå (venter på godkjenning av <code>Public Content Access</code> fra Meta).
-              {' '}Når det er godkjent kan du søke på ekte data her. ({graphError})
+              {t('discovery.s016')} <code>Public Content Access</code> {t('discovery.s025')}
+              {' '}{t('discovery.s012')}{graphError})
             </Alert>
           ) : null}
 
@@ -136,15 +140,15 @@ export default function DiscoveryPanel() {
                   <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{data.profile.name || `@${data.profile.username}`}</Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.8rem' }}>@{data.profile.username}</Typography>
                   <Stack direction="row" spacing={1.5} sx={{ mt: 0.4 }}>
-                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}><strong>{num(data.profile.followersCount)}</strong> følgere</Typography>
-                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}><strong>{num(data.profile.mediaCount)}</strong> innlegg</Typography>
+                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}><strong>{num(data.profile.followersCount)}</strong> {t('discovery.s026')}</Typography>
+                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}><strong>{num(data.profile.mediaCount)}</strong> {t('discovery.s027')}</Typography>
                   </Stack>
                 </Box>
               </Stack>
               {data.profile.biography ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', mb: 1, whiteSpace: 'pre-wrap' }}>{data.profile.biography}</Typography> : null}
               {data.profile.website ? <Link href={data.profile.website} target="_blank" rel="noopener" sx={{ fontSize: '0.82rem' }}>{data.profile.website}</Link> : null}
               <Divider sx={{ my: 1 }} />
-              <MediaGrid title="Siste innlegg" media={data.profile.media || []} />
+              <MediaGrid title={t('discovery.s019')} media={data.profile.media || []} />
             </Box>
           ) : null}
 
@@ -155,15 +159,15 @@ export default function DiscoveryPanel() {
                   <Box component="img" src={data.data.thumbnail_url} alt="" sx={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 1.5, flexShrink: 0 }} />
                 ) : null}
                 <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{data.data.author_name || data.data.title || 'Offentlig innlegg'}</Typography>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{data.data.author_name || data.data.title || t('discovery.s014')}</Typography>
                   {data.data.title && data.data.author_name ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', mt: 0.3 }}>{data.data.title}</Typography> : null}
                   <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', mt: 0.4 }}>{data.data.provider_name || ''}</Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 0.8 }} alignItems="center">
                     <Button size="small" variant="outlined" onClick={() => copyEmbed(String(data.data.html || ''))} disabled={!data.data.html}>
-                      {copied ? 'Kopiert!' : 'Kopier innbyggingskode'}
+                      {copied ? t('discovery.s011') : t('discovery.s010')}
                     </Button>
                     <Link href={query} target="_blank" rel="noopener" sx={{ fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>
-                      Åpne innlegget <OpenIcon sx={{ fontSize: 14 }} />
+                      {t('discovery.s033')} <OpenIcon sx={{ fontSize: 14 }} />
                     </Link>
                   </Stack>
                 </Box>
@@ -176,37 +180,37 @@ export default function DiscoveryPanel() {
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                 <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{data.page.name || data.page.id}</Typography>
                 {data.page.verified === 'blue_verified' || data.page.verified === 'gray_verified' ? (
-                  <Chip size="small" label="Verifisert" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(56,189,248,0.2)', color: 'var(--role-cyan, #7dd3fc)' }} />
+                  <Chip size="small" label={t('discovery.s023')} sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(56,189,248,0.2)', color: 'var(--role-cyan, #7dd3fc)' }} />
                 ) : null}
               </Stack>
               <Stack direction="row" spacing={1.5} sx={{ mb: 0.6 }} flexWrap="wrap" useFlexGap>
                 {data.page.category ? <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.8rem' }}>{data.page.category}</Typography> : null}
-                <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}><strong>{num(data.page.fanCount)}</strong> følgere</Typography>
+                <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}><strong>{num(data.page.fanCount)}</strong> {t('discovery.s026')}</Typography>
                 {data.page.website ? <Link href={data.page.website} target="_blank" rel="noopener" sx={{ fontSize: '0.8rem' }}>{data.page.website}</Link> : null}
               </Stack>
               {data.page.about ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', mb: 1 }}>{data.page.about}</Typography> : null}
               <Divider sx={{ my: 1 }} />
               <Stack spacing={0.8}>
                 {(data.posts || []).length === 0 ? (
-                  <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen offentlige innlegg ennå.</Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>{t('discovery.s008')}</Typography>
                 ) : (data.posts || []).map((p: any) => (
                   <Box key={p.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.2 }}>
-                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', whiteSpace: 'pre-wrap' }}>{p.message || '(uten tekst)'}</Typography>
+                    <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', whiteSpace: 'pre-wrap' }}>{p.message || t('discovery.s000')}</Typography>
                     <Stack direction="row" spacing={1.5} sx={{ mt: 0.6 }} alignItems="center">
                       <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>{fmt(p.createdTime)}</Typography>
                       {p.reactions != null ? (
                         <Stack direction="row" spacing={0.4} alignItems="center" sx={{ color: 'rgba(226,232,240,0.6)' }}>
-                          <LikeIcon sx={{ fontSize: 14 }} aria-label="reaksjoner" />
+                          <LikeIcon sx={{ fontSize: 14 }} aria-label={t('discovery.s030')} />
                           <Typography sx={{ fontSize: '0.72rem' }}>{num(p.reactions)}</Typography>
                         </Stack>
                       ) : null}
                       {p.comments != null ? (
                         <Stack direction="row" spacing={0.4} alignItems="center" sx={{ color: 'rgba(226,232,240,0.6)' }}>
-                          <CommentIcon sx={{ fontSize: 14 }} aria-label="kommentarer" />
+                          <CommentIcon sx={{ fontSize: 14 }} aria-label={t('discovery.s028')} />
                           <Typography sx={{ fontSize: '0.72rem' }}>{num(p.comments)}</Typography>
                         </Stack>
                       ) : null}
-                      {p.permalinkUrl ? <Link href={p.permalinkUrl} target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>Åpne <OpenIcon sx={{ fontSize: 13 }} /></Link> : null}
+                      {p.permalinkUrl ? <Link href={p.permalinkUrl} target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>{t('discovery.s032')} <OpenIcon sx={{ fontSize: 13 }} /></Link> : null}
                     </Stack>
                   </Box>
                 ))}
@@ -220,21 +224,22 @@ export default function DiscoveryPanel() {
 }
 
 function MediaGrid({ title, media }: { title: string; media: Media[] }) {
+  const { t } = useT();
   if (!media || media.length === 0) {
-    return <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen innlegg funnet ennå.</Typography>;
+    return <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>{t('discovery.s007')}</Typography>;
   }
   return (
     <Box>
-      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontWeight: 700, fontSize: '0.78rem', mb: 0.6 }}>{title} · {media.length} innlegg</Typography>
+      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontWeight: 700, fontSize: '0.78rem', mb: 0.6 }}>{title} · {media.length} {t('discovery.s027')}</Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 1 }}>
         {media.map((m) => (
           <Box key={m.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.1, bgcolor: 'rgba(15,23,41,0.4)' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.4 }}>
               <Chip size="small" label={m.mediaType || 'media'} sx={{ height: 18, fontSize: '0.62rem', bgcolor: 'rgba(148,163,184,0.18)', color: '#cbd5e1' }} />
-              {m.permalink ? <Link href={m.permalink} target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>Åpne <OpenIcon sx={{ fontSize: 13 }} /></Link> : null}
+              {m.permalink ? <Link href={m.permalink} target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>{t('discovery.s032')} <OpenIcon sx={{ fontSize: 13 }} /></Link> : null}
             </Stack>
             <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {m.caption || '(uten tekst)'}
+              {m.caption || t('discovery.s000')}
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.68rem', mt: 0.4 }}>{fmt(m.timestamp)}</Typography>
           </Box>

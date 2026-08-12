@@ -33,6 +33,8 @@ import {
   type RoleRoomGoogleCalendarShareRule,
   type RoleRoomGoogleCalendarSummary,
 } from '../../services/castingApiService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type DrivePermissionRecord = {
   id: string;
@@ -108,9 +110,9 @@ const panelSx = {
   bgcolor: 'rgba(15,23,42,0.54)',
 };
 
-const formatDateTime = (value?: string | null): string => {
+const formatDateTime = (t: TFn, value?: string | null): string => {
   if (!value) {
-    return 'Ikke tilgjengelig';
+    return t('googleCollab.s024');
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -122,9 +124,9 @@ const formatDateTime = (value?: string | null): string => {
   }).format(parsed);
 };
 
-const formatFileSize = (value: number | null): string => {
+const formatFileSize = (t: TFn, value: number | null): string => {
   if (!Number.isFinite(value) || !value || value <= 0) {
-    return 'Ukjent størrelse';
+    return t('googleCollab.s076');
   }
   if (value < 1024 * 1024) {
     return `${Math.max(1, Math.round(value / 1024))} KB`;
@@ -149,6 +151,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
   canManageGoogleWorkspace,
   onRefreshStatus,
 }: RoleRoomGoogleCollaborationWorkspaceProps) {
+  const { t } = useT();
   const { enqueueSnackbar } = useSnackbar();
   const [loadingDrive, setLoadingDrive] = useState(false);
   const [driveFiles, setDriveFiles] = useState<DriveFileRecord[]>([]);
@@ -198,7 +201,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       );
       setDriveFiles(Array.isArray(response.files) ? response.files : []);
     } catch (error) {
-      setDriveError(error instanceof Error ? error.message : 'Kunne ikke hente prosjektfiler fra Google Drive.');
+      setDriveError(error instanceof Error ? error.message : t('googleCollab.s041'));
     } finally {
       setLoadingDrive(false);
     }
@@ -218,7 +221,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       setDriveDescriptionDraft(detailsResponse.file.description || '');
       setSelectedDriveFileId(fileId);
     } catch (error) {
-      setDriveError(error instanceof Error ? error.message : 'Kunne ikke hente Drive-detaljer.');
+      setDriveError(error instanceof Error ? error.message : t('googleCollab.s037'));
     } finally {
       setDriveBusyKey(null);
     }
@@ -244,7 +247,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       setCalendarShares(projectCalendarResponse.shares || []);
       setCalendarEvents(projectCalendarResponse.events || []);
     } catch (error) {
-      setCalendarError(error instanceof Error ? error.message : 'Kunne ikke hente kalendersamarbeid.');
+      setCalendarError(error instanceof Error ? error.message : t('googleCollab.s040'));
     } finally {
       setLoadingCalendars(false);
     }
@@ -272,7 +275,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
         setChatMessages([]);
       }
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : 'Kunne ikke hente Google Chat-rom.');
+      setChatError(error instanceof Error ? error.message : t('googleCollab.s039'));
     } finally {
       setLoadingChat(false);
     }
@@ -289,7 +292,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       const response = await apiRequest<{ messages: GoogleChatMessage[] }>(`/api/google/chat/messages?space=${encodeURIComponent(space)}`);
       setChatMessages(Array.isArray(response.messages) ? response.messages : []);
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : 'Kunne ikke hente Google Chat-meldinger.');
+      setChatError(error instanceof Error ? error.message : t('googleCollab.s038'));
     } finally {
       setChatBusyKey(null);
     }
@@ -358,12 +361,12 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           domain: driveShareMode === 'domain' ? driveShareTarget.trim() : undefined,
         },
       });
-      enqueueSnackbar('Drive-delingen er oppdatert.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s008'), { variant: 'success' });
       setDriveShareTarget('');
       await loadSelectedDriveFile(selectedDriveFileId);
       await loadDriveFiles();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke oppdatere Drive-delingen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s042');
       setDriveError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -381,11 +384,11 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       await apiRequest(`/api/google/drive/files/${encodeURIComponent(selectedDriveFileId)}/permissions/${encodeURIComponent(permissionId)}`, {
         method: 'DELETE',
       });
-      enqueueSnackbar('Drive-tilgangen er fjernet.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s011'), { variant: 'success' });
       await loadSelectedDriveFile(selectedDriveFileId);
       await loadDriveFiles();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke fjerne Drive-tilgangen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s035');
       setDriveError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -407,11 +410,11 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           description: driveDescriptionDraft.trim(),
         },
       });
-      enqueueSnackbar('Drive-filen er oppdatert.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s010'), { variant: 'success' });
       await loadSelectedDriveFile(selectedDriveFileId);
       await loadDriveFiles();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke oppdatere Drive-filen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s043');
       setDriveError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -420,7 +423,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
   }, [driveDescriptionDraft, driveNameDraft, enqueueSnackbar, loadDriveFiles, loadSelectedDriveFile, selectedDriveFileId]);
 
   const handleDriveDelete = useCallback(async (fileId: string) => {
-    if (!window.confirm('Vil du flytte dette elementet til papirkurven i Google Drive?')) {
+    if (!window.confirm(t('googleCollab.s077'))) {
       return;
     }
     setDriveBusyKey(`drive-delete:${fileId}`);
@@ -429,13 +432,13 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       await apiRequest(`/api/google/drive/files/${encodeURIComponent(fileId)}`, {
         method: 'DELETE',
       });
-      enqueueSnackbar('Drive-elementet er flyttet til papirkurven.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s009'), { variant: 'success' });
       if (selectedDriveFileId === fileId) {
         setSelectedDriveFileId(null);
       }
       await loadDriveFiles();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke slette Drive-elementet.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s046');
       setDriveError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -457,12 +460,12 @@ export default function RoleRoomGoogleCollaborationWorkspace({
         domain: calendarShareMode === 'domain' ? calendarShareTarget.trim() : undefined,
         calendarId: calendarId || undefined,
       });
-      enqueueSnackbar('Prosjektkalenderen er delt.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s067'), { variant: 'success' });
       setCalendarShareTarget('');
       await loadCalendars();
       await onRefreshStatus?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke dele prosjektkalenderen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s034');
       setCalendarError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -475,10 +478,10 @@ export default function RoleRoomGoogleCollaborationWorkspace({
     setCalendarError(null);
     try {
       await googleWorkspaceApi.removeProjectCalendarShare(projectId, ruleId, calendarId || undefined);
-      enqueueSnackbar('Kalenderdelingen er fjernet.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s032'), { variant: 'success' });
       await loadCalendars();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke fjerne kalenderdelingen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s036');
       setCalendarError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -494,17 +497,17 @@ export default function RoleRoomGoogleCollaborationWorkspace({
         method: 'POST',
         body: {
           displayName: `Role Room · ${projectName}`,
-          description: `Prosjektrom opprettet fra Role Room for ${projectName}.`,
+          description: t('googleCollab.p00', { v0: projectName }),
           threaded: true,
         },
       });
-      enqueueSnackbar('Google Chat-rommet er opprettet.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s023'), { variant: 'success' });
       await loadChat();
       if (response.space?.name) {
         setSelectedChatSpace(response.space.name);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke opprette Google Chat-rom.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s044');
       setChatError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -526,11 +529,11 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           message: chatMessageDraft.trim(),
         },
       });
-      enqueueSnackbar('Google Chat-meldingen er sendt.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s019'), { variant: 'success' });
       setChatMessageDraft('');
       await loadChatMessages(selectedChatSpace);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke sende Google Chat-meldingen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s045');
       setChatError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -539,7 +542,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
   }, [chatMessageDraft, enqueueSnackbar, loadChatMessages, selectedChatSpace]);
 
   const handleDeleteChatMessage = useCallback(async (messageId: string) => {
-    if (!window.confirm('Vil du slette denne Google Chat-meldingen?')) {
+    if (!window.confirm(t('googleCollab.s078'))) {
       return;
     }
     setChatBusyKey(`chat-delete:${messageId}`);
@@ -548,12 +551,12 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       await apiRequest(`/api/google/chat/messages/${encodeURIComponent(messageId)}`, {
         method: 'DELETE',
       });
-      enqueueSnackbar('Google Chat-meldingen er slettet.', { variant: 'success' });
+      enqueueSnackbar(t('googleCollab.s020'), { variant: 'success' });
       if (selectedChatSpace) {
         await loadChatMessages(selectedChatSpace);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Kunne ikke slette Google Chat-meldingen.';
+      const message = error instanceof Error ? error.message : t('googleCollab.s047');
       setChatError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -568,22 +571,22 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Box>
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Prosjekt-Drive
+                {t('googleCollab.s063')}
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                Les, last ned, del, oppdater og rydd i prosjektets Google Drive-rotmappe direkte fra Role Room.
+                {t('googleCollab.s052')}
               </Typography>
             </Box>
-            <IconButton size="small" onClick={() => { void loadDriveFiles(); }} aria-label="Oppdater Drive-filer" sx={{ color: '#cbd5e1' }}>
+            <IconButton size="small" onClick={() => { void loadDriveFiles(); }} aria-label={t('googleCollab.s058')} sx={{ color: '#cbd5e1' }}>
               <RefreshOutlined fontSize="small" />
             </IconButton>
           </Stack>
 
           {driveError ? <Alert severity="error">{driveError}</Alert> : null}
           {!connected ? (
-            <Alert severity="info">Prosjekt-Drive bruker samme Google-SSO som resten av plattformen. Logg inn eller forny Google-økten for å jobbe videre her.</Alert>
+            <Alert severity="info">{t('googleCollab.s064')}</Alert>
           ) : !driveRootFolderId ? (
-            <Alert severity="warning">Prosjektet mangler Drive-rotmappe ennå. Kjør prosjektoppsett eller Drive-sync først.</Alert>
+            <Alert severity="warning">{t('googleCollab.s065')}</Alert>
           ) : loadingDrive ? (
             <CircularProgress size={22} />
           ) : (
@@ -609,33 +612,33 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                         </Typography>
                         <Chip
                           size="small"
-                          label={file.isFolder ? 'Mappe' : formatFileSize(file.size)}
+                          label={file.isFolder ? t('googleCollab.s054') : formatFileSize(t, file.size)}
                           sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
                         />
                       </Stack>
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
-                        {file.owner?.displayName || 'Ukjent eier'} · oppdatert {formatDateTime(file.modifiedTime)}
+                        {file.owner?.displayName || t('googleCollab.s075')} {t('googleCollab.s079')} {formatDateTime(t, file.modifiedTime)}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={0.35} flexWrap="wrap" useFlexGap>
                       <Button size="small" variant="text" onClick={() => setSelectedDriveFileId(file.id)}>
-                        Detaljer
+                        {t('googleCollab.s005')}
                       </Button>
                       {file.webViewLink ? (
-                        <IconButton size="small" component="a" href={file.webViewLink} target="_blank" rel="noreferrer" aria-label="Åpne i Google Drive" sx={{ color: '#cbd5e1' }}>
+                        <IconButton size="small" component="a" href={file.webViewLink} target="_blank" rel="noreferrer" aria-label={t('googleCollab.s081')} sx={{ color: '#cbd5e1' }}>
                           <LaunchOutlined fontSize="small" />
                         </IconButton>
                       ) : null}
                       <IconButton
                         size="small"
                         onClick={() => window.open(buildApiHref(`/api/google/drive/files/${encodeURIComponent(file.id)}/download`), '_blank', 'noopener,noreferrer')}
-                        aria-label="Last ned"
+                        aria-label={t('googleCollab.s049')}
                         sx={{ color: '#cbd5e1' }}
                       >
                         <DownloadOutlined fontSize="small" />
                       </IconButton>
                       {canManageGoogleWorkspace ? (
-                        <IconButton size="small" onClick={() => handleDriveDelete(file.id)} aria-label="Slett fra Drive" sx={{ color: '#fca5a5' }}>
+                        <IconButton size="small" onClick={() => handleDriveDelete(file.id)} aria-label={t('googleCollab.s071')} sx={{ color: '#fca5a5' }}>
                           <DeleteOutline fontSize="small" />
                         </IconButton>
                       ) : null}
@@ -643,7 +646,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                   </Stack>
                 </Box>
               )) : (
-                <Alert severity="info">Ingen filer er funnet i prosjektets Drive-rot ennå.</Alert>
+                <Alert severity="info">{t('googleCollab.s026')}</Alert>
               )}
             </Stack>
           )}
@@ -653,20 +656,20 @@ export default function RoleRoomGoogleCollaborationWorkspace({
               <Divider sx={{ borderColor: 'rgba(148,163,184,0.14)' }} />
               <Stack spacing={1}>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Filinnsikt og tilgang
+                  {t('googleCollab.s013')}
                 </Typography>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75}>
                   <TextField
                     fullWidth
                     size="small"
-                    label="Filnavn"
+                    label={t('googleCollab.s014')}
                     value={driveNameDraft}
                     onChange={(event) => setDriveNameDraft(event.target.value)}
                   />
                   <TextField
                     fullWidth
                     size="small"
-                    label="Beskrivelse"
+                    label={t('googleCollab.s000')}
                     value={driveDescriptionDraft}
                     onChange={(event) => setDriveDescriptionDraft(event.target.value)}
                   />
@@ -679,24 +682,24 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                     onClick={() => { void handleDriveMetadataSave(); }}
                     disabled={driveBusyKey === 'drive-update' || !canManageGoogleWorkspace}
                   >
-                    {driveBusyKey === 'drive-update' ? 'Lagrer...' : 'Oppdater metadata'}
+                    {driveBusyKey === 'drive-update' ? t('googleCollab.s048') : t('googleCollab.s061')}
                   </Button>
                   <TextField
                     select
                     size="small"
-                    label="Delingsmodus"
+                    label={t('googleCollab.s004')}
                     value={driveShareMode}
                     onChange={(event) => setDriveShareMode(event.target.value as 'link' | 'recipient' | 'domain')}
                     sx={{ minWidth: 130 }}
                   >
-                    <MenuItem value="link">Lenke</MenuItem>
-                    <MenuItem value="recipient">E-post</MenuItem>
-                    <MenuItem value="domain">Domene</MenuItem>
+                    <MenuItem value="link">{t('googleCollab.s050')}</MenuItem>
+                    <MenuItem value="recipient">{t('googleCollab.s012')}</MenuItem>
+                    <MenuItem value="domain">{t('googleCollab.s006')}</MenuItem>
                   </TextField>
                   <TextField
                     select
                     size="small"
-                    label="Rolle"
+                    label={t('googleCollab.s068')}
                     value={driveShareRole}
                     onChange={(event) => setDriveShareRole(event.target.value as 'reader' | 'commenter' | 'writer')}
                     sx={{ minWidth: 130 }}
@@ -708,7 +711,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                   {driveShareMode !== 'link' ? (
                     <TextField
                       size="small"
-                      label={driveShareMode === 'recipient' ? 'E-post' : 'Domene'}
+                      label={driveShareMode === 'recipient' ? t('googleCollab.s012') : t('googleCollab.s006')}
                       value={driveShareTarget}
                       onChange={(event) => setDriveShareTarget(event.target.value)}
                     />
@@ -720,7 +723,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                     onClick={() => { void handleDriveShare(); }}
                     disabled={driveBusyKey === 'drive-share' || !canManageGoogleWorkspace || (driveShareMode !== 'link' && !driveShareTarget.trim())}
                   >
-                    {driveBusyKey === 'drive-share' ? 'Deler...' : 'Del element'}
+                    {driveBusyKey === 'drive-share' ? t('googleCollab.s003') : t('googleCollab.s001')}
                   </Button>
                 </Stack>
                 <Stack spacing={0.75}>
@@ -750,7 +753,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                             onClick={() => { void handleDrivePermissionDelete(permission.id); }}
                             disabled={driveBusyKey === `drive-permission:${permission.id}`}
                           >
-                            Fjern
+                            {t('googleCollab.s015')}
                           </Button>
                         ) : null}
                       </Stack>
@@ -759,7 +762,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 </Stack>
                 <Box>
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                    Drive-aktivitet
+                    {t('googleCollab.s007')}
                   </Typography>
                   {driveActivity.length > 0 ? (
                     <Stack spacing={0.75}>
@@ -777,14 +780,14 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                             {activity.action}
                           </Typography>
                           <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
-                            {(activity.actors.length > 0 ? activity.actors.join(', ') : 'Ukjent aktør')} · {formatDateTime(activity.timestamp)}
+                            {(activity.actors.length > 0 ? activity.actors.join(', ') : t('googleCollab.s074'))} · {formatDateTime(t, activity.timestamp)}
                           </Typography>
                         </Box>
                       ))}
                     </Stack>
                   ) : (
                     <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.8rem' }}>
-                      Ingen nylig Drive-aktivitet for valgt element.
+                      {t('googleCollab.s028')}
                     </Typography>
                   )}
                 </Box>
@@ -799,13 +802,13 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Box>
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Kalender-samarbeid
+                {t('googleCollab.s030')}
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                Les brukerens kalendere, se prosjektkalenderen og del den med samarbeidspartnere via e-post eller domene.
+                {t('googleCollab.s051')}
               </Typography>
             </Box>
-            <IconButton size="small" onClick={() => { void loadCalendars(); }} aria-label="Oppdater kalendere" sx={{ color: '#cbd5e1' }}>
+            <IconButton size="small" onClick={() => { void loadCalendars(); }} aria-label={t('googleCollab.s060')} sx={{ color: '#cbd5e1' }}>
               <RefreshOutlined fontSize="small" />
             </IconButton>
           </Stack>
@@ -814,7 +817,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           {loadingCalendars ? (
             <CircularProgress size={22} />
           ) : !connected ? (
-            <Alert severity="info">Kalender-samarbeid bruker samme Google-SSO som resten av plattformen. Forny økten for å lese, dele og planlegge videre.</Alert>
+            <Alert severity="info">{t('googleCollab.s031')}</Alert>
           ) : (
             <>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -834,10 +837,10 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75} justifyContent="space-between">
                   <Box>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      {projectCalendar?.summary || 'Prosjektkalender ikke opprettet ennå'}
+                      {projectCalendar?.summary || t('googleCollab.s066')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.25 }}>
-                      {projectCalendar?.description || 'Når prosjektkalenderen finnes kan du dele den direkte her.'}
+                      {projectCalendar?.description || t('googleCollab.s056')}
                     </Typography>
                   </Box>
                   {projectCalendar?.id ? (
@@ -849,18 +852,18 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 <TextField
                   select
                   size="small"
-                  label="Delingsmodus"
+                  label={t('googleCollab.s004')}
                   value={calendarShareMode}
                   onChange={(event) => setCalendarShareMode(event.target.value as 'user' | 'domain')}
                   sx={{ minWidth: 130 }}
                 >
-                  <MenuItem value="user">E-post</MenuItem>
-                  <MenuItem value="domain">Domene</MenuItem>
+                  <MenuItem value="user">{t('googleCollab.s012')}</MenuItem>
+                  <MenuItem value="domain">{t('googleCollab.s006')}</MenuItem>
                 </TextField>
                 <TextField
                   select
                   size="small"
-                  label="Rolle"
+                  label={t('googleCollab.s068')}
                   value={calendarShareRole}
                   onChange={(event) => setCalendarShareRole(event.target.value as 'reader' | 'writer')}
                   sx={{ minWidth: 130 }}
@@ -871,7 +874,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 <TextField
                   fullWidth
                   size="small"
-                  label={calendarShareMode === 'user' ? 'E-post' : 'Domene'}
+                  label={calendarShareMode === 'user' ? t('googleCollab.s012') : t('googleCollab.s006')}
                   value={calendarShareTarget}
                   onChange={(event) => setCalendarShareTarget(event.target.value)}
                 />
@@ -882,7 +885,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                   onClick={() => { void handleCalendarShare(); }}
                   disabled={calendarBusyKey === 'calendar-share' || !canManageGoogleWorkspace || !calendarShareTarget.trim()}
                 >
-                  {calendarBusyKey === 'calendar-share' ? 'Deler...' : 'Del kalender'}
+                  {calendarBusyKey === 'calendar-share' ? t('googleCollab.s003') : t('googleCollab.s002')}
                 </Button>
               </Stack>
               <Stack spacing={0.75}>
@@ -912,20 +915,20 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                           onClick={() => { void handleCalendarShareDelete(share.id); }}
                           disabled={calendarBusyKey === `calendar-delete:${share.id}`}
                         >
-                          Fjern
+                          {t('googleCollab.s015')}
                         </Button>
                       ) : null}
                     </Stack>
                   </Box>
                 )) : (
                   <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.8rem' }}>
-                    Ingen ekstra kalenderdelinger er lagt inn ennå.
+                    {t('googleCollab.s025')}
                   </Typography>
                 )}
               </Stack>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                  Kommende prosjektkalender
+                  {t('googleCollab.s033')}
                 </Typography>
                 {calendarEvents.length > 0 ? (
                   <Stack spacing={0.75}>
@@ -943,14 +946,14 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                           {event.title}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem' }}>
-                          {formatDateTime(event.start)} {event.location ? `· ${event.location}` : ''}
+                          {formatDateTime(t, event.start)} {event.location ? `· ${event.location}` : ''}
                         </Typography>
                       </Box>
                     ))}
                   </Stack>
                 ) : (
                   <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.8rem' }}>
-                    Ingen planhendelser er synket til prosjektkalenderen ennå.
+                    {t('googleCollab.s029')}
                   </Typography>
                 )}
               </Box>
@@ -964,18 +967,18 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Box>
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Google Chat-kontroll
+                {t('googleCollab.s018')}
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                Les, send og slett meldinger i prosjektets Google Chat-rom direkte fra Role Room.
+                {t('googleCollab.s053')}
               </Typography>
             </Box>
             <Stack direction="row" spacing={0.4}>
-              <IconButton size="small" onClick={() => { void loadChat(); }} aria-label="Oppdater Chat-rom" sx={{ color: '#cbd5e1' }}>
+              <IconButton size="small" onClick={() => { void loadChat(); }} aria-label={t('googleCollab.s057')} sx={{ color: '#cbd5e1' }}>
                 <RefreshOutlined fontSize="small" />
               </IconButton>
               {canManageGoogleWorkspace ? (
-                <IconButton size="small" onClick={() => { void handleCreateChatSpace(); }} aria-label="Opprett Chat-rom" sx={{ color: '#cbd5e1' }}>
+                <IconButton size="small" onClick={() => { void handleCreateChatSpace(); }} aria-label={t('googleCollab.s062')} sx={{ color: '#cbd5e1' }}>
                   <SendOutlined fontSize="small" />
                 </IconButton>
               ) : null}
@@ -986,14 +989,14 @@ export default function RoleRoomGoogleCollaborationWorkspace({
           {loadingChat ? (
             <CircularProgress size={22} />
           ) : !connected ? (
-            <Alert severity="info">Google Chat bruker samme Google-SSO som resten av plattformen. Forny økten for å lese, sende og rydde meldinger herfra.</Alert>
+            <Alert severity="info">{t('googleCollab.s016')}</Alert>
           ) : (
             <>
               <TextField
                 select
                 size="small"
                 fullWidth
-                label="Google Chat-rom"
+                label={t('googleCollab.s021')}
                 value={selectedChatSpace}
                 onChange={(event) => setSelectedChatSpace(event.target.value)}
               >
@@ -1006,10 +1009,10 @@ export default function RoleRoomGoogleCollaborationWorkspace({
               {selectedSpaceRecord ? (
                 <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="space-between">
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
-                    {selectedSpaceRecord.spaceDetails?.description || 'Google Chat-rom klart for prosjektkommunikasjon.'}
+                    {selectedSpaceRecord.spaceDetails?.description || t('googleCollab.s022')}
                   </Typography>
                   {selectedSpaceRecord.spaceUri ? (
-                    <IconButton size="small" component="a" href={selectedSpaceRecord.spaceUri} target="_blank" rel="noreferrer" aria-label="Åpne i Google Chat" sx={{ color: '#cbd5e1' }}>
+                    <IconButton size="small" component="a" href={selectedSpaceRecord.spaceUri} target="_blank" rel="noreferrer" aria-label={t('googleCollab.s080')} sx={{ color: '#cbd5e1' }}>
                       <LaunchOutlined fontSize="small" />
                     </IconButton>
                   ) : null}
@@ -1029,13 +1032,13 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                     <Stack direction="row" spacing={0.75} justifyContent="space-between" alignItems="flex-start">
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.84rem' }}>
-                          {message.sender?.displayName || message.sender?.name || message.senderId || 'Google Chat-bruker'}
+                          {message.sender?.displayName || message.sender?.name || message.senderId || t('googleCollab.s017')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.86)', fontSize: '0.82rem', whiteSpace: 'pre-wrap' }}>
-                          {message.content || 'Tom melding'}
+                          {message.content || t('googleCollab.s073')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.76rem', mt: 0.3 }}>
-                          {formatDateTime(message.timestamp)}
+                          {formatDateTime(t, message.timestamp)}
                         </Typography>
                       </Box>
                       {canManageGoogleWorkspace ? (
@@ -1043,7 +1046,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                           size="small"
                           onClick={() => { void handleDeleteChatMessage(message.id); }}
                           disabled={chatBusyKey === `chat-delete:${message.id}`}
-                          aria-label="Slett melding"
+                          aria-label={t('googleCollab.s072')}
                           sx={{ color: '#fca5a5' }}
                         >
                           <DeleteOutline fontSize="small" />
@@ -1053,7 +1056,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                   </Box>
                 )) : (
                   <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.8rem' }}>
-                    Ingen meldinger i valgt Google Chat-rom ennå.
+                    {t('googleCollab.s027')}
                   </Typography>
                 )}
               </Stack>
@@ -1061,7 +1064,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                 <TextField
                   fullWidth
                   size="small"
-                  label="Ny Google Chat-melding"
+                  label={t('googleCollab.s055')}
                   value={chatMessageDraft}
                   onChange={(event) => setChatMessageDraft(event.target.value)}
                 />
@@ -1072,7 +1075,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
                   onClick={() => { void handleSendChatMessage(); }}
                   disabled={chatBusyKey === 'chat-send' || !chatMessageDraft.trim()}
                 >
-                  {chatBusyKey === 'chat-send' ? 'Sender...' : 'Send'}
+                  {chatBusyKey === 'chat-send' ? t('googleCollab.s070') : t('googleCollab.s069')}
                 </Button>
               </Stack>
             </>
@@ -1081,7 +1084,7 @@ export default function RoleRoomGoogleCollaborationWorkspace({
       </Box>
 
       <Button variant="text" size="small" onClick={() => { void refreshAll(); }} startIcon={<RefreshOutlined />}>
-        Oppdater hele samarbeidslaget
+        {t('googleCollab.s059')}
       </Button>
     </Stack>
   );

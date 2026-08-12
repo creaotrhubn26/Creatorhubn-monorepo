@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -28,6 +28,8 @@ import roleRoomAgentService, {
   type RoleRoomLinkedInCampaignGroup,
   type RoleRoomGeneratedAdCreative,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 /**
  * Producer-facing campaign management: see all campaigns (status, budget),
@@ -47,32 +49,36 @@ const SUBTLE = { color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem' } as const;
 const nok = (n: number | null) =>
   n == null ? '—' : new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n);
 
-const STATUS_META: Record<RoleRoomAdsCampaignStatus, { label: string; color: string; bg: string }> = {
-  active: { label: 'Aktiv', color: '#86efac', bg: 'rgba(134,239,172,0.12)' },
-  paused: { label: 'Pauset', color: '#fcd34d', bg: 'rgba(252,211,77,0.12)' },
-  draft: { label: 'Utkast', color: '#93c5fd', bg: 'rgba(147,197,253,0.12)' },
-  ended: { label: 'Avsluttet', color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)' },
-  failed: { label: 'Feilet', color: '#fca5a5', bg: 'rgba(252,165,165,0.12)' },
-};
+const buildSTATUS_META = (t: TFn): Record<RoleRoomAdsCampaignStatus, { label: string; color: string; bg: string }> => ({
+  active: { label: t('adsMgmt.s000'), color: '#86efac', bg: 'rgba(134,239,172,0.12)' },
+  paused: { label: t('adsMgmt.s039'), color: '#fcd34d', bg: 'rgba(252,211,77,0.12)' },
+  draft: { label: t('adsMgmt.s051'), color: '#93c5fd', bg: 'rgba(147,197,253,0.12)' },
+  ended: { label: t('adsMgmt.s002'), color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)' },
+  failed: { label: t('adsMgmt.s008'), color: '#fca5a5', bg: 'rgba(252,165,165,0.12)' },
+});
 
-const OBJECTIVES = [
-  { value: 'OUTCOME_TRAFFIC', label: 'Trafikk' },
+const buildOBJECTIVES = (t: TFn) => ([
+  { value: 'OUTCOME_TRAFFIC', label: t('adsMgmt.s047') },
   { value: 'OUTCOME_LEADS', label: 'Leads' },
-  { value: 'OUTCOME_SALES', label: 'Salg' },
-  { value: 'OUTCOME_ENGAGEMENT', label: 'Engasjement' },
-  { value: 'OUTCOME_AWARENESS', label: 'Kjennskap' },
-];
+  { value: 'OUTCOME_SALES', label: t('adsMgmt.s041') },
+  { value: 'OUTCOME_ENGAGEMENT', label: t('adsMgmt.s007') },
+  { value: 'OUTCOME_AWARENESS', label: t('adsMgmt.s024') },
+]);
 
 // AI-generatorens mål (AdsGoal) — egen vokab fra Meta-objectives.
-const AD_GOALS = [
-  { value: 'lead_generation', label: 'Lead-generering' },
-  { value: 'ecommerce_conversion', label: 'Salg / konvertering' },
-  { value: 'engagement', label: 'Engasjement' },
-  { value: 'brand_awareness', label: 'Merkekjennskap' },
+const buildAD_GOALS = (t: TFn) => ([
+  { value: 'lead_generation', label: t('adsMgmt.s030') },
+  { value: 'ecommerce_conversion', label: t('adsMgmt.s042') },
+  { value: 'engagement', label: t('adsMgmt.s007') },
+  { value: 'brand_awareness', label: t('adsMgmt.s033') },
   { value: 'retargeting', label: 'Retargeting' },
-];
+]);
 
 export default function AdsManagementPanel({ projectId }: { projectId: string }) {
+  const { t } = useT();
+  const OBJECTIVES = useMemo(() => buildOBJECTIVES(t), [t]);
+  const AD_GOALS = useMemo(() => buildAD_GOALS(t), [t]);
+  const STATUS_META = useMemo(() => buildSTATUS_META(t), [t]);
   // OAuth popup poll lives in an event handler, not an effect — track it so we
   // can clear it on unmount and never setState on a dead component.
   const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -131,7 +137,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setAccountError(
-          body.detail || body.error || `Klarte ikke starte ${platform}-OAuth (HTTP ${res.status})`,
+          body.detail || body.error || t('adsMgmt.p01', { v0: platform, v1: res.status }),
         );
         setOauthStarting(null);
         return;
@@ -140,7 +146,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       // Åpne popup. Callback lukker den + post-message-r oss
       const popup = window.open(authorizationUrl, '_blank', 'width=620,height=740,noopener=no,popup=yes');
       if (!popup) {
-        setAccountError('Pop-up ble blokkert. Tillat pop-ups for theroleroom.com og prøv igjen.');
+        setAccountError(t('adsMgmt.s040'));
         setOauthStarting(null);
         return;
       }
@@ -180,7 +186,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       }, 800);
       oauthPollRef.current = pollInterval;
     } catch (err) {
-      setAccountError(err instanceof Error ? err.message : 'Ukjent feil ved OAuth-start');
+      setAccountError(err instanceof Error ? err.message : t('adsMgmt.s050'));
       setOauthStarting(null);
     }
   };
@@ -207,7 +213,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       complianceNotes: aiInputs.complianceNotes.trim() || undefined,
     });
     if ('error' in res) {
-      const missing = res.missingFields?.length ? ` (mangler: ${res.missingFields.join(', ')})` : '';
+      const missing = res.missingFields?.length ? t('adsMgmt.p00', { v0: res.missingFields.join(', ') }) : '';
       setGenError(res.error + missing);
       setGenerated(null);
     } else {
@@ -256,7 +262,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
     try {
       setCampaigns(await roleRoomAgentService.listAdsCampaigns({ projectId }));
     } catch {
-      setError('Klarte ikke å hente kampanjer.');
+      setError(t('adsMgmt.s025'));
     } finally {
       setLoading(false);
     }
@@ -271,7 +277,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
     setBusyId(id);
     setError(null);
     const res = await fn();
-    if (!res.ok) setError(res.error || 'Handlingen feilet.');
+    if (!res.ok) setError(res.error || t('adsMgmt.s010'));
     await refresh();
     setBusyId(null);
   };
@@ -299,7 +305,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
         if (linkedin.accounts[0]) setForm((f) => ({ ...f, linkedinAccountUrn: linkedin.accounts[0].id }));
       }
       if ('error' in meta && 'error' in google && 'error' in linkedin) {
-        setAccountError('Ingen annonsekontoer tilgjengelig — koble Meta, Google eller LinkedIn først.');
+        setAccountError(t('adsMgmt.s017'));
       }
     }
   };
@@ -312,13 +318,13 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
     let res: { campaign: unknown } | { error: string };
     const creativeConfig = buildCreativeConfig();
     if (form.platform === 'google') {
-      if (!form.customerId) { setError('Velg en Google-konto.'); setCreating(false); return; }
+      if (!form.customerId) { setError(t('adsMgmt.s052')); setCreating(false); return; }
       res = await roleRoomAgentService.createGoogleAdsCampaign({
         projectId, customerId: form.customerId, name: form.name.trim(), dailyBudgetNok: budget ?? 0, creativeConfig,
       });
     } else if (form.platform === 'linkedin') {
-      if (!form.linkedinAccountUrn) { setError('Velg en LinkedIn-annonsekonto.'); setCreating(false); return; }
-      if (!form.linkedinGroupUrn) { setError('Velg en LinkedIn-kampanjegruppe.'); setCreating(false); return; }
+      if (!form.linkedinAccountUrn) { setError(t('adsMgmt.s053')); setCreating(false); return; }
+      if (!form.linkedinGroupUrn) { setError(t('adsMgmt.s054')); setCreating(false); return; }
       res = await roleRoomAgentService.createLinkedInAdsCampaign({
         projectId,
         accountUrn: form.linkedinAccountUrn,
@@ -328,7 +334,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
         creativeConfig,
       });
     } else {
-      if (!form.adAccountId) { setError('Velg en Meta-annonsekonto.'); setCreating(false); return; }
+      if (!form.adAccountId) { setError(t('adsMgmt.s055')); setCreating(false); return; }
       res = await roleRoomAgentService.createMetaCampaign({
         projectId, adAccountId: form.adAccountId, name: form.name.trim(), objective: form.objective, dailyBudgetNok: budget, creativeConfig,
       });
@@ -350,11 +356,11 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
     <Stack spacing={1.2} sx={CARD_SX}>
       <Stack direction="row" alignItems="center" spacing={1}>
         <CampaignIcon sx={{ fontSize: 20, color: '#f0abfc' }} />
-        <Typography sx={LABEL}>Annonser</Typography>
+        <Typography sx={LABEL}>{t('adsMgmt.s001')}</Typography>
         {campaigns.length > 0 && (
           <Chip
             size="small"
-            label={`${activeCount} aktive / ${campaigns.length} totalt`}
+            label={t('adsMgmt.p02', { v0: activeCount, v1: campaigns.length })}
             sx={{ fontWeight: 700, color: '#e2e8f0', bgcolor: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.2)' }}
           />
         )}
@@ -365,7 +371,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
           onClick={openCreate}
           sx={{ textTransform: 'none', color: '#f0abfc', fontWeight: 700 }}
         >
-          Ny kampanje
+          {t('adsMgmt.s036')}
         </Button>
       </Stack>
 
@@ -393,7 +399,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     disabled={oauthStarting === 'google'}
                     sx={{ textTransform: 'none' }}
                   >
-                    {oauthStarting === 'google' ? 'Åpner…' : 'Koble Google Ads'}
+                    {oauthStarting === 'google' ? t('adsMgmt.s061') : t('adsMgmt.s026')}
                   </Button>
                   <Button
                     size="small"
@@ -402,7 +408,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     disabled={oauthStarting === 'linkedin'}
                     sx={{ textTransform: 'none' }}
                   >
-                    {oauthStarting === 'linkedin' ? 'Åpner…' : 'Koble LinkedIn Ads'}
+                    {oauthStarting === 'linkedin' ? t('adsMgmt.s061') : t('adsMgmt.s027')}
                   </Button>
                 </Stack>
               </Stack>
@@ -420,7 +426,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
               {form.platform === 'meta' && (
                 <TextField select size="small" label="Annonsekonto (Meta)" value={form.adAccountId}
                   onChange={(e) => setForm({ ...form, adAccountId: e.target.value })} sx={fieldSx}>
-                  {adAccounts.length === 0 && <MenuItem value="" disabled>Ingen Meta-kontoer — koble Meta</MenuItem>}
+                  {adAccounts.length === 0 && <MenuItem value="" disabled>{t('adsMgmt.s016')}</MenuItem>}
                   {adAccounts.map((a) => (
                     <MenuItem key={a.id} value={a.id}>{a.name} ({a.currency})</MenuItem>
                   ))}
@@ -430,7 +436,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 <Stack direction="row" spacing={1} alignItems="center">
                   <TextField select size="small" label="Google Ads-konto (Customer ID)" value={form.customerId}
                     onChange={(e) => setForm({ ...form, customerId: e.target.value })} sx={{ ...fieldSx, flex: 1 }}>
-                    {googleCustomers.length === 0 && <MenuItem value="" disabled>Ingen Google-kontoer — koble Google Ads</MenuItem>}
+                    {googleCustomers.length === 0 && <MenuItem value="" disabled>{t('adsMgmt.s014')}</MenuItem>}
                     {googleCustomers.map((c) => (
                       <MenuItem key={c} value={c}>{c}</MenuItem>
                     ))}
@@ -443,7 +449,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                       disabled={oauthStarting === 'google'}
                       sx={{ textTransform: 'none', color: '#fde68a', borderColor: 'rgba(253,230,138,0.4)', whiteSpace: 'nowrap' }}
                     >
-                      {oauthStarting === 'google' ? 'Åpner…' : 'Koble Google Ads'}
+                      {oauthStarting === 'google' ? t('adsMgmt.s061') : t('adsMgmt.s026')}
                     </Button>
                   )}
                 </Stack>
@@ -453,7 +459,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                   <Stack direction="row" spacing={1} alignItems="center">
                     <TextField select size="small" label="Annonsekonto (LinkedIn)" value={form.linkedinAccountUrn}
                       onChange={(e) => setForm({ ...form, linkedinAccountUrn: e.target.value, linkedinGroupUrn: '' })} sx={{ ...fieldSx, flex: 1 }}>
-                      {linkedinAccounts.length === 0 && <MenuItem value="" disabled>Ingen LinkedIn-kontoer — koble LinkedIn</MenuItem>}
+                      {linkedinAccounts.length === 0 && <MenuItem value="" disabled>{t('adsMgmt.s015')}</MenuItem>}
                       {linkedinAccounts.map((a) => (
                         <MenuItem key={a.id} value={a.id}>{a.name || a.id}</MenuItem>
                       ))}
@@ -466,14 +472,14 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                         disabled={oauthStarting === 'linkedin'}
                         sx={{ textTransform: 'none', color: '#fde68a', borderColor: 'rgba(253,230,138,0.4)', whiteSpace: 'nowrap' }}
                       >
-                        {oauthStarting === 'linkedin' ? 'Åpner…' : 'Koble LinkedIn Ads'}
+                        {oauthStarting === 'linkedin' ? t('adsMgmt.s061') : t('adsMgmt.s027')}
                       </Button>
                     )}
                   </Stack>
                   <TextField select size="small" label="Kampanjegruppe (LinkedIn)" value={form.linkedinGroupUrn}
                     onChange={(e) => setForm({ ...form, linkedinGroupUrn: e.target.value })} sx={fieldSx}
                     disabled={!form.linkedinAccountUrn}>
-                    {linkedinGroups.length === 0 && <MenuItem value="" disabled>Ingen kampanjegrupper på kontoen</MenuItem>}
+                    {linkedinGroups.length === 0 && <MenuItem value="" disabled>{t('adsMgmt.s019')}</MenuItem>}
                     {linkedinGroups.map((g) => (
                       <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
                     ))}
@@ -485,7 +491,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 onChange={(e) => setForm({ ...form, name: e.target.value })} sx={fieldSx} />
               <Stack direction="row" spacing={1}>
                 {form.platform === 'meta' && (
-                  <TextField select size="small" label="Mål" value={form.objective}
+                  <TextField select size="small" label={t('adsMgmt.s034')} value={form.objective}
                     onChange={(e) => setForm({ ...form, objective: e.target.value })} sx={{ ...fieldSx, flex: 1 }}>
                     {OBJECTIVES.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                   </TextField>
@@ -501,17 +507,17 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                   <Typography sx={{ color: '#f0abfc', fontWeight: 700, fontSize: '0.82rem' }}>AI-annonsetekst</Typography>
                 </Stack>
                 <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
-                  CI lager plattform-tilpasset tekst fra bedriftens marketing-plan + det du fyller inn under. Du velger variant og redigerer før kampanjen opprettes.
+                  {t('adsMgmt.s004')}
                 </Typography>
                 <Stack direction="row" spacing={1}>
-                  <TextField select size="small" label="Mål for annonsen" value={aiGoal}
+                  <TextField select size="small" label={t('adsMgmt.s035')} value={aiGoal}
                     onChange={(e) => setAiGoal(e.target.value)} sx={{ ...fieldSx, flex: 1 }}>
                     {AD_GOALS.map((g) => <MenuItem key={g.value} value={g.value}>{g.label}</MenuItem>)}
                   </TextField>
                   <TextField size="small" label="Bedriftsnavn" value={aiInputs.businessName}
                     onChange={(e) => setAiInputs({ ...aiInputs, businessName: e.target.value })} sx={{ ...fieldSx, flex: 1 }} />
                 </Stack>
-                <TextField size="small" label="Hva annonseres (produkt/tjeneste)" value={aiInputs.productOrService}
+                <TextField size="small" label={t('adsMgmt.s012')} value={aiInputs.productOrService}
                   onChange={(e) => setAiInputs({ ...aiInputs, productOrService: e.target.value })} sx={fieldSx} />
                 <Stack direction="row" spacing={1}>
                   <TextField size="small" label="Landingsside-URL" value={aiInputs.landingUrl}
@@ -519,14 +525,14 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                   <TextField size="small" label="Tilbud / hook (valgfritt)" value={aiInputs.offer}
                     onChange={(e) => setAiInputs({ ...aiInputs, offer: e.target.value })} sx={{ ...fieldSx, flex: 1 }} />
                 </Stack>
-                <TextField size="small" label="Compliance-forbud (f.eks. ingen helsepåstander)" value={aiInputs.complianceNotes}
+                <TextField size="small" label={t('adsMgmt.s005')} value={aiInputs.complianceNotes}
                   onChange={(e) => setAiInputs({ ...aiInputs, complianceNotes: e.target.value })} sx={fieldSx}
                   multiline minRows={1} />
                 <Button size="small" variant="outlined" startIcon={generating ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
                   disabled={generating}
                   onClick={runGenerate}
                   sx={{ textTransform: 'none', fontWeight: 700, color: '#f0abfc', borderColor: 'rgba(240,171,252,0.4)', alignSelf: 'flex-start' }}>
-                  {generating ? 'Genererer…' : generated ? 'Generer på nytt' : 'Generer annonsetekst'}
+                  {generating ? 'Genererer…' : generated ? t('adsMgmt.s009') : 'Generer annonsetekst'}
                 </Button>
 
                 {genError && (
@@ -536,7 +542,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 {generated && (
                   <Stack spacing={0.8}>
                     <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
-                      {generated.variants.length} varianter · velg én (lagres med kampanjen)
+                      {generated.variants.length} {t('adsMgmt.s060')}
                       {generated.usage?.costNok != null ? ` · ~${nok(generated.usage.costNok)} AI-kost` : ''}
                     </Typography>
                     {generated.variants.map((v, i) => {
@@ -572,7 +578,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     })}
                     {generated.complianceChecklist && generated.complianceChecklist.length > 0 && (
                       <Alert severity="info" sx={{ '& .MuiAlert-message': { fontSize: '0.72rem' } }}>
-                        <strong>Verifiser før publisering:</strong>
+                        <strong>{t('adsMgmt.s057')}</strong>
                         <ul style={{ margin: '4px 0 0 0', paddingLeft: 16 }}>
                           {generated.complianceChecklist.map((c, i) => <li key={i}>{c}</li>)}
                         </ul>
@@ -583,7 +589,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
               </Stack>
 
               <Typography sx={{ ...SUBTLE, fontSize: '0.72rem' }}>
-                Kampanjen opprettes som <strong>pauset/utkast</strong> — start den når den er klar. Tilgangen din til kontoen verifiseres automatisk.
+                {t('adsMgmt.s022')} <strong>{t('adsMgmt.s059')}</strong> {t('adsMgmt.s062')}
               </Typography>
               <Button variant="contained" size="small"
                 disabled={
@@ -593,7 +599,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     : (!form.linkedinAccountUrn || !form.linkedinGroupUrn))
                 }
                 onClick={submitCreate} sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}>
-                {creating ? 'Oppretter…' : 'Opprett kampanje'}
+                {creating ? 'Oppretter…' : t('adsMgmt.s038')}
               </Button>
             </>
           )}
@@ -603,10 +609,10 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
       {loading ? (
         <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
           <CircularProgress size={16} sx={{ color: 'rgba(226,232,240,0.6)' }} />
-          <Typography sx={SUBTLE}>Henter kampanjer …</Typography>
+          <Typography sx={SUBTLE}>{t('adsMgmt.s011')}</Typography>
         </Stack>
       ) : campaigns.length === 0 ? (
-        <Typography sx={SUBTLE}>Ingen kampanjer ennå. Opprett én med «Ny kampanje».</Typography>
+        <Typography sx={SUBTLE}>{t('adsMgmt.s020')}</Typography>
       ) : (
         <Stack spacing={0.75}>
           {campaigns.map((c) => {
@@ -655,7 +661,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                 ) : !ctl ? (
                   // LinkedIn (m.fl.) er foreløpig kun rapportering — ingen styring ennå.
                   <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>
-                    Kun rapportering
+                    {t('adsMgmt.s028')}
                   </Typography>
                 ) : (
                   <Stack direction="row" spacing={0.5}>
@@ -667,7 +673,7 @@ export default function AdsManagementPanel({ projectId }: { projectId: string })
                     {(c.status === 'paused' || c.status === 'draft') && (
                       <Button size="small" startIcon={<PlayIcon sx={{ fontSize: 16 }} />}
                         onClick={() => act(c.id, ctl.resume)}
-                        sx={{ textTransform: 'none', color: '#86efac', minWidth: 0 }}>Start</Button>
+                        sx={{ textTransform: 'none', color: '#86efac', minWidth: 0 }}>{t('adsMgmt.s045')}</Button>
                     )}
                     {c.status !== 'ended' && (
                       <Button size="small" startIcon={<StopIcon sx={{ fontSize: 16 }} />}
@@ -704,14 +710,14 @@ type MccLink = {
   hidden: boolean;
 };
 
-const MCC_STATUS_META: Record<MccLink['status'], { color: string; bg: string; label: string }> = {
-  PENDING: { color: '#fcd34d', bg: 'rgba(252,211,77,0.12)', label: 'Venter på godkjenning' },
-  ACTIVE: { color: '#86efac', bg: 'rgba(134,239,172,0.12)', label: 'Tilkoblet' },
-  REFUSED: { color: '#fca5a5', bg: 'rgba(252,165,165,0.12)', label: 'Avvist av kunde' },
-  CANCELED: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: 'Kansellert' },
-  INACTIVE: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: 'Inaktiv' },
-  UNKNOWN: { color: '#cbd5e1', bg: 'rgba(148,163,184,0.12)', label: 'Ukjent' },
-};
+const buildMCC_STATUS_META = (t: TFn): Record<MccLink['status'], { color: string; bg: string; label: string }> => ({
+  PENDING: { color: '#fcd34d', bg: 'rgba(252,211,77,0.12)', label: t('adsMgmt.s056') },
+  ACTIVE: { color: '#86efac', bg: 'rgba(134,239,172,0.12)', label: t('adsMgmt.s046') },
+  REFUSED: { color: '#fca5a5', bg: 'rgba(252,165,165,0.12)', label: t('adsMgmt.s003') },
+  CANCELED: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: t('adsMgmt.s023') },
+  INACTIVE: { color: 'rgba(226,232,240,0.6)', bg: 'rgba(148,163,184,0.12)', label: t('adsMgmt.s013') },
+  UNKNOWN: { color: '#cbd5e1', bg: 'rgba(148,163,184,0.12)', label: t('adsMgmt.s048') },
+});
 
 // Formater 10-sifret id til "XXX-XXX-XXXX" for visning
 const fmtCustomerId = (digits: string): string => {
@@ -720,6 +726,8 @@ const fmtCustomerId = (digits: string): string => {
 };
 
 function MccInviteSection() {
+  const { t } = useT();
+  const MCC_STATUS_META = useMemo(() => buildMCC_STATUS_META(t), [t]);
   const [expanded, setExpanded] = useState(false);
   const [customerIdInput, setCustomerIdInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -742,7 +750,7 @@ function MccInviteSection() {
       const data = await res.json();
       setLinks(data.links || []);
     } catch (e) {
-      setListError(e instanceof Error ? e.message : 'Ukjent feil');
+      setListError(e instanceof Error ? e.message : t('adsMgmt.s049'));
     } finally {
       setLoadingLinks(false);
     }
@@ -772,7 +780,7 @@ function MccInviteSection() {
   const sendInvite = async () => {
     const digits = customerIdInput.replace(/[^0-9]/g, '');
     if (digits.length !== 10) {
-      setSendError('Customer-ID må være 10 siffer (bindestreker er OK).');
+      setSendError(t('adsMgmt.s006'));
       return;
     }
     setSending(true);
@@ -798,7 +806,7 @@ function MccInviteSection() {
       // Re-fetch etter 2 sek for å bekrefte status fra API
       setTimeout(() => void fetchLinks(), 2000);
     } catch (e) {
-      setSendError(e instanceof Error ? e.message : 'Ukjent feil');
+      setSendError(e instanceof Error ? e.message : t('adsMgmt.s049'));
     } finally {
       setSending(false);
     }
@@ -809,27 +817,27 @@ function MccInviteSection() {
       <Stack direction="row" alignItems="center" spacing={1}>
         <CampaignIcon sx={{ fontSize: 18, color: '#fcd34d' }} />
         <Typography sx={{ color: '#fcd34d', fontWeight: 700, fontSize: '0.88rem', flex: 1 }}>
-          Inviter kunde til Google Ads MCC
+          {t('adsMgmt.s021')}
         </Typography>
         <Button
           size="small"
           onClick={() => setExpanded((cur) => !cur)}
           sx={{ textTransform: 'none', color: '#fcd34d', fontSize: '0.76rem' }}
         >
-          {expanded ? 'Skjul' : 'Vis'}
+          {expanded ? t('adsMgmt.s044') : t('adsMgmt.s058')}
         </Button>
       </Stack>
 
       <Collapse in={expanded} unmountOnExit>
         <Stack spacing={1.2} sx={{ pt: 0.5 }}>
           <Typography sx={SUBTLE}>
-            Lim inn kundens 10-sifrede Google Ads kunde-ID (synlig øverst i Google Ads). Vi sender en invitasjons-forespørsel fra MCC-en din — kunden ser den som notifikasjon i sin Google Ads og kan godta med ett klikk.
+            {t('adsMgmt.s031')}
           </Typography>
 
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
               size="small"
-              label="Kunde-ID (XXX-XXX-XXXX)"
+              label={t('adsMgmt.s029')}
               placeholder="123-456-7890"
               value={customerIdInput}
               onChange={(e) => setCustomerIdInput(e.target.value.slice(0, 14))}
@@ -848,7 +856,7 @@ function MccInviteSection() {
                 '&:hover': { bgcolor: '#4f46e5' },
               }}
             >
-              {sending ? 'Sender…' : 'Send invitasjon'}
+              {sending ? 'Sender…' : t('adsMgmt.s043')}
             </Button>
           </Stack>
 
@@ -862,7 +870,7 @@ function MccInviteSection() {
 
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>
-              MCC ↔ kunde-links ({links.length})
+              {t('adsMgmt.s032')}{links.length})
             </Typography>
             <Button
               size="small"
@@ -870,7 +878,7 @@ function MccInviteSection() {
               disabled={loadingLinks}
               sx={{ textTransform: 'none', color: '#a5b4fc', fontSize: '0.74rem' }}
             >
-              {loadingLinks ? 'Oppdaterer…' : 'Oppdater'}
+              {loadingLinks ? 'Oppdaterer…' : t('adsMgmt.s037')}
             </Button>
           </Stack>
 
@@ -882,7 +890,7 @@ function MccInviteSection() {
 
           {links.length === 0 && !loadingLinks && !listError && (
             <Typography sx={{ ...SUBTLE, fontStyle: 'italic' }}>
-              Ingen invitasjoner sendt fra denne MCC-en ennå.
+              {t('adsMgmt.s018')}
             </Typography>
           )}
 

@@ -49,6 +49,8 @@ import ClientRequestModal from './ClientRequestModal';
 import ClientRequestsThread from './ClientRequestsThread';
 import { LoadingSkeleton, ErrorAlert } from './ui';
 import type { DataSourcePlatformKey } from '../../utils/dataSourceClientOnboarding';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type DataSourcesPayload = NonNullable<Awaited<ReturnType<typeof roleRoomAgentService.fetchDataSources>>>;
 type DataSource = DataSourcesPayload['sources'][number];
@@ -57,54 +59,57 @@ interface DataSourcesPanelProps {
   projectId: string;
 }
 
-const STATE_META: Record<DataSource['state'], { color: string; bg: string; label: string; Icon: React.ElementType }> = {
-  not_connected: { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', label: 'Ikke koblet', Icon: LinkIcon },
-  connected: { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', label: 'Koblet', Icon: LinkIcon },
-  expired: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: 'Token utløpt', Icon: ErrorIcon },
-  needs_config: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', label: 'Mangler config', Icon: WarningIcon },
-  needs_test: { color: '#a5b4fc', bg: 'rgba(167,139,250,0.12)', label: 'Ikke testet', Icon: WarningIcon },
-  test_failed: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: 'Test feilet', Icon: ErrorIcon },
-  verified: { color: '#34d399', bg: 'rgba(52,211,153,0.12)', label: 'Verifisert', Icon: VerifiedIcon },
-};
+const buildSTATE_META = (t: TFn): Record<DataSource['state'], { color: string; bg: string; label: string; Icon: React.ElementType }> => ({
+  not_connected: { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', label: t('dataSources.s012'), Icon: LinkIcon },
+  connected: { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', label: t('dataSources.s014'), Icon: LinkIcon },
+  expired: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: t('dataSources.s037'), Icon: ErrorIcon },
+  needs_config: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', label: t('dataSources.s024'), Icon: WarningIcon },
+  needs_test: { color: '#a5b4fc', bg: 'rgba(167,139,250,0.12)', label: t('dataSources.s013'), Icon: WarningIcon },
+  test_failed: { color: '#f87171', bg: 'rgba(239,68,68,0.12)', label: t('dataSources.s033'), Icon: ErrorIcon },
+  verified: { color: '#34d399', bg: 'rgba(52,211,153,0.12)', label: t('dataSources.s042'), Icon: VerifiedIcon },
+});
 
-const GROUP_LABEL: Record<DataSource['group'], string> = {
-  social: 'Sosiale medier',
+const buildGROUP_LABEL = (t: TFn): Record<DataSource['group'], string> => ({
+  social: t('dataSources.s032'),
   analytics: 'Analytics',
-  local: 'Lokal-søk',
+  local: t('dataSources.s023'),
   video: 'Video',
-  professional: 'Profesjonell',
-};
+  professional: t('dataSources.s028'),
+});
 
 // Config-keys med visningsnavn + placeholder + valideringshjelp per platform.
-const CONFIG_KEY_META: Record<string, { label: string; placeholder: string; helperText: string }> = {
+const buildCONFIG_KEY_META = (t: TFn): Record<string, { label: string; placeholder: string; helperText: string }> => ({
   property_id: {
     label: 'GA4 Property ID',
-    placeholder: 'f.eks. 378451237',
-    helperText: 'Finnes i Google Analytics → Admin → Property Settings (9-sifret).',
+    placeholder: t('dataSources.s048'),
+    helperText: t('dataSources.s007'),
   },
   location_id: {
-    label: 'Google Business location-ID',
-    placeholder: 'f.eks. accounts/123/locations/456',
-    helperText: 'Finnes i Google Business Profile Performance → API-info.',
+    label: t('dataSources.s010'),
+    placeholder: t('dataSources.s050'),
+    helperText: t('dataSources.s008'),
   },
   site_url: {
-    label: 'Search Console domene',
-    placeholder: 'sc-domain:dittfirma.no eller https://dittfirma.no/',
-    helperText: 'Akkurat slik det vises i Search Console (med protokoll eller sc-domain:-prefix).',
+    label: t('dataSources.s030'),
+    placeholder: t('dataSources.s052'),
+    helperText: t('dataSources.s001'),
   },
   channel_id: {
     label: 'YouTube Channel ID',
-    placeholder: 'f.eks. UCdQw4w9WgXcQ-LeKwUtUVzg',
-    helperText: 'YouTube Studio → Innstillinger → Kanal → Advanced — "Channel ID".',
+    placeholder: t('dataSources.s049'),
+    helperText: t('dataSources.s044'),
   },
   page_id: {
     label: 'Facebook Page ID',
-    placeholder: 'f.eks. 123456789012345',
+    placeholder: t('dataSources.s047'),
     helperText: 'Facebook Page → About → Page ID.',
   },
-};
+});
 
 const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
+  const { t } = useT();
+  const GROUP_LABEL = useMemo(() => buildGROUP_LABEL(t), [t]);
+  const CONFIG_KEY_META = useMemo(() => buildCONFIG_KEY_META(t), [t]);
   const [data, setData] = useState<DataSourcesPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +137,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
     try {
       const result = await roleRoomAgentService.fetchDataSources(projectId);
       setData(result);
-      if (!result) setError('Kunne ikke laste datakilder.');
+      if (!result) setError(t('dataSources.s020'));
     } finally {
       setLoading(false);
     }
@@ -145,9 +150,9 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
     try {
       const result = await roleRoomAgentService.testDataSource(projectId, sourceKey);
       if (!result) {
-        setError(`Test av ${sourceKey} returnerte ingen respons.`);
+        setError(t('dataSources.p01', { v0: sourceKey }));
       } else if (!result.success) {
-        setError(`Test av ${sourceKey} feilet: ${result.error ?? 'ukjent feil'}`);
+        setError(t('dataSources.p00', { v0: sourceKey, v1: result.error ?? t('dataSources.s053') }));
       }
       await load();
     } finally {
@@ -183,7 +188,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
   const handleSaveConfig = useCallback(async (): Promise<void> => {
     if (!configDialog) return;
     if (!configValue.trim()) {
-      setError('Verdi kan ikke være tom.');
+      setError(t('dataSources.s041'));
       return;
     }
     setSavingConfig(true);
@@ -196,7 +201,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
         displayLabel: configLabel.trim() || undefined,
       });
       if (!ok) {
-        setError('Kunne ikke lagre konfigurasjon.');
+        setError(t('dataSources.s019'));
         return;
       }
       setConfigDialog(null);
@@ -224,7 +229,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
   if (!data) {
     return (
       <ErrorAlert
-        message={error ?? 'Kunne ikke laste datakilder.'}
+        message={error ?? t('dataSources.s020')}
         onRetry={() => void load()}
       />
     );
@@ -248,19 +253,16 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
           '& .MuiAlert-message': { py: 0.4 },
         }}
       >
-        <strong style={{ color: '#bfdbfe' }}>To-stegs-modell:</strong> Først kobler du klient-konto
-        i <strong>Kontoer-fanen</strong> (OAuth-invite, business manager). Her i Datakilder
-        konfigurerer du KPI-henting (property-ID-er, OAuth-scopes for analytics) — én plattform kan
-        ha begge deler.
+        <strong style={{ color: '#bfdbfe' }}>{t('dataSources.s036')}</strong> {t('dataSources.s009')} <strong>{t('dataSources.s018')}</strong> {t('dataSources.s000')}
       </Alert>
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.4 }}>
         <Stack spacing={0.2}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>
-            Datakilder
+            {t('dataSources.s004')}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.84rem' }}>
-            {data.verifiedCount} av {data.sourceCount} kilder er verifisert og klare for KPI-henting.
+            {data.verifiedCount} {t('dataSources.s045')} {data.sourceCount} {t('dataSources.s051')}
           </Typography>
         </Stack>
         <Button
@@ -269,7 +271,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
           onClick={() => void load()}
           sx={{ textTransform: 'none', color: '#cbd5e1' }}
         >
-          Oppdater
+          {t('dataSources.s026')}
         </Button>
       </Stack>
 
@@ -336,7 +338,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
         PaperProps={{ sx: { bgcolor: '#0b1226', color: '#f8fafc' } }}
       >
         <DialogTitle>
-          Konfigurer {configDialog?.source.label}
+          {t('dataSources.s017')} {configDialog?.source.label}
         </DialogTitle>
         <DialogContent>
           {configDialog ? (() => {
@@ -352,13 +354,13 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
                   <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 1 }}>
                     <CircularProgress size={16} />
                     <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.84rem' }}>
-                      Henter tilgjengelige {meta.label.toLowerCase()}…
+                      {t('dataSources.s011')} {meta.label.toLowerCase()}…
                     </Typography>
                   </Stack>
                 ) : pickerCandidates && pickerCandidates.length > 0 ? (
                   <>
                     <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.82rem' }}>
-                      Velg fra Google-kontoer du har tilgang til:
+                      {t('dataSources.s039')}
                     </Typography>
                     <Select
                       value={configValue}
@@ -370,7 +372,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' },
                       }}
                     >
-                      <MenuItem value="" disabled>Velg…</MenuItem>
+                      <MenuItem value="" disabled>{t('dataSources.s040')}</MenuItem>
                       {pickerCandidates.map((c) => (
                         <MenuItem key={c.id} value={c.id}>
                           <Stack>
@@ -384,7 +386,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
                       ))}
                     </Select>
                     <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem' }}>
-                      Eller skriv inn ID-en manuelt nedenfor.
+                      {t('dataSources.s006')}
                     </Typography>
                   </>
                 ) : pickerError ? (
@@ -392,9 +394,9 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
                     severity="warning"
                     sx={{ bgcolor: 'rgba(251,191,36,0.1)' }}
                   >
-                    <strong>Picker utilgjengelig:</strong> {pickerError}
+                    <strong>{t('dataSources.s027')}</strong> {pickerError}
                     <Typography sx={{ fontSize: '0.78rem', mt: 0.4 }}>
-                      Du kan fortsatt skrive inn ID-en manuelt under.
+                      {t('dataSources.s005')}
                     </Typography>
                   </Alert>
                 ) : null}
@@ -416,8 +418,8 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
                   }}
                 />
                 <TextField
-                  label="Visningslabel (valgfri)"
-                  placeholder="f.eks. 'Hovednettside' eller 'Oslo-restauranten'"
+                  label={t('dataSources.s043')}
+                  placeholder={t('dataSources.s046')}
                   value={configLabel}
                   onChange={(e) => setConfigLabel(e.target.value)}
                   fullWidth
@@ -433,7 +435,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
           })() : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfigDialog(null)} sx={{ color: '#cbd5e1' }}>Avbryt</Button>
+          <Button onClick={() => setConfigDialog(null)} sx={{ color: '#cbd5e1' }}>{t('dataSources.s002')}</Button>
           <Button
             variant="contained"
             onClick={() => void handleSaveConfig()}
@@ -441,7 +443,7 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
             startIcon={savingConfig ? <CircularProgress size={12} /> : null}
             sx={{ background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)' }}
           >
-            {savingConfig ? 'Lagrer…' : 'Lagre'}
+            {savingConfig ? t('dataSources.s022') : t('dataSources.s021')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -475,6 +477,9 @@ function mapToOnboardingKey(sourceKey: string): DataSourcePlatformKey | null {
 }
 
 const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest, onConfigure, onRequestClientAccess }) => {
+  const { t } = useT();
+  const CONFIG_KEY_META = useMemo(() => buildCONFIG_KEY_META(t), [t]);
+  const STATE_META = useMemo(() => buildSTATE_META(t), [t]);
   const [expanded, setExpanded] = useState(false);
   const meta = STATE_META[source.state];
   const Icon = meta.Icon;
@@ -548,7 +553,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
           </Stack>
           {source.connection?.profile?.name || source.connection?.profile?.email ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.74rem' }}>
-              Koblet som {source.connection.profile.name ?? source.connection.profile.email}
+              {t('dataSources.s015')} {source.connection.profile.name ?? source.connection.profile.email}
             </Typography>
           ) : source.errorMessage ? (
             <Typography sx={{ color: '#fca5a5', fontSize: '0.74rem' }}>
@@ -559,7 +564,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
 
         {/* Hovedhandling */}
         {source.nextAction.type === 'none' ? (
-          <Tooltip title="Test forbindelsen igjen">
+          <Tooltip title={t('dataSources.s034')}>
             <Button
               size="small"
               startIcon={testing ? <CircularProgress size={12} /> : <RefreshIcon fontSize="small" />}
@@ -586,9 +591,9 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
             }}
           >
             {testing && source.nextAction.type === 'test_connection'
-              ? 'Tester…'
+              ? t('dataSources.s035')
               : source.nextAction.type === 'refresh_token'
-                ? 'Re-autoriser'
+                ? t('dataSources.s029')
                 : source.nextAction.label}
           </Button>
         )}
@@ -596,7 +601,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
         {/* "Be klient om tilgang" — vises kun for sources som har e-post-mal og som
             er i en state der klienten faktisk må gjøre noe. */}
         {mapToOnboardingKey(source.key) && source.state !== 'verified' ? (
-          <Tooltip title="Send ferdig norsk e-post med trinnvise instrukser til klienten">
+          <Tooltip title={t('dataSources.s031')}>
             <Button
               size="small"
               startIcon={<MailIcon fontSize="small" />}
@@ -608,7 +613,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
                 '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
               }}
             >
-              Be klient
+              {t('dataSources.s003')}
             </Button>
           </Tooltip>
         ) : null}
@@ -634,7 +639,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
           {source.connection?.scopes && source.connection.scopes.length > 0 ? (
             <Box sx={{ mb: 0.8 }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem', mb: 0.3 }}>
-                OAuth-scopes:
+                {t('dataSources.s025')}
               </Typography>
               <Stack direction="row" spacing={0.3} flexWrap="wrap" useFlexGap>
                 {source.connection.scopes.map((scope) => (
@@ -652,7 +657,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
           {source.configs.length > 0 ? (
             <Box sx={{ mb: 0.8 }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem', mb: 0.3 }}>
-                Konfigurasjon:
+                {t('dataSources.s016')}
               </Typography>
               <Stack spacing={0.4}>
                 {source.configs.map((c) => {
@@ -679,11 +684,11 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
                         </Typography>
                       </Stack>
                       {c.validatedAt ? (
-                        <Tooltip title={`Verifisert ${new Date(c.validatedAt).toLocaleString('nb-NO')}`}>
+                        <Tooltip title={t('dataSources.p02', { v0: new Date(c.validatedAt).toLocaleString('nb-NO') })}>
                           <VerifiedIcon sx={{ color: '#34d399', fontSize: 14 }} />
                         </Tooltip>
                       ) : c.lastTestResult && !c.lastTestResult.success ? (
-                        <Tooltip title={c.lastTestResult.error ?? 'Test feilet'}>
+                        <Tooltip title={c.lastTestResult.error ?? t('dataSources.s033')}>
                           <ErrorIcon sx={{ color: '#f87171', fontSize: 14 }} />
                         </Tooltip>
                       ) : null}
@@ -704,7 +709,7 @@ const DataSourceCard: React.FC<DataSourceCardProps> = ({ source, testing, onTest
           ) : null}
           {source.connection?.expiresAt ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>
-              Utløper: {new Date(source.connection.expiresAt).toLocaleString('nb-NO')}
+              {t('dataSources.s038')} {new Date(source.connection.expiresAt).toLocaleString('nb-NO')}
             </Typography>
           ) : null}
         </Box>

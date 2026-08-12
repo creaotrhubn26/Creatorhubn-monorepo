@@ -6,7 +6,7 @@
  * e-posten så supplier-cardet kan vise "Svar mottatt 5. mai · positivt".
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
@@ -33,6 +33,7 @@ import {
   type MerchPartnerEmailLogEntry,
   type MerchReplySentiment,
 } from '../../services/roleRoomAgentClaudeApi';
+import { useT } from '../../../../i18n';
 
 interface MerchPartnerReplyDialogProps {
   open: boolean;
@@ -43,12 +44,6 @@ interface MerchPartnerReplyDialogProps {
   sentEmail: MerchPartnerEmailLogEntry | null;
 }
 
-const SENTIMENT_OPTIONS: ReadonlyArray<{ id: MerchReplySentiment; label: string; icon: React.ReactNode; color: string }> = [
-  { id: 'positive', label: 'Positivt — vil gå videre', icon: <ThumbUpIcon fontSize="small" />, color: '#bbf7d0' },
-  { id: 'neutral', label: 'Nøytralt — trenger mer info', icon: <NeutralIcon fontSize="small" />, color: '#fde68a' },
-  { id: 'negative', label: 'Negativt — passer ikke', icon: <ThumbDownIcon fontSize="small" />, color: '#fecaca' },
-];
-
 const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
   open,
   onClose,
@@ -56,6 +51,12 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
   projectId,
   sentEmail,
 }) => {
+  const { t } = useT();
+  const SENTIMENT_OPTIONS: ReadonlyArray<{ id: MerchReplySentiment; label: string; icon: React.ReactNode; color: string }> = useMemo(() => [
+    { id: 'positive', label: t('merchReply.sentPositive'), icon: <ThumbUpIcon fontSize="small" />, color: '#bbf7d0' },
+    { id: 'neutral', label: t('merchReply.sentNeutral'), icon: <NeutralIcon fontSize="small" />, color: '#fde68a' },
+    { id: 'negative', label: t('merchReply.sentNegative'), icon: <ThumbDownIcon fontSize="small" />, color: '#fecaca' },
+  ], [t]);
   const [summary, setSummary] = useState('');
   const [fullText, setFullText] = useState('');
   const [sentiment, setSentiment] = useState<MerchReplySentiment>('positive');
@@ -88,7 +89,7 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
         repliedAt: new Date(repliedAt).toISOString(),
       });
       if (!r) {
-        setError('Klarte ikke å lagre svaret. Prøv igjen.');
+        setError(t('merchReply.errSaveFailed'));
         return;
       }
       onSaved();
@@ -103,13 +104,13 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
-        Marker svar fra {sentEmail?.partnerName ?? 'partner'}
+        {t('merchReply.title', { name: sentEmail?.partnerName ?? 'partner' })}
         <IconButton
           onClick={onClose}
           disabled={saving}
           size="small"
           sx={{ position: 'absolute', right: 8, top: 8 }}
-          aria-label="Lukk"
+          aria-label={t('merchReply.close')}
         >
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -118,13 +119,13 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
         <Stack spacing={1.6}>
           {sentEmail ? (
             <Typography sx={{ color: 'text.secondary', fontSize: '0.82rem' }}>
-              Til <strong>{sentEmail.partnerEmail}</strong>, sendt {new Date(sentEmail.sentAt).toLocaleString('nb-NO')}: «{sentEmail.subject}»
+              {t('merchReply.to')}<strong>{sentEmail.partnerEmail}</strong>{t('merchReply.sentPrefix')}{new Date(sentEmail.sentAt).toLocaleString('nb-NO')}: «{sentEmail.subject}»
             </Typography>
           ) : null}
 
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
             <Typography sx={{ color: 'text.secondary', fontSize: '0.78rem', alignSelf: 'center', mr: 0.5 }}>
-              Tone:
+              {t('merchReply.tone')}
             </Typography>
             {SENTIMENT_OPTIONS.map((opt) => {
               const active = sentiment === opt.id;
@@ -147,7 +148,7 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
           </Stack>
 
           <TextField
-            label="Tidspunkt for svar"
+            label={t('merchReply.labelRepliedAt')}
             type="datetime-local"
             value={repliedAt}
             onChange={(e) => setRepliedAt(e.target.value)}
@@ -156,10 +157,10 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
           />
 
           <TextField
-            label="Kort sammendrag (1-3 setninger)"
+            label={t('merchReply.labelSummary')}
             value={summary}
             onChange={(e) => setSummary(e.target.value.slice(0, 600))}
-            placeholder="f.eks. 'Spennende forslag, ber om møte 12. mai for å diskutere drakt-spec.'"
+            placeholder={t('merchReply.summaryPlaceholder')}
             size="small"
             fullWidth
             multiline
@@ -169,10 +170,10 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
           />
 
           <TextField
-            label="Hele svaret (valgfritt)"
+            label={t('merchReply.labelFullText')}
             value={fullText}
             onChange={(e) => setFullText(e.target.value.slice(0, 8000))}
-            placeholder="Lim inn full e-post-tekst hvis du vil ha den lagret i prosjektet"
+            placeholder={t('merchReply.fullTextPlaceholder')}
             size="small"
             fullWidth
             multiline
@@ -184,14 +185,14 @@ const MerchPartnerReplyDialog: React.FC<MerchPartnerReplyDialogProps> = ({
         </Stack>
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose} disabled={saving}>Avbryt</Button>
+        <Button onClick={onClose} disabled={saving}>{t('merchReply.cancel')}</Button>
         <Button
           onClick={() => void handleSave()}
           variant="contained"
           disabled={!summary.trim() || saving}
           startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <CheckIcon fontSize="small" />}
         >
-          {saving ? 'Lagrer …' : 'Lagre svar'}
+          {saving ? t('merchReply.saving') : t('merchReply.saveReply')}
         </Button>
       </DialogActions>
     </Dialog>

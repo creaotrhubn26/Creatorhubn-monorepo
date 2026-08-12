@@ -37,6 +37,8 @@ import {
   type DancerProfile,
   type DancerAvailabilityWindow,
 } from './dancerProfileService';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_SOFT = 'rgba(139,92,246,0.12)';
@@ -126,6 +128,7 @@ export function DanceProjectCalendar({
   projectId,
   professionMode,
 }: DanceProjectCalendarProps): React.ReactElement {
+  const { t } = useT();
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
 
@@ -149,7 +152,7 @@ export function DanceProjectCalendar({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Kunne ikke laste dansere');
+        setError(err instanceof Error ? err.message : t('danceProjCal.s004'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -201,23 +204,23 @@ export function DanceProjectCalendar({
       </Stack>
 
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-        <IconButton size="small" onClick={handlePrev} aria-label="Forrige måned">
+        <IconButton size="small" onClick={handlePrev} aria-label={t('danceProjCal.s000')}>
           <ChevronLeft />
         </IconButton>
         <Typography variant="subtitle1" sx={{ minWidth: 180, fontWeight: 600 }}>
           {monthTitle}
         </Typography>
-        <IconButton size="small" onClick={handleNext} aria-label="Neste måned">
+        <IconButton size="small" onClick={handleNext} aria-label={t('danceProjCal.s005')}>
           <ChevronRight />
         </IconButton>
-        <Tooltip title="Hopp til i dag">
+        <Tooltip title={t('danceProjCal.s001')}>
           <IconButton size="small" onClick={handleToday} aria-label="I dag">
             <TodayIcon />
           </IconButton>
         </Tooltip>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {profiles.length} {profiles.length === 1 ? 'danser' : 'dansere'} i prosjektet
+          {profiles.length} {profiles.length === 1 ? t('danceProjCal.s007') : t('danceProjCal.s008')} {t('danceProjCal.s009')}
         </Typography>
       </Stack>
 
@@ -318,7 +321,7 @@ export function DanceProjectCalendar({
         <Stack alignItems="center" spacing={1} sx={{ mt: 3 }}>
           <EventBusyIcon sx={{ color: 'text.disabled' }} />
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Ingen dansere registrert ennå. Legg til danserprofiler for å se tilgjengelighet her.
+            {t('danceProjCal.s002')}
           </Typography>
         </Stack>
       ) : null}
@@ -346,11 +349,11 @@ export function DanceProjectCalendar({
             <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
               {labels.danceBookingAvailabilityLabel} ·{' '}
               {selectedCell.available.length}{' '}
-              {selectedCell.available.length === 1 ? 'tilgjengelig' : 'tilgjengelige'}
+              {selectedCell.available.length === 1 ? t('danceProjCal.s010') : 'tilgjengelige'}
             </Typography>
             {selectedCell.available.length === 0 ? (
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Ingen registrert tilgjengelighet denne dagen.
+                {t('danceProjCal.s003')}
               </Typography>
             ) : (
               <Stack spacing={1}>
@@ -378,7 +381,7 @@ export function DanceProjectCalendar({
             )}
             {projectId ? (
               <Typography variant="caption" sx={{ color: 'text.disabled', mt: 2 }}>
-                Prosjekt: <code>{projectId}</code>
+                {t('danceProjCal.s006')} <code>{projectId}</code>
               </Typography>
             ) : null}
           </Stack>

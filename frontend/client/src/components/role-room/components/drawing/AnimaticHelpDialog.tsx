@@ -19,6 +19,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Close as CloseIcon, HelpOutline } from '@mui/icons-material';
+import { useT } from '../../../../i18n';
 
 const SEEN_KEY = 'role-room:animatic-help-seen-v1';
 
@@ -34,31 +35,33 @@ interface ShortcutRow {
   description: string;
 }
 
-const KEYBOARD_SHORTCUTS: ShortcutRow[] = [
-  { combo: 'Space', description: 'Play / pause' },
-  { combo: '←  →', description: 'Forrige / neste frame' },
-  { combo: 'R', description: 'Start / stopp opptak' },
-  { combo: 'F', description: 'Fullskjerm' },
-];
-
-const TOUCH_GESTURES: ShortcutRow[] = [
-  { combo: 'Tap på stage', description: 'Play / pause' },
-  { combo: 'Sveip venstre', description: 'Neste frame' },
-  { combo: 'Sveip høyre', description: 'Forrige frame' },
-];
-
-const FLOW_STEPS = [
-  { num: 1, label: 'Last opp scratch-track', text: 'Mikrofonknappen 🎤 i kontroll-raden — voiceover/midlertidig musikk for hele scenen.' },
-  { num: 2, label: 'Velg lyd per event', text: 'SFX-panelet detekterer events fra frame-tekst. ✨ for CLAP-foreslag, 🧠 for AI-generering, 📤 for egen fil.' },
-  { num: 3, label: 'Per-frame voiceover', text: 'Mikrofon-strippen under stagen lar deg sette én voiceover per frame.' },
-  { num: 4, label: 'Ta opp', text: 'Trykk ⏺ for å spille inn hele animaticen som WebM med all lyd mikset inn.' },
-];
-
 export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
   open,
   onClose,
   enableDismissPersistence = true,
 }) => {
+  const { t } = useT();
+
+  const KEYBOARD_SHORTCUTS: ShortcutRow[] = React.useMemo(() => [
+    { combo: 'Space', description: t('animaticHelp.kbPlayPause') },
+    { combo: '←  →', description: t('animaticHelp.kbFrames') },
+    { combo: 'R', description: t('animaticHelp.kbRecord') },
+    { combo: 'F', description: t('animaticHelp.kbFullscreen') },
+  ], [t]);
+
+  const TOUCH_GESTURES: ShortcutRow[] = React.useMemo(() => [
+    { combo: t('animaticHelp.touchTapCombo'), description: t('animaticHelp.kbPlayPause') },
+    { combo: t('animaticHelp.touchSwipeLeftCombo'), description: t('animaticHelp.touchNext') },
+    { combo: t('animaticHelp.touchSwipeRightCombo'), description: t('animaticHelp.touchPrev') },
+  ], [t]);
+
+  const FLOW_STEPS = React.useMemo(() => [
+    { num: 1, label: t('animaticHelp.flow1Label'), text: t('animaticHelp.flow1Text') },
+    { num: 2, label: t('animaticHelp.flow2Label'), text: t('animaticHelp.flow2Text') },
+    { num: 3, label: t('animaticHelp.flow3Label'), text: t('animaticHelp.flow3Text') },
+    { num: 4, label: t('animaticHelp.flow4Label'), text: t('animaticHelp.flow4Text') },
+  ], [t]);
+
   const handleDismiss = () => {
     if (enableDismissPersistence && typeof localStorage !== 'undefined') {
       try { localStorage.setItem(SEEN_KEY, '1'); } catch {}
@@ -78,7 +81,7 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
         <Stack direction="row" alignItems="center" spacing={1}>
           <HelpOutline sx={{ color: '#a5b4fc' }} />
           <Typography variant="h6" sx={{ flex: 1 }}>
-            Animatic-spilleren
+            {t('animaticHelp.title')}
           </Typography>
           <IconButton size="small" onClick={onClose}>
             <CloseIcon />
@@ -89,14 +92,13 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
         <Stack spacing={2}>
           <Box>
             <Typography variant="body2" sx={{ mb: 1 }}>
-              Spill av storyboardet ditt som en enkel video for å teste pacing,
-              lyd og dialog før du finpusser tegningene.
+              {t('animaticHelp.intro')}
             </Typography>
           </Box>
 
           <Box>
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Arbeidsflyt
+              {t('animaticHelp.sectionFlow')}
             </Typography>
             <Stack spacing={0.75} sx={{ mt: 1 }}>
               {FLOW_STEPS.map((s) => (
@@ -134,7 +136,7 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
 
           <Box>
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Tastatur-snarveier
+              {t('animaticHelp.sectionKeyboard')}
             </Typography>
             <Stack spacing={0.5} sx={{ mt: 1 }}>
               {KEYBOARD_SHORTCUTS.map((row) => (
@@ -162,7 +164,7 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
 
           <Box>
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Touch-gestures (iPad)
+              {t('animaticHelp.sectionTouch')}
             </Typography>
             <Stack spacing={0.5} sx={{ mt: 1 }}>
               {TOUCH_GESTURES.map((row) => (
@@ -188,14 +190,13 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
           </Box>
 
           <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-            Tips: alt du laster opp persisteres per scene i nettleserens IndexedDB.
-            Reload eller bytt scene — det er der når du kommer tilbake.
+            {t('animaticHelp.tipPersist')}
           </Typography>
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleDismiss} variant="contained" data-testid="animatic-help-got-it">
-          Forstått
+          {t('animaticHelp.gotIt')}
         </Button>
       </DialogActions>
     </Dialog>

@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon, TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
 import type { SceneBreakdown, ShotList } from '../models/casting';
+import { useT } from '../../../i18n';
 
 interface ProductionEstimateDialogProps {
   open: boolean;
@@ -78,15 +79,6 @@ const getRiskColor = (level: 'low' | 'medium' | 'high' | 'critical'): string => 
   }
 };
 
-const getRiskLabel = (level: 'low' | 'medium' | 'high' | 'critical'): string => {
-  switch (level) {
-    case 'low': return 'Lav risiko';
-    case 'medium': return 'Moderat risiko';
-    case 'high': return 'Høy risiko';
-    case 'critical': return 'Kritisk risiko';
-  }
-};
-
 export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> = ({
   open,
   onClose,
@@ -94,6 +86,23 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
   shotLists,
   manuscriptTitle,
 }) => {
+  const { t } = useT();
+  const riskLabels = useMemo<Record<string, string>>(() => ({
+    low: t('prodEst.riskLow'),
+    medium: t('prodEst.riskMedium'),
+    high: t('prodEst.riskHigh'),
+    critical: t('prodEst.riskCritical'),
+  }), [t]);
+  const roleLabels = useMemo<Record<string, string>>(() => ({
+    director: t('prodEst.roleDirector'),
+    cinematographer: t('prodEst.roleCinematographer'),
+    soundEngineer: t('prodEst.roleSoundEngineer'),
+    gaffer: t('prodEst.roleGaffer'),
+    grip: t('prodEst.roleGrip'),
+    productionAssistant: t('prodEst.roleProductionAssistant'),
+    makeup: t('prodEst.roleMakeup'),
+    wardrobe: t('prodEst.roleWardrobe'),
+  }), [t]);
   const estimate = useMemo((): ProductionEstimate => {
     // Calculate scene breakdown
     const intScenes = scenes.filter(s => s.intExt === 'INT').length;
@@ -149,60 +158,60 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
     // Location risk
     if (uniqueLocations > 5) {
       risks.push({
-        type: 'Lokasjoner',
+        type: t('prodEst.riskLocations'),
         severity: 'high',
-        description: `${uniqueLocations} forskjellige lokasjoner krever omfattende planlegging og transport`,
+        description: t('prodEst.riskLocDescHigh', { n: uniqueLocations }),
       });
     } else if (uniqueLocations > 3) {
       risks.push({
-        type: 'Lokasjoner',
+        type: t('prodEst.riskLocations'),
         severity: 'medium',
-        description: `${uniqueLocations} lokasjoner krever god logistikk`,
+        description: t('prodEst.riskLocDescMed', { n: uniqueLocations }),
       });
     }
     
     // Exterior scenes risk
     if (extScenes > intScenes * 2) {
       risks.push({
-        type: 'Utendørs',
+        type: t('prodEst.riskExterior'),
         severity: 'high',
-        description: 'Mange utendørs scener - væravhengig produksjon',
+        description: t('prodEst.riskExtDescHigh'),
       });
     } else if (extScenes > intScenes) {
       risks.push({
-        type: 'Utendørs',
+        type: t('prodEst.riskExterior'),
         severity: 'medium',
-        description: 'Flertall utendørs scener - planlegg for værforhold',
+        description: t('prodEst.riskExtDescMed'),
       });
     }
     
     // Night scenes risk
     if (nightScenes > dayScenes) {
       risks.push({
-        type: 'Nattscener',
+        type: t('prodEst.riskNight'),
         severity: 'high',
-        description: 'Mange nattscener krever ekstra lys og lengre oppsett',
+        description: t('prodEst.riskNightDescHigh'),
       });
     } else if (nightScenes > 0) {
       risks.push({
-        type: 'Nattscener',
+        type: t('prodEst.riskNight'),
         severity: 'medium',
-        description: `${nightScenes} nattscener krever lysutstyr`,
+        description: t('prodEst.riskNightDescMed', { n: nightScenes }),
       });
     }
     
     // Shot complexity risk
     if (totalShots > 50) {
       risks.push({
-        type: 'Shot-kompleksitet',
+        type: t('prodEst.riskShotComplexity'),
         severity: 'high',
-        description: `${totalShots} shots er svært ambisiøst - vurder å redusere`,
+        description: t('prodEst.riskShotDescHigh', { n: totalShots }),
       });
     } else if (totalShots > 30) {
       risks.push({
-        type: 'Shot-kompleksitet',
+        type: t('prodEst.riskShotComplexity'),
         severity: 'medium',
-        description: `${totalShots} shots krever grundig planlegging`,
+        description: t('prodEst.riskShotDescMed', { n: totalShots }),
       });
     }
     
@@ -212,30 +221,30 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
     );
     if (scenesWithoutShots.length > scenes.length / 2) {
       risks.push({
-        type: 'Manglende shots',
+        type: t('prodEst.riskMissingShots'),
         severity: 'high',
-        description: `${scenesWithoutShots.length} scener mangler shot planning`,
+        description: t('prodEst.riskMissingDescHigh', { n: scenesWithoutShots.length }),
       });
     } else if (scenesWithoutShots.length > 0) {
       risks.push({
-        type: 'Manglende shots',
+        type: t('prodEst.riskMissingShots'),
         severity: 'medium',
-        description: `${scenesWithoutShots.length} scener mangler shots`,
+        description: t('prodEst.riskMissingDescMed', { n: scenesWithoutShots.length }),
       });
     }
     
     // Schedule risk
     if (totalShootDays > 10) {
       risks.push({
-        type: 'Tidsplan',
+        type: t('prodEst.riskSchedule'),
         severity: 'high',
-        description: `${totalShootDays} innspillingsdager - lang produksjon`,
+        description: t('prodEst.riskSchedDescHigh', { n: totalShootDays }),
       });
     } else if (totalShootDays > 5) {
       risks.push({
-        type: 'Tidsplan',
+        type: t('prodEst.riskSchedule'),
         severity: 'medium',
-        description: `${totalShootDays} innspillingsdager - planlegg godt`,
+        description: t('prodEst.riskSchedDescMed', { n: totalShootDays }),
       });
     }
     
@@ -264,12 +273,12 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
         totalShots,
       },
     };
-  }, [scenes, shotLists]);
+  }, [scenes, shotLists, t]);
 
   const formatTime = (minutes: number): string => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
-    return `${hours}t ${mins}m`;
+    return t('prodEst.durationHm', { h: hours, m: mins });
   };
 
   const crewCount = Object.values(estimate.crewRequired).filter(Boolean).length;
@@ -291,7 +300,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
         <Stack direction="row" spacing={2} alignItems="center">
           <TrendingUpIcon sx={{ color: '#64b5f6' }} />
           <Box>
-            <Typography variant="h6">Produksjonsestimater</Typography>
+            <Typography variant="h6">{t('prodEst.title')}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               {manuscriptTitle}
             </Typography>
@@ -312,10 +321,10 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
             }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              {getRiskLabel(estimate.riskLevel)}
+              {riskLabels[estimate.riskLevel]}
             </Typography>
             <Typography variant="body2">
-              Produksjonen har {estimate.risks.length} identifiserte risikoer
+              {t('prodEst.risksIdentified', { n: estimate.risks.length })}
             </Typography>
           </Alert>
 
@@ -330,7 +339,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                       {estimate.totalShootDays}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                      Innspillingsdager
+                      {t('prodEst.shootDays')}
                     </Typography>
                   </Stack>
                 </CardContent>
@@ -346,7 +355,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                       {crewCount}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                      Crew-medlemmer
+                      {t('prodEst.crewMembers')}
                     </Typography>
                   </Stack>
                 </CardContent>
@@ -362,7 +371,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                       {estimate.breakdown.totalShots}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                      Totalt shots
+                      {t('prodEst.totalShots')}
                     </Typography>
                   </Stack>
                 </CardContent>
@@ -378,7 +387,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                       {estimate.breakdown.uniqueLocations}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                      Lokasjoner
+                      {t('prodEst.locations')}
                     </Typography>
                   </Stack>
                 </CardContent>
@@ -389,12 +398,12 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
           {/* Time Breakdown */}
           <Paper sx={{ p: 2, bgcolor: '#16213e', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Typography variant="subtitle2" sx={{ mb: 2, color: '#64b5f6', fontWeight: 600 }}>
-              TIDSESTIMAT
+              {t('prodEst.timeEstimate')}
             </Typography>
             <Stack spacing={2}>
               <Box>
                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                  <Typography variant="body2">Oppsett-tid</Typography>
+                  <Typography variant="body2">{t('prodEst.setupTime')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {formatTime(estimate.totalSetupTime)}
                   </Typography>
@@ -413,7 +422,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
 
               <Box>
                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                  <Typography variant="body2">Innspillingstid</Typography>
+                  <Typography variant="body2">{t('prodEst.shootingTime')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {formatTime(estimate.totalShootingTime)}
                   </Typography>
@@ -433,7 +442,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
               <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
               <Stack direction="row" justifyContent="space-between">
-                <Typography variant="subtitle2">Total tid</Typography>
+                <Typography variant="subtitle2">{t('prodEst.totalTime')}</Typography>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#4caf50' }}>
                   {formatTime(estimate.totalSetupTime + estimate.totalShootingTime)}
                 </Typography>
@@ -444,7 +453,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
           {/* Crew Requirements */}
           <Paper sx={{ p: 2, bgcolor: '#16213e', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Typography variant="subtitle2" sx={{ mb: 2, color: '#ffa726', fontWeight: 600 }}>
-              CREW-BEHOV
+              {t('prodEst.crewNeeds')}
             </Typography>
             <Stack spacing={1}>
               {Object.entries(estimate.crewRequired).map(([role, required]) => (
@@ -455,14 +464,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                     <Box sx={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.2)' }} />
                   )}
                   <Typography variant="body2" sx={{ color: required ? '#fff' : 'rgba(255,255,255,0.5)' }}>
-                    {role === 'director' && 'Regissør'}
-                    {role === 'cinematographer' && 'Filmfotograf'}
-                    {role === 'soundEngineer' && 'Lydtekniker'}
-                    {role === 'gaffer' && 'Gaffer (Lystekniker)'}
-                    {role === 'grip' && 'Grip'}
-                    {role === 'productionAssistant' && 'Produksjonsassistent'}
-                    {role === 'makeup' && 'Sminke'}
-                    {role === 'wardrobe' && 'Kostyme'}
+                    {roleLabels[role]}
                   </Typography>
                 </Stack>
               ))}
@@ -473,7 +475,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
           {estimate.risks.length > 0 && (
             <Paper sx={{ p: 2, bgcolor: '#16213e', border: `1px solid ${getRiskColor(estimate.riskLevel)}` }}>
               <Typography variant="subtitle2" sx={{ mb: 2, color: getRiskColor(estimate.riskLevel), fontWeight: 600 }}>
-                RISIKOER & ADVARSLER
+                {t('prodEst.risksWarnings')}
               </Typography>
               <Stack spacing={1.5}>
                 {estimate.risks.map((risk, idx) => (
@@ -501,7 +503,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
                         </Typography>
                       </Box>
                       <Chip
-                        label={risk.severity === 'high' ? 'HØY' : 'MEDIUM'}
+                        label={risk.severity === 'high' ? t('prodEst.sevHigh') : t('prodEst.sevMedium')}
                         size="small"
                         sx={{
                           bgcolor: getRiskColor(risk.severity),
@@ -520,46 +522,46 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
           {/* Scene Breakdown */}
           <Paper sx={{ p: 2, bgcolor: '#16213e', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Typography variant="subtitle2" sx={{ mb: 2, color: '#9c27b0', fontWeight: 600 }}>
-              SCENE-OVERSIKT
+              {t('prodEst.sceneOverview')}
             </Typography>
             <Grid container spacing={2}>
               <Grid size={{ xs: 6 }}>
                 <Stack spacing={0.5}>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Innendørs
+                    {t('prodEst.interior')}
                   </Typography>
                   <Typography variant="h6" sx={{ color: '#64b5f6' }}>
-                    {estimate.breakdown.intScenes} scener
+                    {t('prodEst.scenesCount', { n: estimate.breakdown.intScenes })}
                   </Typography>
                 </Stack>
               </Grid>
               <Grid size={{ xs: 6 }}>
                 <Stack spacing={0.5}>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Utendørs
+                    {t('prodEst.exterior')}
                   </Typography>
                   <Typography variant="h6" sx={{ color: '#ffa726' }}>
-                    {estimate.breakdown.extScenes} scener
+                    {t('prodEst.scenesCount', { n: estimate.breakdown.extScenes })}
                   </Typography>
                 </Stack>
               </Grid>
               <Grid size={{ xs: 6 }}>
                 <Stack spacing={0.5}>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Dag
+                    {t('prodEst.day')}
                   </Typography>
                   <Typography variant="h6" sx={{ color: '#fff176' }}>
-                    {estimate.breakdown.dayScenes} scener
+                    {t('prodEst.scenesCount', { n: estimate.breakdown.dayScenes })}
                   </Typography>
                 </Stack>
               </Grid>
               <Grid size={{ xs: 6 }}>
                 <Stack spacing={0.5}>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Natt
+                    {t('prodEst.night')}
                   </Typography>
                   <Typography variant="h6" sx={{ color: '#7e57c2' }}>
-                    {estimate.breakdown.nightScenes} scener
+                    {t('prodEst.scenesCount', { n: estimate.breakdown.nightScenes })}
                   </Typography>
                 </Stack>
               </Grid>
@@ -570,7 +572,7 @@ export const ProductionEstimateDialog: React.FC<ProductionEstimateDialogProps> =
 
       <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
         <Button onClick={onClose} variant="outlined">
-          Lukk
+          {t('prodEst.close')}
         </Button>
         <Button
           onClick={onClose}

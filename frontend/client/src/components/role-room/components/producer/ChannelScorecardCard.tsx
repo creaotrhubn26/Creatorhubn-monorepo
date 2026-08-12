@@ -19,6 +19,8 @@ import {
 import roleRoomAgentService, {
   type MarketingChannelScorecardResponse,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ChannelScorecardCardProps {
   projectId: string;
@@ -48,6 +50,7 @@ const panelSx = {
 } as const;
 
 export default function ChannelScorecardCard({ projectId }: ChannelScorecardCardProps) {
+  const { t } = useT();
   const [data, setData] = useState<MarketingChannelScorecardResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -77,7 +80,7 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
       <Box sx={{ ...panelSx, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <CircularProgress size={18} />
         <Typography sx={{ color: 'rgba(203,213,225,0.85)', fontSize: '0.85rem' }}>
-          Laster kanal-scorecard…
+          {t('channelScorecard.s006')}
         </Typography>
       </Box>
     );
@@ -88,10 +91,10 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
     return (
       <Box sx={panelSx}>
         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.95rem' }}>
-          Kanal-scorecard
+          {t('channelScorecard.s003')}
         </Typography>
         <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.82rem', mt: 0.5 }}>
-          Kjør research for prosjektet for å få et anbefalt kanal-oppsett — så måles faktisk ytelse mot det her.
+          {t('channelScorecard.s005')}
         </Typography>
       </Box>
     );
@@ -108,7 +111,7 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
     <Box sx={panelSx}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap sx={{ gap: 1 }}>
         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.95rem' }}>
-          Kanal-scorecard · anbefalt oppsett vs faktisk ytelse
+          {t('channelScorecard.s004')}
         </Typography>
         {setup ? (
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -121,11 +124,11 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
 
       {!sc.hasAnyData ? (
         <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.78rem', mt: 0.75 }}>
-          Ingen målte KPI-er ennå — kanalene under er anbefalt oppsett. Tall fylles inn når postene er publisert og målt.
+          {t('channelScorecard.s001')}
         </Typography>
       ) : (
         <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.78rem', mt: 0.75 }}>
-          {sc.recommendedWithData} av {sc.channels.length} anbefalte kanaler har målt data (siste {data.sinceDays} dager).
+          {t('channelScorecard.j00', { v0: sc.recommendedWithData, v1: sc.channels.length, v2: data.sinceDays })}
         </Typography>
       )}
 
@@ -157,14 +160,14 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
                 ) : null}
               </Stack>
               {active && headline ? (
-                <Tooltip title={`${c.postCount} poster · ${c.snapshotCount} målinger`}>
+                <Tooltip title={t('channelScorecard.p00', { v0: c.postCount, v1: c.snapshotCount })}>
                   <Typography sx={{ color: '#a7f3d0', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {fmt(headline.value)} {headline.name}
                   </Typography>
                 </Tooltip>
               ) : (
                 <Typography sx={{ color: 'rgba(148,163,184,0.75)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                  Ingen data ennå
+                  {t('channelScorecard.s000')}
                 </Typography>
               )}
             </Stack>
@@ -176,7 +179,7 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
         <>
           <Divider sx={{ my: 1, borderColor: 'rgba(148,163,184,0.12)' }} />
           <Typography sx={{ color: '#fde68a', fontSize: '0.76rem', fontWeight: 700 }}>
-            Uventede vinnere (ytelse uten å være i anbefalt oppsett)
+            {t('channelScorecard.s007')}
           </Typography>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
             {sc.unexpected.map((u) => {
@@ -198,7 +201,7 @@ export default function ChannelScorecardCard({ projectId }: ChannelScorecardCard
         <>
           <Divider sx={{ my: 1, borderColor: 'rgba(148,163,184,0.12)' }} />
           <Typography sx={{ color: 'rgba(203,213,225,0.9)', fontSize: '0.76rem', fontWeight: 700 }}>
-            Innholdspilarer som presterer
+            {t('channelScorecard.s002')}
           </Typography>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
             {topPillars.map((p) => (

@@ -45,6 +45,7 @@ import { ZcamAdapter } from "./cameras/zcam-adapter";
 import { GoProAdapter, requestGoProDevice, isWebBluetoothAvailable as isWebBluetoothAvailableForGoPro } from "./cameras/gopro-adapter";
 import { discoverBridgedCameras, getIpadBridge } from "./cameras/ipad-bridge-adapter";
 import type { CameraAdapter, CameraVendor } from "./cameras/types";
+import { useT } from '../../../i18n';
 
 interface CameraPairingDialogProps {
   open: boolean;
@@ -79,6 +80,7 @@ type _SupportedVendor = keyof typeof VENDOR_LABELS;
 // ─────────────────────────────────────────────────────────────────────
 
 function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [ipAddress, setIpAddress] = React.useState("192.168.1.2");
   const [busy, setBusy] = React.useState(false);
   const [scanning, setScanning] = React.useState(false);
@@ -101,7 +103,7 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
         })));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Skann feilet");
+      setError(err instanceof Error ? err.message : t('camPair.scanFailed'));
     } finally {
       setScanning(false);
     }
@@ -115,7 +117,7 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect feilet");
+      setError(err instanceof Error ? err.message : t('camPair.connectFailed'));
     } finally {
       setBusy(false);
     }
@@ -124,16 +126,14 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Canon-kameraer i AP-modus annonserer typisk på 192.168.1.2 (default).
-        Hvis kameraet er på et regulært nettverk, oppgi IP-adressen manuelt
-        eller kjør subnet-skann.
+        {t('camPair.canonIntro')}
       </Typography>
 
       <Stack direction="row" spacing={1} alignItems="center">
         <TextField
           fullWidth
           size="small"
-          label="IP-adresse"
+          label={t('camPair.ipAddressLabel')}
           value={ipAddress}
           onChange={(e) => setIpAddress(e.target.value)}
           placeholder="192.168.1.2"
@@ -144,7 +144,7 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
           onClick={() => handleConnect(ipAddress)}
           disabled={busy || !ipAddress}
         >
-          Koble til
+          {t('camPair.connectButton')}
         </Button>
       </Stack>
 
@@ -155,13 +155,13 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
         onClick={handleScan}
         disabled={scanning}
       >
-        {scanning ? "Skanner subnet..." : "Skann etter kameraer"}
+        {scanning ? t('camPair.scanningButton') : t('camPair.scanButton')}
       </Button>
 
       {scanResults.length > 0 && (
         <Stack spacing={0.5}>
           <Typography variant="caption" color="text.secondary">
-            Funnet på nettverket:
+            {t('camPair.foundOnNetwork')}
           </Typography>
           {scanResults.map((cam) => (
             <Stack
@@ -178,7 +178,7 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
                 </Typography>
               </Box>
               <Button size="small" onClick={() => handleConnect(cam.ipAddress)} disabled={busy}>
-                Koble til
+                {t('camPair.connectButton')}
               </Button>
             </Stack>
           ))}
@@ -195,6 +195,7 @@ function CanonForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
 // ─────────────────────────────────────────────────────────────────────
 
 function SonyForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [ipAddress, setIpAddress] = React.useState("");
   const [port, setPort] = React.useState("8080");
   const [busy, setBusy] = React.useState(false);
@@ -208,7 +209,7 @@ function SonyForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect feilet");
+      setError(err instanceof Error ? err.message : t('camPair.connectFailed'));
     } finally {
       setBusy(false);
     }
@@ -217,23 +218,21 @@ function SonyForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Sony FX9/FX6/FX3/alpha-serie støtter Camera Remote API på port 8080
-        (default). Venice + andre pro-kameraer kan kreve egen Content
-        Browser Mobile-protokoll og er ikke fullt støttet ennå.
+        {t('camPair.sonyIntro')}
       </Typography>
 
       <Stack direction="row" spacing={1}>
         <TextField
           fullWidth
           size="small"
-          label="IP-adresse"
+          label={t('camPair.ipAddressLabel')}
           value={ipAddress}
           onChange={(e) => setIpAddress(e.target.value)}
           placeholder="192.168.122.1"
         />
         <TextField
           size="small"
-          label="Port"
+          label={t('camPair.portLabel')}
           value={port}
           onChange={(e) => setPort(e.target.value)}
           sx={{ width: 100 }}
@@ -246,7 +245,7 @@ function SonyForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
         onClick={handleConnect}
         disabled={busy || !ipAddress}
       >
-        Koble til Sony
+        {t('camPair.connectSonyButton')}
       </Button>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -259,6 +258,7 @@ function SonyForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
 // ─────────────────────────────────────────────────────────────────────
 
 function ArriForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [ipAddress, setIpAddress] = React.useState("");
   const [port, setPort] = React.useState("80");
   const [busy, setBusy] = React.useState(false);
@@ -272,7 +272,7 @@ function ArriForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect feilet");
+      setError(err instanceof Error ? err.message : t('camPair.connectFailed'));
     } finally {
       setBusy(false);
     }
@@ -281,22 +281,21 @@ function ArriForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        ARRI Web Remote støttes på Alexa Mini LF og Alexa 35 (firmware 7.x+).
-        Web Remote må være aktivert i kameraets meny først (System → API).
+        {t('camPair.arriIntro')}
       </Typography>
 
       <Stack direction="row" spacing={1}>
         <TextField
           fullWidth
           size="small"
-          label="IP-adresse"
+          label={t('camPair.ipAddressLabel')}
           value={ipAddress}
           onChange={(e) => setIpAddress(e.target.value)}
           placeholder="192.168.0.10"
         />
         <TextField
           size="small"
-          label="Port"
+          label={t('camPair.portLabel')}
           value={port}
           onChange={(e) => setPort(e.target.value)}
           sx={{ width: 100 }}
@@ -309,7 +308,7 @@ function ArriForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
         onClick={handleConnect}
         disabled={busy || !ipAddress}
       >
-        Koble til ARRI
+        {t('camPair.connectArriButton')}
       </Button>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -322,6 +321,7 @@ function ArriForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
 // ─────────────────────────────────────────────────────────────────────
 
 function ZcamForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [ipAddress, setIpAddress] = React.useState("");
   const [port, setPort] = React.useState("80");
   const [busy, setBusy] = React.useState(false);
@@ -335,7 +335,7 @@ function ZcamForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect feilet");
+      setError(err instanceof Error ? err.message : t('camPair.connectFailed'));
     } finally {
       setBusy(false);
     }
@@ -344,23 +344,21 @@ function ZcamForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Z CAM-modeller (E2, E2-M4, F8, F6, ZF) eksponerer et åpent HTTP-API på
-        port 80. Kameraet må være i Wi-Fi STA- eller AP-modus. Sjekk
-        kamerameny → Network for IP-adresse.
+        {t('camPair.zcamIntro')}
       </Typography>
 
       <Stack direction="row" spacing={1}>
         <TextField
           fullWidth
           size="small"
-          label="IP-adresse"
+          label={t('camPair.ipAddressLabel')}
           value={ipAddress}
           onChange={(e) => setIpAddress(e.target.value)}
           placeholder="10.98.32.1"
         />
         <TextField
           size="small"
-          label="Port"
+          label={t('camPair.portLabel')}
           value={port}
           onChange={(e) => setPort(e.target.value)}
           sx={{ width: 100 }}
@@ -373,7 +371,7 @@ function ZcamForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
         onClick={handleConnect}
         disabled={busy || !ipAddress}
       >
-        Koble til Z CAM
+        {t('camPair.connectZcamButton')}
       </Button>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -386,6 +384,7 @@ function ZcamForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) 
 // ─────────────────────────────────────────────────────────────────────
 
 function BlackmagicForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const available = isWebBluetoothAvailable();
@@ -399,7 +398,7 @@ function BlackmagicForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Web Bluetooth pairing avbrutt");
+      setError(err instanceof Error ? err.message : t('camPair.blePairingCancelled'));
     } finally {
       setBusy(false);
     }
@@ -408,16 +407,12 @@ function BlackmagicForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Blackmagic-kameraer (URSA Mini, Pocket Cinema, URSA Broadcast) styres
-        via Bluetooth LE direkte fra nettleseren. Krever Chromium-browser
-        (Chrome, Edge, Opera) og HTTPS — fungerer ikke i Safari eller på iOS.
+        {t('camPair.blackmagicIntro')}
       </Typography>
 
       {!available && (
         <Alert severity="warning">
-          Web Bluetooth API er ikke tilgjengelig i denne nettleseren. Bruk
-          Chrome/Edge på desktop, eller åpne LIVE SET PRO i iPad CaptureApp
-          som har native Bluetooth-støtte.
+          {t('camPair.webBluetoothUnavailableBlackmagic')}
         </Alert>
       )}
 
@@ -432,12 +427,11 @@ function BlackmagicForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
           "&:hover": { bgcolor: "#0277bd" },
         }}
       >
-        {busy ? "Søker..." : "Søk etter Blackmagic-kameraer"}
+        {busy ? t('camPair.searchingButton') : t('camPair.searchBlackmagicButton')}
       </Button>
 
       <Typography variant="caption" color="text.secondary">
-        Browser åpner sin egen paring-dialog. Plassér kameraet i nærheten
-        og slå på Bluetooth i kameraets meny.
+        {t('camPair.blackmagicHint')}
       </Typography>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -450,6 +444,7 @@ function BlackmagicForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
 // ─────────────────────────────────────────────────────────────────────
 
 function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const available = isWebBluetoothAvailableForGoPro();
@@ -463,7 +458,7 @@ function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Web Bluetooth pairing avbrutt");
+      setError(err instanceof Error ? err.message : t('camPair.blePairingCancelled'));
     } finally {
       setBusy(false);
     }
@@ -472,15 +467,12 @@ function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        GoPro HERO9, HERO10, HERO11, HERO12, HERO13, MAX og senere modeller med
-        Open GoPro firmware støttes via Bluetooth LE. Aktiver Bluetooth-paring
-        i kameramenyen → Connections → Connect Device → GoPro App → Pair Device.
+        {t('camPair.goproIntro')}
       </Typography>
 
       {!available && (
         <Alert severity="warning">
-          Web Bluetooth API er ikke tilgjengelig. Bruk Chrome/Edge på desktop,
-          eller åpne LIVE SET PRO i iPad CaptureApp (native Bluetooth).
+          {t('camPair.webBluetoothUnavailableGopro')}
         </Alert>
       )}
 
@@ -496,13 +488,11 @@ function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
           "&:hover": { bgcolor: "#424242" },
         }}
       >
-        {busy ? "Søker..." : "Søk etter GoPro"}
+        {busy ? t('camPair.searchingButton') : t('camPair.searchGoproButton')}
       </Button>
 
       <Typography variant="caption" color="text.secondary">
-        Open GoPro BLE-protokollen lar deg starte/stoppe opptak og endre
-        FPS/WB/ISO. For media-overføring trengs Wi-Fi (kommer som
-        oppfølgings-feature).
+        {t('camPair.goproHint')}
       </Typography>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -516,6 +506,7 @@ function GoProForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void })
 // ─────────────────────────────────────────────────────────────────────
 
 function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => void }) {
+  const { t } = useT();
   const [wsUrl, setWsUrl] = React.useState("ws://192.168.1.100:8765/bridge");
   const [authToken, setAuthToken] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -535,7 +526,7 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
         adapters.map((a) => ({ adapter: a, label: a.label, vendor: a.vendor })),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "iPad-bridge ikke tilgjengelig");
+      setError(err instanceof Error ? err.message : t('camPair.bridgeUnavailable'));
     } finally {
       setBusy(false);
     }
@@ -548,7 +539,7 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
       await adapter.connect();
       onPaired(adapter);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect via bridge feilet");
+      setError(err instanceof Error ? err.message : t('camPair.connectViaBridgeFailed'));
     } finally {
       setBusy(false);
     }
@@ -557,16 +548,13 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        iPad CaptureApp kan bridge native-SDK-kameraer (RED Cinema RCP, DJI
-        Mobile SDK, Panasonic Wi-Fi-modul, Bluetooth-protokoller via
-        CoreBluetooth) til web-UI. iPad må kjøre LIVE SET PRO-bridge på samme
-        nettverk, og kameraer paires fra iPad-appen først.
+        {t('camPair.ipadBridgeIntro')}
       </Typography>
 
       <TextField
         fullWidth
         size="small"
-        label="iPad WebSocket-URL"
+        label={t('camPair.wsUrlLabel')}
         value={wsUrl}
         onChange={(e) => setWsUrl(e.target.value)}
         placeholder="ws://192.168.1.100:8765/bridge"
@@ -574,7 +562,7 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
       <TextField
         fullWidth
         size="small"
-        label="Auth-token (valgfri)"
+        label={t('camPair.authTokenLabel')}
         value={authToken}
         onChange={(e) => setAuthToken(e.target.value)}
         type="password"
@@ -586,13 +574,13 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
         onClick={handleDiscover}
         disabled={busy || !wsUrl}
       >
-        Søk etter bridged-kameraer
+        {t('camPair.searchBridgedButton')}
       </Button>
 
       {bridgedCameras.length > 0 && (
         <Stack spacing={0.5}>
           <Typography variant="caption" color="text.secondary">
-            Tilgjengelig via iPad-bridge:
+            {t('camPair.availableViaBridge')}
           </Typography>
           {bridgedCameras.map((cam) => (
             <Stack
@@ -609,7 +597,7 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
                 </Typography>
               </Box>
               <Button size="small" onClick={() => handleConnectBridged(cam.adapter)} disabled={busy}>
-                Koble til
+                {t('camPair.connectButton')}
               </Button>
             </Stack>
           ))}
@@ -617,9 +605,7 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
       )}
 
       <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic" }}>
-        iPad-side trenger CaptureApp v2.x med bridge-protokoll (dokumentert i
-        ipad-bridge-adapter.ts). Når implementert, dekker dette RED, DJI,
-        Panasonic, og fremtidige native-SDK-vendors uten ny web-kode.
+        {t('camPair.ipadBridgeHint')}
       </Typography>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -632,6 +618,7 @@ function IpadBridgeForm({ onPaired }: { onPaired: (adapter: CameraAdapter) => vo
 // ─────────────────────────────────────────────────────────────────────
 
 export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, onClose, onPaired }) => {
+  const { t } = useT();
   const [tab, setTab] = React.useState<TabKey>("canon");
 
   const handlePaired = (adapter: CameraAdapter) => {
@@ -643,7 +630,7 @@ export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, 
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">Koble til kamera</Typography>
+          <Typography variant="h6">{t('camPair.dialogTitle')}</Typography>
           <IconButton onClick={onClose} size="small">
             <CloseIcon />
           </IconButton>
@@ -671,7 +658,7 @@ export const CameraPairingDialog: React.FC<CameraPairingDialogProps> = ({ open, 
         {tab === "ipad-bridge" && <IpadBridgeForm onPaired={handlePaired} />}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Lukk</Button>
+        <Button onClick={onClose}>{t('camPair.closeButton')}</Button>
       </DialogActions>
     </Dialog>
   );

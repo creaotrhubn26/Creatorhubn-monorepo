@@ -39,6 +39,8 @@ import {
 import { useLocation } from 'wouter';
 import * as svc from './danceTeamService';
 import type { InvitePublicInfo } from './danceTeamService';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE_BRIGHT = danceFlowColors.lavenderDark;
 const PURPLE_DEEP   = '#4c1d95';
@@ -54,6 +56,7 @@ interface Props {
 type Step = 'loading' | 'review' | 'pin-entry' | 'accepting' | 'done' | 'error';
 
 export const InviteLandingPage: React.FC<Props> = ({ token }) => {
+  const { t } = useT();
   const [, navigate] = useLocation();
   const [step, setStep] = React.useState<Step>('loading');
   const [info, setInfo] = React.useState<InvitePublicInfo | null>(null);
@@ -73,7 +76,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
         setStep('review');
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const friendly = errorLabel(msg) ?? 'Kunne ikke hente invitasjon';
+        const friendly = errorLabel(t, msg) ?? t('danceInvite.s019');
         setError(friendly);
         setStep('error');
       }
@@ -104,10 +107,10 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
       const err = e as Error & { status?: number; payload?: { throttledUntil?: string } };
       if (err.status === 429 && err.payload?.throttledUntil) {
         setPinThrottledUntil(new Date(err.payload.throttledUntil).getTime());
-        setError('Vent litt før du ber om ny PIN.');
+        setError(t('danceInvite.s030'));
         setStep('pin-entry');
       } else {
-        setError(errorLabel(err.message) ?? 'Kunne ikke sende PIN');
+        setError(errorLabel(t, err.message) ?? t('danceInvite.s020'));
       }
     } finally {
       setPinRequesting(false);
@@ -116,7 +119,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
 
   const submitPin = async () => {
     if (!consent) {
-      setError('Du må samtykke til databehandlingen for å fortsette.');
+      setError(t('danceInvite.s006'));
       return;
     }
     setError(null);
@@ -134,13 +137,13 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
       const err = e as Error & { status?: number };
       const reason = err.message;
       if (reason === 'pin_invalid') {
-        setError('Feil PIN. Sjekk e-posten og prøv igjen.');
+        setError(t('danceInvite.s009'));
       } else if (reason === 'pin_expired') {
-        setError('PIN-en har utløpt. Be om en ny.');
+        setError(t('danceInvite.s023'));
       } else if (reason === 'pin_locked') {
-        setError('Maks antall forsøk overskredet. Be Studio-eier sende ny invitasjon.');
+        setError(t('danceInvite.s021'));
       } else {
-        setError(errorLabel(reason) ?? 'Kunne ikke akseptere');
+        setError(errorLabel(t, reason) ?? t('danceInvite.s018'));
       }
       setStep('pin-entry');
     }
@@ -155,7 +158,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
     return (
       <Layout>
         <Alert severity="error" sx={{ width: '100%' }}>
-          {error ?? 'Invitasjonen finnes ikke eller er utløpt.'}
+          {error ?? t('danceInvite.s014')}
         </Alert>
       </Layout>
     );
@@ -167,9 +170,9 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
         <Stack alignItems="center" spacing={2}>
           <TeamIcon sx={{ fontSize: 56, color: PURPLE_LIGHT }} />
           <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(237,233,254,0.95)' }}>
-            Velkommen til teamet!
+            {t('danceInvite.s029')}
           </Typography>
-          <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>Tar deg til workspace…</Typography>
+          <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>{t('danceInvite.s028')}</Typography>
         </Stack>
       </Layout>
     );
@@ -180,7 +183,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
       <Layout>
         <Stack alignItems="center" spacing={2}>
           <CircularProgress sx={{ color: PURPLE_LIGHT }} />
-          <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>Bekrefter PIN og setter opp konto…</Typography>
+          <Typography sx={{ fontSize: 13, color: TEXT_DIM }}>{t('danceInvite.s003')}</Typography>
         </Stack>
       </Layout>
     );
@@ -196,16 +199,16 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
             DANSESTUDIO · INVITASJON
           </Typography>
           <Typography sx={{ fontSize: 26, fontWeight: 700, color: 'rgba(237,233,254,0.95)', lineHeight: 1.2 }}>
-            Du er invitert
+            {t('danceInvite.s005')}
           </Typography>
           <Typography sx={{ fontSize: 14, color: TEXT_DIM }}>
-            som <Box component="span" sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>{info.invitedRoleLabel}</Box> i et dansestudio på CreatorHub.
+            {t('danceInvite.s034')} <Box component="span" sx={{ color: PURPLE_LIGHT, fontWeight: 700 }}>{info.invitedRoleLabel}</Box> {t('danceInvite.s032')}
           </Typography>
 
           <Box sx={{ width: '100%', mt: 2, p: 2, borderRadius: 2, bgcolor: 'rgba(139,92,246,0.06)', border: `1px solid ${PANEL_BORDER}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <MailIcon sx={{ color: PURPLE_LIGHT, fontSize: 22 }} />
             <Box sx={{ textAlign: 'left' }}>
-              <Typography sx={{ fontSize: 12, color: TEXT_MUTED, letterSpacing: 0.5 }}>SENDES TIL</Typography>
+              <Typography sx={{ fontSize: 12, color: TEXT_MUTED, letterSpacing: 0.5 }}>{t('danceInvite.s024')}</Typography>
               <Typography sx={{ fontSize: 14, color: 'rgba(237,233,254,0.92)', fontVariantNumeric: 'tabular-nums' }}>
                 {info.invitedEmailMasked}
               </Typography>
@@ -233,12 +236,11 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
               ? `Vent ${throttleSec}s…`
               : pinRequesting
                 ? 'Sender…'
-                : 'Send PIN til min e-post'}
+                : t('danceInvite.s025')}
           </Button>
 
           <Typography sx={{ fontSize: 11, color: TEXT_MUTED, mt: 2 }}>
-            For å beskytte invitasjonen, sender vi en 6-sifret PIN til e-postadressen
-            som ble invitert. Du må bekrefte PIN-en før du kan bli medlem.
+            {t('danceInvite.s011')}
           </Typography>
         </Stack>
       </Layout>
@@ -252,13 +254,13 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
         <Stack alignItems="center" spacing={1}>
           <LockIcon sx={{ fontSize: 40, color: PURPLE_LIGHT }} />
           <Typography sx={{ fontSize: 11, letterSpacing: 1.5, color: PURPLE_LIGHT, fontWeight: 700 }}>
-            BEKREFT MED PIN
+            {t('danceInvite.s000')}
           </Typography>
           <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'rgba(237,233,254,0.95)', textAlign: 'center', lineHeight: 1.3 }}>
             Sjekk e-posten din
           </Typography>
           <Typography sx={{ fontSize: 12, color: TEXT_DIM, textAlign: 'center' }}>
-            Vi har sendt en 6-sifret PIN til <strong>{info.invitedEmailMasked}</strong>.
+            {t('danceInvite.s031')} <strong>{info.invitedEmailMasked}</strong>.
           </Typography>
         </Stack>
 
@@ -276,11 +278,11 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
         />
 
         <TextField
-          label="Fullt navn"
+          label={t('danceInvite.s012')}
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           fullWidth
-          placeholder="Slik vil teamet ditt se navnet ditt"
+          placeholder={t('danceInvite.s027')}
           sx={{ '& .MuiInputLabel-root, & .MuiOutlinedInput-root': { color: 'rgba(237,233,254,0.9)' } }}
         />
 
@@ -297,10 +299,8 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
             }
             label={
               <Typography sx={{ fontSize: 12, color: TEXT_DIM, lineHeight: 1.5 }}>
-                Jeg samtykker til at CreatorHub oppretter en konto med min e-post,
-                lagrer mitt navn og logger IP-adressen min ved aksept. Data
-                behandles iht. {' '}
-                <Link href="/privacy" target="_blank" sx={{ color: PURPLE_LIGHT }}>personvernerklæringen</Link>.
+                {t('danceInvite.s017')} {' '}
+                <Link href="/privacy" target="_blank" sx={{ color: PURPLE_LIGHT }}>{t('danceInvite.s033')}</Link>.
               </Typography>
             }
             sx={{ alignItems: 'flex-start', m: 0, '& .MuiFormControlLabel-label': { mt: 0.25 } }}
@@ -320,12 +320,12 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
             py: 1.25,
           }}
         >
-          Bekreft og bli medlem
+          {t('danceInvite.s002')}
         </Button>
 
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography sx={{ fontSize: 11, color: TEXT_MUTED }}>
-            PIN gjelder i 15 minutter
+            {t('danceInvite.s022')}
           </Typography>
           <Button
             size="small"
@@ -333,7 +333,7 @@ export const InviteLandingPage: React.FC<Props> = ({ token }) => {
             disabled={pinRequesting || throttleSec > 0}
             sx={{ textTransform: 'none', color: PURPLE_LIGHT, fontSize: 12 }}
           >
-            {throttleSec > 0 ? `Send ny om ${throttleSec}s` : 'Send ny PIN'}
+            {throttleSec > 0 ? t('danceInvite.p00', { v0: throttleSec }) : t('danceInvite.s026')}
           </Button>
         </Stack>
       </Stack>
@@ -369,16 +369,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </Box>
 );
 
-function errorLabel(reason: string | undefined): string | null {
+function errorLabel(t: TFn, reason: string | undefined): string | null {
   switch (reason) {
-    case 'not_found':       return 'Invitasjonen finnes ikke.';
-    case 'expired':         return 'Invitasjonen har utløpt. Be om ny fra Studio-eieren.';
-    case 'revoked':         return 'Invitasjonen er trukket tilbake.';
-    case 'already_accepted':return 'Denne invitasjonen er allerede akseptert.';
-    case 'pin_locked':      return 'For mange feil PIN-forsøk — kontakt Studio-eieren for ny invitasjon.';
-    case 'mailer_not_configured': return 'E-posttjenesten er ikke tilgjengelig for øyeblikket. Prøv igjen senere.';
-    case 'rate_limited':    return 'Du må vente litt før du ber om ny PIN.';
-    case 'pin_not_requested': return 'Be om PIN først.';
+    case 'not_found':       return t('danceInvite.s015');
+    case 'expired':         return t('danceInvite.s016');
+    case 'revoked':         return t('danceInvite.s013');
+    case 'already_accepted':return t('danceInvite.s004');
+    case 'pin_locked':      return t('danceInvite.s010');
+    case 'mailer_not_configured': return t('danceInvite.s008');
+    case 'rate_limited':    return t('danceInvite.s007');
+    case 'pin_not_requested': return t('danceInvite.s001');
     default: return null;
   }
 }

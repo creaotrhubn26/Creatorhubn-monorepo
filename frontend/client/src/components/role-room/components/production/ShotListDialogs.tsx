@@ -6,6 +6,7 @@ import type { ShotListSummary } from "../../models/derivedState";
 import globalTagService from "../../services/globalTagService";
 import GlobalMentionHelper from "../shared/GlobalMentionHelper";
 import type { StoryboardSeedCandidate } from "../../services/storyboardLibraryService";
+import { useT } from '../../../../i18n';
 
 // ─── Shared dialog paper styles ───────────────────────────────────────────────
 const PAPER_SX = {
@@ -122,6 +123,7 @@ export function CreateEditShotListDialog({
   onClose,
   onSubmit,
 }: CreateEditShotListDialogProps) {
+  const { t } = useT();
   const [form, setForm] = useState<Partial<ShotList>>({
     sceneId: '',
     sceneName: '',
@@ -210,12 +212,12 @@ export function CreateEditShotListDialog({
           renderInput={(params) => (
             <TextField
               {...params}
-              label="Koble til scene"
+              label={t('shotListDlg.linkToScene')}
               fullWidth
               size="small"
               required
               autoFocus
-              helperText="Shotlisten skal bindes til en scene, ikke en løs sceneId-streng."
+              helperText={t('shotListDlg.linkToSceneHelper')}
             />
           )}
           renderOption={(props, option) => (
@@ -276,7 +278,7 @@ export function CreateEditShotListDialog({
               placeholder="Links to scene breakdown"
               value={form.sceneId ?? ''}
               onChange={(e) => set({ sceneId: e.target.value })}
-              helperText="Bruk dette bare hvis scenen ikke finnes i prosjektets sceneliste ennå."
+              helperText={t('shotListDlg.sceneIdHelper')}
             />
           </>
         )}
@@ -288,7 +290,7 @@ export function CreateEditShotListDialog({
                 {selectedScene.sceneName}
               </Typography>
               <Chip size="small" label={`${selectedScene.storyboardFrameCount} storyboard frames`} />
-              <Chip size="small" label={`${selectedScene.storyboardLibraryCount} scene-matchede library items`} />
+              <Chip size="small" label={t('shotListDlg.sceneMatchedLibraryItems', { count: selectedScene.storyboardLibraryCount })} />
             </Stack>
           </Alert>
         )}
@@ -357,10 +359,10 @@ export function CreateEditShotListDialog({
             <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
               <Box>
                 <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
-                  Seed fra storyboard
+                  {t('shotListDlg.seedFromStoryboard')}
                 </Typography>
                 <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>
-                  Velg scene-knyttede storyboard frames eller bibliotekelementer som skal bli shots i denne shotlisten.
+                  {t('shotListDlg.seedFromStoryboardHelper')}
                 </Typography>
               </Box>
               {selectedScene.storyboardCandidates.length > 0 ? (
@@ -369,10 +371,10 @@ export function CreateEditShotListDialog({
                     size="small"
                     onClick={() => setSelectedStoryboardIds(selectedScene.storyboardCandidates.map((candidate) => candidate.id))}
                   >
-                    Velg alle
+                    {t('shotListDlg.selectAll')}
                   </Button>
                   <Button size="small" onClick={() => setSelectedStoryboardIds([])}>
-                    Tøm
+                    {t('shotListDlg.clear')}
                   </Button>
                 </Stack>
               ) : null}
@@ -380,7 +382,7 @@ export function CreateEditShotListDialog({
 
             {selectedScene.storyboardCandidates.length === 0 ? (
               <Alert severity="warning">
-                Scenen har ingen storyboard frames eller scene-matchede bibliotekselementer ennå.
+                {t('shotListDlg.noStoryboardCandidates')}
               </Alert>
             ) : (
               <>
@@ -460,8 +462,8 @@ export function CreateEditShotListDialog({
                 </Box>
                 <Typography sx={{ fontSize: 11, color: '#94a3b8', mt: 1.25 }}>
                   {selectedStoryboardIds.length > 0
-                    ? `${selectedStoryboardIds.length} storyboardvalg blir opprettet som shots i denne listen.`
-                    : 'Hvis du ikke velger noe her, opprettes shotlisten tom men fortsatt bundet til scenen.'}
+                    ? t('shotListDlg.storyboardSelectionCount', { count: selectedStoryboardIds.length })
+                    : t('shotListDlg.emptySeedNotice')}
                 </Typography>
               </>
             )}

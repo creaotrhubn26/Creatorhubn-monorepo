@@ -62,6 +62,9 @@ type CreatorHubGoogleOauthState = {
   mode: CreatorHubGoogleOauthMode;
   returnPath: string;
   browserOrigin?: string | null;
+  // Nøyaktig redirect_uri sendt til Google ved /oauth/start. Token-exchange MÅ
+  // bruke samme verdi, ellers redirect_uri_mismatch.
+  redirectUri?: string | null;
   createdByUserId?: string | null;
   createdByEmail?: string | null;
   targetConnectionUserId?: string | null;
@@ -741,6 +744,7 @@ export function createCreatorHubGoogleRouter(
         mode,
         returnPath: sanitizeReturnPath(req.body?.returnPath),
         browserOrigin: sanitizeBrowserOrigin(req.body?.browserOrigin) ?? resolveRequestOrigin(req),
+        redirectUri: config.redirectUri!,
         createdByUserId: requestUser?.userId ?? null,
         createdByEmail: requestUser?.email ?? null,
         targetConnectionUserId,
@@ -820,9 +824,13 @@ export function createCreatorHubGoogleRouter(
       // returnerte 'https://accounts.google.com' — som ble brukt som
       // redirect_uri i token-exchange. Mismatch med originalen
       // (https://creatorhubn.com/...) → Google avviste.
-      const tokenExchangeRedirectUri = oauthState.browserOrigin
-        ? `${oauthState.browserOrigin}/api/creatorhub/google/oauth/callback`
-        : config.redirectUri!;
+      // Bruk den NØYAKTIGE redirect_uri-en som ble sendt til Google ved
+      // /oauth/start (lagret i state). Å utlede den på nytt fra browserOrigin
+      // her ga mismatch når origin varierte (www vs apex, Referer fra Google).
+      const tokenExchangeRedirectUri = oauthState.redirectUri
+        ?? (oauthState.browserOrigin
+          ? `${oauthState.browserOrigin}/api/creatorhub/google/oauth/callback`
+          : config.redirectUri!);
       const oauthClient = new google.auth.OAuth2(
         config.clientId!,
         config.clientSecret!,

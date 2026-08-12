@@ -25,6 +25,8 @@ import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -63,6 +65,7 @@ export default function ClientTiktokLeadsPanel({
   advertiserId?: string | null;
   isOwnAccount?: boolean;
 }) {
+  const { t } = useT();
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [forms, setForms] = useState<LeadForm[]>([]);
   const [selectedForm, setSelectedForm] = useState('');
@@ -93,11 +96,11 @@ export default function ClientTiktokLeadsPanel({
     try {
       const r = await fetch(`/api/admin-room/agent/ads/tiktok/lead-forms?advertiserId=${advertiserId}`, { credentials: 'include' });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Kunne ikke hente lead-skjemaer');
+      if (!r.ok) throw new Error(data.error || t('tiktokLeads.s014'));
       setForms(data.forms ?? []);
       if (data.forms?.length === 1) setSelectedForm(data.forms[0].formId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å hente skjemaer');
+      setError(err instanceof Error ? err.message : t('tiktokLeads.s013'));
     } finally {
       setLoadingForms(false);
     }
@@ -123,11 +126,11 @@ export default function ClientTiktokLeadsPanel({
         body: JSON.stringify({ advertiserId, formId: selectedForm }),
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Sync feilet');
+      if (!r.ok) throw new Error(data.error || t('tiktokLeads.s019'));
       setLastSync({ fetched: data.fetched, inserted: data.inserted });
       await loadLeads();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å hente nye henvendelser');
+      setError(err instanceof Error ? err.message : t('tiktokLeads.s012'));
     } finally {
       setSyncing(false);
     }
@@ -156,10 +159,10 @@ export default function ClientTiktokLeadsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: palette.textPrimary }}>
-              Henvendelser fra TikTok
+              {t('tiktokLeads.s004')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Folk som har sendt inn skjema fra {ownerLabel === 'klienten' ? 'klientens' : "The Role Rooms"} TikTok-annonser.
+              {t('tiktokLeads.s000')} {ownerLabel === 'klienten' ? t('tiktokLeads.s026') : "The Role Rooms"} {t('tiktokLeads.s021')}
             </Typography>
           </Box>
         </Stack>
@@ -176,11 +179,11 @@ export default function ClientTiktokLeadsPanel({
             {newCount}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-            {newCount === 0 ? 'Ingen nye henvendelser akkurat nå' : newCount === 1 ? 'ny henvendelse å følge opp' : 'nye henvendelser å følge opp'}
+            {newCount === 0 ? t('tiktokLeads.s006') : newCount === 1 ? t('tiktokLeads.s027') : t('tiktokLeads.s028')}
           </Typography>
           {totalCount > newCount ? (
             <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem', mt: 1 }}>
-              Totalt {totalCount} henvendelser registrert siden start.
+              {t('tiktokLeads.s022')} {totalCount} {t('tiktokLeads.s025')}
             </Typography>
           ) : null}
         </Box>
@@ -190,7 +193,7 @@ export default function ClientTiktokLeadsPanel({
         {/* Skjemavalg */}
         <Box sx={{ mb: 2 }}>
           <Typography sx={{ color: palette.textPrimary, fontSize: '0.92rem', fontWeight: 600, mb: 1 }}>
-            Hvilket skjema vil du hente fra?
+            {t('tiktokLeads.s005')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Select
@@ -202,16 +205,16 @@ export default function ClientTiktokLeadsPanel({
               sx={{ minWidth: 320, color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
             >
               <MenuItem value=""><em style={{ color: palette.textMuted }}>
-                {loadingForms ? 'Henter…' : forms.length === 0 ? 'Ingen skjemaer funnet' : 'Velg et skjema'}
+                {loadingForms ? t('tiktokLeads.s003') : forms.length === 0 ? t('tiktokLeads.s008') : t('tiktokLeads.s024')}
               </em></MenuItem>
               {forms.map((f) => (
                 <MenuItem key={f.formId} value={f.formId}>
-                  {f.formName} {f.leadCount ? `(${f.leadCount} totalt)` : ''}
+                  {f.formName} {f.leadCount ? t('tiktokLeads.p00', { v0: f.leadCount }) : ''}
                 </MenuItem>
               ))}
             </Select>
             <Button onClick={loadForms} size="small" sx={{ color: palette.accent, textTransform: 'none', minWidth: 0 }}>
-              Last på nytt
+              {t('tiktokLeads.s015')}
             </Button>
           </Stack>
         </Box>
@@ -233,7 +236,7 @@ export default function ClientTiktokLeadsPanel({
             '&.Mui-disabled': { background: 'rgba(168,85,247,0.18)', color: 'rgba(245,243,255,0.4)' },
           }}
         >
-          {syncing ? 'Henter nye henvendelser…' : 'Hent nye henvendelser nå'}
+          {syncing ? t('tiktokLeads.s002') : t('tiktokLeads.s001')}
         </Button>
 
         {lastSync ? (
@@ -241,8 +244,8 @@ export default function ClientTiktokLeadsPanel({
             <Chip
               icon={<CheckCircleOutlineIcon sx={{ color: '#34d399 !important', fontSize: 16 }} />}
               label={lastSync.inserted === 0
-                ? 'Ingen nye siden sist'
-                : `${lastSync.inserted} nye lagt til`}
+                ? t('tiktokLeads.s007')
+                : t('tiktokLeads.p01', { v0: lastSync.inserted })}
               sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 700 }}
             />
           </Box>
@@ -253,7 +256,7 @@ export default function ClientTiktokLeadsPanel({
           <Box sx={{ mt: 2.4 }}>
             <Divider sx={{ borderColor: palette.border, mb: 1.8 }} />
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 1.2 }}>
-              Siste henvendelser
+              {t('tiktokLeads.s018')}
             </Typography>
             <Stack spacing={1}>
               {leads.slice(0, 8).map((lead) => (
@@ -269,7 +272,7 @@ export default function ClientTiktokLeadsPanel({
                   <Stack direction="row" alignItems="flex-start" spacing={1.6}>
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.96rem' }}>
-                        {lead.full_name || lead.email || lead.phone || 'Ukjent navn'}
+                        {lead.full_name || lead.email || lead.phone || t('tiktokLeads.s023')}
                       </Typography>
                       <Stack direction="row" spacing={2} sx={{ mt: 0.4 }}>
                         {lead.email ? (
@@ -285,14 +288,14 @@ export default function ClientTiktokLeadsPanel({
                       </Stack>
                       {lead.lead_created_at ? (
                         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.5 }}>
-                          Sendt inn {new Date(lead.lead_created_at).toLocaleString('nb-NO', {
+                          {t('tiktokLeads.s017')} {new Date(lead.lead_created_at).toLocaleString('nb-NO', {
                             day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                           })}
                         </Typography>
                       ) : null}
                     </Box>
                     <Chip
-                      label={lead.status === 'new' ? 'NY' : lead.status === 'qualified' ? 'KVALIFISERT' : lead.status === 'contacted' ? 'KONTAKTET' : lead.status === 'converted' ? 'KUNDE' : 'TAPT'}
+                      label={lead.status === 'new' ? t('tiktokLeads.s016') : lead.status === 'qualified' ? t('tiktokLeads.s011') : lead.status === 'contacted' ? t('tiktokLeads.s009') : lead.status === 'converted' ? t('tiktokLeads.s010') : t('tiktokLeads.s020')}
                       size="small"
                       sx={{
                         bgcolor: lead.status === 'new' ? 'rgba(96,165,250,0.18)' : lead.status === 'converted' ? 'rgba(52,211,153,0.18)' : 'rgba(148,163,184,0.18)',
@@ -307,7 +310,7 @@ export default function ClientTiktokLeadsPanel({
             </Stack>
             {leads.length > 8 ? (
               <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem', mt: 1.4, textAlign: 'center' }}>
-                + {leads.length - 8} til. Åpne fullstendig oversikt i Admin Room.
+                + {leads.length - 8} {t('tiktokLeads.s029')}
               </Typography>
             ) : null}
           </Box>

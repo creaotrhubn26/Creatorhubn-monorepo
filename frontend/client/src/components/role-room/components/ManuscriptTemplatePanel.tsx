@@ -43,6 +43,7 @@ import { manuscriptTemplateService } from '../services/manuscriptTemplateService
 import type { Template, TemplateLibrary, StructureTemplate } from '../data/manuscriptTemplates';
 import { TemplateIcon } from './TemplateIcon';
 import { getBrandingSettings } from '../config/branding';
+import { useT } from '../../../i18n';
 
 interface ManuscriptTemplatePanelProps {
   open: boolean;
@@ -57,6 +58,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
   onApplyTemplate,
   currentContent = ''
 }) => {
+  const { t } = useT();
   const [selectedTab, setSelectedTab] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
@@ -100,7 +102,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
   };
 
   const handleDeleteUserTemplate = async (templateId: string) => {
-    if (confirm('Er du sikker på at du vil slette denne malen?')) {
+    if (confirm(t('mtpl.confirmDelete'))) {
       try {
         await manuscriptTemplateService.deleteUserTemplate(templateId);
         setLibrary(manuscriptTemplateService.getTemplates());
@@ -118,12 +120,12 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
     return categoryTemplates + library.userTemplates.length;
   }, [library.categories, library.userTemplates.length]);
   const activeTabLabel = useMemo(() => {
-    if (selectedTab === 0) return 'Alle maler';
-    if (selectedTab === library.categories.length + 1) return 'Mine maler';
-    if (selectedTab === library.categories.length + 2) return 'Nylig brukt';
-    if (selectedTab === selectedStructureTab) return 'Strukturer';
-    return library.categories[selectedTab - 1]?.name || 'Maler';
-  }, [selectedTab, library.categories, selectedStructureTab]);
+    if (selectedTab === 0) return t('mtpl.allTemplates');
+    if (selectedTab === library.categories.length + 1) return t('mtpl.myTemplates');
+    if (selectedTab === library.categories.length + 2) return t('mtpl.recentlyUsed');
+    if (selectedTab === selectedStructureTab) return t('mtpl.structures');
+    return library.categories[selectedTab - 1]?.name || t('mtpl.templatesFallback');
+  }, [selectedTab, library.categories, selectedStructureTab, t]);
 
   return (
     <>
@@ -168,17 +170,17 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
             </Box>
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="h6" sx={{ color: branding.colors.textPrimary, lineHeight: 1.25 }}>
-                Role Room Manuskriptmaler
+                {t('mtpl.headerTitle')}
               </Typography>
               <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
-                Velg en mal og legg den inn i manuset ditt på sekunder.
+                {t('mtpl.headerSubtitle')}
               </Typography>
             </Box>
           </Box>
           <IconButton
             onClick={onClose}
             sx={{ color: branding.colors.textSecondary, justifySelf: 'end' }}
-            aria-label="Lukk manuskriptmaler"
+            aria-label={t('mtpl.closeAria')}
           >
             <CloseIcon />
           </IconButton>
@@ -197,7 +199,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
           >
             <TextField
               fullWidth
-              placeholder="Søk etter maler..."
+              placeholder={t('mtpl.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               size="small"
@@ -225,10 +227,10 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
               }}
             >
               <Chip label={activeTabLabel} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: branding.colors.accent }} />
-              <Chip label={`${filteredTemplates.length} treff`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
-              <Chip label={`${totalTemplateCount} totalt`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
+              <Chip label={t('mtpl.matchCount', { n: filteredTemplates.length })} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
+              <Chip label={t('mtpl.totalCount', { n: totalTemplateCount })} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
               <Chip
-                label={currentContent.trim() ? 'Setter inn i manus' : 'Oppretter nytt manus'}
+                label={currentContent.trim() ? t('mtpl.insertingInScript') : t('mtpl.creatingNewScript')}
                 size="small"
                 sx={{ bgcolor: 'rgba(16,185,129,0.14)', color: '#6ee7b7' }}
               />
@@ -248,13 +250,13 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
               '& .MuiTabs-indicator': { bgcolor: branding.colors.accent },
             }}
           >
-            <Tab label="Alle" />
+            <Tab label={t('mtpl.tabAll')} />
             {library.categories.map(cat => (
               <Tab key={cat.id} label={cat.name} icon={<TemplateIcon iconName={cat.icon} />} iconPosition="start" />
             ))}
-            <Tab label="Mine maler" icon={<PersonIcon />} iconPosition="start" />
-            <Tab label="Nylig brukt" icon={<HistoryIcon />} iconPosition="start" />
-            <Tab label="Strukturer" icon={<ArchitectureIcon />} iconPosition="start" />
+            <Tab label={t('mtpl.myTemplates')} icon={<PersonIcon />} iconPosition="start" />
+            <Tab label={t('mtpl.recentlyUsed')} icon={<HistoryIcon />} iconPosition="start" />
+            <Tab label={t('mtpl.structures')} icon={<ArchitectureIcon />} iconPosition="start" />
           </Tabs>
 
           <Box
@@ -270,7 +272,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
               {selectedTab === selectedStructureTab ? (
                 structureTemplates.length === 0 ? (
                   <Typography sx={{ color: branding.colors.textSecondary, textAlign: 'center', py: 6 }}>
-                    Ingen strukturmaler tilgjengelig
+                    {t('mtpl.noStructures')}
                   </Typography>
                 ) : (
                   <Box
@@ -308,7 +310,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                             </Typography>
                             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                               <Chip label={`${structure.beats.length} beats`} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.14)', color: branding.colors.accent }} />
-                              <Chip label={`${structure.totalPages} sider`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
+                              <Chip label={t('mtpl.pageCount', { n: structure.totalPages })} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary }} />
                             </Stack>
                           </CardContent>
                         </CardActionArea>
@@ -318,7 +320,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                 )
               ) : filteredTemplates.length === 0 ? (
                 <Typography sx={{ color: branding.colors.textSecondary, textAlign: 'center', py: 6 }}>
-                  Ingen maler funnet
+                  {t('mtpl.noTemplates')}
                 </Typography>
               ) : (
                 <Box
@@ -414,7 +416,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                           }}
                           sx={{ color: branding.colors.textSecondary, justifyContent: 'flex-start' }}
                         >
-                          Forhåndsvis
+                          {t('mtpl.preview')}
                         </Button>
                         <Button
                           size="small"
@@ -422,7 +424,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                           onClick={() => handleApply(template)}
                           sx={{ color: branding.colors.accent, justifyContent: 'flex-start' }}
                         >
-                          Bruk mal
+                          {t('mtpl.useTemplate')}
                         </Button>
                       </Box>
                     </Card>
@@ -449,16 +451,16 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                 Role Room Tips
               </Typography>
               <Typography variant="body2" sx={{ color: branding.colors.textSecondary }}>
-                Klikk på et kort for å bruke malen direkte i manuseditoren.
+                {t('mtpl.tipBody')}
               </Typography>
               <Divider sx={{ borderColor: branding.colors.border }} />
               <Stack spacing={1}>
-                <Chip label={`Aktiv visning: ${activeTabLabel}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary, justifyContent: 'flex-start' }} />
-                <Chip label={`${filteredTemplates.length} tilgjengelige i denne visningen`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary, justifyContent: 'flex-start' }} />
+                <Chip label={t('mtpl.activeView', { label: activeTabLabel })} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary, justifyContent: 'flex-start' }} />
+                <Chip label={t('mtpl.availableInView', { n: filteredTemplates.length })} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: branding.colors.textPrimary, justifyContent: 'flex-start' }} />
               </Stack>
               <Divider sx={{ borderColor: branding.colors.border }} />
               <Typography variant="caption" sx={{ color: branding.colors.textSecondary }}>
-                Tips: Bruk søk for å finne maler på type, sjanger eller nøkkelord.
+                {t('mtpl.tipSearch')}
               </Typography>
             </Paper>
           </Box>
@@ -466,7 +468,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
 
         <DialogActions sx={{ borderTop: `1px solid ${branding.colors.border}`, p: 2 }}>
           <Button onClick={onClose} sx={{ color: branding.colors.textSecondary }}>
-            Lukk
+            {t('mtpl.close')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -516,7 +518,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
         </DialogContent>
         <DialogActions sx={{ borderTop: `1px solid ${branding.colors.border}` }}>
           <Button onClick={() => setPreviewTemplate(null)} sx={{ color: branding.colors.textSecondary }}>
-            Lukk
+            {t('mtpl.close')}
           </Button>
           <Button
             variant="contained"
@@ -532,7 +534,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
               '&:hover': { bgcolor: branding.colors.accent, filter: 'brightness(0.92)' },
             }}
           >
-            Bruk mal
+            {t('mtpl.useTemplate')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -579,7 +581,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Chip
-                          label={typeof beat.page === 'number' ? `s.${beat.page}` : `s.${beat.page.min}-${beat.page.max}`}
+                          label={typeof beat.page === 'number' ? t('mtpl.pageAbbr', { page: beat.page }) : t('mtpl.pageRange', { min: beat.page.min, max: beat.page.max })}
                           size="small"
                           sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: branding.colors.accent, fontWeight: 600 }}
                         />
@@ -601,7 +603,7 @@ export const ManuscriptTemplatePanel: React.FC<ManuscriptTemplatePanelProps> = (
         </DialogContent>
         <DialogActions sx={{ borderTop: `1px solid ${branding.colors.border}` }}>
           <Button onClick={() => setStructureView(null)} sx={{ color: branding.colors.textSecondary }}>
-            Lukk
+            {t('mtpl.close')}
           </Button>
         </DialogActions>
       </Dialog>

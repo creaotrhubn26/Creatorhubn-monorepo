@@ -38,6 +38,7 @@ import {
   type RoleRoomWhatsAppGroupConfig,
   type RoleRoomTeamInviteStatus,
 } from '../services/castingApiService';
+import { useT } from '../../../i18n';
 
 type ProjectWhatsAppGroupDialogProps = {
   open: boolean;
@@ -55,6 +56,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
   workspaceStrategy,
   onClose,
 }) => {
+  const { t } = useT();
   const [config, setConfig] = useState<RoleRoomWhatsAppGroupConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -88,11 +90,11 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
         setAutoInvite(true);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke hente prosjekt-gruppe');
+      setError(err instanceof Error ? err.message : t('waGroup.errLoadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [open, projectId]);
+  }, [open, projectId, t]);
 
   const handleResend = async (crewId: string) => {
     setResendingFor(crewId);
@@ -101,7 +103,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
       const statuses = await roleRoomWhatsAppApi.getTeamInviteStatus(projectId);
       setInviteStatus(statuses);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Resend feilet');
+      setError(err instanceof Error ? err.message : t('waGroup.errResendFailed'));
     } finally {
       setResendingFor(null);
     }
@@ -123,7 +125,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
 
   const handleSave = async () => {
     if (groupInviteLink.trim() === '') {
-      setError('Lim inn invite-lenken først.');
+      setError(t('waGroup.errPasteFirst'));
       return;
     }
     setSaving(true);
@@ -138,7 +140,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
       setConfig(updated);
       setSavedAt(new Date().toISOString());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lagring feilet');
+      setError(err instanceof Error ? err.message : t('waGroup.errSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -149,7 +151,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
     try {
       await roleRoomWhatsAppApi.triggerTeamInviteSweep();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sweep feilet');
+      setError(err instanceof Error ? err.message : t('waGroup.errSweepFailed'));
     } finally {
       setSaving(false);
     }
@@ -168,7 +170,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <WhatsAppIcon sx={{ color: '#22c55e' }} />
-        <Typography sx={{ flex: 1, fontWeight: 700 }}>WhatsApp-gruppe for prosjektet</Typography>
+        <Typography sx={{ flex: 1, fontWeight: 700 }}>{t('waGroup.title')}</Typography>
         <IconButton onClick={onClose} disabled={saving} sx={{ color: 'rgba(255,255,255,0.6)' }}>
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -186,30 +188,29 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                 severity="info"
                 sx={{ bgcolor: 'rgba(125,211,252,0.08)', color: '#bfdbfe' }}
               >
-                Dette prosjektet bruker for øyeblikket bedriftens <strong>workspace-default-gruppe</strong>.
-                Sett en lenke under for å overstyre med en prosjekt-spesifikk gruppe.
+                {t('waGroup.inheritPre')}<strong>{t('waGroup.inheritStrong')}</strong>{t('waGroup.inheritPost')}
               </Alert>
             ) : !config ? (
               <Alert severity="warning" sx={{ bgcolor: 'rgba(250,204,21,0.08)', color: '#fde047' }}>
                 {workspaceStrategy === 'per_project'
-                  ? 'Per-prosjekt-modus aktiv på workspace-nivå. Lim inn invite-lenken for dette prosjektet.'
-                  : 'Ingen gruppe konfigurert. Lim inn invite-lenken for å sende WhatsApp-invitasjoner til crew automatisk.'}
+                  ? t('waGroup.perProjectMode')
+                  : t('waGroup.noGroup')}
               </Alert>
             ) : (
               <Alert
                 severity="success"
                 sx={{ bgcolor: 'rgba(34,197,94,0.08)', color: '#86efac' }}
               >
-                Prosjekt-spesifikk gruppe aktiv. {workspaceDefaultLink ? 'Workspace-default ignoreres for dette prosjektet.' : ''}
+                {t('waGroup.activeGroup')} {workspaceDefaultLink ? t('waGroup.wsIgnored') : ''}
               </Alert>
             )}
 
             <TextField
-              label="WhatsApp gruppe-invite-link"
+              label={t('waGroup.linkLabel')}
               value={groupInviteLink}
               onChange={(e) => setGroupInviteLink(e.target.value)}
               placeholder="https://chat.whatsapp.com/AbCdEf123…"
-              helperText="Lag gruppen i din egen WhatsApp først, hent invite-lenken via Group info → Invite via link."
+              helperText={t('waGroup.linkHelper')}
               fullWidth
               size="small"
               FormHelperTextProps={{ sx: { color: 'rgba(255,255,255,0.55)' } }}
@@ -218,7 +219,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
             />
 
             <TextField
-              label="Gruppenavn (valgfritt)"
+              label={t('waGroup.groupNameLabel')}
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="Holy Crust Production Team"
@@ -241,9 +242,9 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
               }
               label={
                 <Box>
-                  <Typography sx={{ fontSize: '0.9rem' }}>Automatisk invitasjon ved tillegg</Typography>
+                  <Typography sx={{ fontSize: '0.9rem' }}>{t('waGroup.autoInviteLabel')}</Typography>
                   <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)' }}>
-                    Når et nytt crew-medlem legges til prosjektet, sendes WhatsApp-invitasjon med denne lenken.
+                    {t('waGroup.autoInviteDesc')}
                   </Typography>
                 </Box>
               }
@@ -253,7 +254,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
 
             <Box>
               <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)', mb: 0.5 }}>
-                Hvordan crew opplever det
+                {t('waGroup.crewPreviewTitle')}
               </Typography>
               <Box
                 sx={{
@@ -266,10 +267,10 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                   lineHeight: 1.65,
                 }}
               >
-                Når du legger til {`{navn}`} i Crew-listen, sender The Role Room en WhatsApp-melding via bedriftens egen Cloud API:
+                {t('waGroup.crewPreviewIntro')}
                 <br />
                 <Box component="span" sx={{ fontStyle: 'italic', color: '#bfdbfe' }}>
-                  "Hei {`{navn}`}, du er lagt til i {`{prosjekt}`}. Bli med i WhatsApp-gruppen → [link]"
+                  {t('waGroup.crewPreviewMsg')}
                 </Box>
               </Box>
             </Box>
@@ -284,7 +285,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
               <Stack direction="row" spacing={1} alignItems="center">
                 <Chip
                   size="small"
-                  label="✓ Lagret"
+                  label={t('waGroup.savedChip')}
                   sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac' }}
                 />
                 <Button
@@ -294,7 +295,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                   disabled={saving}
                   sx={{ color: 'rgba(255,255,255,0.7)' }}
                 >
-                  Trigge invitasjons-sweep nå
+                  {t('waGroup.triggerSweep')}
                 </Button>
               </Stack>
             ) : null}
@@ -303,18 +304,18 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
               <Box sx={{ pt: 1 }}>
                 <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mb: 1.5 }} />
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                  <Typography sx={{ fontWeight: 700, flex: 1 }}>Crew-invitasjoner</Typography>
+                  <Typography sx={{ fontWeight: 700, flex: 1 }}>{t('waGroup.crewInvitesTitle')}</Typography>
                   <Chip
                     size="small"
                     icon={<CheckCircleIcon sx={{ color: '#86efac !important', fontSize: 14 }} />}
-                    label={`${counts.delivered} levert`}
+                    label={t('waGroup.deliveredChip', { n: counts.delivered })}
                     sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#86efac' }}
                   />
                   {counts.pending > 0 ? (
                     <Chip
                       size="small"
                       icon={<PendingIcon sx={{ color: '#fde047 !important', fontSize: 14 }} />}
-                      label={`${counts.pending} venter`}
+                      label={t('waGroup.pendingChip', { n: counts.pending })}
                       sx={{ bgcolor: 'rgba(250,204,21,0.14)', color: '#fde047' }}
                     />
                   ) : null}
@@ -322,7 +323,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                     <Chip
                       size="small"
                       icon={<ErrorOutlineIcon sx={{ color: '#fecaca !important', fontSize: 14 }} />}
-                      label={`${counts.failed} feilet`}
+                      label={t('waGroup.failedChip', { n: counts.failed })}
                       sx={{ bgcolor: 'rgba(248,113,113,0.14)', color: '#fecaca' }}
                     />
                   ) : null}
@@ -339,7 +340,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                           Status
                         </TableCell>
                         <TableCell sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em', borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-                          Forsøk
+                          {t('waGroup.colAttempts')}
                         </TableCell>
                         <TableCell align="right" sx={{ borderBottomColor: 'rgba(255,255,255,0.08)' }}></TableCell>
                       </TableRow>
@@ -387,7 +388,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                               </Typography>
                             </TableCell>
                             <TableCell align="right" sx={{ borderBottomColor: 'rgba(255,255,255,0.05)' }}>
-                              <Tooltip title="Send invitasjon på nytt">
+                              <Tooltip title={t('waGroup.resendTooltip')}>
                                 <span>
                                   <IconButton
                                     size="small"
@@ -418,7 +419,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
 
       <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
         <Button onClick={onClose} disabled={saving} sx={{ color: 'rgba(255,255,255,0.7)' }}>
-          Avbryt
+          {t('waGroup.cancelBtn')}
         </Button>
         <Button
           onClick={handleSave}
@@ -432,7 +433,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
             '&:hover': { bgcolor: '#34d399' },
           }}
         >
-          {saving ? 'Lagrer…' : 'Lagre prosjekt-gruppe'}
+          {saving ? t('waGroup.saving') : t('waGroup.saveBtn')}
         </Button>
       </DialogActions>
     </Dialog>

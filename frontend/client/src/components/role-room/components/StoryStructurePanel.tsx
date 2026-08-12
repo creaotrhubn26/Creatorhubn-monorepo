@@ -88,6 +88,7 @@ import {
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { useT, type TranslationKey } from '../../../i18n';
 import {
   analyzeScriptExtended,
   createShareConfig,
@@ -109,17 +110,17 @@ interface StoryStructurePanelProps {
   darkMode?: boolean;
 }
 
-// Purpose colors, labels and MUI icons
-const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon: SvgIconComponent }> = {
-  exposition: { color: '#3b82f6', label: 'Eksposisjon', Icon: ExpositionIcon },
-  conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
-  rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
-  climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
-  falling_action: { color: 'var(--role-violet, #8b5cf6)', label: 'Fallende handling', Icon: FallingActionIcon },
-  resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
-  transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
-  character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
-  subplot: { color: '#ec4899', label: 'Subplott', Icon: SubplotIcon },
+// Purpose colors, label translation keys and MUI icons
+const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: TranslationKey; Icon: SvgIconComponent }> = {
+  exposition: { color: '#3b82f6', label: 'storystruct.purposeExposition', Icon: ExpositionIcon },
+  conflict: { color: '#ef4444', label: 'storystruct.purposeConflict', Icon: ConflictIcon },
+  rising_action: { color: '#f59e0b', label: 'storystruct.purposeRisingAction', Icon: RisingActionIcon },
+  climax: { color: '#dc2626', label: 'storystruct.purposeClimax', Icon: ClimaxIcon },
+  falling_action: { color: 'var(--role-violet, #8b5cf6)', label: 'storystruct.purposeFallingAction', Icon: FallingActionIcon },
+  resolution: { color: '#22c55e', label: 'storystruct.purposeResolution', Icon: ResolutionIcon },
+  transition: { color: '#6b7280', label: 'storystruct.purposeTransition', Icon: TransitionIcon },
+  character_development: { color: '#06b6d4', label: 'storystruct.purposeCharacterDev', Icon: CharacterDevIcon },
+  subplot: { color: '#ec4899', label: 'storystruct.purposeSubplot', Icon: SubplotIcon },
 };
 
 // Generate character color
@@ -158,6 +159,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
   onSceneNumberingChange,
   showSceneNumbers = true,
 }) => {
+  const { t } = useT();
   const [tabValue, setTabValue] = useState(0);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareConfig, setShareConfig] = useState<ScriptShareConfig | null>(null);
@@ -208,9 +210,9 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         <Stack direction="row" alignItems="center" spacing={1}>
           <TimelineIcon color="primary" />
           <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 600 }}>
-            Historie & Struktur
+            {t('storystruct.title')}
           </Typography>
-          <Tooltip title="Del manus">
+          <Tooltip title={t('storystruct.shareScript')}>
             <IconButton size="small" onClick={() => setShareDialogOpen(true)}>
               <ShareIcon fontSize="small" />
             </IconButton>
@@ -221,7 +223,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
           <Chip
             icon={<SceneIcon />}
-            label={`${analysis.numberedScenes.length} scener`}
+            label={t('storystruct.sceneCount', { n: analysis.numberedScenes.length })}
             size="small"
             variant="outlined"
           />
@@ -233,7 +235,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
           />
           <Chip
             icon={<CharacterIcon />}
-            label={`${analysis.characterArcs.length} karakterer`}
+            label={t('storystruct.characterCount', { n: analysis.characterArcs.length })}
             size="small"
             variant="outlined"
           />
@@ -253,9 +255,9 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
           '& .MuiTab-root': { minHeight: 42, py: 1 },
         }}
       >
-        <Tab label="Scener" icon={<SceneIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
-        <Tab label="Struktur" icon={<TimelineIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
-        <Tab label="Karakterer" icon={<CharacterIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
+        <Tab label={t('storystruct.tabScenes')} icon={<SceneIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
+        <Tab label={t('storystruct.tabStructure')} icon={<TimelineIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
+        <Tab label={t('storystruct.tabCharacters')} icon={<CharacterIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
         <Tab label="Pacing" icon={<PacingIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
       </Tabs>
 
@@ -319,6 +321,7 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
   onToggleNumbers,
   onGotoLine,
 }) => {
+  const { t } = useT();
   const [filter, setFilter] = useState<ScenePurpose | 'all'>('all');
 
   const filteredScenes = filter === 'all' 
@@ -337,7 +340,7 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
               size="small"
             />
           }
-          label={<Typography variant="body2">Vis scenenummer</Typography>}
+          label={<Typography variant="body2">{t('storystruct.showSceneNumbers')}</Typography>}
         />
         
         <FormControl size="small" sx={{ minWidth: 150 }}>
@@ -348,7 +351,7 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
             label="Filter"
             MenuProps={{ sx: { zIndex: 1400 } }}
           >
-            <MenuItem value="all">Alle scener</MenuItem>
+            <MenuItem value="all">{t('storystruct.allScenes')}</MenuItem>
             <Divider />
             {Object.entries(PURPOSE_CONFIG).map(([key, config]) => {
               const PurposeIcon = config.Icon;
@@ -356,7 +359,7 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
                 <MenuItem key={key} value={key}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <PurposeIcon sx={{ fontSize: 18, color: config.color }} />
-                    <span>{config.label}</span>
+                    <span>{t(config.label)}</span>
                   </Stack>
                 </MenuItem>
               );
@@ -433,7 +436,7 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
                   <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
                     {purposeConfig && (
                       <Chip
-                        label={purposeConfig.label}
+                        label={t(purposeConfig.label)}
                         size="small"
                         sx={{
                           bgcolor: `${purposeConfig.color}20`,
@@ -484,12 +487,13 @@ const StructurePanel: FC<StructurePanelProps> = ({
   analysis,
   onGotoLine,
 }) => {
+  const { t } = useT();
   return (
     <Box sx={{ p: 2, '& .MuiIconButton-root': { minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE } }}>
       {/* Act Structure */}
       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
         <TimelineIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Akt-struktur
+        {t('storystruct.actStructure')}
       </Typography>
       
       <Stack spacing={1} sx={{ mb: 3 }}>
@@ -503,7 +507,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
           >
             <Stack direction="row" alignItems="center" spacing={2}>
               <Chip
-                label={`Akt ${act.actNumber}`}
+                label={t('storystruct.act', { n: act.actNumber })}
                 color="primary"
                 size="small"
                 sx={{ fontWeight: 600 }}
@@ -532,7 +536,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
       {/* Sequences */}
       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
         <BeatIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Sekvenser
+        {t('storystruct.sequences')}
       </Typography>
       
       <Stack spacing={0.5}>
@@ -561,7 +565,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
                   {seq.name}
                 </Typography>
                 <Chip
-                  label={purposeConfig.label}
+                  label={t(purposeConfig.label)}
                   size="small"
                   sx={{
                     bgcolor: `${purposeConfig.color}20`,
@@ -582,7 +586,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
       {/* Purpose Legend */}
       <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>
         <TagIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Scenetype-forklaring
+        {t('storystruct.sceneTypeLegend')}
       </Typography>
       
       <Stack direction="row" flexWrap="wrap" gap={0.5}>
@@ -592,7 +596,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
             <Chip
               key={key}
               icon={<PurposeIcon sx={{ fontSize: 14, color: `${config.color} !important` }} />}
-              label={config.label}
+              label={t(config.label)}
               size="small"
               sx={{
                 bgcolor: `${config.color}20`,
@@ -619,6 +623,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
   dialogueBalance,
   onGotoLine,
 }) => {
+  const { t } = useT();
   const [expanded, setExpanded] = useState<string | false>(arcs[0]?.character || false);
 
   const maxLines = Math.max(...dialogueBalance.map(d => d.totalLines), 1);
@@ -628,7 +633,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
       {/* Dialogue Balance Chart */}
       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
         <BalanceIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Dialog-balanse
+        {t('storystruct.dialogueBalance')}
       </Typography>
       
       <Stack spacing={1} sx={{ mb: 3 }}>
@@ -649,7 +654,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
                 {char.character}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {char.totalLines} linjer ({char.percentageOfTotal}%)
+                {t('storystruct.linesPct', { n: char.totalLines, pct: char.percentageOfTotal })}
               </Typography>
             </Stack>
             <LinearProgress
@@ -673,7 +678,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
       {/* Character Arcs */}
       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
         <ArcIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Karakter-buer
+        {t('storystruct.characterArcs')}
       </Typography>
 
       {arcs.slice(0, 8).map((arc) => (
@@ -703,7 +708,7 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
                 {arc.character}
               </Typography>
               <Chip
-                label={`${arc.scenePresence}% tilstedeværelse`}
+                label={t('storystruct.presencePct', { pct: arc.scenePresence })}
                 size="small"
                 variant="outlined"
                 sx={{ ml: 'auto', mr: 1, fontSize: '0.65rem', height: 20 }}
@@ -714,15 +719,15 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
             <Stack spacing={1}>
               <Stack direction="row" spacing={2}>
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Første scene</Typography>
+                  <Typography variant="caption" color="text.secondary">{t('storystruct.firstScene')}</Typography>
                   <Typography variant="body2">{arc.appearances[0]?.sceneNumber || '-'}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Siste scene</Typography>
+                  <Typography variant="caption" color="text.secondary">{t('storystruct.lastScene')}</Typography>
                   <Typography variant="body2">{arc.appearances[arc.appearances.length - 1]?.sceneNumber || '-'}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Dialoglinjer</Typography>
+                  <Typography variant="caption" color="text.secondary">{t('storystruct.dialogueLines')}</Typography>
                   <Typography variant="body2">{arc.totalDialogueLines}</Typography>
                 </Box>
               </Stack>
@@ -730,11 +735,11 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
               {/* Scene presence timeline */}
               <Box sx={{ mt: 1 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                  Scene-tilstedeværelse
+                  {t('storystruct.scenePresence')}
                 </Typography>
                 <Stack direction="row" spacing={0.25} flexWrap="wrap">
                   {arc.appearances.map((app, idx) => (
-                    <Tooltip key={idx} title={`Scene ${app.sceneNumber} (${app.dialogueCount} linjer)`}>
+                    <Tooltip key={idx} title={t('storystruct.sceneWithLines', { n: app.sceneNumber, lines: app.dialogueCount })}>
                       <Box
                         onClick={() => onGotoLine?.(app.lineNumber)}
                         sx={{
@@ -771,6 +776,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
   scenes,
   onGotoLine,
 }) => {
+  const { t } = useT();
   return (
     <Box sx={{ p: 2 }}>
       {/* Runtime Overview */}
@@ -787,32 +793,32 @@ const PacingPanel: FC<PacingPanelProps> = ({
             <Typography variant="h4" color="primary">
               {pacing.totalPages}
             </Typography>
-            <Typography variant="caption" color="text.secondary">Sider</Typography>
+            <Typography variant="caption" color="text.secondary">{t('storystruct.pages')}</Typography>
           </Box>
           <Divider orientation="vertical" flexItem />
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="h4" color="primary">
               ~{pacing.estimatedRuntime}
             </Typography>
-            <Typography variant="caption" color="text.secondary">Minutter</Typography>
+            <Typography variant="caption" color="text.secondary">{t('storystruct.minutes')}</Typography>
           </Box>
           <Divider orientation="vertical" flexItem />
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="h4" color="primary">
               {pacing.averageSceneLength}
             </Typography>
-            <Typography variant="caption" color="text.secondary">Snitt linjer/scene</Typography>
+            <Typography variant="caption" color="text.secondary">{t('storystruct.avgLinesPerScene')}</Typography>
           </Box>
         </Stack>
       </Paper>
 
       {/* Dialogue vs Action */}
       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-        Dialog vs. Handling
+        {t('storystruct.dialogueVsAction')}
       </Typography>
       
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="caption">Dialog</Typography>
+        <Typography variant="caption">{t('storystruct.dialogue')}</Typography>
         <Box sx={{ flex: 1 }}>
           <LinearProgress
             variant="determinate"
@@ -831,7 +837,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
       </Stack>
       
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 3 }}>
-        <Typography variant="caption">Handling</Typography>
+        <Typography variant="caption">{t('storystruct.action')}</Typography>
         <Box sx={{ flex: 1 }}>
           <LinearProgress
             variant="determinate"
@@ -851,14 +857,14 @@ const PacingPanel: FC<PacingPanelProps> = ({
 
       {/* Act Pacing */}
       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-        Akt-pacing
+        {t('storystruct.actPacing')}
       </Typography>
       
       <Stack spacing={1} sx={{ mb: 3 }}>
         {pacing.actPacing.map((act) => (
           <Stack key={act.act} direction="row" alignItems="center" spacing={1}>
             <Chip
-              label={`Akt ${act.act}`}
+              label={t('storystruct.act', { n: act.act })}
               size="small"
               sx={{ minWidth: 60 }}
             />
@@ -881,13 +887,13 @@ const PacingPanel: FC<PacingPanelProps> = ({
               {act.percentage}%
             </Typography>
             <Chip
-              label={act.status === 'ideal' ? 'OK' : act.status === 'short' ? 'Kort' : 'Lang'}
+              label={act.status === 'ideal' ? 'OK' : act.status === 'short' ? t('storystruct.short') : t('storystruct.long')}
               size="small"
               color={act.status === 'ideal' ? 'success' : 'warning'}
               sx={{ fontSize: '0.6rem', height: 18 }}
             />
             <Typography variant="caption" color="text.secondary">
-              (ideelt: {act.idealPercentage}%)
+              {t('storystruct.idealPct', { pct: act.idealPercentage })}
             </Typography>
           </Stack>
         ))}
@@ -898,7 +904,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
         <>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
             <WarningIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle', color: '#f59e0b' }} />
-            Pacing-problemer ({pacing.pacingIssues.length})
+            {t('storystruct.pacingIssues', { n: pacing.pacingIssues.length })}
           </Typography>
           
           <List dense>
@@ -921,7 +927,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
                   primary={
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <Chip
-                        label={`Scene ${issue.sceneNumber}`}
+                        label={t('storystruct.scene', { n: issue.sceneNumber })}
                         size="small"
                         sx={{ fontSize: '0.65rem', height: 18 }}
                       />
@@ -944,7 +950,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
 
       {pacing.pacingIssues.length === 0 && (
         <Alert severity="success" icon={<CheckIcon />}>
-          Ingen pacing-problemer funnet!
+          {t('storystruct.noPacingIssues')}
         </Alert>
       )}
     </Box>
@@ -969,6 +975,7 @@ const ShareDialog: FC<ShareDialogProps> = ({
   shareConfig,
   onCopyLink,
 }) => {
+  const { t } = useT();
   const [accessType, setAccessType] = useState<'read-only' | 'comment' | 'suggest'>('read-only');
   const [password, setPassword] = useState('');
   const [allowDownload, setAllowDownload] = useState(false);
@@ -988,46 +995,46 @@ const ShareDialog: FC<ShareDialogProps> = ({
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1}>
           <ShareIcon color="primary" />
-          <Typography variant="h6">Del manus</Typography>
+          <Typography variant="h6">{t('storystruct.shareScript')}</Typography>
         </Stack>
       </DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Del "{scriptTitle}" med andre
+          {t('storystruct.shareWithOthers', { title: scriptTitle })}
         </Typography>
 
         <Stack spacing={2}>
           <FormControl fullWidth>
-            <InputLabel>Tilgangstype</InputLabel>
+            <InputLabel>{t('storystruct.accessType')}</InputLabel>
             <Select
               value={accessType}
               onChange={(e) => setAccessType(e.target.value as 'read-only' | 'comment' | 'suggest')}
-              label="Tilgangstype"
+              label={t('storystruct.accessType')}
               MenuProps={{ sx: { zIndex: 1400 } }}
             >
               <MenuItem value="read-only">
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <ViewIcon fontSize="small" />
-                  <span>Kun lesing</span>
+                  <span>{t('storystruct.accessReadOnly')}</span>
                 </Stack>
               </MenuItem>
               <MenuItem value="comment">
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <InfoIcon fontSize="small" />
-                  <span>Kan kommentere</span>
+                  <span>{t('storystruct.accessComment')}</span>
                 </Stack>
               </MenuItem>
               <MenuItem value="suggest">
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <InfoIcon fontSize="small" />
-                  <span>Kan foreslå endringer</span>
+                  <span>{t('storystruct.accessSuggest')}</span>
                 </Stack>
               </MenuItem>
             </Select>
           </FormControl>
 
           <TextField
-            label="Passord (valgfritt)"
+            label={t('storystruct.passwordOptional')}
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -1036,12 +1043,12 @@ const ShareDialog: FC<ShareDialogProps> = ({
           />
 
           <TextField
-            label="Vannmerke (valgfritt)"
+            label={t('storystruct.watermarkOptional')}
             value={watermark}
             onChange={(e) => setWatermark(e.target.value)}
             size="small"
             fullWidth
-            placeholder="F.eks. 'KONFIDENSIELT' eller brukerens e-post"
+            placeholder={t('storystruct.watermarkPlaceholder')}
           />
 
           <FormControlLabel
@@ -1051,14 +1058,14 @@ const ShareDialog: FC<ShareDialogProps> = ({
                 onChange={(e) => setAllowDownload(e.target.checked)}
               />
             }
-            label="Tillat nedlasting"
+            label={t('storystruct.allowDownload')}
           />
 
           {shareConfig && (
             <Paper sx={{ p: 2, bgcolor: 'rgba(34,197,94,0.1)', borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1, color: '#22c55e' }}>
                 <CheckIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-                Delingslenke opprettet
+                {t('storystruct.shareLinkCreated')}
               </Typography>
               <Stack direction="row" spacing={1}>
                 <TextField
@@ -1067,7 +1074,7 @@ const ShareDialog: FC<ShareDialogProps> = ({
                   fullWidth
                   InputProps={{ readOnly: true }}
                 />
-                <Tooltip title="Kopier lenke">
+                <Tooltip title={t('storystruct.copyLink')}>
                   <IconButton onClick={onCopyLink} color="primary">
                     <CopyIcon />
                   </IconButton>
@@ -1078,13 +1085,13 @@ const ShareDialog: FC<ShareDialogProps> = ({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Lukk</Button>
+        <Button onClick={onClose}>{t('storystruct.close')}</Button>
         <Button
           variant="contained"
           onClick={handleCreate}
           startIcon={<LinkIcon />}
         >
-          Opprett delingslenke
+          {t('storystruct.createShareLink')}
         </Button>
       </DialogActions>
     </Dialog>

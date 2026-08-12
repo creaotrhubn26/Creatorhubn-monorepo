@@ -41,6 +41,8 @@ import {
   producerWorkflowService,
   type ProducerProjectNotification,
 } from '../../services/producerWorkflowService';
+import { useT, type TranslationKey } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type BriefSeverity = 'high' | 'medium' | 'low';
 
@@ -66,7 +68,7 @@ interface BriefFinding {
   detail: string | null;
   createdAt: string;
   tab: BriefTabKey | null;
-  faneLabel: string | null;
+  faneLabel: TranslationKey | null;
 }
 
 const SEVERITY_COLOR: Record<BriefSeverity, string> = {
@@ -81,19 +83,19 @@ const SEVERITY_BG: Record<BriefSeverity, string> = {
   low: 'rgba(148,163,184,0.14)',
 };
 
-const SEVERITY_LABEL: Record<BriefSeverity, string> = {
-  high: 'Haster',
-  medium: 'Bør ses på',
-  low: 'Til info',
-};
+const buildSEVERITY_LABEL = (t: TFn): Record<BriefSeverity, string> => ({
+  high: t('dailyBrief.s004'),
+  medium: t('dailyBrief.s000'),
+  low: t('dailyBrief.s010'),
+});
 
 const SEVERITY_RANK: Record<BriefSeverity, number> = { high: 0, medium: 1, low: 2 };
 
-const TAB_LABEL: Record<BriefTabKey, string> = {
-  'social-inbox': 'Innboks',
-  leads: 'Leads',
-  'feed-planner': 'Feed',
-  'social-analytics': 'Analyse',
+const TAB_LABEL: Record<BriefTabKey, TranslationKey> = {
+  'social-inbox': 'dailyBrief.tabInbox',
+  leads: 'dailyBrief.tabLeads',
+  'feed-planner': 'dailyBrief.tabFeed',
+  'social-analytics': 'dailyBrief.tabAnalyse',
 };
 
 /** Parse the persisted `event_type` (ai_scan_high|medium|low) into severity. */
@@ -130,7 +132,7 @@ function inferTab(title: string, detail: string | null): BriefTabKey | null {
 
 function toFinding(row: ProducerProjectNotification): BriefFinding {
   const severity = severityFromEventType(row.event_type);
-  const title = (row.title || 'Funn fra brief').trim();
+  const title = (row.title || '').trim();
   const detail = row.message && row.message.trim().length > 0 ? row.message.trim() : null;
   const tab = inferTab(title, detail);
   return {
@@ -150,6 +152,8 @@ const BORDER = '1px solid rgba(148,163,184,0.18)';
 const ACCENT = 'var(--role-cyan, #22d3ee)';
 
 export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBriefCardProps): JSX.Element {
+  const { t } = useT();
+  const SEVERITY_LABEL = useMemo(() => buildSEVERITY_LABEL(t), [t]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [findings, setFindings] = useState<BriefFinding[]>([]);
@@ -178,7 +182,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
         .slice(0, Math.max(1, maxItems));
       setFindings(ranked);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke hente dagens brief.');
+      setError(err instanceof Error ? err.message : t('dailyBrief.s006'));
       setFindings([]);
     } finally {
       setLoading(false);
@@ -227,15 +231,15 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.1 }}>
-            Dagens brief
+            {t('dailyBrief.s001')}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem', mt: 0.2 }}>
-            Nattlig AI-scan på tvers av flatene
+            {t('dailyBrief.s007')}
           </Typography>
         </Box>
         {!loading && highCount > 0 ? (
           <Chip
-            label={`${highCount} haster`}
+            label={t('dailyBrief.p00', { v0: highCount })}
             size="small"
             sx={{
               height: 22,
@@ -247,7 +251,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
             }}
           />
         ) : null}
-        <IconButton size="small" sx={{ color: 'rgba(226,232,240,0.66)' }} aria-label={expanded ? 'Skjul' : 'Vis'}>
+        <IconButton size="small" sx={{ color: 'rgba(226,232,240,0.66)' }} aria-label={expanded ? t('dailyBrief.s009') : t('dailyBrief.s011')}>
           {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
         </IconButton>
       </Stack>
@@ -282,7 +286,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
                 onClick={() => void refresh()}
                 sx={{ color: ACCENT, fontSize: '0.78rem', fontWeight: 700, mt: 0.6 }}
               >
-                Prøv igjen
+                {t('dailyBrief.s008')}
               </Link>
             </Box>
           ) : findings.length === 0 ? (
@@ -299,10 +303,10 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
             >
               <CalmIcon sx={{ color: '#86efac', fontSize: 28 }} />
               <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>
-                Ingenting haster akkurat nå
+                {t('dailyBrief.s005')}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.72rem', textAlign: 'center' }}>
-                Den nattlige scanen fant ingenting som krever oppmerksomhet.
+                {t('dailyBrief.s002')}
               </Typography>
             </Stack>
           ) : (
@@ -336,7 +340,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
                     />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem', lineHeight: 1.25 }}>
-                        {finding.title}
+                        {finding.title || t('dailyBrief.funnFraBrief')}
                       </Typography>
                       {finding.detail ? (
                         <Typography
@@ -367,7 +371,7 @@ export function DailyBriefCard({ projectId, onNavigate, maxItems = 6 }: DailyBri
                             '&:hover': { color: '#a5f3fc' },
                           }}
                         >
-                          Gå til {finding.faneLabel}
+                          {t('dailyBrief.s003')} {t(finding.faneLabel)}
                           <GoIcon sx={{ fontSize: 14 }} />
                         </Link>
                       ) : null}

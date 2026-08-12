@@ -10,7 +10,7 @@
  * Backend: GET /api/admin-room/agent/ads/configs/:id/ai-prompts?target=…
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Accordion, AccordionDetails, AccordionSummary,
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
@@ -22,6 +22,8 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bgCard: '#150b2e',
@@ -43,13 +45,13 @@ interface Prompt {
   notApplicableReason?: string;
 }
 
-const TARGET_OPTIONS: Array<{ value: 'loveable' | 'v0' | 'bolt' | 'cursor' | 'generic'; label: string; subtitle: string }> = [
-  { value: 'loveable', label: 'Loveable', subtitle: 'Vite + React (vanligst)' },
+const buildTARGET_OPTIONS = (t: TFn): Array<{ value: 'loveable' | 'v0' | 'bolt' | 'cursor' | 'generic'; label: string; subtitle: string }> => ([
+  { value: 'loveable', label: 'Loveable', subtitle: t('aiPrompts.s014') },
   { value: 'v0', label: 'v0 by Vercel', subtitle: 'Next.js App Router + shadcn' },
-  { value: 'bolt', label: 'Bolt.new', subtitle: 'StackBlitz-baserte prosjekter' },
-  { value: 'cursor', label: 'Cursor / Windsurf', subtitle: 'Generelt IDE-AI' },
-  { value: 'generic', label: 'Generisk', subtitle: 'Hvilken som helst AI-agent' },
-];
+  { value: 'bolt', label: 'Bolt.new', subtitle: t('aiPrompts.s011') },
+  { value: 'cursor', label: 'Cursor / Windsurf', subtitle: t('aiPrompts.s002') },
+  { value: 'generic', label: t('aiPrompts.s004'), subtitle: t('aiPrompts.s005') },
+]);
 
 export default function ClientAiPromptsPanel({
   configId,
@@ -58,6 +60,8 @@ export default function ClientAiPromptsPanel({
   configId: string;
   clientName: string;
 }) {
+  const { t } = useT();
+  const TARGET_OPTIONS = useMemo(() => buildTARGET_OPTIONS(t), [t]);
   const [target, setTarget] = useState<'loveable' | 'v0' | 'bolt' | 'cursor' | 'generic'>('loveable');
   const [prompts, setPrompts] = useState<Prompt[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,18 +69,18 @@ export default function ClientAiPromptsPanel({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copiedScenario, setCopiedScenario] = useState<string | null>(null);
 
-  const loadPrompts = async (t = target) => {
+  const loadPrompts = async (tg = target) => {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/admin-room/agent/ads/configs/${configId}/ai-prompts?target=${t}`, {
+      const r = await fetch(`/api/admin-room/agent/ads/configs/${configId}/ai-prompts?target=${tg}`, {
         credentials: 'include',
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setPrompts(data.prompts ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke generere prompter');
+      setError(err instanceof Error ? err.message : t('aiPrompts.s010'));
     } finally {
       setLoading(false);
     }
@@ -109,10 +113,10 @@ export default function ClientAiPromptsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1rem' }}>
-              AI-prompter for klient
+              {t('aiPrompts.s001')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem' }}>
-              Klar-til-paste prompter med {clientName}-spesifikke ID-er. Send til klient → de limer inn i sitt AI-verktøy.
+              {t('aiPrompts.s007')} {clientName}{t('aiPrompts.s000')}
             </Typography>
           </Box>
         </Stack>
@@ -120,7 +124,7 @@ export default function ClientAiPromptsPanel({
         {/* Target-agent-velger */}
         <Box sx={{ mb: 2, mt: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.8 }}>
-            Hvilket verktøy bruker klient?
+            {t('aiPrompts.s006')}
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {TARGET_OPTIONS.map((opt) => (
@@ -154,7 +158,7 @@ export default function ClientAiPromptsPanel({
         {loading ? (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 2 }}>
             <CircularProgress size={16} />
-            <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem' }}>Genererer prompter…</Typography>
+            <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem' }}>{t('aiPrompts.s003')}</Typography>
           </Stack>
         ) : null}
 
@@ -167,14 +171,14 @@ export default function ClientAiPromptsPanel({
               <Chip
                 size="small"
                 icon={<CheckCircleOutlineIcon sx={{ color: '#34d399 !important' }} fontSize="small" />}
-                label={`${applicable.length} klare prompter`}
+                label={t('aiPrompts.p00', { v0: applicable.length })}
                 sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 700 }}
               />
               {notApplicable.length > 0 ? (
                 <Chip
                   size="small"
                   icon={<LockOutlinedIcon sx={{ color: '#94a3b8 !important' }} fontSize="small" />}
-                  label={`${notApplicable.length} venter på setup`}
+                  label={t('aiPrompts.p01', { v0: notApplicable.length })}
                   sx={{ bgcolor: 'rgba(148,163,184,0.18)', color: '#94a3b8', fontWeight: 700 }}
                 />
               ) : null}
@@ -241,11 +245,11 @@ export default function ClientAiPromptsPanel({
                           },
                         }}
                       >
-                        {copiedScenario === p.scenario ? 'Kopiert — lim inn i klient-verktøy' : 'Kopier prompt'}
+                        {copiedScenario === p.scenario ? t('aiPrompts.s009') : t('aiPrompts.s008')}
                       </Button>
                       {p.verifyAfter ? (
                         <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', flex: 1 }}>
-                          <strong>Verifiser etter:</strong> {p.verifyAfter}
+                          <strong>{t('aiPrompts.s013')}</strong> {p.verifyAfter}
                         </Typography>
                       ) : null}
                     </Stack>
@@ -258,7 +262,7 @@ export default function ClientAiPromptsPanel({
             {notApplicable.length > 0 ? (
               <Box sx={{ mt: 2 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.8 }}>
-                  Venter på setup
+                  {t('aiPrompts.s012')}
                 </Typography>
                 <Stack spacing={0.8}>
                   {notApplicable.map((p) => (

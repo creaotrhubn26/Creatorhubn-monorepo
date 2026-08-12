@@ -50,6 +50,8 @@ import {
   type MerchPartnerReplyEntry,
 } from '../../services/roleRoomAgentClaudeApi';
 import MerchPartnerReplyDialog from './MerchPartnerReplyDialog';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface MerchSuppliersPanelProps {
   projectId: string | null;
@@ -61,37 +63,41 @@ function supplierKeyOf(s: RoleRoomAgentMerchSupplier): string {
   return s.placeId || s.organizationNumber || s.name;
 }
 
-const TECHNIQUE_LABEL: Record<RoleRoomAgentMerchTechnique, string> = {
-  screen_print: 'Silketrykk',
+const buildTECHNIQUE_LABEL = (t: TFn): Record<RoleRoomAgentMerchTechnique, string> => ({
+  screen_print: t('merchSuppliers.s030'),
   dtg: 'DTG',
-  embroidery: 'Broderi',
-  sublimation: 'Sublimering',
+  embroidery: t('merchSuppliers.s007'),
+  sublimation: t('merchSuppliers.s035'),
   vinyl: 'Vinyl/transfer',
-  promo_products: 'Promo-produkter',
-  unknown: 'Ukjent teknikk',
-};
+  promo_products: t('merchSuppliers.s025'),
+  unknown: t('merchSuppliers.s039'),
+});
 
-const PRODUCT_LABEL: Record<RoleRoomAgentMerchProductCategory, string> = {
-  apparel: 'Klær',
-  headwear: 'Caps/lue',
-  bags: 'Bag',
-  drinkware: 'Krus/flaske',
-  stationery: 'Notatbok/penn',
-  sports_kits: 'Sportsdrakter',
-  promotional: 'Promo',
-  vehicle_wrap: 'Bilprofilering',
-  signage: 'Skilt/banner',
-  unknown: 'Ukjent',
-};
+const buildPRODUCT_LABEL = (t: TFn): Record<RoleRoomAgentMerchProductCategory, string> => ({
+  apparel: t('merchSuppliers.s015'),
+  headwear: t('merchSuppliers.s008'),
+  bags: t('merchSuppliers.s001'),
+  drinkware: t('merchSuppliers.s016'),
+  stationery: t('merchSuppliers.s022'),
+  sports_kits: t('merchSuppliers.s034'),
+  promotional: t('merchSuppliers.s024'),
+  vehicle_wrap: t('merchSuppliers.s006'),
+  signage: t('merchSuppliers.s033'),
+  unknown: t('merchSuppliers.s038'),
+});
 
-const STATUS_PILL: Record<RoleRoomAgentMerchSupplier['status'], { label: string; bg: string; fg: string }> = {
-  verified: { label: 'Verifisert', bg: 'rgba(16,185,129,0.18)', fg: '#bbf7d0' },
-  likely: { label: 'Sannsynlig', bg: 'rgba(59,130,246,0.16)', fg: '#bfdbfe' },
-  needs_review: { label: 'Manuell sjekk', bg: 'rgba(250,204,21,0.16)', fg: '#fde68a' },
-  rejected: { label: 'Avvist', bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' },
-};
+const buildSTATUS_PILL = (t: TFn): Record<RoleRoomAgentMerchSupplier['status'], { label: string; bg: string; fg: string }> => ({
+  verified: { label: t('merchSuppliers.s041'), bg: 'rgba(16,185,129,0.18)', fg: '#bbf7d0' },
+  likely: { label: t('merchSuppliers.s027'), bg: 'rgba(59,130,246,0.16)', fg: '#bfdbfe' },
+  needs_review: { label: t('merchSuppliers.s018'), bg: 'rgba(250,204,21,0.16)', fg: '#fde68a' },
+  rejected: { label: t('merchSuppliers.s000'), bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' },
+});
 
 const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bootstrap, onRequestBootstrap }) => {
+  const { t } = useT();
+  const TECHNIQUE_LABEL = useMemo(() => buildTECHNIQUE_LABEL(t), [t]);
+  const PRODUCT_LABEL = useMemo(() => buildPRODUCT_LABEL(t), [t]);
+  const STATUS_PILL = useMemo(() => buildSTATUS_PILL(t), [t]);
   const merch = bootstrap?.merchSuppliers ?? null;
   const [techniqueFilter, setTechniqueFilter] = useState<RoleRoomAgentMerchTechnique | null>(null);
   const [productFilter, setProductFilter] = useState<RoleRoomAgentMerchProductCategory | null>(null);
@@ -144,15 +150,15 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
       if (r.ok) {
         setPollResultMessage(
           r.newReplies > 0
-            ? `Fant ${r.newReplies} nye svar (skannet ${r.scanned} mail).`
-            : `Ingen nye svar funnet (skannet ${r.scanned} mail mot ${r.pollableSentEmails} sendte forslag).`,
+            ? t('merchSuppliers.p01', { v0: r.newReplies, v1: r.scanned })
+            : t('merchSuppliers.p03', { v0: r.scanned, v1: r.pollableSentEmails }),
         );
         reloadEmailHistory();
       } else {
         setPollResultMessage(
           r.reason === 'missing_email_config'
-            ? 'Gmail-konfig mangler i backend-env. Be admin sette GMAIL_USER + GMAIL_APP_PASSWORD.'
-            : `IMAP-poll feilet: ${r.reason ?? 'ukjent feil'}`,
+            ? t('merchSuppliers.s010')
+            : t('merchSuppliers.p02', { v0: r.reason ?? t('merchSuppliers.s047') }),
         );
       }
     } finally {
@@ -181,7 +187,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         action={
           onRequestBootstrap ? (
             <Button size="small" onClick={onRequestBootstrap}>
-              Kjør research
+              {t('merchSuppliers.s014')}
             </Button>
           ) : undefined
         }
@@ -192,7 +198,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           '& .MuiAlert-icon': { color: '#a5f3fc' },
         }}
       >
-        Kjør Research-fanen først så bygger vi merch-leverandørliste basert på kundens NACE-kode og marked.
+        {t('merchSuppliers.s013')}
       </Alert>
     );
   }
@@ -208,7 +214,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           '& .MuiAlert-icon': { color: '#fde68a' },
         }}
       >
-        {merch?.marketContext ?? 'Ingen merch-leverandører er hentet enda.'}
+        {merch?.marketContext ?? t('merchSuppliers.s012')}
       </Alert>
     );
   }
@@ -232,14 +238,14 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           icon={<BusinessIcon fontSize="small" />}
           action={
             <Button size="small" onClick={() => setConfirmEntityOpen(true)} sx={{ textTransform: 'none' }}>
-              Endre
+              {t('merchSuppliers.s009')}
             </Button>
           }
           sx={{ bgcolor: 'rgba(34,197,94,0.08)', color: '#bbf7d0', border: '1px solid rgba(34,197,94,0.2)', '& .MuiAlert-icon': { color: '#bbf7d0' } }}
         >
-          Bekreftet kunde: <strong>{confirmedEntity.legalName}</strong>
+          {t('merchSuppliers.s005')} <strong>{confirmedEntity.legalName}</strong>
           {confirmedEntity.organizationNumber ? ` (${confirmedEntity.organizationNumber})` : ''}
-          {confirmedEntity.bydel ? ` · driver fra ${confirmedEntity.bydel}` : ''}
+          {confirmedEntity.bydel ? t('merchSuppliers.p00', { v0: confirmedEntity.bydel }) : ''}
         </Alert>
       ) : (
         <Alert
@@ -247,12 +253,11 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           icon={<BusinessIcon fontSize="small" />}
           action={
             <Button size="small" variant="contained" onClick={() => setConfirmEntityOpen(true)} sx={{ textTransform: 'none' }}>
-              Bekreft kunde
+              {t('merchSuppliers.s004')}
             </Button>
           }
         >
-          Bekreft hvilken juridisk bedrift dette er + bydel dere driver fra. Da blir partner-forslag og samarbeidsutkast
-          basert på riktig data.
+          {t('merchSuppliers.s003')}
         </Alert>
       )}
 
@@ -269,7 +274,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
           <Box>
-            <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Merch-leverandører</Typography>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('merchSuppliers.s020')}</Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
               {merch.marketContext}
             </Typography>
@@ -277,7 +282,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip
               size="small"
-              label={`${merch.verifiedSupplierCount}/${merch.suppliers.length} klare for forespørsel`}
+              label={t('merchSuppliers.p07', { v0: merch.verifiedSupplierCount, v1: merch.suppliers.length })}
               sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 700 }}
             />
             {emailHistory.length > 0 ? (
@@ -289,7 +294,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                 disabled={polling}
                 sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                {polling ? 'Sjekker …' : 'Sjekk for svar'}
+                {polling ? t('merchSuppliers.s032') : t('merchSuppliers.s031')}
               </Button>
             ) : null}
             <Button
@@ -304,7 +309,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                 '&:hover': { bgcolor: 'rgba(99,102,241,0.6)' },
               }}
             >
-              Lag samarbeidsforslag
+              {t('merchSuppliers.s017')}
             </Button>
           </Stack>
         </Stack>
@@ -331,7 +336,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           {techniqueChips.length > 0 ? (
             <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center">
               <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mr: 0.5 }}>
-                Teknikk
+                {t('merchSuppliers.s036')}
               </Typography>
               {techniqueChips.map((t) => {
                 const active = techniqueFilter === t;
@@ -355,7 +360,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           {productChips.length > 0 ? (
             <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center">
               <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mr: 0.5 }}>
-                Produkt
+                {t('merchSuppliers.s023')}
               </Typography>
               {productChips.map((c) => {
                 const active = productFilter === c;
@@ -383,7 +388,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
         {filteredSuppliers.length === 0 ? (
           <Alert severity="info" sx={{ width: '100%' }}>
-            Ingen leverandører matcher de valgte filtrene. Klikk på en chip for å fjerne filteret.
+            {t('merchSuppliers.s011')}
           </Alert>
         ) : null}
         {filteredSuppliers.map((supplier) => {
@@ -431,7 +436,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                     {isSelected ? (
                       <Chip
                         size="small"
-                        label="Valgt"
+                        label={t('merchSuppliers.s040')}
                         sx={{ bgcolor: 'rgba(99,102,241,0.22)', color: '#e0e7ff', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
                       />
                     ) : null}
@@ -439,7 +444,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                   <Chip
                     size="small"
                     label={pill.label}
-                    title={`Konfidens: ${supplier.confidence}%`}
+                    title={t('merchSuppliers.p04', { v0: supplier.confidence })}
                     sx={{ bgcolor: pill.bg, color: pill.fg, fontWeight: 700 }}
                   />
                 </Stack>
@@ -494,7 +499,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                 {supplier.offerings && supplier.offerings.length > 0 ? (
                   <Box>
                     <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', mb: 0.4 }}>
-                      Tilbyr (fra nettsiden)
+                      {t('merchSuppliers.s037')}
                     </Typography>
                     <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
                       {supplier.offerings.map((offering) => (
@@ -542,7 +547,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                       startIcon={<WebIcon fontSize="small" />}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Nettside
+                      {t('merchSuppliers.s021')}
                     </Button>
                   ) : null}
                   {supplier.googleMapsUri ? (
@@ -583,7 +588,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                       '&:hover': { bgcolor: 'rgba(99,102,241,0.6)' },
                     }}
                   >
-                    Send tilbudsforespørsel
+                    {t('merchSuppliers.s029')}
                   </Button>
                 </Stack>
                 {/* Slice 7b/c: send + reply history */}
@@ -591,16 +596,14 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                   <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap alignItems="center" onClick={(e) => e.stopPropagation()}>
                     <Chip
                       size="small"
-                      label={`Sendt ${sentCount} ${sentCount === 1 ? 'gang' : 'ganger'}`}
+                      label={t('merchSuppliers.p05', { v0: sentCount, v1: sentCount === 1 ? t('merchSuppliers.s042') : t('merchSuppliers.s043') })}
                       sx={{ bgcolor: 'rgba(99,102,241,0.16)', color: '#c7d2fe', fontSize: '0.7rem', height: 22 }}
                     />
                     {latestReply ? (
                       <Chip
                         size="small"
-                        label={`Svar mottatt ${new Date(latestReply.repliedAt).toLocaleDateString('nb-NO')} · ${
-                          latestReply.sentiment === 'positive' ? 'positivt' :
-                          latestReply.sentiment === 'negative' ? 'negativt' : 'nøytralt'
-                        }`}
+                        label={t('merchSuppliers.p06', { v0: new Date(latestReply.repliedAt).toLocaleDateString('nb-NO'), v1: latestReply.sentiment === 'positive' ? t('merchSuppliers.s046') :
+                          latestReply.sentiment === 'negative' ? t('merchSuppliers.s044') : t('merchSuppliers.s045') })}
                         sx={{
                           bgcolor:
                             latestReply.sentiment === 'positive' ? 'rgba(34,197,94,0.16)' :
@@ -621,7 +624,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                         onClick={() => setReplyDialogTarget(latestSent)}
                         sx={{ textTransform: 'none', fontSize: '0.72rem', minWidth: 0, p: 0.4 }}
                       >
-                        Marker svar
+                        {t('merchSuppliers.s019')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -719,7 +722,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             }}
           >
             <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-              Samarbeidsforslag
+              {t('merchSuppliers.s026')}
             </Typography>
             <Stack spacing={0.5}>
               {merch.cooperationAngles.map((angle) => (
@@ -742,7 +745,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             }}
           >
             <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-              Send med i tilbudsforespørsel
+              {t('merchSuppliers.s028')}
             </Typography>
             <Stack spacing={0.5}>
               {merch.outreachChecklist.map((item) => (
@@ -758,7 +761,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
 
       {merch.limitations.length > 0 ? (
         <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem', lineHeight: 1.5 }}>
-          Begrensning: {merch.limitations.join(' · ')}
+          {t('merchSuppliers.s002')} {merch.limitations.join(' · ')}
         </Typography>
       ) : null}
     </Stack>

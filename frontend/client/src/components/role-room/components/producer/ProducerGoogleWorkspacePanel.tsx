@@ -52,6 +52,8 @@ import type { ProjectFileRecord } from '../../utils/projectFiles';
 import { getRoleRoomReturnPath } from '../../utils/runtime';
 import { describeProducerError, isTransientProducerError } from '../../utils/producerErrorMessage';
 import RoleRoomGoogleCollaborationWorkspace from './RoleRoomGoogleCollaborationWorkspace';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ProducerGoogleWorkspacePanelProps {
   project: CastingProject;
@@ -68,29 +70,29 @@ interface ProducerGoogleWorkspacePanelProps {
   onGoogleContactImported?: (contact: RoleRoomGooglePersonContact) => Promise<void>;
 }
 
-const CONNECTION_STATE_LABELS: Record<string, string> = {
-  disconnected: 'Ikke koblet',
-  connected: 'Koblet',
-  expired: 'Utløpt',
-  error: 'Feil',
-};
+const buildCONNECTION_STATE_LABELS = (t: TFn): Record<string, string> => ({
+  disconnected: t('googleWs.s011'),
+  connected: t('googleWs.s018'),
+  expired: t('googleWs.s038'),
+  error: t('googleWs.s006'),
+});
 
-const FOLDER_LABELS: Record<string, string> = {
-  brief: 'Brief',
-  materials: 'Materiale',
-  brand: 'Merkevare',
-  delivery: 'Levering',
-  approvals: 'Godkjenning',
-  meetings: 'Møter',
-};
+const buildFOLDER_LABELS = (t: TFn): Record<string, string> => ({
+  brief: t('googleWs.s002'),
+  materials: t('googleWs.s025'),
+  brand: t('googleWs.s026'),
+  delivery: t('googleWs.s023'),
+  approvals: t('googleWs.s007'),
+  meetings: t('googleWs.s027'),
+});
 
 const hasText = (value: unknown): value is string => (
   typeof value === 'string' && value.trim().length > 0
 );
 
-const formatDateTime = (value?: string | null): string => {
+const formatDateTime = (t: TFn, value?: string | null): string => {
   if (!hasText(value)) {
-    return 'Ikke synket ennå';
+    return t('googleWs.s013');
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -133,6 +135,8 @@ export default function ProducerGoogleWorkspacePanel({
   onOpenWorkspace,
   onGoogleContactImported,
 }: ProducerGoogleWorkspacePanelProps) {
+  const { t } = useT();
+  const FOLDER_LABELS = useMemo(() => buildFOLDER_LABELS(t), [t]);
   const { enqueueSnackbar } = useSnackbar();
   const [googleStatus, setGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
@@ -170,7 +174,7 @@ export default function ProducerGoogleWorkspacePanel({
         return;
       }
       console.error('[ProducerGoogleWorkspacePanel] Failed to load Workspace state', statusError);
-      setLocalError(statusError instanceof Error ? statusError.message : 'Kunne ikke hente Workspace-informasjon.');
+      setLocalError(statusError instanceof Error ? statusError.message : t('googleWs.s020'));
     } finally {
       if (requestId === statusRequestRef.current) {
         setLoadingStatus(false);
@@ -285,8 +289,8 @@ export default function ProducerGoogleWorkspacePanel({
         // er ødelagt når backend bare er utilgjengelig akkurat nå.
         setLocalError(
           isTransientProducerError(error)
-            ? 'Klarte ikke å fullføre Google Workspace-oppsettet nå (offline eller midlertidig feil). Det forsøkes igjen når forbindelsen er tilbake.'
-            : describeProducerError(error, 'fullføre Google Workspace-oppsettet'),
+            ? t('googleWs.s016')
+            : describeProducerError(error, t('googleWs.s042')),
         );
       })
       .finally(() => {
@@ -343,12 +347,12 @@ export default function ProducerGoogleWorkspacePanel({
         email: project.clientEmail ?? intake.contactEmail ?? undefined,
       });
       if (!hasText(response.authorizationUrl)) {
-        throw new Error('Mangler autorisasjonslenke fra Google Workspace');
+        throw new Error(t('googleWs.s024'));
       }
       window.location.assign(response.authorizationUrl);
     } catch (linkError) {
       console.error('[ProducerGoogleWorkspacePanel] Failed to start Google Workspace link', linkError);
-      const message = linkError instanceof Error ? linkError.message : 'Kunne ikke starte Google-aktiveringen.';
+      const message = linkError instanceof Error ? linkError.message : t('googleWs.s021');
       setLocalError(message);
       enqueueSnackbar(message, { variant: 'error' });
       setActionKey(null);
@@ -361,7 +365,7 @@ export default function ProducerGoogleWorkspacePanel({
         async () => {
         await googleWorkspaceApi.provisionProjectWorkspace(projectId, binding?.contactsContext ?? {});
       },
-      'Google Workspace er klart for prosjektet.',
+      t('googleWs.s008'),
     );
   }, [binding, projectId, runAction]);
 
@@ -371,7 +375,7 @@ export default function ProducerGoogleWorkspacePanel({
       async () => {
         await googleWorkspaceApi.unlink();
       },
-      'Google Workspace er koblet fra brukeren.',
+      t('googleWs.s009'),
     );
   }, [runAction]);
 
@@ -380,14 +384,14 @@ export default function ProducerGoogleWorkspacePanel({
       'drive-sync',
       async () => {
         if (projectFileIds.length === 0 && generatedArtifacts.length === 0) {
-          throw new Error('Fant ingen filer eller genererte artefakter å synkronisere.');
+          throw new Error(t('googleWs.s004'));
         }
         await googleWorkspaceApi.syncDrive(projectId, {
           fileIds: projectFileIds,
           generatedArtifacts,
         });
       },
-      'Workspace-filer og artefakter er synket til Google Drive.',
+      t('googleWs.s040'),
     );
   }, [generatedArtifacts, projectFileIds, projectId, runAction]);
 
@@ -396,14 +400,14 @@ export default function ProducerGoogleWorkspacePanel({
       'calendar-sync',
       async () => {
         if (calendarEvents.length === 0) {
-          throw new Error('Fant ingen planhendelser å synkronisere til kalenderen.');
+          throw new Error(t('googleWs.s005'));
         }
         await googleWorkspaceApi.syncCalendar(projectId, {
           events: calendarEvents,
           calendarId: binding?.calendarId ?? undefined,
         });
       },
-      'Plan og milepæler er synket til Google Kalender.',
+      t('googleWs.s029'),
     );
   }, [binding?.calendarId, calendarEvents, projectId, runAction]);
 
@@ -417,7 +421,7 @@ export default function ProducerGoogleWorkspacePanel({
           window.open(meetUrl, '_blank', 'noopener,noreferrer');
         }
       },
-      'Klientsync med Google Meet er opprettet.',
+      t('googleWs.s017'),
     );
   }, [meetSession, projectId, runAction]);
 
@@ -453,7 +457,7 @@ export default function ProducerGoogleWorkspacePanel({
         return;
       }
       console.error('[ProducerGoogleWorkspacePanel] Failed to search Google contacts', searchError);
-      const message = searchError instanceof Error ? searchError.message : 'Kunne ikke søke i Google-kontakter.';
+      const message = searchError instanceof Error ? searchError.message : t('googleWs.s022');
       setLocalError(message);
       enqueueSnackbar(message, { variant: 'error' });
     } finally {
@@ -487,7 +491,7 @@ export default function ProducerGoogleWorkspacePanel({
           createCalendar: false,
         });
       },
-      `${contact.name ?? contact.email ?? 'Kontakten'} er lagt inn i Role Room-prosjektet.`,
+      t('googleWs.p00', { v0: contact.name ?? contact.email ?? t('googleWs.s019') }),
     );
   }, [binding?.contactsContext, onGoogleContactImported, projectId, runAction]);
 
@@ -514,11 +518,11 @@ export default function ProducerGoogleWorkspacePanel({
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.45 }}>
               <HubOutlinedIcon sx={{ color: '#93c5fd' }} />
               <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Workspace-filer og kalender
+                {t('googleWs.s041')}
               </Typography>
             </Stack>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem', maxWidth: 980 }}>
-              Role Room styrer prosjektet. Filer, plan, møter og delte artefakter synkes direkte fra prosjektet uten ekstra koblingssteg.
+              {t('googleWs.s031')}
               </Typography>
           </Box>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -547,10 +551,10 @@ export default function ProducerGoogleWorkspacePanel({
             <Stack spacing={1}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Arbeidsområde
+                  {t('googleWs.s000')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                  Prosjektets Drive-mapper, kalender og møteartefakter holdes klare i bakgrunnen og styres fra Role Room.
+                  {t('googleWs.s030')}
                 </Typography>
               </Box>
 
@@ -565,7 +569,7 @@ export default function ProducerGoogleWorkspacePanel({
                       }}
                       disabled={actionKey === 'drive-sync'}
                     >
-                      {actionKey === 'drive-sync' ? 'Synker...' : 'Synk workspace til Drive'}
+                      {actionKey === 'drive-sync' ? 'Synker...' : t('googleWs.s033')}
                     </Button>
                     <Button
                       variant="outlined"
@@ -575,7 +579,7 @@ export default function ProducerGoogleWorkspacePanel({
                       }}
                       disabled={actionKey === 'calendar-sync'}
                     >
-                      {actionKey === 'calendar-sync' ? 'Synker...' : 'Synk plan til kalender'}
+                      {actionKey === 'calendar-sync' ? 'Synker...' : t('googleWs.s032')}
                     </Button>
                     <Button
                       variant="outlined"
@@ -585,7 +589,7 @@ export default function ProducerGoogleWorkspacePanel({
                       }}
                       disabled={actionKey === 'meet-session'}
                     >
-                      {actionKey === 'meet-session' ? 'Oppretter...' : 'Opprett klientsync'}
+                      {actionKey === 'meet-session' ? 'Oppretter...' : t('googleWs.s028')}
                     </Button>
                   </>
                 ) : null}
@@ -603,7 +607,7 @@ export default function ProducerGoogleWorkspacePanel({
                     Drive-rot
                   </Typography>
                   <Typography sx={{ color: '#fff', fontWeight: 600, mt: 0.35 }}>
-                    {binding?.driveRootFolderId || 'Ikke opprettet'}
+                    {binding?.driveRootFolderId || t('googleWs.s012')}
                   </Typography>
                 </Box>
                 <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
@@ -611,7 +615,7 @@ export default function ProducerGoogleWorkspacePanel({
                     Kalender
                   </Typography>
                   <Typography sx={{ color: '#fff', fontWeight: 600, mt: 0.35 }}>
-                    {binding?.calendarId || 'Ikke opprettet'}
+                    {binding?.calendarId || t('googleWs.s012')}
                   </Typography>
                 </Box>
                 <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
@@ -619,7 +623,7 @@ export default function ProducerGoogleWorkspacePanel({
                     Siste Drive-sync
                   </Typography>
                   <Typography sx={{ color: '#fff', fontWeight: 600, mt: 0.35 }}>
-                    {formatDateTime(binding?.lastDriveSyncAt)}
+                    {formatDateTime(t, binding?.lastDriveSyncAt)}
                   </Typography>
                 </Box>
                 <Box sx={{ p: 1, borderRadius: 1.35, bgcolor: 'rgba(2,6,23,0.52)', border: '1px solid rgba(148,163,184,0.12)' }}>
@@ -627,7 +631,7 @@ export default function ProducerGoogleWorkspacePanel({
                     Siste kalendersync
                   </Typography>
                   <Typography sx={{ color: '#fff', fontWeight: 600, mt: 0.35 }}>
-                    {formatDateTime(binding?.lastCalendarSyncAt)}
+                    {formatDateTime(t, binding?.lastCalendarSyncAt)}
                   </Typography>
                 </Box>
               </Box>
@@ -665,7 +669,7 @@ export default function ProducerGoogleWorkspacePanel({
                   Delte artefakter
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                  Workspace, merkevare, levering og kalender kan synkes ut til Google uten at Role Room mister eierskapet.
+                  {t('googleWs.s039')}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -690,7 +694,7 @@ export default function ProducerGoogleWorkspacePanel({
                           <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 0.35 }}>
                             <Chip
                               size="small"
-                              label={FOLDER_LABELS[artifact.folderKey ?? 'brief'] ?? artifact.folderKey ?? 'Artefakt'}
+                              label={FOLDER_LABELS[artifact.folderKey ?? 'brief'] ?? artifact.folderKey ?? t('googleWs.s001')}
                               sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }}
                             />
                             <Typography sx={{ color: '#fff', fontWeight: 600 }} noWrap>
@@ -698,7 +702,7 @@ export default function ProducerGoogleWorkspacePanel({
                             </Typography>
                           </Stack>
                           <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
-                            {artifact.localEntityType} · oppdatert {formatDateTime(artifact.updatedAt ?? artifact.createdAt)}
+                            {artifact.localEntityType} {t('googleWs.s043')} {formatDateTime(t, artifact.updatedAt ?? artifact.createdAt)}
                           </Typography>
                         </Box>
                         <Stack direction="row" spacing={0.35} alignItems="center">
@@ -710,10 +714,10 @@ export default function ProducerGoogleWorkspacePanel({
                               { artifactId: artifact.localEntityId || artifact.id },
                             )}
                           >
-                            Åpne workspace
+                            {t('googleWs.s045')}
                           </Button>
                           {hasText(artifact.webViewUrl) ? (
-                            <Tooltip title="Åpne i Google Workspace">
+                            <Tooltip title={t('googleWs.s044')}>
                               <IconButton
                                 size="small"
                                 component="a"
@@ -732,7 +736,7 @@ export default function ProducerGoogleWorkspacePanel({
                 </Stack>
               ) : (
                 <Alert severity="info">
-                  Ingen Google-artefakter er synket ennå. Når Drive-sync kjøres, legges brief, materiale, merkevare, levering og kalenderuttrekk her.
+                  {t('googleWs.s015')}
                 </Alert>
               )}
             </Stack>
@@ -751,17 +755,17 @@ export default function ProducerGoogleWorkspacePanel({
             <Stack spacing={1}>
               <Box>
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Google-kontakter inn i prosjektet
+                  {t('googleWs.s010')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', mt: 0.35 }}>
-                  Bruk Google People som lookup-lag for klient og kontaktpersoner. Importen oppdaterer Role Room-prosjektet, ikke omvendt.
+                  {t('googleWs.s003')}
                 </Typography>
               </Box>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.75}>
                 <TextField
                   value={peopleQuery}
                   onChange={(event) => setPeopleQuery(event.target.value)}
-                  placeholder="Søk navn, e-post eller firma"
+                  placeholder={t('googleWs.s036')}
                   size="small"
                   fullWidth
                 />
@@ -773,7 +777,7 @@ export default function ProducerGoogleWorkspacePanel({
                   }}
                   disabled={!connection || peopleLoading}
                 >
-                  {peopleLoading ? 'Søker...' : 'Søk kontakter'}
+                  {peopleLoading ? t('googleWs.s037') : t('googleWs.s035')}
                 </Button>
               </Stack>
               {peopleResults.length > 0 ? (
@@ -805,7 +809,7 @@ export default function ProducerGoogleWorkspacePanel({
                             void handleImportContact(contact);
                           }}
                         >
-                          Importer til prosjekt
+                          {t('googleWs.s014')}
                         </Button>
                       </Stack>
                     </Box>
@@ -813,7 +817,7 @@ export default function ProducerGoogleWorkspacePanel({
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.8rem' }}>
-                  Søk i Google-kontakter for å knytte klient eller kontaktperson direkte til dette prosjektet.
+                  {t('googleWs.s034')}
                 </Typography>
               )}
             </Stack>

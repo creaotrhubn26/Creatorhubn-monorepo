@@ -67,6 +67,7 @@ import { analyzeLocation as analyzeLocationApi, type LocationAnalysis as Locatio
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT } from '../../../i18n';
 
 interface LocationAnalysisDialogProps {
   open: boolean;
@@ -89,31 +90,6 @@ const ROLE_ROOM_DIALOG_COLORS = {
   panel: 'rgba(20,16,46,0.74)',
   border: 'rgba(168,85,247,0.24)',
   mutedText: 'rgba(255,255,255,0.8)',
-};
-
-const ANALYSIS_PRESET_LABELS: Record<AnalysisPreset, string> = {
-  all: 'Alle',
-  tech_scout: 'Tech Scout',
-  permits: 'Tillatelser',
-  weather: 'Vær-risiko',
-  access: 'Tilgang',
-};
-
-const ANALYSIS_FILTER_LABELS: Record<AnalysisOperationalFilter, string> = {
-  all: 'Alle',
-  ready: 'Klar',
-  action_required: 'Krever tiltak',
-  risk: 'Risiko',
-  cost: 'Kost',
-};
-
-const PERMIT_STATUS_LABELS: Record<PermitWorkflowStatus, string> = {
-  not_started: 'Ikke startet',
-  draft: 'Utkast',
-  submitted: 'Sendt',
-  in_review: 'Under behandling',
-  approved: 'Godkjent',
-  rejected: 'Avslått',
 };
 
 const PERMIT_STATUS_COLORS: Record<PermitWorkflowStatus, { bg: string; color: string; border: string }> = {
@@ -252,12 +228,14 @@ const createManualDraft = (
   manualNotes: String((analysis as any)?.manualNotes ?? locationAccessNotes ?? ''),
 });
 
-const getLocationTypeLabel = (type?: string): string => {
+type TFunc = ReturnType<typeof useT>['t'];
+
+const getLocationTypeLabel = (type: string | undefined, t: TFunc): string => {
   if (type === 'studio') return 'studio';
-  if (type === 'outdoor') return 'utendørs';
-  if (type === 'indoor') return 'innendørs';
-  if (type === 'virtual') return 'virtuell';
-  return 'annen';
+  if (type === 'outdoor') return t('locAnalysis.locationType.outdoor');
+  if (type === 'indoor') return t('locAnalysis.locationType.indoor');
+  if (type === 'virtual') return t('locAnalysis.locationType.virtual');
+  return t('locAnalysis.locationType.other');
 };
 
 const extractMunicipalityName = (address?: string): string | null => {
@@ -310,7 +288,8 @@ const buildPermitContacts = (
   municipalityName: string | null,
   /** Permit-info fra analyzeLocation (Kartverket + kommune-database).
    *  Hvis tilstede brukes ekte URL/email/telefon i stedet for placeholder. */
-  liveKommuneInfo?: { kommune?: string; filmingPermitUrl?: string; generalContactUrl?: string; generalContactPhone?: string; filmContactName?: string; filmContactEmail?: string; filmContactPhone?: string; noiseLimits?: string } | null,
+  liveKommuneInfo: { kommune?: string; filmingPermitUrl?: string; generalContactUrl?: string; generalContactPhone?: string; filmContactName?: string; filmContactEmail?: string; filmContactPhone?: string; noiseLimits?: string } | null | undefined,
+  t: TFunc,
 ): PermitContact[] => {
   const contacts = new Map<string, PermitContact>();
 
@@ -320,9 +299,15 @@ const buildPermitContacts = (
     }
   };
 
+  const weekdayHours = t('locAnalysis.permit.hours.weekdays');
+  const policeNonEmergencyHours = t('locAnalysis.permit.hours.policeNonEmergency');
+  const policeAuthority = t('locAnalysis.permit.police.authority');
+
   const liveName = liveKommuneInfo?.kommune ?? null;
   const effectiveMunicipalityName = liveName ?? municipalityName;
-  const municipalityLabel = effectiveMunicipalityName ? `${effectiveMunicipalityName} kommune` : 'Kommunen';
+  const municipalityLabel = effectiveMunicipalityName
+    ? t('locAnalysis.permit.municipalityLabel', { name: effectiveMunicipalityName })
+    : t('locAnalysis.permit.municipalityFallback');
 
   if (operations.publicArea) {
     // Hvis vi har ekte data fra Kartverket+kommune-DB → bruk den
@@ -332,23 +317,25 @@ const buildPermitContacts = (
     const filmContactEmail = liveKommuneInfo?.filmContactEmail;
     const phone = liveKommuneInfo?.filmContactPhone ?? liveKommuneInfo?.generalContactPhone;
     const filmName = liveKommuneInfo?.filmContactName;
+    const namePart = filmName ? ` (${filmName})` : '';
+    const orCallPart = phone ? ` ${t('locAnalysis.permit.hint.orCall', { phone })}` : '';
     const hint = filmContactEmail
-      ? `Send e-post til ${filmContactEmail}${filmName ? ` (${filmName})` : ''}${phone ? ` eller ring ${phone}` : ''}.`
+      ? `${t('locAnalysis.permit.hint.email', { email: filmContactEmail })}${namePart}${orCallPart}.`
       : phone
-        ? `Ring ${phone}${filmName ? ` (${filmName})` : ' (servicetorg)'}.`
+        ? `${t('locAnalysis.permit.hint.call', { phone })}${filmName ? namePart : ` ${t('locAnalysis.permit.hint.serviceDesk')}`}.`
         : effectiveMunicipalityName
-          ? `Sjekk kommunens side for filming-tillatelse: ${filmingUrl}`
-          : 'Søk etter kommunens film-/arrangementskontor.';
+          ? t('locAnalysis.permit.hint.checkSite', { url: filmingUrl })
+          : t('locAnalysis.permit.hint.searchOffice');
     addContact({
       id: 'kommune',
       authority: municipalityLabel,
-      unit: filmName ?? 'Filming / bruk av offentlig grunn',
+      unit: filmName ?? t('locAnalysis.permit.kommune.unit'),
       reason: liveKommuneInfo?.noiseLimits
-        ? `Avklar bruk av offentlig areal og lokal tillatelse. Støygrenser: ${liveKommuneInfo.noiseLimits}`
-        : 'Avklar bruk av offentlig areal, støygrenser og lokal tillatelse.',
+        ? t('locAnalysis.permit.kommune.reasonWithNoise', { limits: liveKommuneInfo.noiseLimits })
+        : t('locAnalysis.permit.kommune.reason'),
       processingDays: 10,
       leadDays: 14,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'hoy',
       website: filmingUrl,
       contactHint: hint,
@@ -359,54 +346,54 @@ const buildPermitContacts = (
     addContact({
       id: 'luftfart',
       authority: 'Luftfartstilsynet',
-      unit: 'Regler for droneoperasjoner',
-      reason: 'Bekreft operasjon i tråd med gjeldende drone-regelverk og eventuelle begrensninger.',
+      unit: t('locAnalysis.permit.luftfart.unit'),
+      reason: t('locAnalysis.permit.luftfart.reason'),
       processingDays: 14,
       leadDays: 21,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'hoy',
       website: 'https://luftfartstilsynet.no',
-      contactHint: 'Bruk informasjon om kategori, høyde og område i henvendelsen.',
+      contactHint: t('locAnalysis.permit.luftfart.hint'),
     });
     addContact({
       id: 'avinor',
       authority: 'Avinor',
-      unit: 'Luftrom / nærliggende flyplass',
-      reason: 'Avklar eventuelle restriksjoner nær kontrollert luftrom eller flyplass.',
+      unit: t('locAnalysis.permit.avinor.unit'),
+      reason: t('locAnalysis.permit.avinor.reason'),
       processingDays: 14,
       leadDays: 21,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'hoy',
       website: 'https://www.avinor.no',
-      contactHint: 'Oppgi koordinater, planlagt flyhøyde og tidsvindu.',
+      contactHint: t('locAnalysis.permit.avinor.hint'),
     });
   }
 
   if (operations.trafficControl) {
     addContact({
       id: 'politi',
-      authority: 'Politiet',
-      unit: 'Trafikkregulering / orden',
-      reason: 'Ved avsperring, trafikkdirigering eller tiltak som påvirker publikum.',
+      authority: policeAuthority,
+      unit: t('locAnalysis.permit.politi.unit'),
+      reason: t('locAnalysis.permit.politi.reason'),
       processingDays: 7,
       leadDays: 10,
-      openingHours: 'Døgnåpent (ikke-akutt: 02800)',
+      openingHours: policeNonEmergencyHours,
       priority: 'hoy',
       phone: '02800',
       website: 'https://www.politiet.no',
-      contactHint: 'Beskriv tidsrom, antall personer og avsperringsbehov.',
+      contactHint: t('locAnalysis.permit.politi.hint'),
     });
     addContact({
       id: 'vegvesen',
       authority: 'Statens vegvesen',
-      unit: 'Vei og trafikk',
-      reason: 'Tiltak på riks-/fylkesvei eller aktiviteter som påvirker trafikkflyt.',
+      unit: t('locAnalysis.permit.vegvesen.unit'),
+      reason: t('locAnalysis.permit.vegvesen.reason'),
       processingDays: 10,
       leadDays: 14,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'hoy',
       website: 'https://www.vegvesen.no',
-      contactHint: 'Legg ved kart, riggplan og behov for skilting/dirigering.',
+      contactHint: t('locAnalysis.permit.vegvesen.hint'),
     });
   }
 
@@ -414,41 +401,41 @@ const buildPermitContacts = (
     addContact({
       id: 'night_kommune',
       authority: municipalityLabel,
-      unit: 'Støy og nattarbeid',
-      reason: 'Nattopptak kan kreve særskilt avklaring for støy og lysbruk.',
+      unit: t('locAnalysis.permit.night.unit'),
+      reason: t('locAnalysis.permit.night.reason'),
       processingDays: 8,
       leadDays: 10,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'normal',
       website: 'https://www.norge.no',
-      contactHint: 'Oppgi klokkeslett, lydnivå og varighet for nattaktivitet.',
+      contactHint: t('locAnalysis.permit.night.hint'),
     });
   }
 
   if (operations.pyrotechnics) {
     addContact({
       id: 'brannvesen',
-      authority: 'Lokalt brannvesen',
-      unit: 'Pyroteknikk / brannsikkerhet',
-      reason: 'Påkrevd ved bruk av pyro, flammeeffekter eller større røykmaskiner.',
+      authority: t('locAnalysis.permit.brannvesen.authority'),
+      unit: t('locAnalysis.permit.brannvesen.unit'),
+      reason: t('locAnalysis.permit.brannvesen.reason'),
       processingDays: 10,
       leadDays: 14,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'hoy',
-      contactHint: 'Inkluder sikkerhetsplan, ansvarlig pyrotekniker og slokkeberedskap.',
+      contactHint: t('locAnalysis.permit.brannvesen.hint'),
     });
     addContact({
       id: 'pyro_politi',
-      authority: 'Politiet',
-      unit: 'Pyrotekniske tiltak',
-      reason: 'Informer politiet ved pyroeffekter som kan påvirke offentlig orden.',
+      authority: policeAuthority,
+      unit: t('locAnalysis.permit.pyroPolice.unit'),
+      reason: t('locAnalysis.permit.pyroPolice.reason'),
       processingDays: 7,
       leadDays: 10,
-      openingHours: 'Døgnåpent (ikke-akutt: 02800)',
+      openingHours: policeNonEmergencyHours,
       priority: 'hoy',
       phone: '02800',
       website: 'https://www.politiet.no',
-      contactHint: 'Beskriv type effekt, varighet og sikkerhetstiltak.',
+      contactHint: t('locAnalysis.permit.pyroPolice.hint'),
     });
   }
 
@@ -456,30 +443,32 @@ const buildPermitContacts = (
     addContact({
       id: 'banenor',
       authority: 'Bane NOR',
-      unit: 'Jernbaneområde',
-      reason: 'Avklar tilgang og sikkerhetskrav ved filming nær jernbanespor.',
+      unit: t('locAnalysis.permit.banenor.unit'),
+      reason: t('locAnalysis.permit.banenor.reason'),
       processingDays: 21,
       leadDays: 30,
-      openingHours: 'Hverdager 08:00-15:30',
+      openingHours: weekdayHours,
       priority: 'hoy',
       website: 'https://www.banenor.no',
-      contactHint: 'Oppgi avstand til spor, tidspunkt og teknisk rigg.',
+      contactHint: t('locAnalysis.permit.banenor.hint'),
     });
   }
 
   const ownerContact = location.contactInfo || location.contact_info;
   addContact({
     id: 'grunneier',
-    authority: 'Grunneier / utleier',
-    unit: 'Privat eiendom',
-    reason: 'Skriftlig tillatelse for bruk av privat område og rigg.',
+    authority: t('locAnalysis.permit.owner.authority'),
+    unit: t('locAnalysis.permit.owner.unit'),
+    reason: t('locAnalysis.permit.owner.reason'),
     processingDays: 3,
     leadDays: 7,
-    openingHours: 'Etter avtale',
+    openingHours: t('locAnalysis.permit.hours.byAppointment'),
     priority: 'hoy',
     phone: ownerContact?.phone,
     email: ownerContact?.email,
-    contactHint: ownerContact?.email || ownerContact?.phone ? 'Bruk lagret kontaktinfo på lokasjonen.' : 'Legg inn kontaktinfo på lokasjonen for raskere avklaring.',
+    contactHint: ownerContact?.email || ownerContact?.phone
+      ? t('locAnalysis.permit.owner.hintSaved')
+      : t('locAnalysis.permit.owner.hintMissing'),
   });
 
   return Array.from(contacts.values());
@@ -491,36 +480,42 @@ const buildPermitEmailTemplate = (params: {
   shootDate: string;
   operations: PermitOperationFlags;
   municipalityName: string | null;
-}): { subject: string; body: string; mailto: string } => {
+}, t: TFunc): { subject: string; body: string; mailto: string } => {
   const activityLabels = [
-    params.operations.drone ? 'droneopptak' : null,
-    params.operations.trafficControl ? 'trafikkregulering' : null,
-    params.operations.nightShoot ? 'nattopptak' : null,
-    params.operations.pyrotechnics ? 'pyroteknikk' : null,
-    params.operations.publicArea ? 'offentlig område' : null,
-    params.operations.nearRail ? 'nær jernbane' : null,
+    params.operations.drone ? t('locAnalysis.email.activity.drone') : null,
+    params.operations.trafficControl ? t('locAnalysis.email.activity.traffic') : null,
+    params.operations.nightShoot ? t('locAnalysis.email.activity.night') : null,
+    params.operations.pyrotechnics ? t('locAnalysis.email.activity.pyro') : null,
+    params.operations.publicArea ? t('locAnalysis.email.activity.publicArea') : null,
+    params.operations.nearRail ? t('locAnalysis.email.activity.rail') : null,
   ].filter(Boolean);
 
-  const shootDateText = params.shootDate ? formatNorwegianDate(new Date(`${params.shootDate}T12:00:00`)) : 'ikke satt';
-  const municipalityText = params.municipalityName || 'ikke spesifisert kommune';
+  const shootDateText = params.shootDate ? formatNorwegianDate(new Date(`${params.shootDate}T12:00:00`)) : t('locAnalysis.email.dateNotSet');
+  const municipalityText = params.municipalityName || t('locAnalysis.email.municipalityUnspecified');
 
-  const subject = `Forespørsel om tillatelse – ${params.location.name}`;
+  const subject = t('locAnalysis.email.subject', { name: params.location.name });
   const body = [
-    `Hei ${params.contact.authority},`,
+    t('locAnalysis.email.greeting', { authority: params.contact.authority }),
     '',
-    `Vi planlegger opptak på lokasjonen "${params.location.name}" (${params.location.address || 'adresse ikke oppgitt'}) i ${municipalityText}.`,
-    `Planlagt opptaksdato: ${shootDateText}.`,
+    t('locAnalysis.email.intro', {
+      name: params.location.name,
+      address: params.location.address || t('locAnalysis.email.addressNotProvided'),
+      municipality: municipalityText,
+    }),
+    t('locAnalysis.email.plannedDate', { date: shootDateText }),
     '',
-    `Aktiviteter: ${activityLabels.length > 0 ? activityLabels.join(', ') : 'ordinært opptak uten særtiltak'}.`,
+    t('locAnalysis.email.activities', {
+      activities: activityLabels.length > 0 ? activityLabels.join(', ') : t('locAnalysis.email.ordinaryShoot'),
+    }),
     '',
-    'Kan dere bekrefte hvilke tillatelser/dokumenter som kreves, samt forventet behandlingstid?',
+    t('locAnalysis.email.askConfirm'),
     '',
-    'Vedlagt/tilgjengelig på forespørsel:',
-    '- Produksjonsbeskrivelse',
-    '- Tidsplan og riggplan',
-    '- Risiko- og sikkerhetstiltak',
+    t('locAnalysis.email.attachedHeading'),
+    t('locAnalysis.email.item.production'),
+    t('locAnalysis.email.item.schedule'),
+    t('locAnalysis.email.item.safety'),
     '',
-    'Takk for hjelpen.',
+    t('locAnalysis.email.thanks'),
   ].join('\n');
 
   const mailtoRecipient = params.contact.email || '';
@@ -561,6 +556,7 @@ interface SpotListItemProps {
 }
 
 const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: SpotListItemProps) => {
+  const { t } = useT();
   const bgColor = variant === 'ev' ? ROLE_ROOM_DIALOG_COLORS.secondarySoft : ROLE_ROOM_DIALOG_COLORS.accentSoft;
   const borderColor = variant === 'ev' ? 'rgba(34,211,238,0.34)' : ROLE_ROOM_DIALOG_COLORS.border;
   const hoverBgColor = variant === 'ev' ? 'rgba(34,211,238,0.24)' : 'rgba(168,85,247,0.24)';
@@ -615,7 +611,7 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
             </Typography>
             <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip
-                label={`${spot.distance} m unna`}
+                label={t('locAnalysis.spot.distanceAway', { distance: spot.distance })}
                 size="small"
                 sx={{
                   bgcolor: variant === 'ev' ? ROLE_ROOM_DIALOG_COLORS.secondarySoft : ROLE_ROOM_DIALOG_COLORS.accentSoft,
@@ -644,7 +640,7 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
               )}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, ml: 'auto' }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                  Trykk for navigering
+                  {t('locAnalysis.spot.tapToNavigate')}
                 </Typography>
                 <OpenInNewIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.9rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }} />
               </Box>
@@ -660,6 +656,7 @@ const SpotListItem = memo(({ spot, variant = 'default', spaceLabel, index }: Spo
 SpotListItem.displayName = 'SpotListItem';
 
 export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComplete }: LocationAnalysisDialogProps) {
+  const { t } = useT();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [loading, setLoading] = useState(false);
@@ -681,12 +678,39 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   });
   const [workflowSeedKey, setWorkflowSeedKey] = useState<string | null>(null);
   const [permitFeedback, setPermitFeedback] = useState<string | null>(null);
+  const [permitFeedbackIsError, setPermitFeedbackIsError] = useState(false);
   const [savingPermitWorkflow, setSavingPermitWorkflow] = useState(false);
   const [copyingContactId, setCopyingContactId] = useState<string | null>(null);
   const [manualEditOpen, setManualEditOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState<ManualAnalysisDraft | null>(null);
   const [analysisFeedback, setAnalysisFeedback] = useState<string | null>(null);
+  const [analysisFeedbackIsError, setAnalysisFeedbackIsError] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+
+  const presetLabels = useMemo<Record<AnalysisPreset, string>>(() => ({
+    all: t('locAnalysis.filter.all'),
+    tech_scout: 'Tech Scout',
+    permits: t('locAnalysis.preset.permits'),
+    weather: t('locAnalysis.preset.weather'),
+    access: t('locAnalysis.preset.access'),
+  }), [t]);
+
+  const filterLabels = useMemo<Record<AnalysisOperationalFilter, string>>(() => ({
+    all: t('locAnalysis.filter.all'),
+    ready: t('locAnalysis.filter.ready'),
+    action_required: t('locAnalysis.filter.actionRequired'),
+    risk: t('locAnalysis.filter.risk'),
+    cost: t('locAnalysis.filter.cost'),
+  }), [t]);
+
+  const permitStatusLabels = useMemo<Record<PermitWorkflowStatus, string>>(() => ({
+    not_started: t('locAnalysis.permitStatus.notStarted'),
+    draft: t('locAnalysis.permitStatus.draft'),
+    submitted: t('locAnalysis.permitStatus.submitted'),
+    in_review: t('locAnalysis.permitStatus.inReview'),
+    approved: t('locAnalysis.permitStatus.approved'),
+    rejected: t('locAnalysis.permitStatus.rejected'),
+  }), [t]);
 
   const loadAnalysisForProperty = useCallback(async (propertyId: string) => {
     setLoading(true);
@@ -714,11 +738,11 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       }
     } catch (err) {
       console.error('Error loading property analysis:', err);
-      setError('Kunne ikke laste lokasjonsanalyse');
+      setError(t('locAnalysis.error.loadAnalysis'));
     } finally {
       setLoading(false);
     }
-  }, [onAnalysisComplete, location]);
+  }, [onAnalysisComplete, location, t]);
 
   const loadPropertyFromAddress = useCallback(async (address: string) => {
     setLoading(true);
@@ -729,15 +753,15 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       if (addressData.propertyId) {
         await loadAnalysisForProperty(addressData.propertyId);
       } else {
-        setError('Kunne ikke finne lokasjons-ID for denne adressen');
+        setError(t('locAnalysis.error.noPropertyId'));
         setLoading(false);
       }
     } catch (err) {
       console.error('Error loading property from address:', err);
-      setError('Kunne ikke laste lokasjonsdata');
+      setError(t('locAnalysis.error.loadData'));
       setLoading(false);
     }
-  }, [loadAnalysisForProperty]);
+  }, [loadAnalysisForProperty, t]);
 
   // Load analysis when dialog opens - use stable location identifier to prevent repeated loads
   useEffect(() => {
@@ -747,7 +771,9 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       setAnalysisPreset('all');
       setAnalysisOperationalFilter('all');
       setPermitFeedback(null);
+      setPermitFeedbackIsError(false);
       setAnalysisFeedback(null);
+      setAnalysisFeedbackIsError(false);
       setManualEditOpen(false);
       setManualDraft(null);
       setWorkflowSeedKey(null);
@@ -792,6 +818,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     setManualEditOpen(false);
     setManualDraft(null);
     setAnalysisFeedback(null);
+    setAnalysisFeedbackIsError(false);
     setGuideOpen(false);
     onClose();
   }, [onClose]);
@@ -940,12 +967,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         setPermitAnalysisError(
           err instanceof Error && err.message
             ? err.message
-            : 'Kunne ikke hente Kartverket/kommune-data. Sjekk nett-tilkobling.',
+            : t('locAnalysis.error.kartverketFetch'),
         );
       }
     })();
     return () => { controller.abort(); };
-  }, [location?.address, permitAnalysisRefreshKey]);
+  }, [location?.address, permitAnalysisRefreshKey, t]);
 
   const retryPermitAnalysis = useCallback(() => {
     setPermitAnalysisRefreshKey((k) => k + 1);
@@ -972,8 +999,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   );
 
   const permitContacts = useMemo(
-    () => (location ? buildPermitContacts(location, operationFlags, municipalityName, permitAnalysis?.permitInfo ?? null) : []),
-    [location, operationFlags, municipalityName, permitAnalysis]
+    () => (location ? buildPermitContacts(location, operationFlags, municipalityName, permitAnalysis?.permitInfo ?? null, t) : []),
+    [location, operationFlags, municipalityName, permitAnalysis, t]
   );
 
   const mentionCandidates = useMemo(() => {
@@ -1068,56 +1095,54 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   const permitActionChecklist = useMemo(() => {
     const actions: string[] = [];
     if (!plannedShootDate) {
-      actions.push('Sett forventet opptaksdato for å beregne frister og behandlingstid.');
+      actions.push(t('locAnalysis.checklist.setShootDate'));
     }
     if (permitRiskSummary.pendingRequired > 0) {
-      actions.push(`Start eller fullfør ${permitRiskSummary.pendingRequired} tillatelsesløp som fortsatt står åpne.`);
+      actions.push(t('locAnalysis.checklist.pendingRequired', { n: permitRiskSummary.pendingRequired }));
     }
     if (permitRiskSummary.overdueCount > 0) {
-      actions.push(`Minst ${permitRiskSummary.overdueCount} frister er passert. Eskaler til ansvarlig kontakt nå.`);
+      actions.push(t('locAnalysis.checklist.overdue', { n: permitRiskSummary.overdueCount }));
     }
     if (permitRiskSummary.timePressureCount > 0) {
-      actions.push(
-        `${permitRiskSummary.timePressureCount} tillatelser er innenfor kritisk behandlingstid. Send dokumentasjon i dag.`
-      );
+      actions.push(t('locAnalysis.checklist.timePressure', { n: permitRiskSummary.timePressureCount }));
     }
     if (permitRiskSummary.rejectedCount > 0) {
-      actions.push(`${permitRiskSummary.rejectedCount} tillatelse(r) er avslått. Vurder revidert plan eller reserve-lokasjon.`);
+      actions.push(t('locAnalysis.checklist.rejected', { n: permitRiskSummary.rejectedCount }));
     }
     if (actions.length === 0) {
-      actions.push('Ingen kritiske tiltak nå. Fortsett oppfølging frem til opptaksdag.');
+      actions.push(t('locAnalysis.checklist.noneCritical'));
     }
     return actions;
-  }, [plannedShootDate, permitRiskSummary]);
+  }, [plannedShootDate, permitRiskSummary, t]);
 
   const permitFallbackSuggestions = useMemo(() => {
     const suggestions: Array<{ title: string; detail: string }> = [];
     if (permitRiskSummary.level === 'hoy' || permitRiskSummary.rejectedCount > 0) {
       suggestions.push({
-        title: 'Aktiver reserve-lokasjon',
-        detail: `Finn en ${getLocationTypeLabel(location?.type)}-lokasjon i samme område som kan ta over ved avslag.`,
+        title: t('locAnalysis.fallback.reserveLocation.title'),
+        detail: t('locAnalysis.fallback.reserveLocation.detail', { type: getLocationTypeLabel(location?.type, t) }),
       });
     }
     if (operationFlags.drone) {
       suggestions.push({
-        title: 'Drone fallback',
-        detail: 'Forbered alternativ shot-plan med bom/stativ/gimbal dersom luftromsgodkjenning uteblir.',
+        title: t('locAnalysis.fallback.drone.title'),
+        detail: t('locAnalysis.fallback.drone.detail'),
       });
     }
     if (operationFlags.trafficControl) {
       suggestions.push({
-        title: 'Reduser trafikkpåvirkning',
-        detail: 'Lag variant uten full avsperring for å minske behovet for ekstern godkjenning.',
+        title: t('locAnalysis.fallback.traffic.title'),
+        detail: t('locAnalysis.fallback.traffic.detail'),
       });
     }
     if (permitRiskSummary.timePressureCount > 0) {
       suggestions.push({
-        title: 'Juster tidsplan',
-        detail: 'Flytt opptaksdato eller splitt opptak over flere dager for å gi bedre behandlingstid.',
+        title: t('locAnalysis.fallback.schedule.title'),
+        detail: t('locAnalysis.fallback.schedule.detail'),
       });
     }
     return suggestions.slice(0, 4);
-  }, [permitRiskSummary, location?.type, operationFlags.drone, operationFlags.trafficControl]);
+  }, [permitRiskSummary, location?.type, operationFlags.drone, operationFlags.trafficControl, t]);
 
   const permitSectionVisible = useMemo(() => {
     const presetMatch = analysisPreset === 'all' || analysisPreset === 'permits';
@@ -1161,20 +1186,22 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         shootDate: plannedShootDate,
         operations: operationFlags,
         municipalityName,
-      });
-      const templateText = `Emne: ${template.subject}\n\n${template.body}`;
+      }, t);
+      const templateText = t('locAnalysis.email.subjectPrefix', { subject: template.subject, body: template.body });
       try {
         setCopyingContactId(contact.id);
         await navigator.clipboard.writeText(templateText);
-        setPermitFeedback(`Malen for ${contact.authority} er kopiert.`);
+        setPermitFeedback(t('locAnalysis.toast.templateCopied', { authority: contact.authority }));
+        setPermitFeedbackIsError(false);
       } catch (clipboardError) {
         console.error('Could not copy permit template:', clipboardError);
-        setPermitFeedback('Kunne ikke kopiere mal. Prøv igjen.');
+        setPermitFeedback(t('locAnalysis.toast.copyFailed'));
+        setPermitFeedbackIsError(true);
       } finally {
         setCopyingContactId(null);
       }
     },
-    [location, plannedShootDate, operationFlags, municipalityName]
+    [location, plannedShootDate, operationFlags, municipalityName, t]
   );
 
   const handleSavePermitWorkflow = useCallback(async () => {
@@ -1200,14 +1227,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       if (onAnalysisComplete) {
         await Promise.resolve(onAnalysisComplete(mergedAnalysis));
       }
-      setPermitFeedback('Tillatelsesstatus lagret på lokasjonen.');
+      setPermitFeedback(t('locAnalysis.toast.permitStatusSaved'));
+      setPermitFeedbackIsError(false);
     } catch (saveError) {
       console.error('Error saving permit workflow:', saveError);
-      setPermitFeedback('Kunne ikke lagre tillatelsesstatus.');
+      setPermitFeedback(t('locAnalysis.toast.permitStatusSaveFailed'));
+      setPermitFeedbackIsError(true);
     } finally {
       setSavingPermitWorkflow(false);
     }
-  }, [analysis, plannedShootDate, permitStatuses, permitNotes, operationFlags, onAnalysisComplete]);
+  }, [analysis, plannedShootDate, permitStatuses, permitNotes, operationFlags, onAnalysisComplete, t]);
 
   const handleToggleManualEdit = useCallback(() => {
     if (!analysis) return;
@@ -1264,14 +1293,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       if (onAnalysisComplete) {
         await Promise.resolve(onAnalysisComplete(mergedAnalysis));
       }
-      setAnalysisFeedback('Lokasjonsanalyse er oppdatert manuelt og lagret.');
+      setAnalysisFeedback(t('locAnalysis.toast.manualSaved'));
+      setAnalysisFeedbackIsError(false);
       setManualEditOpen(false);
       setManualDraft(null);
     } catch (saveError) {
       console.error('Error saving manual analysis edits:', saveError);
-      setAnalysisFeedback('Kunne ikke lagre manuelle endringer.');
+      setAnalysisFeedback(t('locAnalysis.toast.manualSaveFailed'));
+      setAnalysisFeedbackIsError(true);
     }
-  }, [analysis, manualDraft, onAnalysisComplete]);
+  }, [analysis, manualDraft, onAnalysisComplete, t]);
 
   useEffect(() => {
     if (!open || !location) return;
@@ -1394,7 +1425,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             <LocationIcon sx={{ color: ROLE_ROOM_DIALOG_COLORS.secondary, fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.625rem', lg: '1.875rem', xl: '2rem' } }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.175rem', lg: '1.375rem', xl: '1.5rem' } }}>
-                Lokasjonsanalyse
+                {t('locAnalysis.title')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.825rem', lg: '0.9rem', xl: '1rem' } }}>
                 {location.name}
@@ -1427,7 +1458,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 minHeight: 44,
                 '&:hover': { bgcolor: 'rgba(168,85,247,0.24)' },
               }}
-              aria-label="Lukk dialog"
+              aria-label={t('locAnalysis.aria.closeDialog')}
             >
               <CloseIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
             </IconButton>
@@ -1445,10 +1476,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: { xs: 6, sm: 8, md: 7, lg: 9, xl: 12 } }}>
             <CircularProgress sx={{ color: ROLE_ROOM_DIALOG_COLORS.secondary, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 }, fontSize: { xs: 48, sm: 56, md: 52, lg: 64, xl: 80 } }} size={56} />
             <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>
-              Analyserer lokasjon...
+              {t('locAnalysis.loading.title')}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', textAlign: 'center', maxWidth: { xs: '100%', sm: 400, md: 450, lg: 500, xl: 600 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-              Henter informasjon om fotografispotter, drone-restriksjoner, værforhold og tilgang
+              {t('locAnalysis.loading.subtitle')}
             </Typography>
           </Box>
         ) : error ? (
@@ -1461,8 +1492,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 size="small"
                 onClick={handleRefresh}
                 startIcon={<RefreshIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-                sx={{ 
-                  color: '#ef4444', 
+                sx={{
+                  color: '#ef4444',
                   fontWeight: 600,
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
@@ -1470,7 +1501,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   minHeight: 44,
                 }}
               >
-                Prøv igjen
+                {t('locAnalysis.btn.retry')}
               </Button>
             }
             sx={{ 
@@ -1486,7 +1517,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             }}
           >
             <Typography variant="body1" sx={{ color: '#ef4444', fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>
-              Kunne ikke laste analyse
+              {t('locAnalysis.error.loadAnalysisTitle')}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
               {error}
@@ -1512,23 +1543,23 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   }}
                 >
                   {([
-                    { key: 'ready', label: 'Klarhets-score', value: `${analysisMetrics.readinessScore}%`, color: '#34d399' },
-                    { key: 'risk', label: 'Risiko-score', value: `${analysisMetrics.riskScore}`, color: '#f87171' },
+                    { key: 'ready', label: t('locAnalysis.metric.readiness'), value: `${analysisMetrics.readinessScore}%`, color: '#34d399' },
+                    { key: 'risk', label: t('locAnalysis.metric.risk'), value: `${analysisMetrics.riskScore}`, color: '#f87171' },
                     {
                       key: 'permit',
-                      label: 'Tillatelse',
-                      value: analysisMetrics.permitMissing ? 'Mangler' : 'Dokumentert',
+                      label: t('locAnalysis.metric.permit'),
+                      value: analysisMetrics.permitMissing ? t('locAnalysis.metric.permitMissing') : t('locAnalysis.metric.permitDocumented'),
                       color: analysisMetrics.permitMissing ? '#fbbf24' : '#34d399',
                     },
                     {
                       key: 'cost',
-                      label: 'Estimert kost',
+                      label: t('locAnalysis.metric.estimatedCost'),
                       value: `${new Intl.NumberFormat('nb-NO').format(analysisMetrics.estimatedCost)} kr`,
                       color: analysisMetrics.overBudget ? '#f87171' : 'var(--role-cyan, #22d3ee)',
                     },
                     {
                       key: 'action',
-                      label: 'Tiltakspunkter',
+                      label: t('locAnalysis.metric.actionItems'),
                       value: `${analysisMetrics.actionRequiredCount}`,
                       color: analysisMetrics.actionRequiredCount > 0 ? '#f87171' : '#34d399',
                     },
@@ -1554,10 +1585,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                 <Stack spacing={1.1}>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.9 }}>
-                    {(Object.keys(ANALYSIS_PRESET_LABELS) as AnalysisPreset[]).map((preset) => (
+                    {(Object.keys(presetLabels) as AnalysisPreset[]).map((preset) => (
                       <Chip
                         key={preset}
-                        label={ANALYSIS_PRESET_LABELS[preset]}
+                        label={presetLabels[preset]}
                         onClick={() => setAnalysisPreset(preset)}
                         sx={{
                           bgcolor: analysisPreset === preset ? ROLE_ROOM_DIALOG_COLORS.accentSoft : 'rgba(255,255,255,0.05)',
@@ -1570,7 +1601,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     ))}
                   </Box>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.9 }}>
-                    {(Object.keys(ANALYSIS_FILTER_LABELS) as AnalysisOperationalFilter[]).map((filterKey) => (
+                    {(Object.keys(filterLabels) as AnalysisOperationalFilter[]).map((filterKey) => (
                       <Button
                         key={filterKey}
                         variant="outlined"
@@ -1587,7 +1618,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             analysisOperationalFilter === filterKey ? ROLE_ROOM_DIALOG_COLORS.secondarySoft : 'rgba(255,255,255,0.03)',
                         }}
                       >
-                        {ANALYSIS_FILTER_LABELS[filterKey]}
+                        {filterLabels[filterKey]}
                       </Button>
                     ))}
                   </Box>
@@ -1607,10 +1638,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.25, flexWrap: 'wrap', mb: 1.25 }}>
                   <Box>
                     <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                      Manuell kvalitetssikring
+                      {t('locAnalysis.manualQa.title')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.8rem', mt: 0.25 }}>
-                      Hvis API-data ikke stemmer, kan du redigere analysen direkte og lagre overstyringer.
+                      {t('locAnalysis.manualQa.subtitle')}
                     </Typography>
                   </Box>
                   <Button
@@ -1628,18 +1659,18 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       },
                     }}
                   >
-                    {manualEditOpen ? 'Lukk redigering' : 'Rediger analyse'}
+                    {manualEditOpen ? t('locAnalysis.btn.closeEdit') : t('locAnalysis.btn.editAnalysis')}
                   </Button>
                 </Box>
 
                 {analysisFeedback ? (
                   <Alert
-                    severity={analysisFeedback.includes('ikke') ? 'warning' : 'success'}
+                    severity={analysisFeedbackIsError ? 'warning' : 'success'}
                     sx={{
                       mb: 1.2,
-                      bgcolor: analysisFeedback.includes('ikke') ? 'rgba(251,191,36,0.14)' : 'rgba(52,211,153,0.12)',
+                      bgcolor: analysisFeedbackIsError ? 'rgba(251,191,36,0.14)' : 'rgba(52,211,153,0.12)',
                       color: '#fff',
-                      border: `1px solid ${analysisFeedback.includes('ikke') ? 'rgba(251,191,36,0.3)' : 'rgba(52,211,153,0.3)'}`,
+                      border: `1px solid ${analysisFeedbackIsError ? 'rgba(251,191,36,0.3)' : 'rgba(52,211,153,0.3)'}`,
                     }}
                   >
                     {analysisFeedback}
@@ -1656,9 +1687,9 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       }}
                     >
                       <FormControl size="small">
-                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Drone</InputLabel>
+                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('locAnalysis.manualQa.field.drone')}</InputLabel>
                         <Select
-                          label="Drone"
+                          label={t('locAnalysis.manualQa.field.drone')}
                           value={manualDraft.droneAllowed ? 'allowed' : 'blocked'}
                           onChange={(event) =>
                             setManualDraft((prev) =>
@@ -1677,14 +1708,14 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ROLE_ROOM_DIALOG_COLORS.secondary },
                           }}
                         >
-                          <MenuItem value="allowed">Tillatt</MenuItem>
-                          <MenuItem value="blocked">Ikke tillatt</MenuItem>
+                          <MenuItem value="allowed">{t('locAnalysis.manualQa.value.allowed')}</MenuItem>
+                          <MenuItem value="blocked">{t('locAnalysis.manualQa.value.notAllowed')}</MenuItem>
                         </Select>
                       </FormControl>
 
                       <TextField
                         size="small"
-                        label="Maks høyde (meter)"
+                        label={t('locAnalysis.manualQa.field.maxAltitude')}
                         value={manualDraft.droneMaxAltitude}
                         onChange={(event) =>
                           setManualDraft((prev) => (prev ? { ...prev, droneMaxAltitude: event.target.value } : prev))
@@ -1701,9 +1732,9 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       />
 
                       <FormControl size="small">
-                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Vind</InputLabel>
+                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('locAnalysis.manualQa.field.wind')}</InputLabel>
                         <Select
-                          label="Vind"
+                          label={t('locAnalysis.manualQa.field.wind')}
                           value={manualDraft.windExposure}
                           onChange={(event) =>
                             setManualDraft((prev) =>
@@ -1722,16 +1753,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ROLE_ROOM_DIALOG_COLORS.secondary },
                           }}
                         >
-                          <MenuItem value="low">Lav</MenuItem>
-                          <MenuItem value="moderate">Moderat</MenuItem>
-                          <MenuItem value="high">Høy</MenuItem>
+                          <MenuItem value="low">{t('locAnalysis.manualQa.value.low')}</MenuItem>
+                          <MenuItem value="moderate">{t('locAnalysis.manualQa.value.moderate')}</MenuItem>
+                          <MenuItem value="high">{t('locAnalysis.manualQa.value.high')}</MenuItem>
                         </Select>
                       </FormControl>
 
                       <FormControl size="small">
-                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Sol</InputLabel>
+                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('locAnalysis.manualQa.field.sun')}</InputLabel>
                         <Select
-                          label="Sol"
+                          label={t('locAnalysis.manualQa.field.sun')}
                           value={manualDraft.sunExposure}
                           onChange={(event) =>
                             setManualDraft((prev) =>
@@ -1750,16 +1781,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ROLE_ROOM_DIALOG_COLORS.secondary },
                           }}
                         >
-                          <MenuItem value="morning">Morgen</MenuItem>
-                          <MenuItem value="afternoon">Ettermiddag</MenuItem>
-                          <MenuItem value="all-day">Hele dagen</MenuItem>
+                          <MenuItem value="morning">{t('locAnalysis.manualQa.value.morning')}</MenuItem>
+                          <MenuItem value="afternoon">{t('locAnalysis.manualQa.value.afternoon')}</MenuItem>
+                          <MenuItem value="all-day">{t('locAnalysis.manualQa.value.allDay')}</MenuItem>
                         </Select>
                       </FormControl>
 
                       <FormControl size="small">
-                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Tilgjengelighet</InputLabel>
+                        <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('locAnalysis.manualQa.field.accessibility')}</InputLabel>
                         <Select
-                          label="Tilgjengelighet"
+                          label={t('locAnalysis.manualQa.field.accessibility')}
                           value={manualDraft.accessibility}
                           onChange={(event) =>
                             setManualDraft((prev) =>
@@ -1778,15 +1809,15 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ROLE_ROOM_DIALOG_COLORS.secondary },
                           }}
                         >
-                          <MenuItem value="wheelchair-accessible">Rullestol-tilgjengelig</MenuItem>
-                          <MenuItem value="limited">Begrenset</MenuItem>
-                          <MenuItem value="not-accessible">Ikke tilgjengelig</MenuItem>
+                          <MenuItem value="wheelchair-accessible">{t('locAnalysis.manualQa.value.wheelchairAccessible')}</MenuItem>
+                          <MenuItem value="limited">{t('locAnalysis.manualQa.value.limited')}</MenuItem>
+                          <MenuItem value="not-accessible">{t('locAnalysis.manualQa.value.notAccessible')}</MenuItem>
                         </Select>
                       </FormControl>
 
                       <TextField
                         size="small"
-                        label="Gangeavstand (meter)"
+                        label={t('locAnalysis.manualQa.field.walkingDistance')}
                         value={manualDraft.walkingDistance}
                         onChange={(event) =>
                           setManualDraft((prev) => (prev ? { ...prev, walkingDistance: event.target.value } : prev))
@@ -1805,7 +1836,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                     <TextField
                       size="small"
-                      label="Drone-restriksjoner (komma eller ny linje)"
+                      label={t('locAnalysis.manualQa.field.droneRestrictions')}
                       multiline
                       minRows={2}
                       value={manualDraft.droneRestrictionsText}
@@ -1825,7 +1856,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                     <TextField
                       size="small"
-                      label="Kollektivlinjer (komma-separert)"
+                      label={t('locAnalysis.manualQa.field.publicTransport')}
                       value={manualDraft.publicTransportText}
                       onChange={(event) =>
                         setManualDraft((prev) => (prev ? { ...prev, publicTransportText: event.target.value } : prev))
@@ -1843,7 +1874,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                     <TextField
                       size="small"
-                      label="Beskyttelsesmuligheter (komma-separert)"
+                      label={t('locAnalysis.manualQa.field.shelterOptions')}
                       value={manualDraft.shelterOptionsText}
                       onChange={(event) =>
                         setManualDraft((prev) => (prev ? { ...prev, shelterOptionsText: event.target.value } : prev))
@@ -1861,7 +1892,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                     <TextField
                       size="small"
-                      label="Interne notater"
+                      label={t('locAnalysis.manualQa.field.internalNotes')}
                       multiline
                       minRows={2}
                       value={manualDraft.manualNotes}
@@ -1891,8 +1922,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             : prev
                         )
                       }
-                      autoTagTitle="Auto-tagget i notater"
-                      suggestionTitle="Mener du?"
+                      autoTagTitle={t('locAnalysis.mention.autoTagNotes')}
+                      suggestionTitle={t('locAnalysis.mention.suggestionTitle')}
                     />
 
                     <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
@@ -1909,7 +1940,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           },
                         }}
                       >
-                        Lagre manuelle endringer
+                        {t('locAnalysis.btn.saveManualChanges')}
                       </Button>
                       <Button
                         variant="outlined"
@@ -1920,7 +1951,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           color: 'rgba(255,255,255,0.87)',
                         }}
                       >
-                        Avbryt
+                        {t('locAnalysis.btn.cancel')}
                       </Button>
                     </Box>
                   </Stack>
@@ -1955,10 +1986,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       </Box>
                       <Box>
                         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                          Tillatelser og kontakter
+                          {t('locAnalysis.permitSection.title')}
                         </Typography>
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.84)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.825rem', lg: '0.9rem', xl: '1rem' } }}>
-                          Automatisk veiviser for hvem du må kontakte, frister og søknadsstatus.
+                          {t('locAnalysis.permitSection.subtitle')}
                         </Typography>
                       </Box>
                     </Box>
@@ -1976,7 +2007,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         },
                       }}
                     >
-                      {savingPermitWorkflow ? 'Lagrer...' : 'Lagre tillatelsesstatus'}
+                      {savingPermitWorkflow ? t('locAnalysis.btn.saving') : t('locAnalysis.btn.savePermitStatus')}
                     </Button>
                   </Box>
 
@@ -1990,7 +2021,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   >
                     <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.16)' }}>
                       <Typography sx={{ color: ROLE_ROOM_DIALOG_COLORS.mutedText, fontSize: '0.68rem', textTransform: 'uppercase' }}>
-                        Kontakter
+                        {t('locAnalysis.permitSection.stat.contacts')}
                       </Typography>
                       <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.12rem', mt: 0.4 }}>
                         {permitRiskSummary.total}
@@ -1998,7 +2029,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     </Box>
                     <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.16)' }}>
                       <Typography sx={{ color: ROLE_ROOM_DIALOG_COLORS.mutedText, fontSize: '0.68rem', textTransform: 'uppercase' }}>
-                        Fremdrift
+                        {t('locAnalysis.permitSection.stat.progress')}
                       </Typography>
                       <Typography sx={{ color: '#67e8f9', fontWeight: 800, fontSize: '1.12rem', mt: 0.4 }}>
                         {permitRiskSummary.progress}%
@@ -2006,7 +2037,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     </Box>
                     <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.16)' }}>
                       <Typography sx={{ color: ROLE_ROOM_DIALOG_COLORS.mutedText, fontSize: '0.68rem', textTransform: 'uppercase' }}>
-                        Åpne tiltak
+                        {t('locAnalysis.permitSection.stat.openActions')}
                       </Typography>
                       <Typography sx={{ color: '#fca5a5', fontWeight: 800, fontSize: '1.12rem', mt: 0.4 }}>
                         {permitRiskSummary.pendingRequired}
@@ -2014,7 +2045,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     </Box>
                     <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.16)' }}>
                       <Typography sx={{ color: ROLE_ROOM_DIALOG_COLORS.mutedText, fontSize: '0.68rem', textTransform: 'uppercase' }}>
-                        Tillatelsesrisiko
+                        {t('locAnalysis.permitSection.stat.permitRisk')}
                       </Typography>
                       <Typography
                         sx={{
@@ -2045,12 +2076,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                   {permitFeedback ? (
                     <Alert
-                      severity={permitFeedback.includes('ikke') ? 'warning' : 'success'}
+                      severity={permitFeedbackIsError ? 'warning' : 'success'}
                       sx={{
                         mb: 2,
-                        bgcolor: permitFeedback.includes('ikke') ? 'rgba(251,191,36,0.14)' : 'rgba(52,211,153,0.12)',
+                        bgcolor: permitFeedbackIsError ? 'rgba(251,191,36,0.14)' : 'rgba(52,211,153,0.12)',
                         color: '#fff',
-                        border: `1px solid ${permitFeedback.includes('ikke') ? 'rgba(251,191,36,0.3)' : 'rgba(52,211,153,0.3)'}`,
+                        border: `1px solid ${permitFeedbackIsError ? 'rgba(251,191,36,0.3)' : 'rgba(52,211,153,0.3)'}`,
                       }}
                     >
                       {permitFeedback}
@@ -2066,7 +2097,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     }}
                   >
                     <TextField
-                      label="Planlagt opptaksdato"
+                      label={t('locAnalysis.permitSection.plannedShootDate')}
                       type="date"
                       value={plannedShootDate}
                       onChange={(event) => setPlannedShootDate(event.target.value)}
@@ -2083,12 +2114,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     />
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                       {([
-                        { key: 'publicArea', label: 'Offentlig område', icon: <PublicIcon fontSize="small" /> },
-                        { key: 'drone', label: 'Drone', icon: <FlightIcon fontSize="small" /> },
-                        { key: 'trafficControl', label: 'Trafikk', icon: <PoliceIcon fontSize="small" /> },
-                        { key: 'nightShoot', label: 'Nattopptak', icon: <EventIcon fontSize="small" /> },
-                        { key: 'pyrotechnics', label: 'Pyro', icon: <WarningIcon fontSize="small" /> },
-                        { key: 'nearRail', label: 'Nær jernbane', icon: <TrainIcon fontSize="small" /> },
+                        { key: 'publicArea', label: t('locAnalysis.op.publicArea'), icon: <PublicIcon fontSize="small" /> },
+                        { key: 'drone', label: t('locAnalysis.op.drone'), icon: <FlightIcon fontSize="small" /> },
+                        { key: 'trafficControl', label: t('locAnalysis.op.traffic'), icon: <PoliceIcon fontSize="small" /> },
+                        { key: 'nightShoot', label: t('locAnalysis.op.nightShoot'), icon: <EventIcon fontSize="small" /> },
+                        { key: 'pyrotechnics', label: t('locAnalysis.op.pyro'), icon: <WarningIcon fontSize="small" /> },
+                        { key: 'nearRail', label: t('locAnalysis.op.nearRail'), icon: <TrainIcon fontSize="small" /> },
                       ] as const).map((item) => (
                         <Chip
                           key={item.key}
@@ -2138,7 +2169,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           }}
                         >
                           {permitAnalysisLoading
-                            ? 'Henter Kartverket-data og kommunens tillatelsesregister …'
+                            ? t('locAnalysis.permitSection.fetchingKartverket')
                             : permitAnalysisError}
                         </Typography>
                       </Box>
@@ -2157,7 +2188,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             '&:hover': { bgcolor: 'rgba(251,191,36,0.15)' },
                           }}
                         >
-                          Prøv igjen
+                          {t('locAnalysis.btn.retry')}
                         </Button>
                       )}
                     </Box>
@@ -2180,7 +2211,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           shootDate: plannedShootDate,
                           operations: operationFlags,
                           municipalityName,
-                        });
+                        }, t);
                         const timelineEntry = permitTimeline.find((item) => item.id === contact.id);
                         return (
                           <Card
@@ -2216,7 +2247,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                 </Box>
                                 <Chip
                                   size="small"
-                                  label={PERMIT_STATUS_LABELS[status]}
+                                  label={permitStatusLabels[status]}
                                   sx={{
                                     bgcolor: statusColors.bg,
                                     color: statusColors.color,
@@ -2232,18 +2263,18 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                 <Chip
                                   size="small"
                                   icon={<AccessTimeIcon />}
-                                  label={`${contact.processingDays} d behandling`}
+                                  label={t('locAnalysis.contact.processingDays', { days: contact.processingDays })}
                                   sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#fff' }}
                                 />
                                 <Chip
                                   size="small"
                                   icon={<EventIcon />}
-                                  label={`Frist -${contact.leadDays} d`}
+                                  label={t('locAnalysis.contact.leadDays', { days: contact.leadDays })}
                                   sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#d8b4fe' }}
                                 />
                                 <Chip
                                   size="small"
-                                  label={contact.priority === 'hoy' ? 'Kritisk' : 'Normal'}
+                                  label={contact.priority === 'hoy' ? t('locAnalysis.contact.priorityCritical') : t('locAnalysis.contact.priorityNormal')}
                                   sx={{
                                     bgcolor: contact.priority === 'hoy' ? 'rgba(248,113,113,0.16)' : 'rgba(34,211,238,0.14)',
                                     color: contact.priority === 'hoy' ? '#fca5a5' : '#67e8f9',
@@ -2253,18 +2284,23 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
                               {timelineEntry ? (
                                 <Typography sx={{ color: timelineEntry.isOverdue ? '#fca5a5' : 'rgba(255,255,255,0.78)', fontSize: '0.74rem', mt: 0.75 }}>
-                                  Frist {formatNorwegianDate(timelineEntry.deadlineDate)} (
                                   {timelineEntry.daysUntilDeadline >= 0
-                                    ? `${timelineEntry.daysUntilDeadline} dager igjen`
-                                    : `${Math.abs(timelineEntry.daysUntilDeadline)} dager over`})
+                                    ? t('locAnalysis.contact.deadlineIn', {
+                                        date: formatNorwegianDate(timelineEntry.deadlineDate),
+                                        days: timelineEntry.daysUntilDeadline,
+                                      })
+                                    : t('locAnalysis.contact.deadlineOverdue', {
+                                        date: formatNorwegianDate(timelineEntry.deadlineDate),
+                                        days: Math.abs(timelineEntry.daysUntilDeadline),
+                                      })}
                                 </Typography>
                               ) : null}
 
                               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(140px, 200px) 1fr' }, gap: 0.8, mt: 1 }}>
                                 <FormControl size="small" sx={{ minWidth: 160 }}>
-                                  <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Status</InputLabel>
+                                  <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>{t('locAnalysis.contact.status')}</InputLabel>
                                   <Select
-                                    label="Status"
+                                    label={t('locAnalysis.contact.status')}
                                     value={status}
                                     onChange={(event) => handlePermitStatusChange(contact.id, event as SelectChangeEvent<PermitWorkflowStatus>)}
                                     sx={{
@@ -2274,19 +2310,19 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ROLE_ROOM_DIALOG_COLORS.secondary },
                                     }}
                                   >
-                                    {(Object.keys(PERMIT_STATUS_LABELS) as PermitWorkflowStatus[]).map((statusKey) => (
+                                    {(Object.keys(permitStatusLabels) as PermitWorkflowStatus[]).map((statusKey) => (
                                       <MenuItem key={statusKey} value={statusKey}>
-                                        {PERMIT_STATUS_LABELS[statusKey]}
+                                        {permitStatusLabels[statusKey]}
                                       </MenuItem>
                                     ))}
                                   </Select>
                                 </FormControl>
                                 <TextField
                                   size="small"
-                                  label="Notat"
+                                  label={t('locAnalysis.contact.note')}
                                   value={permitNotes[contact.id] || ''}
                                   onChange={(event) => handlePermitNoteChange(contact.id, event.target.value)}
-                                  placeholder="Saksnummer, navn på saksbehandler, neste steg..."
+                                  placeholder={t('locAnalysis.contact.notePlaceholder')}
                                   sx={{
                                     '& .MuiOutlinedInput-root': {
                                       color: '#fff',
@@ -2306,8 +2342,8 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                       applyMentionSuggestion(permitNotes[contact.id], name)
                                     )
                                   }
-                                  autoTagTitle="Auto-tagget i notat"
-                                  suggestionTitle="Mener du?"
+                                  autoTagTitle={t('locAnalysis.mention.autoTagNote')}
+                                  suggestionTitle={t('locAnalysis.mention.suggestionTitle')}
                                 />
                               </Box>
 
@@ -2331,7 +2367,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                     href={template.mailto}
                                     sx={{ textTransform: 'none', color: '#67e8f9' }}
                                   >
-                                    Send e-post
+                                    {t('locAnalysis.btn.sendEmail')}
                                   </Button>
                                 ) : null}
                                 {contact.website ? (
@@ -2344,7 +2380,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                     rel="noopener noreferrer"
                                     sx={{ textTransform: 'none', color: '#d8b4fe' }}
                                   >
-                                    Åpne kanal
+                                    {t('locAnalysis.btn.openChannel')}
                                   </Button>
                                 ) : null}
                                 <Button
@@ -2354,7 +2390,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                   disabled={copyingContactId === contact.id}
                                   sx={{ textTransform: 'none', color: '#fff' }}
                                 >
-                                  {copyingContactId === contact.id ? 'Kopierer...' : 'Kopier mal'}
+                                  {copyingContactId === contact.id ? t('locAnalysis.btn.copying') : t('locAnalysis.btn.copyTemplate')}
                                 </Button>
                               </Box>
 
@@ -2374,7 +2410,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         <CardContent sx={{ p: 1.2 }}>
                           <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 0.7 }}>
                             <TaskAltIcon sx={{ color: '#67e8f9' }} />
-                            Tiltaksplan
+                            {t('locAnalysis.permitSection.actionPlan')}
                           </Typography>
                           <Stack spacing={0.7} sx={{ mt: 1 }}>
                             {permitActionChecklist.map((item) => (
@@ -2393,7 +2429,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         <CardContent sx={{ p: 1.2 }}>
                           <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 0.7 }}>
                             <AccessTimeIcon sx={{ color: '#d8b4fe' }} />
-                            Fristlinje
+                            {t('locAnalysis.permitSection.deadlineLine')}
                           </Typography>
                           <Stack spacing={0.7} sx={{ mt: 1 }}>
                             {permitTimeline.length > 0 ? (
@@ -2411,13 +2447,13 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                     {entry.authority}
                                   </Typography>
                                   <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontSize: '0.72rem' }}>
-                                    {formatNorwegianDate(entry.deadlineDate)} • {PERMIT_STATUS_LABELS[entry.status]}
+                                    {formatNorwegianDate(entry.deadlineDate)} • {permitStatusLabels[entry.status]}
                                   </Typography>
                                 </Box>
                               ))
                             ) : (
                               <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.75rem' }}>
-                                Sett opptaksdato for å beregne frister.
+                                {t('locAnalysis.permitSection.setShootDateHint')}
                               </Typography>
                             )}
                           </Stack>
@@ -2429,7 +2465,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           <CardContent sx={{ p: 1.2 }}>
                             <Typography sx={{ color: '#fecaca', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 0.6 }}>
                               <WarningIcon />
-                              Fallback ved høy risiko
+                              {t('locAnalysis.permitSection.fallbackHeading')}
                             </Typography>
                             <Stack spacing={0.8} sx={{ mt: 1 }}>
                               {permitFallbackSuggestions.map((item) => (
@@ -2466,7 +2502,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   borderRadius: 2,
                 }}
               >
-                Ingen seksjoner matcher valgt pro-presett/filter. Velg "Alle" for å se hele analysen.
+                {t('locAnalysis.noSectionsMatch')}
               </Alert>
             ) : null}
 
@@ -2493,10 +2529,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   </Box>
                   <Box>
                     <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                      Fotografispotter
+                      {t('locAnalysis.photography.title')}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.825rem', lg: '0.9rem', xl: '1rem' } }}>
-                      {photographySpotsCount} spot{photographySpotsCount !== 1 ? 'ter' : ''} identifisert
+                      {photographySpotsCount === 1
+                        ? t('locAnalysis.photography.spotsIdentified.one', { n: photographySpotsCount })
+                        : t('locAnalysis.photography.spotsIdentified.other', { n: photographySpotsCount })}
                     </Typography>
                   </Box>
                 </Box>
@@ -2526,10 +2564,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 } }}>
                             <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1rem', md: '0.975rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                              Spot {idx + 1}
+                              {t('locAnalysis.photography.spotNumber', { n: idx + 1 })}
                             </Typography>
                             <Chip
-                              label={spot.accessibility === 'easy' ? 'Enkel' : spot.accessibility === 'moderate' ? 'Moderat' : 'Vanskelig'}
+                              label={spot.accessibility === 'easy' ? t('locAnalysis.accessibility.easy') : spot.accessibility === 'moderate' ? t('locAnalysis.accessibility.moderate') : t('locAnalysis.accessibility.difficult')}
                               size="small"
                               sx={{
                                 bgcolor: spot.accessibility === 'easy' ? 'rgba(16,185,129,0.2)' : spot.accessibility === 'moderate' ? 'rgba(255,184,0,0.2)' : 'rgba(239,68,68,0.2)',
@@ -2547,7 +2585,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           {(spot.restrictions?.length ?? 0) > 0 && (
                             <Box sx={{ mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
-                                Restriksjoner
+                                {t('locAnalysis.restrictions')}
                               </Typography>
                               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
                                 {(spot.restrictions ?? []).map((restriction, rIdx) => (
@@ -2614,15 +2652,15 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   </Box>
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                      Drone-restriksjoner
+                      {t('locAnalysis.drone.title')}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.825rem', lg: '0.9rem', xl: '1rem' } }}>
-                      Luftfart og sikkerhetsregler
+                      {t('locAnalysis.drone.subtitle')}
                     </Typography>
                   </Box>
                   <Chip
                     icon={analysis?.droneRestrictions.allowed ? <CheckCircleIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <CancelIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-                    label={analysis?.droneRestrictions.allowed ? 'Tillatt' : 'Ikke tillatt'}
+                    label={analysis?.droneRestrictions.allowed ? t('locAnalysis.manualQa.value.allowed') : t('locAnalysis.manualQa.value.notAllowed')}
                     sx={{
                       bgcolor: analysis?.droneRestrictions.allowed ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
                       color: analysis?.droneRestrictions.allowed ? '#10b981' : '#ef4444',
@@ -2646,17 +2684,17 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       border: '1px solid rgba(0,212,255,0.2)',
                     }}>
                       <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' }, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Maksimal høyde
+                        {t('locAnalysis.drone.maxAltitude')}
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
-                        {analysis.droneRestrictions.maxAltitude} meter
+                        {t('locAnalysis.drone.meters', { n: analysis.droneRestrictions.maxAltitude })}
                       </Typography>
                     </Box>
                   )}
                   {(analysis?.droneRestrictions.restrictions?.length ?? 0) > 0 && (
                     <Box>
                       <Typography variant="subtitle2" sx={{ color: '#fff', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.95rem', md: '0.9125rem', lg: '0.975rem', xl: '1.125rem' } }}>
-                        Restriksjoner
+                        {t('locAnalysis.restrictions')}
                       </Typography>
                       <Stack spacing={{ xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }}>
                         {(analysis?.droneRestrictions.restrictions ?? []).map((restriction, idx) => (
@@ -2689,10 +2727,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       border: '1px solid rgba(239,68,68,0.2)',
                     }}>
                       <Typography variant="subtitle2" sx={{ color: '#ef4444', fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                        No-fly soner
+                        {t('locAnalysis.drone.noFlyZonesTitle')}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                        {(analysis?.droneRestrictions.noFlyZones?.length ?? 0)} son{(analysis?.droneRestrictions.noFlyZones?.length ?? 0) !== 1 ? 'er' : ''} identifisert i området
+                        {(analysis?.droneRestrictions.noFlyZones?.length ?? 0) === 1
+                          ? t('locAnalysis.drone.noFlyZonesCount.one', { n: analysis?.droneRestrictions.noFlyZones?.length ?? 0 })
+                          : t('locAnalysis.drone.noFlyZonesCount.other', { n: analysis?.droneRestrictions.noFlyZones?.length ?? 0 })}
                       </Typography>
                     </Box>
                   )}
@@ -2724,10 +2764,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   </Box>
                   <Box>
                     <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                      Vær-eksponering
+                      {t('locAnalysis.weather.title')}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.825rem', lg: '0.9rem', xl: '1rem' } }}>
-                      Vind, sol og beskyttelsesmuligheter
+                      {t('locAnalysis.weather.subtitle')}
                     </Typography>
                   </Box>
                 </Box>
@@ -2749,10 +2789,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       height: '100%',
                     }}>
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
-                        Vind-eksponering
+                        {t('locAnalysis.weather.windExposure')}
                       </Typography>
                       <Chip
-                        label={analysis?.weatherExposure.windExposure === 'low' ? 'Lav' : analysis?.weatherExposure.windExposure === 'moderate' ? 'Moderat' : 'Høy'}
+                        label={analysis?.weatherExposure.windExposure === 'low' ? t('locAnalysis.manualQa.value.low') : analysis?.weatherExposure.windExposure === 'moderate' ? t('locAnalysis.manualQa.value.moderate') : t('locAnalysis.manualQa.value.high')}
                         sx={{
                           bgcolor: analysis?.weatherExposure.windExposure === 'low' ? 'rgba(16,185,129,0.2)' : analysis?.weatherExposure.windExposure === 'moderate' ? 'rgba(255,184,0,0.2)' : 'rgba(239,68,68,0.2)',
                           color: analysis?.weatherExposure.windExposure === 'low' ? '#10b981' : analysis?.weatherExposure.windExposure === 'moderate' ? '#ffb800' : '#ef4444',
@@ -2766,14 +2806,14 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       {analysis?.weatherExposure.windSpeedKmh != null && (
                         <Box sx={{ mt: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                            Vindhastighet: <strong>{analysis.weatherExposure.windSpeedKmh.toFixed(1)} km/h</strong>
+                            {t('locAnalysis.weather.windSpeedLabel')} <strong>{analysis.weatherExposure.windSpeedKmh.toFixed(1)} km/h</strong>
                             {analysis.weatherExposure.windSpeed != null && (
                               <span style={{ color: 'rgba(255,255,255,0.87)' }}> ({analysis.weatherExposure.windSpeed.toFixed(1)} m/s)</span>
                             )}
                           </Typography>
                           {analysis.weatherExposure.windDirection != null && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontStyle: 'italic' }}>
-                              Vindretning: {Math.round(analysis.weatherExposure.windDirection)}°
+                              {t('locAnalysis.weather.windDirection', { deg: Math.round(analysis.weatherExposure.windDirection) })}
                             </Typography>
                           )}
                         </Box>
@@ -2785,7 +2825,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           borderTop: '1px solid rgba(168,85,247,0.24)',
                         }}>
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, letterSpacing: '0.5px' }}>
-                            Drone-sikkerhet
+                            {t('locAnalysis.weather.droneSafety')}
                           </Typography>
                           <Chip
                             label={analysis.weatherExposure.droneSafety}
@@ -2824,10 +2864,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       height: '100%',
                     }}>
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
-                        Sol-eksponering
+                        {t('locAnalysis.weather.sunExposure')}
                       </Typography>
                       <Chip
-                        label={analysis?.weatherExposure.sunExposure === 'morning' ? 'Morgen' : analysis?.weatherExposure.sunExposure === 'afternoon' ? 'Ettermiddag' : 'Hele dagen'}
+                        label={analysis?.weatherExposure.sunExposure === 'morning' ? t('locAnalysis.manualQa.value.morning') : analysis?.weatherExposure.sunExposure === 'afternoon' ? t('locAnalysis.manualQa.value.afternoon') : t('locAnalysis.manualQa.value.allDay')}
                         sx={{
                           bgcolor: 'rgba(0,212,255,0.2)',
                           color: 'var(--role-cyan, #00d4ff)',
@@ -2842,17 +2882,17 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         <Box sx={{ mt: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
                           {analysis.weatherExposure.sunrise && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                              Soloppgang: <strong>{analysis.weatherExposure.sunrise}</strong>
+                              {t('locAnalysis.weather.sunrise')} <strong>{analysis.weatherExposure.sunrise}</strong>
                             </Typography>
                           )}
                           {analysis.weatherExposure.sunset && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' }, mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
-                              Solnedgang: <strong>{analysis.weatherExposure.sunset}</strong>
+                              {t('locAnalysis.weather.sunset')} <strong>{analysis.weatherExposure.sunset}</strong>
                             </Typography>
                           )}
                           {analysis.weatherExposure.daylightHours != null && (
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontStyle: 'italic' }}>
-                              {analysis.weatherExposure.daylightHours.toFixed(1)} timer dagslys
+                              {t('locAnalysis.weather.daylightHours', { n: analysis.weatherExposure.daylightHours.toFixed(1) })}
                             </Typography>
                           )}
                         </Box>
@@ -2868,7 +2908,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 {(analysis?.weatherExposure.shelterOptions?.length || 0) > 0 && (
                   <Box>
                     <Typography variant="subtitle2" sx={{ color: '#fff', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontWeight: 600, fontSize: { xs: '0.875rem', sm: '0.95rem', md: '0.9125rem', lg: '0.975rem', xl: '1.125rem' } }}>
-                      Beskyttelsesmuligheter
+                      {t('locAnalysis.weather.shelterOptions')}
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                       {(analysis?.weatherExposure.shelterOptions ?? []).map((option, idx) => (
@@ -2920,10 +2960,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   </Box>
                   <Box>
                     <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                      Tilgangsanalyse
+                      {t('locAnalysis.access.title')}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.825rem', lg: '0.9rem', xl: '1rem' } }}>
-                      Parkering, tilgjengelighet og transport
+                      {t('locAnalysis.access.subtitle')}
                     </Typography>
                   </Box>
                 </Box>
@@ -2958,10 +2998,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           </Box>
                           <Box>
                             <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                              Parkeringslokasjoner
+                              {t('locAnalysis.access.parkingLocations')}
                             </Typography>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                              {analysis.accessAnalysis.parkingSpots.length} parkeringslokasjon{analysis.accessAnalysis.parkingSpots.length !== 1 ? 'er' : ''} i nærheten
+                              {analysis.accessAnalysis.parkingSpots.length === 1
+                                ? t('locAnalysis.access.parkingNearby.one', { n: analysis.accessAnalysis.parkingSpots.length })
+                                : t('locAnalysis.access.parkingNearby.other', { n: analysis.accessAnalysis.parkingSpots.length })}
                             </Typography>
                           </Box>
                         </Box>
@@ -2971,7 +3013,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                               key={idx}
                               spot={spot}
                               variant="default"
-                              spaceLabel={spot.spaces ? `${spot.spaces} plasser` : undefined}
+                              spaceLabel={spot.spaces ? t('locAnalysis.access.spaces', { n: spot.spaces }) : undefined}
                               index={idx}
                             />
                           ))}
@@ -3004,11 +3046,11 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       </Box>
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, textTransform: 'uppercase', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' }, letterSpacing: '0.5px' }}>
-                          Tilgjengelighet
+                          {t('locAnalysis.manualQa.field.accessibility')}
                         </Typography>
                         <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                          {analysis?.accessAnalysis.accessibility === 'wheelchair-accessible' ? 'Rullestol-tilgjengelig' :
-                            analysis?.accessAnalysis.accessibility === 'limited' ? 'Begrenset' : 'Ikke tilgjengelig'}
+                          {analysis?.accessAnalysis.accessibility === 'wheelchair-accessible' ? t('locAnalysis.manualQa.value.wheelchairAccessible') :
+                            analysis?.accessAnalysis.accessibility === 'limited' ? t('locAnalysis.manualQa.value.limited') : t('locAnalysis.manualQa.value.notAccessible')}
                         </Typography>
                       </Box>
                     </Box>
@@ -3036,10 +3078,12 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                           </Box>
                           <Box>
                             <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
-                              Kollektivtransport
+                              {t('locAnalysis.access.publicTransportTitle')}
                             </Typography>
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
-                              {(analysis?.accessAnalysis.publicTransport?.length ?? 0)} linj{(analysis?.accessAnalysis.publicTransport?.length ?? 0) !== 1 ? 'er' : 'e'} tilgjengelig
+                              {(analysis?.accessAnalysis.publicTransport?.length ?? 0) === 1
+                                ? t('locAnalysis.access.linesAvailable.one', { n: analysis?.accessAnalysis.publicTransport?.length ?? 0 })
+                                : t('locAnalysis.access.linesAvailable.other', { n: analysis?.accessAnalysis.publicTransport?.length ?? 0 })}
                             </Typography>
                           </Box>
                         </Box>
@@ -3067,7 +3111,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         {(analysis?.accessAnalysis.walkingDistance || 0) > 0 && (
                           <Box sx={{ mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, ml: { xs: 0, sm: 7, md: 6.5, lg: 7, xl: 8 } }}>
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                              Gangeavstand til nærmeste stopp: <strong>{analysis?.accessAnalysis.walkingDistance} meter</strong>
+                              {t('locAnalysis.access.walkingDistancePrefix')} <strong>{t('locAnalysis.access.meters', { n: analysis?.accessAnalysis.walkingDistance ?? 0 })}</strong>
                             </Typography>
                           </Box>
                         )}
@@ -3100,17 +3144,17 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                               border: '2px solid #10b981',
                             }} />
                           </Box>
-                          Elbilparkering & Lading
+                          {t('locAnalysis.access.evParkingChargingTitle')}
                         </Typography>
                         <Stack spacing={{ xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }}>
                           {analysis?.accessAnalysis.evParking && (
                             <Box>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, flexWrap: 'wrap' }}>
                                 <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                                  Elbilparkering
+                                  {t('locAnalysis.access.evParking')}
                                 </Typography>
                                 <Chip
-                                  label={`${analysis?.accessAnalysis.evParking?.distance} m unna`}
+                                  label={t('locAnalysis.spot.distanceAway', { distance: analysis?.accessAnalysis.evParking?.distance ?? 0 })}
                                   size="small"
                                   sx={{
                                     bgcolor: 'rgba(16,185,129,0.2)',
@@ -3131,7 +3175,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                       key={idx}
                                       spot={spot}
                                       variant="ev"
-                                      spaceLabel={spot.spaces ? `${spot.spaces} elbilplasser` : undefined}
+                                      spaceLabel={spot.spaces ? t('locAnalysis.access.evSpaces', { n: spot.spaces }) : undefined}
                                       index={idx}
                                     />
                                   ))}
@@ -3143,10 +3187,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             <Box>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, flexWrap: 'wrap' }}>
                                 <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                                  Ladestasjon
+                                  {t('locAnalysis.access.chargingStation')}
                                 </Typography>
                                 <Chip
-                                  label={`${analysis?.accessAnalysis.evCharging?.distance} m unna`}
+                                  label={t('locAnalysis.spot.distanceAway', { distance: analysis?.accessAnalysis.evCharging?.distance ?? 0 })}
                                   size="small"
                                   sx={{
                                     bgcolor: 'rgba(16,185,129,0.2)',
@@ -3167,7 +3211,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                       key={idx}
                                       spot={spot}
                                       variant="ev"
-                                      spaceLabel={spot.spaces ? `${spot.spaces} ladeplass${spot.spaces !== 1 ? 'er' : ''}` : undefined}
+                                      spaceLabel={spot.spaces ? (spot.spaces === 1 ? t('locAnalysis.access.chargingSpaces.one', { n: spot.spaces }) : t('locAnalysis.access.chargingSpaces.other', { n: spot.spaces })) : undefined}
                                       index={idx}
                                     />
                                   ))}
@@ -3188,7 +3232,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         border: '1px solid rgba(168,85,247,0.24)',
                       }}>
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                          Gangeavstand til nærmeste stopp: <strong>{analysis?.accessAnalysis.walkingDistance} meter</strong>
+                          {t('locAnalysis.access.walkingDistancePrefix')} <strong>{t('locAnalysis.access.meters', { n: analysis?.accessAnalysis.walkingDistance ?? 0 })}</strong>
                         </Typography>
                       </Box>
                     </Box>
@@ -3214,10 +3258,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               <LocationIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '2.5rem', sm: '3rem', md: '2.75rem', lg: '3.5rem', xl: '4rem' } }} />
             </Box>
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
-              Ingen analyse tilgjengelig
+              {t('locAnalysis.empty.title')}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 }, maxWidth: { xs: '100%', sm: 400, md: 450, lg: 500, xl: 600 }, mx: 'auto', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-              Start en analyse for å få informasjon om fotografispotter, drone-restriksjoner, værforhold og tilgang for denne lokasjonen.
+              {t('locAnalysis.empty.subtitle')}
             </Typography>
             <Button
               variant="contained"
@@ -3234,7 +3278,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 '&:hover': { bgcolor: '#00b8e6' },
               }}
             >
-              Start analyse
+              {t('locAnalysis.btn.startAnalysis')}
             </Button>
           </Box>
         )}
@@ -3263,7 +3307,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             },
           }}
         >
-          Lukk
+          {t('locAnalysis.btn.close')}
         </Button>
       </DialogActions>
     </Dialog>

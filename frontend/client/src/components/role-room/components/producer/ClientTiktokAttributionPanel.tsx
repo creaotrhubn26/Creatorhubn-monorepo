@@ -22,6 +22,8 @@ import {
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -59,6 +61,7 @@ export default function ClientTiktokAttributionPanel({
   advertiserId?: string | null;
   isOwnAccount?: boolean;
 }) {
+  const { t } = useT();
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [data, setData] = useState<Attribution | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,14 +112,14 @@ export default function ClientTiktokAttributionPanel({
 
   // Bestemor-friendly status-tekst
   const roasMessage = roas == null
-    ? 'Vi har ikke nok salgsdata ennå.'
+    ? t('tiktokAttribution.s012')
     : roas >= 3
-      ? `For hver krone du brukte fikk du ${roas.toFixed(1)} kr tilbake. Det er svært bra!`
+      ? t('tiktokAttribution.p01', { v0: roas.toFixed(1) })
       : roas >= 1.5
-        ? `For hver krone du brukte fikk du ${roas.toFixed(1)} kr tilbake. Du går i pluss.`
+        ? t('tiktokAttribution.p02', { v0: roas.toFixed(1) })
         : roas >= 1
-          ? `For hver krone du brukte fikk du ${roas.toFixed(1)} kr tilbake. Du går omtrent i null.`
-          : `For hver krone du brukte fikk du bare ${roas.toFixed(2)} kr tilbake. Tilsynelatende går vi i minus — sjekk kampanjeoppsett.`;
+          ? t('tiktokAttribution.p03', { v0: roas.toFixed(1) })
+          : t('tiktokAttribution.p00', { v0: roas.toFixed(2) });
 
   return (
     <Card sx={{ bgcolor: palette.bg, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>
@@ -131,10 +134,10 @@ export default function ClientTiktokAttributionPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Hva har TikTok-annonsene gitt tilbake?
+              {t('tiktokAttribution.s001')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Inntekter sporet til TikTok i valgt periode.
+              {t('tiktokAttribution.s003')}
             </Typography>
           </Box>
         </Stack>
@@ -156,7 +159,7 @@ export default function ClientTiktokAttributionPanel({
                 '&:hover': { background: 'rgba(255,0,80,0.1)' },
               }}
             >
-              {d === 7 ? 'Siste uke' : d === 28 ? 'Siste 4 uker' : 'Siste 3 mnd'}
+              {d === 7 ? t('tiktokAttribution.s011') : d === 28 ? t('tiktokAttribution.s010') : t('tiktokAttribution.s009')}
             </Button>
           ))}
         </Stack>
@@ -178,7 +181,7 @@ export default function ClientTiktokAttributionPanel({
               mb: 2,
             }}>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 0.6 }}>
-                Inntekt sporet til TikTok-annonser
+                {t('tiktokAttribution.s002')}
               </Typography>
               <Typography sx={{ fontSize: '2.6rem', fontWeight: 800, color: palette.tiktok, lineHeight: 1 }}>
                 {fmtNok(data.totalAttributedRevenue)}
@@ -197,7 +200,7 @@ export default function ClientTiktokAttributionPanel({
             }}>
               <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                  Annonse-spend
+                  {t('tiktokAttribution.s000')}
                 </Typography>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '1.3rem', fontWeight: 800, mt: 0.4 }}>
                   {fmtNok(data.totalAdSpend)}
@@ -205,18 +208,18 @@ export default function ClientTiktokAttributionPanel({
               </Box>
               <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                  Konverteringer
+                  {t('tiktokAttribution.s004')}
                 </Typography>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '1.3rem', fontWeight: 800, mt: 0.4 }}>
                   {fmtInt(totalConv)}
                 </Typography>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.2 }}>
-                  {fmtInt(data.clickConversions)} fra klikk · {fmtInt(data.viewThroughConversions)} etter visning
+                  {fmtInt(data.clickConversions)} {t('tiktokAttribution.s014')} {fmtInt(data.viewThroughConversions)} {t('tiktokAttribution.s013')}
                 </Typography>
               </Box>
               <Box sx={{ bgcolor: 'rgba(168,85,247,0.06)', border: `1px solid ${palette.border}`, borderRadius: 1.4, p: 1.6 }}>
                 <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                  Pris per konvertering
+                  {t('tiktokAttribution.s008')}
                 </Typography>
                 <Typography sx={{ color: palette.textPrimary, fontSize: '1.3rem', fontWeight: 800, mt: 0.4 }}>
                   {cpa > 0 ? fmtNok(cpa) : '—'}
@@ -228,7 +231,7 @@ export default function ClientTiktokAttributionPanel({
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
               <Chip
                 icon={<AccessTimeOutlinedIcon sx={{ fontSize: 14, color: palette.textMuted + ' !important' }} />}
-                label={data.isCached ? `Sist oppdatert ${new Date(data.fetchedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}` : 'Nettopp oppdatert'}
+                label={data.isCached ? t('tiktokAttribution.p04', { v0: new Date(data.fetchedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }) }) : t('tiktokAttribution.s005')}
                 size="small"
                 sx={{ bgcolor: 'rgba(148,163,184,0.18)', color: palette.textMuted, fontSize: '0.74rem' }}
               />
@@ -239,7 +242,7 @@ export default function ClientTiktokAttributionPanel({
                 startIcon={refreshing ? <CircularProgress size={14} sx={{ color: palette.accent }} /> : <RefreshOutlinedIcon fontSize="small" />}
                 sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600 }}
               >
-                {refreshing ? 'Oppdaterer…' : 'Oppdater nå'}
+                {refreshing ? t('tiktokAttribution.s007') : t('tiktokAttribution.s006')}
               </Button>
             </Stack>
           </>

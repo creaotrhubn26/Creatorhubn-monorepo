@@ -76,6 +76,7 @@ import {
   type MemoryCardLifecycleStage,
 } from '../services/castingApiService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT } from '../../../i18n';
 
 type BackupStage = keyof MemoryCardBackupTargets;
 type ShotListOption = { id: string; scene?: string; title?: string };
@@ -131,20 +132,14 @@ const collapsedCameraGroups: Record<CameraGroupKey, boolean> = {
   other: false,
 };
 
-const backupStageLabels: Record<BackupStage, string> = {
-  backup1: 'Sikkerhetskopi 1 (SSD)',
-  backup2: 'Sikkerhetskopi 2 (RAID/NAS)',
-  offsite: 'Offsite-kopi',
-};
-
-const lifecycleStageLabels: Record<MemoryCardLifecycleStage, string> = {
-  in_use: 'I bruk',
-  sealed: 'Forseglet',
-  backup_started: 'Sikkerhetskopi startet',
-  backup_completed: 'Sikkerhetskopi fullført',
-  verified: 'Verifisert',
-  archived: 'Arkivert',
-};
+const LIFECYCLE_STAGE_KEYS: readonly MemoryCardLifecycleStage[] = [
+  'in_use',
+  'sealed',
+  'backup_started',
+  'backup_completed',
+  'verified',
+  'archived',
+];
 
 const getStorageKey = (projectId: string) => `role-room-memory-card-control:${projectId}`;
 const MEMORY_CARD_CONTROL_FALLBACK_NAMESPACE = 'memory-card-control-fallback';
@@ -178,7 +173,7 @@ const normalizeEntry = (rawEntry: unknown): MemoryCardControlEntry | null => {
 
   const lifecycleStage =
     typeof entry.lifecycleStage === 'string' &&
-    entry.lifecycleStage in lifecycleStageLabels
+    LIFECYCLE_STAGE_KEYS.includes(entry.lifecycleStage as MemoryCardLifecycleStage)
       ? (entry.lifecycleStage as MemoryCardLifecycleStage)
       : 'in_use';
 
@@ -449,6 +444,20 @@ export function MemoryCardBackupControlDialog({
   shotLists,
   crewOptions = [],
 }: MemoryCardBackupControlDialogProps) {
+  const { t } = useT();
+  const backupStageLabels: Record<BackupStage, string> = useMemo(() => ({
+    backup1: t('memCard.stageBackup1'),
+    backup2: t('memCard.stageBackup2'),
+    offsite: t('memCard.stageOffsite'),
+  }), [t]);
+  const lifecycleStageLabels: Record<MemoryCardLifecycleStage, string> = useMemo(() => ({
+    in_use: t('memCard.lcInUse'),
+    sealed: t('memCard.lcSealed'),
+    backup_started: t('memCard.lcBackupStarted'),
+    backup_completed: t('memCard.lcBackupCompleted'),
+    verified: t('memCard.lcVerified'),
+    archived: t('memCard.lcArchived'),
+  }), [t]);
   const branding = useBrandingSettings();
   const roleRoomName = branding.appName || 'The Role Room';
   const color = branding.colors;
@@ -683,44 +692,44 @@ export function MemoryCardBackupControlDialog({
     () => [
       {
         key: 'cine' as const,
-        label: 'Cine-kamera',
+        label: t('memCard.groupCine'),
         icon: <VideocamIcon sx={{ fontSize: 16, color: alpha(accent, 0.95) }} />,
         items: categorizedCameras.cine,
       },
       {
         key: 'drone' as const,
-        label: 'Drone',
+        label: t('memCard.groupDrone'),
         icon: <FlightTakeoffIcon sx={{ fontSize: 16, color: alpha(accent, 0.95) }} />,
         items: categorizedCameras.drone,
       },
       {
         key: 'audio' as const,
-        label: 'Lyd',
+        label: t('memCard.groupAudio'),
         icon: <GraphicEqIcon sx={{ fontSize: 16, color: alpha(accent, 0.95) }} />,
         items: categorizedCameras.audio,
         alwaysVisible: true,
-        emptyLabel: 'Ingen lydenheter tilgjengelig',
+        emptyLabel: t('memCard.noAudioDevices'),
       },
       {
         key: 'photo' as const,
-        label: 'Foto-kamera',
+        label: t('memCard.groupPhoto'),
         icon: <PhotoCameraIcon sx={{ fontSize: 16, color: alpha(accent, 0.95) }} />,
         items: categorizedCameras.photo,
       },
       {
         key: 'mobileTablet' as const,
-        label: 'Mobil / nettbrett',
+        label: t('memCard.groupMobile'),
         icon: <SmartphoneIcon sx={{ fontSize: 16, color: alpha(accent, 0.95) }} />,
         items: categorizedCameras.mobileTablet,
       },
       {
         key: 'other' as const,
-        label: 'Øvrige',
+        label: t('memCard.groupOther'),
         icon: <DnsIcon sx={{ fontSize: 16, color: alpha(accent, 0.95) }} />,
         items: categorizedCameras.other,
       },
     ],
-    [categorizedCameras, accent]
+    [categorizedCameras, accent, t]
   );
 
   const selectedCardType = useMemo(
@@ -806,7 +815,7 @@ export function MemoryCardBackupControlDialog({
       { total: number; verified: number; pending: number; backingUp: number }
     >();
     controlState.entries.forEach((entry) => {
-      const key = entry.assignedCrewName || 'Ikke tildelt';
+      const key = entry.assignedCrewName || t('memCard.notAssigned');
       const existing = grouped.get(key) ?? { total: 0, verified: 0, pending: 0, backingUp: 0 };
       existing.total += 1;
       if (entry.status === 'verified') existing.verified += 1;
@@ -817,7 +826,7 @@ export function MemoryCardBackupControlDialog({
     return Array.from(grouped.entries())
       .map(([crew, stats]) => ({ crew, ...stats }))
       .sort((a, b) => b.total - a.total);
-  }, [controlState.entries]);
+  }, [controlState.entries, t]);
 
   const productionCoverage = useMemo(() => {
     const linked = controlState.entries.filter((entry) => Boolean(entry.shotListId)).length;
@@ -839,7 +848,7 @@ export function MemoryCardBackupControlDialog({
     if (notBackedForHours.length > 0) {
       alerts.push({
         severity: 'error',
-        message: `${notBackedForHours.length} lagringsenheter har ikke backup etter 6+ timer.`,
+        message: t('memCard.riskNoBackup6h', { n: notBackedForHours.length }),
       });
     }
 
@@ -847,7 +856,7 @@ export function MemoryCardBackupControlDialog({
     if (withoutCrew.length > 0) {
       alerts.push({
         severity: 'warning',
-        message: `${withoutCrew.length} lagringsenheter mangler crew-ansvarlig.`,
+        message: t('memCard.riskNoCrew', { n: withoutCrew.length }),
       });
     }
 
@@ -855,7 +864,7 @@ export function MemoryCardBackupControlDialog({
     if (withoutProductionLink.length > 0) {
       alerts.push({
         severity: 'warning',
-        message: `${withoutProductionLink.length} lagringsenheter er ikke koblet til shotlist/scene.`,
+        message: t('memCard.riskNoShotlist', { n: withoutProductionLink.length }),
       });
     }
 
@@ -865,12 +874,12 @@ export function MemoryCardBackupControlDialog({
     if (duplicateCount > 0) {
       alerts.push({
         severity: 'error',
-        message: `${duplicateCount} dupliserte lagringsenhet-ID-er oppdaget.`,
+        message: t('memCard.riskDuplicates', { n: duplicateCount }),
       });
     }
 
     return alerts;
-  }, [controlState.entries]);
+  }, [controlState.entries, t]);
 
   const persistState = useCallback(
     async (nextState: MemoryCardControlState, forceApi: boolean) => {
@@ -889,9 +898,9 @@ export function MemoryCardBackupControlDialog({
 
       await writeFallbackState(projectId, nextState);
       setFallbackMode(true);
-      setPersistError('Lagrer i DB-backed fallback fordi memory-card API ikke svarer i dette miljøet.');
+      setPersistError(t('memCard.persistFallback'));
     },
-    [fallbackMode, projectId]
+    [fallbackMode, projectId, t]
   );
 
   const loadCameras = useCallback(async () => {
@@ -932,7 +941,7 @@ export function MemoryCardBackupControlDialog({
         cameras: cameraResult.reason,
         audioDevices: audioResult.reason,
       });
-      setCameraError('Kunne ikke hente opptaksenheter fra API.');
+      setCameraError(t('memCard.errLoadCameras'));
       return;
     }
 
@@ -943,7 +952,7 @@ export function MemoryCardBackupControlDialog({
       console.warn('Audio storage endpoint failed, using only camera devices:', audioResult.reason);
     }
     setCameraError(null);
-  }, []);
+  }, [t]);
 
   const loadCardTypes = useCallback(async (cameraId: string) => {
     if (!cameraId) {
@@ -968,9 +977,9 @@ export function MemoryCardBackupControlDialog({
     } catch (error) {
       console.error('Error loading memory-card endpoint:', error);
       setCardTypes([]);
-      setCardTypeError('Kunne ikke hente minnekort-endepunktet.');
+      setCardTypeError(t('memCard.errLoadCardTypes'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!open) {
@@ -1002,7 +1011,7 @@ export function MemoryCardBackupControlDialog({
         setControlState(fallbackState);
         setRemoteReport(null);
         setFallbackMode(true);
-        setPersistError('API utilgjengelig. Logg lagres i DB-backed fallback med lokal nød-cache.');
+        setPersistError(t('memCard.apiUnavailable'));
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -1017,7 +1026,7 @@ export function MemoryCardBackupControlDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, projectId, loadCameras]);
+  }, [open, projectId, loadCameras, t]);
 
   useEffect(() => {
     if (!open || !draft.cameraId) return;
@@ -1125,7 +1134,7 @@ export function MemoryCardBackupControlDialog({
       lifecycleStage: 'in_use',
       createdAt: now,
       updatedAt: now,
-      history: [{ ts: now, event: 'Lagringsenhet opprettet i loggen' }],
+      history: [{ ts: now, event: t('memCard.evtCreated') }],
     };
 
     commitState((prev) => ({
@@ -1196,12 +1205,12 @@ export function MemoryCardBackupControlDialog({
         setPersistError(null);
       } catch (error) {
         console.error('Kunne ikke generere QR-etikett:', error);
-        setPersistError('Kunne ikke generere QR-etikett akkurat nå.');
+        setPersistError(t('memCard.errQrGenerate'));
       } finally {
         setQrGenerating(false);
       }
     },
-    [controlState.shootDayLabel, projectId]
+    [controlState.shootDayLabel, projectId, t]
   );
 
   const backupProgress = selectedEntry
@@ -1216,17 +1225,17 @@ export function MemoryCardBackupControlDialog({
     : 0;
 
   const getChecklist = (entry: MemoryCardControlEntry) => [
-    { key: 'original', label: 'Original (minnekort)', done: true },
-    { key: 'backup1', label: 'Sikkerhetskopi 1 (SSD)', done: entry.backups.backup1 },
-    { key: 'backup2', label: 'Sikkerhetskopi 2 (RAID/NAS)', done: entry.backups.backup2 },
-    { key: 'offsite', label: 'Offsite-kopi', done: entry.backups.offsite },
+    { key: 'original', label: t('memCard.chkOriginal'), done: true },
+    { key: 'backup1', label: t('memCard.stageBackup1'), done: entry.backups.backup1 },
+    { key: 'backup2', label: t('memCard.stageBackup2'), done: entry.backups.backup2 },
+    { key: 'offsite', label: t('memCard.stageOffsite'), done: entry.backups.offsite },
   ];
 
   const getMissingNow = (entry: MemoryCardControlEntry): string => {
     const missing = getChecklist(entry)
       .filter((item) => !item.done)
       .map((item) => item.label);
-    return missing.length > 0 ? missing.join(' + ') : 'Ingen';
+    return missing.length > 0 ? missing.join(' + ') : t('memCard.none');
   };
 
   const getScoreTone = (current: number, goal: number): string => {
@@ -1316,20 +1325,20 @@ export function MemoryCardBackupControlDialog({
             />
             <SdCardIcon sx={{ color: accent }} />
             <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: branding.typography.headingFont }}>
-              {`${roleRoomName} · Backup kontroll system`}
+              {`${roleRoomName} · ${t('memCard.titleSuffix')}`}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Chip
               size="small"
               icon={saving ? <SyncIcon /> : <CloudDoneIcon />}
-              label={saving ? 'Lagrer...' : fallbackMode ? 'Lokal fallback' : 'Synkronisert'}
+              label={saving ? t('memCard.savingChip') : fallbackMode ? t('memCard.localFallback') : t('memCard.synced')}
               sx={{
                 bgcolor: fallbackMode ? alpha(warning, 0.18) : alpha(success, 0.18),
                 color: fallbackMode ? '#ffecb3' : alpha(success, 0.92),
               }}
             />
-            <Tooltip title="Lagre nå">
+            <Tooltip title={t('memCard.saveNowTooltip')}>
               <IconButton onClick={handleSaveNow} sx={{ color: textPrimary }} disabled={loading || saving}>
                 <SaveIcon />
               </IconButton>
@@ -1346,14 +1355,14 @@ export function MemoryCardBackupControlDialog({
         )}
         {riskAlerts.map((alert, index) => (
           <Alert key={`risk-${index}`} severity={alert.severity} sx={{ mb: 1.5 }}>
-            {`Risiko varsling: ${alert.message}`}
+            {t('memCard.riskPrefix', { message: alert.message })}
           </Alert>
         ))}
 
         {loading ? (
           <Box sx={{ py: 8, textAlign: 'center' }}>
             <LinearProgress sx={{ mb: 2 }} />
-            <Typography sx={{ color: alpha(textSecondary, 0.8) }}>Laster minnekortkontroll ...</Typography>
+            <Typography sx={{ color: alpha(textSecondary, 0.8) }}>{t('memCard.loading')}</Typography>
           </Box>
         ) : (
           <>
@@ -1361,38 +1370,38 @@ export function MemoryCardBackupControlDialog({
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
                 <Chip
                   icon={<SdCardIcon />}
-                  label={`Lagringsenheter i bruk: ${summary.total}`}
+                  label={t('memCard.chipInUse', { n: summary.total })}
                   sx={{ bgcolor: alpha(textPrimary, 0.08), color: textPrimary }}
                 />
                 <Chip
                   icon={<CheckCircleIcon />}
-                  label={`Verifisert: ${summary.verified}`}
+                  label={t('memCard.chipVerified', { n: summary.verified })}
                   sx={{ bgcolor: alpha(success, 0.16), color: '#81c784' }}
                 />
                 <Chip
                   icon={<SyncIcon />}
-                  label={`Sikkerhetskopieres: ${summary.inProgress}`}
+                  label={t('memCard.chipBackingUp', { n: summary.inProgress })}
                   sx={{ bgcolor: alpha(warning, 0.16), color: '#ffd54f' }}
                 />
                 <Chip
                   icon={<WarningAmberIcon />}
-                  label={`Ikke sikkerhetskopiert: ${summary.pending}`}
+                  label={t('memCard.chipNotBacked', { n: summary.pending })}
                   sx={{ bgcolor: alpha(danger, 0.2), color: '#ef9a9a' }}
                 />
                 <Chip
                   icon={<PhotoCameraIcon />}
-                  label={`Produksjonskoblet: ${productionCoverage.linked}/${summary.total || 0}`}
+                  label={t('memCard.chipProductionLinked', { linked: productionCoverage.linked, total: summary.total || 0 })}
                   sx={{ bgcolor: alpha(accent, 0.18), color: alpha(textPrimary, 0.95) }}
                 />
                 <Chip
                   icon={<Inventory2Icon />}
-                  label={`Crew i oversikt: ${Math.max(operationalByCrew.length, crewOptions.length)}`}
+                  label={t('memCard.chipCrewOverview', { n: Math.max(operationalByCrew.length, crewOptions.length) })}
                   sx={{ bgcolor: alpha(primary, 0.2), color: alpha(textPrimary, 0.95) }}
                 />
                 {remoteReport && (
                   <Chip
                     icon={<DataArrayIcon />}
-                    label={`Backend compliance: ${remoteReport.summary.compliancePercent}%`}
+                    label={t('memCard.chipBackendCompliance', { n: remoteReport.summary.compliancePercent })}
                     sx={{
                       bgcolor: alpha(remoteReport.summary.compliancePercent >= 90 ? success : warning, 0.2),
                       color: remoteReport.summary.compliancePercent >= 90 ? '#81c784' : '#ffd54f',
@@ -1401,7 +1410,7 @@ export function MemoryCardBackupControlDialog({
                 )}
                 <Chip
                   icon={summary.all321Compliant ? <CheckCircleIcon /> : <WarningAmberIcon />}
-                  label={summary.all321Compliant ? '3-2-1 oppfylt' : '3-2-1 mangler'}
+                  label={summary.all321Compliant ? t('memCard.compliant321') : t('memCard.missing321')}
                   sx={{
                     bgcolor: summary.all321Compliant ? alpha(success, 0.16) : alpha(danger, 0.2),
                     color: summary.all321Compliant ? '#81c784' : '#ef9a9a',
@@ -1410,12 +1419,12 @@ export function MemoryCardBackupControlDialog({
               </Stack>
               <TextField
                 size="small"
-                label="Opptaksdag"
+                label={t('memCard.shootDayLabel')}
                 value={controlState.shootDayLabel}
                 onChange={(event) =>
                   commitState((prev) => ({ ...prev, shootDayLabel: event.target.value }))
                 }
-                placeholder="Eks: Dag 03"
+                placeholder={t('memCard.shootDayPlaceholder')}
                 sx={{
                   '& .MuiInputBase-root': { bgcolor: alpha(textPrimary, 0.04), color: textPrimary },
                   '& .MuiInputLabel-root': { color: alpha(textSecondary, 0.75) },
@@ -1433,11 +1442,11 @@ export function MemoryCardBackupControlDialog({
               }}
             >
               <Typography sx={{ fontWeight: 700, mb: 1, color: alpha(textSecondary, 0.95) }}>
-                Operativ oversikt · Hele teamet (video + foto)
+                {t('memCard.operationalTitle')}
               </Typography>
               {operationalByCrew.length === 0 ? (
                 <Typography sx={{ fontSize: '0.85rem', color: alpha(textSecondary, 0.8) }}>
-                  Ingen lagringsenhet registrert enda.
+                  {t('memCard.noEntriesYet')}
                 </Typography>
               ) : (
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1 }}>
@@ -1455,7 +1464,7 @@ export function MemoryCardBackupControlDialog({
                         {row.crew}
                       </Typography>
                       <Typography sx={{ fontSize: '0.8rem', color: alpha(textSecondary, 0.82) }}>
-                        {`Lagringsenheter: ${row.total} · Verifisert: ${row.verified} · Under backup: ${row.backingUp} · Risiko: ${row.pending}`}
+                        {t('memCard.crewStats', { total: row.total, verified: row.verified, backingUp: row.backingUp, pending: row.pending })}
                       </Typography>
                     </Box>
                   ))}
@@ -1473,7 +1482,7 @@ export function MemoryCardBackupControlDialog({
               }}
             >
               <Typography sx={{ fontWeight: 800, color: alpha(textSecondary, 0.96), mb: 1 }}>
-                3-2-1 kontrollpanel
+                {t('memCard.panel321Title')}
               </Typography>
               <Stack spacing={1}>
                 <Box>
@@ -1481,7 +1490,7 @@ export function MemoryCardBackupControlDialog({
                     <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
                       <DataArrayIcon sx={{ fontSize: 16, color: alpha(textSecondary, 0.9) }} />
                       <Typography sx={{ fontSize: '0.82rem', color: alpha(textSecondary, 0.9) }}>
-                        3 kopier (original + backup 1 + backup 2)
+                        {t('memCard.copies3Label')}
                       </Typography>
                     </Stack>
                     <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: getScoreTone(compliance321.copies.current, compliance321.copies.goal) }}>
@@ -1499,7 +1508,7 @@ export function MemoryCardBackupControlDialog({
                     <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
                       <DiscFullIcon sx={{ fontSize: 16, color: alpha(textSecondary, 0.9) }} />
                       <Typography sx={{ fontSize: '0.82rem', color: alpha(textSecondary, 0.9) }}>
-                        2 medier (SSD + RAID/NAS)
+                        {t('memCard.media2Label')}
                       </Typography>
                     </Stack>
                     <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: getScoreTone(compliance321.media.current, compliance321.media.goal) }}>
@@ -1517,7 +1526,7 @@ export function MemoryCardBackupControlDialog({
                     <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
                       <CloudQueueIcon sx={{ fontSize: 16, color: alpha(textSecondary, 0.9) }} />
                       <Typography sx={{ fontSize: '0.82rem', color: alpha(textSecondary, 0.9) }}>
-                        1 offsite kopi
+                        {t('memCard.offsite1Label')}
                       </Typography>
                     </Stack>
                     <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: getScoreTone(compliance321.offsite.current, compliance321.offsite.goal) }}>
@@ -1534,13 +1543,13 @@ export function MemoryCardBackupControlDialog({
               <Stack direction="row" spacing={1} sx={{ mt: 1.25, flexWrap: 'wrap' }}>
                 <Chip
                   icon={<WarningAmberIcon />}
-                  label={`Rød side = Ikke backet opp (${redEntries.length})`}
+                  label={t('memCard.redSideChip', { n: redEntries.length })}
                   size="small"
                   sx={{ bgcolor: alpha(danger, 0.22), color: '#ef9a9a' }}
                 />
                 <Chip
                   icon={<CheckCircleIcon />}
-                  label={`Grønn side = Klar (${greenEntries.length})`}
+                  label={t('memCard.greenSideChip', { n: greenEntries.length })}
                   size="small"
                   sx={{ bgcolor: alpha(success, 0.18), color: '#81c784' }}
                 />
@@ -1549,8 +1558,8 @@ export function MemoryCardBackupControlDialog({
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 1.5, mb: 2.5 }}>
               {[
-                { key: 'red', title: 'Rød side · Ikke backet opp', entries: redEntries, tone: danger, isRed: true },
-                { key: 'green', title: 'Grønn side · Klar', entries: greenEntries, tone: success, isRed: false },
+                { key: 'red', title: t('memCard.redColumnTitle'), entries: redEntries, tone: danger, isRed: true },
+                { key: 'green', title: t('memCard.greenColumnTitle'), entries: greenEntries, tone: success, isRed: false },
               ].map((column) => (
                 <Paper
                   key={column.key}
@@ -1574,13 +1583,13 @@ export function MemoryCardBackupControlDialog({
                     </Stack>
                     <Chip
                       size="small"
-                      label={`${column.entries.length} lagringsenheter`}
+                      label={t('memCard.devicesCount', { n: column.entries.length })}
                       sx={{ bgcolor: alpha(column.tone, 0.18), color: alpha(textPrimary, 0.95) }}
                     />
                   </Box>
                   {column.entries.length === 0 ? (
                     <Typography sx={{ fontSize: '0.85rem', color: alpha(textSecondary, 0.78), py: 1 }}>
-                      Ingen lagringsenheter i denne kolonnen.
+                      {t('memCard.noDevicesInColumn')}
                     </Typography>
                   ) : (
                     <Stack spacing={1}>
@@ -1617,10 +1626,10 @@ export function MemoryCardBackupControlDialog({
                                   size="small"
                                   label={
                                     entry.status === 'verified'
-                                      ? '✓ KLAR'
+                                      ? t('memCard.statusReady')
                                       : entry.status === 'backing_up'
-                                      ? '↻ SIKKERHETSKOPIERER'
-                                      : '⚠ IKKE SIKKERHETSKOPIERT'
+                                      ? t('memCard.statusBackingUp')
+                                      : t('memCard.statusNotBacked')
                                   }
                                   sx={{
                                     bgcolor:
@@ -1642,12 +1651,12 @@ export function MemoryCardBackupControlDialog({
                               <Stack direction="row" spacing={0.75} sx={{ mb: 0.7, flexWrap: 'wrap' }}>
                                 <Chip
                                   size="small"
-                                  label={`Livssyklus: ${lifecycleStageLabels[entry.lifecycleStage] || 'I bruk'}`}
+                                  label={t('memCard.lifecyclePrefix', { stage: lifecycleStageLabels[entry.lifecycleStage] || t('memCard.lcInUse') })}
                                   sx={{ bgcolor: alpha(primary, 0.22), color: alpha(textPrimary, 0.95) }}
                                 />
                                 <Chip
                                   size="small"
-                                  label={`Crew: ${entry.assignedCrewName || 'Ikke tildelt'}`}
+                                  label={t('memCard.crewPrefix', { crew: entry.assignedCrewName || t('memCard.notAssigned') })}
                                   sx={{ bgcolor: alpha(accent, 0.18), color: alpha(textPrimary, 0.95) }}
                                 />
                               </Stack>
@@ -1656,10 +1665,10 @@ export function MemoryCardBackupControlDialog({
                                 {entry.cameraLabel}
                               </Typography>
                               <Typography sx={{ color: alpha(textSecondary, 0.8), fontSize: '0.85rem' }}>
-                                {entry.capacity || 'Uspesifisert kapasitet'} · {entry.sceneLabel || 'Ikke koblet til scene'}
+                                {entry.capacity || t('memCard.capUnspecified')} · {entry.sceneLabel || t('memCard.sceneNotLinked')}
                               </Typography>
                               <Typography sx={{ color: alpha(textSecondary, 0.74), fontSize: '0.78rem', mt: 0.4 }}>
-                                {`Mangler nå: ${getMissingNow(entry)}`}
+                                {t('memCard.missingNowPrefix', { missing: getMissingNow(entry) })}
                               </Typography>
 
                               <Stack spacing={0.4} sx={{ mt: 1 }}>
@@ -1681,12 +1690,12 @@ export function MemoryCardBackupControlDialog({
                               <Stack direction="row" spacing={0.75} sx={{ mt: 1.2, flexWrap: 'wrap' }}>
                                 <Chip
                                   size="small"
-                                  label={`Sikkerhetskopi: ${backupsDone}/3`}
+                                  label={t('memCard.backupCountChip', { n: backupsDone })}
                                   sx={{ bgcolor: alpha(textPrimary, 0.08), color: textPrimary }}
                                 />
                                 <Chip
                                   size="small"
-                                  label={entry.checksumVerified ? 'Sjekksum OK' : 'Sjekksum mangler'}
+                                  label={entry.checksumVerified ? t('memCard.checksumOk') : t('memCard.checksumMissing')}
                                   sx={{
                                     bgcolor: entry.checksumVerified ? alpha(success, 0.16) : alpha(textPrimary, 0.08),
                                     color: entry.checksumVerified ? '#81c784' : alpha(textSecondary, 0.95),
@@ -1715,12 +1724,12 @@ export function MemoryCardBackupControlDialog({
                 <Stack direction="row" spacing={0.9} sx={{ alignItems: 'center', mb: 1.5 }}>
                   <SdCardIcon sx={{ color: accent }} />
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    Ny lagringsenhet
+                    {t('memCard.newDeviceTitle')}
                   </Typography>
                 </Stack>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.2 }}>
                   <TextField
-                    label="Lagringsenhet-ID"
+                    label={t('memCard.deviceIdLabel')}
                     placeholder="A001"
                     value={draft.cardLabel}
                     onChange={(event) => setDraft((prev) => ({ ...prev, cardLabel: event.target.value }))}
@@ -1742,7 +1751,7 @@ export function MemoryCardBackupControlDialog({
                     <Stack direction="row" spacing={0.8} sx={{ alignItems: 'center' }}>
                       <img src={netflixWordmark} alt="Netflix" style={{ height: 10, width: 'auto', display: 'block' }} />
                       <Typography sx={{ fontSize: '0.8rem', color: alpha(textSecondary, 0.9) }}>
-                        Kun sertifiserte
+                        {t('memCard.onlyCertified')}
                       </Typography>
                     </Stack>
                     <FormControlLabel
@@ -1763,10 +1772,10 @@ export function MemoryCardBackupControlDialog({
                   </Box>
 
                   <FormControl size="small">
-                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>Opptakskilde</InputLabel>
+                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>{t('memCard.recordingSource')}</InputLabel>
                     <Select
                       value={draft.cameraId}
-                      label="Opptakskilde"
+                      label={t('memCard.recordingSource')}
                       onChange={(event) => setDraft((prev) => ({ ...prev, cameraId: String(event.target.value) }))}
                       sx={{ color: textPrimary, bgcolor: alpha(textPrimary, 0.04) }}
                     >
@@ -1829,7 +1838,7 @@ export function MemoryCardBackupControlDialog({
                                             style={{ height: 9, width: 'auto', display: 'block' }}
                                           />
                                         }
-                                        label="Sertifisert"
+                                        label={t('memCard.certifiedChip')}
                                         sx={{
                                           height: 20,
                                           bgcolor: '#e50914',
@@ -1854,22 +1863,22 @@ export function MemoryCardBackupControlDialog({
                       {visibleCameras.length === 0 && (
                         <MenuItem disabled value="">
                           {netflixOnly
-                            ? 'Ingen Netflix-sertifiserte opptakskilder'
-                            : 'Ingen opptakskilder tilgjengelig'}
+                            ? t('memCard.noNetflixSources')
+                            : t('memCard.noSources')}
                         </MenuItem>
                       )}
                     </Select>
                   </FormControl>
 
                   <FormControl size="small">
-                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>Crew-ansvarlig</InputLabel>
+                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>{t('memCard.crewResponsible')}</InputLabel>
                     <Select
                       value={draft.crewId}
-                      label="Crew-ansvarlig"
+                      label={t('memCard.crewResponsible')}
                       onChange={(event) => setDraft((prev) => ({ ...prev, crewId: String(event.target.value) }))}
                       sx={{ color: textPrimary, bgcolor: alpha(textPrimary, 0.04) }}
                     >
-                      <MenuItem value="">Ikke tildelt</MenuItem>
+                      <MenuItem value="">{t('memCard.notAssigned')}</MenuItem>
                       {crewOptions.map((crew) => (
                         <MenuItem key={crew.id} value={crew.id}>
                           {crew.role ? `${crew.name} (${crew.role})` : crew.name}
@@ -1879,14 +1888,14 @@ export function MemoryCardBackupControlDialog({
                   </FormControl>
 
                   <FormControl size="small">
-                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>Scene/shotliste</InputLabel>
+                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>{t('memCard.sceneShotlist')}</InputLabel>
                     <Select
                       value={draft.shotListId}
-                      label="Scene/shotliste"
+                      label={t('memCard.sceneShotlist')}
                       onChange={(event) => setDraft((prev) => ({ ...prev, shotListId: String(event.target.value) }))}
                       sx={{ color: textPrimary, bgcolor: alpha(textPrimary, 0.04) }}
                     >
-                      <MenuItem value="">Ingen kobling</MenuItem>
+                      <MenuItem value="">{t('memCard.noLink')}</MenuItem>
                       {shotListOptions.map((option) => (
                         <MenuItem key={option.id} value={option.id}>
                           {option.label}
@@ -1896,10 +1905,10 @@ export function MemoryCardBackupControlDialog({
                   </FormControl>
 
                   <FormControl size="small">
-                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>Hvilken type lagring?</InputLabel>
+                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>{t('memCard.storageTypeQ')}</InputLabel>
                     <Select
                       value={draft.cardTypeId}
-                      label="Hvilken type lagring?"
+                      label={t('memCard.storageTypeQ')}
                       onChange={(event) =>
                         setDraft((prev) => {
                           const cardTypeId = String(event.target.value);
@@ -1922,10 +1931,10 @@ export function MemoryCardBackupControlDialog({
                   </FormControl>
 
                   <FormControl size="small">
-                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>Kapasitet</InputLabel>
+                    <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>{t('memCard.capacityLabel')}</InputLabel>
                     <Select
                       value={draft.capacity}
-                      label="Kapasitet"
+                      label={t('memCard.capacityLabel')}
                       onChange={(event) => setDraft((prev) => ({ ...prev, capacity: String(event.target.value) }))}
                       sx={{ color: textPrimary, bgcolor: alpha(textPrimary, 0.04) }}
                     >
@@ -1941,7 +1950,7 @@ export function MemoryCardBackupControlDialog({
                   </FormControl>
 
                   <TextField
-                    label="Notat"
+                    label={t('memCard.noteLabel')}
                     value={draft.note}
                     onChange={(event) => setDraft((prev) => ({ ...prev, note: event.target.value }))}
                     multiline
@@ -1964,8 +1973,8 @@ export function MemoryCardBackupControlDialog({
                   />
 
                   <TextField
-                    label="Produksjonstag"
-                    placeholder="f.eks. Dag 03 / Enhet A / Scene 12"
+                    label={t('memCard.productionTagLabel')}
+                    placeholder={t('memCard.productionTagPlaceholder')}
                     value={draft.productionTag}
                     onChange={(event) => setDraft((prev) => ({ ...prev, productionTag: event.target.value }))}
                     size="small"
@@ -1983,7 +1992,7 @@ export function MemoryCardBackupControlDialog({
                     startIcon={<PhotoCameraIcon />}
                     sx={{ borderColor: accent, color: accent }}
                   >
-                    Ta bilde / last opp
+                    {t('memCard.takePhotoUpload')}
                     <input type="file" hidden accept="image/*" capture="environment" onChange={handlePhotoUpload} />
                   </Button>
                   <Button
@@ -1993,7 +2002,7 @@ export function MemoryCardBackupControlDialog({
                     disabled={!draft.cardLabel.trim() || !draft.cameraId}
                     sx={{ bgcolor: primary, '&:hover': { bgcolor: color.secondary || primary } }}
                   >
-                    Legg til lagringsenhet
+                    {t('memCard.addDeviceBtn')}
                   </Button>
                 </Stack>
 
@@ -2001,7 +2010,7 @@ export function MemoryCardBackupControlDialog({
                   <Box
                     component="img"
                     src={draft.imageDataUrl}
-                    alt="Forhåndsvisning av lagringsenhet"
+                    alt={t('memCard.previewAlt')}
                     sx={{
                       display: 'block',
                       width: '100%',
@@ -2032,12 +2041,12 @@ export function MemoryCardBackupControlDialog({
                   <Stack direction="row" spacing={0.9} sx={{ alignItems: 'center', mb: 1 }}>
                     <DiscFullIcon sx={{ color: accent }} />
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Backup-status
+                      {t('memCard.backupStatusTitle')}
                     </Typography>
                   </Stack>
                   {!selectedEntry ? (
                     <Typography sx={{ color: alpha(textSecondary, 0.8) }}>
-                      Velg en lagringsenhet for å oppdatere backup-status.
+                      {t('memCard.selectDevicePrompt')}
                     </Typography>
                   ) : (
                     <>
@@ -2045,29 +2054,30 @@ export function MemoryCardBackupControlDialog({
                         {selectedEntry.cardLabel} · {selectedEntry.cameraLabel}
                       </Typography>
                       <Typography sx={{ color: alpha(textSecondary, 0.8), mb: 1 }}>
-                        {selectedEntry.capacity || 'Kapasitet ikke satt'} · {selectedEntry.sceneLabel || 'Ingen scene valgt'}
+                        {selectedEntry.capacity || t('memCard.capNotSet')} · {selectedEntry.sceneLabel || t('memCard.sceneNotChosen')}
                       </Typography>
                       <Typography sx={{ color: alpha(textSecondary, 0.75), mb: 1 }}>
-                        {`Crew: ${selectedEntry.assignedCrewName || 'Ikke tildelt'} · Produksjon: ${
-                          selectedEntry.productionTag || selectedEntry.sceneLabel || 'Ikke koblet'
-                        }`}
+                        {t('memCard.crewProductionLine', {
+                          crew: selectedEntry.assignedCrewName || t('memCard.notAssigned'),
+                          production: selectedEntry.productionTag || selectedEntry.sceneLabel || t('memCard.notLinked'),
+                        })}
                       </Typography>
                       <FormControl size="small" sx={{ mb: 1.25, minWidth: 220 }}>
-                        <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>Livssyklus</InputLabel>
+                        <InputLabel sx={{ color: alpha(textSecondary, 0.75) }}>{t('memCard.lifecycleLabel')}</InputLabel>
                         <Select
                           value={selectedEntry.lifecycleStage}
-                          label="Livssyklus"
+                          label={t('memCard.lifecycleLabel')}
                           onChange={(event) => {
                             const lifecycleStage = String(event.target.value) as MemoryCardLifecycleStage;
                             updateEntry(
                               selectedEntry.id,
                               (entry) => ({ ...entry, lifecycleStage }),
-                              `Livssyklus endret til ${lifecycleStageLabels[lifecycleStage]}`
+                              t('memCard.evtLifecycleChanged', { stage: lifecycleStageLabels[lifecycleStage] })
                             );
                           }}
                           sx={{ color: textPrimary, bgcolor: alpha(textPrimary, 0.04) }}
                         >
-                          {(Object.keys(lifecycleStageLabels) as MemoryCardLifecycleStage[]).map((stage) => (
+                          {LIFECYCLE_STAGE_KEYS.map((stage) => (
                             <MenuItem key={stage} value={stage}>
                               {lifecycleStageLabels[stage]}
                             </MenuItem>
@@ -2085,7 +2095,7 @@ export function MemoryCardBackupControlDialog({
                                   ...entry,
                                   backups: { ...entry.backups, [stage]: !entry.backups[stage] },
                                 }),
-                                `${backupStageLabels[stage]} ${selectedEntry.backups[stage] ? 'fjernet' : 'bekreftet'}`
+                                t('memCard.evtStageToggle', { stage: backupStageLabels[stage], action: selectedEntry.backups[stage] ? t('memCard.evtRemoved') : t('memCard.evtConfirmed') })
                               )
                             }
                             variant={selectedEntry.backups[stage] ? 'contained' : 'outlined'}
@@ -2108,8 +2118,8 @@ export function MemoryCardBackupControlDialog({
                               selectedEntry.id,
                               (entry) => ({ ...entry, checksumVerified: !entry.checksumVerified }),
                               selectedEntry.checksumVerified
-                                ? 'Sjekksumverifisering fjernet'
-                                : 'Sjekksumverifisering bekreftet'
+                                ? t('memCard.evtChecksumRemoved')
+                                : t('memCard.evtChecksumConfirmed')
                             )
                           }
                           variant={selectedEntry.checksumVerified ? 'contained' : 'outlined'}
@@ -2121,7 +2131,7 @@ export function MemoryCardBackupControlDialog({
                             color: textPrimary,
                           }}
                         >
-                          {selectedEntry.checksumVerified ? '✓ ' : ''}Sjekksumverifisering
+                          {selectedEntry.checksumVerified ? '✓ ' : ''}{t('memCard.checksumBtn')}
                         </Button>
                       </Stack>
 
@@ -2131,7 +2141,7 @@ export function MemoryCardBackupControlDialog({
                         sx={{ height: 10, borderRadius: 10, mb: 1 }}
                       />
                       <Typography sx={{ fontSize: '0.82rem', color: alpha(textSecondary, 0.82) }}>
-                        Fremdrift: {backupProgress}%
+                        {t('memCard.progressLabel', { n: backupProgress })}
                       </Typography>
 
                       <Stack direction="row" spacing={1} sx={{ mt: 1.2 }}>
@@ -2147,12 +2157,12 @@ export function MemoryCardBackupControlDialog({
                                 backups: { backup1: true, backup2: true, offsite: true },
                                 checksumVerified: true,
                               }),
-                              'Markert som fullstendig verifisert'
+                              t('memCard.evtMarkedVerified')
                             )
                           }
                           sx={{ bgcolor: success, '&:hover': { bgcolor: '#43a047' } }}
                         >
-                          Markér verifisert
+                          {t('memCard.markVerifiedBtn')}
                         </Button>
                         <Button
                           startIcon={<QrCodeIcon />}
@@ -2164,7 +2174,7 @@ export function MemoryCardBackupControlDialog({
                           disabled={qrGenerating}
                           sx={{ borderColor: alpha(borderColor, 0.85), color: textPrimary }}
                         >
-                          {qrGenerating ? 'Lager etikett…' : 'QR-etikett'}
+                          {qrGenerating ? t('memCard.generatingLabel') : t('memCard.qrLabelBtn')}
                         </Button>
                         <Button
                           startIcon={<DeleteIcon />}
@@ -2178,7 +2188,7 @@ export function MemoryCardBackupControlDialog({
                             }))
                           }
                         >
-                          Fjern lagringsenhet
+                          {t('memCard.removeDeviceBtn')}
                         </Button>
                       </Stack>
                       {qrLabelPreview && qrLabelPreview.entryId === selectedEntry.id && (
@@ -2197,7 +2207,7 @@ export function MemoryCardBackupControlDialog({
                           <Box
                             component="img"
                             src={qrLabelPreview.dataUrl}
-                            alt={`QR-etikett ${selectedEntry.cardLabel}`}
+                            alt={t('memCard.qrAlt', { label: selectedEntry.cardLabel })}
                             sx={{
                               width: 72,
                               height: 72,
@@ -2209,7 +2219,7 @@ export function MemoryCardBackupControlDialog({
                           />
                           <Stack spacing={0.5} sx={{ minWidth: 0 }}>
                             <Typography sx={{ fontSize: '0.8rem', color: alpha(textSecondary, 0.88) }}>
-                              QR-etikett klar for {selectedEntry.cardLabel}
+                              {t('memCard.qrReady', { label: selectedEntry.cardLabel })}
                             </Typography>
                             <Button
                               size="small"
@@ -2224,7 +2234,7 @@ export function MemoryCardBackupControlDialog({
                               }}
                               sx={{ alignSelf: 'flex-start', borderColor: alpha(borderColor, 0.78), color: textPrimary }}
                             >
-                              Last ned etikett
+                              {t('memCard.downloadLabelBtn')}
                             </Button>
                           </Stack>
                         </Box>
@@ -2242,10 +2252,10 @@ export function MemoryCardBackupControlDialog({
                   }}
                 >
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                    Loggbok
+                    {t('memCard.logbookTitle')}
                   </Typography>
                   {timeline.length === 0 ? (
-                    <Typography sx={{ color: alpha(textSecondary, 0.8) }}>Ingen logg enda.</Typography>
+                    <Typography sx={{ color: alpha(textSecondary, 0.8) }}>{t('memCard.noLogYet')}</Typography>
                   ) : (
                     <Stack spacing={1}>
                       {timeline.map((item) => (
@@ -2269,7 +2279,7 @@ export function MemoryCardBackupControlDialog({
 
       <DialogActions sx={{ borderTop: `1px solid ${alpha(borderColor, 0.72)}`, px: 2.5, py: 1.5 }}>
         <Button onClick={onClose} sx={{ color: alpha(textSecondary, 0.95) }}>
-          Lukk
+          {t('memCard.closeBtn')}
         </Button>
         <Button
           onClick={handleSaveNow}
@@ -2278,7 +2288,7 @@ export function MemoryCardBackupControlDialog({
           variant="contained"
           sx={{ bgcolor: primary, '&:hover': { bgcolor: color.secondary || primary } }}
         >
-          Lagre logg nå
+          {t('memCard.saveLogBtn')}
         </Button>
       </DialogActions>
     </Dialog>

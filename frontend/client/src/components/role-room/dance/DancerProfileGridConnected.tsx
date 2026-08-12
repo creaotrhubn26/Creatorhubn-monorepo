@@ -19,6 +19,8 @@ import { listRehearsals } from './danceRehearsalService';
 import { listClips, listAnnotations } from './danceVideoService';
 import type { Dancer } from './formationTypes';
 import { getInitials } from './dancerProfile';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface DancerProfileGridConnectedProps {
   /** Når null, lister alle eierens danserprofiler på tvers av prosjekter. */
@@ -44,6 +46,7 @@ function profileToDancer(profile: DancerProfile): Dancer {
 export function DancerProfileGridConnected({
   projectId,
 }: DancerProfileGridConnectedProps): React.ReactElement {
+  const { t } = useT();
   const [dancers, setDancers] = React.useState<Dancer[]>([]);
   const [statsByDancerId, setStatsByDancerId] = React.useState<Map<string, DancerStatsSnapshot>>(
     () => new Map(),
@@ -106,7 +109,7 @@ export function DancerProfileGridConnected({
       })();
     } catch (err) {
       if (epochRef.current !== myEpoch) return;
-      setError(err instanceof Error ? err.message : 'Kunne ikke laste dansere');
+      setError(err instanceof Error ? err.message : t('dancerProfGridConn.s000'));
     } finally {
       if (epochRef.current === myEpoch) setLoading(false);
     }
@@ -121,7 +124,7 @@ export function DancerProfileGridConnected({
   const handleAdd = React.useCallback(() => {
     const id = generateDancerId();
     setCreatingDancerId(id);
-    setCreatingName('Ny danser');
+    setCreatingName(t('dancerProfGridConn.s001'));
   }, []);
 
   const handleCreatedSaved = React.useCallback(
@@ -153,7 +156,7 @@ export function DancerProfileGridConnected({
           severity="error"
           action={
             <Button color="inherit" size="small" onClick={() => void refresh()}>
-              Prøv igjen
+              {t('dancerProfGridConn.s002')}
             </Button>
           }
         >

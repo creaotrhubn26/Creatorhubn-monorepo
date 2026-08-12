@@ -20,6 +20,8 @@ import {
 import roleRoomAgentService, {
   type ActivityEvent, type ActivityEventKind,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface Props {
   projectId: string;
@@ -63,6 +65,7 @@ const EVENT_VISUALS: Record<ActivityEventKind, {
 };
 
 export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
+  const { t } = useT();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -114,7 +117,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.4 }}>
         <HistoryIcon sx={{ color: '#a855f7', fontSize: 22 }} />
         <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1rem' }}>
-          Aktivitet
+          {t('mpActivity.s000')}
         </Typography>
         <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.78rem' }}>
           ({events.length})
@@ -133,7 +136,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
 
       {!loading && !error && events.length === 0 && (
         <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.84rem' }}>
-          Ingen aktivitet ennå. Klient-kommentarer, godkjennelser, preview-uploads og redigeringer dukker opp her.
+          {t('mpActivity.s001')}
         </Typography>
       )}
 
@@ -157,7 +160,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
                     textTransform: 'none',
                     fontWeight: 700,
                   }}>
-            {loadingMore ? 'Laster …' : 'Vis flere hendelser'}
+            {loadingMore ? t('mpActivity.s002') : t('mpActivity.s004')}
           </Button>
         </Stack>
       )}
@@ -166,6 +169,7 @@ export function MarketingPlanActivityFeed({ projectId, refreshNonce }: Props) {
 }
 
 function EventRow({ event }: { event: ActivityEvent }) {
+  const { t } = useT();
   const v = EVENT_VISUALS[event.kind];
   const Icon = v.icon;
   return (
@@ -192,12 +196,12 @@ function EventRow({ event }: { event: ActivityEvent }) {
                   }} />
           )}
           <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.72rem' }}>
-            · {formatRelative(event.at)}
+            · {formatRelative(t, event.at)}
           </Typography>
         </Stack>
         {event.postHook && (
           <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem', mt: 0.3, fontStyle: 'italic' }}>
-            Posten: "{event.postHook.slice(0, 80)}"
+            {t('mpActivity.s003')}{event.postHook.slice(0, 80)}"
           </Typography>
         )}
         {event.detail && (
@@ -210,15 +214,15 @@ function EventRow({ event }: { event: ActivityEvent }) {
   );
 }
 
-function formatRelative(iso: string): string {
+function formatRelative(t: TFn, iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60000);
-  if (min < 1) return 'akkurat nå';
-  if (min < 60) return `${min} min siden`;
+  if (min < 1) return t('mpActivity.s005');
+  if (min < 60) return t('mpActivity.p00', { v0: min });
   const hour = Math.floor(min / 60);
-  if (hour < 24) return `${hour}t siden`;
+  if (hour < 24) return t('mpActivity.p02', { v0: hour });
   const day = Math.floor(hour / 24);
-  if (day < 7) return `${day}d siden`;
+  if (day < 7) return t('mpActivity.p01', { v0: day });
   return new Date(iso).toLocaleDateString('nb', { day: '2-digit', month: 'short' });
 }
 

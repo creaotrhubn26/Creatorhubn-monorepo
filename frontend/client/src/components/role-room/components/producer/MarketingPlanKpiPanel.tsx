@@ -36,6 +36,8 @@ import {
   AutoGraph as GraphIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface MarketingPlanKpiPanelProps {
   planId: string;
@@ -44,6 +46,7 @@ interface MarketingPlanKpiPanelProps {
 type KpiSummary = NonNullable<Awaited<ReturnType<typeof roleRoomAgentService.fetchKpiSummary>>>;
 
 const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId }) => {
+  const { t } = useT();
   const [data, setData] = useState<KpiSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -57,7 +60,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
     try {
       const result = await roleRoomAgentService.fetchKpiSummary(planId, 30);
       setData(result);
-      if (!result) setError('Kunne ikke laste KPI-data.');
+      if (!result) setError(t('marketingKpi.s010'));
     } finally {
       setLoading(false);
     }
@@ -70,9 +73,9 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
     try {
       const result = await roleRoomAgentService.syncKpis(planId);
       if (!result) {
-        setError('Sync feilet — sjekk at minst én social-konto er koblet.');
+        setError(t('marketingKpi.s014'));
       } else if (result.snapshotsWritten === 0 && result.eligiblePosts === 0) {
-        setError('Ingen aksepterte posts å hente KPI for ennå.');
+        setError(t('marketingKpi.s008'));
       } else {
         await load();
       }
@@ -112,7 +115,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
           <Stack direction="row" alignItems="center" spacing={0.8}>
             <GraphIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
-            <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>KPI-tracking</Typography>
+            <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('marketingKpi.s009')}</Typography>
           </Stack>
           <Button
             size="small"
@@ -122,14 +125,14 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
             disabled={syncing}
             sx={{ textTransform: 'none' }}
           >
-            {syncing ? 'Synker…' : 'Synk fra plattformer'}
+            {syncing ? t('marketingKpi.s017') : t('marketingKpi.s015')}
           </Button>
         </Stack>
         <Alert
           severity="info"
           sx={{ bgcolor: 'rgba(34,211,238,0.08)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.24)' }}
         >
-          Ingen KPI-data ennå. Aksepter noen posts til feed-planner først, publisér dem, og klikk «Synk fra plattformer» når det har gått 24t+. Meta-data hentes via koblet Instagram-konto; TikTok og LinkedIn krever videre OAuth-oppsett.
+          {t('marketingKpi.s007')}
         </Alert>
         {error ? <Alert severity="warning" sx={{ mt: 1 }}>{error}</Alert> : null}
       </Box>
@@ -141,10 +144,10 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Stack direction="row" alignItems="center" spacing={0.8}>
           <GraphIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>KPI-tracking</Typography>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('marketingKpi.s009')}</Typography>
           <Chip
             size="small"
-            label={`${data.snapshotCount} snapshots · siste 30d`}
+            label={t('marketingKpi.p03', { v0: data.snapshotCount })}
             sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1', height: 18, fontSize: '0.7rem' }}
           />
         </Stack>
@@ -156,7 +159,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
           disabled={syncing}
           sx={{ textTransform: 'none' }}
         >
-          {syncing ? 'Synker…' : 'Synk nå'}
+          {syncing ? t('marketingKpi.s017') : t('marketingKpi.s016')}
         </Button>
       </Stack>
 
@@ -199,7 +202,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       {/* #190 — sparklines per (platform, metric) */}
       <Box sx={{ mb: 2 }}>
         <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.86rem', mb: 0.8 }}>
-          Metric-utvikling (siste 14d)
+          {t('marketingKpi.s011')}
         </Typography>
         <Stack spacing={0.6}>
           {data.summary.map((m) => {
@@ -236,7 +239,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
                   {Math.round(m.latestValue).toLocaleString('nb-NO')}
                 </Typography>
                 {m.deltaPct !== null ? (
-                  <Tooltip title={`vs forrige måling: ${m.previousValue ?? '?'}`}>
+                  <Tooltip title={t('marketingKpi.p02', { v0: m.previousValue ?? '?' })}>
                     <Stack direction="row" alignItems="center" spacing={0.2}>
                       {m.deltaPct >= 0 ? (
                         <TrendingUpIcon sx={{ color: '#34d399', fontSize: 14 }} />
@@ -259,7 +262,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       {data.corrections.length > 0 ? (
         <Box sx={{ mb: 2 }}>
           <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.86rem', mb: 0.6 }}>
-            Anbefalinger
+            {t('marketingKpi.s002')}
           </Typography>
           <Stack spacing={0.6}>
             {data.corrections.map((c) => {
@@ -290,7 +293,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       {data.outliers.length > 0 ? (
         <Box sx={{ mb: 2 }}>
           <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.86rem', mb: 0.6 }}>
-            Outlier-posts (z-score &gt;2σ)
+            {t('marketingKpi.s012')}
           </Typography>
           <Stack spacing={0.4}>
             {data.outliers.slice(0, 5).map((o) => (
@@ -298,7 +301,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
                 <Stack direction="row" alignItems="center" spacing={0.6}>
                   <Chip
                     size="small"
-                    label={o.kind === 'winner' ? `Vinner z=${o.zScore}` : `Bekymring z=${o.zScore}`}
+                    label={o.kind === 'winner' ? t('marketingKpi.p01', { v0: o.zScore }) : t('marketingKpi.p00', { v0: o.zScore })}
                     sx={{
                       bgcolor: o.kind === 'winner' ? 'rgba(52,211,153,0.18)' : 'rgba(248,113,113,0.18)',
                       color: o.kind === 'winner' ? '#bbf7d0' : '#fecaca',
@@ -320,7 +323,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       {/* #184-#187 — aggregater på tvers */}
       <Box sx={{ mb: 2 }}>
         <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.86rem', mb: 0.6 }}>
-          Per-pillar / platform / format / tid
+          {t('marketingKpi.s013')}
         </Typography>
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
           {(['byPillar', 'byPlatform', 'byFormat', 'byTimeWindow'] as const).map((dimensionKey) => {
@@ -328,7 +331,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
             if (buckets.length === 0) return null;
             const label = dimensionKey === 'byPillar' ? 'Pillar'
               : dimensionKey === 'byPlatform' ? 'Platform'
-              : dimensionKey === 'byFormat' ? 'Format' : 'Tidspunkt';
+              : dimensionKey === 'byFormat' ? 'Format' : t('marketingKpi.s018');
             return (
               <Box key={dimensionKey} sx={{ flex: '1 1 200px', p: 0.8, borderRadius: 1.2, bgcolor: 'rgba(15,23,42,0.4)', minWidth: 0 }}>
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', mb: 0.3 }}>{label}</Typography>
@@ -354,13 +357,13 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       <Divider sx={{ my: 1.4, borderColor: 'rgba(148,163,184,0.18)' }} />
       <Box>
         <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.86rem', mb: 0.4 }}>
-          What if-simulator
+          {t('marketingKpi.s019')}
         </Typography>
         <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.72rem', mb: 0.8 }}>
-          Estimat basert på nåværende snitt — ikke faktisk prognose.
+          {t('marketingKpi.s004')}
         </Typography>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <Typography sx={{ color: '#f8fafc', fontSize: '0.78rem' }}>Frekvens:</Typography>
+          <Typography sx={{ color: '#f8fafc', fontSize: '0.78rem' }}>{t('marketingKpi.s006')}</Typography>
           <input
             type="range"
             min={1}
@@ -370,7 +373,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
             style={{ flex: 1, accentColor: 'var(--role-cyan, #22d3ee)' }}
           />
           <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontFamily: 'monospace', fontWeight: 700, minWidth: 40 }}>
-            {whatIfFrequency}/uke
+            {whatIfFrequency}{t('marketingKpi.s001')}
           </Typography>
         </Stack>
         {(() => {
@@ -386,10 +389,10 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
           return (
             <Box sx={{ mt: 0.8, p: 0.8, borderRadius: 1, bgcolor: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.24)' }}>
               <Typography sx={{ color: '#a5f3fc', fontSize: '0.82rem' }}>
-                Forventet impressions: <strong>{projectedWeekly.toLocaleString('nb-NO')}/uke</strong> · <strong>{projectedMonthly.toLocaleString('nb-NO')}/mnd</strong>
+                {t('marketingKpi.s005')} <strong>{projectedWeekly.toLocaleString('nb-NO')}{t('marketingKpi.s001')}</strong> · <strong>{projectedMonthly.toLocaleString('nb-NO')}{t('marketingKpi.s000')}</strong>
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem', mt: 0.2 }}>
-                Basert på {allImpressionsAvg.length} plattform-snitt × {whatIfFrequency} posts/uke.
+                {t('marketingKpi.s003')} {allImpressionsAvg.length} {t('marketingKpi.s020')} {whatIfFrequency} {t('marketingKpi.s021')}
               </Typography>
             </Box>
           );

@@ -20,6 +20,8 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type Platform = 'meta' | 'linkedin' | 'google';
 
@@ -101,6 +103,7 @@ export default function ClientAdsAudiencesPanel({
   platformAccountId: providedId,
   isOwnAccount = false,
 }: Props) {
+  const { t } = useT();
   const meta = PLATFORM_META[platform];
 
   const [accountId, setAccountId] = useState<string>(providedId ?? '');
@@ -137,10 +140,10 @@ export default function ClientAdsAudiencesPanel({
     try {
       const r = await fetch(meta.listEndpoint(accountId), { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Kunne ikke hente mottakerlister');
+      if (!r.ok) throw new Error(d.error || t('clientAdsAudiences.s009'));
       setAudiences(d.audiences ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å hente lister');
+      setError(err instanceof Error ? err.message : t('clientAdsAudiences.s007'));
     } finally {
       setLoading(false);
     }
@@ -157,7 +160,7 @@ export default function ClientAdsAudiencesPanel({
     }).filter((id) => id.email || id.phone);
 
     if (identifiers.length === 0) {
-      setError('Fant ingen e-poster eller telefonnumre i listen.');
+      setError(t('clientAdsAudiences.s004'));
       return;
     }
 
@@ -177,9 +180,9 @@ export default function ClientAdsAudiencesPanel({
       const d = await r.json();
       if (!r.ok) {
         if (d.scopeStatus) {
-          throw new Error('Klienten har ikke gitt tillatelse til denne handlingen. Be klient åpne "Tillatelser og vilkår" og slå på opplasting for ' + meta.name + '.');
+          throw new Error(t('clientAdsAudiences.j00', { v0: meta.name }));
         }
-        throw new Error(d.error || 'Opprettelse feilet');
+        throw new Error(d.error || t('clientAdsAudiences.s014'));
       }
       setCreated({ uploadCount: d.uploadCount });
       setTimeout(() => loadAudiences(), 800);
@@ -189,7 +192,7 @@ export default function ClientAdsAudiencesPanel({
         setStep('overview');
       }, 4000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å opprette listen');
+      setError(err instanceof Error ? err.message : t('clientAdsAudiences.s008'));
     } finally {
       setCreating(false);
     }
@@ -216,7 +219,7 @@ export default function ClientAdsAudiencesPanel({
               {meta.audienceLabel}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Last opp en e-postliste — vi gjør den om til en målgruppe på {meta.name}.
+              {t('clientAdsAudiences.s010')} {meta.name}.
             </Typography>
           </Box>
         </Stack>
@@ -236,7 +239,7 @@ export default function ClientAdsAudiencesPanel({
                 {audiences.length}
               </Typography>
               <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-                {audiences.length === 0 ? 'Ingen mottakerlister opprettet ennå' : audiences.length === 1 ? 'mottakerliste klar til bruk' : 'mottakerlister klare til bruk'}
+                {audiences.length === 0 ? t('clientAdsAudiences.s005') : audiences.length === 1 ? t('clientAdsAudiences.s018') : t('clientAdsAudiences.s019')}
               </Typography>
             </Box>
 
@@ -251,7 +254,7 @@ export default function ClientAdsAudiencesPanel({
                 '&.Mui-disabled': { background: 'rgba(168,85,247,0.18)', color: 'rgba(245,243,255,0.4)' },
               }}
             >
-              Last opp ny mottakerliste
+              {t('clientAdsAudiences.s011')}
             </Button>
 
             {audiences.length > 0 ? (
@@ -259,11 +262,11 @@ export default function ClientAdsAudiencesPanel({
                 <Divider sx={{ borderColor: palette.border, mb: 1.8 }} />
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
                   <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                    Eksisterende lister
+                    {t('clientAdsAudiences.s003')}
                   </Typography>
                   <Button onClick={loadAudiences} disabled={loading} size="small" startIcon={loading ? <CircularProgress size={14} /> : <RefreshOutlinedIcon fontSize="small" />}
                     sx={{ color: palette.accent, textTransform: 'none' }}>
-                    Oppdater
+                    {t('clientAdsAudiences.s013')}
                   </Button>
                 </Stack>
                 <Stack spacing={1}>
@@ -280,11 +283,11 @@ export default function ClientAdsAudiencesPanel({
                             {a.name}
                           </Typography>
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem', mt: 0.4 }}>
-                            {a.size ? `${a.size.toLocaleString('nb-NO')} personer` : 'Behandles…'}
+                            {a.size ? t('clientAdsAudiences.p02', { v0: a.size.toLocaleString('nb-NO') }) : t('clientAdsAudiences.s002')}
                           </Typography>
                         </Box>
                         <Chip
-                          label={a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN' ? 'KLAR' : 'BEHANDLES'}
+                          label={a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN' ? t('clientAdsAudiences.s006') : t('clientAdsAudiences.s001')}
                           size="small"
                           sx={{
                             bgcolor: (a.status === 'ready' || a.status === 'READY' || a.status === 'OPEN') ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)',
@@ -304,29 +307,29 @@ export default function ClientAdsAudiencesPanel({
           <Box>
             {created ? (
               <Alert severity="success" icon={<CheckCircleOutlineIcon />} sx={{ mb: 2 }}>
-                ✓ Liste lastet opp! {created.uploadCount} rader sendt til {meta.name}.
-                {meta.name} bruker noen minutter på å gjenkjenne brukerne.
+                {t('clientAdsAudiences.s022')} {created.uploadCount} {t('clientAdsAudiences.s020')} {meta.name}.
+                {meta.name} {t('clientAdsAudiences.s017')}
               </Alert>
             ) : null}
 
             <Typography sx={{ color: palette.textPrimary, fontSize: '1rem', fontWeight: 700, mb: 0.6 }}>
-              Steg 1 — Gi listen et navn
+              {t('clientAdsAudiences.s015')}
             </Typography>
             <TextField
               fullWidth
               size="small"
               value={audienceName}
               onChange={(e) => setAudienceName(e.target.value)}
-              placeholder="Nyhetsbrev-abonnenter Q2 2026"
+              placeholder={t('clientAdsAudiences.s012')}
               InputProps={{ sx: { color: palette.textPrimary } }}
               sx={{ mb: 3 }}
             />
 
             <Typography sx={{ color: palette.textPrimary, fontSize: '1rem', fontWeight: 700, mb: 0.6 }}>
-              Steg 2 — Lim inn e-postliste
+              {t('clientAdsAudiences.s016')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', mb: 1.4 }}>
-              Én e-post per linje. Vi krypterer alt (SHA256) før det sendes til {meta.name}.
+              {t('clientAdsAudiences.s021')} {meta.name}.
             </Typography>
             <TextField
               fullWidth
@@ -350,10 +353,10 @@ export default function ClientAdsAudiencesPanel({
                   px: 4, py: 1.4, borderRadius: 1.6,
                 }}
               >
-                {creating ? `Sender til ${meta.name}…` : `Send listen til ${meta.name}`}
+                {creating ? t('clientAdsAudiences.p01', { v0: meta.name }) : t('clientAdsAudiences.p00', { v0: meta.name })}
               </Button>
               <Button onClick={() => { setStep('overview'); setCreated(null); }} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-                Avbryt
+                {t('clientAdsAudiences.s000')}
               </Button>
             </Stack>
           </Box>

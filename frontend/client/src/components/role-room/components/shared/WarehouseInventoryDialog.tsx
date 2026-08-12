@@ -56,21 +56,22 @@ import {
 import QrCameraScanner from './QrCameraScanner';
 import globalTagService from '../../services/globalTagService';
 import GlobalMentionHelper from './GlobalMentionHelper';
+import { useT } from '../../../../i18n';
 
-const NODE_TYPES: Array<{ value: WarehouseNodeType; label: string }> = [
-  { value: 'warehouse', label: 'Lager' },
-  { value: 'zone', label: 'Sone' },
-  { value: 'shelf', label: 'Hylle' },
-  { value: 'bin', label: 'Bin' },
+const NODE_TYPE_KEYS: Array<{ value: WarehouseNodeType; key: 'warehouse.nodeType.warehouse' | 'warehouse.nodeType.zone' | 'warehouse.nodeType.shelf' | 'warehouse.nodeType.bin' }> = [
+  { value: 'warehouse', key: 'warehouse.nodeType.warehouse' },
+  { value: 'zone', key: 'warehouse.nodeType.zone' },
+  { value: 'shelf', key: 'warehouse.nodeType.shelf' },
+  { value: 'bin', key: 'warehouse.nodeType.bin' },
 ];
 
-const OPERATIONS: Array<{ value: InventoryTransactionAction; label: string }> = [
-  { value: 'move', label: 'Flytt' },
-  { value: 'receive', label: 'Motta inn' },
-  { value: 'return', label: 'Retur inn' },
-  { value: 'adjust', label: 'Juster antall' },
-  { value: 'count', label: 'Inventurtelling' },
-  { value: 'reserve', label: 'Reserver' },
+const OPERATION_KEYS: Array<{ value: InventoryTransactionAction; key: 'warehouse.operation.move' | 'warehouse.operation.receive' | 'warehouse.operation.return' | 'warehouse.operation.adjust' | 'warehouse.operation.count' | 'warehouse.operation.reserve' }> = [
+  { value: 'move', key: 'warehouse.operation.move' },
+  { value: 'receive', key: 'warehouse.operation.receive' },
+  { value: 'return', key: 'warehouse.operation.return' },
+  { value: 'adjust', key: 'warehouse.operation.adjust' },
+  { value: 'count', key: 'warehouse.operation.count' },
+  { value: 'reserve', key: 'warehouse.operation.reserve' },
 ];
 
 const severityOrder: Record<'high' | 'medium' | 'low', number> = {
@@ -135,11 +136,23 @@ export function WarehouseInventoryDialog({
   open,
   onClose,
   projectId,
-  title = 'Lagersystem',
+  title,
   items,
   locationSeeds,
   onRequestEditItem,
 }: WarehouseInventoryDialogProps) {
+  const { t } = useT();
+  const resolvedTitle = title ?? t('warehouse.title');
+  const NODE_TYPES = useMemo(
+    () => NODE_TYPE_KEYS.map((entry) => ({ value: entry.value, label: t(entry.key) })),
+    [t],
+  );
+  const OPERATIONS = useMemo(
+    () => OPERATION_KEYS.map((entry) => ({ value: entry.value, label: t(entry.key) })),
+    [t],
+  );
+  const getItemTypeLabel = (itemType: InventoryItemType): string =>
+    t(itemType === 'equipment' ? 'warehouse.itemType.equipment' : 'warehouse.itemType.prop');
   const [tab, setTab] = useState(0);
   const [snapshot, setSnapshot] = useState<WarehouseSnapshot>({
     nodes: [],
@@ -276,7 +289,7 @@ export function WarehouseInventoryDialog({
 
   const handleCreateNode = () => {
     if (!newNodeName.trim()) {
-      setFeedback({ kind: 'error', message: 'Navn på lagernode er påkrevd' });
+      setFeedback({ kind: 'error', message: t('warehouse.msg.nodeNameRequired') });
       return;
     }
     warehouseInventoryService.createNode(projectId, {
@@ -285,27 +298,27 @@ export function WarehouseInventoryDialog({
       parentId: newNodeParent || undefined,
     });
     setNewNodeName('');
-    setFeedback({ kind: 'success', message: 'Lagernode opprettet' });
+    setFeedback({ kind: 'success', message: t('warehouse.msg.nodeCreated') });
     reloadSnapshot();
   };
 
   const handleDeleteNode = (nodeId: string) => {
     const result = warehouseInventoryService.deleteNode(projectId, nodeId);
     if (!result.ok) {
-      setFeedback({ kind: 'error', message: result.reason || 'Kunne ikke slette node' });
+      setFeedback({ kind: 'error', message: result.reason || t('warehouse.msg.nodeDeleteFailed') });
       return;
     }
-    setFeedback({ kind: 'success', message: 'Lagernode slettet' });
+    setFeedback({ kind: 'success', message: t('warehouse.msg.nodeDeleted') });
     reloadSnapshot();
   };
 
   const handleSubmitOperation = () => {
     if (!selectedItemKey) {
-      setFeedback({ kind: 'error', message: 'Velg en post først' });
+      setFeedback({ kind: 'error', message: t('warehouse.msg.selectItemFirst') });
       return;
     }
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      setFeedback({ kind: 'error', message: 'Antall må være større enn 0' });
+      setFeedback({ kind: 'error', message: t('warehouse.msg.quantityMustBePositive') });
       return;
     }
     const [itemType, itemId] = selectedItemKey.split(':') as [InventoryItemType, string];
@@ -317,11 +330,11 @@ export function WarehouseInventoryDialog({
       note: operationNote,
     };
 
-    let result: { ok: boolean; reason?: string } = { ok: false, reason: 'Ugyldig operasjon' };
+    let result: { ok: boolean; reason?: string } = { ok: false, reason: t('warehouse.msg.invalidOperation') };
     switch (operation) {
       case 'move':
         if (!fromLocationId || !toLocationId) {
-          setFeedback({ kind: 'error', message: 'Velg både fra-lager og til-lager' });
+          setFeedback({ kind: 'error', message: t('warehouse.msg.selectFromAndTo') });
           return;
         }
         result = warehouseInventoryService.moveStock({
@@ -332,7 +345,7 @@ export function WarehouseInventoryDialog({
         break;
       case 'receive':
         if (!toLocationId) {
-          setFeedback({ kind: 'error', message: 'Velg lager for mottak' });
+          setFeedback({ kind: 'error', message: t('warehouse.msg.selectReceiveLocation') });
           return;
         }
         result = warehouseInventoryService.receiveStock({
@@ -342,7 +355,7 @@ export function WarehouseInventoryDialog({
         break;
       case 'return':
         if (!toLocationId) {
-          setFeedback({ kind: 'error', message: 'Velg lager for retur' });
+          setFeedback({ kind: 'error', message: t('warehouse.msg.selectReturnLocation') });
           return;
         }
         result = warehouseInventoryService.returnStock({
@@ -352,7 +365,7 @@ export function WarehouseInventoryDialog({
         break;
       case 'adjust':
         if (!toLocationId) {
-          setFeedback({ kind: 'error', message: 'Velg lager som skal justeres' });
+          setFeedback({ kind: 'error', message: t('warehouse.msg.selectAdjustLocation') });
           return;
         }
         result = warehouseInventoryService.adjustStock({
@@ -363,7 +376,7 @@ export function WarehouseInventoryDialog({
         break;
       case 'count':
         if (!toLocationId) {
-          setFeedback({ kind: 'error', message: 'Velg lager som ble telt' });
+          setFeedback({ kind: 'error', message: t('warehouse.msg.selectCountLocation') });
           return;
         }
         result = warehouseInventoryService.adjustStock({
@@ -374,7 +387,7 @@ export function WarehouseInventoryDialog({
         break;
       case 'reserve':
         if (!toLocationId) {
-          setFeedback({ kind: 'error', message: 'Velg lager for reservasjon' });
+          setFeedback({ kind: 'error', message: t('warehouse.msg.selectReserveLocation') });
           return;
         }
         result = warehouseInventoryService.reserveStock({
@@ -389,7 +402,7 @@ export function WarehouseInventoryDialog({
     }
 
     if (!result.ok) {
-      setFeedback({ kind: 'error', message: result.reason || 'Operasjonen feilet' });
+      setFeedback({ kind: 'error', message: result.reason || t('warehouse.msg.operationFailed') });
       return;
     }
 
@@ -402,30 +415,31 @@ export function WarehouseInventoryDialog({
       .filter((value) => value.length >= 2);
     if (mentionSeed.length > 0) {
       void globalTagService.add(mentionSeed).catch((error) => {
+        // i18n-exempt: developer-facing console log, not user-facing UI
         console.warn('Kunne ikke oppdatere globalt mention-register fra lagernotat:', error);
       });
     }
-    setFeedback({ kind: 'success', message: 'Lageroperasjon lagret' });
+    setFeedback({ kind: 'success', message: t('warehouse.msg.operationSaved') });
     reloadSnapshot();
   };
 
   const handlePickReservation = (reservation: InventoryReservation) => {
     const result = warehouseInventoryService.pickReservation(projectId, reservation.id);
     if (!result.ok) {
-      setFeedback({ kind: 'error', message: result.reason || 'Kunne ikke plukke reservasjon' });
+      setFeedback({ kind: 'error', message: result.reason || t('warehouse.msg.pickFailed') });
       return;
     }
-    setFeedback({ kind: 'success', message: 'Reservasjon plukket' });
+    setFeedback({ kind: 'success', message: t('warehouse.msg.picked') });
     reloadSnapshot();
   };
 
   const handleReleaseReservation = (reservation: InventoryReservation) => {
     const result = warehouseInventoryService.releaseReservation(projectId, reservation.id);
     if (!result.ok) {
-      setFeedback({ kind: 'error', message: result.reason || 'Kunne ikke frigi reservasjon' });
+      setFeedback({ kind: 'error', message: result.reason || t('warehouse.msg.releaseFailed') });
       return;
     }
-    setFeedback({ kind: 'success', message: 'Reservasjon frigitt' });
+    setFeedback({ kind: 'success', message: t('warehouse.msg.released') });
     reloadSnapshot();
   };
 
@@ -454,7 +468,7 @@ export function WarehouseInventoryDialog({
   const openQrLabel = (itemKey: string) => {
     const item = itemsByKey.get(itemKey);
     if (!item) {
-      setFeedback({ kind: 'error', message: 'Fant ikke post for QR-etikett' });
+      setFeedback({ kind: 'error', message: t('warehouse.msg.itemNotFoundForQr') });
       return;
     }
     setQrItemKey(itemKey);
@@ -464,16 +478,16 @@ export function WarehouseInventoryDialog({
   const handleCopyQrValue = async (item: WarehouseDialogItem) => {
     try {
       await navigator.clipboard.writeText(getQrValue(item));
-      setFeedback({ kind: 'success', message: 'QR-data kopiert' });
+      setFeedback({ kind: 'success', message: t('warehouse.msg.qrDataCopied') });
     } catch {
-      setFeedback({ kind: 'error', message: 'Kunne ikke kopiere QR-data' });
+      setFeedback({ kind: 'error', message: t('warehouse.msg.qrCopyFailed') });
     }
   };
 
   const handlePrintQrLabel = (item: WarehouseDialogItem) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      setFeedback({ kind: 'error', message: 'Kunne ikke åpne utskriftsvindu' });
+      setFeedback({ kind: 'error', message: t('warehouse.msg.printWindowFailed') });
       return;
     }
 
@@ -482,7 +496,7 @@ export function WarehouseInventoryDialog({
     printWindow.document.write(`
       <html>
         <head>
-          <title>QR-etikett: ${item.name}</title>
+          <title>${t('warehouse.button.qrLabel')}: ${item.name}</title>
           <style>
             body {
               margin: 0;
@@ -535,10 +549,10 @@ export function WarehouseInventoryDialog({
           <section class="label">
             <h2>${item.name}</h2>
             <p class="meta">
-              Type: ${item.itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt'} • Antall: ${item.quantity}
+              ${t('warehouse.qrTypeLabel', { type: item.itemType === 'equipment' ? t('warehouse.itemType.equipment') : t('warehouse.itemType.prop') })} • ${t('warehouse.qrQuantityLabel', { n: item.quantity })}
             </p>
             <div class="qr-wrap">
-              <img src="${qrUrl}" alt="QR-kode for ${item.name}" />
+              <img src="${qrUrl}" alt="${t('warehouse.qrAltText', { name: item.name })}" />
             </div>
             <p class="payload">${qrPayload}</p>
           </section>
@@ -552,18 +566,18 @@ export function WarehouseInventoryDialog({
   const handleResolveScannedQr = (rawValue: string) => {
     const parsed = warehouseInventoryService.parseQrValue(rawValue);
     if (!parsed) {
-      setQrScanError('Ukjent QR-format. Bruk en Role Room lager-QR.');
+      setQrScanError(t('warehouse.msg.unknownQrFormat'));
       return;
     }
     if (parsed.projectId && parsed.projectId !== projectId) {
-      setQrScanError('QR-koden tilhører et annet prosjekt.');
+      setQrScanError(t('warehouse.msg.qrWrongProject'));
       return;
     }
 
     const matchKey = `${parsed.itemType}:${parsed.itemId}`;
     const item = itemsByKey.get(matchKey);
     if (!item) {
-      setQrScanError('Fant ikke post for denne QR-koden i prosjektet.');
+      setQrScanError(t('warehouse.msg.qrItemNotFound'));
       return;
     }
 
@@ -572,7 +586,7 @@ export function WarehouseInventoryDialog({
     setQrScanInput('');
     setQrScanError(null);
     setQrScanOpen(false);
-    setFeedback({ kind: 'success', message: `QR funnet: ${item.name}` });
+    setFeedback({ kind: 'success', message: t('warehouse.msg.qrFound', { name: item.name }) });
   };
 
   return (
@@ -623,18 +637,18 @@ export function WarehouseInventoryDialog({
             <Inventory2Icon sx={{ color: '#fff', fontSize: 20 }} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>{title}</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{resolvedTitle}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.72)' }}>
-              Role Room lagerstyring og sporbarhet
+              {t('warehouse.subtitle')}
             </Typography>
           </Box>
           <Chip
             size="small"
-            label={`${totals.totalAvailable} tilgjengelig`}
+            label={t('warehouse.availableChip', { n: totals.totalAvailable })}
             sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#86efac', fontWeight: 700, border: '1px solid rgba(134,239,172,0.32)' }}
           />
         </Box>
-        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.8)' }}>
+        <IconButton onClick={onClose} aria-label={t('warehouse.close')} sx={{ color: 'rgba(226,232,240,0.8)' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -678,12 +692,12 @@ export function WarehouseInventoryDialog({
             },
           }}
         >
-          <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} iconPosition="start" label="Oversikt" />
-          <Tab icon={<StructureIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Lagerstruktur" />
-          <Tab icon={<MoveIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Operasjoner" />
-          <Tab icon={<ReserveIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Reservasjoner" />
-          <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Logg" />
-          <Tab icon={<RuleIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Konsistens" />
+          <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('warehouse.tab.overview')} />
+          <Tab icon={<StructureIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('warehouse.tab.structure')} />
+          <Tab icon={<MoveIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('warehouse.tab.operations')} />
+          <Tab icon={<ReserveIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('warehouse.tab.reservations')} />
+          <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('warehouse.tab.log')} />
+          <Tab icon={<RuleIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={t('warehouse.tab.consistency')} />
         </Tabs>
 
         <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
@@ -699,15 +713,15 @@ export function WarehouseInventoryDialog({
               }}
             >
               {[
-                { label: 'Tilgjengelig', value: totals.totalAvailable, color: '#81c784' },
-                { label: 'Reservert', value: totals.totalReserved, color: '#ffb74d' },
-                { label: 'Totalt', value: totals.totalQuantity, color: '#64b5f6' },
-                { label: 'Lagernoder', value: totals.locations, color: '#c084fc' },
-                { label: 'Lav beholdning', value: totals.lowStock, color: '#ef5350' },
-                { label: 'Avvik', value: totals.issues, color: '#fbc02d' },
+                { id: 'available', label: t('warehouse.metric.available'), value: totals.totalAvailable, color: '#81c784' },
+                { id: 'reserved', label: t('warehouse.metric.reserved'), value: totals.totalReserved, color: '#ffb74d' },
+                { id: 'total', label: t('warehouse.metric.total'), value: totals.totalQuantity, color: '#64b5f6' },
+                { id: 'locations', label: t('warehouse.metric.locations'), value: totals.locations, color: '#c084fc' },
+                { id: 'lowStock', label: t('warehouse.metric.lowStock'), value: totals.lowStock, color: '#ef5350' },
+                { id: 'issues', label: t('warehouse.metric.issues'), value: totals.issues, color: '#fbc02d' },
               ].map((metric) => (
                 <Box
-                  key={metric.label}
+                  key={metric.id}
                   sx={{
                     border: '1px solid rgba(255,255,255,0.08)',
                     borderRadius: 2,
@@ -726,22 +740,22 @@ export function WarehouseInventoryDialog({
             </Box>
 
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Lagerbeholdning per post
+              {t('warehouse.stockHeading')}
             </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Post</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Type</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Lagerplass</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.item')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.type')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.location')}</TableCell>
                   <TableCell align="center" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                    QR
+                    {t('warehouse.column.qr')}
                   </TableCell>
                   <TableCell align="right" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                    Tilgjengelig
+                    {t('warehouse.metric.available')}
                   </TableCell>
                   <TableCell align="right" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                    Reservert
+                    {t('warehouse.metric.reserved')}
                   </TableCell>
                 </TableRow>
               </TableHead>
@@ -752,7 +766,7 @@ export function WarehouseInventoryDialog({
                     <TableCell>
                       <Chip
                         size="small"
-                        label={row.itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt'}
+                        label={getItemTypeLabel(row.itemType)}
                         sx={{
                           bgcolor:
                             row.itemType === 'equipment'
@@ -764,7 +778,7 @@ export function WarehouseInventoryDialog({
                     </TableCell>
                     <TableCell sx={{ color: 'rgba(255,255,255,0.8)' }}>{row.locationPath}</TableCell>
                     <TableCell align="center">
-                      <Tooltip title="Vis QR-etikett">
+                      <Tooltip title={t('warehouse.tooltip.viewQr')}>
                         <IconButton
                           size="small"
                           onClick={() => openQrLabel(`${row.itemType}:${row.itemId}`)}
@@ -790,7 +804,7 @@ export function WarehouseInventoryDialog({
         {tab === 1 && (
           <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Opprett lagernode
+              {t('warehouse.createNodeHeading')}
             </Typography>
             <Box
               sx={{
@@ -802,18 +816,18 @@ export function WarehouseInventoryDialog({
               }}
             >
               <TextField
-                label="Navn"
+                label={t('warehouse.field.name')}
                 value={newNodeName}
                 onChange={(event) => setNewNodeName(event.target.value)}
                 size="small"
                 sx={WAREHOUSE_CONTROL_SX}
               />
               <FormControl size="small" sx={WAREHOUSE_CONTROL_SX}>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Type</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('warehouse.column.type')}</InputLabel>
                 <Select
                   value={newNodeType}
                   onChange={(event) => setNewNodeType(event.target.value as WarehouseNodeType)}
-                  label="Type"
+                  label={t('warehouse.column.type')}
                   sx={{ color: '#fff' }}
                 >
                   {NODE_TYPES.map((nodeType) => (
@@ -824,14 +838,14 @@ export function WarehouseInventoryDialog({
                 </Select>
               </FormControl>
               <FormControl size="small" sx={WAREHOUSE_CONTROL_SX}>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Overordnet</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('warehouse.field.parent')}</InputLabel>
                 <Select
                   value={newNodeParent}
                   onChange={(event) => setNewNodeParent(event.target.value)}
-                  label="Overordnet"
+                  label={t('warehouse.field.parent')}
                   sx={{ color: '#fff' }}
                 >
-                  <MenuItem value="">Ingen</MenuItem>
+                  <MenuItem value="">{t('warehouse.option.none')}</MenuItem>
                   {snapshot.nodes.map((node) => (
                     <MenuItem key={node.id} value={node.id}>
                       {node.name}
@@ -840,21 +854,21 @@ export function WarehouseInventoryDialog({
                 </Select>
               </FormControl>
               <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateNode} sx={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#050816', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' } }}>
-                Opprett
+                {t('warehouse.button.create')}
               </Button>
             </Box>
 
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Nåværende lagerstruktur
+              {t('warehouse.currentStructureHeading')}
             </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Navn</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Type</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Sti</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.field.name')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.type')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.path')}</TableCell>
                   <TableCell align="right" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                    Handling
+                    {t('warehouse.column.action')}
                   </TableCell>
                 </TableRow>
               </TableHead>
@@ -869,7 +883,7 @@ export function WarehouseInventoryDialog({
                       {warehouseInventoryService.getLocationPath(projectId, node.id)}
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Slett node">
+                      <Tooltip title={t('warehouse.tooltip.deleteNode')}>
                         <span>
                           <IconButton
                             size="small"
@@ -898,7 +912,7 @@ export function WarehouseInventoryDialog({
               sx={{ mb: 1.5 }}
             >
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                Lageroperasjoner
+                {t('warehouse.operationsHeading')}
               </Typography>
               <Stack direction="row" spacing={1}>
                 <Button
@@ -909,7 +923,7 @@ export function WarehouseInventoryDialog({
                   disabled={!selectedItem}
                   sx={{ borderColor: 'rgba(147,197,253,0.52)', color: '#93c5fd', '&:hover': { borderColor: '#93c5fd', bgcolor: 'rgba(59,130,246,0.12)' } }}
                 >
-                  QR-etikett
+                  {t('warehouse.button.qrLabel')}
                 </Button>
                 <Button
                   size="small"
@@ -922,7 +936,7 @@ export function WarehouseInventoryDialog({
                   }}
                   sx={{ borderColor: 'rgba(192,132,252,0.5)', color: '#d8b4fe', '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(147,51,234,0.12)' } }}
                 >
-                  Skann QR
+                  {t('warehouse.button.scanQr')}
                 </Button>
               </Stack>
             </Stack>
@@ -934,26 +948,26 @@ export function WarehouseInventoryDialog({
               }}
             >
               <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Post</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('warehouse.column.item')}</InputLabel>
                 <Select
                   value={selectedItemKey}
-                  label="Post"
+                  label={t('warehouse.column.item')}
                   onChange={(event) => setSelectedItemKey(event.target.value)}
                   sx={{ color: '#fff' }}
                 >
                   {items.map((item) => (
                     <MenuItem key={`${item.itemType}:${item.id}`} value={`${item.itemType}:${item.id}`}>
-                      {item.name} ({item.itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt'})
+                      {t('warehouse.itemOption', { name: item.name, type: getItemTypeLabel(item.itemType) })}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
 
               <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Operasjon</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('warehouse.field.operation')}</InputLabel>
                 <Select
                   value={operation}
-                  label="Operasjon"
+                  label={t('warehouse.field.operation')}
                   onChange={(event) => setOperation(event.target.value as InventoryTransactionAction)}
                   sx={{ color: '#fff' }}
                 >
@@ -966,7 +980,7 @@ export function WarehouseInventoryDialog({
               </FormControl>
 
               <TextField
-                label="Antall"
+                label={t('warehouse.field.quantity')}
                 type="number"
                 size="small"
                 value={quantity}
@@ -976,10 +990,10 @@ export function WarehouseInventoryDialog({
 
               {operationNeedsSource(operation) && (
                 <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
-                  <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Fra lager</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>{t('warehouse.field.fromLocation')}</InputLabel>
                   <Select
                     value={fromLocationId}
-                    label="Fra lager"
+                    label={t('warehouse.field.fromLocation')}
                     onChange={(event) => setFromLocationId(event.target.value)}
                     sx={{ color: '#fff' }}
                   >
@@ -995,11 +1009,11 @@ export function WarehouseInventoryDialog({
               {operationNeedsDestination(operation) || operation !== 'move' ? (
                 <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
                   <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                    {operation === 'move' ? 'Til lager' : 'Lager'}
+                    {operation === 'move' ? t('warehouse.field.toLocation') : t('warehouse.field.location')}
                   </InputLabel>
                   <Select
                     value={toLocationId}
-                    label={operation === 'move' ? 'Til lager' : 'Lager'}
+                    label={operation === 'move' ? t('warehouse.field.toLocation') : t('warehouse.field.location')}
                     onChange={(event) => setToLocationId(event.target.value)}
                     sx={{ color: '#fff' }}
                   >
@@ -1015,14 +1029,14 @@ export function WarehouseInventoryDialog({
               {operationNeedsScene(operation) && (
                 <>
                   <TextField
-                    label="Scene-ID"
+                    label={t('warehouse.field.sceneId')}
                     size="small"
                     value={sceneId}
                     onChange={(event) => setSceneId(event.target.value)}
                     sx={WAREHOUSE_CONTROL_SX}
                   />
                   <TextField
-                    label="Shot-ID"
+                    label={t('warehouse.field.shotId')}
                     size="small"
                     value={shotId}
                     onChange={(event) => setShotId(event.target.value)}
@@ -1032,7 +1046,7 @@ export function WarehouseInventoryDialog({
               )}
 
               <TextField
-                label="Notat"
+                label={t('warehouse.field.note')}
                 size="small"
                 value={operationNote}
                 onChange={(event) => setOperationNote(event.target.value)}
@@ -1047,7 +1061,7 @@ export function WarehouseInventoryDialog({
 
             <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
               <Button variant="contained" onClick={handleSubmitOperation} sx={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#050816', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' } }}>
-                Lagre operasjon
+                {t('warehouse.button.saveOperation')}
               </Button>
             </Stack>
           </Box>
@@ -1056,20 +1070,20 @@ export function WarehouseInventoryDialog({
         {tab === 3 && (
           <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Aktive reservasjoner
+              {t('warehouse.activeReservationsHeading')}
             </Typography>
             {activeReservations.length === 0 ? (
-              <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>Ingen aktive reservasjoner.</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>{t('warehouse.noActiveReservations')}</Typography>
             ) : (
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Post</TableCell>
-                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Antall</TableCell>
-                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Scene/Shot</TableCell>
-                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Lager</TableCell>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.item')}</TableCell>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.field.quantity')}</TableCell>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.sceneShot')}</TableCell>
+                    <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.field.location')}</TableCell>
                     <TableCell align="right" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                      Handlinger
+                      {t('warehouse.column.actions')}
                     </TableCell>
                   </TableRow>
                 </TableHead>
@@ -1088,7 +1102,7 @@ export function WarehouseInventoryDialog({
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                            <Tooltip title="Plukk">
+                            <Tooltip title={t('warehouse.tooltip.pick')}>
                               <IconButton
                                 size="small"
                                 onClick={() => handlePickReservation(reservation)}
@@ -1097,7 +1111,7 @@ export function WarehouseInventoryDialog({
                                 <PickIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Frigi">
+                            <Tooltip title={t('warehouse.tooltip.release')}>
                               <IconButton
                                 size="small"
                                 onClick={() => handleReleaseReservation(reservation)}
@@ -1120,17 +1134,17 @@ export function WarehouseInventoryDialog({
         {tab === 4 && (
           <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Transaksjonslogg
+              {t('warehouse.transactionLogHeading')}
             </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Tid</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Handling</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Post</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Antall</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Fra/Til</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>Notat</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.time')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.action')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.item')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.field.quantity')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.column.fromTo')}</TableCell>
+                  <TableCell sx={{ color: 'rgba(255,255,255,0.7)' }}>{t('warehouse.field.note')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1139,6 +1153,7 @@ export function WarehouseInventoryDialog({
                   return (
                     <TableRow key={transaction.id}>
                       <TableCell sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                        {/* i18n-exempt: fixed nb-NO locale for timestamp formatting, not translatable UI text */}
                         {new Date(transaction.createdAt).toLocaleString('nb-NO')}
                       </TableCell>
                       <TableCell sx={{ color: '#fff' }}>{transaction.action}</TableCell>
@@ -1165,11 +1180,11 @@ export function WarehouseInventoryDialog({
         {tab === 5 && (
           <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Konsistenssjekk
+              {t('warehouse.consistencyHeading')}
             </Typography>
             {consistencyIssues.length === 0 ? (
               <Alert severity="success" sx={{ borderRadius: 2 }}>
-                Ingen avvik funnet.
+                {t('warehouse.noIssues')}
               </Alert>
             ) : (
               <Stack spacing={1}>
@@ -1194,13 +1209,14 @@ export function WarehouseInventoryDialog({
                           variant="outlined"
                           onClick={() => handleIssueAction(issue)}
                         >
-                          Gå til
+                          {t('warehouse.button.goTo')}
                         </Button>
                       }
                     >
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {item?.name || `${issue.itemType}:${issue.itemId}`}
                       </Typography>
+                      {/* i18n-exempt: issue.message/suggestion are backend-generated consistency-check text */}
                       <Typography variant="body2">{issue.message}</Typography>
                       <Typography variant="caption">{issue.suggestion}</Typography>
                     </Alert>
@@ -1241,14 +1257,14 @@ export function WarehouseInventoryDialog({
             <QrCodeIcon sx={{ color: '#64b5f6' }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Lager-QR etikett
+                {t('warehouse.qrLabelTitle')}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
-                {qrItem?.name || 'Post'}
+                {qrItem?.name || t('warehouse.column.item')}
               </Typography>
             </Box>
           </Stack>
-          <IconButton onClick={() => setQrLabelOpen(false)} aria-label="Lukk QR-etikett" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setQrLabelOpen(false)} aria-label={t('warehouse.closeQrLabel')} sx={{ color: 'rgba(255,255,255,0.7)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -1268,7 +1284,7 @@ export function WarehouseInventoryDialog({
                 <Box
                   component="img"
                   src={getQrImageUrl(qrItem)}
-                  alt={`QR for ${qrItem.name}`}
+                  alt={t('warehouse.qrAltText', { name: qrItem.name })}
                   sx={{
                     width: { xs: 220, sm: 260 },
                     height: { xs: 220, sm: 260 },
@@ -1280,15 +1296,15 @@ export function WarehouseInventoryDialog({
               </Box>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Chip
-                  label={`ID: ${qrItem.id}`}
+                  label={t('warehouse.qrIdLabel', { id: qrItem.id })}
                   sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc' }}
                 />
                 <Chip
-                  label={`Type: ${qrItem.itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt'}`}
+                  label={t('warehouse.qrTypeLabel', { type: getItemTypeLabel(qrItem.itemType) })}
                   sx={{ bgcolor: 'rgba(100,181,246,0.15)', color: '#64b5f6' }}
                 />
                 <Chip
-                  label={`Antall: ${qrItem.quantity}`}
+                  label={t('warehouse.qrQuantityLabel', { n: qrItem.quantity })}
                   sx={{ bgcolor: 'rgba(129,199,132,0.15)', color: '#81c784' }}
                 />
               </Stack>
@@ -1307,7 +1323,7 @@ export function WarehouseInventoryDialog({
             onClick={() => qrItem && handleCopyQrValue(qrItem)}
             sx={{ borderColor: '#c084fc', color: '#c084fc' }}
           >
-            Kopier data
+            {t('warehouse.button.copyData')}
           </Button>
           <Button
             variant="outlined"
@@ -1320,7 +1336,7 @@ export function WarehouseInventoryDialog({
             }}
             sx={{ borderColor: '#c084fc', color: '#c084fc', '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(147,51,234,0.12)' } }}
           >
-            Skann
+            {t('warehouse.button.scan')}
           </Button>
           <Button
             variant="contained"
@@ -1328,7 +1344,7 @@ export function WarehouseInventoryDialog({
             onClick={() => qrItem && handlePrintQrLabel(qrItem)}
             sx={{ bgcolor: '#9333ea', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}
           >
-            Skriv ut etikett
+            {t('warehouse.button.printLabel')}
           </Button>
         </Stack>
       </Dialog>
@@ -1360,19 +1376,20 @@ export function WarehouseInventoryDialog({
           <Stack direction="row" spacing={1} alignItems="center">
             <QrCodeScannerIcon sx={{ color: '#c084fc' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Skann lager-QR
+              {t('warehouse.scanQrTitle')}
             </Typography>
           </Stack>
-          <IconButton onClick={() => setQrScanOpen(false)} aria-label="Lukk QR-scan" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setQrScanOpen(false)} aria-label={t('warehouse.closeQrScan')} sx={{ color: 'rgba(255,255,255,0.7)' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2.5 }}>
           <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>
-            Lim inn skannet QR-tekst fra scanner eller mobilkamera.
+            {t('warehouse.scanQrHint')}
           </Typography>
           <QrCameraScanner
             active={qrScanOpen}
+            // i18n-exempt: value flows into QrCameraScanner's own (non-migrated) Norwegian sentence text
             scanTargetLabel="lager-QR"
             onDetected={(value) => {
               setQrScanInput(value);
@@ -1414,7 +1431,7 @@ export function WarehouseInventoryDialog({
           sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}
         >
           <Button onClick={() => setQrScanOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
-            Avbryt
+            {t('warehouse.button.cancel')}
           </Button>
           <Button
             variant="outlined"
@@ -1425,12 +1442,12 @@ export function WarehouseInventoryDialog({
                 setQrScanInput(text);
                 setQrScanError(null);
               } catch {
-                setQrScanError('Kunne ikke lese fra utklippstavle.');
+                setQrScanError(t('warehouse.msg.clipboardReadFailed'));
               }
             }}
             sx={{ borderColor: '#c084fc', color: '#c084fc' }}
           >
-            Lim inn
+            {t('warehouse.button.paste')}
           </Button>
           <Button
             variant="contained"
@@ -1438,7 +1455,7 @@ export function WarehouseInventoryDialog({
             onClick={() => handleResolveScannedQr(qrScanInput)}
             sx={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#000', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' } }}
           >
-            Tolk QR
+            {t('warehouse.button.parseQr')}
           </Button>
         </Stack>
       </Dialog>

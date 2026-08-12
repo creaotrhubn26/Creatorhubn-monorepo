@@ -12,6 +12,8 @@ import roleRoomAgentService, {
 import { InstagramBrandLogo } from './SocialBrandLogo';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
 import { ErrorAlert } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 function formatCount(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -32,6 +34,7 @@ export default function InstagramConnectionCard({
   showrunner,
   onConnectionsChange,
 }: InstagramConnectionCardProps) {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [metaConfigured, setMetaConfigured] = useState(false);
   const [imageHostingConfigured, setImageHostingConfigured] = useState(false);
@@ -50,7 +53,7 @@ export default function InstagramConnectionCard({
       setConnections(data.connections);
       onConnectionsChange?.(data.connections);
     } catch {
-      setError('Klarte ikke å hente Instagram-tilkoblinger.');
+      setError(t('igConn.s002'));
     } finally {
       setLoading(false);
     }
@@ -78,7 +81,7 @@ export default function InstagramConnectionCard({
       }
       const popup = window.open(result.url, 'ig-oauth', 'width=720,height=820,resizable=yes');
       if (!popup) {
-        setError('Popupen ble blokkert. Tillat popup for denne siden og prøv igjen.');
+        setError(t('igConn.s009'));
       }
     } finally {
       setConnecting(false);
@@ -86,7 +89,7 @@ export default function InstagramConnectionCard({
   };
 
   const revoke = async (id: string) => {
-    if (!window.confirm('Koble fra denne Instagram-kontoen?')) return;
+    if (!window.confirm(t('igConn.s007'))) return;
     await roleRoomAgentService.revokeInstagramConnection(id);
     await refresh();
   };
@@ -110,13 +113,13 @@ export default function InstagramConnectionCard({
       <Stack direction="row" alignItems="center" spacing={1}>
         <InstagramBrandLogo size={22} />
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.92rem' }}>
-          Instagram-publisering
+          {t('igConn.s001')}
         </Typography>
         {connections.length > 0 ? (
           <Chip
             size="small"
             icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-            label={`${connections.length} koblet`}
+            label={t('igConn.p01', { v0: connections.length })}
             sx={{
               ml: 1,
               fontWeight: 700,
@@ -138,7 +141,7 @@ export default function InstagramConnectionCard({
             border: '1px solid rgba(234,179,8,0.25)',
           }}
         >
-          Meta App er ikke konfigurert i backend ennå (mangler META_APP_ID/META_APP_SECRET). IG-publisering blir tilgjengelig så snart Meta App Review er godkjent.
+          {t('igConn.s008')}
         </Alert>
       ) : !imageHostingConfigured ? (
         <Alert
@@ -149,12 +152,12 @@ export default function InstagramConnectionCard({
             border: '1px solid rgba(234,179,8,0.25)',
           }}
         >
-          R2 image hosting er ikke konfigurert (mangler R2_ENDPOINT/BUCKET/keys). Bilder må hostes offentlig før Meta kan hente dem.
+          {t('igConn.s010')}
         </Alert>
       ) : connections.length === 0 ? (
         <Stack spacing={1}>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem' }}>
-            Koble en Instagram Business-konto (linket til en Facebook Page) for å publisere direkte fra feed-planneren. Hvis kunden eier kontoen, kan vi sende dem en e-post som inviterer deg som Innholdsskaper.
+            {t('igConn.s004')}
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button
@@ -171,7 +174,7 @@ export default function InstagramConnectionCard({
                 '&:hover': { boxShadow: '0 4px 16px rgba(221,42,123,0.3)' },
               }}
             >
-              Koble Instagram
+              {t('igConn.s003')}
             </Button>
             <Button
               variant="outlined"
@@ -185,7 +188,7 @@ export default function InstagramConnectionCard({
                 borderColor: 'rgba(59,130,246,0.4)',
               }}
             >
-              Be kunden om tilgang
+              {t('igConn.s000')}
             </Button>
           </Stack>
           <SocialAccessRequestDialog
@@ -276,11 +279,11 @@ export default function InstagramConnectionCard({
                 >
                   Page: {c.facebookPageName ?? '—'}
                   {c.tokenExpiresAt
-                    ? ` · token utløper ${new Date(c.tokenExpiresAt).toLocaleDateString('nb-NO')}`
+                    ? t('igConn.p00', { v0: new Date(c.tokenExpiresAt).toLocaleDateString('nb-NO') })
                     : ''}
                 </Typography>
               </Box>
-              <Tooltip title="Koble fra">
+              <Tooltip title={t('igConn.s006')}>
                 <IconButton
                   size="small"
                   onClick={() => revoke(c.id)}
@@ -306,7 +309,7 @@ export default function InstagramConnectionCard({
               '&:hover': { bgcolor: 'rgba(34,211,238,0.06)' },
             }}
           >
-            Koble en til
+            {t('igConn.s005')}
           </Button>
         </Stack>
       )}

@@ -29,6 +29,8 @@ import {
   type DancerProfile,
 } from './dancerProfileService';
 import type { Dancer } from './formationTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type FilterMode = 'all' | 'with_profile' | 'missing' | 'injured';
 type SortMode = 'name' | 'updated' | 'style';
@@ -60,6 +62,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
   onAddDancer,
   statsByDancerId,
 }) => {
+  const { t } = useT();
   const [profiles, setProfiles] = useState<Map<string, DancerProfile>>(() => new Map());
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -81,7 +84,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
       for (const p of list) m.set(p.dancerId, p);
       setProfiles(m);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Kunne ikke hente profiler');
+      setErrorMsg(err instanceof Error ? err.message : t('dancerProfGrid.s003'));
     } finally {
       setLoading(false);
     }
@@ -185,13 +188,13 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
             DANSERPROFILER
           </Typography>
           <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>
-            {profileCount} av {totalCount} med profil
+            {profileCount} {t('dancerProfGrid.s012')} {totalCount} {t('dancerProfGrid.s013')}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           <TextField
             size="small"
-            placeholder="Søk navn…"
+            placeholder={t('dancerProfGrid.s011')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             sx={{ ...fieldSx, minWidth: 160 }}
@@ -205,9 +208,9 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
             sx={{ ...fieldSx, minWidth: 140 }}
             inputProps={{ 'data-testid': 'dancer-profile-filter' }}
           >
-            <MenuItem value="all">Alle</MenuItem>
-            <MenuItem value="with_profile">Med profil</MenuItem>
-            <MenuItem value="missing">Mangler profil</MenuItem>
+            <MenuItem value="all">{t('dancerProfGrid.s000')}</MenuItem>
+            <MenuItem value="with_profile">{t('dancerProfGrid.s006')}</MenuItem>
+            <MenuItem value="missing">{t('dancerProfGrid.s005')}</MenuItem>
             <MenuItem value="injured">Skadet</MenuItem>
           </TextField>
           <TextField
@@ -218,9 +221,9 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
             sx={{ ...fieldSx, minWidth: 140 }}
             inputProps={{ 'data-testid': 'dancer-profile-sort' }}
           >
-            <MenuItem value="name">Navn</MenuItem>
-            <MenuItem value="updated">Sist oppdatert</MenuItem>
-            <MenuItem value="style">Primær stil</MenuItem>
+            <MenuItem value="name">{t('dancerProfGrid.s007')}</MenuItem>
+            <MenuItem value="updated">{t('dancerProfGrid.s010')}</MenuItem>
+            <MenuItem value="style">{t('dancerProfGrid.s009')}</MenuItem>
           </TextField>
           <Button
             size="small"
@@ -229,7 +232,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
             disabled={loading}
             sx={{ textTransform: 'none', fontSize: 11, color: danceFlowColors.textMuted }}
           >
-            Oppdater
+            {t('dancerProfGrid.s008')}
           </Button>
           {onAddDancer && (
             <Button
@@ -245,7 +248,7 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
                 '&:hover': { bgcolor: danceFlowColors.lavenderDeep },
               }}
             >
-              Legg til danser
+              {t('dancerProfGrid.s004')}
             </Button>
           )}
         </Stack>
@@ -269,13 +272,13 @@ export const DancerProfileGrid: React.FC<DancerProfileGridProps> = ({
       ) : dancers.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
           <Typography sx={{ fontSize: 13, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
-            Ingen dansere koblet til prosjektet enda
+            {t('dancerProfGrid.s001')}
           </Typography>
         </Box>
       ) : visible.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 6 }}>
           <Typography sx={{ fontSize: 12, color: danceFlowColors.textDisabled, fontStyle: 'italic' }}>
-            Ingen dansere matcher filteret
+            {t('dancerProfGrid.s002')}
           </Typography>
         </Box>
       ) : (

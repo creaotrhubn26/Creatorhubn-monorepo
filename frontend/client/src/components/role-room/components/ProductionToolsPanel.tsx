@@ -31,6 +31,7 @@ import { VfxNotes } from './VfxNotes';
 import { ScriptSupervisorNotes } from './ScriptSupervisorNotes';
 import { WrapReport } from './WrapReport';
 import type { SceneBreakdown, ProductionDay } from '../models/casting';
+import { useT } from '../../../i18n';
 
 interface ProductionToolsPanelProps {
   productionDay?: ProductionDay;
@@ -56,6 +57,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
   projectName = 'TROLL',
   onClose,
 }) => {
+  const { t } = useT();
   const [activeTab, setActiveTab] = useState<ToolTab>('callsheet');
   const [minimized, setMinimized] = useState(false);
 
@@ -69,29 +71,29 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       id: 'callsheet',
       label: 'Call Sheet',
       icon: <CallSheetIcon />,
-      description: 'Generer call sheets med crew, cast og scener',
+      description: t('prodtools.callsheetDesc'),
       color: 'var(--role-violet, #8b5cf6)',
     },
     {
       id: 'shots',
       label: 'Shot Tracking',
       icon: <ShotIcon />,
-      description: 'Spor fremgang på shots med timer',
+      description: t('prodtools.shotsDesc'),
       badge: pendingShots,
       color: '#3b82f6',
     },
     {
       id: 'continuity',
-      label: 'Kontinuitet',
+      label: t('prodtools.continuity'),
       icon: <ContinuityIcon />,
-      description: 'Logg kostyme, hår, sminke og rekvisitter',
+      description: t('prodtools.continuityDesc'),
       color: '#10b981',
     },
     {
       id: 'vfx',
-      label: 'VFX Noter',
+      label: t('prodtools.vfx'),
       icon: <VfxIcon />,
-      description: 'Spor VFX-shots og krav',
+      description: t('prodtools.vfxDesc'),
       badge: vfxShots,
       color: '#f59e0b',
     },
@@ -99,14 +101,14 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       id: 'script',
       label: 'Script Supervisor',
       icon: <ScriptIcon />,
-      description: 'Take-logging med timekoder',
+      description: t('prodtools.scriptDesc'),
       color: '#ec4899',
     },
     {
       id: 'wrap',
       label: 'Wrap Report',
       icon: <WrapIcon />,
-      description: 'Daglig wrap-rapport',
+      description: t('prodtools.wrapDesc'),
       badge: unsignedWrap,
       color: '#ef4444',
     },
@@ -135,19 +137,19 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
             <MovieIcon sx={{ color: '#a78bfa' }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Produksjonsverktøy
+                {t('prodtools.title')}
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                {projectName} • {productionDay?.date ? new Date(productionDay.date).toLocaleDateString('nb-NO') : 'Dag 1'}
+                {projectName} • {productionDay?.date ? new Date(productionDay.date).toLocaleDateString('nb-NO') : t('prodtools.day1')}
               </Typography>
             </Box>
           </Stack>
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" sx={{ color: '#fff' }} onClick={() => setMinimized(!minimized)} aria-label={minimized ? 'Utvid' : 'Minimer'}>
+            <IconButton size="small" sx={{ color: '#fff' }} onClick={() => setMinimized(!minimized)} aria-label={minimized ? t('prodtools.expand') : t('prodtools.minimize')}>
               {minimized ? <ExpandMore /> : <ExpandLess />}
             </IconButton>
             {onClose && (
-              <IconButton size="small" sx={{ color: '#fff' }} onClick={onClose} aria-label="Lukk">
+              <IconButton size="small" sx={{ color: '#fff' }} onClick={onClose} aria-label={t('prodtools.close')}>
                 <CloseIcon />
               </IconButton>
             )}

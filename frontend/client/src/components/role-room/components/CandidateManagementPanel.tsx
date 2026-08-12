@@ -226,6 +226,7 @@ import { castingService } from '../services/castingService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 import { useToast } from './ToastStack';
+import { useT } from '../../../i18n';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import kandidaterPng from './icons/Keep/roleroom_kandidater.png';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
@@ -322,6 +323,7 @@ function CandidateManagementPanelInner({
 
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
+  const { t } = useT();
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -611,12 +613,12 @@ function CandidateManagementPanelInner({
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'confirmed': return 'Bekreftet';
-      case 'selected': return 'Valgt';
-      case 'shortlist': return 'Kortliste';
-      case 'rejected': return 'Avvist';
-      case 'requested': return 'Forespurt';
-      default: return 'Venter';
+      case 'confirmed': return t('cstatus.confirmed');
+      case 'selected': return t('cstatus.selected');
+      case 'shortlist': return t('cand.statusShortlist');
+      case 'rejected': return t('cstatus.rejected');
+      case 'requested': return t('cstatus.requested');
+      default: return t('cstatus.pending');
     }
   };
 
@@ -755,13 +757,13 @@ function CandidateManagementPanelInner({
       grouped.push({
         type: 'header',
         key: 'status-unknown',
-        label: 'Andre',
+        label: t('cand.groupOther'),
         count: unknownItems.length,
       });
       unknownItems.forEach((candidate) => grouped.push({ type: 'candidate', key: candidate.id, candidate }));
     }
     return grouped;
-  }, [proCandidates, proGroupBy]);
+  }, [proCandidates, proGroupBy, t]);
 
   const activeCandidates = workspaceView === 'pro' ? proCandidates : filteredAndSortedCandidates;
 
@@ -880,24 +882,24 @@ function CandidateManagementPanelInner({
     if (createdAt) {
       events.push({
         id: `${selectedCandidate.id}-created`,
-        label: 'Kandidat opprettet',
+        label: t('cand.histCreated'),
         date: createdAt,
-        description: `${selectedCandidate.name} ble lagt til i prosjektet.`,
+        description: t('cand.histCreatedDesc', { name: selectedCandidate.name }),
       });
     }
     if (updatedAt) {
       events.push({
         id: `${selectedCandidate.id}-updated`,
-        label: 'Sist oppdatert',
+        label: t('cand.histUpdated'),
         date: updatedAt,
-        description: 'Kandidatdata ble sist endret.',
+        description: t('cand.histUpdatedDesc'),
       });
     }
     events.push({
       id: `${selectedCandidate.id}-status`,
-      label: 'Nåværende status',
+      label: t('cand.histCurrentStatus'),
       date: updatedAt || createdAt || Date.now(),
-      description: `Status er ${getStatusLabel(selectedCandidate.status || 'pending')}.`,
+      description: t('cand.histStatusIs', { status: getStatusLabel(selectedCandidate.status || 'pending') }),
     });
 
     const statusHistory = Array.isArray((selectedCandidate as any).statusHistory)
@@ -908,14 +910,14 @@ function CandidateManagementPanelInner({
       if (!timestamp) return;
       events.push({
         id: `${selectedCandidate.id}-status-history-${index}`,
-        label: 'Status endret',
+        label: t('cand.histStatusChanged'),
         date: timestamp,
-        description: `${getStatusLabel(entry.status || 'pending')}${entry.changedBy ? ` av ${entry.changedBy}` : ''}`,
+        description: `${getStatusLabel(entry.status || 'pending')}${entry.changedBy ? t('cand.histChangedBy', { by: entry.changedBy }) : ''}`,
       });
     });
 
     return events.sort((a, b) => b.date - a.date);
-  }, [selectedCandidate]);
+  }, [selectedCandidate, t]);
 
   useEffect(() => {
     if (!selectedCandidate || !Array.isArray(selectedCandidate.photos)) return;
@@ -1000,13 +1002,13 @@ function CandidateManagementPanelInner({
       return true;
     } catch (error) {
       console.error('Failed to save candidate patch:', error);
-      showError('Kunne ikke oppdatere kandidat', 3000);
+      showError(t('cand.toastUpdateFailed'), 3000);
       return false;
     }
   };
 
   const handleStatusUpdate = async (candidate: Candidate, status: StatusFilter) => {
-    await saveCandidatePatch(candidate, { status }, `${candidate.name} satt til ${getStatusLabel(status)}`);
+    await saveCandidatePatch(candidate, { status }, t('cand.toastStatusSet', { name: candidate.name, status: getStatusLabel(status) }));
     // Phase 9.6 — hvis kandidat er fra partnership-talent-forslag,
     // PATCH casting_candidates direkte + trigger e-post-callback til byrå.
     // Compat-store-flyten over oppdaterer ikke den relasjonelle tabellen, så
@@ -1031,7 +1033,7 @@ function CandidateManagementPanelInner({
   const handleBulkStatusUpdate = async (status: StatusFilter) => {
     const selectedCandidates = validCandidates.filter((candidate) => selectedIds.has(candidate.id));
     if (selectedCandidates.length === 0) {
-      showInfo('Velg minst én kandidat først', 2500);
+      showInfo(t('cand.toastSelectAtLeastOne'), 2500);
       return;
     }
     try {
@@ -1044,10 +1046,10 @@ function CandidateManagementPanelInner({
         return castingService.saveCandidate(projectId, updatedCandidate);
       }));
       onCandidatesChange();
-      showSuccess(`${selectedCandidates.length} kandidater satt til ${getStatusLabel(status)}`, 3000);
+      showSuccess(t('cand.toastBulkStatusSet', { n: selectedCandidates.length, status: getStatusLabel(status) }), 3000);
     } catch (error) {
       console.error('Failed bulk status update:', error);
-      showError('Kunne ikke oppdatere status for alle valgte kandidater', 3500);
+      showError(t('cand.toastBulkStatusFailed'), 3500);
     }
   };
 
@@ -1063,10 +1065,10 @@ function CandidateManagementPanelInner({
         }),
       );
       setProPreset('custom');
-      showSuccess('Egendefinert pro-visning lagret', 2200);
+      showSuccess(t('cand.toastCustomProSaved'), 2200);
     } catch (error) {
       console.error('Failed saving custom Pro View:', error);
-      showError('Kunne ikke lagre egendefinert visning', 2600);
+      showError(t('cand.toastCustomProFailed'), 2600);
     }
   };
 
@@ -1123,7 +1125,7 @@ function CandidateManagementPanelInner({
       const [primaryFocal] = nextFocalPoints.splice(photoIndex, 1);
       nextFocalPoints.unshift(primaryFocal || { x: 50, y: 50 });
       return { photos: nextPhotos, focalPoints: nextFocalPoints };
-    }, 'Primærbilde oppdatert');
+    }, t('cand.toastPrimaryPhotoUpdated'));
     setActivePhotoIndex(0);
   };
 
@@ -1136,7 +1138,7 @@ function CandidateManagementPanelInner({
       const nextFocalPoints = [...focalPoints];
       nextFocalPoints.splice(photoIndex, 1);
       return { photos: nextPhotos, focalPoints: nextFocalPoints };
-    }, 'Bilde slettet');
+    }, t('cand.toastPhotoDeleted'));
     if (activePhotoIndex > 0 && photoIndex <= activePhotoIndex) {
       setActivePhotoIndex((prev) => Math.max(0, prev - 1));
     }
@@ -1154,7 +1156,7 @@ function CandidateManagementPanelInner({
       }
       nextFocalPoints[activePhotoIndex] = { x: Math.round(x), y: Math.round(y) };
       return { photos, focalPoints: nextFocalPoints };
-    }, 'Fokuspunkt oppdatert');
+    }, t('cand.toastFocalUpdated'));
   };
 
   const handleDeleteWithUndo = async (candidate: Candidate) => {
@@ -1163,7 +1165,7 @@ function CandidateManagementPanelInner({
       await castingService.deleteCandidate(projectId, candidate.id);
       onCandidatesChange();
       setUndoSnackbarOpen(true);
-      showInfo(`🗑️ ${candidate.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+      showInfo(t('cand.toastDeletedUndo', { name: candidate.name }), 6000);
     } catch (error) {
       console.error('Failed to delete candidate:', error);
       setLastDeleted(null);
@@ -1175,7 +1177,7 @@ function CandidateManagementPanelInner({
       try {
         await castingService.saveCandidate(projectId, lastDeleted);
         onCandidatesChange();
-        showSuccess(`↩️ ${lastDeleted.name} gjenopprettet`, 3000);
+        showSuccess(t('cand.toastRestored', { name: lastDeleted.name }), 3000);
       } catch (error) {
         console.error('Failed to restore candidate:', error);
       }
@@ -1185,7 +1187,7 @@ function CandidateManagementPanelInner({
   };
 
   const handleBulkDelete = async () => {
-    if (window.confirm(`Er du sikker på at du vil slette ${selectedIds.size} kandidater?`)) {
+    if (window.confirm(t('cand.confirmBulkDelete', { n: selectedIds.size }))) {
       const count = selectedIds.size;
       try {
         await Promise.all(
@@ -1193,7 +1195,7 @@ function CandidateManagementPanelInner({
         );
         onCandidatesChange();
         setSelectedIds(new Set());
-        showInfo(`🗑️ ${count} kandidater slettet`, 4000);
+        showInfo(t('cand.toastBulkDeleted', { n: count }), 4000);
       } catch (error) {
         console.error('Failed to bulk delete candidates:', error);
       }
@@ -1206,7 +1208,7 @@ function CandidateManagementPanelInner({
       : validCandidates.filter(c => c.status === 'confirmed' || c.status === 'selected');
     
     if (candidatesToAdd.length === 0) {
-      showInfo('Ingen kandidater å legge til. Velg kandidater eller bekreft noen først.', 4000);
+      showInfo(t('cand.toastNoneToAdd'), 4000);
       return;
     }
 
@@ -1242,19 +1244,19 @@ function CandidateManagementPanelInner({
       
       if (result.success) {
         const presetName = selectedPreset?.name || 'standard';
-        const message = `${result.candidatesAdded} kandidat(er) lagt til med "${presetName}" belysning!`;
+        const message = t('cand.toastAddedToScene', { n: result.candidatesAdded, preset: presetName });
         showSuccess(message, 4000);
         if (result.avatarsGenerated > 0) {
-          showInfo(`Genererer ${result.avatarsGenerated} avatar(er) fra bilder...`, 5000);
+          showInfo(t('cand.toastGeneratingAvatars', { n: result.avatarsGenerated }), 5000);
         }
         setSelectedIds(new Set());
         handleClosePreviewDialog();
       } else {
-        showError(`Kunne ikke legge til kandidater: ${result.errors.join(', ')}`, 5000);
+        showError(t('cand.toastAddFailed', { errors: result.errors.join(', ') }), 5000);
       }
     } catch (error) {
       console.error('Error adding to scene:', error);
-      showError('En feil oppstod ved overføring til 3D-scene', 4000);
+      showError(t('cand.toastSceneTransferError'), 4000);
     } finally {
       setAddingToScene(false);
     }
@@ -1268,7 +1270,7 @@ function CandidateManagementPanelInner({
     const newCandidate: Candidate = {
       ...candidate,
       id: `candidate-${Date.now()}`,
-      name: `${candidate.name} (kopi)`,
+      name: `${candidate.name} ${t('cand.copySuffix')}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1284,14 +1286,14 @@ function CandidateManagementPanelInner({
     try {
       const poolId = await candidatePoolService.saveCandidateToPool(candidate.id);
       if (poolId) {
-        showSuccess(`${candidate.name} lagret til kandidatpool`, 3000);
+        showSuccess(t('cand.toastSavedToPool', { name: candidate.name }), 3000);
         loadPoolCandidates();
       } else {
-        showError('Kunne ikke lagre til pool', 3000);
+        showError(t('cand.toastSaveToPoolFailed'), 3000);
       }
     } catch (error) {
       console.error('Error saving to pool:', error);
-      showError('En feil oppstod', 3000);
+      showError(t('cand.toastGenericError'), 3000);
     }
   };
 
@@ -1315,15 +1317,15 @@ function CandidateManagementPanelInner({
     try {
       const newId = await candidatePoolService.importToProject(poolCandidate.id, projectId);
       if (newId) {
-        showSuccess(`${poolCandidate.name} importert til prosjektet`, 3000);
+        showSuccess(t('cand.toastImported', { name: poolCandidate.name }), 3000);
         onCandidatesChange();
         setPoolMode('project');
       } else {
-        showError('Kunne ikke importere kandidat', 3000);
+        showError(t('cand.toastImportFailed'), 3000);
       }
     } catch (error) {
       console.error('Error importing from pool:', error);
-      showError('En feil oppstod', 3000);
+      showError(t('cand.toastGenericError'), 3000);
     }
   };
 
@@ -1331,14 +1333,14 @@ function CandidateManagementPanelInner({
     try {
       const success = await candidatePoolService.deleteFromPool(poolCandidateId);
       if (success) {
-        showSuccess('Kandidat fjernet fra pool', 3000);
+        showSuccess(t('cand.toastRemovedFromPool'), 3000);
         loadPoolCandidates();
       } else {
-        showError('Kunne ikke slette fra pool', 3000);
+        showError(t('cand.toastDeleteFromPoolFailed'), 3000);
       }
     } catch (error) {
       console.error('Error deleting from pool:', error);
-      showError('En feil oppstod', 3000);
+      showError(t('cand.toastGenericError'), 3000);
     }
   };
 
@@ -1346,7 +1348,7 @@ function CandidateManagementPanelInner({
     try {
       const project = castingService.getProject(projectId);
       if (!project) {
-        showError('❌ Prosjekt ikke funnet');
+        showError(t('cand.toastProjectNotFound'));
         return;
       }
 
@@ -1355,7 +1357,7 @@ function CandidateManagementPanelInner({
       // Create a new window for printing/viewing
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        showError('⚠️ Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        showError(t('cand.toastExportWindowFailed'));
         return;
       }
 
@@ -1367,10 +1369,10 @@ function CandidateManagementPanelInner({
         printWindow.print();
       }, 250);
 
-      showSuccess('📄 Eksport klar - velg "Lagre som PDF" i utskriftsdialogen', 5000);
+      showSuccess(t('cand.toastExportReady'), 5000);
     } catch (error) {
       console.error('Error exporting candidates:', error);
-      showError('❌ Kunne ikke eksportere kandidater');
+      showError(t('cand.toastExportFailed'));
     }
   };
 
@@ -1413,7 +1415,7 @@ function CandidateManagementPanelInner({
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${project.name} - Kandidater</title>
+  <title>${project.name} - ${t('cand.exportTitleSuffix')}</title>
   <style>
     @page {
       margin: 0;
@@ -1682,28 +1684,28 @@ function CandidateManagementPanelInner({
     <div class="header">
       <div class="title">
         ${candidateIconSVG}
-        ${project.name} - Kandidater
+        ${project.name} - ${t('cand.exportTitleSuffix')}
       </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('cand.exportExported', { date: dateStr })}</div>
     </div>
 
     <div class="summary">
       <div class="summary-title">
         ${candidateIconSVG}
-        Oversikt
+        ${t('cand.exportOverview')}
       </div>
       <div class="summary-grid">
         <div class="summary-item">
           <span class="summary-number">${totalCandidates}</span>
-          <span class="summary-label">Totale Kandidater</span>
+          <span class="summary-label">${t('cand.exportTotalCandidates')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${selectedCandidates}</span>
-          <span class="summary-label">Valgte Kandidater</span>
+          <span class="summary-label">${t('cand.exportSelectedCandidates')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${confirmedCandidates}</span>
-          <span class="summary-label">Bekreftede Kandidater</span>
+          <span class="summary-label">${t('cand.exportConfirmedCandidates')}</span>
           <div class="progress-bar">
             <div class="progress-fill" style="width: ${confirmedPercent}%"></div>
           </div>
@@ -1715,23 +1717,23 @@ function CandidateManagementPanelInner({
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${candidateIconSVG}</span>
-          Kandidater
+          ${t('cand.exportCandidates')}
         </div>
-        <span class="section-count">${totalCandidates} kandidat${totalCandidates !== 1 ? 'er' : ''}</span>
+        <span class="section-count">${totalCandidates !== 1 ? t('cand.exportCandidateCountMany', { n: totalCandidates }) : t('cand.exportCandidateCountOne', { n: totalCandidates })}</span>
       </div>
       <div class="section-content">
         ${
           candidates.length === 0
-            ? '<div class="empty-state">Ingen kandidater ennå</div>'
+            ? `<div class="empty-state">${t('cand.exportEmpty')}</div>`
             : `<table>
           <thead>
             <tr>
-              <th style="width: 20%;">Navn</th>
-              <th style="width: 18%;">E-post</th>
-              <th style="width: 12%;">Telefon</th>
-              <th style="width: 12%;">Status</th>
-              <th style="width: 25%;">Roller</th>
-              <th style="width: 13%;">Opprettet</th>
+              <th style="width: 20%;">${t('cand.exportColName')}</th>
+              <th style="width: 18%;">${t('cand.exportColEmail')}</th>
+              <th style="width: 12%;">${t('cand.exportColPhone')}</th>
+              <th style="width: 12%;">${t('cand.exportColStatus')}</th>
+              <th style="width: 25%;">${t('cand.exportColRoles')}</th>
+              <th style="width: 13%;">${t('cand.exportColCreated')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1764,7 +1766,7 @@ function CandidateManagementPanelInner({
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
       <div class="footer-right">
-        <span class="page-number">Side </span>
+        <span class="page-number">${t('cand.exportPage')} </span>
         <span>|</span>
         <span>${dateStr}</span>
       </div>
@@ -1783,7 +1785,7 @@ function CandidateManagementPanelInner({
     });
   };
 
-  const getRoleName = (roleId: string) => safeRoles.find(r => r.id === roleId)?.name || 'Ukjent rolle';
+  const getRoleName = (roleId: string) => safeRoles.find(r => r.id === roleId)?.name || t('cand.unknownRole');
 
   const renderProCandidateCard = (candidate: Candidate) => {
     const isSelectedCard = selectedCandidateId === candidate.id;
@@ -1833,7 +1835,7 @@ function CandidateManagementPanelInner({
             >
               {favorites.has(candidate.id) ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
             </IconButton>
-            <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
+            <Tooltip title={quickContacts.has(candidate.id) ? t('cand.removeQuickContact') : t('cand.addQuickContact')}>
               <IconButton
                 size="small"
                 onClick={(event) => {
@@ -1867,10 +1869,10 @@ function CandidateManagementPanelInner({
                     height: 22,
                   }}
                 />
-                <Chip label={`${getCandidateAssignedRoles(candidate).length} roller`} size="small" sx={{ height: 22 }} />
+                <Chip label={t('cand.rolesCount', { n: getCandidateAssignedRoles(candidate).length })} size="small" sx={{ height: 22 }} />
                 <Chip
                   icon={<TuneIcon sx={{ color: `${roleTabAccent} !important`, fontSize: '0.9rem' }} />}
-                  label={`Treffscore ${fitScore}`}
+                  label={t('cand.fitScore', { n: fitScore })}
                   size="small"
                   sx={{ height: 22, bgcolor: 'rgba(184,107,255,0.14)', color: roleTabAccent, border: `1px solid ${roleBorder}` }}
                 />
@@ -1888,7 +1890,7 @@ function CandidateManagementPanelInner({
                   return (
                     <Chip
                       icon={<HandshakeOutlinedIcon sx={{ color: '#38bdf8 !important', fontSize: '0.9rem' }} />}
-                      label={`Fra ${agencyName}`}
+                      label={t('cand.fromAgency', { agency: agencyName })}
                       size="small"
                       sx={{
                         height: 22,
@@ -1914,7 +1916,7 @@ function CandidateManagementPanelInner({
               />
             </Box>
             <Box sx={{ display: 'flex', gap: 0.25 }}>
-              <Tooltip title="Rediger">
+              <Tooltip title={t('cand.edit')}>
                 <IconButton
                   size="small"
                   onClick={(event) => {
@@ -1926,7 +1928,7 @@ function CandidateManagementPanelInner({
                   <EditIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Dupliser">
+              <Tooltip title={t('cand.duplicate')}>
                 <IconButton
                   size="small"
                   onClick={(event) => {
@@ -2016,7 +2018,7 @@ function CandidateManagementPanelInner({
                 backgroundClip: 'text',
               }}
             >
-              Casting-kandidater
+              {t('cand.title')}
             </Typography>
             <Typography
               sx={{
@@ -2030,12 +2032,12 @@ function CandidateManagementPanelInner({
               }}
             >
               <PersonSearchIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, opacity: 0.7 }} />
-              Administrer kandidater og auditions
+              {t('cand.subtitle')}
             </Typography>
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 }, flexWrap: 'wrap' }}>
-          <Tooltip title="Eksporter til CSV (Ctrl+E)">
+          <Tooltip title={t('cand.exportCsvTooltip')}>
             <Button
               variant="outlined"
               startIcon={<ExportIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -2051,10 +2053,10 @@ function CandidateManagementPanelInner({
                 ...focusVisibleStyles,
               }}
             >
-              {!isMobile && 'Eksporter'}
+              {!isMobile && t('cand.export')}
             </Button>
           </Tooltip>
-          <Tooltip title="Vis statistikk">
+          <Tooltip title={t('cand.showStatsTooltip')}>
             <Button
               variant={showStats ? 'contained' : 'outlined'}
               startIcon={<StatsIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -2074,10 +2076,10 @@ function CandidateManagementPanelInner({
                 ...focusVisibleStyles,
               }}
             >
-              {!isMobile && 'Statistikk'}
+              {!isMobile && t('cand.stats')}
             </Button>
           </Tooltip>
-          <Tooltip title={selectedIds.size > 0 ? `Forhåndsvis ${selectedIds.size} valgte før scene` : 'Forhåndsvis bekreftede/valgte før scene'}>
+          <Tooltip title={selectedIds.size > 0 ? t('cand.previewSelectedTooltip', { n: selectedIds.size }) : t('cand.previewDefaultTooltip')}>
             <Button
               variant="outlined"
               startIcon={<PreviewIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -2097,10 +2099,10 @@ function CandidateManagementPanelInner({
                 ...focusVisibleStyles,
               }}
             >
-              {addingToScene ? 'Legger til...' : (!isMobile && (selectedIds.size > 0 ? `Til scene (${selectedIds.size})` : 'Til scene'))}
+              {addingToScene ? t('cand.adding') : (!isMobile && (selectedIds.size > 0 ? t('cand.toSceneN', { n: selectedIds.size }) : t('cand.toScene')))}
             </Button>
           </Tooltip>
-          <Tooltip title="Ny kandidat (Ctrl+N)">
+          <Tooltip title={t('cand.newCandidateTooltip')}>
             <Button
               variant="contained"
               startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
@@ -2117,7 +2119,7 @@ function CandidateManagementPanelInner({
                 ...focusVisibleStyles,
               }}
             >
-              {isMobile ? '' : 'Ny kandidat'}
+              {isMobile ? '' : t('cand.newCandidate')}
             </Button>
           </Tooltip>
         </Box>
@@ -2138,7 +2140,7 @@ function CandidateManagementPanelInner({
         }}
       >
         <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
-          Vis:
+          {t('cand.showLabel')}
         </Typography>
         <Button
           variant={poolMode === 'project' ? 'contained' : 'outlined'}
@@ -2154,7 +2156,7 @@ function CandidateManagementPanelInner({
             },
           }}
         >
-          Prosjektkandidater ({validCandidates.length})
+          {t('cand.projectCandidatesN', { n: validCandidates.length })}
         </Button>
         <Button
           variant={poolMode === 'pool' ? 'contained' : 'outlined'}
@@ -2170,7 +2172,7 @@ function CandidateManagementPanelInner({
             },
           }}
         >
-          Maler ({poolCandidates.length})
+          {t('cand.templatesN', { n: poolCandidates.length })}
         </Button>
       </Box>
 
@@ -2189,7 +2191,7 @@ function CandidateManagementPanelInner({
         }}
       >
         <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
-          Visning:
+          {t('cand.viewLabel')}
         </Typography>
         <Button
           variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
@@ -2205,7 +2207,7 @@ function CandidateManagementPanelInner({
             },
           }}
         >
-          Standard
+          {t('cand.standard')}
         </Button>
         <Button
           variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
@@ -2221,7 +2223,7 @@ function CandidateManagementPanelInner({
             },
           }}
         >
-          Pro-visning
+          {t('cand.proView')}
         </Button>
       </Box>
 
@@ -2242,10 +2244,10 @@ function CandidateManagementPanelInner({
           >
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                 {([
-                  { id: 'casting', label: 'Casting' },
-                  { id: 'compliance', label: 'Etterlevelse' },
-                  { id: 'final', label: 'Endelig utvalg' },
-                  { id: 'custom', label: 'Egendefinert' },
+                  { id: 'casting', label: t('cand.presetCasting') },
+                  { id: 'compliance', label: t('cand.presetCompliance') },
+                  { id: 'final', label: t('cand.presetFinal') },
+                  { id: 'custom', label: t('cand.presetCustom') },
                 ] as Array<{ id: ProPreset; label: string }>).map((preset) => (
                 <Button
                   key={preset.id}
@@ -2276,11 +2278,11 @@ function CandidateManagementPanelInner({
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 }}
               >
-                <MenuItem value="fitScore">Sorter: Treffscore</MenuItem>
-                <MenuItem value="name">Sorter: Navn</MenuItem>
-                <MenuItem value="status">Sorter: Status</MenuItem>
-                <MenuItem value="updatedAt">Sorter: Oppdatert</MenuItem>
-                <MenuItem value="createdAt">Sorter: Opprettet</MenuItem>
+                <MenuItem value="fitScore">{t('cand.sortFit')}</MenuItem>
+                <MenuItem value="name">{t('cand.sortName')}</MenuItem>
+                <MenuItem value="status">{t('cand.sortStatus')}</MenuItem>
+                <MenuItem value="updatedAt">{t('cand.sortUpdated')}</MenuItem>
+                <MenuItem value="createdAt">{t('cand.sortCreated')}</MenuItem>
               </Select>
             </FormControl>
             <FormControl size="small">
@@ -2295,8 +2297,8 @@ function CandidateManagementPanelInner({
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 }}
               >
-                <MenuItem value="status">Grupper: Status</MenuItem>
-                <MenuItem value="none">Grupper: Ingen</MenuItem>
+                <MenuItem value="status">{t('cand.groupStatus')}</MenuItem>
+                <MenuItem value="none">{t('cand.groupNone')}</MenuItem>
               </Select>
             </FormControl>
             <Stack direction="row" spacing={1}>
@@ -2306,7 +2308,7 @@ function CandidateManagementPanelInner({
                 onClick={() => setProSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
                 sx={{ color: roleText, borderColor: roleBorder }}
               >
-                {proSortDirection === 'asc' ? 'Stigende' : 'Synkende'}
+                {proSortDirection === 'asc' ? t('cand.ascending') : t('cand.descending')}
               </Button>
               <Button
                 size="small"
@@ -2314,7 +2316,7 @@ function CandidateManagementPanelInner({
                 onClick={handleSaveProPreset}
                 sx={{ color: roleTabAccent, borderColor: roleBorder }}
               >
-                Lagre egendefinert
+                {t('cand.saveCustom')}
               </Button>
             </Stack>
           </Box>
@@ -2344,13 +2346,13 @@ function CandidateManagementPanelInner({
               }}
             >
               <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.1rem' }}>
-                Kandidatpool
+                {t('cand.candidatePool')}
               </Typography>
               <TextField
                 size="small"
                 value={poolSearchQuery}
                 onChange={(event) => setPoolSearchQuery(event.target.value)}
-                placeholder="Søk kandidater..."
+                placeholder={t('cand.searchCandidates')}
                 slotProps={{
                   input: {
                     startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
@@ -2367,7 +2369,7 @@ function CandidateManagementPanelInner({
                 }}
               />
               <Box sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(184,107,255,0.1)', border: `1px solid ${roleBorder}` }}>
-                <Typography sx={{ color: roleText, fontSize: '0.8rem', fontWeight: 700, mb: 0.75 }}>Beste match nå</Typography>
+                <Typography sx={{ color: roleText, fontSize: '0.8rem', fontWeight: 700, mb: 0.75 }}>{t('cand.bestMatchNow')}</Typography>
                 <Stack spacing={0.5}>
                   {proCandidates.slice(0, 3).map((candidate) => (
                     <Box key={`best-match-${candidate.id}`} sx={{ display: 'flex', justifyContent: 'space-between', color: roleTextMuted, fontSize: '0.78rem' }}>
@@ -2380,15 +2382,15 @@ function CandidateManagementPanelInner({
                     </Box>
                   ))}
                   {proCandidates.length === 0 && (
-                    <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Ingen kandidater ennå.</Typography>
+                    <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>{t('cand.noCandidatesYet')}</Typography>
                   )}
                 </Stack>
               </Box>
               <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, pr: 0.5 }}>
                 {poolLoading ? (
-                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Laster maler...</Typography>
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>{t('cand.loadingTemplates')}</Typography>
                 ) : filteredPoolCandidates.length === 0 ? (
-                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Ingen treff i kandidatpool.</Typography>
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>{t('cand.noPoolMatch')}</Typography>
                 ) : (
                   <Stack spacing={1}>
                     {filteredPoolCandidates.map((poolCandidate) => (
@@ -2426,7 +2428,7 @@ function CandidateManagementPanelInner({
                               onClick={() => handleImportFromPool(poolCandidate)}
                               sx={{ color: roleTabAccent, minHeight: 34 }}
                             >
-                              Importer
+                              {t('cand.import')}
                             </Button>
                             <IconButton
                               size="small"
@@ -2452,7 +2454,7 @@ function CandidateManagementPanelInner({
                   '&:hover': { borderColor: roleTabAccent, bgcolor: roleTabAccentSoft },
                 }}
               >
-                Åpne mal-visning
+                {t('cand.openTemplateView')}
               </Button>
             </Box>
 
@@ -2470,7 +2472,7 @@ function CandidateManagementPanelInner({
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
                 <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.35rem' }}>
-                  Prosjektkandidater
+                  {t('cand.projectCandidates')}
                 </Typography>
                 <Button
                   variant="contained"
@@ -2482,7 +2484,7 @@ function CandidateManagementPanelInner({
                     '&:hover': { bgcolor: roleTabAccentHover },
                   }}
                 >
-                  Ny kandidat
+                  {t('cand.newCandidate')}
                 </Button>
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.25fr 0.9fr auto auto' }, gap: 1 }}>
@@ -2490,7 +2492,7 @@ function CandidateManagementPanelInner({
                   size="small"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Søk kandidater..."
+                  placeholder={t('cand.searchCandidates')}
                   slotProps={{
                     input: {
                       startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
@@ -2518,17 +2520,17 @@ function CandidateManagementPanelInner({
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                     }}
                   >
-                    <MenuItem value="all">Alle statuser</MenuItem>
-                    <MenuItem value="pending">Venter</MenuItem>
-                    <MenuItem value="requested">Forespurt</MenuItem>
-                    <MenuItem value="shortlist">Kortliste</MenuItem>
-                    <MenuItem value="selected">Valgt</MenuItem>
-                    <MenuItem value="confirmed">Bekreftet</MenuItem>
-                    <MenuItem value="rejected">Avvist</MenuItem>
+                    <MenuItem value="all">{t('cand.statusAll')}</MenuItem>
+                    <MenuItem value="pending">{t('cstatus.pending')}</MenuItem>
+                    <MenuItem value="requested">{t('cstatus.requested')}</MenuItem>
+                    <MenuItem value="shortlist">{t('cand.statusShortlist')}</MenuItem>
+                    <MenuItem value="selected">{t('cstatus.selected')}</MenuItem>
+                    <MenuItem value="confirmed">{t('cstatus.confirmed')}</MenuItem>
+                    <MenuItem value="rejected">{t('cstatus.rejected')}</MenuItem>
                   </Select>
                 </FormControl>
                 <Chip
-                  label={`${proCandidates.length} kandidater`}
+                  label={t('cand.candidatesCount', { n: proCandidates.length })}
                   sx={{
                     color: roleTabAccent,
                     bgcolor: 'rgba(184,107,255,0.14)',
@@ -2537,7 +2539,7 @@ function CandidateManagementPanelInner({
                   }}
                 />
                 <Chip
-                  label="J/K naviger • E rediger • F favoritt • Space velg • Cmd+Enter bekreft"
+                  label={t('cand.keyboardHints')}
                   sx={{
                     color: roleTextMuted,
                     bgcolor: 'rgba(255,255,255,0.05)',
@@ -2549,7 +2551,7 @@ function CandidateManagementPanelInner({
               </Box>
               <Box sx={{ flex: 1, minHeight: 0 }}>
                 {proListItems.length === 0 ? (
-                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Ingen kandidater matcher filter.</Typography>
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>{t('cand.noCandidatesMatchFilter')}</Typography>
                 ) : (
                   <Virtuoso
                     style={{ height: '100%' }}
@@ -2609,14 +2611,14 @@ function CandidateManagementPanelInner({
                       '& .MuiTabs-indicator': { backgroundColor: roleTabAccent },
                     }}
                   >
-                    <Tab value="overview" icon={<ViewCarouselIcon fontSize="small" />} iconPosition="start" label="Oversikt" />
-                    <Tab value="media" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Bilder" />
-                    <Tab value="videos" icon={<VideocamIcon fontSize="small" />} iconPosition="start" label="Video" />
-                    <Tab value="consent" icon={<GavelIcon fontSize="small" />} iconPosition="start" label="Samtykke" />
-                    <Tab value="availability" icon={<EventAvailableIcon fontSize="small" />} iconPosition="start" label="Tilgjengelighet" />
-                    <Tab value="history" icon={<TimelineIcon fontSize="small" />} iconPosition="start" label="Historikk" />
-                    <Tab value="actions" icon={<TuneIcon fontSize="small" />} iconPosition="start" label="Handlinger" />
-                    <Tab value="compare" icon={<CompareArrowsIcon fontSize="small" />} iconPosition="start" label={`Sammenlign (${compareCandidates.length})`} />
+                    <Tab value="overview" icon={<ViewCarouselIcon fontSize="small" />} iconPosition="start" label={t('cand.tabOverview')} />
+                    <Tab value="media" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label={t('cand.tabMedia')} />
+                    <Tab value="videos" icon={<VideocamIcon fontSize="small" />} iconPosition="start" label={t('cand.tabVideos')} />
+                    <Tab value="consent" icon={<GavelIcon fontSize="small" />} iconPosition="start" label={t('cand.tabConsent')} />
+                    <Tab value="availability" icon={<EventAvailableIcon fontSize="small" />} iconPosition="start" label={t('cand.tabAvailability')} />
+                    <Tab value="history" icon={<TimelineIcon fontSize="small" />} iconPosition="start" label={t('cand.tabHistory')} />
+                    <Tab value="actions" icon={<TuneIcon fontSize="small" />} iconPosition="start" label={t('cand.tabActions')} />
+                    <Tab value="compare" icon={<CompareArrowsIcon fontSize="small" />} iconPosition="start" label={t('cand.tabCompareN', { n: compareCandidates.length })} />
                   </Tabs>
 
                   {proDetailTab === 'overview' && (
@@ -2639,8 +2641,8 @@ function CandidateManagementPanelInner({
                       <Typography sx={{ color: roleText, fontWeight: 800, fontSize: '1.2rem' }}>{selectedCandidate.name}</Typography>
                       <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                         <Chip label={getStatusLabel(selectedCandidate.status)} sx={{ bgcolor: `${getStatusColor(selectedCandidate.status)}24`, color: getStatusColor(selectedCandidate.status), fontWeight: 700 }} />
-                        <Chip label={`${selectedCandidateAssignedRoles.length} roller`} sx={{ bgcolor: roleSurfaceMuted, color: roleText }} />
-                        <Chip label={`Treffscore ${candidateFitScores.get(selectedCandidate.id) || 0}`} sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }} />
+                        <Chip label={t('cand.rolesCount', { n: selectedCandidateAssignedRoles.length })} sx={{ bgcolor: roleSurfaceMuted, color: roleText }} />
+                        <Chip label={t('cand.fitScore', { n: candidateFitScores.get(selectedCandidate.id) || 0 })} sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }} />
                       </Box>
                       <LinearProgress
                         variant="determinate"
@@ -2648,25 +2650,25 @@ function CandidateManagementPanelInner({
                         sx={{ height: 8, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }}
                       />
                       <Typography sx={{ color: roleTextMuted, fontSize: '0.9rem' }}>
-                        {selectedCandidateNotes || 'Ingen audition-notater lagt inn.'}
+                        {selectedCandidateNotes || t('cand.noAuditionNotes')}
                       </Typography>
                       <Box>
-                        <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Kontakt</Typography>
+                        <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>{t('cand.contact')}</Typography>
                         <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
-                          E-post: {selectedCandidateContact.email || 'Ikke satt'}
+                          {t('cand.email')}: {selectedCandidateContact.email || t('cand.notSet')}
                         </Typography>
                         <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
-                          Telefon: {selectedCandidateContact.phone || 'Ikke satt'}
+                          {t('cand.phone')}: {selectedCandidateContact.phone || t('cand.notSet')}
                         </Typography>
                       </Box>
                       <Box>
-                        <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Tilknyttede roller</Typography>
+                        <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>{t('cand.linkedRoles')}</Typography>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                           {selectedCandidateAssignedRoles.length > 0
                             ? selectedCandidateAssignedRoles.map((roleId) => (
                                 <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent }} />
                               ))
-                            : <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>Ingen roller satt</Typography>}
+                            : <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>{t('cand.noRolesSet')}</Typography>}
                         </Box>
                       </Box>
                     </Box>
@@ -2725,7 +2727,7 @@ function CandidateManagementPanelInner({
                                 fontSize: '0.75rem',
                               }}
                             >
-                              Klikk for å sette fokuspunkt
+                              {t('cand.clickToSetFocal')}
                             </Typography>
                           </Box>
                           <Stack direction="row" spacing={1}>
@@ -2736,7 +2738,7 @@ function CandidateManagementPanelInner({
                               onClick={() => { void handleSetPrimaryPhoto(selectedPhotoIndex); }}
                               sx={{ color: roleText, borderColor: roleBorder }}
                             >
-                              Sett som primær
+                              {t('cand.setAsPrimary')}
                             </Button>
                             <Button
                               size="small"
@@ -2745,7 +2747,7 @@ function CandidateManagementPanelInner({
                               disabled={proMediaBusy}
                               onClick={() => { void handleDeletePhoto(selectedPhotoIndex); }}
                             >
-                              Slett bilde
+                              {t('cand.deletePhoto')}
                             </Button>
                           </Stack>
                           <Box sx={{ display: 'flex', gap: 0.75, overflowX: 'auto', pb: 0.5 }}>
@@ -2778,11 +2780,11 @@ function CandidateManagementPanelInner({
                             ))}
                           </Box>
                           <Typography sx={{ color: roleTextMuted, fontSize: '0.8rem' }}>
-                            Fokuspunkt: {selectedPhotoFocalPoint.x}% x {selectedPhotoFocalPoint.y}%
+                            {t('cand.focalPoint', { x: selectedPhotoFocalPoint.x, y: selectedPhotoFocalPoint.y })}
                           </Typography>
                         </>
                       ) : (
-                        <Typography sx={{ color: roleTextMuted }}>Ingen bilder lastet opp for kandidaten.</Typography>
+                        <Typography sx={{ color: roleTextMuted }}>{t('cand.noPhotosUploaded')}</Typography>
                       )}
                     </Box>
                   )}
@@ -2790,7 +2792,7 @@ function CandidateManagementPanelInner({
                   {proDetailTab === 'videos' && projectId && (
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       <ErrorBoundary componentName="candidate-video-review">
-                      <React.Suspense fallback={<Box sx={{ p: 3, textAlign: 'center' }}><Typography sx={{ color: roleTextMuted }}>Laster video-review…</Typography></Box>}>
+                      <React.Suspense fallback={<Box sx={{ p: 3, textAlign: 'center' }}><Typography sx={{ color: roleTextMuted }}>{t('cand.loadingVideoReview')}</Typography></Box>}>
                         {(() => {
                           const LazyCandidateVideoReview = React.lazy(() =>
                             import('./casting/CandidateVideoReview').then((m) => ({ default: m.CandidateVideoReview })),
@@ -2817,7 +2819,7 @@ function CandidateManagementPanelInner({
                           <>
                             <Chip
                               icon={<RuleIcon />}
-                              label={`Fullført ${completion}%`}
+                              label={t('cand.completedPct', { n: completion })}
                               sx={{ alignSelf: 'flex-start', bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }}
                             />
                             <LinearProgress
@@ -2826,7 +2828,7 @@ function CandidateManagementPanelInner({
                               sx={{ height: 8, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }}
                             />
                             {consents.length === 0 ? (
-                              <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>Ingen samtykker registrert ennå.</Typography>
+                              <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>{t('cand.noConsents')}</Typography>
                             ) : (
                               <Stack spacing={0.75}>
                                 {consents.map((consent, index) => (
@@ -2845,10 +2847,10 @@ function CandidateManagementPanelInner({
                                   >
                                     <Box sx={{ minWidth: 0 }}>
                                       <Typography sx={{ color: roleText, fontWeight: 600, fontSize: '0.85rem' }} noWrap>
-                                        {consent.title || consent.type || `Samtykke ${index + 1}`}
+                                        {consent.title || consent.type || t('cand.consentN', { n: index + 1 })}
                                       </Typography>
                                       <Typography sx={{ color: roleTextMuted, fontSize: '0.76rem' }}>
-                                        {consent.required ? 'Påkrevd' : 'Valgfri'} • {consent.signedAt ? `Signert ${new Date(consent.signedAt).toLocaleString('nb-NO')}` : 'Ikke signert'}
+                                        {consent.required ? t('cand.required') : t('cand.optional')} • {consent.signedAt ? t('cand.signedAt', { date: new Date(consent.signedAt).toLocaleString('nb-NO') }) : t('cand.notSigned')}
                                       </Typography>
                                     </Box>
                                     <Chip
@@ -2865,7 +2867,7 @@ function CandidateManagementPanelInner({
                               onClick={() => onEditCandidate(selectedCandidate)}
                               sx={{ color: roleTabAccent, borderColor: roleBorder, alignSelf: 'flex-start' }}
                             >
-                              Åpne samtykkemodal
+                              {t('cand.openConsentModal')}
                             </Button>
                           </>
                         );
@@ -2876,14 +2878,13 @@ function CandidateManagementPanelInner({
                   {proDetailTab === 'availability' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
-                        Marker når kandidaten er ledig, opptatt eller tentativ. Dette flagges
-                        automatisk på call-sheet og i produksjonskalenderen på innspillingsdager.
+                        {t('cand.availabilityHelp')}
                       </Typography>
                       <AvailabilityCalendar
                         key={selectedCandidate.id}
                         editable
                         months={1}
-                        title="Kandidatens tilgjengelighet"
+                        title={t('cand.candidateAvailability')}
                         entries={selectedCandidateAvailabilityEntries}
                         onChangeEntries={(entries) => {
                           void saveCandidatePatch(selectedCandidate, {
@@ -2897,7 +2898,7 @@ function CandidateManagementPanelInner({
                   {proDetailTab === 'history' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       {selectedCandidateHistory.length === 0 ? (
-                        <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>Ingen aktivitet registrert.</Typography>
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>{t('cand.noActivity')}</Typography>
                       ) : (
                         <Stack spacing={1}>
                           {selectedCandidateHistory.map((entry) => (
@@ -2929,17 +2930,17 @@ function CandidateManagementPanelInner({
                         onClick={() => onEditCandidate(selectedCandidate)}
                         sx={{ bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}
                       >
-                        Rediger kandidat
+                        {t('cand.editCandidate')}
                       </Button>
                       <Stack direction="row" spacing={1}>
                         <Button size="small" variant="outlined" onClick={() => { void handleStatusUpdate(selectedCandidate, 'shortlist'); }} sx={{ color: roleText, borderColor: roleBorder }}>
-                          Kortliste
+                          {t('cand.statusShortlist')}
                         </Button>
                         <Button size="small" variant="outlined" onClick={() => { void handleStatusUpdate(selectedCandidate, 'selected'); }} sx={{ color: roleText, borderColor: roleBorder }}>
-                          Valgt
+                          {t('cstatus.selected')}
                         </Button>
                         <Button size="small" variant="outlined" onClick={() => { void handleStatusUpdate(selectedCandidate, 'confirmed'); }} sx={{ color: roleText, borderColor: roleBorder }}>
-                          Bekreft
+                          {t('cand.confirm')}
                         </Button>
                       </Stack>
                       <Stack direction="row" spacing={1}>
@@ -2949,7 +2950,7 @@ function CandidateManagementPanelInner({
                           onClick={() => void handleSaveToPool(selectedCandidate)}
                           sx={{ color: roleTabAccent, borderColor: roleBorder }}
                         >
-                          Lagre som mal
+                          {t('cand.saveAsTemplate')}
                         </Button>
                         <Button
                           fullWidth
@@ -2957,7 +2958,7 @@ function CandidateManagementPanelInner({
                           onClick={() => void handleDuplicate(selectedCandidate)}
                           sx={{ color: roleText, borderColor: roleBorder }}
                         >
-                          Dupliser
+                          {t('cand.duplicate')}
                         </Button>
                         <Button
                           fullWidth
@@ -2965,7 +2966,7 @@ function CandidateManagementPanelInner({
                           onClick={() => void handleDeleteWithUndo(selectedCandidate)}
                           sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}
                         >
-                          Slett
+                          {t('cand.delete')}
                         </Button>
                       </Stack>
                     </Stack>
@@ -2975,7 +2976,7 @@ function CandidateManagementPanelInner({
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       {compareCandidates.length < 2 ? (
                         <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>
-                          Velg minst to kandidater i listen for å sammenligne side ved side.
+                          {t('cand.compareHint')}
                         </Typography>
                       ) : (
                         <Grid container spacing={1}>
@@ -2997,16 +2998,16 @@ function CandidateManagementPanelInner({
                                         <Typography sx={{ color: roleTextMuted, fontSize: '0.72rem' }}>{getStatusLabel(candidate.status)}</Typography>
                                       </Box>
                                       {isTop && (
-                                        <Chip icon={<DoneAllIcon />} label="Beste" size="small" sx={{ ml: 'auto', bgcolor: roleTabAccentSoft, color: roleTabAccent }} />
+                                        <Chip icon={<DoneAllIcon />} label={t('cand.best')} size="small" sx={{ ml: 'auto', bgcolor: roleTabAccentSoft, color: roleTabAccent }} />
                                       )}
                                     </Box>
-                                    <Typography sx={{ color: roleText, fontSize: '0.78rem' }}>Treffscore: {fit}</Typography>
-                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>Roller: {getCandidateAssignedRoles(candidate).length}</Typography>
+                                    <Typography sx={{ color: roleText, fontSize: '0.78rem' }}>{t('cand.fitScoreColon', { n: fit })}</Typography>
+                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>{t('cand.rolesColon', { n: getCandidateAssignedRoles(candidate).length })}</Typography>
                                     <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
-                                      Samtykke: {getConsentCompletionScore(candidate)}%
+                                      {t('cand.consentColon', { n: getConsentCompletionScore(candidate) })}
                                     </Typography>
                                     <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
-                                      Kontakt: {getContactCoverageScore(candidate)}%
+                                      {t('cand.contactColon', { n: getContactCoverageScore(candidate) })}
                                     </Typography>
                                   </CardContent>
                                 </Card>
@@ -3019,7 +3020,7 @@ function CandidateManagementPanelInner({
                   )}
                 </>
               ) : (
-                <Typography sx={{ color: roleTextMuted }}>Velg en kandidat for detaljer.</Typography>
+                <Typography sx={{ color: roleTextMuted }}>{t('cand.selectCandidateForDetails')}</Typography>
               )}
             </Box>
           </Box>
@@ -3040,7 +3041,7 @@ function CandidateManagementPanelInner({
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                 <Typography sx={{ color: roleText, fontWeight: 700 }}>
-                  {selectedIds.size} kandidater valgt
+                  {t('cand.candidatesSelected', { n: selectedIds.size })}
                 </Typography>
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                   <Button
@@ -3057,19 +3058,19 @@ function CandidateManagementPanelInner({
                       borderColor: roleBorder,
                     }}
                   >
-                    Sammenlign
+                    {t('cand.compare')}
                   </Button>
                   <Button size="small" variant="outlined" onClick={() => { void handleBulkStatusUpdate('shortlist'); }} sx={{ color: roleText, borderColor: roleBorder }}>
-                    Kortliste
+                    {t('cand.statusShortlist')}
                   </Button>
                   <Button size="small" variant="outlined" onClick={() => { void handleBulkStatusUpdate('requested'); }} sx={{ color: roleText, borderColor: roleBorder }}>
-                    Be om samtykke
+                    {t('cand.requestConsent')}
                   </Button>
                   <Button size="small" variant="outlined" onClick={() => { void handleBulkStatusUpdate('confirmed'); }} sx={{ color: roleText, borderColor: roleBorder }}>
-                    Bekreft
+                    {t('cand.confirm')}
                   </Button>
                   <Button size="small" variant="outlined" startIcon={<PreviewIcon />} onClick={handleOpenPreviewDialog} sx={{ color: roleTabAccent, borderColor: roleBorder }}>
-                    Til scene
+                    {t('cand.toScene')}
                   </Button>
                   <Button
                     size="small"
@@ -3080,7 +3081,7 @@ function CandidateManagementPanelInner({
                     }}
                     sx={{ color: roleTextMuted, borderColor: roleBorder }}
                   >
-                    Tøm valg
+                    {t('cand.clearSelection')}
                   </Button>
                 </Stack>
               </Box>
@@ -3111,42 +3112,42 @@ function CandidateManagementPanelInner({
               <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: roleTabAccent }} />
             </Box>
             <Typography variant="h4" sx={{ color: roleTabAccent, fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.total}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('cand.statTotal')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <CheckIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#10b981' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.confirmed}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Bekreftet</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('cstatus.confirmed')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: 'var(--role-violet, #8b5cf6)' }} />
             </Box>
             <Typography variant="h4" sx={{ color: 'var(--role-violet, #8b5cf6)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.selected}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Valgt</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('cstatus.selected')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffb800' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#ffb800', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.shortlist}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Kortliste</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('cand.statusShortlist')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#6b7280' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#6b7280', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.pending}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Venter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('cstatus.pending')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <StarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffc107' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.favorites}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Favoritter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('cand.favorites')}</Typography>
           </Box>
         </Box>
       </Collapse>
@@ -3162,7 +3163,7 @@ function CandidateManagementPanelInner({
         }}
       >
         <TextField
-          placeholder={isMobile ? 'Søk...' : isTablet ? 'Søk kandidater...' : 'Søk på navn, e-post, telefon, notater...'}
+          placeholder={isMobile ? t('cand.searchShort') : isTablet ? t('cand.searchCandidates') : t('cand.searchFull')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           size="small"
@@ -3171,7 +3172,7 @@ function CandidateManagementPanelInner({
               startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 1, fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
-            htmlInput: { 'aria-label': 'Søk i kandidater' },
+            htmlInput: { 'aria-label': t('cand.searchAria') },
           }}
           sx={{
             flex: 1,
@@ -3188,14 +3189,14 @@ function CandidateManagementPanelInner({
 
         <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140, md: 135, lg: 150, xl: 180 } }}>
           <InputLabel id="candidate-status-filter-label" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Status
+            {t('cand.status')}
           </InputLabel>
           <Select
             labelId="candidate-status-filter-label"
-            label="Status"
+            label={t('cand.status')}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            aria-label="Filtrer etter status"
+            aria-label={t('cand.filterByStatus')}
             sx={{
               color: '#fff',
               minHeight: TOUCH_TARGET_SIZE,
@@ -3205,22 +3206,22 @@ function CandidateManagementPanelInner({
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
             }}
           >
-            <MenuItem value="all">Alle statuser</MenuItem>
-            <MenuItem value="pending">Venter</MenuItem>
-            <MenuItem value="requested">Forespurt</MenuItem>
-            <MenuItem value="shortlist">Kortliste</MenuItem>
-            <MenuItem value="selected">Valgt</MenuItem>
-            <MenuItem value="confirmed">Bekreftet</MenuItem>
-            <MenuItem value="rejected">Avvist</MenuItem>
+            <MenuItem value="all">{t('cand.statusAll')}</MenuItem>
+            <MenuItem value="pending">{t('cstatus.pending')}</MenuItem>
+            <MenuItem value="requested">{t('cstatus.requested')}</MenuItem>
+            <MenuItem value="shortlist">{t('cand.statusShortlist')}</MenuItem>
+            <MenuItem value="selected">{t('cstatus.selected')}</MenuItem>
+            <MenuItem value="confirmed">{t('cstatus.confirmed')}</MenuItem>
+            <MenuItem value="rejected">{t('cstatus.rejected')}</MenuItem>
           </Select>
         </FormControl>
 
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-          <Tooltip title="Kortvisning">
+          <Tooltip title={t('cand.gridView')}>
             <Button
               variant={viewMode === 'grid' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('grid')}
-              aria-label="Bytt til kortvisning"
+              aria-label={t('cand.switchToGridView')}
               aria-pressed={viewMode === 'grid'}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3234,11 +3235,11 @@ function CandidateManagementPanelInner({
               <GridViewIcon />
             </Button>
           </Tooltip>
-          <Tooltip title="Tabellvisning">
+          <Tooltip title={t('cand.tableView')}>
             <Button
               variant={viewMode === 'table' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('table')}
-              aria-label="Bytt til tabellvisning"
+              aria-label={t('cand.switchToTableView')}
               aria-pressed={viewMode === 'table'}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3253,7 +3254,7 @@ function CandidateManagementPanelInner({
             </Button>
           </Tooltip>
           {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+            <Tooltip title={t('cand.deleteSelectedN', { n: selectedIds.size })}>
               <Button
                 variant="contained"
                 onClick={handleBulkDelete}
@@ -3286,7 +3287,7 @@ function CandidateManagementPanelInner({
             '& .MuiAlert-icon': { color: roleTabAccent },
           }}
         >
-          Viser {filteredAndSortedCandidates.length} av {validCandidates.length} kandidater
+          {t('cand.showingCount', { shown: filteredAndSortedCandidates.length, total: validCandidates.length })}
         </Alert>
       )}
 
@@ -3294,18 +3295,18 @@ function CandidateManagementPanelInner({
       {validCandidates.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={kandidaterPng}
-          title="Legg til kandidater"
+          title={t('cand.emptyTitle')}
           subtitle={safeRoles.length > 0
-            ? `Du har ${safeRoles.length} rolle${safeRoles.length > 1 ? 'r' : ''} som venter på kandidater.`
-            : 'Start med å opprette roller, deretter legg til kandidater.'}
+            ? t('cand.emptySubtitleRoles', { n: safeRoles.length })
+            : t('cand.emptySubtitleNoRoles')}
           color="#b86bff"
-          buttonLabel="Legg til kandidat"
+          buttonLabel={t('cand.addCandidate')}
           onAction={onCreateCandidate}
         />
       ) : filteredAndSortedCandidates.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-          <Typography variant="body1">Ingen treff på søket</Typography>
+          <Typography variant="body1">{t('cand.noSearchResults')}</Typography>
         </Box>
       ) : viewMode === 'table' ? (
         /* Table View */
@@ -3319,7 +3320,7 @@ function CandidateManagementPanelInner({
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          <Table aria-label="Kandidater tabell" sx={{ minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 } }}>
+          <Table aria-label={t('cand.candidatesTable')} sx={{ minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 } }}>
             <TableHead>
               <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
                 <TableCell padding="checkbox" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3327,11 +3328,11 @@ function CandidateManagementPanelInner({
                     checked={selectedIds.size === filteredAndSortedCandidates.length && filteredAndSortedCandidates.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedCandidates.length}
                     onChange={handleSelectAll}
-                    inputProps={{ 'aria-label': 'Velg alle kandidater' }}
+                    inputProps={{ 'aria-label': t('cand.selectAll') }}
                     sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                   />
                 </TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Favoritt</TableCell>
+                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('cand.favorite')}</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'name'}
@@ -3339,7 +3340,7 @@ function CandidateManagementPanelInner({
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Kandidat
+                    {t('cand.candidate')}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3349,7 +3350,7 @@ function CandidateManagementPanelInner({
                     onClick={() => handleSort('status')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Status
+                    {t('cand.status')}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3359,11 +3360,11 @@ function CandidateManagementPanelInner({
                     onClick={() => handleSort('roles')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Roller
+                    {t('cand.roles')}
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Sist oppdatert</TableCell>
-                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
+                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('cand.lastUpdated')}</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('cand.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -3382,7 +3383,7 @@ function CandidateManagementPanelInner({
                     <Checkbox
                       checked={selectedIds.has(candidate.id)}
                       onChange={() => handleToggleSelect(candidate.id)}
-                      inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
+                      inputProps={{ 'aria-label': t('cand.selectCandidateNamed', { name: candidate.name }) }}
                       sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                     />
                   </TableCell>
@@ -3390,15 +3391,15 @@ function CandidateManagementPanelInner({
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                       <IconButton
                         onClick={() => toggleFavorite(candidate.id)}
-                        aria-label={favorites.has(candidate.id) ? `Fjern ${candidate.name} fra favoritter` : `Legg til ${candidate.name} i favoritter`}
+                        aria-label={favorites.has(candidate.id) ? t('cand.removeFromFavoritesNamed', { name: candidate.name }) : t('cand.addToFavoritesNamed', { name: candidate.name })}
                         sx={{ color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}
                       >
                         {favorites.has(candidate.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                       </IconButton>
-                      <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
+                      <Tooltip title={quickContacts.has(candidate.id) ? t('cand.removeQuickContact') : t('cand.addQuickContact')}>
                         <IconButton
                           onClick={() => toggleQuickContact(candidate.id)}
-                          aria-label={quickContacts.has(candidate.id) ? `Fjern ${candidate.name} fra hurtigkontakt` : `Legg til ${candidate.name} i hurtigkontakt`}
+                          aria-label={quickContacts.has(candidate.id) ? t('cand.removeQuickContactNamed', { name: candidate.name }) : t('cand.addQuickContactNamed', { name: candidate.name })}
                           sx={{
                             color: quickContacts.has(candidate.id) ? quickContactColor : quickContactColorMuted,
                             bgcolor: quickContacts.has(candidate.id) ? quickContactBackground : 'transparent',
@@ -3468,12 +3469,12 @@ function CandidateManagementPanelInner({
                           >
                             {contactInfo.phone}
                             {!/^\+?\d[\d\s\-()]{6,18}$/.test(String(contactInfo.phone).trim()) && (
-                              <Tooltip title="Telefonnummer er ikke i gyldig format — WhatsApp/SMS kan ikke leveres">
+                              <Tooltip title={t('cand.phoneInvalidFormat')}>
                                 <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
                               </Tooltip>
                             )}
                             {!/^\+/.test(String(contactInfo.phone).trim()) && /^\d/.test(String(contactInfo.phone).trim()) && (
-                              <Tooltip title="Mangler landskode (+47, …) — WhatsApp/SMS krever internasjonalt format">
+                              <Tooltip title={t('cand.phoneMissingCountryCode')}>
                                 <WarningAmberIcon sx={{ fontSize: 13, color: '#fbbf24' }} />
                               </Tooltip>
                             )}
@@ -3513,7 +3514,7 @@ function CandidateManagementPanelInner({
                         const whatsappActive = whatsappOn && hasPhone;
                         if (!smsActive && !emailActive && !whatsappActive) {
                           return (
-                            <Tooltip title="Audition-påminnelser slått av">
+                            <Tooltip title={t('cand.reminderOff')}>
                               <NotificationsOffOutlinedIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }} />
                             </Tooltip>
                           );
@@ -3521,17 +3522,17 @@ function CandidateManagementPanelInner({
                         return (
                           <Box sx={{ display: 'flex', gap: 0.6, alignItems: 'center', mt: 0.2 }}>
                             {whatsappActive && (
-                              <Tooltip title="Mottar audition-WhatsApp">
+                              <Tooltip title={t('cand.receivesWhatsApp')}>
                                 <WhatsAppIcon sx={{ fontSize: 14, color: '#22c55e' }} />
                               </Tooltip>
                             )}
                             {smsActive && (
-                              <Tooltip title="Mottar audition-SMS">
+                              <Tooltip title={t('cand.receivesSMS')}>
                                 <SmsOutlinedIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #7dd3fc)' }} />
                               </Tooltip>
                             )}
                             {emailActive && (
-                              <Tooltip title="Mottar audition-e-post">
+                              <Tooltip title={t('cand.receivesEmail')}>
                                 <MarkEmailReadOutlinedIcon sx={{ fontSize: 14, color: '#a3e635' }} />
                               </Tooltip>
                             )}
@@ -3580,14 +3581,14 @@ function CandidateManagementPanelInner({
                     </Typography>
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <Tooltip title="Handlinger">
+                    <Tooltip title={t('cand.actions')}>
                       <IconButton
                         onClick={(e) => {
                           e.stopPropagation();
                           setRowActionMenuAnchor(e.currentTarget);
                           setRowActionMenuCandidate(candidate);
                         }}
-                        aria-label={`Handlinger for ${candidate.name}`}
+                        aria-label={t('cand.actionsForNamed', { name: candidate.name })}
                         aria-haspopup="menu"
                         aria-expanded={rowActionMenuCandidate?.id === candidate.id ? 'true' : 'false'}
                         sx={{
@@ -3696,7 +3697,7 @@ function CandidateManagementPanelInner({
                       <Box
                         component="img"
                         src={candidate.photos[0]}
-                        alt={`${profession === 'videographer' ? 'Video' : 'Bilde'} av ${candidate.name}`}
+                        alt={profession === 'videographer' ? t('cand.videoOf', { name: candidate.name }) : t('cand.photoOf', { name: candidate.name })}
                         sx={{
                           width: '100%',
                           height: { xs: 140, sm: 160, md: 150, lg: 180, xl: 220 },
@@ -3781,7 +3782,7 @@ function CandidateManagementPanelInner({
                         <Checkbox
                           checked={selectedIds.has(candidate.id)}
                           onChange={() => handleToggleSelect(candidate.id)}
-                          inputProps={{ 'aria-label': `Velg kandidat ${candidate.name}` }}
+                          inputProps={{ 'aria-label': t('cand.selectCandidateNamed', { name: candidate.name }) }}
                           sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                         />
                         <Typography
@@ -3798,10 +3799,10 @@ function CandidateManagementPanelInner({
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
+                        <Tooltip title={quickContacts.has(candidate.id) ? t('cand.removeQuickContact') : t('cand.addQuickContact')}>
                           <IconButton
                             onClick={() => toggleQuickContact(candidate.id)}
-                            aria-label={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}
+                            aria-label={quickContacts.has(candidate.id) ? t('cand.removeQuickContact') : t('cand.addQuickContact')}
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
@@ -3816,7 +3817,7 @@ function CandidateManagementPanelInner({
                         </Tooltip>
                         <IconButton
                           onClick={() => toggleFavorite(candidate.id)}
-                          aria-label={favorites.has(candidate.id) ? 'Fjern fra favoritter' : 'Legg til favoritter'}
+                          aria-label={favorites.has(candidate.id) ? t('cand.removeFromFavorites') : t('cand.addToFavorites')}
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
@@ -3866,7 +3867,7 @@ function CandidateManagementPanelInner({
                                 letterSpacing: '0.5px',
                               }}
                             >
-                              E-post
+                              {t('cand.email')}
                             </Typography>
                             <Typography
                               sx={{
@@ -3918,7 +3919,7 @@ function CandidateManagementPanelInner({
                                 letterSpacing: '0.5px',
                               }}
                             >
-                              Telefon
+                              {t('cand.phone')}
                             </Typography>
                             <Typography
                               sx={{
@@ -3958,7 +3959,7 @@ function CandidateManagementPanelInner({
                                 letterSpacing: '0.5px',
                               }}
                             >
-                              Audition-notater
+                              {t('cand.auditionNotes')}
                             </Typography>
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                               {auditionNotes}
@@ -3978,7 +3979,7 @@ function CandidateManagementPanelInner({
                                 letterSpacing: '0.5px',
                               }}
                             >
-                              Tildelte roller
+                              {t('cand.assignedRoles')}
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
                               {assignedRoles.map(roleId => (
@@ -4046,10 +4047,10 @@ function CandidateManagementPanelInner({
                           ...focusVisibleStyles,
                         }}
                       >
-                        {expandedCards.has(candidate.id) ? 'Skjul detaljer' : 'Vis detaljer'}
+                        {expandedCards.has(candidate.id) ? t('cand.hideDetails') : t('cand.showDetails')}
                       </Button>
                       <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 1, md: 0.75, lg: 1, xl: 1.25 } }}>
-                        <Tooltip title="Lagre til pool">
+                        <Tooltip title={t('cand.saveToPool')}>
                           <IconButton
                             onClick={() => handleSaveToPool(candidate)}
                             sx={{
@@ -4063,7 +4064,7 @@ function CandidateManagementPanelInner({
                             <UploadIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Dupliser">
+                        <Tooltip title={t('cand.duplicate')}>
                           <IconButton
                             onClick={() => handleDuplicate(candidate)}
                             sx={{
@@ -4077,7 +4078,7 @@ function CandidateManagementPanelInner({
                             <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Rediger">
+                        <Tooltip title={t('cand.edit')}>
                           <IconButton
                             onClick={() => onEditCandidate(candidate)}
                             sx={{
@@ -4091,7 +4092,7 @@ function CandidateManagementPanelInner({
                             <EditIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Slett">
+                        <Tooltip title={t('cand.delete')}>
                           <IconButton
                             onClick={() => handleDeleteWithUndo(candidate)}
                             sx={{
@@ -4130,21 +4131,21 @@ function CandidateManagementPanelInner({
           >
             <Typography variant="subtitle1" sx={{ color: '#9c27b0', fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
               <InventoryIcon sx={{ fontSize: 20 }} />
-              Slik bruker du kandidatmaler
+              {t('cand.templatesGuideTitle')}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-              Maler lar deg lagre favoritt-kandidater for rask tilgang i fremtidige prosjekter.
+              {t('cand.templatesGuideDesc')}
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'rgba(255,255,255,0.87)', '& li': { mb: 0.5, fontSize: '0.875rem' } }}>
-              <li><strong>Lagre som mal:</strong> Klikk på lilla ikon på en prosjektkandidat</li>
-              <li><strong>Importer:</strong> Klikk "Importer" for å kopiere kandidaten til prosjektet</li>
-              <li><strong>Slett:</strong> Fjern maler du ikke trenger lenger</li>
+              <li><strong>{t('cand.guideSaveLabel')}</strong> {t('cand.guideSaveText')}</li>
+              <li><strong>{t('cand.guideImportLabel')}</strong> {t('cand.guideImportText')}</li>
+              <li><strong>{t('cand.guideDeleteLabel')}</strong> {t('cand.guideDeleteText')}</li>
             </Box>
           </Box>
 
           {poolLoading ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>Laster maler...</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('cand.loadingTemplates')}</Typography>
             </Box>
           ) : poolCandidates.length === 0 ? (
             <Box
@@ -4174,10 +4175,10 @@ function CandidateManagementPanelInner({
                 <InventoryIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: '#9c27b0' }} />
               </Box>
               <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
-                Ingen kandidatmaler ennå
+                {t('cand.noTemplatesYet')}
               </Typography>
               <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 3, maxWidth: 400, mx: 'auto' }}>
-                Lagre kandidater fra prosjekter som maler for gjenbruk i fremtidige produksjoner.
+                {t('cand.noTemplatesDesc')}
               </Typography>
             </Box>
           ) : (
@@ -4228,7 +4229,7 @@ function CandidateManagementPanelInner({
                         </Box>
                         <Chip
                           icon={<InventoryIcon sx={{ fontSize: 14 }} />}
-                          label="Mal"
+                          label={t('cand.templateBadge')}
                           size="small"
                           sx={{
                             bgcolor: 'rgba(156, 39, 176, 0.2)',
@@ -4279,9 +4280,9 @@ function CandidateManagementPanelInner({
                             '&:hover': { bgcolor: '#7b1fa2' },
                           }}
                         >
-                          Importer
+                          {t('cand.import')}
                         </Button>
-                        <Tooltip title="Slett fra pool">
+                        <Tooltip title={t('cand.deleteFromPool')}>
                           <IconButton
                             onClick={() => handleDeleteFromPool(poolCandidate.id)}
                             sx={{
@@ -4311,10 +4312,10 @@ function CandidateManagementPanelInner({
         open={undoSnackbarOpen}
         autoHideDuration={6000}
         onClose={() => setUndoSnackbarOpen(false)}
-        message="Kandidat slettet"
+        message={t('cand.candidateDeleted')}
         action={
           <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: 'var(--role-accent, #b86bff)' }}>
-            Angre
+            {t('cand.undo')}
           </Button>
         }
         sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#333' } }}
@@ -4345,7 +4346,7 @@ function CandidateManagementPanelInner({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <ViewInArIcon sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: 28 }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Forhåndsvisning - Legg til i scene
+              {t('cand.previewAddToScene')}
             </Typography>
           </Box>
           <IconButton 
@@ -4358,7 +4359,7 @@ function CandidateManagementPanelInner({
         
         <DialogContent sx={{ pt: 3 }}>
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            {candidatesToPreview.length} kandidat(er) vil bli lagt til i 3D-scenen.
+            {t('cand.willBeAddedToScene', { n: candidatesToPreview.length })}
           </Typography>
 
           <Typography variant="subtitle2" sx={{ 
@@ -4369,7 +4370,7 @@ function CandidateManagementPanelInner({
             gap: 1 
           }}>
             <PersonIcon sx={{ fontSize: 18 }} />
-            Kandidater ({candidatesToPreview.length})
+            {t('cand.candidatesN', { n: candidatesToPreview.length })}
           </Typography>
 
           <Box sx={{ 
@@ -4501,7 +4502,7 @@ function CandidateManagementPanelInner({
                       }}>
                         <CheckIcon sx={{ fontSize: 14 }} />
                         <Typography variant="caption" sx={{ color: 'inherit' }}>
-                          Bilde tilgjengelig for avatar
+                          {t('cand.photoAvailableForAvatar')}
                         </Typography>
                       </Box>
                     )}
@@ -4517,7 +4518,7 @@ function CandidateManagementPanelInner({
               py: 4, 
               color: 'rgba(255,255,255,0.87)' 
             }}>
-              <Typography>Ingen kandidater valgt</Typography>
+              <Typography>{t('cand.noCandidatesSelected')}</Typography>
             </Box>
           )}
         </DialogContent>
@@ -4537,7 +4538,7 @@ function CandidateManagementPanelInner({
               }
             }}
           >
-            Avbryt
+            {t('cand.cancel')}
           </Button>
           <Button
             onClick={handleConfirmAddToScene}
@@ -4556,7 +4557,7 @@ function CandidateManagementPanelInner({
               }
             }}
           >
-            {addingToScene ? 'Legger til...' : `Legg til i scene (${candidatesToPreview.length})`}
+            {addingToScene ? t('cand.adding') : t('cand.addToSceneN', { n: candidatesToPreview.length })}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4594,7 +4595,7 @@ function CandidateManagementPanelInner({
           <ListItemIcon sx={{ color: 'var(--role-accent, #b86bff)', minWidth: 36 }}>
             <EditIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Rediger</ListItemText>
+          <ListItemText>{t('cand.edit')}</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -4607,7 +4608,7 @@ function CandidateManagementPanelInner({
           <ListItemIcon sx={{ color: 'var(--role-violet, #8b5cf6)', minWidth: 36 }}>
             <UploadIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Lagre til pool</ListItemText>
+          <ListItemText>{t('cand.saveToPool')}</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -4620,7 +4621,7 @@ function CandidateManagementPanelInner({
           <ListItemIcon sx={{ color: 'rgba(255,255,255,0.78)', minWidth: 36 }}>
             <DuplicateIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Dupliser</ListItemText>
+          <ListItemText>{t('cand.duplicate')}</ListItemText>
         </MenuItem>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
         <MenuItem
@@ -4634,7 +4635,7 @@ function CandidateManagementPanelInner({
           <ListItemIcon sx={{ color: '#ef4444', minWidth: 36 }}>
             <DeleteIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Slett</ListItemText>
+          <ListItemText>{t('cand.delete')}</ListItemText>
         </MenuItem>
       </Menu>
     </Box>

@@ -41,6 +41,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import authSessionService from '../services/authSessionService';
+import { useT } from '../../../i18n';
 
 interface DitDestination {
   id: string;
@@ -110,6 +111,7 @@ export interface LiveSetDitPanelProps {
 }
 
 export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDitPanelProps) {
+  const { t } = useT();
   const [section, setSection] = useState<'jobs' | 'destinations' | 'tokens'>('jobs');
   const [destinations, setDestinations] = useState<DitDestination[]>([]);
   const [tokens, setTokens] = useState<DitHelperToken[]>([]);
@@ -158,9 +160,9 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
   }, [open, loadAll]);
 
   const generateToken = async () => {
-    const label = window.prompt('Token-label (f.eks. "DIT-Mac-Studio-A"):');
+    const label = window.prompt(t('liveset.promptTokenLabel'));
     if (!label) return;
-    const stationName = window.prompt('Station-name (valgfri, f.eks. macbook-pro-dit-3):') || undefined;
+    const stationName = window.prompt(t('liveset.promptStationName')) || undefined;
     try {
       const res = await fetch(`/api/dit/projects/${projectId}/helper-tokens`, {
         method: 'POST',
@@ -177,12 +179,12 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       });
       loadAll();
     } catch (err) {
-      window.alert(`Kunne ikke generere token: ${(err as Error).message}`);
+      window.alert(t('liveset.errGenerateToken', { msg: (err as Error).message }));
     }
   };
 
   const revokeToken = async (id: string) => {
-    if (!window.confirm('Tilbakekall dette tokenet? CLI-er som bruker det vil miste tilgang umiddelbart.')) return;
+    if (!window.confirm(t('liveset.confirmRevoke'))) return;
     try {
       const res = await fetch(`/api/dit/helper-tokens/${id}`, {
         method: 'DELETE',
@@ -192,7 +194,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       loadAll();
     } catch (err) {
-      window.alert(`Feil: ${(err as Error).message}`);
+      window.alert(t('liveset.errGeneric', { msg: (err as Error).message }));
     }
   };
 
@@ -220,14 +222,14 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       setDestDraft({ destination_type: 'primary', label: '', path: '', storage_type: 'raid', priority: 1 });
       loadAll();
     } catch (err) {
-      window.alert(`Kunne ikke opprette destinasjon: ${(err as Error).message}`);
+      window.alert(t('liveset.errCreateDest', { msg: (err as Error).message }));
     } finally {
       setSavingDest(false);
     }
   };
 
   const deleteDestination = async (id: string) => {
-    if (!window.confirm('Slett denne destinasjonen? Pågående backup-jobs kan ikke flyttes — slett kun ubrukte destinasjoner.')) return;
+    if (!window.confirm(t('liveset.confirmDeleteDest'))) return;
     try {
       const res = await fetch(`/api/dit/destinations/${id}`, {
         method: 'DELETE',
@@ -237,7 +239,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       loadAll();
     } catch (err) {
-      window.alert(`Feil: ${(err as Error).message}`);
+      window.alert(t('liveset.errGeneric', { msg: (err as Error).message }));
     }
   };
 
@@ -251,7 +253,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       setCopyConfirm(true);
       setTimeout(() => setCopyConfirm(false), 1500);
     } catch {
-      window.prompt('Kopiér manuelt:', valueToCopy);
+      window.prompt(t('liveset.promptCopyManual'), valueToCopy);
     }
   };
 
@@ -292,7 +294,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
         }}
       >
         <Tab value="jobs" label={`Jobs (${jobs.length})`} />
-        <Tab value="destinations" label={`Destinasjoner (${destinations.length})`} />
+        <Tab value="destinations" label={t('liveset.tabDestinations', { n: destinations.length })} />
         <Tab value="tokens" label={`Tokens (${tokens.filter((t) => !t.revoked_at).length})`} />
       </Tabs>
 
@@ -305,8 +307,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
         {section === 'jobs' ? (
           jobs.length === 0 ? (
             <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-              Ingen backup-jobs ennå. Start CLI-helperen på DIT-station for å begynne å motta jobs.
-              Se <code>tools/dit-helper/README.md</code> for setup-guide.
+              {t('liveset.jobsEmpty')} <code>tools/dit-helper/README.md</code> {t('liveset.jobsEmptySetup')}
             </Alert>
           ) : (
             <Stack spacing={0.8}>
@@ -387,12 +388,12 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 onClick={() => setAddDestOpen(true)}
                 sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none' }}
               >
-                Ny destinasjon
+                {t('liveset.newDest')}
               </Button>
             </Stack>
             {destinations.length === 0 ? (
               <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-                Ingen destinasjoner ennå. Klikk "Ny destinasjon" for å konfigurere første backup-mål.
+                {t('liveset.destEmpty')}
               </Alert>
             ) : (
               <Stack spacing={0.8}>
@@ -427,17 +428,17 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
           <Stack spacing={1.5}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem' }}>
-                Helper-tokens lar CLI-en på DIT-station rapportere status. Token vises kun EN gang ved generering.
+                {t('liveset.tokensIntro')}
               </Typography>
               <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none', flexShrink: 0 }}>
-                Generér
+                {t('liveset.generate')}
               </Button>
             </Stack>
 
             {newToken ? (
               <Box sx={{ p: 1.5, borderRadius: 1.5, border: '2px solid #fbbf24', bgcolor: 'rgba(251,191,36,0.08)' }}>
                 <Typography sx={{ color: '#fcd34d', fontWeight: 700, fontSize: '0.82rem', mb: 1 }}>
-                  ⚠ Kopiér nå — vises ikke igjen
+                  {t('liveset.copyNow')}
                 </Typography>
 
                 {/* Toggle mellom connection-URL (anbefalt for One Desk-appen,
@@ -458,7 +459,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                         borderRadius: 0.75,
                       }}
                     >
-                      Connection-URL (for One Desk-app)
+                      {t('liveset.copyModeConnection')}
                     </Button>
                     <Button
                       size="small"
@@ -473,7 +474,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                         borderRadius: 0.75,
                       }}
                     >
-                      Rå token (CLI)
+                      {t('liveset.copyModeToken')}
                     </Button>
                   </Stack>
                 )}
@@ -500,33 +501,33 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     startIcon={<ContentCopyIcon />}
                     sx={{ color: copyConfirm ? '#86efac' : '#fcd34d', textTransform: 'none' }}
                   >
-                    {copyConfirm ? 'Kopiert!' : 'Kopiér'}
+                    {copyConfirm ? t('liveset.copied') : t('liveset.copy')}
                   </Button>
                 </Stack>
                 <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', mt: 1 }}>
-                  Utløper: {new Date(newToken.expires_at).toLocaleString('nb-NO')}
+                  {t('liveset.expires')}: {new Date(newToken.expires_at).toLocaleString('nb-NO')}
                   {newToken.connection_url && copyMode === 'connection' && (
-                    <> · Lim inn direkte i Creatorhub One Desk-appen.</>
+                    <>{t('liveset.pasteIntoApp')}</>
                   )}
                 </Typography>
                 <Button size="small" onClick={() => setNewToken(null)} sx={{ mt: 1, color: 'rgba(203,213,225,0.7)', textTransform: 'none' }}>
-                  Lukk
+                  {t('liveset.close')}
                 </Button>
               </Box>
             ) : null}
 
             {tokens.length === 0 ? (
               <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
-                Ingen tokens ennå. Klikk "Generér" for å lage første token til DIT-station.
+                {t('liveset.tokensEmpty')}
               </Alert>
             ) : (
               <Stack spacing={0.6}>
-                {tokens.map((t) => {
-                  const isRevoked = !!t.revoked_at;
-                  const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
+                {tokens.map((tok) => {
+                  const isRevoked = !!tok.revoked_at;
+                  const isExpired = tok.expires_at && new Date(tok.expires_at) < new Date();
                   const isActive = !isRevoked && !isExpired;
                   return (
-                    <Box key={t.id} sx={{
+                    <Box key={tok.id} sx={{
                       p: 1.2, borderRadius: 1.5,
                       border: '1px solid rgba(148,163,184,0.14)',
                       bgcolor: 'rgba(2,6,23,0.42)',
@@ -539,14 +540,14 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                           fontWeight: 700, height: 20,
                         }} />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.86rem' }}>{t.label}</Typography>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.86rem' }}>{tok.label}</Typography>
                           <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.7rem' }}>
-                            {t.station_name ?? '—'} · sist brukt: {t.last_used_at ? new Date(t.last_used_at).toLocaleString('nb-NO') : 'aldri'}
+                            {tok.station_name ?? '—'} · {t('liveset.lastUsed')}: {tok.last_used_at ? new Date(tok.last_used_at).toLocaleString('nb-NO') : t('liveset.never')}
                           </Typography>
                         </Box>
                         {isActive ? (
-                          <Button size="small" onClick={() => revokeToken(t.id)} sx={{ color: '#fca5a5', textTransform: 'none', fontSize: '0.74rem' }}>
-                            Tilbakekall
+                          <Button size="small" onClick={() => revokeToken(tok.id)} sx={{ color: '#fca5a5', textTransform: 'none', fontSize: '0.74rem' }}>
+                            {t('liveset.revoke')}
                           </Button>
                         ) : null}
                       </Stack>
@@ -561,7 +562,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
 
       <Box sx={{ p: 1.5, borderTop: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(0,0,0,0.32)' }}>
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', textAlign: 'center' }}>
-          Native CLI-helper:{' '}
+          {t('liveset.nativeHelper')}{' '}
           <Box component="span" sx={{ fontFamily: 'monospace', color: 'var(--role-cyan, #22d3ee)' }}>
             npx @theroleroom/dit-helper init
           </Box>
@@ -570,7 +571,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
 
       {/* Ny-destinasjon-dialog */}
       <Dialog open={addDestOpen} onClose={() => setAddDestOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: 'rgba(7,10,20,0.98)', color: '#f8fafc' }}>Ny backup-destinasjon</DialogTitle>
+        <DialogTitle sx={{ bgcolor: 'rgba(7,10,20,0.98)', color: '#f8fafc' }}>{t('liveset.dialogNewDest')}</DialogTitle>
         <DialogContent sx={{ bgcolor: 'rgba(7,10,20,0.98)', pt: '20px !important' }}>
           <Stack spacing={2}>
             <FormControl fullWidth size="small">
@@ -587,12 +588,12 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
               </Select>
             </FormControl>
             <TextField
-              label="Label (vises i UI)"
+              label={t('liveset.fieldLabel')}
               value={destDraft.label}
               onChange={(e) => setDestDraft({ ...destDraft, label: e.target.value })}
               size="small"
               required
-              placeholder="f.eks. Primary RAID Studio A"
+              placeholder={t('liveset.phLabel')}
               sx={{ '& .MuiInputBase-root': { color: '#e2e8f0' } }}
             />
             <TextField
@@ -600,8 +601,8 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
               value={destDraft.path}
               onChange={(e) => setDestDraft({ ...destDraft, path: e.target.value })}
               size="small"
-              placeholder="/Volumes/RAID-A eller s3://bucket/path"
-              helperText="Tom for 'original' (kortet er kilden)"
+              placeholder={t('liveset.phPath')}
+              helperText={t('liveset.helperPath')}
               sx={{
                 '& .MuiInputBase-root': { color: '#e2e8f0' },
                 '& .MuiFormHelperText-root': { color: 'rgba(148,163,184,0.7)' },
@@ -620,9 +621,9 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ minWidth: 100 }}>
-                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>Prioritet</InputLabel>
+                <InputLabel sx={{ color: 'rgba(148,163,184,0.85)' }}>{t('liveset.priority')}</InputLabel>
                 <Select
-                  label="Prioritet"
+                  label={t('liveset.priority')}
                   value={destDraft.priority}
                   onChange={(e) => setDestDraft({ ...destDraft, priority: Number(e.target.value) })}
                   sx={{ color: '#e2e8f0' }}
@@ -634,14 +635,14 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
           </Stack>
         </DialogContent>
         <DialogActions sx={{ bgcolor: 'rgba(7,10,20,0.98)' }}>
-          <Button onClick={() => setAddDestOpen(false)} sx={{ color: 'rgba(203,213,225,0.85)' }}>Avbryt</Button>
+          <Button onClick={() => setAddDestOpen(false)} sx={{ color: 'rgba(203,213,225,0.85)' }}>{t('liveset.cancel')}</Button>
           <Button
             variant="contained"
             disabled={!destDraft.label.trim() || savingDest}
             onClick={saveDestination}
             sx={{ bgcolor: 'var(--role-cyan, #22d3ee)', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
           >
-            {savingDest ? 'Lagrer…' : 'Opprett'}
+            {savingDest ? t('liveset.saving') : t('liveset.create')}
           </Button>
         </DialogActions>
       </Dialog>

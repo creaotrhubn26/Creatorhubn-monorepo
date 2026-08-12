@@ -83,6 +83,9 @@ import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import SpeedIcon from '@mui/icons-material/Speed';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import SurroundSoundIcon from '@mui/icons-material/SurroundSound';
+import { useT } from '../../../i18n';
+
+type TFunc = ReturnType<typeof useT>['t'];
 
 // ─────────────────────────────────────────────────────────────────────
 // Confidence-bånd-håndtering
@@ -123,7 +126,8 @@ interface SuggestionRenderer {
   highlight?: boolean;
 }
 
-const RENDERERS: Record<string, SuggestionRenderer> = {
+function buildRenderers(t: TFunc): Record<string, SuggestionRenderer> {
+  return {
   'breakdown.prop': {
     icon: InventoryIcon,
     label: 'Prop',
@@ -134,14 +138,14 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           <Typography variant="body2">
             <strong>{p.name}</strong>
             {p.existingPropId ? (
-              <Chip label="eksisterende" size="small" sx={{ ml: 1 }} />
+              <Chip label={t('aisug.existing')} size="small" sx={{ ml: 1 }} />
             ) : (
-              <Chip label="ny" size="small" color="info" sx={{ ml: 1 }} />
+              <Chip label={t('aisug.new')} size="small" color="info" sx={{ ml: 1 }} />
             )}
           </Typography>
           {p.category && (
             <Typography variant="caption" color="text.secondary">
-              Kategori: {p.category}
+              {t('aisug.category', { value: p.category })}
             </Typography>
           )}
           {p.note && (
@@ -167,9 +171,9 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
               <Chip label={p.intExt} size="small" sx={{ ml: 1 }} variant="outlined" />
             )}
             {p.existingLocationId ? (
-              <Chip label="eksisterende" size="small" sx={{ ml: 1 }} />
+              <Chip label={t('aisug.existing')} size="small" sx={{ ml: 1 }} />
             ) : (
-              <Chip label="ny" size="small" color="info" sx={{ ml: 1 }} />
+              <Chip label={t('aisug.new')} size="small" color="info" sx={{ ml: 1 }} />
             )}
           </Typography>
           {p.note && (
@@ -184,7 +188,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
 
   'breakdown.costume': {
     icon: StyleIcon,
-    label: 'Kostyme',
+    label: t('aisug.costumeLabel'),
     render: (s) => {
       const p = s.payload as BreakdownCostumePayload;
       return (
@@ -210,7 +214,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
       return (
         <Typography variant="body2">
           {p.description}
-          {p.complexity && ` (kompleksitet: ${p.complexity})`}
+          {p.complexity && t('aisug.complexity', { value: p.complexity })}
         </Typography>
       );
     },
@@ -218,7 +222,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
 
   'breakdown.risk-flag': {
     icon: WarningAmberIcon,
-    label: 'Risiko',
+    label: t('aisug.riskLabel'),
     highlight: true,
     render: (s) => {
       const p = s.payload as BreakdownRiskFlagPayload;
@@ -229,7 +233,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           </Typography>
           {p.recommendedAction && (
             <Typography variant="caption" display="block" color="text.secondary">
-              Anbefalt: {p.recommendedAction}
+              {t('aisug.recommendedPrefix', { value: p.recommendedAction })}
             </Typography>
           )}
         </Box>
@@ -239,7 +243,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
 
   'casting.role-stub': {
     icon: PersonAddIcon,
-    label: 'Rolle',
+    label: t('aisug.roleLabel'),
     render: (s) => {
       const p = s.payload as CastingRoleStubPayload;
       return (
@@ -247,7 +251,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           <Typography variant="body2">
             <strong>{p.characterName}</strong>
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-              {p.sceneCount} {p.sceneCount === 1 ? 'scene' : 'scener'}
+              {p.sceneCount} {p.sceneCount === 1 ? t('aisug.scene') : t('aisug.scenes')}
             </Typography>
           </Typography>
           {p.shortDescription && (
@@ -272,7 +276,9 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           </Typography>
           {p.alternatives && p.alternatives.length > 0 && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-              {p.alternatives.length} alternativ{p.alternatives.length === 1 ? '' : 'er'} tilgjengelig
+              {p.alternatives.length === 1
+                ? t('aisug.altAvailableOne', { n: p.alternatives.length })
+                : t('aisug.altAvailableMany', { n: p.alternatives.length })}
             </Typography>
           )}
         </Box>
@@ -288,7 +294,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
       return (
         <Box>
           <Typography variant="body2" sx={{ mb: 0.5 }}>
-            <strong>{p.shots.length}</strong> {p.shots.length === 1 ? 'shot' : 'shots'} foreslått
+            <strong>{p.shots.length}</strong> {p.shots.length === 1 ? 'shot' : 'shots'} {t('aisug.suggested')}
           </Typography>
           {p.coverageRationale && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ fontStyle: 'italic', mb: 0.5 }}>
@@ -324,7 +330,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
       return (
         <Box>
           <Typography variant="body2" sx={{ mb: 0.5 }}>
-            <strong>{p.characterName}</strong> — {p.excerptSceneIds.length} {p.excerptSceneIds.length === 1 ? 'scene' : 'scener'}
+            <strong>{p.characterName}</strong> — {p.excerptSceneIds.length} {p.excerptSceneIds.length === 1 ? t('aisug.scene') : t('aisug.scenes')}
           </Typography>
           {p.overallRationale && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ fontStyle: 'italic' }}>
@@ -349,7 +355,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
             {p.wordCount && (
               <Typography variant="caption" color="text.secondary">
-                {p.wordCount} ord
+                {t('aisug.wordCount', { n: p.wordCount })}
               </Typography>
             )}
             {p.genres && p.genres.length > 0 && (
@@ -385,7 +391,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           ))}
           {p.beats.length > 3 && (
             <Typography variant="caption" color="text.secondary">
-              +{p.beats.length - 3} flere
+              +{p.beats.length - 3} {t('aisug.more')}
             </Typography>
           )}
         </Box>
@@ -410,7 +416,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           <Typography variant="body2">{p.description}</Typography>
           {p.plannedShotDescription && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
-              Planlagt: {p.plannedShotDescription}
+              {t('aisug.planned', { value: p.plannedShotDescription })}
             </Typography>
           )}
         </Box>
@@ -426,7 +432,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
       return (
         <Box>
           <Typography variant="body2" sx={{ mb: 0.5 }}>
-            Anbefalt: <strong>Take {p.recommendedTakeNumber}</strong>
+            {t('aisug.recommendedLabel')}: <strong>Take {p.recommendedTakeNumber}</strong>
             {p.recommendedScore != null && (
               <Chip
                 label={`${Math.round(p.recommendedScore * 100)}%`}
@@ -443,7 +449,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           )}
           {p.ranking.length > 1 && (
             <Typography variant="caption" color="text.secondary">
-              {p.ranking.length} takes vurdert
+              {p.ranking.length} {t('aisug.takesAssessed')}
             </Typography>
           )}
         </Box>
@@ -474,7 +480,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
             )}
             {p.missingShotsCount && p.missingShotsCount > 0 && (
               <Chip
-                label={`${p.missingShotsCount} mangler`}
+                label={t('aisug.missing', { n: p.missingShotsCount })}
                 size="small"
                 color="warning"
                 variant="outlined"
@@ -502,7 +508,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
         <Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <Chip
-              label={p.severity === 'major' ? 'Alvorlig' : 'Mindre'}
+              label={p.severity === 'major' ? t('aisug.severityMajor') : t('aisug.severityMinor')}
               size="small"
               color={p.severity === 'major' ? 'error' : 'warning'}
               variant="outlined"
@@ -519,7 +525,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           )}
           {p.affectedTakeIds.length > 0 && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-              Berører {p.affectedTakeIds.length} {p.affectedTakeIds.length === 1 ? 'take' : 'takes'}
+              {t('aisug.affects')} {p.affectedTakeIds.length} {p.affectedTakeIds.length === 1 ? 'take' : 'takes'}
             </Typography>
           )}
         </Box>
@@ -537,7 +543,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
         <Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <Chip
-              label={p.severity === 'major' ? 'Alvorlig' : 'Mindre'}
+              label={p.severity === 'major' ? t('aisug.severityMajor') : t('aisug.severityMinor')}
               size="small"
               color={p.severity === 'major' ? 'error' : 'warning'}
               variant="outlined"
@@ -573,7 +579,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
         <Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <Chip
-              label={p.severity === 'major' ? 'Alvorlig' : 'Mindre'}
+              label={p.severity === 'major' ? t('aisug.severityMajor') : t('aisug.severityMinor')}
               size="small"
               color={p.severity === 'major' ? 'error' : 'warning'}
               variant="outlined"
@@ -613,7 +619,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
 
   'post.music-bed-suggestion': {
     icon: MusicNoteIcon,
-    label: 'Musikk',
+    label: t('aisug.musicLabel'),
     render: (s) => {
       const p = s.payload as MusicBedSuggestionPayload;
       return (
@@ -683,7 +689,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           ))}
           {p.sfxItems.length > 3 && (
             <Typography variant="caption" color="text.secondary">
-              +{p.sfxItems.length - 3} flere
+              +{p.sfxItems.length - 3} {t('aisug.more')}
             </Typography>
           )}
         </Box>
@@ -701,7 +707,7 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
         <Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <Chip
-              label={p.severity === 'major' ? 'Alvorlig' : 'Liten'}
+              label={p.severity === 'major' ? t('aisug.severityMajor') : t('aisug.severitySmall')}
               size="small"
               color={p.severity === 'major' ? 'error' : 'warning'}
               variant="outlined"
@@ -713,33 +719,36 @@ const RENDERERS: Record<string, SuggestionRenderer> = {
           <Typography variant="body2">{p.description}</Typography>
           {p.suggestion && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-              Forslag: {p.suggestion}
+              {t('aisug.suggestionLabel')}: {p.suggestion}
             </Typography>
           )}
           {p.affectedSceneIds.length > 0 && (
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-              Berører {p.affectedSceneIds.length} {p.affectedSceneIds.length === 1 ? 'scene' : 'scener'}
+              {t('aisug.affects')} {p.affectedSceneIds.length} {p.affectedSceneIds.length === 1 ? t('aisug.scene') : t('aisug.scenes')}
             </Typography>
           )}
         </Box>
       );
     },
   },
-};
+  };
+}
 
 // Fallback for ukjente suggestion_types (forward compat for nye agenter)
-const fallbackRenderer: SuggestionRenderer = {
-  icon: HelpOutlineIcon,
-  label: 'Forslag',
-  render: (s) => (
-    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-      {JSON.stringify(s.payload, null, 2)}
-    </Typography>
-  ),
-};
+function buildFallbackRenderer(t: TFunc): SuggestionRenderer {
+  return {
+    icon: HelpOutlineIcon,
+    label: t('aisug.fallbackLabel'),
+    render: (s) => (
+      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+        {JSON.stringify(s.payload, null, 2)}
+      </Typography>
+    ),
+  };
+}
 
-function rendererFor(suggestionType: string): SuggestionRenderer {
-  return RENDERERS[suggestionType] ?? fallbackRenderer;
+function rendererFor(suggestionType: string, t: TFunc): SuggestionRenderer {
+  return buildRenderers(t)[suggestionType] ?? buildFallbackRenderer(t);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -757,9 +766,13 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   onAccept,
   onReject,
 }) => {
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const renderer = rendererFor(suggestion.suggestionType);
+  const renderer = React.useMemo(
+    () => rendererFor(suggestion.suggestionType, t),
+    [suggestion.suggestionType, t],
+  );
   const Icon = renderer.icon;
 
   const handleAccept = async () => {
@@ -768,7 +781,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     try {
       await onAccept(suggestion.id);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Kunne ikke godta forslaget. Prøv igjen.');
+      setActionError(err instanceof Error ? err.message : t('aisug.acceptError'));
       setBusy(false);
     }
   };
@@ -779,7 +792,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     try {
       await onReject(suggestion.id);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Kunne ikke avvise forslaget. Prøv igjen.');
+      setActionError(err instanceof Error ? err.message : t('aisug.rejectError'));
       setBusy(false);
     }
   };
@@ -820,7 +833,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
               onClick={handleAccept}
               disabled={busy}
             >
-              Godta
+              {t('aisug.accept')}
             </Button>
             <Button
               size="small"
@@ -829,7 +842,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
               onClick={handleReject}
               disabled={busy}
             >
-              Avvis
+              {t('aisug.reject')}
             </Button>
           </Stack>
         </Stack>
@@ -839,7 +852,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
             sx={{ mt: 1 }}
             action={
               <Button color="inherit" size="small" onClick={handleAccept} disabled={busy}>
-                Prøv igjen
+                {t('aisug.tryAgain')}
               </Button>
             }
             onClose={() => setActionError(null)}
@@ -880,11 +893,13 @@ export interface AISuggestionsPanelProps {
 export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
   projectId,
   filter,
-  title = 'AI-forslag',
+  title: titleProp,
   hideUncertainToggle = false,
   onGenerate,
   onAccepted,
 }) => {
+  const { t } = useT();
+  const title = titleProp ?? t('aisug.defaultTitle');
   const [showUncertain, setShowUncertain] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<Error | null>(null);
@@ -941,7 +956,7 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center">
           {!hideUncertainToggle && (
-            <Tooltip title="Hvert forslag har en sikkerhetsscore (0–100 %) som anslår hvor trygt modellen er på forslaget. Som standard skjules forslag under ~70 %. Slå på for å også se de mer usikre.">
+            <Tooltip title={t('aisug.uncertainTooltip')}>
               <FormControlLabel
                 control={
                   <Switch
@@ -950,7 +965,7 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
                     onChange={(e) => setShowUncertain(e.target.checked)}
                   />
                 }
-                label={<Typography variant="caption">Vis usikre</Typography>}
+                label={<Typography variant="caption">{t('aisug.showUncertain')}</Typography>}
               />
             </Tooltip>
           )}
@@ -962,7 +977,7 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
               onClick={handleGenerate}
               disabled={generating}
             >
-              Generer forslag
+              {t('aisug.generate')}
             </Button>
           )}
         </Stack>
@@ -976,7 +991,7 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
 
       {generateError && (
         <Alert severity="error" sx={{ mb: 1 }} onClose={() => setGenerateError(null)}>
-          Kunne ikke generere forslag: {generateError.message}
+          {t('aisug.generateError', { msg: generateError.message })}
         </Alert>
       )}
 
@@ -988,7 +1003,7 @@ export const AISuggestionsPanel: React.FC<AISuggestionsPanelProps> = ({
 
       {!loading && suggestions.length === 0 && !error && (
         <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-          Ingen forslag akkurat nå.
+          {t('aisug.noSuggestions')}
         </Typography>
       )}
 

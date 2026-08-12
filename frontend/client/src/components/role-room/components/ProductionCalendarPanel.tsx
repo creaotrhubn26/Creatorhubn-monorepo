@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -68,6 +68,7 @@ import { CalendarStatsBar } from './calendar/CalendarStatsBar';
 import { CrewCalendarView, type CrewCalendarMember, type CrewDayAvailability } from './calendar/CrewCalendarView';
 import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 import { computeCrewConflictsFromAvailability } from '../utils/crewAvailabilitySync';
+import { useT } from '../../../i18n';
 
 interface Candidate {
   id: string;
@@ -107,12 +108,12 @@ interface ProductionCalendarPanelProps {
 }
 
 const EVENT_TYPES = [
-  { value: 'audition', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
-  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
-  { value: 'fitting', label: 'Kostyme/Fitting', icon: <CheckroomIcon />, color: '#ec4899' },
-  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: 'var(--role-violet, #8b5cf6)' },
-  { value: 'shooting', label: 'Opptak', icon: <MovieIcon />, color: '#10b981' },
-  { value: 'general', label: 'Generelt', icon: <EventIcon />, color: '#6b7280' },
+  { value: 'audition', icon: <TheatersIcon />, color: '#f59e0b' },
+  { value: 'selection', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
+  { value: 'fitting', icon: <CheckroomIcon />, color: '#ec4899' },
+  { value: 'rehearsal', icon: <GroupsIcon />, color: 'var(--role-violet, #8b5cf6)' },
+  { value: 'shooting', icon: <MovieIcon />, color: '#10b981' },
+  { value: 'general', icon: <EventIcon />, color: '#6b7280' },
 ];
 
 type WorkflowGapSeverity = 'error' | 'warning';
@@ -207,11 +208,6 @@ const mergeCrewLists = (...lists: Array<Crew[] | undefined>): Crew[] => {
   return sortNamed(Array.from(merged.values()));
 };
 
-const crewLabel = (member: Crew): string =>
-  member.role && member.role.trim().length > 0
-    ? `${member.name} (${getRoleLabel(member.role)})`
-    : `${member.name} (Mangler rolle)`;
-
 const modalFieldSx = {
   '& .MuiInputLabel-root': {
     color: 'rgba(226,232,240,0.82)',
@@ -249,6 +245,25 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   preselectedFromCreate,
 }) => {
   const { enqueueSnackbar } = useSnackbar();
+  const { t } = useT();
+  const crewLabel = useCallback(
+    (member: Crew): string =>
+      member.role && member.role.trim().length > 0
+        ? `${member.name} (${getRoleLabel(member.role)})`
+        : `${member.name} (${t('cal.missingRole')})`,
+    [t],
+  );
+  const eventTypeLabels = useMemo<Record<string, string>>(
+    () => ({
+      audition: t('cal.type.audition'),
+      selection: t('cal.type.selection'),
+      fitting: t('cal.type.fitting'),
+      rehearsal: t('cal.type.rehearsal'),
+      shooting: t('cal.type.shooting'),
+      general: t('cal.type.general'),
+    }),
+    [t],
+  );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -338,13 +353,13 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const workflowGaps = useMemo(() => {
     const gaps: WorkflowGap[] = [];
     if (eventType !== 'general' && !selectedLocation) {
-      gaps.push({ id: 'location-missing', severity: 'warning', text: 'Lokasjon mangler for denne hendelsen.' });
+      gaps.push({ id: 'location-missing', severity: 'warning', text: t('cal.gap.locationMissing') });
     }
     if (isCastingWorkflow && selectedCandidates.length === 0) {
-      gaps.push({ id: 'candidates-missing', severity: 'warning', text: 'Ingen kandidater valgt.' });
+      gaps.push({ id: 'candidates-missing', severity: 'warning', text: t('cal.gap.noCandidates') });
     }
     if (isShootingWorkflow && selectedCrew.length === 0) {
-      gaps.push({ id: 'crew-missing', severity: 'warning', text: 'Ingen team-medlemmer valgt.' });
+      gaps.push({ id: 'crew-missing', severity: 'warning', text: t('cal.gap.noCrew') });
     }
     if (selectedCrew.length > 0) {
       const membersWithoutRole = selectedCrew
@@ -354,24 +369,25 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         gaps.push({
           id: 'crew-role-missing',
           severity: 'warning',
-          text: `${membersWithoutRole} team-medlemmer mangler rolle.`,
+          text: t('cal.gap.crewNoRole', { n: membersWithoutRole }),
         });
       }
     }
     if (eventType === 'shooting' && selectedEquipment.length === 0) {
-      gaps.push({ id: 'equipment-missing', severity: 'warning', text: 'Ingen utstyrsenheter valgt.' });
+      gaps.push({ id: 'equipment-missing', severity: 'warning', text: t('cal.gap.noEquipment') });
     }
     if (hasInvalidTimeRange) {
-      gaps.push({ id: 'time-range-invalid', severity: 'error', text: 'Sluttid må være etter starttid.' });
+      gaps.push({ id: 'time-range-invalid', severity: 'error', text: t('cal.gap.timeInvalid') });
     }
     if (crewConflicts.size > 0) {
-      gaps.push({ id: 'crew-conflicts', severity: 'warning', text: `Team-konflikter oppdaget (${crewConflicts.size}).` });
+      gaps.push({ id: 'crew-conflicts', severity: 'warning', text: t('cal.gap.crewConflicts', { n: crewConflicts.size }) });
     }
     if (equipmentConflicts.size > 0) {
-      gaps.push({ id: 'equipment-conflicts', severity: 'warning', text: `Utstyrskonflikter oppdaget (${equipmentConflicts.size}).` });
+      gaps.push({ id: 'equipment-conflicts', severity: 'warning', text: t('cal.gap.equipConflicts', { n: equipmentConflicts.size }) });
     }
     return gaps;
   }, [
+    t,
     crewConflicts.size,
     equipmentConflicts.size,
     eventType,
@@ -410,7 +426,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   ]);
 
   const hasBlockingWorkflowGap = workflowGaps.some((gap) => gap.severity === 'error');
-  const readinessLabel = hasBlockingWorkflowGap ? 'Blokkert' : workflowGaps.length > 0 ? 'Risiko' : 'Klar';
+  const readinessLabel = hasBlockingWorkflowGap ? t('cal.readiness.blocked') : workflowGaps.length > 0 ? t('cal.readiness.risk') : t('cal.readiness.ready');
 
   useEffect(() => {
     loadEvents();
@@ -425,7 +441,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       ));
     } catch (error) {
-      enqueueSnackbar('Kunne ikke laste kalenderhendelser', { variant: 'error' });
+      enqueueSnackbar(t('cal.toast.loadFailed'), { variant: 'error' });
     } finally {
       setLoading(false);
     }
@@ -568,8 +584,8 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           project_id: projectId,
           event_id: eventId,
           notification_type: 'assignment',
-          title: 'Ny tildeling',
-          message: `Du er tildelt til: ${eventTitle}`,
+          title: t('cal.notif.title'),
+          message: t('cal.notif.msg', { title: eventTitle }),
         });
       } catch (error) {
         console.error('Failed to send notification to crew:', crewId, error);
@@ -675,7 +691,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
 
   const handleSave = async () => {
     if (!title || !startTime) {
-      enqueueSnackbar('Tittel og starttid er påkrevd', { variant: 'warning' });
+      enqueueSnackbar(t('cal.toast.titleStartRequired'), { variant: 'warning' });
       return;
     }
 
@@ -687,7 +703,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           .map((id) => crew.find((member) => member.id === id)?.name)
           .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
           .join(', ');
-        enqueueSnackbar(`Advarsel: Crew-konflikter funnet for: ${conflictingCrewNames}`, { variant: 'warning' });
+        enqueueSnackbar(t('cal.toast.crewConflictWarn', { names: conflictingCrewNames }), { variant: 'warning' });
       }
     }
 
@@ -700,7 +716,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           .map(id => equipment.find(e => e.id === id)?.name)
           .filter(Boolean)
           .join(', ');
-        enqueueSnackbar(`Advarsel: Utstyrskonflikter funnet for: ${conflictingEquipmentNames}`, { variant: 'warning' });
+        enqueueSnackbar(t('cal.toast.equipConflictWarn', { names: conflictingEquipmentNames }), { variant: 'warning' });
       }
     }
 
@@ -728,12 +744,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           equipment_ids: selectedEquipment,
           notes,
         });
-        enqueueSnackbar('Hendelse oppdatert!', { variant: 'success' });
+        enqueueSnackbar(t('cal.toast.updated'), { variant: 'success' });
         
         const newCrewIds = selectedCrew.filter(id => !editingEvent.crew_ids?.includes(id));
         if (newCrewIds.length > 0) {
           await sendCrewNotifications(newCrewIds, title, editingEvent.id);
-          enqueueSnackbar(`Varsler sendt til ${newCrewIds.length} nye crew-medlemmer`, { variant: 'info' });
+          enqueueSnackbar(t('cal.toast.notifSentNew', { n: newCrewIds.length }), { variant: 'info' });
         }
 
         try {
@@ -779,11 +795,11 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           crewIds: selectedCrew,
           notes,
         });
-        enqueueSnackbar('Hendelse opprettet!', { variant: 'success' });
+        enqueueSnackbar(t('cal.toast.created'), { variant: 'success' });
         
         if (selectedCrew.length > 0 && eventId) {
           await sendCrewNotifications(selectedCrew, title, eventId);
-          enqueueSnackbar(`Varsler sendt til ${selectedCrew.length} crew-medlemmer`, { variant: 'info' });
+          enqueueSnackbar(t('cal.toast.notifSent', { n: selectedCrew.length }), { variant: 'info' });
         }
 
         if (selectedEquipment.length > 0 && eventId) {
@@ -800,7 +816,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               console.error('Failed to book equipment:', equipmentId, err);
             }
           }
-          enqueueSnackbar(`${selectedEquipment.length} utstyr booket`, { variant: 'info' });
+          enqueueSnackbar(t('cal.toast.equipBooked', { n: selectedEquipment.length }), { variant: 'info' });
         }
       }
       if (notes.trim().length > 0) {
@@ -818,7 +834,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       resetForm();
       loadEvents();
     } catch (error) {
-      enqueueSnackbar('Kunne ikke lagre hendelse', { variant: 'error' });
+      enqueueSnackbar(t('cal.toast.saveFailed'), { variant: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -827,10 +843,10 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const handleDelete = async (eventId: string) => {
     try {
       await calendarEventsApi.delete(eventId);
-      enqueueSnackbar('Hendelse slettet', { variant: 'success' });
+      enqueueSnackbar(t('cal.toast.deleted'), { variant: 'success' });
       loadEvents();
     } catch (error) {
-      enqueueSnackbar('Kunne ikke slette hendelse', { variant: 'error' });
+      enqueueSnackbar(t('cal.toast.deleteFailed'), { variant: 'error' });
     }
   };
 
@@ -909,10 +925,10 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           </Box>
           <Box>
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.15 }}>
-              Produksjonskalender
+              {t('cal.title')}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
-              Role Room Pro-visning
+              {t('cal.subtitle')}
             </Typography>
           </Box>
         </Box>
@@ -938,7 +954,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             '&:hover': { bgcolor: '#059669' },
           }}
         >
-          Ny hendelse
+          {t('cal.newEvent')}
         </Button>
       </Box>
 
@@ -947,7 +963,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           <Chip
             key={type.value}
             icon={type.icon as React.ReactElement}
-            label={type.label}
+            label={eventTypeLabels[type.value]}
             size="small"
             sx={{
               bgcolor: `${type.color}20`,
@@ -991,7 +1007,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           }}
         >
           <PersonIcon sx={{ fontSize: 16 }} />
-          Crew-kalender
+          {t('cal.crewCalendar')}
         </Box>
       </Box>
 
@@ -1007,13 +1023,13 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   prev.setDate(prev.getDate() - 7);
                   setCrewWeekStart(prev);
                 }}
-                aria-label="Forrige uke"
+                aria-label={t('cal.prevWeek')}
                 sx={{ bgcolor: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontSize: '1.3rem', px: 1 }}
               >
                 ‹
               </Box>
               <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.95rem' }}>
-                Uke {(() => {
+                {t('cal.week')} {(() => {
                   // ISO-uke-beregning
                   const d = new Date(crewWeekStart);
                   const thursday = new Date(d);
@@ -1034,7 +1050,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   next.setDate(next.getDate() + 7);
                   setCrewWeekStart(next);
                 }}
-                aria-label="Neste uke"
+                aria-label={t('cal.nextWeek')}
                 sx={{ bgcolor: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontSize: '1.3rem', px: 1 }}
               >
                 ›
@@ -1052,7 +1068,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               }}
               sx={{ bgcolor: 'transparent', border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', color: 'rgba(255,255,255,0.85)', fontSize: '0.78rem', fontWeight: 600, px: 1.5, py: 0.5, borderRadius: 1, fontFamily: 'inherit' }}
             >
-              Denne uken
+              {t('cal.thisWeek')}
             </Box>
           </Box>
 
@@ -1071,12 +1087,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             }))}
             events={events}
             eventTypeConfig={{
-              audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-              selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
-              fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-              rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
-              shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
-              general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
+              audition: { label: eventTypeLabels.audition, color: '#f59e0b', icon: <TheatersIcon /> },
+              selection: { label: eventTypeLabels.selection, color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
+              fitting: { label: eventTypeLabels.fitting, color: '#ec4899', icon: <CheckroomIcon /> },
+              rehearsal: { label: eventTypeLabels.rehearsal, color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
+              shooting: { label: eventTypeLabels.shooting, color: '#10b981', icon: <MovieIcon /> },
+              general: { label: eventTypeLabels.general, color: '#6b7280', icon: <EventIcon /> },
             }}
             onAddEventForCrewDate={(crewId, date) => {
               setStartTime(`${date.toISOString().slice(0, 10)}T09:00`);
@@ -1092,12 +1108,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           monthDate={calendarMonth}
           events={events}
           eventTypeConfig={{
-            audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-            selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
-            fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-            rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
-            shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
-            general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
+            audition: { label: eventTypeLabels.audition, color: '#f59e0b', icon: <TheatersIcon /> },
+            selection: { label: eventTypeLabels.selection, color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
+            fitting: { label: eventTypeLabels.fitting, color: '#ec4899', icon: <CheckroomIcon /> },
+            rehearsal: { label: eventTypeLabels.rehearsal, color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
+            shooting: { label: eventTypeLabels.shooting, color: '#10b981', icon: <MovieIcon /> },
+            general: { label: eventTypeLabels.general, color: '#6b7280', icon: <EventIcon /> },
           }}
           onAddEventForDate={(date) => {
             setStartTime(`${date.toISOString().slice(0, 10)}T09:00`);
@@ -1108,7 +1124,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         />
       ) : events.length === 0 ? (
         <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
-          Ingen hendelser planlagt. Klikk "Ny hendelse" for å legge til opptak, prøver, eller andre produksjonshendelser.
+          {t('cal.emptyState')}
         </Alert>
       ) : (
         <Box>
@@ -1183,12 +1199,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                             </Typography>
                           </Box>
                           <Box>
-                            <Tooltip title="Rediger">
+                            <Tooltip title={t('cal.edit')}>
                               <IconButton size="small" onClick={() => handleOpenDialog(event)}>
                                 <EditIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.87)' }} />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Slett">
+                            <Tooltip title={t('cal.delete')}>
                               <IconButton size="small" onClick={() => handleDelete(event.id)}>
                                 <DeleteIcon sx={{ fontSize: 16, color: 'rgba(239,68,68,0.7)' }} />
                               </IconButton>
@@ -1199,7 +1215,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <AccessTimeIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.87)' }} />
                           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                            {event.all_day ? 'Hele dagen' : (
+                            {event.all_day ? t('cal.allDay') : (
                               <>
                                 {new Date(event.start_time).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
                                 {event.end_time && ` - ${new Date(event.end_time).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`}
@@ -1287,10 +1303,10 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           <CalendarMonthIcon sx={{ color: '#c084fc' }} />
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Typography sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-              {editingEvent ? 'Rediger hendelse' : 'Ny hendelse'}
+              {editingEvent ? t('cal.editEvent') : t('cal.newEvent')}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
-              Produksjonsplan • Role Room
+              {t('cal.dialogSubtitle')}
             </Typography>
           </Box>
         </DialogTitle>
@@ -1313,7 +1329,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
                 <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.88rem' }}>
-                  Workflow-sjekk
+                  {t('cal.workflowCheck')}
                 </Typography>
                 <Chip
                   size="small"
@@ -1348,7 +1364,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                 {workflowGaps.length === 0 ? (
                   <Chip
                     size="small"
-                    label="Ingen workflow-gap oppdaget"
+                    label={t('cal.noGaps')}
                     sx={{
                       bgcolor: 'rgba(16,185,129,0.2)',
                       color: '#bbf7d0',
@@ -1377,7 +1393,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               </Box>
             </Box>
             <TextField
-              label="Tittel *"
+              label={t('cal.field.title')}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               fullWidth
@@ -1385,18 +1401,18 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             />
 
             <FormControl fullWidth>
-              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>Type</InputLabel>
+              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>{t('cal.field.type')}</InputLabel>
               <Select
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value)}
-                label="Type"
+                label={t('cal.field.type')}
                 sx={modalFieldSx}
               >
                 {EVENT_TYPES.map((type) => (
                   <MenuItem key={type.value} value={type.value}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Box sx={{ color: type.color }}>{type.icon}</Box>
-                      {type.label}
+                      {eventTypeLabels[type.value]}
                     </Box>
                   </MenuItem>
                 ))}
@@ -1411,13 +1427,13 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   color="secondary"
                 />
               }
-              label="Hele dagen"
+              label={t('cal.allDay')}
               sx={{ color: 'rgba(226,232,240,0.88)' }}
             />
 
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
-                label="Starttid *"
+                label={t('cal.field.startTime')}
                 type={allDay ? 'date' : 'datetime-local'}
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
@@ -1427,7 +1443,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               />
               {!allDay && (
                 <TextField
-                  label="Sluttid"
+                  label={t('cal.field.endTime')}
                   type="datetime-local"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
@@ -1439,14 +1455,14 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             </Box>
 
             <FormControl fullWidth>
-              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>Lokasjon</InputLabel>
+              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>{t('cal.field.location')}</InputLabel>
               <Select
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
-                label="Lokasjon"
+                label={t('cal.field.location')}
                 sx={modalFieldSx}
               >
-                <MenuItem value="">Ingen lokasjon</MenuItem>
+                <MenuItem value="">{t('cal.noLocation')}</MenuItem>
                 {locations.map((loc) => (
                   <MenuItem key={loc.id} value={loc.id}>{loc.name}</MenuItem>
                 ))}
@@ -1467,17 +1483,17 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   },
                 }}
               >
-                Ny lokasjon
+                {t('cal.newLocation')}
               </Button>
             </Box>
 
             <FormControl fullWidth>
-              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>Kandidater</InputLabel>
+              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>{t('cal.field.candidates')}</InputLabel>
               <Select
                 multiple
                 value={selectedCandidates}
                 onChange={(e) => setSelectedCandidates(e.target.value as string[])}
-                input={<OutlinedInput label="Kandidater" />}
+                input={<OutlinedInput label={t('cal.field.candidates')} />}
                 sx={modalFieldSx}
                 renderValue={(selected) => 
                   candidates
@@ -1509,17 +1525,17 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   },
                 }}
               >
-                Ny kandidat
+                {t('cal.newCandidate')}
               </Button>
             </Box>
 
             <FormControl fullWidth>
-              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>Team</InputLabel>
+              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>{t('cal.field.team')}</InputLabel>
               <Select
                 multiple
                 value={selectedCrew}
                 onChange={(e) => setSelectedCrew(e.target.value as string[])}
-                input={<OutlinedInput label="Team" />}
+                input={<OutlinedInput label={t('cal.field.team')} />}
                 sx={modalFieldSx}
                 renderValue={(selected) => 
                   crew
@@ -1533,7 +1549,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                     <Checkbox checked={selectedCrew.includes(c.id)} />
                     <ListItemText
                       primary={c.name}
-                      secondary={c.role ? getRoleLabel(c.role) : 'Mangler rolle'}
+                      secondary={c.role ? getRoleLabel(c.role) : t('cal.missingRole')}
                     />
                   </MenuItem>
                 ))}
@@ -1554,17 +1570,17 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   },
                 }}
               >
-                Nytt crew-medlem
+                {t('cal.newCrew')}
               </Button>
             </Box>
 
             <FormControl fullWidth>
-              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>Utstyr</InputLabel>
+              <InputLabel sx={modalFieldSx['& .MuiInputLabel-root']}>{t('cal.field.equipment')}</InputLabel>
               <Select
                 multiple
                 value={selectedEquipment}
                 onChange={(e) => setSelectedEquipment(e.target.value as string[])}
-                input={<OutlinedInput label="Utstyr" />}
+                input={<OutlinedInput label={t('cal.field.equipment')} />}
                 sx={modalFieldSx}
                 renderValue={(selected) => 
                   equipment
@@ -1599,23 +1615,23 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   },
                 }}
               >
-                Nytt utstyr
+                {t('cal.newEquipment')}
               </Button>
             </Box>
 
             {equipmentConflicts.size > 0 && (
               <Alert severity="warning" icon={<WarningIcon />}>
-                <Typography variant="body2" fontWeight="bold">Utstyrskonflikter funnet:</Typography>
+                <Typography variant="body2" fontWeight="bold">{t('cal.equipConflictsFound')}</Typography>
                 {Array.from(equipmentConflicts.entries()).map(([equipmentId, conflicts]) => (
                   <Typography key={equipmentId} variant="body2">
-                    {equipment.find(e => e.id === equipmentId)?.name}: {conflicts.length} konflikt(er)
+                    {equipment.find(e => e.id === equipmentId)?.name}: {t('cal.conflictCount', { n: conflicts.length })}
                   </Typography>
                 ))}
               </Alert>
             )}
 
             <TextField
-              label="Beskrivelse"
+              label={t('cal.field.description')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               multiline
@@ -1625,7 +1641,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             />
 
             <TextField
-              label="Notater"
+              label={t('cal.field.notes')}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               multiline
@@ -1659,7 +1675,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(168,85,247,0.5)' },
             }}
           >
-            Avbryt
+            {t('cal.cancel')}
           </Button>
           <Button
             onClick={handleSave}
@@ -1675,7 +1691,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
               '&:hover': { bgcolor: '#059669' },
             }}
           >
-            {editingEvent ? 'Oppdater' : 'Opprett'}
+            {editingEvent ? t('cal.update') : t('cal.create')}
           </Button>
         </DialogActions>
       </Dialog>

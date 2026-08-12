@@ -13,6 +13,8 @@ import {
 } from '@mui/material';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -45,6 +47,7 @@ export default function ClientTiktokCreatorsPanel({
   advertiserId?: string | null;
   isOwnAccount?: boolean;
 }) {
+  const { t } = useT();
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [creators, setCreators] = useState<Creator[]>([]);
   const [country, setCountry] = useState('Norway');
@@ -72,11 +75,11 @@ export default function ClientTiktokCreatorsPanel({
       if (niche) params.set('niche', niche);
       const r = await fetch(`/api/admin-room/agent/ads/tiktok/creators?${params}`, { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Søk feilet');
+      if (!r.ok) throw new Error(d.error || t('ttCreators.s012'));
       setCreators(d.creators ?? []);
       setIsCached(d.isCached ?? false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Søk feilet');
+      setError(err instanceof Error ? err.message : t('ttCreators.s012'));
     } finally {
       setSearching(false);
     }
@@ -95,10 +98,10 @@ export default function ClientTiktokCreatorsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Finn skapere som passer kampanjen
+              {t('ttCreators.s005')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              TikTok foreslår skapere som matcher land og bransje, klare for samarbeid.
+              {t('ttCreators.s014')}
             </Typography>
           </Box>
         </Stack>
@@ -109,7 +112,7 @@ export default function ClientTiktokCreatorsPanel({
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.4, mb: 2 }}>
           <Box>
             <Typography sx={{ color: palette.textPrimary, fontSize: '0.86rem', fontWeight: 700, mb: 0.6 }}>
-              Hvilket land?
+              {t('ttCreators.s006')}
             </Typography>
             <Select
               size="small"
@@ -118,24 +121,24 @@ export default function ClientTiktokCreatorsPanel({
               fullWidth
               sx={{ color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
             >
-              <MenuItem value="Norway">Norge</MenuItem>
-              <MenuItem value="Sweden">Sverige</MenuItem>
-              <MenuItem value="Denmark">Danmark</MenuItem>
-              <MenuItem value="Finland">Finland</MenuItem>
-              <MenuItem value="UK">Storbritannia</MenuItem>
-              <MenuItem value="US">USA</MenuItem>
+              <MenuItem value="Norway">{t('ttCreators.s009')}</MenuItem>
+              <MenuItem value="Sweden">{t('ttCreators.s011')}</MenuItem>
+              <MenuItem value="Denmark">{t('ttCreators.s002')}</MenuItem>
+              <MenuItem value={t('ttCreators.s003')}>{t('ttCreators.s003')}</MenuItem>
+              <MenuItem value="UK">{t('ttCreators.s010')}</MenuItem>
+              <MenuItem value="US">{t('ttCreators.s015')}</MenuItem>
             </Select>
           </Box>
           <Box>
             <Typography sx={{ color: palette.textPrimary, fontSize: '0.86rem', fontWeight: 700, mb: 0.6 }}>
-              Bransje eller tema (valgfritt)
+              {t('ttCreators.s001')}
             </Typography>
             <TextField
               size="small"
               fullWidth
               value={niche}
               onChange={(e) => setNiche(e.target.value)}
-              placeholder="f.eks. matlaging, film, trening"
+              placeholder={t('ttCreators.s016')}
               InputProps={{ sx: { color: palette.textPrimary } }}
             />
           </Box>
@@ -152,7 +155,7 @@ export default function ClientTiktokCreatorsPanel({
             '&:hover': { background: 'linear-gradient(135deg, #cc003c 0%, #b537cc 100%)' },
           }}
         >
-          {searching ? 'Søker…' : 'Finn skapere'}
+          {searching ? t('ttCreators.s013') : t('ttCreators.s004')}
         </Button>
 
         {/* Resultater */}
@@ -160,10 +163,10 @@ export default function ClientTiktokCreatorsPanel({
           <Box sx={{ mt: 2.4 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
               <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                {creators.length} skapere funnet
+                {creators.length} {t('ttCreators.s018')}
               </Typography>
               {isCached ? (
-                <Chip size="small" label="Lagret fra tidligere søk" sx={{ bgcolor: 'rgba(148,163,184,0.18)', color: palette.textMuted, fontSize: '0.72rem' }} />
+                <Chip size="small" label={t('ttCreators.s008')} sx={{ bgcolor: 'rgba(148,163,184,0.18)', color: palette.textMuted, fontSize: '0.72rem' }} />
               ) : null}
             </Stack>
             <Stack spacing={1.2}>
@@ -187,11 +190,11 @@ export default function ClientTiktokCreatorsPanel({
                       </Typography>
                       <Stack direction="row" spacing={1.4} sx={{ mt: 0.6 }}>
                         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                          👥 {c.followerCount.toLocaleString('nb-NO')} følgere
+                          👥 {c.followerCount.toLocaleString('nb-NO')} {t('ttCreators.s017')}
                         </Typography>
                         {c.engagementRate > 0 ? (
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                            💗 {(c.engagementRate * 100).toFixed(1)}% engasjement
+                            💗 {(c.engagementRate * 100).toFixed(1)}{t('ttCreators.s000')}
                           </Typography>
                         ) : null}
                         {c.location ? (
@@ -210,7 +213,7 @@ export default function ClientTiktokCreatorsPanel({
                         '&:hover': { bgcolor: 'rgba(255,0,80,0.25)' },
                       }}
                     >
-                      Inviter
+                      {t('ttCreators.s007')}
                     </Button>
                   </Stack>
                 </Box>

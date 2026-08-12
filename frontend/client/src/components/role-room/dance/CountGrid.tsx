@@ -36,6 +36,8 @@ import {
   type Segment,
 } from './choreographyTypes';
 import useBrandingSettings from '../hooks/useBrandingSettings';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 // ─── Datamodell ─────────────────────────────────────────────────────────
 
@@ -88,6 +90,7 @@ export interface CountGridProps {
 export const CountGrid: React.FC<CountGridProps> = ({
   segment, bpm, initialState, onChange, onSeekToCount,
 }) => {
+  const { t } = useT();
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
 
@@ -159,7 +162,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
             label={<Typography sx={{ fontSize: 10, color: danceFlowColors.textMuted }}>5-6-7-8 leadup</Typography>}
             sx={{ ml: 0, mr: 0.5 }}
           />
-          <Tooltip title="Tilbakestill alle tellinger">
+          <Tooltip title={t('danceCountGrid.s006')}>
             <IconButton size="small" onClick={reset} sx={{ color: danceFlowColors.textMuted, '&:hover': { color: danceFlowColors.errorPrimary } }}>
               <ResetIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -179,10 +182,10 @@ export const CountGrid: React.FC<CountGridProps> = ({
       >
         {/* ─── Header-rad ─── */}
         <CountHeader>#</CountHeader>
-        <CountHeader>BEVEGELSE</CountHeader>
-        <CountHeader>POSISJON</CountHeader>
-        <CountHeader>FORMASJON</CountHeader>
-        <CountHeader>RETNING</CountHeader>
+        <CountHeader>{t('danceCountGrid.s000')}</CountHeader>
+        <CountHeader>{t('danceCountGrid.s004')}</CountHeader>
+        <CountHeader>{t('danceCountGrid.s001')}</CountHeader>
+        <CountHeader>{t('danceCountGrid.s005')}</CountHeader>
         <CountHeader>ENERGI</CountHeader>
         <CountHeader>NOTAT</CountHeader>
         <CountHeader>{' '}</CountHeader>
@@ -271,14 +274,14 @@ export const CountGrid: React.FC<CountGridProps> = ({
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <Tooltip title={entry?.videoRefUrl ? 'Åpne video-referanse' : 'Legg til video-referanse'}>
+                <Tooltip title={entry?.videoRefUrl ? t('danceCountGrid.s008') : t('danceCountGrid.s003')}>
                   <IconButton
                     size="small"
                     onClick={() => {
                       if (entry?.videoRefUrl) {
                         window.open(entry.videoRefUrl, '_blank', 'noopener');
                       } else {
-                        const url = window.prompt('Video-URL (Vimeo/YouTube/Drive):');
+                        const url = window.prompt(t('danceCountGrid.s007'));
                         if (url) updateEntry(row.absoluteCount, { videoRefUrl: url });
                       }
                     }}
@@ -296,7 +299,7 @@ export const CountGrid: React.FC<CountGridProps> = ({
       {/* ─── Footer info ─────────────────────────────── */}
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 1, pt: 0.75, borderTop: '1px solid #1a2230' }}>
         <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled }}>
-          Klikk på telling-tall for å spille av musikk fra det punktet
+          {t('danceCountGrid.s002')}
         </Typography>
         <Typography sx={{ fontSize: 9, color: danceFlowColors.textDisabled, fontFamily: 'monospace' }}>
           {formatTime(segment.startSec)} → {formatTime(segment.endSec)}

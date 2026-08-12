@@ -15,6 +15,8 @@ import { Person as PersonIcon, Business as BusinessIcon } from '@mui/icons-mater
 import roleRoomAgentService, {
   type RoleRoomLinkedInCompany,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface LinkedInPublishAsSelectorProps {
   /** Nåværende valg — null = personlig profil (default). Ellers
@@ -39,6 +41,7 @@ export default function LinkedInPublishAsSelector({
   value,
   onChange,
 }: LinkedInPublishAsSelectorProps): React.ReactElement | null {
+  const { t } = useT();
   const [companies, setCompanies] = useState<RoleRoomLinkedInCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [scopeMissing, setScopeMissing] = useState(false);
@@ -62,7 +65,7 @@ export default function LinkedInPublishAsSelector({
       <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 0.6 }}>
         <CircularProgress size={14} />
         <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.74rem' }}>
-          Sjekker LinkedIn-bedrifter…
+          {t('liPublishAs.s007')}
         </Typography>
       </Stack>
     );
@@ -80,11 +83,10 @@ export default function LinkedInPublishAsSelector({
         }}
       >
         <Typography sx={{ color: '#fde68a', fontSize: '0.78rem', fontWeight: 600, mb: 0.4 }}>
-          Publisering som bedrift krever ekstra tilgang
+          {t('liPublishAs.s006')}
         </Typography>
         <Typography sx={{ color: 'rgba(253,230,138,0.85)', fontSize: '0.72rem', mb: 0.8 }}>
-          LinkedIn-tilkoblingen din mangler scopen som lar oss publisere på vegne av bedrifter.
-          Re-connect for å aktivere det.
+          {t('liPublishAs.s002')}
         </Typography>
         <Button
           size="small"
@@ -128,7 +130,7 @@ export default function LinkedInPublishAsSelector({
           letterSpacing: '0.06em',
         }}
       >
-        Publiser som
+        {t('liPublishAs.s004')}
       </Typography>
       <Select
         size="small"
@@ -154,7 +156,7 @@ export default function LinkedInPublishAsSelector({
               <Stack direction="row" spacing={1} alignItems="center">
                 <PersonIcon sx={{ fontSize: '1rem', color: '#94a3b8' }} />
                 <Typography sx={{ fontSize: '0.84rem', color: '#e2e8f0' }}>
-                  Min profil
+                  {t('liPublishAs.s003')}
                 </Typography>
               </Stack>
             );
@@ -186,7 +188,7 @@ export default function LinkedInPublishAsSelector({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {company.name ?? 'LinkedIn-bedrift'}
+                {company.name ?? t('liPublishAs.s001')}
               </Typography>
             </Stack>
           );
@@ -198,7 +200,7 @@ export default function LinkedInPublishAsSelector({
               <PersonIcon sx={{ fontSize: '1rem', color: '#94a3b8' }} />
             </Avatar>
           </ListItemAvatar>
-          <ListItemText primary="Min profil" secondary="Publiser som personlig konto" />
+          <ListItemText primary={t('liPublishAs.s003')} secondary={t('liPublishAs.s005')} />
         </MenuItem>
         {companies.map((company) => (
           <MenuItem
@@ -216,7 +218,7 @@ export default function LinkedInPublishAsSelector({
               </Avatar>
             </ListItemAvatar>
             <ListItemText
-              primary={company.name ?? company.vanityName ?? 'Bedrift'}
+              primary={company.name ?? company.vanityName ?? t('liPublishAs.s000')}
               secondary={company.role === 'ADMINISTRATOR' ? 'Administrator' : company.role}
             />
           </MenuItem>

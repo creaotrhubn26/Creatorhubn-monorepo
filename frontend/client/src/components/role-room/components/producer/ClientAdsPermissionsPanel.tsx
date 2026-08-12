@@ -13,7 +13,7 @@
  *   POST /api/role-room/ads-configs/:id/permissions/revoke
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
@@ -22,6 +22,8 @@ import {
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
 import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined';
 import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -55,54 +57,54 @@ interface Action {
   body: string;
 }
 
-const ACTIONS: Action[] = [
+const buildACTIONS = (t: TFn): Action[] => ([
   // TikTok
   { key: 'tiktok_audience_upload', platform: 'tiktok',
-    title: 'TikTok: Bygge målgrupper fra e-postlister',
-    body: 'Producer kan laste opp e-postlister fra deres CRM som TikTok-målgrupper. Alle e-poster SHA256-krypteres før send — TikTok ser bare hashen.' },
+    title: t('clientAdsPerm.s034'),
+    body: t('clientAdsPerm.s025') },
   { key: 'tiktok_crm_event_sync', platform: 'tiktok',
-    title: 'TikTok: Sende konverteringer (CRM Events API)',
-    body: 'Når noen registrerer seg eller betaler hos dere, sender vi hendelsen til TikTok for ad-optimalisering.' },
+    title: t('clientAdsPerm.s036'),
+    body: t('clientAdsPerm.s023') },
   { key: 'tiktok_plugin_install', platform: 'tiktok',
-    title: 'TikTok: Binde nettside/butikk til TikTok Business',
-    body: 'Domenet deres bindes som plugin slik at annonser kan sende folk rett til kassen.' },
+    title: t('clientAdsPerm.s033'),
+    body: t('clientAdsPerm.s005') },
   { key: 'tiktok_creator_invitation', platform: 'tiktok',
-    title: 'TikTok: Invitere creators på deres vegne',
-    body: 'Producer kan invitere TikTok-skapere til samarbeid. Endelig avtale går alltid gjennom dere.' },
+    title: t('clientAdsPerm.s035'),
+    body: t('clientAdsPerm.s024') },
 
   // Meta
   { key: 'meta_audience_upload', platform: 'meta',
-    title: 'Meta: Bygge Custom Audiences fra e-postlister',
-    body: 'Producer kan laste opp e-postlister som Facebook/Instagram Custom Audiences. SHA256-kryptert før send.' },
+    title: t('clientAdsPerm.s019'),
+    body: t('clientAdsPerm.s026') },
   { key: 'meta_capi_sync', platform: 'meta',
-    title: 'Meta: Sende konverteringer (Conversions API)',
-    body: 'Server-side events sendes til Meta Conversions API for å forbedre annonse-optimalisering i Facebook + Instagram.' },
+    title: t('clientAdsPerm.s021'),
+    body: t('clientAdsPerm.s032') },
   { key: 'meta_lead_sync', platform: 'meta',
-    title: 'Meta: Hente leads fra Meta Lead Ads',
-    body: 'Vi henter automatisk inn leads fra Facebook- og Instagram Lead Ads til deres CRM.' },
+    title: t('clientAdsPerm.s020'),
+    body: t('clientAdsPerm.s041') },
 
   // LinkedIn
   { key: 'linkedin_audience_upload', platform: 'linkedin',
-    title: 'LinkedIn: Bygge Matched Audiences',
-    body: 'Producer kan laste opp e-postlister som LinkedIn Matched Audiences. SHA256-kryptert før send.' },
+    title: t('clientAdsPerm.s015'),
+    body: t('clientAdsPerm.s028') },
   { key: 'linkedin_capi_sync', platform: 'linkedin',
-    title: 'LinkedIn: Sende konverteringer (Conversions API)',
-    body: 'Server-side events sendes til LinkedIn for å forbedre B2B-annonse-optimalisering.' },
+    title: t('clientAdsPerm.s017'),
+    body: t('clientAdsPerm.s031') },
   { key: 'linkedin_lead_sync', platform: 'linkedin',
-    title: 'LinkedIn: Hente leads fra Lead Gen Forms',
-    body: 'Vi henter automatisk inn leads fra LinkedIn Lead Gen Forms til deres CRM.' },
+    title: t('clientAdsPerm.s016'),
+    body: t('clientAdsPerm.s042') },
 
   // Google
   { key: 'google_customer_match', platform: 'google',
-    title: 'Google Ads: Bygge Customer Match Audiences',
-    body: 'Producer kan laste opp e-postlister som Google Customer Match-målgrupper for retargeting på Search + YouTube. SHA256-kryptert.' },
+    title: t('clientAdsPerm.s007'),
+    body: t('clientAdsPerm.s027') },
   { key: 'google_offline_conversions', platform: 'google',
-    title: 'Google Ads: Sende offline-konverteringer',
-    body: 'Konverteringer som skjer utenfor nettsiden (telefon, butikk) importeres til Google Ads for ad-optimalisering.' },
+    title: t('clientAdsPerm.s008'),
+    body: t('clientAdsPerm.s010') },
   { key: 'google_enhanced_conversions', platform: 'google',
     title: 'Google Ads: Enhanced Conversions',
-    body: 'Sender hashed kundedata (e-post/telefon) sammen med konverteringer for bedre attribution i iOS-tid.' },
-];
+    body: t('clientAdsPerm.s030') },
+]);
 
 const PLATFORM_LABEL: Record<string, { name: string; color: string }> = {
   tiktok: { name: 'TikTok', color: palette.tiktok },
@@ -121,6 +123,8 @@ export default function ClientAdsPermissionsPanel({
   configId,
   platforms = { tiktok: true, meta: true, linkedin: true, google: true },
 }: Props) {
+  const { t } = useT();
+  const ACTIONS = useMemo(() => buildACTIONS(t), [t]);
   const [state, setState] = useState<State | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +142,7 @@ export default function ClientAdsPermissionsPanel({
     try {
       const r = await fetch(`/api/role-room/ads-configs/${configId}/permissions`, { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Kunne ikke hente tillatelser');
+      if (!r.ok) throw new Error(d.error || t('clientAdsPerm.s011'));
       setState(d);
       const next: Record<string, boolean> = {};
       for (const a of visibleActions) {
@@ -172,7 +176,7 @@ export default function ClientAdsPermissionsPanel({
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Lagring feilet');
-      setSuccess('Tillatelser lagret. Producer kan nå utføre handlinger du har godkjent.');
+      setSuccess(t('clientAdsPerm.s037'));
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lagring feilet');
@@ -192,7 +196,7 @@ export default function ClientAdsPermissionsPanel({
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Tilbaketrekking feilet');
-      setSuccess('Samarbeidet er avsluttet. Alle automatiske handlinger har stoppet.');
+      setSuccess(t('clientAdsPerm.s029'));
       setRevokeOpen(false);
       await load();
     } catch (err) {
@@ -228,21 +232,21 @@ export default function ClientAdsPermissionsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              Tillatelser og vilkår
+              {t('clientAdsPerm.s038')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Bestem hva producer får lov til å gjøre på deres vegne på TikTok, Meta, LinkedIn og Google.
+              {t('clientAdsPerm.s004')}
             </Typography>
           </Box>
           {accepted ? (
             <Chip
               icon={<VerifiedUserOutlinedIcon sx={{ color: '#34d399 !important' }} />}
-              label="Godkjent"
+              label={t('clientAdsPerm.s006')}
               sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontWeight: 700 }}
             />
           ) : (
             <Chip
-              label={state?.revokedAt ? 'Trukket tilbake' : 'Venter på godkjenning'}
+              label={state?.revokedAt ? t('clientAdsPerm.s039') : t('clientAdsPerm.s040')}
               sx={{
                 bgcolor: state?.revokedAt ? 'rgba(248,113,113,0.18)' : 'rgba(251,191,36,0.18)',
                 color: state?.revokedAt ? '#f87171' : '#fbbf24',
@@ -264,14 +268,14 @@ export default function ClientAdsPermissionsPanel({
           mb: 2,
         }}>
           <Typography sx={{ fontSize: '2.2rem', fontWeight: 800, color: palette.accent, lineHeight: 1 }}>
-            {activeCount} av {totalCount}
+            {activeCount} {t('clientAdsPerm.s046')} {totalCount}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-            handlinger producer har lov til å utføre
+            {t('clientAdsPerm.s047')}
           </Typography>
           {accepted && state?.acceptedAt ? (
             <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem', mt: 1.2 }}>
-              Godkjent {new Date(state.acceptedAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })} · versjon {state.termsVersion}
+              {t('clientAdsPerm.s006')} {new Date(state.acceptedAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })} · versjon {state.termsVersion}
             </Typography>
           ) : null}
         </Box>
@@ -336,17 +340,17 @@ export default function ClientAdsPermissionsPanel({
           mb: 2,
         }}>
           <Typography sx={{ color: palette.textPrimary, fontSize: '0.92rem', fontWeight: 600, mb: 0.6 }}>
-            Vilkår for fullmakt (versjon {state?.termsVersion ?? '—'})
+            {t('clientAdsPerm.s045')} {state?.termsVersion ?? '—'})
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.84rem', mb: 1 }}>
-            Når du lagrer tillatelsene, signerer du elektronisk at du har lest og forstått hele vilkåravtalen.
+            {t('clientAdsPerm.s022')}
           </Typography>
           <Button
             onClick={() => setTermsOpen(true)}
             size="small"
             sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600, px: 0 }}
           >
-            Les hele vilkåravtalen
+            {t('clientAdsPerm.s014')}
           </Button>
         </Box>
 
@@ -362,7 +366,7 @@ export default function ClientAdsPermissionsPanel({
               '&:hover': { background: 'linear-gradient(135deg, #a855f7 0%, #b537cc 100%)' },
             }}
           >
-            {accepted ? 'Lagre endringer + bekreft vilkår' : 'Aksepter vilkår og lagre tillatelser'}
+            {accepted ? t('clientAdsPerm.s012') : t('clientAdsPerm.s000')}
           </Button>
           {accepted ? (
             <Button
@@ -371,7 +375,7 @@ export default function ClientAdsPermissionsPanel({
               startIcon={<HighlightOffOutlinedIcon />}
               sx={{ color: '#f87171', textTransform: 'none', fontWeight: 700 }}
             >
-              Avslutt samarbeid
+              {t('clientAdsPerm.s003')}
             </Button>
           ) : null}
         </Stack>
@@ -385,7 +389,7 @@ export default function ClientAdsPermissionsPanel({
         fullWidth
         PaperProps={{ sx: { bgcolor: palette.bg, color: palette.textPrimary } }}
       >
-        <DialogTitle sx={{ fontWeight: 800 }}>Vilkår (versjon {state?.termsVersion ?? '—'})</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{t('clientAdsPerm.s044')} {state?.termsVersion ?? '—'})</DialogTitle>
         <DialogContent>
           <Box sx={{
             whiteSpace: 'pre-wrap',
@@ -397,28 +401,27 @@ export default function ClientAdsPermissionsPanel({
             overflow: 'auto',
             pr: 1,
           }}>
-            {state?.termsText ?? 'Laster vilkår…'}
+            {state?.termsText ?? t('clientAdsPerm.s013')}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTermsOpen(false)} sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600 }}>
-            Lukk
+            {t('clientAdsPerm.s018')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Avslutt-bekreftelse */}
       <Dialog open={revokeOpen} onClose={() => setRevokeOpen(false)} PaperProps={{ sx: { bgcolor: palette.bg, color: palette.textPrimary } }}>
-        <DialogTitle sx={{ fontWeight: 800 }}>Vil du virkelig avslutte samarbeidet?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{t('clientAdsPerm.s043')}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: palette.textSecondary }}>
-            Alle automatiske handlinger stoppes umiddelbart på alle plattformer (TikTok, Meta, LinkedIn, Google). Producer kan ikke lenger laste opp lister, sende konverteringer eller installere plugins på deres vegne. Eksisterende annonser påvirkes ikke.
-            Du kan starte samarbeidet igjen når som helst ved å akseptere vilkårene på nytt.
+            {t('clientAdsPerm.s001')}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRevokeOpen(false)} sx={{ color: palette.textMuted, textTransform: 'none' }}>
-            Avbryt
+            {t('clientAdsPerm.s002')}
           </Button>
           <Button
             onClick={revoke}
@@ -426,7 +429,7 @@ export default function ClientAdsPermissionsPanel({
             startIcon={saving ? <CircularProgress size={16} /> : <HighlightOffOutlinedIcon />}
             sx={{ bgcolor: 'rgba(248,113,113,0.2)', color: '#f87171', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: 'rgba(248,113,113,0.3)' } }}
           >
-            Ja, avslutt samarbeidet
+            {t('clientAdsPerm.s009')}
           </Button>
         </DialogActions>
       </Dialog>

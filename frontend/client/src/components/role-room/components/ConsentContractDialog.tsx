@@ -104,6 +104,7 @@ import type { Consent, ConsentType, Candidate, CastingProject, ConsentInvitation
 import { consentService } from '../services/consentService';
 import { Z_INDEX } from '../config/zIndex';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
+import { useT } from '../../../i18n';
 
 // TikTok icon (not available in MUI)
 const TikTokIcon = () => (
@@ -204,62 +205,11 @@ interface ProductionSettings {
   materialSources: MaterialSource[];
 }
 
-// Production type labels
-const productionTypeLabels: Record<ProductionType, string> = {
-  feature_film: 'Spillefilm (kino)',
-  short_film: 'Kortfilm',
-  documentary: 'Dokumentar',
-  tv_drama: 'TV-drama',
-  tv_series: 'TV-serie',
-  tv_entertainment: 'TV-underholdning',
-  commercial: 'Reklamefilm',
-  music_video: 'Musikkvideo',
-  corporate: 'Bedriftsfilm',
-  streaming: 'Strømmeproduksjon (Netflix, etc.)',
-  student_film: 'Studentfilm/Filmskole',
-  dubbing: 'Dubbing/versjonering',
-  other: 'Annet',
-};
+// Production type labels are built in-component via t() (see useMemo)
 
-// Material source labels
-const materialSourceLabels: Record<MaterialSource, string> = {
-  set_photos: 'Stillbilder fra innspilling (filmfotograf)',
-  bts_footage: 'Behind-the-scenes video',
-  audition_tape: 'Audition-opptak (selvtape/video)',
-  production_stills: 'Produksjonsstillbilder (scene/acting)',
-  promotional: 'Promomateriell/markedsføring',
-  casting_photos: 'Casting-bilder/headshots',
-};
+// Material source labels are built in-component via t() (see useMemo)
 
-// Legal references - kilder
-const legalReferences = {
-  gdpr: {
-    name: 'GDPR (Personvernforordningen)',
-    url: 'https://lovdata.no/dokument/NL/lov/2018-06-15-38',
-    description: 'EUs personvernforordning, implementert i norsk lov',
-  },
-  personopplysningsloven: {
-    name: 'Personopplysningsloven',
-    url: 'https://lovdata.no/dokument/NL/lov/2018-06-15-38',
-    description: 'Norsk lov om behandling av personopplysninger',
-  },
-  åndsverkloven: {
-    name: 'Åndsverkloven § 104',
-    url: 'https://lovdata.no/dokument/NL/lov/2018-06-15-40/KAPITTEL_7#%C2%A7104',
-    description: 'Retten til eget bilde - portrettfoto krever samtykke',
-  },
-  datatilsynet: {
-    name: 'Datatilsynet - Samtykke',
-    url: 'https://www.datatilsynet.no/rettigheter-og-plikter/virksomhetenes-plikter/behandlingsgrunnlag/samtykke/',
-    description: 'Krav til gyldig samtykke: frivillig, spesifikt, informert, utvetydig',
-  },
-  datatilsynetBilde: {
-    name: 'Datatilsynet - Bilder',
-    url: 'https://www.datatilsynet.no/personvern-pa-ulike-omrader/kundehandtering-handel-og-medlemskap/bilder-pa-nett/',
-    description: 'Regler for bruk av bilder og video',
-  },
-  // Note: NSF/NFF tariff agreements moved to Split Sheet system for rights/compensation
-};
+// Legal references are built in-component via t() (URLs preserved, see useMemo)
 
 // Minor consent settings
 interface MinorConsentSettings {
@@ -274,57 +224,7 @@ interface MinorConsentSettings {
 // Icon component type for consent types
 type IconComponent = ComponentType<{ style?: CSSProperties }>;
 
-// Consent type configuration
-const consentTypeConfig: Record<ConsentType, {
-  IconComponent: IconComponent;
-  label: string;
-  description: string;
-  color: string;
-  defaultTitle: string;
-}> = {
-  photo_release: {
-    IconComponent: PhotoIcon,
-    label: 'Foto-samtykke',
-    description: 'Tillater bruk av fotografier tatt under produksjonen',
-    color: 'var(--role-cyan, #00d4ff)',
-    defaultTitle: 'Samtykke for bruk av fotografier',
-  },
-  video_release: {
-    IconComponent: VideoIcon,
-    label: 'Video-samtykke',
-    description: 'Tillater bruk av video-opptak fra produksjonen',
-    color: '#10b981',
-    defaultTitle: 'Samtykke for bruk av video-opptak',
-  },
-  audio_release: {
-    IconComponent: AudioIcon,
-    label: 'Lyd-samtykke',
-    description: 'Tillater bruk av lyd-opptak og stemme',
-    color: 'var(--role-violet, #8b5cf6)',
-    defaultTitle: 'Samtykke for bruk av lyd-opptak',
-  },
-  location_release: {
-    IconComponent: LocationIcon,
-    label: 'Lokasjon-samtykke',
-    description: 'Tillatelse for filming på angitt lokasjon',
-    color: '#f59e0b',
-    defaultTitle: 'Samtykke for filming på lokasjon',
-  },
-  minor_consent: {
-    IconComponent: MinorIcon,
-    label: 'Mindreårig-samtykke',
-    description: 'Foresattes samtykke for mindreårig deltaker',
-    color: '#ec4899',
-    defaultTitle: 'Foresattes samtykke for mindreårig',
-  },
-  other: {
-    IconComponent: OtherIcon,
-    label: 'Annet samtykke',
-    description: 'Egendefinert samtykketype',
-    color: '#6b7280',
-    defaultTitle: 'Generelt samtykke',
-  },
-};
+// Consent type configuration is built in-component via t() (see useMemo)
 
 export function ConsentContractDialog({
   open,
@@ -335,9 +235,73 @@ export function ConsentContractDialog({
   onConsentSent,
   onConsentUpdated,
 }: ConsentContractDialogProps) {
+  const { t } = useT();
+
+  const productionTypeLabels = useMemo(() => ({
+    feature_film: t('consentDlg.prodType.feature_film'),
+    short_film: t('consentDlg.prodType.short_film'),
+    documentary: t('consentDlg.prodType.documentary'),
+    tv_drama: t('consentDlg.prodType.tv_drama'),
+    tv_series: t('consentDlg.prodType.tv_series'),
+    tv_entertainment: t('consentDlg.prodType.tv_entertainment'),
+    commercial: t('consentDlg.prodType.commercial'),
+    music_video: t('consentDlg.prodType.music_video'),
+    corporate: t('consentDlg.prodType.corporate'),
+    streaming: t('consentDlg.prodType.streaming'),
+    student_film: t('consentDlg.prodType.student_film'),
+    dubbing: t('consentDlg.prodType.dubbing'),
+    other: t('consentDlg.prodType.other'),
+  }), [t]);
+
+  const materialSourceLabels = useMemo(() => ({
+    set_photos: t('consentDlg.material.set_photos'),
+    bts_footage: t('consentDlg.material.bts_footage'),
+    audition_tape: t('consentDlg.material.audition_tape'),
+    production_stills: t('consentDlg.material.production_stills'),
+    promotional: t('consentDlg.material.promotional'),
+    casting_photos: t('consentDlg.material.casting_photos'),
+  }), [t]);
+
+  const legalReferences = useMemo(() => ({
+    gdpr: {
+      name: t('consentDlg.legal.gdpr.name'),
+      url: 'https://lovdata.no/dokument/NL/lov/2018-06-15-38',
+      description: t('consentDlg.legal.gdpr.description'),
+    },
+    personopplysningsloven: {
+      name: t('consentDlg.legal.pol.name'),
+      url: 'https://lovdata.no/dokument/NL/lov/2018-06-15-38',
+      description: t('consentDlg.legal.pol.description'),
+    },
+    åndsverkloven: {
+      name: t('consentDlg.legal.copyright.name'),
+      url: 'https://lovdata.no/dokument/NL/lov/2018-06-15-40/KAPITTEL_7#%C2%A7104',
+      description: t('consentDlg.legal.copyright.description'),
+    },
+    datatilsynet: {
+      name: t('consentDlg.legal.dt.name'),
+      url: 'https://www.datatilsynet.no/rettigheter-og-plikter/virksomhetenes-plikter/behandlingsgrunnlag/samtykke/',
+      description: t('consentDlg.legal.dt.description'),
+    },
+    datatilsynetBilde: {
+      name: t('consentDlg.legal.dtImg.name'),
+      url: 'https://www.datatilsynet.no/personvern-pa-ulike-omrader/kundehandtering-handel-og-medlemskap/bilder-pa-nett/',
+      description: t('consentDlg.legal.dtImg.description'),
+    },
+  }), [t]);
+
+  const consentTypeConfig = useMemo(() => ({
+    photo_release: { IconComponent: PhotoIcon, label: t('consentDlg.type.photo.label'), description: t('consentDlg.type.photo.description'), color: 'var(--role-cyan, #00d4ff)', defaultTitle: t('consentDlg.type.photo.defaultTitle') },
+    video_release: { IconComponent: VideoIcon, label: t('consentDlg.type.video.label'), description: t('consentDlg.type.video.description'), color: '#10b981', defaultTitle: t('consentDlg.type.video.defaultTitle') },
+    audio_release: { IconComponent: AudioIcon, label: t('consentDlg.type.audio.label'), description: t('consentDlg.type.audio.description'), color: 'var(--role-violet, #8b5cf6)', defaultTitle: t('consentDlg.type.audio.defaultTitle') },
+    location_release: { IconComponent: LocationIcon, label: t('consentDlg.type.location.label'), description: t('consentDlg.type.location.description'), color: '#f59e0b', defaultTitle: t('consentDlg.type.location.defaultTitle') },
+    minor_consent: { IconComponent: MinorIcon, label: t('consentDlg.type.minor.label'), description: t('consentDlg.type.minor.description'), color: '#ec4899', defaultTitle: t('consentDlg.type.minor.defaultTitle') },
+    other: { IconComponent: OtherIcon, label: t('consentDlg.type.other.label'), description: t('consentDlg.type.other.description'), color: '#6b7280', defaultTitle: t('consentDlg.type.other.defaultTitle') },
+  }), [t]);
+
   // Stepper state
   const [activeStep, setActiveStep] = useState(0);
-  const steps = ['Velg type', 'Tilpass kontrakt', 'Send'];
+  const steps = useMemo(() => [t('consentDlg.step.type'), t('consentDlg.step.customize'), t('consentDlg.step.send')], [t]);
 
   // Form state
   const [consentType, setConsentType] = useState<ConsentType>('photo_release');
@@ -395,7 +359,7 @@ export function ConsentContractDialog({
     transferOutsideEEA: false,
     transferDetails: '',
     automatedDecisions: false,
-    withdrawalInfo: 'Du kan når som helst trekke tilbake ditt samtykke ved å kontakte oss på e-post eller telefon. Tilbaketrekning påvirker ikke lovligheten av behandling basert på samtykke før tilbaketrekningen.',
+    withdrawalInfo: t('consentDlg.withdrawal.default'),
   });
 
   // Minor consent settings
@@ -432,9 +396,9 @@ export function ConsentContractDialog({
     candidate?.name,
     project?.name,
     companyName,
-    'Produksjon',
-    'Juridisk',
-    'Samtykke',
+    t('consentDlg.fallback.production'),
+    t('consentDlg.mention.legal'),
+    t('consentDlg.mention.consent'),
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
   const companyLogo = useMemo(() => {
     if (!project || typeof project !== 'object') return null;
@@ -505,14 +469,14 @@ export function ConsentContractDialog({
       setGdprSettings({
         dataController: project?.name || '',
         dataControllerContact: '',
-        purpose: `Innhenting av samtykke for bruk av ${consentType === 'photo_release' ? 'fotografier' : consentType === 'video_release' ? 'video-opptak' : 'materiale'} i forbindelse med prosjektet "${project?.name || 'Produksjon'}"`,
+        purpose: t('consentDlg.purpose.default', { type: consentType === 'photo_release' ? t('consentDlg.material.photos') : consentType === 'video_release' ? t('consentDlg.material.videos') : t('consentDlg.material.generic'), project: project?.name || t('consentDlg.fallback.production') }),
         legalBasis: 'consent',
         thirdPartySharing: false,
         thirdPartyDetails: '',
         transferOutsideEEA: false,
         transferDetails: '',
         automatedDecisions: false,
-        withdrawalInfo: 'Du kan når som helst trekke tilbake ditt samtykke ved å kontakte oss på e-post eller telefon. Tilbaketrekning påvirker ikke lovligheten av behandling basert på samtykke før tilbaketrekningen.',
+        withdrawalInfo: t('consentDlg.withdrawal.default'),
       });
 
       // Reset minor settings
@@ -533,10 +497,10 @@ export function ConsentContractDialog({
       
       // Load company info from project
       if (project) {
-        setCompanyName(project.name || 'Produksjonsselskap');
+        setCompanyName(project.name || t('consentDlg.fallback.company'));
       }
     }
-  }, [open, existingConsent, project, consentType]);
+  }, [open, existingConsent, project, consentType, t]);
 
   const handleNext = () => {
     setActiveStep((prev) => Math.min(prev + 1, steps.length - 1));
@@ -555,7 +519,7 @@ export function ConsentContractDialog({
 
   const handleGenerateAndSend = async () => {
     if (!candidate || !project) {
-      setError('Mangler kandidat eller prosjekt informasjon');
+      setError(t('consentDlg.err.missingInfo'));
       return;
     }
 
@@ -585,7 +549,7 @@ export function ConsentContractDialog({
         );
         
         if (!newConsent) {
-          throw new Error('Kunne ikke opprette samtykke');
+          throw new Error(t('consentDlg.err.createConsent'));
         }
         
         consent = {
@@ -632,11 +596,11 @@ export function ConsentContractDialog({
           onConsentUpdated();
         }
       } else {
-        throw new Error('Kunne ikke generere tilgangskode');
+        throw new Error(t('consentDlg.err.generateCode'));
       }
     } catch (err) {
       console.error('Error sending consent:', err);
-      setError(err instanceof Error ? err.message : 'En feil oppstod');
+      setError(err instanceof Error ? err.message : t('consentDlg.err.generic'));
     } finally {
       setSending(false);
     }
@@ -671,21 +635,21 @@ export function ConsentContractDialog({
 
     // Helper to get territory text
     const getTerritoryText = () => {
-      if (usageRights.territoryWorldwide) return 'Verdensomspennende';
-      if (usageRights.territoryNordic) return 'Norden (Norge, Sverige, Danmark, Finland, Island)';
-      return 'Norge';
+      if (usageRights.territoryWorldwide) return t('consentDlg.territory.worldwide');
+      if (usageRights.territoryNordic) return t('consentDlg.territory.nordic');
+      return t('consentDlg.territory.norway');
     };
 
     // Helper to get retention text
     const getRetentionText = () => {
       switch (retentionSettings.retentionPeriod) {
-        case 'project_duration': return 'Prosjektets varighet';
-        case '1_year': return '1 år';
-        case '3_years': return '3 år';
-        case '5_years': return '5 år';
-        case 'indefinite': return 'Uten tidsbegrensning';
-        case 'custom': return `${retentionSettings.customPeriodMonths || 0} måneder`;
-        default: return 'Ikke spesifisert';
+        case 'project_duration': return t('consentDlg.retention.projectDuration');
+        case '1_year': return t('consentDlg.retention.1year');
+        case '3_years': return t('consentDlg.retention.3years');
+        case '5_years': return t('consentDlg.retention.5years');
+        case 'indefinite': return t('consentDlg.retention.indefinite');
+        case 'custom': return t('consentDlg.retention.months', { n: retentionSettings.customPeriodMonths || 0 });
+        default: return t('consentDlg.notSpecified');
       }
     };
 
@@ -736,11 +700,9 @@ export function ConsentContractDialog({
               )}
               <Box>
                 <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
-                  {gdprSettings.dataController || companyName || project?.name || 'Produksjonsselskap'}
+                  {gdprSettings.dataController || companyName || project?.name || t('consentDlg.fallback.company')}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Samtykkekontrakt
-                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.preview.subtitle')}</Typography>
               </Box>
             </Box>
             <Chip
@@ -775,39 +737,31 @@ export function ConsentContractDialog({
           }}>
             <GavelIcon sx={{ color: '#0284c7', fontSize: 20, mt: 0.3 }} />
             <Box>
-              <Typography variant="body2" sx={{ color: '#0369a1', fontWeight: 600, mb: 0.5 }}>
-                Juridisk grunnlag
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#0c4a6e', lineHeight: 1.5, display: 'block' }}>
-                Dette samtykket er utformet i henhold til:
-              </Typography>
+              <Typography variant="body2" sx={{ color: '#0369a1', fontWeight: 600, mb: 0.5 }}>{t('consentDlg.preview.legalBasis')}</Typography>
+              <Typography variant="caption" sx={{ color: '#0c4a6e', lineHeight: 1.5, display: 'block' }}>{t('consentDlg.preview.compliesWith')}</Typography>
               <Box component="ul" sx={{ m: 0, pl: 2, '& li': { color: '#0c4a6e', fontSize: '0.7rem', lineHeight: 1.4 } }}>
-                <li><strong>GDPR</strong> (EUs personvernforordning) og <strong>Personopplysningsloven</strong></li>
-                <li><strong>Åndsverkloven § 104</strong> - Retten til eget bilde</li>
-                <li><strong>Datatilsynets veileder</strong> for samtykke til bilder/video</li>
+                <li><strong>GDPR</strong> {t('consentDlg.preview.gdprParen')} <strong>{t('consentDlg.law.personalData')}</strong></li>
+                <li><strong>{t('consentDlg.law.copyright')}</strong> - {t('consentDlg.preview.rightOwnImage')}</li>
+                <li><strong>{t('consentDlg.law.dtGuide')}</strong> {t('consentDlg.preview.forConsentImages')}</li>
               </Box>
-              <Typography variant="caption" sx={{ color: '#0369a1', mt: 1, display: 'block' }}>
-                Du har rett til å trekke tilbake samtykket når som helst.
-              </Typography>
+              <Typography variant="caption" sx={{ color: '#0369a1', mt: 1, display: 'block' }}>{t('consentDlg.preview.rightToWithdraw')}</Typography>
             </Box>
           </Box>
 
           {/* Production Info Section */}
           <Box sx={{ mb: 4, p: 2, bgcolor: '#fef3c7', borderRadius: 1, border: '1px solid #fcd34d' }}>
-            <Typography variant="subtitle2" sx={{ color: '#92400e', fontWeight: 600, mb: 1.5 }}>
-              Produksjonsinformasjon
-            </Typography>
+            <Typography variant="subtitle2" sx={{ color: '#92400e', fontWeight: 600, mb: 1.5 }}>{t('consentDlg.preview.productionInfo')}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
               <Box>
-                <Typography variant="caption" sx={{ color: '#78350f', fontWeight: 600 }}>Type produksjon:</Typography>
+                <Typography variant="caption" sx={{ color: '#78350f', fontWeight: 600 }}>{t('consentDlg.preview.productionType')}</Typography>
                 <Typography variant="body2" sx={{ color: '#451a03' }}>
                   {productionTypeLabels[productionSettings.productionType]}
                 </Typography>
               </Box>
               <Box>
-                <Typography variant="caption" sx={{ color: '#78350f', fontWeight: 600 }}>Materialet gjelder:</Typography>
+                <Typography variant="caption" sx={{ color: '#78350f', fontWeight: 600 }}>{t('consentDlg.preview.materialCovers')}</Typography>
                 <Typography variant="body2" sx={{ color: '#451a03' }}>
-                  {getMaterialSourcesText() || 'Ikke spesifisert'}
+                  {getMaterialSourcesText() || t('consentDlg.notSpecified')}
                 </Typography>
               </Box>
             </Box>
@@ -815,16 +769,12 @@ export function ConsentContractDialog({
 
           {/* Parties Section */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-              Parter
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>{t('consentDlg.preview.parties')}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
               <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: 1, border: '1px solid #e2e8f0' }}>
-                <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Behandlingsansvarlig
-                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('consentDlg.preview.dataController')}</Typography>
                 <Typography variant="body1" sx={{ fontWeight: 600, mt: 0.5 }}>
-                  {gdprSettings.dataController || project?.name || 'Produksjonsselskap'}
+                  {gdprSettings.dataController || project?.name || t('consentDlg.fallback.company')}
                 </Typography>
                 {gdprSettings.dataControllerContact && (
                   <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
@@ -834,10 +784,10 @@ export function ConsentContractDialog({
               </Box>
               <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: 1, border: '1px solid #e2e8f0' }}>
                 <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {minorSettings.isMinor ? 'Deltaker (mindreårig)' : 'Deltaker'}
+                  {minorSettings.isMinor ? t('consentDlg.preview.participantMinor') : t('consentDlg.preview.participant')}
                 </Typography>
                 <Typography variant="body1" sx={{ fontWeight: 600, mt: 0.5 }}>
-                  {candidate?.name || 'Navn'}
+                  {candidate?.name || t('consentDlg.preview.name')}
                 </Typography>
                 {candidate?.contactInfo.email && (
                   <Typography variant="body2" sx={{ color: '#64748b' }}>
@@ -850,14 +800,12 @@ export function ConsentContractDialog({
             {/* Guardian info for minors */}
             {minorSettings.isMinor && minorSettings.guardianName && (
               <Box sx={{ mt: 2, p: 2, bgcolor: '#fef3c7', borderRadius: 1, border: '1px solid #fcd34d' }}>
-                <Typography variant="caption" sx={{ color: '#92400e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Foresatt / Verge
-                </Typography>
+                <Typography variant="caption" sx={{ color: '#92400e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('consentDlg.preview.guardian')}</Typography>
                 <Typography variant="body1" sx={{ fontWeight: 600, mt: 0.5, color: '#78350f' }}>
                   {minorSettings.guardianName}
                 </Typography>
                 <Typography variant="body2" sx={{ color: '#92400e' }}>
-                  {minorSettings.guardianRelation === 'parent' ? 'Forelder' : minorSettings.guardianRelation === 'guardian' ? 'Verge' : 'Foresatt'}
+                  {minorSettings.guardianRelation === 'parent' ? t('consentDlg.relation.parent') : minorSettings.guardianRelation === 'guardian' ? t('consentDlg.relation.guardian') : t('consentDlg.relation.otherGuardian')}
                 </Typography>
               </Box>
             )}
@@ -865,9 +813,7 @@ export function ConsentContractDialog({
 
           {/* Description/Purpose */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-              Formål med behandlingen
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>{t('consentDlg.preview.purposeHeading')}</Typography>
             <Typography variant="body1" sx={{ color: '#475569', lineHeight: 1.7 }}>
               {description || config.description}
             </Typography>
@@ -875,44 +821,36 @@ export function ConsentContractDialog({
 
           {/* Usage Rights - What the consent covers */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-              Hva samtykket omfatter
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>{t('consentDlg.preview.whatCovered')}</Typography>
             
             {/* Production use */}
             <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>
-                Bruksformål:
-              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>{t('consentDlg.preview.usagePurposes')}</Typography>
               <Box component="ul" sx={{ pl: 2, color: '#475569', '& li': { mb: 0.5 } }}>
-                {usageRights.productionUse && <li>Bruk i produksjonen «{project?.name || 'Prosjektnavn'}»</li>}
-                {usageRights.promotionalUse && <li>Markedsføring av produksjonen</li>}
-                {usageRights.behindTheScenes && <li>Making-of / dokumentasjon fra innspilling</li>}
+                {usageRights.productionUse && <li>{t('consentDlg.preview.usedInProduction', { project: project?.name || t('consentDlg.preview.projectName') })}</li>}
+                {usageRights.promotionalUse && <li>{t('consentDlg.usage.promotion')}</li>}
+                {usageRights.behindTheScenes && <li>{t('consentDlg.preview.makingOf')}</li>}
               </Box>
             </Box>
 
             {/* Publishing channels */}
             <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>
-                Publiseringskanaler:
-              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>{t('consentDlg.preview.publishingChannels')}</Typography>
               <Box component="ul" sx={{ pl: 2, color: '#475569', '& li': { mb: 0.5 } }}>
-                {usageRights.internalUse && <li>Intern bruk (ikke offentlig publisert)</li>}
-                {usageRights.passwordProtectedWeb && <li>Passordbeskyttet nettside</li>}
-                {usageRights.webPublishing && <li>Åpen nettside (offentlig tilgjengelig)</li>}
-                {usageRights.printMedia && <li>Trykte materialer (brosjyrer, plakater, etc.)</li>}
-                {usageRights.pressRelease && <li>Pressemeldinger og medieomtale</li>}
+                {usageRights.internalUse && <li>{t('consentDlg.preview.internalUse')}</li>}
+                {usageRights.passwordProtectedWeb && <li>{t('consentDlg.passwordWeb')}</li>}
+                {usageRights.webPublishing && <li>{t('consentDlg.openWeb')}</li>}
+                {usageRights.printMedia && <li>{t('consentDlg.preview.printMaterials')}</li>}
+                {usageRights.pressRelease && <li>{t('consentDlg.pressRelease')}</li>}
                 {usageRights.socialMedia.enabled && getSelectedSocialMedia().length > 0 && (
-                  <li>Sosiale medier: {getSelectedSocialMedia().join(', ')}</li>
+                  <li>{t('consentDlg.preview.socialMediaLabel')}: {getSelectedSocialMedia().join(', ')}</li>
                 )}
               </Box>
             </Box>
 
             {/* Territory */}
             <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>
-                Geografisk omfang:
-              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>{t('consentDlg.preview.geoScope')}</Typography>
               <Typography variant="body2" sx={{ color: '#475569' }}>
                 {getTerritoryText()}
               </Typography>
@@ -921,13 +859,11 @@ export function ConsentContractDialog({
             {/* Special rights */}
             {(usageRights.editingAllowed || usageRights.nameCredit || usageRights.voiceoverUse) && (
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>
-                  Spesielle rettigheter:
-                </Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#334155' }}>{t('consentDlg.preview.specialRights')}</Typography>
                 <Box component="ul" sx={{ pl: 2, color: '#475569', '& li': { mb: 0.5 } }}>
-                  {usageRights.editingAllowed && <li>Redigering og beskjæring av materialet tillatt</li>}
-                  {usageRights.nameCredit && <li>Navn kan brukes ved kreditering</li>}
-                  {usageRights.voiceoverUse && <li>Stemme kan brukes til voiceover/dubbing</li>}
+                  {usageRights.editingAllowed && <li>{t('consentDlg.preview.editingAllowed')}</li>}
+                  {usageRights.nameCredit && <li>{t('consentDlg.nameCredit')}</li>}
+                  {usageRights.voiceoverUse && <li>{t('consentDlg.voiceover')}</li>}
                 </Box>
               </Box>
             )}
@@ -935,16 +871,12 @@ export function ConsentContractDialog({
 
           {/* Data Retention */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-              Lagringstid
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>{t('consentDlg.preview.retentionHeading')}</Typography>
             <Typography variant="body2" sx={{ color: '#475569' }}>
-              Materialet vil bli lagret i: <strong>{getRetentionText()}</strong>
+              {t('consentDlg.preview.storedFor')} <strong>{getRetentionText()}</strong>
             </Typography>
             {retentionSettings.deleteAfterProject && (
-              <Typography variant="body2" sx={{ color: '#475569', mt: 0.5 }}>
-                Materialet vil bli slettet etter prosjektslutt.
-              </Typography>
+              <Typography variant="body2" sx={{ color: '#475569', mt: 0.5 }}>{t('consentDlg.preview.deletedAfter')}</Typography>
             )}
           </Box>
 
@@ -964,42 +896,37 @@ export function ConsentContractDialog({
           {gdprSettings.transferOutsideEEA && (
             <Box sx={{ mb: 4, p: 2, bgcolor: '#fef9c3', borderRadius: 1, border: '1px solid #fde047' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#854d0e', display: 'flex', alignItems: 'center', gap: 1 }}>
-                <WarningIcon sx={{ fontSize: 18 }} /> Overføring utenfor EØS
-              </Typography>
+                <WarningIcon sx={{ fontSize: 18 }} />{t('consentDlg.transferEEA')}</Typography>
               <Typography variant="body2" sx={{ color: '#713f12' }}>
-                {gdprSettings.transferDetails || 'Opplysninger kan overføres til land utenfor EØS-området med tilstrekkelige garantier.'}
+                {gdprSettings.transferDetails || t('consentDlg.preview.transferDefault')}
               </Typography>
             </Box>
           )}
 
           {/* Rights Section - Dine rettigheter */}
           <Box sx={{ mb: 4, p: 3, bgcolor: '#f0fdf4', borderRadius: 1, border: '1px solid #86efac' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#166534' }}>
-              Dine rettigheter
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#166534' }}>{t('consentDlg.preview.yourRights')}</Typography>
             <Box component="ul" sx={{ pl: 2, color: '#166534', '& li': { mb: 1, lineHeight: 1.5 } }}>
-              <li><strong>Rett til innsyn:</strong> Du kan be om å få se hvilke opplysninger vi har om deg.</li>
-              <li><strong>Rett til retting:</strong> Du kan be om at uriktige opplysninger rettes.</li>
-              <li><strong>Rett til sletting:</strong> Du kan be om at opplysningene slettes.</li>
-              <li><strong>Rett til å trekke samtykke:</strong> {gdprSettings.withdrawalInfo}</li>
-              <li><strong>Rett til å klage:</strong> Du kan klage til Datatilsynet hvis du mener rettighetene dine er krenket.</li>
+              <li><strong>{t('consentDlg.rights.accessLabel')}</strong> {t('consentDlg.rights.accessText')}</li>
+              <li><strong>{t('consentDlg.rights.rectLabel')}</strong> {t('consentDlg.rights.rectText')}</li>
+              <li><strong>{t('consentDlg.rights.eraseLabel')}</strong> {t('consentDlg.rights.eraseText')}</li>
+              <li><strong>{t('consentDlg.rights.withdrawLabel')}</strong> {gdprSettings.withdrawalInfo}</li>
+              <li><strong>{t('consentDlg.rights.complainLabel')}</strong> {t('consentDlg.rights.complainText')}</li>
             </Box>
           </Box>
 
           {/* Terms */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-              Erklæring
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: config.color }}>{t('consentDlg.preview.declaration')}</Typography>
             <Box component="ul" sx={{ pl: 2, color: '#475569', '& li': { mb: 1.5, lineHeight: 1.6 } }}>
-              <li>Jeg gir herved mitt frivillige samtykke til bruk av {consentType === 'photo_release' ? 'fotografier' : consentType === 'video_release' ? 'video-opptak' : consentType === 'audio_release' ? 'lyd-opptak' : 'materialet'} som beskrevet ovenfor.</li>
-              <li>Jeg bekrefter at jeg har mottatt og forstått informasjonen om behandling av mine personopplysninger.</li>
+              <li>{t('consentDlg.decl.voluntary', { material: consentType === 'photo_release' ? t('consentDlg.material.photos') : consentType === 'video_release' ? t('consentDlg.material.videos') : consentType === 'audio_release' ? t('consentDlg.material.audio') : t('consentDlg.material.definite') })}</li>
+              <li>{t('consentDlg.decl.received')}</li>
               {minorSettings.isMinor ? (
-                <li>Jeg bekrefter at jeg er foresatt/verge for den mindreårige og har myndighet til å gi samtykke på vegne av barnet.</li>
+                <li>{t('consentDlg.decl.guardianAuth')}</li>
               ) : (
-                <li>Jeg bekrefter at jeg har fylt 18 år og har rettslig handleevne til å gi dette samtykket.</li>
+                <li>{t('consentDlg.decl.adult')}</li>
               )}
-              <li>Jeg forstår at jeg kan trekke dette samtykket tilbake når som helst ved å kontakte behandlingsansvarlig.</li>
+              <li>{t('consentDlg.decl.canWithdraw')}</li>
             </Box>
           </Box>
 
@@ -1011,9 +938,7 @@ export function ConsentContractDialog({
           }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: minorSettings.isMinor && minorSettings.minorCanCoSign ? '1fr 1fr 1fr' : '1fr 1fr', gap: 3 }}>
               <Box>
-                <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
-                  Dato
-                </Typography>
+                <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>{t('consentDlg.preview.date')}</Typography>
                 <Box sx={{ 
                   height: 40, 
                   borderBottom: '1px solid #1c2128',
@@ -1028,7 +953,7 @@ export function ConsentContractDialog({
               </Box>
               <Box>
                 <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
-                  {minorSettings.isMinor ? 'Foresattes signatur' : 'Signatur'}
+                  {minorSettings.isMinor ? t('consentDlg.preview.guardianSignature') : t('consentDlg.preview.signature')}
                 </Typography>
                 <Box sx={{ 
                   height: 60, 
@@ -1039,16 +964,12 @@ export function ConsentContractDialog({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                  <Typography variant="body2" sx={{ color: '#92400e', fontStyle: 'italic' }}>
-                    [Digital signatur vil vises her]
-                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#92400e', fontStyle: 'italic' }}>{t('consentDlg.preview.digitalSigHere')}</Typography>
                 </Box>
               </Box>
               {minorSettings.isMinor && minorSettings.minorCanCoSign && (
                 <Box>
-                  <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>
-                    Barnets signatur (13+ år)
-                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#64748b', mb: 2 }}>{t('consentDlg.preview.childSignature')}</Typography>
                   <Box sx={{ 
                     height: 60, 
                     borderBottom: '1px solid #1c2128',
@@ -1058,9 +979,7 @@ export function ConsentContractDialog({
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    <Typography variant="body2" sx={{ color: '#9d174d', fontStyle: 'italic' }}>
-                      [Digital signatur]
-                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#9d174d', fontStyle: 'italic' }}>{t('consentDlg.preview.digitalSig')}</Typography>
                   </Box>
                 </Box>
               )}
@@ -1076,15 +995,13 @@ export function ConsentContractDialog({
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
               <VerifiedIcon sx={{ color: '#10b981', fontSize: 18 }} />
-              <Typography variant="caption" sx={{ color: '#64748b' }}>
-                Sikret med digital signatur via The Role Room
-              </Typography>
+              <Typography variant="caption" sx={{ color: '#64748b' }}>{t('consentDlg.preview.securedBy')}</Typography>
             </Box>
             <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
-              Dokument-ID: {existingConsent?.id || 'Ny kontrakt'}
+              {t('consentDlg.preview.docId')} {existingConsent?.id || t('consentDlg.preview.newContract')}
             </Typography>
             <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 1 }}>
-              Produksjonstype: {productionTypeLabels[productionSettings.productionType]}
+              {t('consentDlg.preview.productionTypeFooter')} {productionTypeLabels[productionSettings.productionType]}
             </Typography>
             
             {/* Legal references */}
@@ -1095,9 +1012,7 @@ export function ConsentContractDialog({
               textAlign: 'left',
               px: 2,
             }}>
-              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block', mb: 1 }}>
-                Juridiske referanser:
-              </Typography>
+              <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block', mb: 1 }}>{t('consentDlg.preview.legalRefs')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center' }}>
                 <Chip 
                   label="GDPR" 
@@ -1105,12 +1020,12 @@ export function ConsentContractDialog({
                   sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dbeafe', color: '#1e40af' }} 
                 />
                 <Chip 
-                  label="Personopplysningsloven" 
+                  label={t('consentDlg.legal.pol.name')} 
                   size="small" 
                   sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dbeafe', color: '#1e40af' }} 
                 />
                 <Chip 
-                  label="Åndsverkloven § 104" 
+                  label={t('consentDlg.law.copyright')} 
                   size="small" 
                   sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#dcfce7', color: '#166534' }} 
                 />
@@ -1121,11 +1036,9 @@ export function ConsentContractDialog({
                 />
               </Box>
               <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mt: 1, textAlign: 'center', fontSize: '0.6rem' }}>
-                Kilder: datatilsynet.no • lovdata.no
+                {t('consentDlg.preview.sourcesLabel')} datatilsynet.no • lovdata.no
               </Typography>
-              <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mt: 0.5, textAlign: 'center', fontSize: '0.6rem', fontStyle: 'italic' }}>
-                Tariffavtaler (NSF/NFF) og vederlagsordninger håndteres i Split Sheet
-              </Typography>
+              <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mt: 0.5, textAlign: 'center', fontSize: '0.6rem', fontStyle: 'italic' }}>{t('consentDlg.preview.tariffNote')}</Typography>
             </Box>
           </Box>
         </Box>
@@ -1193,18 +1106,18 @@ return (
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {existingConsent ? 'Send samtykkekontrakt' : 'Ny samtykkekontrakt'}
+              {existingConsent ? t('consentDlg.title.send') : t('consentDlg.title.new')}
             </Typography>
             {candidate && (
               <Typography variant="body2" sx={{ color: 'var(--dialog-text)' }}>
-                Til: {candidate.name}
+                {t('consentDlg.toLabel')} {candidate.name}
               </Typography>
             )}
           </Box>
         </Box>
         <IconButton
           onClick={onClose}
-          aria-label="Lukk"
+          aria-label={t('consentDlg.aria.close')}
           sx={{
             color: 'var(--dialog-text)',
             border: '1px solid var(--dialog-border-color)',
@@ -1263,11 +1176,11 @@ return (
                 size="small" 
                 onClick={handleCopyLink}
               >
-                {copySuccess ? 'Kopiert!' : 'Kopier lenke'}
+                {copySuccess ? t('consentDlg.copied') : t('consentDlg.copyLink')}
               </Button>
             }
           >
-            Samtykkekontrakt sendt! Tilgangskode: <strong>{generatedCode}</strong>
+            {t('consentDlg.alert.sentCode')} <strong>{generatedCode}</strong>
           </Alert>
         )}
 
@@ -1277,7 +1190,7 @@ return (
           {activeStep === 0 && (
             <Box>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
-                Velg type samtykke du vil sende til {candidate?.name || 'kandidaten'}.
+                {t('consentDlg.step0.prompt', { name: candidate?.name || t('consentDlg.step0.candidateFallback') })}
               </Typography>
               
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2 }}>
@@ -1341,12 +1254,12 @@ return (
                       onClick={() => setShowLegalReferences(!showLegalReferences)}
                       sx={{ fontSize: '0.7rem' }}
                     >
-                      {showLegalReferences ? 'Skjul kilder' : 'Vis kilder'}
+                      {showLegalReferences ? t('consentDlg.hideSources') : t('consentDlg.showSources')}
                     </Button>
                   }
                 >
                   <Typography variant="body2">
-                    Utformet iht. <strong>GDPR</strong>, <strong>Personopplysningsloven</strong>, <strong>Åndsverkloven § 104</strong> og <strong>NSF-tariffavtaler</strong>.
+                    {t('consentDlg.alert.compliesPrefix')} <strong>GDPR</strong>, <strong>{t('consentDlg.law.personalData')}</strong>, <strong>{t('consentDlg.law.copyright')}</strong> {t('consentDlg.alert.andLabel')} <strong>{t('consentDlg.law.nsfTariff')}</strong>.
                   </Typography>
                 </Alert>
 
@@ -1359,9 +1272,7 @@ return (
                     border: '1px solid rgba(16, 185, 129, 0.3)',
                     borderRadius: 2,
                   }}>
-                    <Typography variant="subtitle2" sx={{ color: '#10b981', mb: 1.5, fontWeight: 600 }}>
-                      📚 Juridiske kilder og referanser
-                    </Typography>
+                    <Typography variant="subtitle2" sx={{ color: '#10b981', mb: 1.5, fontWeight: 600 }}>{t('consentDlg.legalSourcesTitle')}</Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
                       {Object.entries(legalReferences).map(([key, ref]) => (
                         <Box 
@@ -1406,9 +1317,9 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <VideoIcon sx={{ color: '#f59e0b' }} />
-                      <Typography fontWeight={600}>Produksjonstype og materialkilde</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.production')}</Typography>
                       <Chip 
-                        label="Viktig" 
+                        label={t('consentDlg.chip.important')} 
                         size="small" 
                         sx={{ bgcolor: '#f59e0b30', color: '#f59e0b', fontSize: '0.7rem', height: 20 }} 
                       />
@@ -1418,9 +1329,7 @@ return (
                     <Stack spacing={2.5}>
                       {/* Production Type */}
                       <Box>
-                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1.5 }}>
-                          Type produksjon
-                        </Typography>
+                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1.5 }}>{t('consentDlg.field.productionType')}</Typography>
                         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1 }}>
                           {(Object.entries(productionTypeLabels) as [ProductionType, string][]).map(([type, label]) => (
                             <Chip
@@ -1443,11 +1352,8 @@ return (
                       {/* Material Source - What kind of material */}
                       <Box>
                         <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <PhotoIcon sx={{ fontSize: 18 }} /> Hvilken type materiale gjelder samtykket?
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1.5, display: 'block' }}>
-                          Ref. Åndsverkloven § 104 og Datatilsynets veileder om bilder
-                        </Typography>
+                          <PhotoIcon sx={{ fontSize: 18 }} />{t('consentDlg.field.materialQuestion')}</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1.5, display: 'block' }}>{t('consentDlg.field.materialRef')}</Typography>
                         <FormGroup>
                           {(Object.entries(materialSourceLabels) as [MaterialSource, string][]).map(([source, label]) => (
                             <FormControlLabel
@@ -1481,7 +1387,7 @@ return (
                       {/* Note about rights management */}
                       <Alert severity="info" sx={{ borderRadius: 1 }}>
                         <Typography variant="body2">
-                          <strong>Tariffavtaler og rettigheter:</strong> Fagforeningsavtaler (NSF/NFF) og vederlagsordninger håndteres i Split Sheet-systemet, ikke i samtykkekontrakter.
+                          <strong>{t('consentDlg.info.tariffLabel')}</strong> {t('consentDlg.info.tariffText')}
                         </Typography>
                       </Alert>
                     </Stack>
@@ -1503,18 +1409,18 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <EditIcon sx={{ color: config.color }} />
-                      <Typography fontWeight={600}>Grunnleggende informasjon</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.basic')}</Typography>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
                     <Stack spacing={2}>
                       <TextField
-                        label="Tittel på samtykke"
+                        label={t('consentDlg.field.title')}
                         value={customTitle}
                         onChange={(e) => setCustomTitle(e.target.value)}
                         placeholder={config.defaultTitle}
                         fullWidth
-                        helperText="Tydelig tittel som beskriver hva samtykket gjelder"
+                        helperText={t('consentDlg.field.titleHelp')}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             color: '#fff',
@@ -1528,14 +1434,14 @@ return (
                       />
 
                       <TextField
-                        label="Beskrivelse av formål"
+                        label={t('consentDlg.field.description')}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder={config.description}
                         multiline
                         rows={3}
                         fullWidth
-                        helperText="Beskriv presist hva materialet skal brukes til (GDPR krav: spesifikt formål)"
+                        helperText={t('consentDlg.field.descHelp')}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             color: '#fff',
@@ -1566,7 +1472,7 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <VerifiedIcon sx={{ color: '#10b981' }} />
-                      <Typography fontWeight={600}>Bruksrettigheter</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.usage')}</Typography>
                       <Chip 
                         label="GDPR" 
                         size="small" 
@@ -1579,8 +1485,7 @@ return (
                       {/* Production purposes */}
                       <Box>
                         <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <VideoIcon sx={{ fontSize: 18 }} /> Produksjonsformål
-                        </Typography>
+                          <VideoIcon sx={{ fontSize: 18 }} />{t('consentDlg.usage.productionPurposes')}</Typography>
                         <FormGroup>
                           <FormControlLabel
                             control={
@@ -1590,7 +1495,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Bruk i selve produksjonen"
+                            label={t('consentDlg.usage.inProduction')}
                             sx={{ color: '#fff' }}
                           />
                           <FormControlLabel
@@ -1601,7 +1506,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Markedsføring av produksjonen"
+                            label={t('consentDlg.usage.promotion')}
                             sx={{ color: '#fff' }}
                           />
                           <FormControlLabel
@@ -1612,7 +1517,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Making-of / bak kulissene"
+                            label={t('consentDlg.usage.behindScenes')}
                             sx={{ color: '#fff' }}
                           />
                         </FormGroup>
@@ -1623,8 +1528,7 @@ return (
                       {/* Web publishing */}
                       <Box>
                         <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <WebIcon sx={{ fontSize: 18 }} /> Nettpublisering
-                        </Typography>
+                          <WebIcon sx={{ fontSize: 18 }} />{t('consentDlg.usage.webPublishing')}</Typography>
                         <FormGroup>
                           <FormControlLabel
                             control={
@@ -1634,7 +1538,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Kun intern bruk (ikke publisert)"
+                            label={t('consentDlg.usage.internalOnly')}
                             sx={{ color: '#fff' }}
                           />
                           <FormControlLabel
@@ -1645,7 +1549,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Passordbeskyttet nettside"
+                            label={t('consentDlg.passwordWeb')}
                             sx={{ color: '#fff' }}
                           />
                           <FormControlLabel
@@ -1656,7 +1560,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Åpen nettside (offentlig tilgjengelig)"
+                            label={t('consentDlg.openWeb')}
                             sx={{ color: '#fff' }}
                           />
                         </FormGroup>
@@ -1667,8 +1571,7 @@ return (
                       {/* Social media */}
                       <Box>
                         <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <PublicIcon sx={{ fontSize: 18 }} /> Sosiale medier
-                        </Typography>
+                          <PublicIcon sx={{ fontSize: 18 }} />{t('consentDlg.usage.socialMedia')}</Typography>
                         <FormControlLabel
                           control={
                             <Switch 
@@ -1683,7 +1586,7 @@ return (
                               }}
                             />
                           }
-                          label="Tillat deling på sosiale medier"
+                          label={t('consentDlg.usage.allowSocial')}
                           sx={{ color: '#fff', mb: 1 }}
                         />
                         
@@ -1728,8 +1631,7 @@ return (
                       {/* Print media */}
                       <Box>
                         <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <PrintIcon sx={{ fontSize: 18 }} /> Trykte medier
-                        </Typography>
+                          <PrintIcon sx={{ fontSize: 18 }} />{t('consentDlg.usage.printMedia')}</Typography>
                         <FormGroup>
                           <FormControlLabel
                             control={
@@ -1739,7 +1641,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Trykksaker (brosjyrer, plakater, etc.)"
+                            label={t('consentDlg.usage.printedMatter')}
                             sx={{ color: '#fff' }}
                           />
                           <FormControlLabel
@@ -1750,7 +1652,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Pressemeldinger og medieomtale"
+                            label={t('consentDlg.pressRelease')}
                             sx={{ color: '#fff' }}
                           />
                         </FormGroup>
@@ -1774,16 +1676,14 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <PublicIcon sx={{ color: '#f59e0b' }} />
-                      <Typography fontWeight={600}>Geografisk omfang og spesielle rettigheter</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.territory')}</Typography>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
                     <Stack spacing={2}>
                       {/* Territory */}
                       <Box>
-                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                          Geografisk bruksområde
-                        </Typography>
+                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>{t('consentDlg.field.geoArea')}</Typography>
                         <FormControl component="fieldset">
                           <RadioGroup
                             value={usageRights.territoryWorldwide ? 'worldwide' : usageRights.territoryNordic ? 'nordic' : 'norway'}
@@ -1800,19 +1700,19 @@ return (
                             <FormControlLabel 
                               value="norway" 
                               control={<Radio sx={{ color: config.color, '&.Mui-checked': { color: config.color } }} />} 
-                              label="Kun Norge" 
+                              label={t('consentDlg.territory.norwayOnly')} 
                               sx={{ color: '#fff' }}
                             />
                             <FormControlLabel 
                               value="nordic" 
                               control={<Radio sx={{ color: config.color, '&.Mui-checked': { color: config.color } }} />} 
-                              label="Norden (Norge, Sverige, Danmark, Finland, Island)" 
+                              label={t('consentDlg.territory.nordic')} 
                               sx={{ color: '#fff' }}
                             />
                             <FormControlLabel 
                               value="worldwide" 
                               control={<Radio sx={{ color: config.color, '&.Mui-checked': { color: config.color } }} />} 
-                              label="Verdensomspennende" 
+                              label={t('consentDlg.territory.worldwide')} 
                               sx={{ color: '#fff' }}
                             />
                           </RadioGroup>
@@ -1823,9 +1723,7 @@ return (
 
                       {/* Special rights */}
                       <Box>
-                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                          Spesielle rettigheter
-                        </Typography>
+                        <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>{t('consentDlg.field.specialRights')}</Typography>
                         <FormGroup>
                           <FormControlLabel
                             control={
@@ -1835,7 +1733,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Tillater redigering og beskjæring av materialet"
+                            label={t('consentDlg.usage.editingCrop')}
                             sx={{ color: '#fff' }}
                           />
                           <FormControlLabel
@@ -1846,7 +1744,7 @@ return (
                                 sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                               />
                             }
-                            label="Navn kan brukes ved kreditering"
+                            label={t('consentDlg.nameCredit')}
                             sx={{ color: '#fff' }}
                           />
                           {(consentType === 'video_release' || consentType === 'audio_release') && (
@@ -1858,7 +1756,7 @@ return (
                                   sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                                 />
                               }
-                              label="Stemme kan brukes til voiceover/dubbing"
+                              label={t('consentDlg.voiceover')}
                               sx={{ color: '#fff' }}
                             />
                           )}
@@ -1883,7 +1781,7 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <StorageIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
-                      <Typography fontWeight={600}>Lagringstid og sletting</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.retention')}</Typography>
                       <Chip 
                         label="GDPR" 
                         size="small" 
@@ -1894,11 +1792,11 @@ return (
                   <AccordionDetails>
                     <Stack spacing={2}>
                       <FormControl fullWidth>
-                        <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lagringsperiode</InputLabel>
+                        <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.field.retentionPeriod')}</InputLabel>
                         <Select
                           value={retentionSettings.retentionPeriod}
                           onChange={(e) => setRetentionSettings({...retentionSettings, retentionPeriod: e.target.value as RetentionSettings['retentionPeriod']})}
-                          label="Lagringsperiode"
+                          label={t('consentDlg.field.retentionPeriod')}
                           MenuProps={consentMenuProps}
                           sx={{
                             color: '#fff',
@@ -1907,18 +1805,18 @@ return (
                             '& .MuiSvgIcon-root': { color: '#fff' },
                           }}
                         >
-                          <MenuItem value="project_duration">Prosjektets varighet</MenuItem>
-                          <MenuItem value="1_year">1 år</MenuItem>
-                          <MenuItem value="3_years">3 år</MenuItem>
-                          <MenuItem value="5_years">5 år</MenuItem>
-                          <MenuItem value="indefinite">Uten tidsbegrensning (krever begrunnelse)</MenuItem>
-                          <MenuItem value="custom">Egendefinert</MenuItem>
+                          <MenuItem value="project_duration">{t('consentDlg.retention.projectDuration')}</MenuItem>
+                          <MenuItem value="1_year">{t('consentDlg.retention.1year')}</MenuItem>
+                          <MenuItem value="3_years">{t('consentDlg.retention.3years')}</MenuItem>
+                          <MenuItem value="5_years">{t('consentDlg.retention.5years')}</MenuItem>
+                          <MenuItem value="indefinite">{t('consentDlg.retention.indefiniteOption')}</MenuItem>
+                          <MenuItem value="custom">{t('consentDlg.retention.custom')}</MenuItem>
                         </Select>
                       </FormControl>
 
                       {retentionSettings.retentionPeriod === 'custom' && (
                         <TextField
-                          label="Antall måneder"
+                          label={t('consentDlg.field.months')}
                           type="number"
                           value={retentionSettings.customPeriodMonths || ''}
                           onChange={(e) => setRetentionSettings({...retentionSettings, customPeriodMonths: parseInt(e.target.value) || undefined})}
@@ -1942,7 +1840,7 @@ return (
                               sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                             />
                           }
-                          label="Slett materiale etter prosjektslutt"
+                          label={t('consentDlg.retention.deleteAfter')}
                           sx={{ color: '#fff' }}
                         />
                         <FormControlLabel
@@ -1953,15 +1851,13 @@ return (
                               sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                             />
                           }
-                          label="Arkiver materiale etter bruk (ikke slett)"
+                          label={t('consentDlg.retention.archive')}
                           sx={{ color: '#fff' }}
                         />
                       </FormGroup>
 
                       <Alert severity="info" sx={{ bgcolor: 'rgba(139,92,246,0.1)', color: '#a78bfa' }}>
-                        <Typography variant="body2">
-                          Iht. GDPR skal personopplysninger ikke lagres lenger enn nødvendig for formålet.
-                        </Typography>
+                        <Typography variant="body2">{t('consentDlg.retention.gdprNote')}</Typography>
                       </Alert>
                     </Stack>
                   </AccordionDetails>
@@ -1982,9 +1878,9 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <SecurityIcon sx={{ color: '#ec4899' }} />
-                      <Typography fontWeight={600}>GDPR og personvern</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.gdpr')}</Typography>
                       <Chip 
-                        label="Påkrevd" 
+                        label={t('consentDlg.chip.required')} 
                         size="small" 
                         sx={{ bgcolor: '#ec489930', color: '#ec4899', fontSize: '0.7rem', height: 20 }} 
                       />
@@ -1993,13 +1889,13 @@ return (
                   <AccordionDetails>
                     <Stack spacing={2}>
                       <TextField
-                        label="Behandlingsansvarlig (virksomhet)"
+                        label={t('consentDlg.field.dataController')}
                         value={gdprSettings.dataController}
                         onChange={(e) => setGdprSettings({...gdprSettings, dataController: e.target.value})}
-                        placeholder={project?.name || 'Firmanavn AS'}
+                        placeholder={project?.name || t('consentDlg.field.companyPlaceholder')}
                         fullWidth
                         required
-                        helperText="Hvem er ansvarlig for behandling av personopplysningene"
+                        helperText={t('consentDlg.field.dataControllerHelp')}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             color: '#fff',
@@ -2011,12 +1907,12 @@ return (
                       />
 
                       <TextField
-                        label="Kontaktinformasjon for behandlingsansvarlig"
+                        label={t('consentDlg.field.controllerContact')}
                         value={gdprSettings.dataControllerContact}
                         onChange={(e) => setGdprSettings({...gdprSettings, dataControllerContact: e.target.value})}
-                        placeholder="E-post eller telefon"
+                        placeholder={t('consentDlg.placeholder.emailPhone')}
                         fullWidth
-                        helperText="Hvordan kan den registrerte kontakte dere"
+                        helperText={t('consentDlg.field.controllerContactHelp')}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             color: '#fff',
@@ -2040,16 +1936,16 @@ return (
                             }}
                           />
                         }
-                        label="Deling med tredjeparter"
+                        label={t('consentDlg.thirdParty')}
                         sx={{ color: '#fff' }}
                       />
 
                       <Collapse in={gdprSettings.thirdPartySharing}>
                         <TextField
-                          label="Hvem deles opplysningene med?"
+                          label={t('consentDlg.field.thirdPartyWho')}
                           value={gdprSettings.thirdPartyDetails}
                           onChange={(e) => setGdprSettings({...gdprSettings, thirdPartyDetails: e.target.value})}
-                          placeholder="F.eks. TV-kanaler, strømmetjenester, distributører"
+                          placeholder={t('consentDlg.placeholder.thirdParty')}
                           fullWidth
                           multiline
                           rows={2}
@@ -2076,8 +1972,8 @@ return (
                         }
                         label={
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <span>Overføring utenfor EØS</span>
-                            <Tooltip title="Krever spesielle sikkerhetstiltak iht. GDPR">
+                            <span>{t('consentDlg.transferEEA')}</span>
+                            <Tooltip title={t('consentDlg.tooltip.eeaSafeguards')}>
                               <WarningIcon sx={{ fontSize: 16, color: '#f59e0b' }} />
                             </Tooltip>
                           </Box>
@@ -2086,14 +1982,12 @@ return (
                       />
 
                       <Collapse in={gdprSettings.transferOutsideEEA}>
-                        <Alert severity="warning" sx={{ mb: 1, bgcolor: 'rgba(245,158,11,0.1)', color: '#fbbf24' }}>
-                          Overføring utenfor EØS krever tilstrekkelige garantier (f.eks. Standard Contractual Clauses).
-                        </Alert>
+                        <Alert severity="warning" sx={{ mb: 1, bgcolor: 'rgba(245,158,11,0.1)', color: '#fbbf24' }}>{t('consentDlg.alert.eeaTransfer')}</Alert>
                         <TextField
-                          label="Detaljer om overføring"
+                          label={t('consentDlg.field.transferDetails')}
                           value={gdprSettings.transferDetails}
                           onChange={(e) => setGdprSettings({...gdprSettings, transferDetails: e.target.value})}
-                          placeholder="Hvilke land og hvilke sikkerhetstiltak"
+                          placeholder={t('consentDlg.placeholder.transferDetails')}
                           fullWidth
                           multiline
                           rows={2}
@@ -2110,13 +2004,13 @@ return (
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
                       <TextField
-                        label="Informasjon om tilbaketrekning av samtykke"
+                        label={t('consentDlg.field.withdrawalInfo')}
                         value={gdprSettings.withdrawalInfo}
                         onChange={(e) => setGdprSettings({...gdprSettings, withdrawalInfo: e.target.value})}
                         multiline
                         rows={2}
                         fullWidth
-                        helperText="Må være like lett å trekke tilbake som å gi samtykke"
+                        helperText={t('consentDlg.field.withdrawalHelp')}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             color: '#fff',
@@ -2147,9 +2041,9 @@ return (
                     <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <MinorIcon sx={{ color: '#ec4899' }} />
-                        <Typography fontWeight={600}>Samtykke for mindreårig</Typography>
+                        <Typography fontWeight={600}>{t('consentDlg.section.minor')}</Typography>
                         <Chip 
-                          label="Viktig" 
+                          label={t('consentDlg.chip.important')} 
                           size="small" 
                           sx={{ bgcolor: '#ec489950', color: '#fff', fontSize: '0.7rem', height: 20 }} 
                         />
@@ -2157,13 +2051,11 @@ return (
                     </AccordionSummary>
                     <AccordionDetails>
                       <Alert severity="info" sx={{ mb: 2, bgcolor: 'rgba(236,72,153,0.2)', color: '#f9a8d4' }}>
-                        <Typography variant="body2">
-                          For barn under 13 år kreves foresattes samtykke. Barn over 13 år bør også signere selv i tillegg til foresatte.
-                        </Typography>
+                        <Typography variant="body2">{t('consentDlg.minor.info')}</Typography>
                       </Alert>
                       <Stack spacing={2}>
                         <TextField
-                          label="Barnets alder"
+                          label={t('consentDlg.field.childAge')}
                           type="number"
                           value={minorSettings.minorAge || ''}
                           onChange={(e) => {
@@ -2185,7 +2077,7 @@ return (
                         />
 
                         <TextField
-                          label="Foresattes navn"
+                          label={t('consentDlg.field.guardianName')}
                           value={minorSettings.guardianName}
                           onChange={(e) => setMinorSettings({...minorSettings, guardianName: e.target.value})}
                           fullWidth
@@ -2200,11 +2092,11 @@ return (
                         />
 
                         <FormControl fullWidth>
-                          <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Relasjon til barnet</InputLabel>
+                          <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.field.relation')}</InputLabel>
                           <Select
                             value={minorSettings.guardianRelation}
                             onChange={(e) => setMinorSettings({...minorSettings, guardianRelation: e.target.value as MinorConsentSettings['guardianRelation']})}
-                            label="Relasjon til barnet"
+                            label={t('consentDlg.field.relation')}
                             MenuProps={consentMenuProps}
                             sx={{
                               color: '#fff',
@@ -2212,17 +2104,17 @@ return (
                               '& .MuiSvgIcon-root': { color: '#fff' },
                             }}
                           >
-                            <MenuItem value="parent">Forelder</MenuItem>
-                            <MenuItem value="guardian">Verge</MenuItem>
-                            <MenuItem value="other">Annen foresatt</MenuItem>
+                            <MenuItem value="parent">{t('consentDlg.relation.parent')}</MenuItem>
+                            <MenuItem value="guardian">{t('consentDlg.relation.guardian')}</MenuItem>
+                            <MenuItem value="other">{t('consentDlg.relation.otherOption')}</MenuItem>
                           </Select>
                         </FormControl>
 
                         <TextField
-                          label="Foresattes kontaktinformasjon"
+                          label={t('consentDlg.field.guardianContact')}
                           value={minorSettings.guardianContact}
                           onChange={(e) => setMinorSettings({...minorSettings, guardianContact: e.target.value})}
-                          placeholder="E-post eller telefon"
+                          placeholder={t('consentDlg.placeholder.emailPhone')}
                           fullWidth
                           sx={{
                             '& .MuiOutlinedInput-root': {
@@ -2242,7 +2134,7 @@ return (
                                 sx={{ color: '#ec4899', '&.Mui-checked': { color: '#ec4899' } }}
                               />
                             }
-                            label="Barnet skal også signere (anbefalt for 13+ år)"
+                            label={t('consentDlg.field.childCoSign')}
                             sx={{ color: '#fff' }}
                           />
                         )}
@@ -2266,18 +2158,18 @@ return (
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#fff' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <DocumentIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
-                      <Typography fontWeight={600}>Interne notater</Typography>
+                      <Typography fontWeight={600}>{t('consentDlg.section.notes')}</Typography>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
                     <TextField
-                      label="Interne notater (vises ikke i kontrakten)"
+                      label={t('consentDlg.field.internalNotes')}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       multiline
                       rows={3}
                       fullWidth
-                      placeholder="F.eks. spesielle avtaler, kontaktpersoner, etc."
+                      placeholder={t('consentDlg.placeholder.notes')}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           color: '#fff',
@@ -2290,8 +2182,8 @@ return (
                       text={notes}
                       localCandidates={mentionCandidates}
                       onApplySuggestion={(name) => setNotes((prev) => applyMentionSuggestion(prev, name))}
-                      autoTagTitle="Auto-tagget i notater"
-                      suggestionTitle="Mener du?"
+                      autoTagTitle={t('consentDlg.mention.autoTag')}
+                      suggestionTitle={t('consentDlg.mention.suggestion')}
                     />
                   </AccordionDetails>
                 </Accordion>
@@ -2301,9 +2193,7 @@ return (
               <Box sx={{ flex: 0.8 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                   <PreviewIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
-                  <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Forhåndsvisning
-                  </Typography>
+                  <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.preview.heading')}</Typography>
                 </Box>
                 <Box sx={{ maxHeight: 520, overflowY: 'auto', borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)' }}>
                   <ContractPreview />
@@ -2319,17 +2209,15 @@ return (
                 <Box sx={{ display: 'flex', gap: 3 }}>
                   {/* Send options */}
                   <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>
-                      Sendemetode
-                    </Typography>
+                    <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>{t('consentDlg.send.method')}</Typography>
                     
                     <Stack spacing={2}>
                       {/* Send method selection */}
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         {[
-                          { method: 'email' as const, icon: <EmailIcon />, label: 'E-post', available: !!candidate?.contactInfo.email },
+                          { method: 'email' as const, icon: <EmailIcon />, label: t('consentDlg.send.email'), available: !!candidate?.contactInfo.email },
                           { method: 'sms' as const, icon: <SmsIcon />, label: 'SMS', available: !!candidate?.contactInfo.phone },
-                          { method: 'link' as const, icon: <LinkIcon />, label: 'Kun lenke', available: true },
+                          { method: 'link' as const, icon: <LinkIcon />, label: t('consentDlg.send.linkOnly'), available: true },
                         ].map(({ method, icon, label, available }) => (
                           <Button
                             key={method}
@@ -2359,22 +2247,20 @@ return (
 
                       {sendMethod === 'email' && candidate?.contactInfo.email && (
                         <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
-                          Kontrakten sendes til: <strong>{candidate.contactInfo.email}</strong>
+                          {t('consentDlg.send.contractTo')} <strong>{candidate.contactInfo.email}</strong>
                         </Alert>
                       )}
 
                       {sendMethod === 'sms' && candidate?.contactInfo.phone && (
                         <Alert severity="info" sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: 'var(--role-cyan, #00d4ff)' }}>
-                          SMS sendes til: <strong>{candidate.contactInfo.phone}</strong>
+                          {t('consentDlg.send.smsTo')} <strong>{candidate.contactInfo.phone}</strong>
                         </Alert>
                       )}
 
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 1 }} />
 
                       {/* Security options */}
-                      <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                        Sikkerhet
-                      </Typography>
+                      <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.send.security')}</Typography>
 
                       <FormControlLabel
                         control={
@@ -2384,16 +2270,16 @@ return (
                             sx={{ color: config.color, '&.Mui-checked': { color: config.color } }}
                           />
                         }
-                        label="Krev PIN-kode for tilgang"
+                        label={t('consentDlg.send.requirePin')}
                         sx={{ color: 'rgba(255,255,255,0.87)' }}
                       />
 
                       <Collapse in={includePin}>
                         <TextField
-                          label="PIN-kode"
+                          label={t('consentDlg.send.pinCode')}
                           value={pin}
                           onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          placeholder="4-6 sifre"
+                          placeholder={t('consentDlg.send.pinPlaceholder')}
                           InputProps={{
                             startAdornment: (
                               <InputAdornment position="start">
@@ -2412,22 +2298,22 @@ return (
                       </Collapse>
 
                       <FormControl fullWidth>
-                        <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Utløper etter</InputLabel>
+                        <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.send.expiresAfter')}</InputLabel>
                         <Select
                           value={expiresDays}
                           onChange={(e) => setExpiresDays(Number(e.target.value))}
-                          label="Utløper etter"
+                          label={t('consentDlg.send.expiresAfter')}
                           MenuProps={consentMenuProps}
                           sx={{
                             color: '#fff',
                             '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                           }}
                         >
-                          <MenuItem value={7}>7 dager</MenuItem>
-                          <MenuItem value={14}>14 dager</MenuItem>
-                          <MenuItem value={30}>30 dager</MenuItem>
-                          <MenuItem value={60}>60 dager</MenuItem>
-                          <MenuItem value={90}>90 dager</MenuItem>
+                          <MenuItem value={7}>{t('consentDlg.send.days', { n: 7 })}</MenuItem>
+                          <MenuItem value={14}>{t('consentDlg.send.days', { n: 14 })}</MenuItem>
+                          <MenuItem value={30}>{t('consentDlg.send.days', { n: 30 })}</MenuItem>
+                          <MenuItem value={60}>{t('consentDlg.send.days', { n: 60 })}</MenuItem>
+                          <MenuItem value={90}>{t('consentDlg.send.days', { n: 90 })}</MenuItem>
                         </Select>
                       </FormControl>
                     </Stack>
@@ -2435,18 +2321,14 @@ return (
 
                   {/* Summary */}
                   <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>
-                      Oppsummering
-                    </Typography>
+                    <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>{t('consentDlg.summary.heading')}</Typography>
                     
                     <Paper sx={{ bgcolor: 'rgba(255,255,255,0.05)', p: 3, borderRadius: 2 }}>
                       <Stack spacing={2}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <config.IconComponent style={{ color: config.color, fontSize: 32 }} />
                           <Box>
-                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                              Type
-                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.summary.type')}</Typography>
                             <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
                               {config.label}
                             </Typography>
@@ -2456,38 +2338,30 @@ return (
                         <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
                         <Box>
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                            Mottaker
-                          </Typography>
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.summary.recipient')}</Typography>
                           <Typography variant="body1" sx={{ color: '#fff' }}>
-                            {candidate?.name || 'Ikke valgt'}
+                            {candidate?.name || t('consentDlg.notSelected')}
                           </Typography>
                         </Box>
 
                         <Box>
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                            Prosjekt
-                          </Typography>
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.summary.project')}</Typography>
                           <Typography variant="body1" sx={{ color: '#fff' }}>
-                            {project?.name || 'Ikke valgt'}
+                            {project?.name || t('consentDlg.notSelected')}
                           </Typography>
                         </Box>
 
                         <Box>
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                            Tittel
-                          </Typography>
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.summary.title')}</Typography>
                           <Typography variant="body1" sx={{ color: '#fff' }}>
                             {effectiveTitle}
                           </Typography>
                         </Box>
 
                         <Box>
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                            Sikkerhet
-                          </Typography>
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{t('consentDlg.send.security')}</Typography>
                           <Typography variant="body1" sx={{ color: '#fff' }}>
-                            {includePin ? `PIN-beskyttet (${pin || '****'})` : 'Standard tilgang'}
+                            {includePin ? t('consentDlg.summary.pinProtected', { pin: pin || '****' }) : t('consentDlg.summary.standardAccess')}
                           </Typography>
                         </Box>
                       </Stack>
@@ -2511,12 +2385,10 @@ return (
                     <CheckCircleIcon sx={{ color: '#10b981', fontSize: 48 }} />
                   </Box>
                   
-                  <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>
-                    Samtykkekontrakt sendt!
-                  </Typography>
+                  <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 2 }}>{t('consentDlg.success.title')}</Typography>
                   
                   <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
-                    {candidate?.name} har mottatt en invitasjon til å signere kontrakten.
+                    {t('consentDlg.success.received', { name: candidate?.name ?? '' })}
                   </Typography>
 
                   {generatedCode && (
@@ -2528,9 +2400,7 @@ return (
                       display: 'inline-block',
                       minWidth: 300,
                     }}>
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                        Tilgangskode
-                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>{t('consentDlg.success.accessCode')}</Typography>
                       <Typography variant="h4" sx={{ 
                         fontFamily: 'monospace', 
                         fontWeight: 700, 
@@ -2552,7 +2422,7 @@ return (
                             borderColor: copySuccess ? '#10b981' : config.color,
                           }}
                         >
-                          {copySuccess ? 'Kopiert!' : 'Kopier lenke'}
+                          {copySuccess ? t('consentDlg.copied') : t('consentDlg.copyLink')}
                         </Button>
                         <Button
                           variant="outlined"
@@ -2563,9 +2433,7 @@ return (
                             window.open(url, '_blank');
                           }}
                           sx={{ color: config.color, borderColor: config.color }}
-                        >
-                          Åpne portal
-                        </Button>
+                        >{t('consentDlg.success.openPortal')}</Button>
                       </Stack>
                     </Paper>
                   )}
@@ -2597,9 +2465,7 @@ return (
               mr: 'auto',
               '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
             }}
-          >
-            Tilbake
-          </Button>
+          >{t('consentDlg.btn.back')}</Button>
         )}
 
         <Button
@@ -2612,7 +2478,7 @@ return (
             '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
           }}
         >
-          {success ? 'Lukk' : 'Avbryt'}
+          {success ? t('consentDlg.btn.close') : t('consentDlg.btn.cancel')}
         </Button>
 
         {!success && (
@@ -2629,9 +2495,7 @@ return (
                 boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
                 '&:hover': { bgcolor: 'var(--dialog-accent-color)', filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
               }}
-            >
-              Neste
-            </Button>
+            >{t('consentDlg.btn.next')}</Button>
           ) : (
             <Button
               variant="contained"
@@ -2646,7 +2510,7 @@ return (
                 '&:hover': { bgcolor: '#059669' },
               }}
             >
-              {sending ? 'Sender...' : 'Send kontrakt'}
+              {sending ? t('consentDlg.btn.sending') : t('consentDlg.btn.send')}
             </Button>
           )
         )}

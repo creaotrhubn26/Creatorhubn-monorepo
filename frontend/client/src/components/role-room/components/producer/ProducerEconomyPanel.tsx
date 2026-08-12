@@ -29,6 +29,8 @@ import type { ProducerPhase } from '../../services/producerWorkflowService';
 import { getProducerEconomyStatusLabel } from '../../utils/producerWorkflow';
 import { describeProducerError } from '../../utils/producerErrorMessage';
 import BudgetCategoryPicker from './BudgetCategoryPicker';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ProducerEconomyPanelProps {
   projectId: string;
@@ -41,11 +43,11 @@ interface ProducerEconomyPanelProps {
   onFocusedPhaseChange?: (phase: ProducerPhase | 'all') => void;
 }
 
-const PHASE_LABELS: Record<ProducerPhase, string> = {
-  preproduction: 'Pre-produksjon',
-  production: 'Produksjon',
-  postproduction: 'Post-produksjon',
-};
+const buildPHASE_LABELS = (t: TFn): Record<ProducerPhase, string> => ({
+  preproduction: t('prodEconomy.s017'),
+  production: t('prodEconomy.s018'),
+  postproduction: t('prodEconomy.s016'),
+});
 
 const STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'blocked', 'completed'] as const;
 
@@ -60,7 +62,7 @@ interface EconomyDraft {
 
 export default function ProducerEconomyPanel({
   projectId,
-  title = 'Økonomi',
+  title,
   readOnly = false,
   canSendBudgetReview = true,
   onSendBudgetReview,
@@ -68,6 +70,8 @@ export default function ProducerEconomyPanel({
   focusedPhase = 'all',
   onFocusedPhaseChange,
 }: ProducerEconomyPanelProps) {
+  const { t } = useT();
+  const PHASE_LABELS = useMemo(() => buildPHASE_LABELS(t), [t]);
   const { items, totals, loading, error, createItem, updateItem, removeItem } = useProducerEconomy(projectId);
   const { enqueueSnackbar } = useSnackbar();
 
@@ -103,7 +107,7 @@ export default function ProducerEconomyPanel({
       const order: string[] = [];
       const buckets = new Map<string, typeof items>();
       for (const item of grouped[phaseKey]) {
-        const cat = (item.category ?? '').trim() || 'Ukategorisert';
+        const cat = (item.category ?? '').trim() || t('prodEconomy.s023');
         if (!buckets.has(cat)) {
           buckets.set(cat, []);
           order.push(cat);
@@ -230,10 +234,10 @@ export default function ProducerEconomyPanel({
       setCategory('');
       setItemName('');
       setEstimate('');
-      enqueueSnackbar('Budsjettlinjen er lagt til.', { variant: 'success' });
+      enqueueSnackbar(t('prodEconomy.s003'), { variant: 'success' });
     } catch (createError) {
       // Behold feltene så Stig ikke mister det han skrev, og forklar hva som skjedde.
-      enqueueSnackbar(describeProducerError(createError, 'legge til budsjettlinjen'), { variant: 'error' });
+      enqueueSnackbar(describeProducerError(createError, t('prodEconomy.s026')), { variant: 'error' });
     }
   };
 
@@ -277,10 +281,10 @@ export default function ProducerEconomyPanel({
           dirty: false,
         },
       }));
-      enqueueSnackbar('Budsjettlinjen er lagret.', { variant: 'success' });
+      enqueueSnackbar(t('prodEconomy.s002'), { variant: 'success' });
     } catch (saveError) {
       // Hold linjen «dirty» så Stig ser at den ikke ble lagret og kan prøve igjen.
-      enqueueSnackbar(describeProducerError(saveError, 'lagre budsjettlinjen'), { variant: 'error' });
+      enqueueSnackbar(describeProducerError(saveError, t('prodEconomy.s025')), { variant: 'error' });
     } finally {
       setSavingItemId(null);
     }
@@ -295,9 +299,9 @@ export default function ProducerEconomyPanel({
         delete next[itemId];
         return next;
       });
-      enqueueSnackbar('Budsjettlinjen er slettet.', { variant: 'success' });
+      enqueueSnackbar(t('prodEconomy.s004'), { variant: 'success' });
     } catch (deleteError) {
-      enqueueSnackbar(describeProducerError(deleteError, 'slette budsjettlinjen'), { variant: 'error' });
+      enqueueSnackbar(describeProducerError(deleteError, t('prodEconomy.s029')), { variant: 'error' });
     } finally {
       setSavingItemId(null);
     }
@@ -322,7 +326,7 @@ export default function ProducerEconomyPanel({
         <Stack direction="row" spacing={1} alignItems="center">
           <CurrencyExchangeIcon sx={{ color: '#34d399' }} />
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            {title}
+            {title ?? t('prodEconomy.title')}
           </Typography>
         </Stack>
       </Stack>
@@ -361,18 +365,18 @@ export default function ProducerEconomyPanel({
             }}
           >
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} divider={<Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(148,163,184,0.14)', display: { xs: 'none', sm: 'block' } }} />}>
-              {stat('Estimert', totals.estimate, '#86efac')}
-              {stat('Godkjent', totals.approved, 'var(--role-cyan, #7dd3fc)')}
-              {stat('Faktisk', totals.actual, overApproved ? '#fca5a5' : '#fde68a')}
+              {stat(t('prodEconomy.s005'), totals.estimate, '#86efac')}
+              {stat(t('prodEconomy.s010'), totals.approved, 'var(--role-cyan, #7dd3fc)')}
+              {stat(t('prodEconomy.s006'), totals.actual, overApproved ? '#fca5a5' : '#fde68a')}
               <Box sx={{ flex: 1, minWidth: 120 }}>
                 <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Avvik mot godkjent
+                  {t('prodEconomy.s001')}
                 </Typography>
                 <Typography sx={{ color: variance >= 0 ? '#86efac' : '#fca5a5', fontWeight: 800, fontSize: '1.35rem', lineHeight: 1.15, fontVariantNumeric: 'tabular-nums' }}>
                   {`${variance >= 0 ? '+' : ''}${formatCurrency(variance)}`}
                 </Typography>
                 <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.68rem' }}>
-                  {variancePct === null ? 'ingen godkjent ramme ennå' : `${variancePct > 0 ? '+' : ''}${variancePct.toFixed(1)} % ${variance >= 0 ? 'under rammen' : 'over rammen'}`}
+                  {variancePct === null ? t('prodEconomy.s024') : `${variancePct > 0 ? '+' : ''}${variancePct.toFixed(1)} % ${variance >= 0 ? t('prodEconomy.s030') : t('prodEconomy.s027')}`}
                 </Typography>
               </Box>
             </Stack>
@@ -380,7 +384,7 @@ export default function ProducerEconomyPanel({
               <Box sx={{ mt: 1.2 }}>
                 <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.4 }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.7rem' }}>
-                    Forbruk av godkjent budsjett
+                    {t('prodEconomy.s009')}
                   </Typography>
                   <Typography sx={{ color: overApproved ? '#fca5a5' : '#cbd5e1', fontSize: '0.7rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                     {`${Math.round((totals.actual / totals.approved) * 100)} %`}
@@ -425,7 +429,7 @@ export default function ProducerEconomyPanel({
               '&:hover': { background: 'linear-gradient(135deg, #7c4ff0 0%, #5457e0 100%)' },
             }}
           >
-            Send budsjett til kunden
+            {t('prodEconomy.s019')}
           </Button>
         </Stack>
       )}
@@ -435,7 +439,7 @@ export default function ProducerEconomyPanel({
       {!readOnly && (
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} alignItems={{ lg: 'flex-end' }}>
           <Box sx={{ minWidth: 180 }}>
-            <Typography sx={{ color: 'rgba(226,232,240,0.8)', mb: 0.5, fontSize: '0.85rem' }}>Fase</Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.8)', mb: 0.5, fontSize: '0.85rem' }}>{t('prodEconomy.s007')}</Typography>
             <Select
               size="small"
               value={phase}
@@ -458,7 +462,7 @@ export default function ProducerEconomyPanel({
           />
           <TextField
             size="small"
-            label="Kostlinje"
+            label={t('prodEconomy.s013')}
             value={itemName}
             onChange={(event) => setItemName(event.target.value)}
             sx={{ flex: 1, minWidth: 220 }}
@@ -466,7 +470,7 @@ export default function ProducerEconomyPanel({
           />
           <TextField
             size="small"
-            label="Estimert"
+            label={t('prodEconomy.s005')}
             value={estimate}
             onChange={(event) => setEstimate(event.target.value)}
             sx={{ width: 140 }}
@@ -479,7 +483,7 @@ export default function ProducerEconomyPanel({
             disabled={loading || !category.trim() || !itemName.trim()}
             sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.4)', fontWeight: 700, textTransform: 'none', minWidth: 140, '&:hover': { borderColor: 'rgba(148,163,184,0.7)', background: 'rgba(148,163,184,0.08)' } }}
           >
-            Legg til linje
+            {t('prodEconomy.s015')}
           </Button>
         </Stack>
       )}
@@ -498,7 +502,7 @@ export default function ProducerEconomyPanel({
             bgcolor: focusedPhase === 'all' ? '#1d4ed8' : 'transparent',
           }}
         >
-          Alle faser
+          {t('prodEconomy.s000')}
         </Button>
         {(Object.keys(PHASE_LABELS) as ProducerPhase[]).map((phaseKey) => (
           <Button
@@ -524,18 +528,18 @@ export default function ProducerEconomyPanel({
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>{PHASE_LABELS[phaseKey]}</Typography>
               <Stack direction="row" spacing={0.75} flexWrap="wrap">
-                <Chip size="small" label={`Estimat ${formatCurrency(phaseTotals[phaseKey].estimate)}`} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
-                <Chip size="small" label={`Godkjent ${formatCurrency(phaseTotals[phaseKey].approved)}`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
-                <Chip size="small" label={`Faktisk ${formatCurrency(phaseTotals[phaseKey].actual)}`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
+                <Chip size="small" label={t('prodEconomy.p01', { v0: formatCurrency(phaseTotals[phaseKey].estimate) })} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
+                <Chip size="small" label={t('prodEconomy.p04', { v0: formatCurrency(phaseTotals[phaseKey].approved) })} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                <Chip size="small" label={t('prodEconomy.p02', { v0: formatCurrency(phaseTotals[phaseKey].actual) })} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
                 {(() => {
                   const v = computeVariance(phaseTotals[phaseKey].approved, phaseTotals[phaseKey].actual);
-                  const t = varianceColor(v);
-                  return <Chip size="small" label={`Avvik ${formatVariance(v)}`} sx={{ bgcolor: t.bg, color: t.fg, fontWeight: 700 }} />;
+                  const tone = varianceColor(v);
+                  return <Chip size="small" label={t('prodEconomy.p00', { v0: formatVariance(v) })} sx={{ bgcolor: tone.bg, color: tone.fg, fontWeight: 700 }} />;
                 })()}
               </Stack>
             </Stack>
             {grouped[phaseKey].length === 0 ? (
-              <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.9rem' }}>Ingen kostlinjer i denne fasen.</Typography>
+              <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.9rem' }}>{t('prodEconomy.s011')}</Typography>
             ) : (
               <Stack spacing={0.8}>
                 {categoryGrouped[phaseKey].map((group) => {
@@ -577,15 +581,15 @@ export default function ProducerEconomyPanel({
                           </Typography>
                           <Chip
                             size="small"
-                            label={`${group.items.length} linje${group.items.length === 1 ? '' : 'r'}`}
+                            label={t('prodEconomy.p05', { v0: group.items.length, v1: group.items.length === 1 ? '' : t('prodEconomy.s028') })}
                             sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1', height: 22 }}
                           />
                         </Stack>
                         <Stack direction="row" spacing={0.6} flexWrap="wrap">
                           <Chip size="small" label={`Est ${formatCurrency(groupTotals.estimate)}`} sx={{ bgcolor: 'rgba(148,163,184,0.10)', color: '#e2e8f0', height: 22 }} />
-                          <Chip size="small" label={`Godkj ${formatCurrency(groupTotals.approved)}`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', height: 22 }} />
-                          <Chip size="small" label={`Faktisk ${formatCurrency(groupTotals.actual)}`} sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#ddd6fe', height: 22 }} />
-                          <Chip size="small" label={`Avvik ${formatVariance(groupVariance)}`} sx={{ bgcolor: groupVarianceTone.bg, color: groupVarianceTone.fg, fontWeight: 700, height: 22 }} />
+                          <Chip size="small" label={t('prodEconomy.p03', { v0: formatCurrency(groupTotals.approved) })} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', height: 22 }} />
+                          <Chip size="small" label={t('prodEconomy.p02', { v0: formatCurrency(groupTotals.actual) })} sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#ddd6fe', height: 22 }} />
+                          <Chip size="small" label={t('prodEconomy.p00', { v0: formatVariance(groupVariance) })} sx={{ bgcolor: groupVarianceTone.bg, color: groupVarianceTone.fg, fontWeight: 700, height: 22 }} />
                         </Stack>
                       </Stack>
                       <Collapse in={!isCollapsed}>
@@ -616,13 +620,13 @@ export default function ProducerEconomyPanel({
                                   </Box>
                                   <Stack direction="row" spacing={0.75} flexWrap="wrap">
                                     <Chip size="small" label={`Est ${formatCurrency(Number(item.estimate) || 0)}`} sx={{ bgcolor: 'rgba(148,163,184,0.12)', color: '#e2e8f0' }} />
-                                    <Chip size="small" label={`Godkj ${formatCurrency(Number(item.approved) || 0)}`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
-                                    <Chip size="small" label={`Faktisk ${formatCurrency(Number(item.actual) || 0)}`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
-                                    <Chip size="small" label={`Avvik ${formatVariance(itemVariance)}`} sx={{ bgcolor: itemVarTone.bg, color: itemVarTone.fg, fontWeight: 700 }} />
+                                    <Chip size="small" label={t('prodEconomy.p03', { v0: formatCurrency(Number(item.approved) || 0) })} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                                    <Chip size="small" label={t('prodEconomy.p02', { v0: formatCurrency(Number(item.actual) || 0) })} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#ddd6fe' }} />
+                                    <Chip size="small" label={t('prodEconomy.p00', { v0: formatVariance(itemVariance) })} sx={{ bgcolor: itemVarTone.bg, color: itemVarTone.fg, fontWeight: 700 }} />
                                     <Chip size="small" label={getProducerEconomyStatusLabel(item.status)} />
                                     <Chip
                                       size="small"
-                                      label={item.client_visible ? 'Synlig for klient' : 'Skjult for klient'}
+                                      label={item.client_visible ? t('prodEconomy.s021') : t('prodEconomy.s020')}
                                       sx={{
                                         bgcolor: item.client_visible ? 'rgba(74,222,128,0.16)' : 'rgba(148,163,184,0.16)',
                                         color: item.client_visible ? '#86efac' : '#cbd5e1',
@@ -634,7 +638,7 @@ export default function ProducerEconomyPanel({
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
                         <TextField
                           size="small"
-                          label="Estimert"
+                          label={t('prodEconomy.s005')}
                           value={draftsById[item.id]?.estimate ?? String(item.estimate ?? 0)}
                           onChange={(event) => handleDraftChange(item.id, { estimate: event.target.value })}
                           sx={{ width: { xs: '100%', md: 130 } }}
@@ -642,7 +646,7 @@ export default function ProducerEconomyPanel({
                         />
                         <TextField
                           size="small"
-                          label="Godkjent"
+                          label={t('prodEconomy.s010')}
                           value={draftsById[item.id]?.approved ?? String(item.approved ?? 0)}
                           onChange={(event) => handleDraftChange(item.id, { approved: event.target.value })}
                           sx={{ width: { xs: '100%', md: 130 } }}
@@ -650,7 +654,7 @@ export default function ProducerEconomyPanel({
                         />
                         <TextField
                           size="small"
-                          label="Faktisk"
+                          label={t('prodEconomy.s006')}
                           value={draftsById[item.id]?.actual ?? String(item.actual ?? 0)}
                           onChange={(event) => handleDraftChange(item.id, { actual: event.target.value })}
                           sx={{ width: { xs: '100%', md: 130 } }}
@@ -680,7 +684,7 @@ export default function ProducerEconomyPanel({
                               onChange={(event) => handleDraftChange(item.id, { clientVisible: event.target.checked })}
                             />
                           }
-                          label="Klientsynlighet"
+                          label={t('prodEconomy.s012')}
                         />
                         <Button
                           size="small"
@@ -689,7 +693,7 @@ export default function ProducerEconomyPanel({
                           disabled={loading || savingItemId === item.id || !draftsById[item.id]?.dirty}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Lagre linje
+                          {t('prodEconomy.s014')}
                         </Button>
                         <Button
                           size="small"
@@ -700,7 +704,7 @@ export default function ProducerEconomyPanel({
                           disabled={loading || savingItemId === item.id}
                           sx={{ textTransform: 'none', fontWeight: 700 }}
                         >
-                          Fjern
+                          {t('prodEconomy.s008')}
                         </Button>
                       </Stack>
                     )}
@@ -723,7 +727,7 @@ export default function ProducerEconomyPanel({
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
           <Box sx={{ pt: 0.5 }}>
             <Typography sx={{ color: '#e2e8f0', fontWeight: 700, mb: 1 }}>
-              Tilbud og kontrakter
+              {t('prodEconomy.s022')}
             </Typography>
             {contractsPanel}
           </Box>

@@ -35,6 +35,8 @@ import {
   PARENT_GROUP_ORDER,
   type BudgetCategory,
 } from '../../services/budgetCategoriesApi';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface BudgetCategoryPickerProps {
   projectId: string;
@@ -70,6 +72,7 @@ export default function BudgetCategoryPicker({
   minWidth = 200,
   phase,
 }: BudgetCategoryPickerProps) {
+  const { t } = useT();
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -133,7 +136,7 @@ export default function BudgetCategoryPicker({
 
   async function handleCreateCategory() {
     if (!draftName.trim()) {
-      setDraftError('Skriv inn et kategori-navn');
+      setDraftError(t('budgetCat.s011'));
       return;
     }
     setSaving(true);
@@ -149,7 +152,7 @@ export default function BudgetCategoryPicker({
       onChange(created.category_name);
       setDialogOpen(false);
     } catch (err) {
-      setDraftError((err as Error).message || 'Kunne ikke opprette kategori');
+      setDraftError((err as Error).message || t('budgetCat.s006'));
     } finally {
       setSaving(false);
     }
@@ -158,7 +161,7 @@ export default function BudgetCategoryPicker({
   async function handleDeleteCategory(category: BudgetCategory, event: React.MouseEvent) {
     event.stopPropagation();
     if (category.is_system || category.project_id !== projectId) return;
-    if (!window.confirm(`Slette "${category.category_name}"? Eksisterende budsjett-linjer beholder navnet som tekst.`)) {
+    if (!window.confirm(t('budgetCat.p00', { v0: category.category_name }))) {
       return;
     }
     try {
@@ -175,9 +178,9 @@ export default function BudgetCategoryPicker({
   return (
     <>
       <FormControl size={size} fullWidth={fullWidth} sx={{ minWidth }}>
-        <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Kategori</InputLabel>
+        <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>{t('budgetCat.s003')}</InputLabel>
         <Select
-          label="Kategori"
+          label={t('budgetCat.s003')}
           value={value}
           disabled={disabled || loading}
           onChange={(e) => handleSelectChange(String(e.target.value))}
@@ -185,7 +188,7 @@ export default function BudgetCategoryPicker({
         >
           {value && !categories.some((c) => c.category_name === value) ? (
             <MenuItem value={value} disabled>
-              {value} (utgått)
+              {value} {t('budgetCat.s000')}
             </MenuItem>
           ) : null}
           {groups.map((group) => [
@@ -197,7 +200,7 @@ export default function BudgetCategoryPicker({
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%' }}>
                   <span>{cat.category_name}</span>
                   {!cat.is_system && projectCustomIds.has(cat.id) ? (
-                    <Tooltip title="Slett egen kategori">
+                    <Tooltip title={t('budgetCat.s012')}>
                       <IconButton
                         size="small"
                         edge="end"
@@ -215,23 +218,22 @@ export default function BudgetCategoryPicker({
           <ListSubheader sx={{ bgcolor: 'rgba(15,23,42,0.92)' }} />
           <MenuItem value={NEW_CATEGORY_VALUE} sx={{ color: '#a78bfa', fontWeight: 700 }}>
             <AddIcon fontSize="small" sx={{ mr: 1 }} />
-            Legg til egen kategori…
+            {t('budgetCat.s010')}
           </MenuItem>
         </Select>
       </FormControl>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Legg til egen budsjett-kategori</DialogTitle>
+        <DialogTitle>{t('budgetCat.s009')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body2" sx={{ color: 'rgba(0,0,0,0.66)' }}>
-              Kategorien blir lagret på dette prosjektet og er kun synlig her.
-              Bruk standard chart-of-accounts hvor mulig.
+              {t('budgetCat.s005')}
             </Typography>
             <FormControl fullWidth>
-              <InputLabel>Tilhører gruppe</InputLabel>
+              <InputLabel>{t('budgetCat.s013')}</InputLabel>
               <Select
-                label="Tilhører gruppe"
+                label={t('budgetCat.s013')}
                 value={draftGroup}
                 onChange={(e) => setDraftGroup(String(e.target.value))}
               >
@@ -241,24 +243,24 @@ export default function BudgetCategoryPicker({
               </Select>
             </FormControl>
             <TextField
-              label="Kategori-navn"
+              label={t('budgetCat.s004')}
               value={draftName}
               onChange={(e) => { setDraftName(e.target.value); setDraftError(null); }}
               fullWidth
               autoFocus
               error={Boolean(draftError)}
-              helperText={draftError ?? 'F.eks. Drone-operatør, Spesialeffekter, Timelapse-rigg.'}
+              helperText={draftError ?? t('budgetCat.s002')}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} disabled={saving}>Avbryt</Button>
+          <Button onClick={() => setDialogOpen(false)} disabled={saving}>{t('budgetCat.s001')}</Button>
           <Button
             variant="contained"
             onClick={() => { void handleCreateCategory(); }}
             disabled={saving || !draftName.trim()}
           >
-            {saving ? 'Lagrer…' : 'Legg til'}
+            {saving ? t('budgetCat.s007') : t('budgetCat.s008')}
           </Button>
         </DialogActions>
       </Dialog>

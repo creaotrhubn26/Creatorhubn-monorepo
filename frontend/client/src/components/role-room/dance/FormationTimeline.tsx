@@ -18,6 +18,8 @@ import type { Formation } from './formationTypes';
 import { formatTimecode } from './timecode';
 import { MusicWaveformTrack } from './MusicWaveformTrack';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const TRACK_HEIGHT = 32;
 const SMALL_TRACK_HEIGHT = 22;
@@ -88,6 +90,7 @@ export function FormationTimeline({
   enableVideoSync = true,
   bpm = 120,
 }: FormationTimelineProps): React.ReactElement {
+  const { t } = useT();
   const [zoomPct, setZoomPct] = React.useState<number>(100);
 
   // Phase 5: playhead-cursor — lytter på dance:video-time fra
@@ -206,7 +209,7 @@ export function FormationTimeline({
             if (rawTimeSec > computedDuration) {
               window.dispatchEvent(
                 new CustomEvent('dance:toast', {
-                  detail: { message: 'Forbi klipp-lengden', kind: 'info' },
+                  detail: { message: t('formationTimeline.s000'), kind: 'info' },
                 }),
               );
             }

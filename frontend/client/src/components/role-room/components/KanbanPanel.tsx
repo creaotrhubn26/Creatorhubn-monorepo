@@ -45,6 +45,7 @@ import {
   PlayCircleOutline as PlayCircleOutlineIcon,
 } from '@mui/icons-material';
 import KanbanGuide from './KanbanGuide';
+import { useT, type TranslationKey } from '../../../i18n';
 import type { Candidate, Role, CastingProject, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
@@ -86,6 +87,9 @@ interface RoleKanbanConfig {
   emptyStateBody: string;
 }
 
+// label/toolbarHint/emptyStateTitle/emptyStateBody hold TranslationKeys resolved via t() at
+// render. English role names (Casting Director, Agent, Admin) that have no key pass through
+// t() unchanged (translate() falls back to the key itself), so they stay untranslated.
 const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
   casting_director: {
     label: 'Casting Director',
@@ -93,79 +97,79 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
     accentColor: '#d250e6',
     columns: ALL_STATUSES,
     canAdd: true, canMove: true, canBulkAction: true, canAssignEvent: true,
-    toolbarHint: 'Full casting-kontroll — flytt, vurder og bestill talent',
-    emptyStateTitle: 'Start casting-prosessen',
-    emptyStateBody: 'Legg til kandidater og dra dem gjennom trinnene.',
+    toolbarHint: 'kanban.hint.castingDirector',
+    emptyStateTitle: 'kanban.empty.castingDirector.title',
+    emptyStateBody: 'kanban.empty.castingDirector.body',
   },
   director: {
-    label: 'Regissør',
+    label: 'kanban.role.director',
     icon: '/role-room-assets/roleroom_director.webp',
     accentColor: '#e64646',
     columns: ['shortlist', 'selected', 'confirmed', 'rejected'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Din oversikt over shortlistet og bekreftet talent',
-    emptyStateTitle: 'Ingen kandidater på kortlisten',
-    emptyStateBody: 'Casting-direktøren har ikke lagt til kandidater ennå.',
+    toolbarHint: 'kanban.hint.director',
+    emptyStateTitle: 'kanban.empty.shortlistEmpty.title',
+    emptyStateBody: 'kanban.empty.director.body',
   },
   producer: {
-    label: 'Produsent',
+    label: 'kanban.role.producer',
     icon: '/role-room-assets/roleroom_producer.webp',
     accentColor: '#e68c32',
     columns: ALL_STATUSES,
     canAdd: true, canMove: true, canBulkAction: true, canAssignEvent: true,
-    toolbarHint: 'Full oversikt for budsjettering og timeplanlegging',
-    emptyStateTitle: 'Ingen kandidater ennå',
-    emptyStateBody: 'Legg til kandidater for å spore casting-pipeline.',
+    toolbarHint: 'kanban.hint.producer',
+    emptyStateTitle: 'kanban.empty.noCandidates.title',
+    emptyStateBody: 'kanban.empty.producer.body',
   },
   photographer: {
-    label: 'Fotograf',
+    label: 'kanban.role.photographer',
     icon: '/role-room-assets/roleroom_photographer.webp',
     accentColor: '#64b4ff',
     columns: ['selected', 'confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent for din seanse',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Talent som er bekreftet for din seanse vises her.',
+    toolbarHint: 'kanban.hint.photographer',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.photographer.body',
   },
   film_photographer: {
-    label: 'Filmfotograf',
+    label: 'kanban.role.filmPhotographer',
     icon: '/role-room-assets/roleroom_filmfotograf.webp',
     accentColor: '#5096ff',
     columns: ['selected', 'confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent for innspillingen',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Talent som er bekreftet for innspillingen vises her.',
+    toolbarHint: 'kanban.hint.filmPhotographer',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.filmPhotographer.body',
   },
   photo_director: {
-    label: 'Fotodirektør',
+    label: 'kanban.role.photoDirector',
     icon: '/role-room-assets/roleroom_photo_director.webp',
     accentColor: '#8264ff',
     columns: ['shortlist', 'selected', 'confirmed', 'rejected'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Shortlistet og godkjent talent',
-    emptyStateTitle: 'Ingen kandidater på kortlisten',
-    emptyStateBody: 'Shortlistet talent vises her.',
+    toolbarHint: 'kanban.hint.photoDirector',
+    emptyStateTitle: 'kanban.empty.shortlistEmpty.title',
+    emptyStateBody: 'kanban.empty.photoDirector.body',
   },
   photo_assistant: {
-    label: 'Fotoassistent',
+    label: 'kanban.role.photoAssistant',
     icon: '/role-room-assets/roleroom_photo_assistant.webp',
     accentColor: '#a0d2ff',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent du jobber med',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Bekreftet talent vises her.',
+    toolbarHint: 'kanban.hint.workingWith',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.confirmedHere.body',
   },
   talent: {
-    label: 'Skuespiller',
+    label: 'kanban.role.talent',
     icon: '/role-room-assets/roleroom_skuespiller.webp',
     accentColor: '#50d782',
     columns: ['pending', 'shortlist', 'confirmed', 'rejected'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Din audition-status',
-    emptyStateTitle: 'Ingen auditions ennå',
-    emptyStateBody: 'Dine casting-søknader og audition-resultater vises her.',
+    toolbarHint: 'kanban.hint.talent',
+    emptyStateTitle: 'kanban.empty.talent.title',
+    emptyStateBody: 'kanban.empty.talent.body',
   },
   agent: {
     label: 'Agent',
@@ -173,69 +177,69 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
     accentColor: '#e6b932',
     columns: ALL_STATUSES,
     canAdd: true, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Send klienter til riktige roller',
-    emptyStateTitle: 'Ingen klienter lagt til ennå',
-    emptyStateBody: 'Legg til klientene dine som kandidater og følg statusen deres.',
+    toolbarHint: 'kanban.hint.agent',
+    emptyStateTitle: 'kanban.empty.agent.title',
+    emptyStateBody: 'kanban.empty.agent.body',
   },
   client: {
-    label: 'Klient',
+    label: 'kanban.role.client',
     icon: '/role-room-assets/roleroom_klient.webp',
     accentColor: '#b482ff',
     columns: ['selected', 'confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent for din produksjon',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Godkjent talent for produksjonen vises her.',
+    toolbarHint: 'kanban.hint.client',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.client.body',
   },
   camera_operator: {
-    label: 'Kamera',
+    label: 'kanban.role.camera',
     icon: '/role-room-assets/roleroom_cinemag.webp',
     accentColor: '#5ac8b4',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent du jobber med',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Bekreftet talent vises her.',
+    toolbarHint: 'kanban.hint.workingWith',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.confirmedHere.body',
   },
   sound_designer: {
-    label: 'Lyddesigner',
+    label: 'kanban.role.soundDesigner',
     icon: '/role-room-assets/roleroom_sound_designer.webp',
     accentColor: '#3cc8dc',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent du jobber med',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Bekreftet talent vises her.',
+    toolbarHint: 'kanban.hint.workingWith',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.confirmedHere.body',
   },
   sound_mixer: {
-    label: 'Lydmikser',
+    label: 'kanban.role.soundMixer',
     icon: null,
     accentColor: '#46c8c8',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent du jobber med',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Bekreftet talent vises her.',
+    toolbarHint: 'kanban.hint.workingWith',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.confirmedHere.body',
   },
   boom_operator: {
-    label: 'Bom-operator',
+    label: 'kanban.role.boomOperator',
     icon: null,
     accentColor: '#46bec8',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent du jobber med',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Bekreftet talent vises her.',
+    toolbarHint: 'kanban.hint.workingWith',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.confirmedHere.body',
   },
   composer: {
-    label: 'Komponist',
+    label: 'kanban.role.composer',
     icon: null,
     accentColor: '#9169ff',
     columns: ['confirmed'],
     canAdd: false, canMove: false, canBulkAction: false, canAssignEvent: false,
-    toolbarHint: 'Bekreftet talent du jobber med',
-    emptyStateTitle: 'Ingen bekreftet talent ennå',
-    emptyStateBody: 'Bekreftet talent vises her.',
+    toolbarHint: 'kanban.hint.workingWith',
+    emptyStateTitle: 'kanban.empty.noConfirmed.title',
+    emptyStateBody: 'kanban.empty.confirmedHere.body',
   },
   admin: {
     label: 'Admin',
@@ -243,9 +247,9 @@ const ROLE_KANBAN_CONFIG: Record<string, RoleKanbanConfig> = {
     accentColor: '#8270ff',
     columns: ALL_STATUSES,
     canAdd: true, canMove: true, canBulkAction: true, canAssignEvent: true,
-    toolbarHint: 'Full administrativ tilgang',
-    emptyStateTitle: 'Ingen kandidater ennå',
-    emptyStateBody: 'Legg til kandidater for å starte casting-prosessen.',
+    toolbarHint: 'kanban.hint.admin',
+    emptyStateTitle: 'kanban.empty.noCandidates.title',
+    emptyStateBody: 'kanban.empty.admin.body',
   },
 };
 
@@ -256,8 +260,8 @@ const DEFAULT_ROLE_CONFIG: RoleKanbanConfig = {
   columns: ALL_STATUSES,
   canAdd: true, canMove: true, canBulkAction: true, canAssignEvent: true,
   toolbarHint: '',
-  emptyStateTitle: 'Organiser kandidatene dine',
-  emptyStateBody: 'Kanban-tavlen lar deg visuelt spore kandidater gjennom casting-prosessen ved å dra og slippe mellom kolonner.',
+  emptyStateTitle: 'kanban.empty.default.title',
+  emptyStateBody: 'kanban.empty.default.body',
 };
 
 interface KanbanPanelProps {
@@ -275,20 +279,20 @@ type CandidateStatus = 'pending' | 'requested' | 'shortlist' | 'selected' | 'con
 
 interface KanbanColumn {
   status: CandidateStatus;
-  label: string;
+  labelKey: TranslationKey;  // resolved via t() at render — reuses shared cstatus.* keys
   color: string;
 }
 
 const KANBAN_COLUMNS: KanbanColumn[] = [
-  { status: 'pending',   label: 'Ingen status', color: '#6b7280' },
-  { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)' },
-  { status: 'shortlist', label: 'Vurderes',     color: '#ffb800' },
-  { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #8b5cf6)' },
-  { status: 'confirmed', label: 'Bekreftet',    color: '#10b981' },
-  { status: 'rejected',  label: 'Avvist',       color: '#ef4444' },
+  { status: 'pending',   labelKey: 'cstatus.none',       color: '#6b7280' },
+  { status: 'requested', labelKey: 'cstatus.requested',  color: 'var(--role-cyan, #00d4ff)' },
+  { status: 'shortlist', labelKey: 'cstatus.underReview', color: '#ffb800' },
+  { status: 'selected',  labelKey: 'cstatus.selected',   color: 'var(--role-violet, #8b5cf6)' },
+  { status: 'confirmed', labelKey: 'cstatus.confirmed',  color: '#10b981' },
+  { status: 'rejected',  labelKey: 'cstatus.rejected',   color: '#ef4444' },
 ];
 
-const STATUS_OPTIONS = KANBAN_COLUMNS.map(c => ({ value: c.status, label: c.label, color: c.color }));
+const STATUS_OPTIONS = KANBAN_COLUMNS.map(c => ({ value: c.status, labelKey: c.labelKey, color: c.color }));
 
 const PAGE_SIZE = 8;
 
@@ -313,6 +317,7 @@ interface AssignEventDialogProps {
 function AssignEventDialog({
   open, onClose, projectId, candidateIds, candidates, roles, onSuccess,
 }: AssignEventDialogProps) {
+  const { t } = useT();
   const { showSuccess, showError } = useToast();
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
@@ -365,12 +370,12 @@ function AssignEventDialog({
       const names = candidateIds
         .map(id => candidates.find(c => c.id === id)?.name ?? id)
         .join(', ');
-      showSuccess(`Audition-event opprettet for: ${names}`);
+      showSuccess(t('kanban.assign.created', { names }));
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      showError('Kunne ikke opprette audition-event. Prøv igjen.');
+      showError(t('kanban.assign.createFailed'));
     } finally {
       setLoading(false);
     }
@@ -401,49 +406,49 @@ function AssignEventDialog({
       <DialogTitle sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)', pb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <EventIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
-          Tilordne audition-event
+          {t('kanban.assign.title')}
         </Box>
         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mt: 0.5, fontWeight: 400, fontSize: '0.8rem' }}>
-          {candidateIds.length} kandidat{candidateIds.length !== 1 ? 'er' : ''}: {names}
+          {candidateIds.length} {candidateIds.length !== 1 ? t('kanban.candidates') : t('kanban.candidate')}: {names}
         </Typography>
       </DialogTitle>
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 3 }}>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <TextField label="Dato" type="date" value={date} onChange={e => setDate(e.target.value)}
+          <TextField label={t('kanban.field.date')} type="date" value={date} onChange={e => setDate(e.target.value)}
             fullWidth size="small" InputLabelProps={{ shrink: true }} sx={inputSx} />
-          <TextField label="Starttid" type="time" value={time} onChange={e => setTime(e.target.value)}
+          <TextField label={t('kanban.field.startTime')} type="time" value={time} onChange={e => setTime(e.target.value)}
             fullWidth size="small" InputLabelProps={{ shrink: true }} sx={inputSx} />
-          <TextField label="Slutttid (valgfri)" type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
+          <TextField label={t('kanban.field.endTime')} type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
             fullWidth size="small" InputLabelProps={{ shrink: true }} sx={inputSx} />
         </Box>
-        <TextField label="Sted / Lokasjon" value={location} onChange={e => setLocation(e.target.value)}
-          fullWidth size="small" placeholder="f.eks. Studio A…" sx={inputSx} />
+        <TextField label={t('kanban.field.location')} value={location} onChange={e => setLocation(e.target.value)}
+          fullWidth size="small" placeholder={t('kanban.field.locationPlaceholder')} sx={inputSx} />
         {roles.length > 0 && (
-          <TextField select label="Rolle (valgfri)" value={roleId} onChange={e => setRoleId(e.target.value)}
+          <TextField select label={t('kanban.field.role')} value={roleId} onChange={e => setRoleId(e.target.value)}
             fullWidth size="small" sx={inputSx}
             SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } } } }}>
-            <MenuItem value=""><em>Ingen rolle valgt</em></MenuItem>
+            <MenuItem value=""><em>{t('kanban.field.noRole')}</em></MenuItem>
             {roles.map(r => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}
           </TextField>
         )}
-        <TextField label="Notater (valgfri)" value={notes} onChange={e => setNotes(e.target.value)}
+        <TextField label={t('kanban.field.notes')} value={notes} onChange={e => setNotes(e.target.value)}
           fullWidth size="small" multiline rows={2} sx={inputSx} />
         <GlobalMentionHelper
           text={notes}
           localCandidates={mentionCandidates}
           onApplySuggestion={(name) => setNotes((prev) => applyMentionSuggestion(prev, name))}
-          autoTagTitle="Auto-tagget i notater"
-          suggestionTitle="Mener du?"
+          autoTagTitle={t('kanban.autoTag')}
+          suggestionTitle={t('kanban.didYouMean')}
         />
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2, borderTop: '1px solid rgba(255,255,255,0.1)', pt: 2, gap: 1 }}>
-        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }} disabled={loading}>Avbryt</Button>
+        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }} disabled={loading}>{t('kanban.cancel')}</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!date || !time || loading}
           startIcon={loading ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : <EventIcon />}
           sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}>
-          {loading ? 'Oppretter…' : `Opprett event (${candidateIds.length})`}
+          {loading ? t('kanban.creating') : t('kanban.createEvent', { n: candidateIds.length })}
         </Button>
       </DialogActions>
     </Dialog>
@@ -466,6 +471,7 @@ function BulkActionBar({
   count, total, allSelected, onToggleSelectAll,
   onMoveClick, onAssignEvent, onClearSelection, onRemove,
 }: BulkActionBarProps) {
+  const { t } = useT();
   const btnSx = {
     borderColor: 'rgba(255,255,255,0.18)',
     color: '#e5e7eb',
@@ -481,7 +487,7 @@ function BulkActionBar({
   return (
     <Box
       role="toolbar"
-      aria-label="Massehandlinger"
+      aria-label={t('kanban.bulk.toolbar')}
       sx={{
         display: 'flex', alignItems: 'center', gap: 1,
         px: 2, py: 1,
@@ -503,7 +509,7 @@ function BulkActionBar({
           sx={{ p: 0.25, color: 'rgba(255,255,255,0.5)', '&.Mui-checked': { color: '#a78bfa' }, '&.MuiCheckbox-indeterminate': { color: '#a78bfa' } }}
         />
         <Typography variant="body2" sx={{ color: '#e5e7eb', fontSize: '13px', userSelect: 'none' }}>
-          Velg alle
+          {t('kanban.selectAll')}
         </Typography>
       </Box>
 
@@ -544,7 +550,7 @@ function BulkActionBar({
 
       {/* Count + sync + save icons */}
       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{total}</Typography>
-      <Tooltip title="Fjern valg">
+      <Tooltip title={t('kanban.clearSelection')}>
         <IconButton size="small" onClick={onClearSelection} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.75, '&:hover': { color: '#fff' } }}>
           <DeselectIcon sx={{ fontSize: 16 }} />
         </IconButton>
@@ -563,6 +569,7 @@ function KanbanPanelInner({
   onNavigateToTab,
   userRole,
 }: KanbanPanelProps) {
+  const { t } = useT();
   const theme = useTheme();
   const _isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const _isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -745,8 +752,10 @@ function KanbanPanelInner({
     if (!candidate || candidate.status === targetStatus) return;
 
     const previousStatus = candidate.status as CandidateStatus;
-    const previousLabel = KANBAN_COLUMNS.find((c) => c.status === previousStatus)?.label ?? previousStatus;
-    const targetLabel = KANBAN_COLUMNS.find((c) => c.status === targetStatus)?.label ?? targetStatus;
+    const previousLabelKey = KANBAN_COLUMNS.find((c) => c.status === previousStatus)?.labelKey;
+    const targetLabelKey = KANBAN_COLUMNS.find((c) => c.status === targetStatus)?.labelKey;
+    const previousLabel = previousLabelKey ? t(previousLabelKey) : previousStatus;
+    const targetLabel = targetLabelKey ? t(targetLabelKey) : targetStatus;
 
     // Optimistic update — instantly reflect new status in UI
     setOptimisticStatuses(prev => ({ ...prev, [candidateId]: targetStatus }));
@@ -771,16 +780,16 @@ function KanbanPanelInner({
           });
           onCandidatesChange();
           setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
-          showSuccess(`Tilbakestilt til "${previousLabel}".`);
+          showSuccess(t('kanban.toast.revertedTo', { label: previousLabel }));
         } catch (undoError) {
           console.error('Failed to undo candidate status:', undoError);
           setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
-          showError('Kunne ikke angre. Prøv igjen.');
+          showError(t('kanban.toast.undoFailed'));
         }
       };
       undoableToastId.current = showToast({
         severity: 'success',
-        message: `"${candidate.name}" flyttet til "${targetLabel}".`,
+        message: t('kanban.toast.movedTo', { name: candidate.name, label: targetLabel }),
         duration: 6000,
         action: (
           <Button
@@ -794,16 +803,16 @@ function KanbanPanelInner({
               ml: 1,
             }}
           >
-            Angre
+            {t('kanban.undo')}
           </Button>
         ),
       });
     } catch (error) {
       console.error('Failed to save candidate status:', error);
       setOptimisticStatuses(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
-      showError('Kunne ikke oppdatere status. Prøv igjen.');
+      showError(t('kanban.toast.updateFailed'));
     }
-  }, [candidates, draggedCandidateId, project, onCandidatesChange, showError, showSuccess, showToast, removeToast]);
+  }, [candidates, draggedCandidateId, project, onCandidatesChange, showError, showSuccess, showToast, removeToast, t]);
 
   // Bulk selection helpers
   const toggleSelect = useCallback((id: string) => {
@@ -841,9 +850,9 @@ function KanbanPanelInner({
       }
     }
     onCandidatesChange();
-    if (errorCount === 0) showSuccess(`${ids.length} kandidater flyttet.`);
-    else showError(`${errorCount} av ${ids.length} feilet.`);
-  }, [candidates, project, selectedIds, onCandidatesChange, showSuccess, showError]);
+    if (errorCount === 0) showSuccess(t('kanban.toast.bulkMoved', { n: ids.length }));
+    else showError(t('kanban.toast.bulkFailed', { errorCount, total: ids.length }));
+  }, [candidates, project, selectedIds, onCandidatesChange, showSuccess, showError, t]);
 
   // Open assign-event dialog
   const openAssignEvent = useCallback((ids?: string[]) => {
@@ -867,7 +876,7 @@ function KanbanPanelInner({
 
         {/* Role badge — icon + label + accent colour matching LoginDialog ROLE_CARDS */}
         {roleConfig.label && (
-          <Tooltip title={roleConfig.toolbarHint || ''}>
+          <Tooltip title={roleConfig.toolbarHint ? t(roleConfig.toolbarHint) : ''}>
             <Chip
               avatar={
                 roleConfig.icon ? (
@@ -875,7 +884,7 @@ function KanbanPanelInner({
                     sx={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
                 ) : undefined
               }
-              label={roleConfig.label}
+              label={t(roleConfig.label)}
               size="small"
               sx={{
                 bgcolor: `${roleConfig.accentColor}1a`,
@@ -891,7 +900,7 @@ function KanbanPanelInner({
         )}
 
         {/* WS dot */}
-        <Tooltip title={wsConnected ? 'Sanntid tilkoblet' : 'Sanntid frakoblet'}>
+        <Tooltip title={wsConnected ? t('kanban.ws.connected') : t('kanban.ws.disconnected')}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             {wsConnected
               ? <WsOnIcon sx={{ fontSize: 14, color: '#10b981' }} />
@@ -900,7 +909,7 @@ function KanbanPanelInner({
         </Tooltip>
 
         {/* Refresh */}
-        <Tooltip title="Oppdater">
+        <Tooltip title={t('kanban.refresh')}>
           <IconButton size="small" onClick={onCandidatesChange}
             sx={{ color: 'rgba(255,255,255,0.5)', p: 0.5, '&:hover': { color: '#fff' } }}>
             <ReplayIcon sx={{ fontSize: 16 }} />
@@ -924,13 +933,13 @@ function KanbanPanelInner({
 
         {/* Search */}
         <TextField
-          placeholder="Søk…"
+          placeholder={t('kanban.search')}
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           size="small"
           slotProps={{
             input: { startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.4)', mr: 0.5, fontSize: 15 }} /> },
-            htmlInput: { 'aria-label': 'Søk i kandidater' },
+            htmlInput: { 'aria-label': t('kanban.searchAria') },
           }}
           sx={{
             width: 160,
@@ -954,13 +963,13 @@ function KanbanPanelInner({
               '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.35)' },
               '& .MuiSelect-icon': { color: 'rgba(255,255,255,0.4)' },
             }}>
-            <MenuItem value="all" sx={{ color: '#fff', fontSize: '13px' }}>Alle roller</MenuItem>
+            <MenuItem value="all" sx={{ color: '#fff', fontSize: '13px' }}>{t('kanban.allRoles')}</MenuItem>
             {roles.map(r => <MenuItem key={r.id} value={r.id} sx={{ color: '#fff', fontSize: '13px' }}>{r.name}</MenuItem>)}
           </Select>
         )}
 
         {(searchQuery || filterRoleId !== 'all') && (
-          <Tooltip title="Nullstill filter">
+          <Tooltip title={t('kanban.resetFilter')}>
             <IconButton size="small" onClick={() => { setSearchQuery(''); setFilterRoleId('all'); }}
               sx={{ color: 'rgba(255,255,255,0.5)', p: 0.5 }}>
               <ClearIcon sx={{ fontSize: 15 }} />
@@ -979,7 +988,7 @@ function KanbanPanelInner({
         </Button>
 
         {/* Help */}
-        <Tooltip title="Åpne Kanban-guide">
+        <Tooltip title={t('kanban.openGuide')}>
           <IconButton size="small" onClick={() => setGuideOpen(true)}
             sx={{ color: 'rgba(255,255,255,0.4)', p: 0.5, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 1,
               '&:hover': { color: '#84cc16', borderColor: '#84cc16', bgcolor: 'rgba(132,204,22,0.08)' } }}>
@@ -999,7 +1008,7 @@ function KanbanPanelInner({
           <MenuItem key={opt.value} onClick={() => handleBulkMove(opt.value)}
             sx={{ gap: 1.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
             <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color, flexShrink: 0 }} />
-            {opt.label}
+            {t(opt.labelKey)}
           </MenuItem>
         ))}
       </Menu>
@@ -1032,10 +1041,10 @@ function KanbanPanelInner({
             <AddIcon sx={{ fontSize: { xs: 32, sm: 40, md: 36, lg: 44, xl: 52 }, color: '#84cc16' }} />
           </Box>
           <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 }, fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.15rem', lg: '1.35rem', xl: '1.5rem' } }}>
-            {roleConfig.emptyStateTitle}
+            {t(roleConfig.emptyStateTitle)}
           </Typography>
           <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.6)', mb: { xs: 3, sm: 4, md: 3.5, lg: 4, xl: 4.5 }, maxWidth: { xs: '100%', sm: 450, md: 420, lg: 480, xl: 540 }, mx: 'auto', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-            {roleConfig.emptyStateBody}
+            {t(roleConfig.emptyStateBody)}
           </Typography>
           <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, justifyContent: 'center', flexWrap: 'wrap' }}>
             {roleConfig.canAdd && (
@@ -1056,7 +1065,7 @@ function KanbanPanelInner({
                   ...focusVisibleStyles,
                 }}
               >
-                Legg til første kandidat
+                {t('kanban.addFirstCandidate')}
               </Button>
             )}
             <Button
@@ -1075,7 +1084,7 @@ function KanbanPanelInner({
                 ...focusVisibleStyles,
               }}
             >
-              Gå til kandidatliste
+              {t('kanban.goToCandidateList')}
             </Button>
           </Box>
         </Box>
@@ -1106,7 +1115,7 @@ function KanbanPanelInner({
               <Box
                 key={column.status}
                 role="region"
-                aria-label={`${column.label} kolonne – ${columnCandidates.length} kandidater`}
+                aria-label={t('kanban.columnAria', { label: t(column.labelKey), n: columnCandidates.length })}
                 sx={{
                   minWidth: isCollapsed ? { xs: 50, sm: 60, md: 55, lg: 65, xl: 75 } : { xs: 240, sm: 280, md: 260, lg: 300, xl: 360 },
                   maxWidth: isCollapsed ? { xs: 50, sm: 60, md: 55, lg: 65, xl: 75 } : { xs: 280, sm: 320, md: 300, lg: 360, xl: 420 },
@@ -1151,9 +1160,9 @@ function KanbanPanelInner({
                           fontSize: '10px',
                         }}
                       >
-                        {column.label}
+                        {t(column.labelKey)}
                       </Typography>
-                      <Tooltip title="Utvid kolonne">
+                      <Tooltip title={t('kanban.expandColumn')}>
                         <IconButton size="small" onClick={() => toggleColumnCollapse(column.status)}
                           sx={{ color: 'rgba(255,255,255,0.5)', p: 0.25 }}>
                           <ExpandIcon sx={{ fontSize: 16 }} />
@@ -1165,9 +1174,9 @@ function KanbanPanelInner({
                       {/* Left: checkbox + label(n) */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                         {columnCandidates.length > 0 && (
-                          <Tooltip title={allColSelected ? 'Fjern alle i kolonne' : 'Velg alle i kolonne'}>
+                          <Tooltip title={allColSelected ? t('kanban.deselectColumn') : t('kanban.selectColumn')}>
                             <IconButton size="small" onClick={() => toggleSelectColumn(column.status)}
-                              sx={{ color: column.color, p: 0.25 }} aria-label={`Velg alle i ${column.label}`}>
+                              sx={{ color: column.color, p: 0.25 }} aria-label={t('kanban.selectAllIn', { label: t(column.labelKey) })}>
                               {allColSelected
                                 ? <CheckBoxIcon sx={{ fontSize: 16 }} />
                                 : someColSelected
@@ -1177,7 +1186,7 @@ function KanbanPanelInner({
                           </Tooltip>
                         )}
                         <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', fontWeight: 500 }}>
-                          {column.label} ({columnCandidates.length})
+                          {t(column.labelKey)} ({columnCandidates.length})
                         </Typography>
                       </Box>
                       {/* Right: large count + collapse button */}
@@ -1185,7 +1194,7 @@ function KanbanPanelInner({
                         <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '22px', lineHeight: 1 }}>
                           {columnCandidates.length}
                         </Typography>
-                        <Tooltip title="Skjul kolonne">
+                        <Tooltip title={t('kanban.collapseColumn')}>
                           <IconButton size="small" onClick={() => toggleColumnCollapse(column.status)}
                             sx={{ color: 'rgba(255,255,255,0.35)', p: 0.25 }}>
                             <CollapseIcon sx={{ fontSize: 16 }} />
@@ -1389,7 +1398,7 @@ function KanbanPanelInner({
                                   border: `1px solid ${style.border}`,
                                   '&:hover': { filter: 'brightness(1.15)' },
                                 }}
-                                title={`${style.label} — klikk for å åpne`}
+                                title={t('kanban.selftape.open', { label: style.label })}
                               >
                                 <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
                                 {style.label}{tapes.length > 1 ? ` (${tapes.length})` : ''}
@@ -1401,7 +1410,7 @@ function KanbanPanelInner({
                               {(candidate.assignedRoles || []).slice(0, 2).map((roleId) => (
                                 <Chip
                                   key={roleId}
-                                  label={roleById.get(roleId) ?? 'Ukjent'}
+                                  label={roleById.get(roleId) ?? t('kanban.unknown')}
                                   size="small"
                                   sx={{
                                     bgcolor: 'rgba(0,212,255,0.15)',
@@ -1445,7 +1454,7 @@ function KanbanPanelInner({
                             <Box className="card-actions"
                               sx={{ display: 'flex', gap: 0.5, mt: 0.75, opacity: 0, transition: 'opacity 0.15s' }}
                               onClick={e => e.stopPropagation()}>
-                              <Tooltip title="Tilordne audition-event">
+                              <Tooltip title={t('kanban.assign.title')}>
                                 <IconButton size="small" onClick={() => openAssignEvent([candidate.id])}
                                   sx={{ color: 'var(--role-violet, #8b5cf6)', p: 0.5, '&:hover': { bgcolor: 'rgba(139,92,246,0.15)' } }}>
                                   <EventIcon sx={{ fontSize: 15 }} />
@@ -1472,7 +1481,7 @@ function KanbanPanelInner({
                         onClick={() => setColumnPages(prev => ({ ...prev, [column.status]: (prev[column.status] ?? 1) + 1 }))}
                         sx={{ color: column.color, textTransform: 'none', fontSize: '12px', py: 0.5,
                           borderRadius: 1, '&:hover': { bgcolor: `${column.color}12` } }}>
-                        Vis {Math.min(remaining, PAGE_SIZE)} til ({remaining} igjen)
+                        {t('kanban.loadMore', { count: Math.min(remaining, PAGE_SIZE), remaining })}
                       </Button>
                     )}
                     {columnCandidates.length === 0 && (
@@ -1488,7 +1497,7 @@ function KanbanPanelInner({
                         }}
                       >
                         <Typography variant="body2" sx={{ fontSize: { xs: '11px', sm: '13px', md: '12px', lg: '14px', xl: '16px' } }}>
-                          {draggedCandidateId ? `Slipp her for "${column.label}"` : 'Ingen kandidater'}
+                          {draggedCandidateId ? t('kanban.dropHere', { label: t(column.labelKey) }) : t('kanban.noCandidates')}
                         </Typography>
                       </Box>
                     )}
@@ -1534,7 +1543,7 @@ function KanbanPanelInner({
       <SelfTapePreviewModal
         open={!!selftapePreview}
         selftape={selftapePreview}
-        viewerLabel={user?.email ?? 'Produksjon'}
+        viewerLabel={user?.email ?? t('kanban.production')}
         onClose={() => setSelftapePreview(null)}
       />
     </Box>

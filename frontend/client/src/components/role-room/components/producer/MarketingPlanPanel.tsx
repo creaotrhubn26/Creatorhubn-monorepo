@@ -88,6 +88,8 @@ import ChannelScorecardCard from './ChannelScorecardCard';
 import ClientUpdateComposer from './ClientUpdateComposer';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 import { LoadingSkeleton, ErrorAlert } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -96,17 +98,18 @@ interface MarketingPlanPanelProps {
 }
 
 const HUMAN_FIELD: Record<string, string> = {
-  'companyProfile.companyName': 'Firmanavn',
-  'companyProfile.industry': 'Bransje',
-  'companyProfile.targetAudience': 'Målgruppe',
-  'companyProfile.toneAndBrandSignals (minst 3)': 'Tone of voice (minst 3 signaler)',
-  'storyLogicDraft.contentStoryLogic.businessObjective': 'Forretningsmål',
-  'storyLogicDraft.contentStoryLogic.audienceProblem': 'Publikumsbehov',
-  'storyLogicDraft.contentStoryLogic.keyPromise': 'Hovedløfte',
+  'companyProfile.companyName': 'marketingPlan.hf.companyName',
+  'companyProfile.industry': 'marketingPlan.hf.industry',
+  'companyProfile.targetAudience': 'marketingPlan.hf.targetAudience',
+  'companyProfile.toneAndBrandSignals (minst 3)': 'marketingPlan.hf.tone',
+  'storyLogicDraft.contentStoryLogic.businessObjective': 'marketingPlan.hf.businessObjective',
+  'storyLogicDraft.contentStoryLogic.audienceProblem': 'marketingPlan.hf.audienceProblem',
+  'storyLogicDraft.contentStoryLogic.keyPromise': 'marketingPlan.hf.keyPromise',
 };
 
-function humaniseField(field: string): string {
-  return HUMAN_FIELD[field] ?? field;
+function humaniseField(field: string, t: TFn): string {
+  const key = HUMAN_FIELD[field];
+  return key ? t(key as any) : field;
 }
 
 export default function MarketingPlanPanel({
@@ -114,6 +117,7 @@ export default function MarketingPlanPanel({
   bootstrap,
   onEntitlementBlocked,
 }: MarketingPlanPanelProps) {
+  const { t } = useT();
   const [plan, setPlan] = useState<MarketingPlan | null>(null);
   const [posts, setPosts] = useState<MarketingPlanPost[]>([]);
   const [readiness, setReadiness] = useState<MarketingPlanReadiness | null>(null);
@@ -173,7 +177,7 @@ export default function MarketingPlanPanel({
   // trip on every keystroke.
   useEffect(() => {
     if (!bootstrap) {
-      setReadiness({ ready: false, missingFields: ['Kjør research-analysen først'], hasInstagramConnection: false });
+      setReadiness({ ready: false, missingFields: [t('marketingPlan.s028')], hasInstagramConnection: false });
       return;
     }
     let cancelled = false;
@@ -219,7 +223,7 @@ export default function MarketingPlanPanel({
     try {
       const result = await roleRoomAgentService.sharePlanPreview({ planId: plan.id, projectId });
       if (!result) {
-        setError('Kunne ikke generere share-link (sjekk admin-session og at ROLE_ROOM_SHARE_SECRET er satt).');
+        setError(t('marketingPlan.s034'));
         return;
       }
       setShareUrl(result.shareUrl);
@@ -231,7 +235,7 @@ export default function MarketingPlanPanel({
         // Clipboard kan være blokkert — URL er synlig i UI uansett
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Ukjent feil ved share.');
+      setError(caught instanceof Error ? caught.message : t('marketingPlan.s082'));
     } finally {
       setSharing(false);
     }
@@ -256,13 +260,13 @@ export default function MarketingPlanPanel({
     } catch (caught) {
       if (caught instanceof MarketingPlanReadinessError) {
         setReadiness(caught.readiness);
-        setError('Bootstrap mangler felter — se listen under.');
+        setError(t('marketingPlan.s007'));
       } else if (caught instanceof RoleRoomFeedEntitlementError) {
-        const message = caught.message || 'Markedsplan krever aktiv Role Room-pakke.';
+        const message = caught.message || t('marketingPlan.s045');
         setError(message);
         onEntitlementBlocked?.(message);
       } else {
-        setError(caught instanceof Error ? caught.message : 'Ukjent feil.');
+        setError(caught instanceof Error ? caught.message : t('marketingPlan.s083'));
       }
     } finally {
       setGenerating(false);
@@ -281,11 +285,11 @@ export default function MarketingPlanPanel({
       setPosts(generated);
     } catch (caught) {
       if (caught instanceof RoleRoomFeedEntitlementError) {
-        const message = caught.message || 'Post-generering krever aktiv Role Room-pakke.';
+        const message = caught.message || t('marketingPlan.s054');
         setError(message);
         onEntitlementBlocked?.(message);
       } else {
-        setError(caught instanceof Error ? caught.message : 'Ukjent feil.');
+        setError(caught instanceof Error ? caught.message : t('marketingPlan.s083'));
       }
     } finally {
       setGeneratingPosts(false);
@@ -304,7 +308,7 @@ export default function MarketingPlanPanel({
         setActivatedBannerVisible(true);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke aktivere planen.');
+      setError(caught instanceof Error ? caught.message : t('marketingPlan.s031'));
     } finally {
       setActivating(false);
     }
@@ -319,19 +323,18 @@ export default function MarketingPlanPanel({
         sx={{ bgcolor: 'rgba(250,204,21,0.08)', color: '#fde68a', border: '1px solid rgba(250,204,21,0.25)' }}
       >
         <Typography sx={{ fontWeight: 700, fontSize: '0.88rem', mb: 0.6 }}>
-          Fyll ut disse før planen kan genereres:
+          {t('marketingPlan.s016')}
         </Typography>
         <Stack component="ul" spacing={0.3} sx={{ m: 0, pl: 2.4 }}>
           {readiness.missingFields.map((f) => (
             <Typography key={f} component="li" sx={{ fontSize: '0.82rem', color: '#fde68a' }}>
-              {humaniseField(f)}
+              {humaniseField(f, t)}
             </Typography>
           ))}
         </Stack>
         {!readiness.hasInstagramConnection ? (
           <Typography sx={{ fontSize: '0.78rem', color: 'rgba(253,230,138,0.78)', mt: 1 }}>
-            Tips: Instagram-konto er ikke koblet ennå — planen genereres for IG som primær kanal,
-            men cross-post-reglene blir degraderte til du kobler en konto.
+            {t('marketingPlan.s079')}
           </Typography>
         ) : null}
       </Alert>
@@ -358,15 +361,15 @@ export default function MarketingPlanPanel({
             Markedsplan
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem', mt: 0.2 }}>
-            Jeg lager en komplett plan for kunden — temaer å poste om, hvilke kanaler, mål, og en 30-dagers plan — basert på det vi fant i Research.
+            {t('marketingPlan.s026')}
           </Typography>
         </Box>
         <Tooltip
           title={
             plan?.status === 'active'
-              ? 'Planen er aktivert og låst. Arkivér den først for å generere en ny.'
+              ? t('marketingPlan.s051')
               : !readiness?.ready
-                ? 'Fullfør Research først, så kan jeg lage planen.'
+                ? t('marketingPlan.s015')
                 : ''
           }
         >
@@ -386,9 +389,9 @@ export default function MarketingPlanPanel({
               {generating
                 ? 'Genererer…'
                 : plan?.status === 'active'
-                  ? 'Planen er låst'
+                  ? t('marketingPlan.s053')
                   : plan
-                    ? 'Regenerer'
+                    ? t('marketingPlan.s057')
                     : 'Generer plan'}
             </Button>
           </span>
@@ -427,7 +430,7 @@ export default function MarketingPlanPanel({
           sx={{ bgcolor: 'rgba(34,197,94,0.08)', color: '#bbf7d0', border: '1px solid rgba(34,197,94,0.32)' }}
         >
           <Typography sx={{ fontWeight: 700, fontSize: '0.84rem' }}>
-            Delbar lenke (24t) {shareCopied ? '· kopiert til utklippstavle' : ''}
+            Delbar lenke (24t) {shareCopied ? t('marketingPlan.s099') : ''}
           </Typography>
           <Typography
             component="code"
@@ -452,7 +455,7 @@ export default function MarketingPlanPanel({
               <Chip
                 size="small"
                 icon={plan.status === 'active' ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : undefined}
-                label={plan.status === 'active' ? 'Aktiv' : plan.status === 'draft' ? 'Utkast' : 'Arkivert'}
+                label={plan.status === 'active' ? t('marketingPlan.s004') : plan.status === 'draft' ? t('marketingPlan.s085') : 'Arkivert'}
                 sx={{
                   bgcolor: plan.status === 'active' ? 'rgba(34,197,94,0.16)' : 'rgba(250,204,21,0.12)',
                   color: plan.status === 'active' ? '#86efac' : '#fde68a',
@@ -461,7 +464,7 @@ export default function MarketingPlanPanel({
               />
               <Chip
                 size="small"
-                label={`${plan.horizonDays} dager`}
+                label={t('marketingPlan.p06', { v0: plan.horizonDays })}
                 sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc' }}
               />
               {/* Model name + token/cost telemetry removed from the user-facing
@@ -469,7 +472,7 @@ export default function MarketingPlanPanel({
             </Stack>
             <Stack direction="row" spacing={0.6} alignItems="center">
               {/* #137 / #139 — eksport-knapper, alltid synlige uavhengig av status. */}
-              <Tooltip title="Last ned plan som PDF">
+              <Tooltip title={t('marketingPlan.s039')}>
                 <Button
                   size="small"
                   startIcon={<DownloadIcon fontSize="small" />}
@@ -499,7 +502,7 @@ export default function MarketingPlanPanel({
                 </Button>
               </Tooltip>
               {plan?.id ? <ClientUpdateComposer planId={plan.id} /> : null}
-              <Tooltip title="Eksporter post-roadmap som .ics for Google Calendar / Outlook">
+              <Tooltip title={t('marketingPlan.s009')}>
                 <Button
                   size="small"
                   startIcon={<CalendarIcon fontSize="small" />}
@@ -579,7 +582,7 @@ export default function MarketingPlanPanel({
               value="posts"
               label={
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <span>Post-roadmap</span>
+                  <span>{t('marketingPlan.s055')}</span>
                   {posts.length > 0 ? (
                     <Chip
                       size="small"
@@ -656,8 +659,7 @@ export default function MarketingPlanPanel({
           severity="info"
           sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
         >
-          Ingen markedsplan ennå. Klikk "Generer plan" — CI bruker research-outputen og
-          bygger 3–5 content pillars + kanalstrategi + KPI-mål.
+          {t('marketingPlan.s023')}
         </Alert>
       )}
 
@@ -684,10 +686,10 @@ export default function MarketingPlanPanel({
         >
           <Stack spacing={0.2} sx={{ minWidth: 0, flex: 1 }}>
             <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem' }}>
-              Planen er klar — ikke aktivert ennå
+              {t('marketingPlan.s052')}
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.74rem' }}>
-              {plan.pillars.length} pillars · {plan.horizonDays} dager · aktiver for å låse og dele
+              {plan.pillars.length} pillars · {plan.horizonDays} {t('marketingPlan.s092')}
             </Typography>
           </Stack>
           <Button
@@ -739,10 +741,10 @@ export default function MarketingPlanPanel({
             <CheckCircleIcon sx={{ color: '#34d399', fontSize: 26 }} />
             <Stack spacing={0.1}>
               <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.92rem' }}>
-                Planen er aktivert
+                {t('marketingPlan.s050')}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.78rem' }}>
-                Låst som versjon {plan?.id?.slice(0, 8) ?? '—'} · klar til posting
+                {t('marketingPlan.s044')} {plan?.id?.slice(0, 8) ?? '—'} {t('marketingPlan.s098')}
               </Typography>
             </Stack>
             {/* Lett konfetti — 12 partikler i grønnskala for å passe stilen */}
@@ -777,6 +779,7 @@ export default function MarketingPlanPanel({
 }
 
 function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) {
+  const { t } = useT();
   return (
     <Box
       sx={{
@@ -800,9 +803,9 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
           </Typography>
         </KeyValueRow>
 
-        <KeyValueRow label={`Kanal (${strategy.channelStrategy.cadencePerWeek}/uke)`}>
+        <KeyValueRow label={t('marketingPlan.p03', { v0: strategy.channelStrategy.cadencePerWeek })}>
           <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
-            <Chip size="small" label={`Primær: ${strategy.channelStrategy.primary}`} sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc' }} />
+            <Chip size="small" label={t('marketingPlan.p04', { v0: strategy.channelStrategy.primary })} sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#a5f3fc' }} />
             {strategy.channelStrategy.secondary.map((s) => (
               <Chip key={s} size="small" label={s} variant="outlined" sx={{ color: '#cbd5e1', borderColor: 'rgba(148,163,184,0.28)' }} />
             ))}
@@ -812,7 +815,7 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
           </Typography>
         </KeyValueRow>
 
-        <KeyValueRow label="Tone of voice">
+        <KeyValueRow label={t('marketingPlan.s080')}>
           <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.55 }}>
             {strategy.toneOfVoice.voice}
           </Typography>
@@ -836,7 +839,7 @@ function StrategySection({ strategy }: { strategy: MarketingPlan['strategy'] }) 
           </Stack>
         </KeyValueRow>
 
-        <KeyValueRow label="KPI-mål">
+        <KeyValueRow label={t('marketingPlan.s027')}>
           <Stack spacing={0.6}>
             {strategy.kpiTargets.map((kpi, i) => (
               <Box
@@ -903,6 +906,7 @@ function PillarsSection({
   locked: boolean;
   onPillarChanged: (updated: MarketingPlan['pillars']) => void;
 }) {
+  const { t } = useT();
   const matrix = useMemo(
     () => buildPillarAudienceMatrix(pillars, targetAudience ?? []),
     [pillars, targetAudience],
@@ -910,7 +914,7 @@ function PillarsSection({
 
   const handleRename = useCallback(async (pillarId: string, currentName: string) => {
     if (locked) return;
-    const next = window.prompt('Nytt navn:', currentName);
+    const next = window.prompt(t('marketingPlan.s048'), currentName);
     if (!next || next.trim() === currentName) return;
     const updated = await roleRoomAgentService.updatePillar({ pillarId, name: next.trim() });
     if (updated) onPillarChanged(pillars.map((p) => (p.id === pillarId ? updated : p)));
@@ -924,16 +928,16 @@ function PillarsSection({
 
   const handleDelete = useCallback(async (pillarId: string) => {
     if (locked) return;
-    if (!window.confirm('Slett denne egendefinerte pillaren permanent?')) return;
+    if (!window.confirm(t('marketingPlan.s070'))) return;
     const ok = await roleRoomAgentService.deleteCustomPillar(pillarId);
     if (ok) onPillarChanged(pillars.filter((p) => p.id !== pillarId));
   }, [locked, onPillarChanged, pillars]);
 
   const handleAdd = useCallback(async () => {
     if (locked) return;
-    const name = window.prompt('Navn på ny pillar:');
+    const name = window.prompt(t('marketingPlan.s047'));
     if (!name || name.trim().length === 0) return;
-    const description = window.prompt('Beskrivelse (valgfri):') ?? undefined;
+    const description = window.prompt(t('marketingPlan.s006')) ?? undefined;
     const added = await roleRoomAgentService.addCustomPillar({
       planId,
       name: name.trim(),
@@ -955,7 +959,7 @@ function PillarsSection({
             onClick={handleAdd}
             sx={{ textTransform: 'none', color: '#a78bfa', fontSize: '0.78rem' }}
           >
-            Legg til pillar
+            {t('marketingPlan.s041')}
           </Button>
         ) : null}
       </Stack>
@@ -1010,7 +1014,7 @@ function PillarsSection({
               </Stack>
               {!locked ? (
                 <Stack direction="row" spacing={0.2}>
-                  <Tooltip title="Endre navn">
+                  <Tooltip title={t('marketingPlan.s010')}>
                     <Button
                       size="small"
                       onClick={() => void handleRename(pillar.id, pillar.name)}
@@ -1019,7 +1023,7 @@ function PillarsSection({
                       <EditIcon sx={{ fontSize: 14 }} />
                     </Button>
                   </Tooltip>
-                  <Tooltip title={isActive ? 'Skru av denne pillaren' : 'Skru på igjen'}>
+                  <Tooltip title={isActive ? t('marketingPlan.s068') : t('marketingPlan.s069')}>
                     <Button
                       size="small"
                       onClick={() => void handleToggle(pillar.id, isActive)}
@@ -1029,7 +1033,7 @@ function PillarsSection({
                     </Button>
                   </Tooltip>
                   {pillar.isCustom ? (
-                    <Tooltip title="Slett egendefinert pillar">
+                    <Tooltip title={t('marketingPlan.s071')}>
                       <Button
                         size="small"
                         onClick={() => void handleDelete(pillar.id)}
@@ -1053,7 +1057,7 @@ function PillarsSection({
             {(matrix[pillar.id] ?? []).length > 0 ? (
               <Box sx={{ mb: 0.6 }}>
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', mb: 0.3 }}>
-                  Treffer målgruppe:
+                  {t('marketingPlan.s081')}
                 </Typography>
                 <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
                   {(matrix[pillar.id] ?? []).map((seg) => (
@@ -1135,6 +1139,7 @@ function PostsSection({
   onPostAccepted: (post: MarketingPlanPost) => void;
   onError: (message: string) => void;
 }) {
+  const { t } = useT();
   // #154 — filtre per pillar / platform / format
   const [pillarFilter, setPillarFilter] = useState<string | 'all'>('all');
   const [platformFilter, setPlatformFilter] = useState<PostPlatformFilter>('all');
@@ -1211,7 +1216,7 @@ function PostsSection({
       if (group.length > 0) result.push({ pillarId: pillar.id, name: pillar.name, posts: group });
     }
     const orphans = groups.get(null) ?? [];
-    if (orphans.length > 0) result.push({ pillarId: null, name: 'Uten pillar-tag', posts: orphans });
+    if (orphans.length > 0) result.push({ pillarId: null, name: t('marketingPlan.s084'), posts: orphans });
     return result;
   }, [plan.pillars, filteredPosts]);
 
@@ -1256,7 +1261,7 @@ function PostsSection({
     setBatchAccepting(false);
     setSelectedIds(new Set());
     if (failed > 0) {
-      onError(`Aksepterte ${succeeded} av ${succeeded + failed} posts (${failed} feilet).`);
+      onError(t('marketingPlan.p01', { v0: succeeded, v1: succeeded + failed, v2: failed }));
     }
   }, [selectedIds, projectId, plan.id, onPostAccepted, onError]);
 
@@ -1279,7 +1284,7 @@ function PostsSection({
       }
       setSelectedIds(new Set());
     } catch (e) {
-      onError(e instanceof Error ? e.message : 'Kunne ikke endre plattform for valgte poster.');
+      onError(e instanceof Error ? e.message : t('marketingPlan.s033'));
     }
   }, [selectedIds, projectId, posts, onPostAccepted, onError]);
 
@@ -1291,7 +1296,7 @@ function PostsSection({
             {plan.horizonDays}-dagers plan{posts.length > 0 ? ` (${posts.length} posts)` : ''}
           </Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.78rem' }}>
-            Hook + format + script + CTA per post, balansert på tvers av pillars.
+            {t('marketingPlan.s021')}
           </Typography>
         </Box>
         <Button
@@ -1308,7 +1313,7 @@ function PostsSection({
             '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
           }}
         >
-          {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
+          {generating ? 'Genererer posts…' : posts.length > 0 ? t('marketingPlan.s058') : 'Generer 30-dagers plan'}
         </Button>
       </Stack>
 
@@ -1339,7 +1344,7 @@ function PostsSection({
               sx={{ mt: 0.6, height: 4, borderRadius: 2 }}
             />
             <Typography sx={{ fontSize: '0.74rem', color: 'rgba(226,232,240,0.6)', mt: 0.4 }}>
-              Tar typisk 30-60 sekunder. Klikk «Regenerer posts» når listen er full for å oppdatere.
+              {t('marketingPlan.s076')}
             </Typography>
           </Alert>
         ) : (
@@ -1347,9 +1352,7 @@ function PostsSection({
             severity="info"
             sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
           >
-            Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — CI bygger én post
-            per dag balansert på tvers av pillars, med hook, format, script og CTA ferdig
-            skrevet.
+            {t('marketingPlan.s024')}
           </Alert>
         )
       ) : (
@@ -1361,7 +1364,7 @@ function PostsSection({
             </Typography>
             <Chip
               size="small"
-              label={`Pillar: ${pillarFilter === 'all' ? 'alle' : plan.pillars.find((p) => p.id === pillarFilter)?.name ?? '—'}`}
+              label={`Pillar: ${pillarFilter === 'all' ? t('marketingPlan.s090') : plan.pillars.find((p) => p.id === pillarFilter)?.name ?? '—'}`}
               onClick={() => {
                 // Cycle: all → pillar1 → pillar2 → ... → all
                 const ids = ['all', ...plan.pillars.map((p) => p.id)];
@@ -1372,7 +1375,7 @@ function PostsSection({
             />
             <Chip
               size="small"
-              label={`Platform: ${platformFilter === 'all' ? 'alle' : platformFilter}`}
+              label={`Platform: ${platformFilter === 'all' ? t('marketingPlan.s090') : platformFilter}`}
               onClick={() => {
                 const ps: PostPlatformFilter[] = ['all', 'instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'];
                 const idx = ps.indexOf(platformFilter);
@@ -1382,7 +1385,7 @@ function PostsSection({
             />
             <Chip
               size="small"
-              label={`Format: ${formatFilter === 'all' ? 'alle' : formatFilter}`}
+              label={`Format: ${formatFilter === 'all' ? t('marketingPlan.s090') : formatFilter}`}
               onClick={() => {
                 const fs: PostFormatFilter[] = ['all', 'reel', 'carousel', 'image', 'story', 'tiktok', 'linkedin_post', 'youtube_short'];
                 const idx = fs.indexOf(formatFilter);
@@ -1391,7 +1394,7 @@ function PostsSection({
               sx={{ bgcolor: formatFilter === 'all' ? 'rgba(148,163,184,0.14)' : 'rgba(251,191,36,0.22)', color: '#fde68a', cursor: 'pointer' }}
             />
             <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.74rem', ml: 'auto' }}>
-              Viser {filteredPosts.length} av {posts.length}
+              {t('marketingPlan.s089')} {filteredPosts.length} {t('marketingPlan.s091')} {posts.length}
             </Typography>
           </Stack>
 
@@ -1456,21 +1459,21 @@ function PostsSection({
               }}
             >
               <Typography sx={{ color: '#e0e7ff', fontWeight: 700, fontSize: '0.84rem' }}>
-                {selectedIds.size} valgt
+                {selectedIds.size} {t('marketingPlan.s096')}
               </Typography>
               <Button
                 size="small"
                 onClick={selectAllVisible}
                 sx={{ textTransform: 'none', color: '#a5b4fc', fontSize: '0.76rem' }}
               >
-                Velg alle synlige ({filteredPosts.length})
+                {t('marketingPlan.s087')}{filteredPosts.length})
               </Button>
               <Button
                 size="small"
                 onClick={clearSelection}
                 sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}
               >
-                Fjern valg
+                {t('marketingPlan.s012')}
               </Button>
               <Box sx={{ flex: 1 }} />
               <Button
@@ -1479,7 +1482,7 @@ function PostsSection({
                 onClick={() => setBulkPlatformMenuOpen((v) => !v)}
                 sx={{ textTransform: 'none', color: '#a5f3fc', borderColor: 'rgba(34,211,238,0.4)', fontSize: '0.76rem' }}
               >
-                Endre platform…
+                {t('marketingPlan.s011')}
               </Button>
               <Button
                 size="small"
@@ -1528,7 +1531,7 @@ function PostsSection({
                   {group.name}
                 </Typography>
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.76rem' }}>
-                  {group.posts.length} post{group.posts.length === 1 ? '' : 's'}
+                  {group.posts.length} {t('marketingPlan.s095')}{group.posts.length === 1 ? '' : 's'}
                 </Typography>
               </Stack>
               <Stack spacing={0.8}>
@@ -1602,6 +1605,7 @@ function PostCard({
   onVariantCreated?: (post: MarketingPlanPost) => void;
   onError: (message: string) => void;
 }) {
+  const { t } = useT();
   // #174 — toggle for platform-preview
   const [previewOpen, setPreviewOpen] = useState(false);
   // Slugify company-name som fallback-handle
@@ -1676,9 +1680,9 @@ function PostCard({
         brandAccentHex,
       });
       if (result) setThumbnail(result);
-      else onError('Thumbnail-generering returnerte ingen URL.');
+      else onError(t('marketingPlan.s078'));
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Thumbnail-generering feilet.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s077'));
     } finally {
       setGeneratingThumbnail(false);
     }
@@ -1709,9 +1713,9 @@ function PostCard({
     try {
       const templates = await roleRoomAgentService.generateReplyTemplates(post.id);
       if (templates) setReplyTemplates(templates);
-      else onError('Svarmaler kunne ikke genereres.');
+      else onError(t('marketingPlan.s075'));
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Svarmal-generering feilet.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s073'));
     } finally {
       setGeneratingReplies(false);
     }
@@ -1725,7 +1729,7 @@ function PostCard({
       });
       onAccepted(result.planPost);
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Kunne ikke akseptere posten.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s030'));
     } finally {
       setAccepting(false);
     }
@@ -1739,10 +1743,10 @@ function PostCard({
       if (variant) {
         onAccepted(variant); // parent håndterer både update og insert
       } else {
-        onError('A/B-variant kunne ikke genereres.');
+        onError(t('marketingPlan.s003'));
       }
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'A/B-variant feilet.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s002'));
     } finally {
       setGeneratingVariant(false);
     }
@@ -1764,7 +1768,7 @@ function PostCard({
         detail: { tab: 'feed-planner', highlightPostId: result.feedPlanPostId },
       }));
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Kunne ikke sende post til feed-planner.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s036'));
     } finally {
       setAccepting(false);
     }
@@ -1773,7 +1777,7 @@ function PostCard({
   // #157 — regenerér én post med valgfri hint
   const handleRegenerate = useCallback(async () => {
     const hint = window.prompt(
-      `Hint til CI (valgfri, f.eks. "gjør den mer ironisk" eller "kort til 50 ord"):`,
+      t('marketingPlan.s020'),
       '',
     );
     if (hint === null) return; // bruker avbrøt
@@ -1786,10 +1790,10 @@ function PostCard({
       if (updated) {
         onAccepted(updated); // gjenbruker onAccepted-callbacken for state-sync
       } else {
-        onError('Regenerering ga ingen respons.');
+        onError(t('marketingPlan.s060'));
       }
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Regenerering feilet.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s059'));
     } finally {
       setRegenerating(false);
     }
@@ -1817,7 +1821,7 @@ function PostCard({
       {flags.length > 0 || sentiment || variantOf ? (
         <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }} alignItems="center">
           {variantOf ? (
-            <Tooltip title={`A/B-variant av en annen post i denne planen`}>
+            <Tooltip title={t('marketingPlan.s001')}>
               <Chip
                 size="small"
                 label="B-variant"
@@ -1963,10 +1967,10 @@ function PostCard({
           {resolvedCrossposts.length > 0 ? (
             <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem', mr: 0.4 }}>
-                Cross-post:
+                {t('marketingPlan.s008')}
               </Typography>
               {resolvedCrossposts.map((cp, i) => (
-                <Tooltip key={`${cp.platform}-${i}`} title={cp.adaptationNote ?? `Publiser ${cp.delayDays} dager etter primary`}>
+                <Tooltip key={`${cp.platform}-${i}`} title={cp.adaptationNote ?? t('marketingPlan.p05', { v0: cp.delayDays })}>
                   <Chip
                     size="small"
                     label={`${cp.platform} · ${new Date(cp.isoTimestamp).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}`}
@@ -1985,7 +1989,7 @@ function PostCard({
             // Fallback: ingen scheduledFor satt — vis kun delay-mønsteret
             <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mt: 0.6 }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem', mr: 0.4 }}>
-                Cross-post:
+                {t('marketingPlan.s008')}
               </Typography>
               {post.crossPostPlan.map((cp, i) => (
                 <Chip
@@ -2020,7 +2024,7 @@ function PostCard({
                 }}
               >
                 <Typography sx={{ color: '#bbf7d0', fontSize: '0.72rem', fontWeight: 600 }}>
-                  Foreslått tid: {new Date(suggestedTime.isoTimestamp).toLocaleString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {t('marketingPlan.s014')} {new Date(suggestedTime.isoTimestamp).toLocaleString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Typography>
               </Box>
             </Tooltip>
@@ -2050,7 +2054,7 @@ function PostCard({
 
           {/* #166 — CTA-template-forslag når ingen CTA er satt eller den mangler link */}
           {suggestedCta && (!post.callToAction || !/{{|http/.test(post.callToAction)) ? (
-            <Tooltip title={`Detektert intent: ${suggestedCta.intent}. Klikk for å erstatte CTA med template.`}>
+            <Tooltip title={t('marketingPlan.p02', { v0: suggestedCta.intent })}>
               <Box
                 sx={{
                   mt: 0.6,
@@ -2063,7 +2067,7 @@ function PostCard({
                 }}
               >
                 <Typography sx={{ color: '#ddd6fe', fontSize: '0.72rem', fontWeight: 600 }}>
-                  Foreslått CTA: {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{suggestedCta.linkMacro}</code>
+                  {t('marketingPlan.s013')} {suggestedCta.cta} <code style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{suggestedCta.linkMacro}</code>
                 </Typography>
               </Box>
             </Tooltip>
@@ -2074,7 +2078,7 @@ function PostCard({
               <Chip
                 size="small"
                 icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-                label={isPublished ? 'Publisert' : 'I feed-planneren'}
+                label={isPublished ? t('marketingPlan.s056') : 'I feed-planneren'}
                 sx={{
                   bgcolor: 'rgba(34,197,94,0.16)',
                   color: '#86efac',
@@ -2085,7 +2089,7 @@ function PostCard({
             ) : (
               <>
                 {/* #174 — toggle platform-preview */}
-                <Tooltip title={previewOpen ? 'Skjul preview' : 'Vis platform-preview (IG/TT/LI/YT/FB-stil)'}>
+                <Tooltip title={previewOpen ? t('marketingPlan.s067') : t('marketingPlan.s088')}>
                   <Button
                     size="small"
                     onClick={() => setPreviewOpen((v) => !v)}
@@ -2098,12 +2102,12 @@ function PostCard({
                       minWidth: 0,
                     }}
                   >
-                    {previewOpen ? 'Skjul' : 'Preview'}
+                    {previewOpen ? t('marketingPlan.s066') : 'Preview'}
                   </Button>
                 </Tooltip>
                 {/* #158 — A/B-variant (skjuler seg på variant selv for å unngå loop) */}
                 {!variantOf ? (
-                  <Tooltip title="Lag en B-variant for A/B-test (CI)">
+                  <Tooltip title={t('marketingPlan.s037')}>
                     <Button
                       size="small"
                       onClick={() => void handleVariant()}
@@ -2121,7 +2125,7 @@ function PostCard({
                   </Tooltip>
                 ) : null}
                 {/* #157 — regenerér med hint */}
-                <Tooltip title="Regenerér posten med valgfri tone-hint (CI)">
+                <Tooltip title={t('marketingPlan.s061')}>
                   <Button
                     size="small"
                     onClick={() => void handleRegenerate()}
@@ -2154,7 +2158,7 @@ function PostCard({
                     '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
                   }}
                 >
-                  {accepting ? 'Aksepterer…' : 'Send → Feed-planner'}
+                  {accepting ? 'Aksepterer…' : t('marketingPlan.s065')}
                 </Button>
               </>
             )}
@@ -2187,7 +2191,7 @@ function PostCard({
             minWidth: 0,
           }}
         >
-          {toolsOpen ? '↑ Skjul verktøy' : '↓ Vis verktøy (influencer, stock, thumbnail, reach)'}
+          {toolsOpen ? t('marketingPlan.s101') : t('marketingPlan.s102')}
         </Button>
         {toolsOpen ? (
           <Stack
@@ -2209,10 +2213,10 @@ function PostCard({
                 ) : null}
               </Typography>
               {loadingCreators ? (
-                <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>Laster…</Typography>
+                <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>{t('marketingPlan.s040')}</Typography>
               ) : !creators || creators.creators.length === 0 ? (
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>
-                  Ingen treff for denne kombinasjonen av bransje og post-emne.
+                  {t('marketingPlan.s025')}
                 </Typography>
               ) : (
                 <Stack spacing={0.4}>
@@ -2251,7 +2255,7 @@ function PostCard({
                           onClick={() => window.open(`https://instagram.com/${c.handle}`, '_blank', 'noopener,noreferrer')}
                           sx={{ textTransform: 'none', fontSize: '0.66rem', color: '#fbcfe8', minWidth: 0, py: 0, px: 0.4 }}
                         >
-                          Åpne
+                          {t('marketingPlan.s100')}
                         </Button>
                       </Box>
                     );
@@ -2302,7 +2306,7 @@ function PostCard({
                       disabled={generatingThumbnail}
                       sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#ddd6fe', py: 0 }}
                     >
-                      {generatingThumbnail ? 'Genererer…' : 'Generer ny variant'}
+                      {generatingThumbnail ? 'Genererer…' : t('marketingPlan.s018')}
                     </Button>
                     <Button
                       size="small"
@@ -2310,11 +2314,11 @@ function PostCard({
                       onClick={() => window.open(thumbnail.imageUrl, '_blank', 'noopener,noreferrer')}
                       sx={{ textTransform: 'none', fontSize: '0.7rem', color: '#ddd6fe', py: 0 }}
                     >
-                      Last ned
+                      {t('marketingPlan.s038')}
                     </Button>
                   </Stack>
                   <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem' }}>
-                    OpenAI-URL utløper etter 60 min — last ned hvis du vil ha den varig.
+                    {t('marketingPlan.s049')}
                   </Typography>
                 </Stack>
               ) : (
@@ -2332,7 +2336,7 @@ function PostCard({
                     py: 0.3,
                   }}
                 >
-                  {generatingThumbnail ? 'Genererer (15-30s)…' : 'Generer thumbnail med AI'}
+                  {generatingThumbnail ? 'Genererer (15-30s)…' : t('marketingPlan.s019')}
                 </Button>
               )}
             </Box>
@@ -2343,13 +2347,13 @@ function PostCard({
                 Estimert rekkevidde
               </Typography>
               {loadingReach ? (
-                <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>Laster…</Typography>
+                <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>{t('marketingPlan.s040')}</Typography>
               ) : reach && reach.available ? (
                 <Stack spacing={0.3}>
                   {reach.minReach !== undefined && reach.maxReach !== undefined ? (
                     <Typography sx={{ color: '#bbf7d0', fontSize: '0.84rem', fontWeight: 700 }}>
                       {reach.minReach.toLocaleString('nb-NO')}–{reach.maxReach.toLocaleString('nb-NO')} reach
-                      {reach.followerCount ? ` (av ${reach.followerCount.toLocaleString('nb-NO')} followers)` : ''}
+                      {reach.followerCount ? t('marketingPlan.p00', { v0: reach.followerCount.toLocaleString('nb-NO') }) : ''}
                     </Typography>
                   ) : reach.per1000FollowersMin !== undefined ? (
                     <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.78rem' }}>
@@ -2358,7 +2362,7 @@ function PostCard({
                   ) : null}
                   <Stack direction="row" spacing={0.4} alignItems="center">
                     <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem' }}>
-                      Følgere:
+                      {t('marketingPlan.s017')}
                     </Typography>
                     <input
                       type="number"
@@ -2377,13 +2381,13 @@ function PostCard({
                     />
                   </Stack>
                   <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.64rem' }}>
-                    Kilde: {reach.dataSource === 'connected_account' ? 'koblet konto' : reach.dataSource === 'user_input' ? 'din inntasting' : 'industry-benchmark 2025-2026'}
+                    Kilde: {reach.dataSource === 'connected_account' ? t('marketingPlan.s094') : reach.dataSource === 'user_input' ? 'din inntasting' : 'industry-benchmark 2025-2026'}
                     {' · '}konfidens: {reach.confidence}
                   </Typography>
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem' }}>
-                  Kunne ikke beregne — sjekk konsoll.
+                  {t('marketingPlan.s032')}
                 </Typography>
               )}
             </Box>
@@ -2420,13 +2424,13 @@ function PostCard({
             }}
           >
             <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.78rem', mb: 0.6 }}>
-              Svarmaler for kommentarer
+              {t('marketingPlan.s074')}
             </Typography>
             <Stack spacing={0.6}>
               {(['positive', 'question', 'negative'] as const).map((kind) => {
                 const text = replyTemplates[kind];
                 if (!text) return null;
-                const label = kind === 'positive' ? 'Positiv' : kind === 'question' ? 'Spørsmål' : 'Negativ';
+                const label = kind === 'positive' ? 'Positiv' : kind === 'question' ? t('marketingPlan.s072') : 'Negativ';
                 return (
                   <Box
                     key={kind}
@@ -2440,7 +2444,7 @@ function PostCard({
                     onClick={() => void navigator.clipboard.writeText(text)}
                   >
                     <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', mb: 0.2 }}>
-                      {label} (klikk for å kopiere)
+                      {label} {t('marketingPlan.s000')}
                     </Typography>
                     <Typography sx={{ color: '#f8fafc', fontSize: '0.78rem', lineHeight: 1.4 }}>
                       {text}
@@ -2457,6 +2461,7 @@ function PostCard({
 }
 
 function ClientPortalSection({ projectId, onError }: { projectId: string; onError: (message: string) => void }) {
+  const { t } = useT();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -2487,14 +2492,14 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
       setEmail('');
       setName('');
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Kunne ikke opprette invitasjon.');
+      onError(caught instanceof Error ? caught.message : t('marketingPlan.s035'));
     } finally {
       setCreating(false);
     }
   }, [projectId, email, name, onError]);
 
   const handleRevoke = useCallback(async (inviteId: string) => {
-    if (!window.confirm('Revokere invitasjonen? Klientens lenke stopper å funke umiddelbart.')) return;
+    if (!window.confirm(t('marketingPlan.s062'))) return;
     const ok = await roleRoomAgentService.revokeClientPortalInvite(inviteId);
     if (ok) {
       setInvites((current) =>
@@ -2516,15 +2521,15 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
   return (
     <Box>
       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.4 }}>
-        Klient-portal
+        {t('marketingPlan.s029')}
       </Typography>
       <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem', mb: 1.2 }}>
-        Send en magisk lenke til klienten — de ser dashbordet uten å opprette konto. Lenken varer 30 dager.
+        {t('marketingPlan.s063')}
       </Typography>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch">
         <TextField
-          placeholder="klient@firma.no"
+          placeholder={t('marketingPlan.s093')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           size="small"
@@ -2539,7 +2544,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
           }}
         />
         <TextField
-          placeholder="Navn (valgfritt)"
+          placeholder={t('marketingPlan.s046')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           size="small"
@@ -2565,7 +2570,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
             flexShrink: 0,
           }}
         >
-          {creating ? 'Lager…' : 'Send invitasjon'}
+          {creating ? 'Lager…' : t('marketingPlan.s064')}
         </Button>
       </Stack>
 
@@ -2580,7 +2585,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
           }}
         >
           <Typography sx={{ color: '#86efac', fontSize: '0.76rem', fontWeight: 700, mb: 0.4 }}>
-            Lenken er klar — kopier og lim inn i e-post til klienten
+            {t('marketingPlan.s042')}
           </Typography>
           <Stack direction="row" spacing={0.6} alignItems="center">
             <Typography
@@ -2602,7 +2607,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
       {invites.length > 0 ? (
         <Box sx={{ mt: 1.6 }}>
           <Typography sx={{ color: '#cbd5e1', fontSize: '0.76rem', fontWeight: 700, mb: 0.6 }}>
-            Aktive invitasjoner
+            {t('marketingPlan.s005')}
           </Typography>
           <Stack spacing={0.6}>
             {invites.map((invite) => (
@@ -2626,12 +2631,12 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
                   <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.72rem' }}>
                     {invite.lastSeenAt
                       ? `Sist sett ${new Date(invite.lastSeenAt).toLocaleDateString('nb-NO')}`
-                      : 'Ikke besøkt ennå'} · Utløper {new Date(invite.expiresAt).toLocaleDateString('nb-NO')}
+                      : t('marketingPlan.s022')} {t('marketingPlan.s097')} {new Date(invite.expiresAt).toLocaleDateString('nb-NO')}
                   </Typography>
                 </Box>
                 <Chip
                   size="small"
-                  label={invite.status === 'active' ? 'Aktiv' : invite.status === 'revoked' ? 'Revokert' : 'Utløpt'}
+                  label={invite.status === 'active' ? t('marketingPlan.s004') : invite.status === 'revoked' ? 'Revokert' : t('marketingPlan.s086')}
                   sx={{
                     bgcolor: invite.status === 'active' ? 'rgba(34,197,94,0.16)' : 'rgba(148,163,184,0.16)',
                     color: invite.status === 'active' ? '#86efac' : '#cbd5e1',
@@ -2658,7 +2663,7 @@ function ClientPortalSection({ projectId, onError }: { projectId: string; onErro
         open={copyTick}
         autoHideDuration={2000}
         onClose={() => setCopyTick(false)}
-        message="Lenken er kopiert"
+        message={t('marketingPlan.s043')}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>

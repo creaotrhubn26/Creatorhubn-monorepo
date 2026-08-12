@@ -15,7 +15,7 @@
  * tabell over siste leveranser med farget status-chip.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
@@ -26,6 +26,8 @@ import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 type Platform = 'meta' | 'linkedin' | 'google';
 
@@ -43,7 +45,7 @@ interface PlatformConfig {
   defaultEventNames: string[];
 }
 
-const PLATFORM_META: Record<Platform, PlatformConfig> = {
+const buildPLATFORM_META = (t: TFn): Record<Platform, PlatformConfig> => ({
   meta: {
     name: 'Meta CAPI',
     color: '#1877f2',
@@ -53,7 +55,7 @@ const PLATFORM_META: Record<Platform, PlatformConfig> = {
     sendEndpoint: (cid) => `/api/admin-room/agent/ads/configs/${cid}/meta/send-capi-event`,
     targetField: 'pixelId',
     targetLabel: 'Meta Pixel-ID',
-    helpText: 'Pixel som er provisionert for klienten i fanen "Sporing".',
+    helpText: t('clientAdsCrm.s010'),
     defaultEventNames: ['Lead', 'CompleteRegistration', 'Purchase', 'AddToCart', 'Subscribe', 'StartTrial'],
   },
   linkedin: {
@@ -65,7 +67,7 @@ const PLATFORM_META: Record<Platform, PlatformConfig> = {
     sendEndpoint: (cid) => `/api/admin-room/agent/ads/configs/${cid}/linkedin/send-capi-event`,
     targetField: 'conversionUrn',
     targetLabel: 'Conversion URN',
-    helpText: 'URN-en til Conversion Rule, f.eks. urn:lla:llaPartnerConversion:12345678',
+    helpText: t('clientAdsCrm.s019'),
     defaultEventNames: ['Lead', 'Sign-Up', 'Purchase', 'Download', 'Add-to-Cart'],
   },
   google: {
@@ -77,10 +79,10 @@ const PLATFORM_META: Record<Platform, PlatformConfig> = {
     sendEndpoint: (cid) => `/api/admin-room/agent/ads/configs/${cid}/google/send-capi-event`,
     targetField: 'customerId+conversionActionResource',
     targetLabel: 'Customer ID + ConversionAction-resource',
-    helpText: 'Customer ID (10 sifre uten bindestreker) + customers/X/conversionActions/Y.',
+    helpText: t('clientAdsCrm.s000'),
     defaultEventNames: ['Lead', 'Purchase', 'Sign-Up', 'Trial Start', 'Subscribe'],
   },
-};
+});
 
 const palette = {
   bg: '#150b2e',
@@ -92,12 +94,12 @@ const palette = {
   accent: '#c084fc',
 };
 
-const STATUS_LABEL: Record<string, { txt: string; color: string; bg: string }> = {
-  delivered: { txt: 'SENDT', color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
-  pending: { txt: 'PÅ VEI', color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
-  retrying: { txt: 'PRØVER PÅ NYTT', color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
-  failed: { txt: 'FEILET', color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
-};
+const buildSTATUS_LABEL = (t: TFn): Record<string, { txt: string; color: string; bg: string }> => ({
+  delivered: { txt: t('clientAdsCrm.s012'), color: '#34d399', bg: 'rgba(52,211,153,0.18)' },
+  pending: { txt: t('clientAdsCrm.s011'), color: '#60a5fa', bg: 'rgba(96,165,250,0.18)' },
+  retrying: { txt: t('clientAdsCrm.s009'), color: '#fbbf24', bg: 'rgba(251,191,36,0.18)' },
+  failed: { txt: t('clientAdsCrm.s003'), color: '#f87171', bg: 'rgba(248,113,113,0.18)' },
+});
 
 interface CapiEvent {
   id: string;
@@ -118,6 +120,9 @@ export default function ClientAdsCrmEventsPanel({
   configId: string;
   platform: Platform;
 }) {
+  const { t } = useT();
+  const PLATFORM_META = useMemo(() => buildPLATFORM_META(t), [t]);
+  const STATUS_LABEL = useMemo(() => buildSTATUS_LABEL(t), [t]);
   const meta = PLATFORM_META[platform];
 
   const [events, setEvents] = useState<CapiEvent[]>([]);
@@ -144,7 +149,7 @@ export default function ClientAdsCrmEventsPanel({
       const r = await fetch(meta.listEndpoint(configId), { credentials: 'include' });
       if (r.status === 412) {
         const body = await r.json();
-        setError(body.error ?? 'Klient har ikke godkjent denne handlingen.');
+        setError(body.error ?? t('clientAdsCrm.s006'));
       } else if (!r.ok) {
         setError(`HTTP ${r.status}`);
       } else {
@@ -191,7 +196,7 @@ export default function ClientAdsCrmEventsPanel({
       if (!r.ok) {
         setSendResult({ ok: false, text: respBody.error ?? `HTTP ${r.status}` });
       } else {
-        setSendResult({ ok: true, text: 'Sendt! Sjekker leveransestatus...' });
+        setSendResult({ ok: true, text: t('clientAdsCrm.s016') });
         setTimeout(() => { refresh(); }, 1200);
       }
     } catch (e) {
@@ -234,7 +239,7 @@ export default function ClientAdsCrmEventsPanel({
                 {meta.name}
               </Typography>
               <Typography sx={{ fontSize: '0.78rem', color: palette.textSecondary }}>
-                Server-side konverteringer sendt til {meta.name.split(' ')[0]}
+                {t('clientAdsCrm.s017')} {meta.name.split(' ')[0]}
               </Typography>
             </Stack>
           </Stack>
@@ -247,7 +252,7 @@ export default function ClientAdsCrmEventsPanel({
               startIcon={refreshing ? <CircularProgress size={14} /> : <RefreshOutlinedIcon sx={{ fontSize: 16 }} />}
               sx={{ color: palette.textSecondary, fontSize: '0.78rem' }}
             >
-              Oppdater
+              {t('clientAdsCrm.s008')}
             </Button>
             <Button
               size="small"
@@ -259,7 +264,7 @@ export default function ClientAdsCrmEventsPanel({
                 '&:hover': { bgcolor: meta.color, filter: 'brightness(1.1)' },
               }}
             >
-              Send test-event
+              {t('clientAdsCrm.s013')}
             </Button>
           </Stack>
         </Stack>
@@ -273,9 +278,9 @@ export default function ClientAdsCrmEventsPanel({
         {/* Sammendrag-bokser */}
         <Stack direction="row" spacing={1.4} sx={{ mb: 2 }}>
           {[
-            { label: 'Sendt OK', n: summary.delivered, color: '#34d399', bg: 'rgba(52,211,153,0.10)' },
-            { label: 'Underveis', n: summary.pending, color: '#60a5fa', bg: 'rgba(96,165,250,0.10)' },
-            { label: 'Feilet', n: summary.failed, color: '#f87171', bg: 'rgba(248,113,113,0.10)' },
+            { label: t('clientAdsCrm.s015'), n: summary.delivered, color: '#34d399', bg: 'rgba(52,211,153,0.10)' },
+            { label: t('clientAdsCrm.s020'), n: summary.pending, color: '#60a5fa', bg: 'rgba(96,165,250,0.10)' },
+            { label: t('clientAdsCrm.s004'), n: summary.failed, color: '#f87171', bg: 'rgba(248,113,113,0.10)' },
           ].map((b) => (
             <Box key={b.label} sx={{
               flex: 1, p: 1.6, borderRadius: 1.4,
@@ -294,8 +299,7 @@ export default function ClientAdsCrmEventsPanel({
         {/* Liste */}
         {events.length === 0 ? (
           <Alert severity="info" sx={{ fontSize: '0.84rem' }}>
-            Ingen events sendt ennå. Bruk "Send test-event" for å verifisere oppsettet, eller la systemet
-            automatisk sende konverteringer fra CRM-en når kundene gjør et kjøp.
+            {t('clientAdsCrm.s005')}
           </Alert>
         ) : (
           <Stack spacing={0.8}>
@@ -327,7 +331,7 @@ export default function ClientAdsCrmEventsPanel({
                       </Typography>
                       <Typography sx={{ fontSize: '0.72rem', color: palette.textMuted }}>
                         {new Date(ev.eventTime).toLocaleString('nb-NO')}
-                        {ev.attemptCount > 1 && ` · ${ev.attemptCount} forsøk`}
+                        {ev.attemptCount > 1 && t('clientAdsCrm.p00', { v0: ev.attemptCount })}
                       </Typography>
                       {ev.lastError && ev.deliveryStatus === 'failed' && (
                         <Typography sx={{ fontSize: '0.72rem', color: '#f87171', mt: 0.4 }}>
@@ -354,7 +358,7 @@ export default function ClientAdsCrmEventsPanel({
       {/* Test-event dialog */}
       <Dialog open={testOpen} onClose={() => setTestOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700 }}>
-          Send test-konvertering til {meta.name}
+          {t('clientAdsCrm.s014')} {meta.name}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -392,7 +396,7 @@ export default function ClientAdsCrmEventsPanel({
             </Select>
 
             <TextField
-              label="E-post (hashes før sending)"
+              label={t('clientAdsCrm.s001')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               size="small"
@@ -400,7 +404,7 @@ export default function ClientAdsCrmEventsPanel({
               type="email"
             />
             <TextField
-              label="Telefon (valgfritt, hashes før sending)"
+              label={t('clientAdsCrm.s018')}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               size="small"
@@ -408,7 +412,7 @@ export default function ClientAdsCrmEventsPanel({
             />
             <Stack direction="row" spacing={1.4}>
               <TextField
-                label="Verdi"
+                label={t('clientAdsCrm.s022')}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 size="small"
@@ -416,7 +420,7 @@ export default function ClientAdsCrmEventsPanel({
                 sx={{ flex: 1 }}
               />
               <TextField
-                label="Valuta"
+                label={t('clientAdsCrm.s021')}
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
                 size="small"
@@ -427,7 +431,7 @@ export default function ClientAdsCrmEventsPanel({
             {platform === 'google' && (
               <FormControlLabel
                 control={<Switch checked={enhanced} onChange={(e) => setEnhanced(e.target.checked)} />}
-                label="Enhanced Conversions (bruk user_identifiers i stedet for gclid)"
+                label={t('clientAdsCrm.s002')}
               />
             )}
 
@@ -440,7 +444,7 @@ export default function ClientAdsCrmEventsPanel({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTestOpen(false)} sx={{ color: palette.textSecondary }}>
-            Lukk
+            {t('clientAdsCrm.s007')}
           </Button>
           <Button
             onClick={handleSendTest}

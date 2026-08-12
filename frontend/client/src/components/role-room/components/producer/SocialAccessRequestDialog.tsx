@@ -24,6 +24,7 @@ import roleRoomAgentService, {
   type RoleRoomAccessRequestPlatform,
   type RoleRoomSocialAccessRequest,
 } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
 
 interface SocialAccessRequestDialogProps {
   open: boolean;
@@ -53,6 +54,7 @@ export default function SocialAccessRequestDialog({
   platform,
   platformLabel,
 }: SocialAccessRequestDialogProps): React.ReactElement {
+  const { t } = useT();
   const [recipientName, setRecipientName] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -110,7 +112,7 @@ export default function SocialAccessRequestDialog({
           <Stack direction="row" alignItems="center" spacing={1}>
             <EmailIcon sx={{ color: '#60a5fa' }} />
             <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0' }}>
-              Be om tilgang til {platformLabel}
+              {t('socialAccess.title', { platformLabel })}
             </Typography>
           </Stack>
           <IconButton onClick={handleClose} sx={{ color: 'rgba(148,163,184,0.7)' }}>
@@ -120,14 +122,13 @@ export default function SocialAccessRequestDialog({
       </DialogTitle>
       <DialogContent>
         <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.84rem', mb: 2 }}>
-          CI lager en kort, vennlig e-post du kan sende til kunden, med konkrete steg-for-steg-
-          instruksjoner for hvordan de gir deg admin-tilgang.
+          {t('socialAccess.intro')}
         </Typography>
 
         {!request ? (
           <Stack spacing={1.5}>
             <TextField
-              label="Mottakerens navn (valgfritt)"
+              label={t('socialAccess.recipientNameLabel')}
               size="small"
               value={recipientName}
               onChange={(e) => setRecipientName(e.target.value)}
@@ -136,13 +137,13 @@ export default function SocialAccessRequestDialog({
               InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.6)' } }}
             />
             <TextField
-              label="Mottakerens e-post (valgfritt)"
+              label={t('socialAccess.recipientEmailLabel')}
               size="small"
               type="email"
               value={recipientEmail}
               onChange={(e) => setRecipientEmail(e.target.value)}
               placeholder="ola@bedrift.no"
-              helperText="Hvis fylt ut, lager vi en mailto-lenke som åpner direkte i e-post-appen din."
+              helperText={t('socialAccess.emailHelper')}
               sx={textFieldSx}
               InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.6)' } }}
               FormHelperTextProps={{ sx: { color: 'rgba(148,163,184,0.7)', fontSize: '0.7rem' } }}
@@ -162,14 +163,14 @@ export default function SocialAccessRequestDialog({
                 '&:hover': { bgcolor: '#2563eb' },
               }}
             >
-              {loading ? 'Lager e-post…' : 'Lag e-post med CI'}
+              {loading ? t('socialAccess.generating') : t('socialAccess.generateBtn')}
             </Button>
           </Stack>
         ) : (
           <Stack spacing={1.6}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Chip
-                label={`Rolle: ${request.requiredRole}`}
+                label={t('socialAccess.roleChip', { role: request.requiredRole })}
                 size="small"
                 sx={{
                   bgcolor: 'rgba(168,85,247,0.15)',
@@ -180,7 +181,7 @@ export default function SocialAccessRequestDialog({
               />
               {request.source === 'fallback' ? (
                 <Chip
-                  label="standard-mal"
+                  label={t('socialAccess.fallbackChip')}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(148,163,184,0.18)',
@@ -193,14 +194,14 @@ export default function SocialAccessRequestDialog({
             </Stack>
 
             <FieldBlock
-              label="Emnefelt"
+              label={t('socialAccess.subjectField')}
               value={request.subject}
               copyKey="subject"
               copied={copied === 'subject'}
               onCopy={copy}
             />
             <FieldBlock
-              label="E-post"
+              label={t('socialAccess.emailField')}
               value={request.fullText}
               copyKey="full"
               copied={copied === 'full'}
@@ -219,7 +220,7 @@ export default function SocialAccessRequestDialog({
                   mb: 0.6,
                 }}
               >
-                Steg mottakeren skal følge
+                {t('socialAccess.stepsLabel')}
               </Typography>
               <Stack spacing={0.4} sx={{ pl: 1 }}>
                 {request.steps.map((s, i) => (
@@ -244,7 +245,7 @@ export default function SocialAccessRequestDialog({
                     '&:hover': { bgcolor: '#2563eb' },
                   }}
                 >
-                  Åpne i e-post-app
+                  {t('socialAccess.openInEmail')}
                 </Button>
               ) : null}
               <Button
@@ -257,7 +258,7 @@ export default function SocialAccessRequestDialog({
                   borderColor: 'rgba(148,163,184,0.3)',
                 }}
               >
-                Lag ny
+                {t('socialAccess.regenerate')}
               </Button>
             </Stack>
           </Stack>
@@ -292,6 +293,7 @@ function FieldBlock({
   onCopy: (value: string, key: string) => void;
   multiline?: boolean;
 }) {
+  const { t } = useT();
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.4 }}>
@@ -306,7 +308,7 @@ function FieldBlock({
         >
           {label}
         </Typography>
-        <Tooltip title={copied ? 'Kopiert' : 'Kopier'}>
+        <Tooltip title={copied ? t('socialAccess.copied') : t('socialAccess.copy')}>
           <IconButton
             size="small"
             onClick={() => onCopy(value, copyKey)}

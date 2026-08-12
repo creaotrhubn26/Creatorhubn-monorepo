@@ -6,13 +6,15 @@
  * Backend: GET /api/admin-room/agent/ads/configs/:id/tiktok/linked-accounts
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
   Stack, Typography,
 } from '@mui/material';
 import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bg: '#150b2e',
@@ -36,19 +38,19 @@ interface LinkedAccount {
   avatarUrl: string | null;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  BRAND: 'Egen merkevarekonto',
-  KLIENT_BRAND: 'Klientens merkevarekonto',
-  SPARK_ADS_DELEGATION: 'Lånt fra skaper (Spark Ads)',
-};
+const buildROLE_LABEL = (t: TFn): Record<string, string> => ({
+  BRAND: t('ttLinkedAcc.s004'),
+  KLIENT_BRAND: t('ttLinkedAcc.s007'),
+  SPARK_ADS_DELEGATION: t('ttLinkedAcc.s008'),
+});
 
-const STATUS_LABEL: Record<string, { txt: string; bg: string; color: string }> = {
-  active: { txt: 'AKTIV', bg: 'rgba(52,211,153,0.18)', color: '#34d399' },
-  delegated: { txt: 'DELEGERT', bg: 'rgba(96,165,250,0.18)', color: '#60a5fa' },
-  pending: { txt: 'AVVENTER', bg: 'rgba(251,191,36,0.18)', color: '#fbbf24' },
-  revoked: { txt: 'AVSLUTTET', bg: 'rgba(148,163,184,0.18)', color: '#94a3b8' },
-  expired: { txt: 'UTLØPT', bg: 'rgba(248,113,113,0.18)', color: '#f87171' },
-};
+const buildSTATUS_LABEL = (t: TFn): Record<string, { txt: string; bg: string; color: string }> => ({
+  active: { txt: t('ttLinkedAcc.s000'), bg: 'rgba(52,211,153,0.18)', color: '#34d399' },
+  delegated: { txt: t('ttLinkedAcc.s003'), bg: 'rgba(96,165,250,0.18)', color: '#60a5fa' },
+  pending: { txt: t('ttLinkedAcc.s002'), bg: 'rgba(251,191,36,0.18)', color: '#fbbf24' },
+  revoked: { txt: t('ttLinkedAcc.s001'), bg: 'rgba(148,163,184,0.18)', color: '#94a3b8' },
+  expired: { txt: t('ttLinkedAcc.s012'), bg: 'rgba(248,113,113,0.18)', color: '#f87171' },
+});
 
 export default function ClientTiktokLinkedAccountsPanel({
   configId,
@@ -59,6 +61,9 @@ export default function ClientTiktokLinkedAccountsPanel({
   advertiserId?: string | null;
   isOwnAccount?: boolean;
 }) {
+  const { t } = useT();
+  const STATUS_LABEL = useMemo(() => buildSTATUS_LABEL(t), [t]);
+  const ROLE_LABEL = useMemo(() => buildROLE_LABEL(t), [t]);
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,10 +88,10 @@ export default function ClientTiktokLinkedAccountsPanel({
     try {
       const r = await fetch(`/api/admin-room/agent/ads/configs/${effectiveConfigId}/tiktok/linked-accounts?advertiserId=${advertiserId}`, { credentials: 'include' });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Henting feilet');
+      if (!r.ok) throw new Error(d.error || t('ttLinkedAcc.s006'));
       setAccounts(d.accounts ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Henting feilet');
+      setError(err instanceof Error ? err.message : t('ttLinkedAcc.s006'));
     } finally {
       setLoading(false);
     }
@@ -107,10 +112,10 @@ export default function ClientTiktokLinkedAccountsPanel({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
-              TikTok-kontoer koblet til reklamen
+              {t('ttLinkedAcc.s011')}
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem' }}>
-              Egne kontoer + skaper-kontoer som har gitt lov til å bli boostet.
+              {t('ttLinkedAcc.s005')}
             </Typography>
           </Box>
         </Stack>
@@ -128,7 +133,7 @@ export default function ClientTiktokLinkedAccountsPanel({
             {accounts.length}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mt: 0.5 }}>
-            {accounts.length === 0 ? 'ingen kontoer koblet ennå' : accounts.length === 1 ? 'konto koblet' : 'kontoer koblet'}
+            {accounts.length === 0 ? t('ttLinkedAcc.s013') : accounts.length === 1 ? t('ttLinkedAcc.s014') : t('ttLinkedAcc.s015')}
           </Typography>
         </Box>
 
@@ -138,7 +143,7 @@ export default function ClientTiktokLinkedAccountsPanel({
           startIcon={loading ? <CircularProgress size={16} /> : <RefreshOutlinedIcon />}
           sx={{ color: palette.accent, textTransform: 'none', fontWeight: 600 }}
         >
-          {loading ? 'Oppdaterer…' : 'Oppdater oversikten'}
+          {loading ? t('ttLinkedAcc.s010') : t('ttLinkedAcc.s009')}
         </Button>
 
         {accounts.length > 0 ? (

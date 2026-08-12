@@ -118,6 +118,7 @@ import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisDialog } from './LocationAnalysisDialog';
 import { LocationManagementGuide } from './production/LocationManagementGuide';
 import { useToast } from './ToastStack';
+import { useT, type TranslationKey } from '../../../i18n';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
 import { VerifyLocationDialog } from './VerifyLocationDialog';
@@ -166,7 +167,12 @@ interface LocationProMetrics {
   missingTechnicalRoles: string[];
   technicalCoverage: number;
   shotsCount: number;
-  consistencyWarnings: string[];
+  consistencyWarnings: ConsistencyWarning[];
+}
+
+interface ConsistencyWarning {
+  messageKey: TranslationKey;
+  section: ProSectionKey;
 }
 
 const ROLE_ROOM_COLORS = {
@@ -183,23 +189,6 @@ const ROLE_ROOM_COLORS = {
 
 const LOCATION_PRO_VIEWS_NAMESPACE = 'roleRoom_locationProViews';
 const APPROVED_ANNOTATION_COLORS = new Set(['#a855f7', 'var(--role-cyan, #22d3ee)', '#34d399', '#f59e0b', '#ef4444', '#c084fc', '#8b5cf6']);
-
-const PRO_PRESET_LABELS: Record<ProPresetId, string> = {
-  all: 'Alle',
-  tech_scout: 'Tech Scout',
-  permits: 'Tillatelser',
-  night_shoot: 'Nattopptak',
-  low_budget: 'Lavt budsjett',
-};
-
-const OPERATIONAL_FILTER_LABELS: Record<OperationalFilterKey, string> = {
-  all: 'Alle',
-  ready_today: 'Klar i dag',
-  permit_missing: 'Mangler tillatelse',
-  high_risk: 'Høy risiko',
-  over_budget: 'Over budsjett',
-  with_shots: 'Har shotlist',
-};
 
 interface LocationManagementPanelProps {
   projectId: string;
@@ -274,9 +263,9 @@ type ProSectionState = Record<ProSectionKey, boolean>;
 
 interface ConsistencyFinding {
   locationId: string;
-  warning: string;
+  messageKey: TranslationKey;
   targetSection: ProSectionKey;
-  ctaLabel: string;
+  ctaLabelKey: TranslationKey;
 }
 
 const DEFAULT_PRO_SECTION_STATE: ProSectionState = {
@@ -287,26 +276,21 @@ const DEFAULT_PRO_SECTION_STATE: ProSectionState = {
   contact: false,
 };
 
-const getConsistencyTargetSection = (warning: string): ProSectionKey => {
-  const normalized = warning.toLowerCase();
-  if (normalized.includes('load-in/load-out') || normalized.includes('flyt')) return 'loadFlow';
-  if (normalized.includes('scene') || normalized.includes('shot') || normalized.includes('storyboard')) return 'sceneLinks';
-  if (normalized.includes('kontakt') || normalized.includes('telefon') || normalized.includes('e-post')) return 'contact';
-  return 'summary';
-};
-
-const getConsistencyCtaLabel = (section: ProSectionKey): string => {
+// Consistency-warning target section is now attached at creation time (see
+// consistencyWarnings below) instead of re-derived from string content, so the
+// branch logic no longer string-matches translated copy.
+const getConsistencyCtaLabelKey = (section: ProSectionKey): TranslationKey => {
   switch (section) {
     case 'loadFlow':
-      return 'Gå til load-flow';
+      return 'loc.ctaGoLoadFlow';
     case 'sceneLinks':
-      return 'Gå til scene-kobling';
+      return 'loc.ctaGoSceneLink';
     case 'media':
-      return 'Gå til media';
+      return 'loc.ctaGoMedia';
     case 'contact':
-      return 'Gå til kontakt';
+      return 'loc.ctaGoContact';
     default:
-      return 'Rediger lokasjon';
+      return 'loc.ctaEditLocation';
   }
 };
 
@@ -597,11 +581,29 @@ export function LocationManagementPanel({
 
   // Toast notifications
   const { showSuccess, showError, showInfo, showWarning } = useToast();
+  const { t } = useT();
+
+  // User-facing label maps (t-based so they re-translate on language switch).
+  const PRO_PRESET_LABELS: Record<ProPresetId, string> = {
+    all: t('loc.presetAll'),
+    tech_scout: t('loc.presetTechScout'),
+    permits: t('loc.presetPermits'),
+    night_shoot: t('loc.presetNightShoot'),
+    low_budget: t('loc.presetLowBudget'),
+  };
+  const OPERATIONAL_FILTER_LABELS: Record<OperationalFilterKey, string> = {
+    all: t('loc.opAll'),
+    ready_today: t('loc.opReadyToday'),
+    permit_missing: t('loc.opPermitMissing'),
+    high_risk: t('loc.opHighRisk'),
+    over_budget: t('loc.opOverBudget'),
+    with_shots: t('loc.opWithShots'),
+  };
   const { user } = useAuth();
   const noteActorLabel = useMemo(() => {
     const raw = user?.displayName ?? user?.name ?? user?.email;
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
-  }, [user]);
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : t('loc.unknownUser');
+  }, [user, t]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
 
   // Core state
@@ -960,11 +962,11 @@ export function LocationManagementPanel({
 
   const getTypeLabel = (type: Location['type']): string => {
     const labels: Record<NonNullable<Location['type']>, string> = {
-      studio: 'Studio',
-      outdoor: 'Utendørs',
-      indoor: 'Innendørs',
-      virtual: 'Virtuell',
-      other: 'Annet',
+      studio: t('loc.typeStudio'),
+      outdoor: t('loc.typeOutdoor'),
+      indoor: t('loc.typeIndoor'),
+      virtual: t('loc.typeVirtual'),
+      other: t('loc.typeOther'),
     };
     const normalizedType = getLocationTypeValue(type);
     return labels[normalizedType] || normalizedType;
@@ -1002,12 +1004,12 @@ export function LocationManagementPanel({
 
   const getFacilityLabel = (facility: string): string => {
     const labels: Record<string, string> = {
-      parking: 'Parkering',
-      restrooms: 'Toaletter',
-      catering: 'Catering',
-      wifi: 'WiFi',
-      power: 'Strøm',
-      dressing_rooms: 'Garderober',
+      parking: t('loc.facilityParking'),
+      restrooms: t('loc.facilityRestrooms'),
+      catering: t('loc.facilityCatering'),
+      wifi: t('loc.facilityWifi'),
+      power: t('loc.facilityPower'),
+      dressing_rooms: t('loc.facilityDressingRooms'),
     };
     return labels[facility] || facility;
   };
@@ -1375,25 +1377,25 @@ export function LocationManagementPanel({
       if (assignedScenes.length > 0 && !loadFlowStatus) riskScore += 8;
       riskScore = Math.min(100, riskScore);
 
-      const consistencyWarnings: string[] = [];
+      const consistencyWarnings: ConsistencyWarning[] = [];
       const annotationColor = String((location as any).annotationColor ?? '').toLowerCase();
       if (annotationColor && !APPROVED_ANNOTATION_COLORS.has(annotationColor)) {
-        consistencyWarnings.push('Annoteringsfarge avviker fra standardpaletten.');
+        consistencyWarnings.push({ messageKey: 'loc.warnAnnotationColor', section: 'summary' });
       }
       if (location.type === 'outdoor' && !hasCoordinates) {
-        consistencyWarnings.push('Utendørslokasjon mangler koordinater.');
+        consistencyWarnings.push({ messageKey: 'loc.warnOutdoorNoCoords', section: 'summary' });
       }
       if (!location.address) {
-        consistencyWarnings.push('Mangler adressefelt.');
+        consistencyWarnings.push({ messageKey: 'loc.warnNoAddress', section: 'summary' });
       }
       if (hasCoordinates && !location.address) {
-        consistencyWarnings.push('Koordinater uten tekstadresse.');
+        consistencyWarnings.push({ messageKey: 'loc.warnCoordsNoAddress', section: 'summary' });
       }
       if (new Set(facilities).size !== facilities.length) {
-        consistencyWarnings.push('Dupliserte fasilitet-tags.');
+        consistencyWarnings.push({ messageKey: 'loc.warnDuplicateFacilities', section: 'summary' });
       }
       if (assignedScenes.length > 0 && !loadFlowStatus) {
-        consistencyWarnings.push('Scener er koblet, men load-in/load-out flyt mangler.');
+        consistencyWarnings.push({ messageKey: 'loc.warnScenesNoLoadFlow', section: 'loadFlow' });
       }
 
       const riskLevel: LocationProMetrics['riskLevel'] =
@@ -1498,15 +1500,12 @@ export function LocationManagementPanel({
 
   const consistencyFindings = useMemo<ConsistencyFinding[]>(() => {
     return locationProMetrics.flatMap((metric) =>
-      metric.consistencyWarnings.map((warning) => {
-        const targetSection = getConsistencyTargetSection(warning);
-        return {
-          locationId: metric.locationId,
-          warning,
-          targetSection,
-          ctaLabel: getConsistencyCtaLabel(targetSection),
-        };
-      })
+      metric.consistencyWarnings.map((warning) => ({
+        locationId: metric.locationId,
+        messageKey: warning.messageKey,
+        targetSection: warning.section,
+        ctaLabelKey: getConsistencyCtaLabelKey(warning.section),
+      }))
     );
   }, [locationProMetrics]);
 
@@ -1622,7 +1621,7 @@ export function LocationManagementPanel({
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
-      showError('Navn er påkrevd');
+      showError(t('loc.errNameRequired'));
       return;
     }
 
@@ -1649,8 +1648,8 @@ export function LocationManagementPanel({
     if (!hasRealCoords(resolvedCoordinates)) {
       showWarning(
         formData.address?.trim()
-          ? 'Adressen kunne ikke geokodes — lokasjonen lagres uten verifiserte koordinater. Vær, reiseavstand og kart vil ikke fungere før adressen rettes.'
-          : 'Lokasjonen lagres uten adresse/koordinater. Legg til en adresse for vær, reiseavstand, kart og call-sheets.',
+          ? t('loc.warnGeocodeFailed')
+          : t('loc.warnNoAddressCoords'),
       );
     }
 
@@ -1718,9 +1717,9 @@ export function LocationManagementPanel({
 
       // Show success notification
       if (editingLocation) {
-        showSuccess(`${formData.name} oppdatert`, 3000);
+        showSuccess(t('loc.toastUpdated', { name: formData.name }), 3000);
       } else {
-        showSuccess(`${formData.name} lagt til`, 3000);
+        showSuccess(t('loc.toastAdded', { name: formData.name }), 3000);
         roleRoomAnalytics.locationAdded({
           project_id: projectId,
           location_id: location.id,
@@ -1737,7 +1736,7 @@ export function LocationManagementPanel({
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error saving location:', error);
-      showError('Feil ved lagring av lokasjon');
+      showError(t('loc.errSave'));
     }
   };
 
@@ -1750,11 +1749,11 @@ export function LocationManagementPanel({
         const locs = await castingService.getLocations(projectId);
         setLocations(Array.isArray(locs) ? locs : []);
         setUndoSnackbarOpen(true);
-        showInfo(`${location.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+        showInfo(t('loc.toastDeleted', { name: location.name }), 6000);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting location:', error);
-        showError('Feil ved sletting av lokasjon');
+        showError(t('loc.errDelete'));
       }
     }
   };
@@ -1765,13 +1764,13 @@ export function LocationManagementPanel({
         await castingService.saveLocation(projectId, deletedLocation);
         const locs = await castingService.getLocations(projectId);
         setLocations(Array.isArray(locs) ? locs : []);
-        showSuccess(`${deletedLocation.name} gjenopprettet`, 3000);
+        showSuccess(t('loc.toastRestored', { name: deletedLocation.name }), 3000);
         setDeletedLocation(null);
         setUndoSnackbarOpen(false);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error undoing delete:', error);
-        showError('Feil ved gjenoppretting av lokasjon');
+        showError(t('loc.errRestore'));
       }
     }
   };
@@ -1821,7 +1820,7 @@ export function LocationManagementPanel({
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (window.confirm(`Er du sikker på at du vil slette \${selectedIds.size} lokasjon(er)?`)) {
+    if (window.confirm(t('loc.confirmBulkDelete', { n: selectedIds.size }))) {
       try {
         for (const id of selectedIds) {
           await castingService.deleteLocation(projectId, id);
@@ -1832,7 +1831,7 @@ export function LocationManagementPanel({
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting locations:', error);
-        showError('Feil ved sletting av lokasjoner');
+        showError(t('loc.errBulkDelete'));
       }
     }
   };
@@ -1852,7 +1851,7 @@ export function LocationManagementPanel({
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error duplicating location:', error);
-      showError('Feil ved duplisering av lokasjon');
+      showError(t('loc.errDuplicate'));
     }
   };
 
@@ -1860,7 +1859,7 @@ export function LocationManagementPanel({
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        alert('Prosjekt ikke funnet');
+        alert(t('loc.errProjectNotFound'));
         return;
       }
 
@@ -1868,7 +1867,7 @@ export function LocationManagementPanel({
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        alert(t('loc.errExportWindow'));
         return;
       }
 
@@ -1880,7 +1879,7 @@ export function LocationManagementPanel({
       }, 250);
     } catch (error) {
       console.error('Error exporting locations:', error);
-      alert('Kunne ikke eksportere lokasjoner');
+      alert(t('loc.errExport'));
     }
   };
 
@@ -1899,7 +1898,7 @@ export function LocationManagementPanel({
   const handleSaveCurrentProView = () => {
     const trimmedName = proViewName.trim();
     if (!trimmedName) {
-      showError('Gi visningen et navn før lagring');
+      showError(t('loc.errViewName'));
       return;
     }
 
@@ -1919,7 +1918,7 @@ export function LocationManagementPanel({
       return [view, ...withoutCurrent].slice(0, 12);
     });
     setSelectedProViewId(view.id);
-    showSuccess(`Visning "${trimmedName}" lagret`, 2500);
+    showSuccess(t('loc.toastViewSaved', { name: trimmedName }), 2500);
   };
 
   const handleDeleteSavedProView = () => {
@@ -1929,12 +1928,12 @@ export function LocationManagementPanel({
     setSavedProViews((prev) => prev.filter((view) => view.id !== selectedProViewId));
     setSelectedProViewId('custom');
     setProViewName('');
-    showInfo(`Visning "${target.name}" slettet`, 2500);
+    showInfo(t('loc.toastViewDeleted', { name: target.name }), 2500);
   };
 
   const handleBulkSetWorkflowStatus = async () => {
     if (selectedIds.size === 0) {
-      showInfo('Velg minst én lokasjon for statusoppdatering', 2500);
+      showInfo(t('loc.infoSelectForStatus'), 2500);
       return;
     }
     try {
@@ -1950,17 +1949,17 @@ export function LocationManagementPanel({
       );
       const updated = await castingService.getLocations(projectId);
       setLocations(Array.isArray(updated) ? updated : []);
-      showSuccess(`Status satt til "${bulkWorkflowStatus}" for ${targets.length} lokasjoner`, 3000);
+      showSuccess(t('loc.toastStatusSet', { status: bulkWorkflowStatus, n: targets.length }), 3000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error bulk updating workflow status:', error);
-      showError('Kunne ikke oppdatere status for valgte lokasjoner');
+      showError(t('loc.errStatusUpdate'));
     }
   };
 
   const handleBulkAssignTechnicalTeam = async () => {
     if (selectedIds.size === 0) {
-      showInfo('Velg minst én lokasjon for å tildele teknisk team', 2500);
+      showInfo(t('loc.infoSelectForTeam'), 2500);
       return;
     }
     try {
@@ -1979,32 +1978,32 @@ export function LocationManagementPanel({
       );
       const updated = await castingService.getLocations(projectId);
       setLocations(Array.isArray(updated) ? updated : []);
-      showSuccess(`Teknisk team tildelt til ${targets.length} lokasjoner`, 3000);
+      showSuccess(t('loc.toastTeamAssigned', { n: targets.length }), 3000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error bulk assigning technical team:', error);
-      showError('Kunne ikke tildele teknisk team');
+      showError(t('loc.errTeamAssign'));
     }
   };
 
   const handleBulkCopyFacilitiesFromActive = async () => {
     const sourceId = activeMapLocationId || [...selectedIds][0];
     if (!sourceId) {
-      showInfo('Velg en aktiv lokasjon først', 2500);
+      showInfo(t('loc.infoSelectActive'), 2500);
       return;
     }
     if (selectedIds.size <= 1) {
-      showInfo('Velg flere lokasjoner for å kopiere tags/fasiliteter', 2500);
+      showInfo(t('loc.infoSelectMoreCopy'), 2500);
       return;
     }
     const source = locations.find((location) => location.id === sourceId);
     if (!source || !Array.isArray(source.facilities) || source.facilities.length === 0) {
-      showError('Aktiv lokasjon har ingen fasiliteter å kopiere');
+      showError(t('loc.errNoFacilitiesToCopy'));
       return;
     }
     const sourceFacilities = normalizeLocationFacilities(source.facilities);
     if (sourceFacilities.length === 0) {
-      showError('Aktiv lokasjon har ingen fasiliteter å kopiere');
+      showError(t('loc.errNoFacilitiesToCopy'));
       return;
     }
     try {
@@ -2020,35 +2019,35 @@ export function LocationManagementPanel({
       );
       const updated = await castingService.getLocations(projectId);
       setLocations(Array.isArray(updated) ? updated : []);
-      showSuccess(`Kopierte fasiliteter til ${targets.length} lokasjoner`, 3000);
+      showSuccess(t('loc.toastFacilitiesCopied', { n: targets.length }), 3000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error bulk copying facilities:', error);
-      showError('Kunne ikke kopiere fasiliteter');
+      showError(t('loc.errCopyFacilities'));
     }
   };
 
   const handleExportSelectedCallSheet = async () => {
     if (selectedIds.size === 0) {
-      showInfo('Velg lokasjoner før eksport av call sheet', 2500);
+      showInfo(t('loc.infoSelectForCallSheet'), 2500);
       return;
     }
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        showError('Prosjekt ikke funnet');
+        showError(t('loc.errProjectNotFound'));
         return;
       }
       const selectedLocations = locations.filter((location) => selectedIds.has(location.id));
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        showError('Kunne ikke åpne eksport-vindu. Tillat popups.');
+        showError(t('loc.errExportWindowShort'));
         return;
       }
       const htmlContent = generateLocationsHTML(
         {
           ...project,
-          name: `${project.name} • Call sheet (lokasjoner)`,
+          name: `${project.name} • ${t('loc.callSheetSuffix')}`,
         },
         selectedLocations
       );
@@ -2059,7 +2058,7 @@ export function LocationManagementPanel({
       }, 250);
     } catch (error) {
       console.error('Error exporting selected location call sheet:', error);
-      showError('Kunne ikke eksportere valgte lokasjoner');
+      showError(t('loc.errExportSelected'));
     }
   };
 
@@ -2069,7 +2068,7 @@ export function LocationManagementPanel({
       return annotationColor && !APPROVED_ANNOTATION_COLORS.has(annotationColor);
     });
     if (candidates.length === 0) {
-      showInfo('Ingen avvikende annoteringsfarger funnet', 2500);
+      showInfo(t('loc.infoNoDeviantColors'), 2500);
       return;
     }
     try {
@@ -2084,11 +2083,11 @@ export function LocationManagementPanel({
       );
       const updated = await castingService.getLocations(projectId);
       setLocations(Array.isArray(updated) ? updated : []);
-      showSuccess(`Standardiserte annoteringsfarger for ${candidates.length} lokasjoner`, 3000);
+      showSuccess(t('loc.toastColorsNormalized', { n: candidates.length }), 3000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error normalizing annotation colors:', error);
-      showError('Kunne ikke standardisere annoteringsfarger');
+      showError(t('loc.errNormalizeColors'));
     }
   };
 
@@ -2114,7 +2113,7 @@ export function LocationManagementPanel({
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${project.name} - Lokasjoner</title>
+  <title>${project.name} - ${t('loc.exportLocations')}</title>
   <style>
     @page { margin: 0; counter-increment: page; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2166,23 +2165,23 @@ export function LocationManagementPanel({
     <div class="header">
       <div class="title">
         ${locationIconSVG}
-        ${project.name} - Lokasjoner
+        ${project.name} - ${t('loc.exportLocations')}
       </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('loc.exportExported', { date: dateStr })}</div>
     </div>
     <div class="summary">
       <div class="summary-title">
         ${locationIconSVG}
-        Oversikt
+        ${t('loc.exportOverview')}
       </div>
       <div class="summary-grid">
         <div class="summary-item">
           <span class="summary-number">${totalLocations}</span>
-          <span class="summary-label">Totale Lokasjoner</span>
+          <span class="summary-label">${t('loc.exportTotalLocations')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${locationsWithScenes}</span>
-          <span class="summary-label">Med Tildelte Scener</span>
+          <span class="summary-label">${t('loc.exportWithScenes')}</span>
         </div>
       </div>
     </div>
@@ -2190,23 +2189,23 @@ export function LocationManagementPanel({
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${locationIconSVG}</span>
-          Lokasjoner
+          ${t('loc.exportLocations')}
         </div>
-        <span class="section-count">${totalLocations} lokasjon${totalLocations !== 1 ? 'er' : ''}</span>
+        <span class="section-count">${totalLocations !== 1 ? t('loc.exportCountMany', { n: totalLocations }) : t('loc.exportCountOne', { n: totalLocations })}</span>
       </div>
       <div class="section-content">
         ${locations.length === 0
-          ? '<div class="empty-state">Ingen lokasjoner ennå</div>'
+          ? `<div class="empty-state">${t('loc.emptyTitle')}</div>`
           : `<table>
           <thead>
             <tr>
-              <th style="width: 20%;">Navn</th>
-              <th style="width: 12%;">Type</th>
-              <th style="width: 25%;">Adresse</th>
-              <th style="width: 10%;">Kapasitet</th>
-              <th style="width: 20%;">Fasiliteter</th>
-              <th style="width: 8%;">Scener</th>
-              <th style="width: 5%;">Notater</th>
+              <th style="width: 20%;">${t('loc.thName')}</th>
+              <th style="width: 12%;">${t('loc.thType')}</th>
+              <th style="width: 25%;">${t('loc.thAddress')}</th>
+              <th style="width: 10%;">${t('loc.thCapacity')}</th>
+              <th style="width: 20%;">${t('loc.thFacilities')}</th>
+              <th style="width: 8%;">${t('loc.thScenes')}</th>
+              <th style="width: 5%;">${t('loc.thNotes')}</th>
             </tr>
           </thead>
           <tbody>
@@ -2214,9 +2213,9 @@ export function LocationManagementPanel({
               const facilities = (loc.facilities || []).map(getFacilityLabel).join(', ') || '-';
               const notes = loc.notes || '-';
               const contactInfo = loc.contactInfo ? 
-                (loc.contactInfo.name ? `Kontakt: ${loc.contactInfo.name}` : '') +
-                (loc.contactInfo.phone ? (loc.contactInfo.name ? ' | ' : '') + `Tel: ${loc.contactInfo.phone}` : '') +
-                (loc.contactInfo.email ? (loc.contactInfo.name || loc.contactInfo.phone ? ' | ' : '') + `E-post: ${loc.contactInfo.email}` : '')
+                (loc.contactInfo.name ? t('loc.htmlContact', { name: loc.contactInfo.name }) : '') +
+                (loc.contactInfo.phone ? (loc.contactInfo.name ? ' | ' : '') + t('loc.htmlTel', { phone: loc.contactInfo.phone }) : '') +
+                (loc.contactInfo.email ? (loc.contactInfo.name || loc.contactInfo.phone ? ' | ' : '') + t('loc.htmlEmail', { email: loc.contactInfo.email }) : '')
                 : '';
               const addressWithContact = contactInfo ? `${loc.address || '-'}<br><small style="color: #64748b;">${contactInfo}</small>` : (loc.address || '-');
               return `<tr>
@@ -2241,7 +2240,7 @@ export function LocationManagementPanel({
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
       <div class="footer-right">
-        <span class="page-number">Side </span>
+        <span class="page-number">${t('loc.exportPage')}</span>
         <span>|</span>
         <span>${dateStr}</span>
       </div>
@@ -2394,7 +2393,7 @@ export function LocationManagementPanel({
 
   const handleValidateAddress = async () => {
     if (!formData.address?.trim()) {
-      showError('Adresse er påkrevd for validering');
+      showError(t('loc.errAddressRequired'));
       return;
     }
 
@@ -2408,20 +2407,20 @@ export function LocationManagementPanel({
           coordinates: addressData.coordinates,
           propertyId: addressData.propertyId,
         });
-        showSuccess(`Adresse validert: ${addressData.address}`);
+        showSuccess(t('loc.toastAddressValidated', { address: addressData.address }));
       } else if (addressData.coordinates) {
         setFormData({
           ...formData,
           coordinates: addressData.coordinates,
           propertyId: addressData.propertyId,
         });
-        showSuccess('Koordinater funnet, men adressen kunne ikke bekreftes fullstendig');
+        showSuccess(t('loc.toastCoordsFound'));
       } else {
-        showError('Adressen ble ikke funnet. Sjekk at den er riktig skrevet.');
+        showError(t('loc.errAddressNotFound'));
       }
     } catch (error) {
       console.error('Address validation failed:', error);
-      showError('Kunne ikke validere adresse. Prøv igjen senere.');
+      showError(t('loc.errValidateAddress'));
     } finally {
       setValidatingAddress(false);
     }
@@ -2446,7 +2445,7 @@ export function LocationManagementPanel({
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error saving location analysis:', error);
-        showError('Feil ved lagring av analyse');
+        showError(t('loc.errSaveAnalysis'));
       }
     }
   };
@@ -2523,7 +2522,7 @@ export function LocationManagementPanel({
         next.delete(location.id);
         return next;
       });
-      showInfo('Ingen endringer i kontaktinfo', 2200);
+      showInfo(t('loc.infoNoContactChanges'), 2200);
       return;
     }
 
@@ -2559,11 +2558,11 @@ export function LocationManagementPanel({
         delete next[location.id];
         return next;
       });
-      showSuccess(`Kontaktinfo oppdatert for ${location.name}`, 2600);
+      showSuccess(t('loc.toastContactUpdated', { name: location.name }), 2600);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating pro contact info:', error);
-      showError('Kunne ikke oppdatere kontaktinfo');
+      showError(t('loc.errContactUpdate'));
     } finally {
       setSavingProContactIds((prev) => {
         const next = new Set(prev);
@@ -2585,11 +2584,11 @@ export function LocationManagementPanel({
       } as Location);
       const updated = await castingService.getLocations(projectId);
       setLocations(Array.isArray(updated) ? updated : []);
-      showSuccess(!current ? `Basecamp aktivert for ${location.name}` : `Basecamp fjernet for ${location.name}`, 2400);
+      showSuccess(!current ? t('loc.toastBasecampOn', { name: location.name }) : t('loc.toastBasecampOff', { name: location.name }), 2400);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error toggling basecamp:', error);
-      showError('Kunne ikke oppdatere basecamp-markering');
+      showError(t('loc.errBasecamp'));
     } finally {
       setSavingBasecampIds((prev) => {
         const next = new Set(prev);
@@ -2691,11 +2690,11 @@ export function LocationManagementPanel({
         delete next[location.id];
         return next;
       });
-      showSuccess(`Load-in / load-out oppdatert for ${location.name}`, 2600);
+      showSuccess(t('loc.toastLoadFlowUpdated', { name: location.name }), 2600);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating load flow:', error);
-      showError('Kunne ikke oppdatere load-in/load-out flyt');
+      showError(t('loc.errLoadFlow'));
     } finally {
       setSavingLoadFlowIds((prev) => {
         const next = new Set(prev);
@@ -2773,7 +2772,7 @@ export function LocationManagementPanel({
         next.delete(location.id);
         return next;
       });
-      showInfo('Ingen endring i scene-kobling', 2200);
+      showInfo(t('loc.infoNoSceneChange'), 2200);
       return;
     }
     setSavingSceneLinkIds((prev) => new Set(prev).add(location.id));
@@ -2795,11 +2794,11 @@ export function LocationManagementPanel({
         delete next[location.id];
         return next;
       });
-      showSuccess(`Scene-kobling oppdatert for ${location.name}`, 2600);
+      showSuccess(t('loc.toastSceneLinksUpdated', { name: location.name }), 2600);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating scene links:', error);
-      showError('Kunne ikke oppdatere scene-koblinger');
+      showError(t('loc.errSceneLinks'));
     } finally {
       setSavingSceneLinkIds((prev) => {
         const next = new Set(prev);
@@ -2879,12 +2878,12 @@ export function LocationManagementPanel({
     const caption =
       type === 'location' ? draft.locationImageCaptionInput : draft.storyboardImageCaptionInput;
     if (!url) {
-      showInfo('Legg inn en gyldig URL først', 2200);
+      showInfo(t('loc.infoValidUrl'), 2200);
       return;
     }
     const targetList = type === 'location' ? draft.locationImages : draft.storyboardImages;
     if (targetList.some((asset) => asset.url === url)) {
-      showInfo('Bildet er allerede lagt til', 2200);
+      showInfo(t('loc.infoImageExists'), 2200);
       return;
     }
     const asset = buildProMediaAsset(
@@ -2910,11 +2909,11 @@ export function LocationManagementPanel({
     file: File
   ) => {
     if (!file.type.startsWith('image/')) {
-      showError('Kun bilde-filer støttes her');
+      showError(t('loc.errImageOnly'));
       return;
     }
     if (file.size > MAX_MEDIA_FILE_SIZE_BYTES) {
-      showError('Filen er for stor (maks 8MB)');
+      showError(t('loc.errFileTooLarge'));
       return;
     }
     const draft = mediaDrafts[locationId];
@@ -2938,7 +2937,7 @@ export function LocationManagementPanel({
       }
     } catch (error) {
       console.error('Error reading media file:', error);
-      showError('Kunne ikke lese bilde-filen');
+      showError(t('loc.errReadImage'));
     }
   };
 
@@ -3021,11 +3020,11 @@ export function LocationManagementPanel({
         delete next[location.id];
         return next;
       });
-      showSuccess(`Media oppdatert for ${location.name}`, 2600);
+      showSuccess(t('loc.toastMediaUpdated', { name: location.name }), 2600);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error saving location media:', error);
-      showError('Kunne ikke lagre lokasjonsbilder/storyboard');
+      showError(t('loc.errSaveMedia'));
     } finally {
       setSavingMediaIds((prev) => {
         const next = new Set(prev);
@@ -3165,7 +3164,7 @@ export function LocationManagementPanel({
                 '@media (min-width: 5120px)': { fontSize: '2.8rem' },
               }}
             >
-              Produksjonslokasjoner
+              {t('loc.title')}
             </Typography>
             <Typography
               sx={{
@@ -3190,7 +3189,7 @@ export function LocationManagementPanel({
                   '@media (min-width: 5120px)': { fontSize: 28 },
                 }}
               />
-              Administrer lokasjoner og fasiliteter
+              {t('loc.subtitle')}
             </Typography>
           </Box>
         </Box>
@@ -3218,11 +3217,11 @@ export function LocationManagementPanel({
             },
           }}
         >
-          <Tooltip title="Eksporter til CSV (Ctrl+E)">
+          <Tooltip title={t('loc.exportCsvTooltip')}>
             <Button
               variant="outlined"
               onClick={handleExportCSV}
-              aria-label="Eksporter lokasjoner til CSV"
+              aria-label={t('loc.exportCsvAria')}
               startIcon={<ExportIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3235,11 +3234,11 @@ export function LocationManagementPanel({
                 ...focusVisibleStyles,
               }}
             >
-              {!isMobile && 'Eksporter'}
+              {!isMobile && t('loc.export')}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Vis/skjul statistikk">
+          <Tooltip title={t('loc.toggleStats')}>
             <Button
               variant="outlined"
               onClick={() => setShowStats(!showStats)}
@@ -3259,11 +3258,11 @@ export function LocationManagementPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Aapne guide (G)">
+          <Tooltip title={t('loc.openGuideTooltip')}>
             <Button
               variant="outlined"
               onClick={() => setLocationGuideOpen(true)}
-              aria-label="Aapne guide for location management"
+              aria-label={t('loc.openGuideAria')}
               startIcon={<HelpIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3276,15 +3275,15 @@ export function LocationManagementPanel({
                 ...focusVisibleStyles,
               }}
             >
-              {!isMobile && 'Guide'}
+              {!isMobile && t('loc.guide')}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Ny lokasjon (Ctrl+N)">
+          <Tooltip title={t('loc.newLocationTooltip')}>
             <Button
               variant="contained"
               onClick={() => handleOpenDialog()}
-              aria-label="Ny lokasjon"
+              aria-label={t('loc.newLocation')}
               startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
                 bgcolor: '#6d28d9 !important',
@@ -3299,7 +3298,7 @@ export function LocationManagementPanel({
                 '&:hover': { bgcolor: '#5b21b6 !important' },
               }}
             >
-              {isMobile ? '' : 'Ny lokasjon'}
+              {isMobile ? '' : t('loc.newLocation')}
             </Button>
           </Tooltip>
         </Box>
@@ -3333,7 +3332,7 @@ export function LocationManagementPanel({
             },
           }}
           role="region"
-          aria-label="Statistikk over lokasjoner"
+          aria-label={t('loc.statsAria')}
         >
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3342,7 +3341,7 @@ export function LocationManagementPanel({
             <Typography variant="h4" sx={{ color: '#a855f7', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.total}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('loc.statTotal')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3351,7 +3350,7 @@ export function LocationManagementPanel({
             <Typography variant="h4" sx={{ color: ROLE_ROOM_COLORS.secondary, fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.totalCapacity}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Total kapasitet</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('loc.statTotalCapacity')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3360,7 +3359,7 @@ export function LocationManagementPanel({
             <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.withCoordinates}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Med koordinater</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('loc.statWithCoords')}</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3369,7 +3368,7 @@ export function LocationManagementPanel({
             <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.favorites}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Favoritter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('loc.statFavorites')}</Typography>
           </Box>
           {!isMobile && Object.entries(stats.typeCount).slice(0, 3).map(([type, count]) => (
             <Box key={type} sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3401,7 +3400,7 @@ export function LocationManagementPanel({
         }}
       >
         <TextField
-          placeholder={isMobile ? 'Søk...' : 'Søk etter navn, adresse, type...'}
+          placeholder={isMobile ? t('loc.searchShort') : t('loc.searchLong')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           size="small"
@@ -3410,7 +3409,7 @@ export function LocationManagementPanel({
               startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 1, fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
-            htmlInput: { 'aria-label': 'Søk i lokasjoner' },
+            htmlInput: { 'aria-label': t('loc.searchAria') },
           }}
           sx={{
             flex: 1,
@@ -3445,7 +3444,7 @@ export function LocationManagementPanel({
             '@media (min-width: 5120px)': { gap: 1.7 },
           }}
         >
-          <Tooltip title="Vis/skjul filtre">
+          <Tooltip title={t('loc.toggleFilters')}>
             <Button
               variant={showFilters ? 'contained' : 'outlined'}
               onClick={() => setShowFilters(!showFilters)}
@@ -3463,7 +3462,7 @@ export function LocationManagementPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Kortvisning">
+          <Tooltip title={t('loc.gridView')}>
             <Button
               variant={viewMode === 'grid' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('grid')}
@@ -3481,7 +3480,7 @@ export function LocationManagementPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Tabellvisning">
+          <Tooltip title={t('loc.tableView')}>
             <Button
               variant={viewMode === 'table' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('table')}
@@ -3499,7 +3498,7 @@ export function LocationManagementPanel({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Pro-visning">
+          <Tooltip title={t('loc.proView')}>
             <Button
               variant={viewMode === 'pro' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('pro')}
@@ -3518,7 +3517,7 @@ export function LocationManagementPanel({
           </Tooltip>
 
           {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+            <Tooltip title={t('loc.deleteSelected', { n: selectedIds.size })}>
               <Button
                 variant="contained"
                 onClick={handleBulkDelete}
@@ -3567,11 +3566,11 @@ export function LocationManagementPanel({
           }}
         >
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Filtrer på type</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.filterType')}</InputLabel>
             <Select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as Location['type'] | 'all')}
-              label="Filtrer på type"
+              label={t('loc.filterType')}
               sx={{
                 color: '#fff',
                 minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
@@ -3584,7 +3583,7 @@ export function LocationManagementPanel({
               }}
             >
               <MenuItem value="all" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                Alle typer
+                {t('loc.allTypes')}
               </MenuItem>
               {locationTypes.map((type) => (
                 <MenuItem key={type} value={type} sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
@@ -3596,11 +3595,11 @@ export function LocationManagementPanel({
 
           {/* Fasilitets-filter — bygger valgmuligheter fra commonFacilities */}
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Fasiliteter</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.facilities')}</InputLabel>
             <Select
               value={filterFacility}
               onChange={(e) => setFilterFacility(String(e.target.value))}
-              label="Fasiliteter"
+              label={t('loc.facilities')}
               sx={{
                 color: '#fff',
                 minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
@@ -3609,7 +3608,7 @@ export function LocationManagementPanel({
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
               }}
             >
-              <MenuItem value="all">Alle fasiliteter</MenuItem>
+              <MenuItem value="all">{t('loc.allFacilities')}</MenuItem>
               {commonFacilities.map((fac) => (
                 <MenuItem key={fac} value={fac}>{getFacilityLabel(fac)}</MenuItem>
               ))}
@@ -3619,11 +3618,11 @@ export function LocationManagementPanel({
           {/* Kart-status-filter — utfalls-fokusert språk istedenfor "har koordinater".
               Normale brukere tenker "klar til å vises på kart", ikke i lat/lng. */}
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Kart-status</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.mapStatus')}</InputLabel>
             <Select
               value={filterCoordinates}
               onChange={(e) => setFilterCoordinates(e.target.value as 'all' | 'with' | 'without')}
-              label="Kart-status"
+              label={t('loc.mapStatus')}
               sx={{
                 color: '#fff',
                 minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
@@ -3632,9 +3631,9 @@ export function LocationManagementPanel({
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
               }}
             >
-              <MenuItem value="all">Alle</MenuItem>
-              <MenuItem value="with">Kart-verifisert</MenuItem>
-              <MenuItem value="without">Trenger adresse-verifisering</MenuItem>
+              <MenuItem value="all">{t('loc.all')}</MenuItem>
+              <MenuItem value="with">{t('loc.mapVerified')}</MenuItem>
+              <MenuItem value="without">{t('loc.needsAddressVerify')}</MenuItem>
             </Select>
           </FormControl>
 
@@ -3642,11 +3641,11 @@ export function LocationManagementPanel({
               Bruker getLocationRegion-helper (fylke → kommune → poststed-fallback) */}
           {availableRegions.length > 0 && (
             <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 } }}>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Område</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.region')}</InputLabel>
               <Select
                 value={filterRegion}
                 onChange={(e) => setFilterRegion(String(e.target.value))}
-                label="Område"
+                label={t('loc.region')}
                 sx={{
                   color: '#fff',
                   minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
@@ -3655,7 +3654,7 @@ export function LocationManagementPanel({
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                 }}
               >
-                <MenuItem value="all">Alle områder</MenuItem>
+                <MenuItem value="all">{t('loc.allRegions')}</MenuItem>
                 {availableRegions.map((region) => (
                   <MenuItem key={region} value={region}>{region}</MenuItem>
                 ))}
@@ -3675,7 +3674,7 @@ export function LocationManagementPanel({
                 setSortField('name');
                 setSortDirection('asc');
               }}
-              aria-label="Tøm alle aktive filtre og sortering"
+              aria-label={t('loc.clearFiltersAria')}
               sx={{
                 color: '#9333ea',
                 minHeight: TOUCH_TARGET_SIZE,
@@ -3686,7 +3685,7 @@ export function LocationManagementPanel({
                 ...focusVisibleStyles,
               }}
             >
-              Tøm filtre
+              {t('loc.clearFilters')}
             </Button>
           )}
         </Box>
@@ -3703,7 +3702,7 @@ export function LocationManagementPanel({
             '& .MuiAlert-icon': { color: '#a855f7' },
           }}
         >
-          Viser {filteredAndSortedLocations.length} av {locations.length} lokasjoner
+          {t('loc.showingCount', { shown: filteredAndSortedLocations.length, total: locations.length })}
         </Alert>
       )}
 
@@ -3711,14 +3710,14 @@ export function LocationManagementPanel({
       {locations.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={locationPng}
-          title="Ingen lokasjoner ennå"
-          subtitle="Legg til lokasjoner for å organisere produksjonslokasjoner"
+          title={t('loc.emptyTitle')}
+          subtitle={t('loc.emptySubtitle')}
           color="#a855f7"
         />
       ) : filteredAndSortedLocations.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: { xs: 48, sm: 56, md: 52, lg: 64, xl: 80 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, opacity: 0.3 }} />
-          <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>Ingen treff på søket</Typography>
+          <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>{t('loc.noSearchResults')}</Typography>
         </Box>
       ) : viewMode === 'table' ? (
         /* Table View */
@@ -3733,7 +3732,7 @@ export function LocationManagementPanel({
           }}
         >
           <Table
-            aria-label="Lokasjoner tabell"
+            aria-label={t('loc.tableAria')}
             sx={{
               minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 },
               '@media (min-width: 2048px)': { minWidth: 1600 },
@@ -3753,7 +3752,7 @@ export function LocationManagementPanel({
                     checked={selectedIds.size === filteredAndSortedLocations.length && filteredAndSortedLocations.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedLocations.length}
                     onChange={handleSelectAll}
-                    aria-label="Velg alle lokasjoner"
+                    aria-label={t('loc.selectAllAria')}
                     sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
                   />
                 </TableCell>
@@ -3764,7 +3763,7 @@ export function LocationManagementPanel({
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
-                    Navn
+                    {t('loc.colName')}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3774,10 +3773,10 @@ export function LocationManagementPanel({
                     onClick={() => handleSort('type')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
-                    Type
+                    {t('loc.colType')}
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Adresse</TableCell>
+                <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.address')}</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'capacity'}
@@ -3785,7 +3784,7 @@ export function LocationManagementPanel({
                     onClick={() => handleSort('capacity')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
-                    Kapasitet
+                    {t('loc.colCapacity')}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3795,10 +3794,10 @@ export function LocationManagementPanel({
                     onClick={() => handleSort('scenes')}
                     sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
-                    Scener
+                    {t('loc.colScenes')}
                   </TableSortLabel>
                 </TableCell>
-                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.colActions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -3814,7 +3813,7 @@ export function LocationManagementPanel({
                     <Checkbox
                       checked={selectedIds.has(location.id)}
                       onChange={() => handleToggleSelect(location.id)}
-                      inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
+                      inputProps={{ 'aria-label': t('loc.selectLocationAria', { name: location.name }) }}
                       sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
                     />
                   </TableCell>
@@ -3842,11 +3841,11 @@ export function LocationManagementPanel({
                         {location.address || '-'}
                       </Typography>
                       {location.address && (
-                        <Tooltip title={copiedId === location.id ? 'Kopiert!' : 'Kopier adresse'}>
+                        <Tooltip title={copiedId === location.id ? t('loc.copied') : t('loc.copyAddress')}>
                           <IconButton
                             size="small"
                             onClick={() => handleCopyAddress(location.address ?? '', location.id)}
-                            aria-label={`Kopier adresse for ${location.name}`}
+                            aria-label={t('loc.copyAddressAria', { name: location.name })}
                             sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                           >
                             {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} /> : <CopyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
@@ -3867,37 +3866,37 @@ export function LocationManagementPanel({
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
-                      <Tooltip title={favorites.has(location.id) ? 'Fjern favoritt' : 'Favoritt'}>
+                      <Tooltip title={favorites.has(location.id) ? t('loc.removeFavorite') : t('loc.favorite')}>
                         <IconButton
                           onClick={() => toggleFavorite(location.id)}
-                          aria-label={favorites.has(location.id) ? `Fjern ${location.name} fra favoritter` : `Legg til ${location.name} i favoritter`}
+                          aria-label={favorites.has(location.id) ? t('loc.removeFromFavoritesAria', { name: location.name }) : t('loc.addToFavoritesAria', { name: location.name })}
                           sx={{ color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           {favorites.has(location.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Dupliser">
+                      <Tooltip title={t('loc.duplicate')}>
                         <IconButton
                           onClick={() => handleDuplicate(location)}
-                          aria-label={`Dupliser ${location.name}`}
+                          aria-label={t('loc.duplicateAria', { name: location.name })}
                           sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger">
+                      <Tooltip title={t('loc.edit')}>
                         <IconButton
                           onClick={() => handleOpenDialog(location)}
-                          aria-label={`Rediger ${location.name}`}
+                          aria-label={t('loc.editAria', { name: location.name })}
                           sx={{ color: '#a855f7', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('loc.delete')}>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(location.id)}
-                          aria-label={`Slett ${location.name}`}
+                          aria-label={t('loc.deleteAria', { name: location.name })}
                           sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
@@ -3970,12 +3969,12 @@ export function LocationManagementPanel({
             }}
           >
             {([
-              { key: 'ready_today', label: 'Klar i dag', value: operationalStats.readyToday, color: '#34d399' },
-              { key: 'permit_missing', label: 'Mangler tillatelse', value: operationalStats.permitMissing, color: '#fbbf24' },
-              { key: 'high_risk', label: 'Høy risiko', value: operationalStats.highRisk, color: '#f87171' },
-              { key: 'over_budget', label: 'Over budsjett', value: operationalStats.overBudget, color: '#fb7185' },
-              { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: 'var(--role-cyan, #22d3ee)' },
-              { key: 'all', label: 'Totalt i visning', value: operationalStats.total, color: '#c084fc' },
+              { key: 'ready_today', label: t('loc.opReadyToday'), value: operationalStats.readyToday, color: '#34d399' },
+              { key: 'permit_missing', label: t('loc.opPermitMissing'), value: operationalStats.permitMissing, color: '#fbbf24' },
+              { key: 'high_risk', label: t('loc.opHighRisk'), value: operationalStats.highRisk, color: '#f87171' },
+              { key: 'over_budget', label: t('loc.opOverBudget'), value: operationalStats.overBudget, color: '#fb7185' },
+              { key: 'with_shots', label: t('loc.opWithShots'), value: operationalStats.withShots, color: 'var(--role-cyan, #22d3ee)' },
+              { key: 'all', label: t('loc.opTotalInView'), value: operationalStats.total, color: '#c084fc' },
             ] as Array<{ key: OperationalFilterKey; label: string; value: number; color: string }>).map((item) => (
               <Button
                 key={item.key}
@@ -4087,8 +4086,8 @@ export function LocationManagementPanel({
                 >
                   <TextField
                     size="small"
-                    label="Navn på visning"
-                    placeholder="F.eks. Tech scout uke 2"
+                    label={t('loc.viewNameLabel')}
+                    placeholder={t('loc.viewNamePlaceholder')}
                     value={proViewName}
                     onChange={(event) => setProViewName(event.target.value)}
                     sx={{
@@ -4104,10 +4103,10 @@ export function LocationManagementPanel({
                       '@media (min-width: 3840px)': { minWidth: 320 },
                     }}
                   >
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Lagrede visninger</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>{t('loc.savedViews')}</InputLabel>
                     <Select
                       value={selectedProViewId}
-                      label="Lagrede visninger"
+                      label={t('loc.savedViews')}
                       onChange={(event) => {
                         const next = String(event.target.value);
                         if (next === 'custom') {
@@ -4124,7 +4123,7 @@ export function LocationManagementPanel({
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
                       }}
                     >
-                      <MenuItem value="custom">Custom / Nåværende</MenuItem>
+                      <MenuItem value="custom">{t('loc.customCurrent')}</MenuItem>
                       {savedProViews.map((view) => (
                         <MenuItem key={view.id} value={view.id}>
                           {view.name}
@@ -4140,10 +4139,10 @@ export function LocationManagementPanel({
                       '@media (min-width: 3840px)': { minWidth: 320 },
                     }}
                   >
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Operativt filter</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>{t('loc.operationalFilter')}</InputLabel>
                     <Select
                       value={operationalFilter}
-                      label="Operativt filter"
+                      label={t('loc.operationalFilter')}
                       onChange={(event) => setOperationalFilter(event.target.value as OperationalFilterKey)}
                       sx={{
                         color: '#fff',
@@ -4172,7 +4171,7 @@ export function LocationManagementPanel({
                       '@media (min-width: 5120px)': { minHeight: 64, px: 3.5, fontSize: '1.04rem' },
                     }}
                   >
-                    Lagre view
+                    {t('loc.saveView')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -4188,7 +4187,7 @@ export function LocationManagementPanel({
                       '@media (min-width: 5120px)': { minHeight: 64, px: 3.5, fontSize: '1.04rem' },
                     }}
                   >
-                    Slett view
+                    {t('loc.deleteView')}
                   </Button>
                 </Box>
               </Stack>
@@ -4224,16 +4223,16 @@ export function LocationManagementPanel({
                   }}
                 >
                   <FormControl size="small">
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Status</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>{t('loc.status')}</InputLabel>
                     <Select
                       value={bulkWorkflowStatus}
-                      label="Status"
+                      label={t('loc.status')}
                       onChange={(event) => setBulkWorkflowStatus(event.target.value as BulkWorkflowStatus)}
                       sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' } }}
                     >
-                      <MenuItem value="ready">Klar</MenuItem>
-                      <MenuItem value="hold">På vent</MenuItem>
-                      <MenuItem value="blocked">Blokkert</MenuItem>
+                      <MenuItem value="ready">{t('loc.statusReady')}</MenuItem>
+                      <MenuItem value="hold">{t('loc.statusHold')}</MenuItem>
+                      <MenuItem value="blocked">{t('loc.statusBlocked')}</MenuItem>
                     </Select>
                   </FormControl>
                   <Button
@@ -4242,7 +4241,7 @@ export function LocationManagementPanel({
                     startIcon={<VerifiedIcon />}
                     sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
                   >
-                    Sett status
+                    {t('loc.setStatus')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -4250,7 +4249,7 @@ export function LocationManagementPanel({
                     startIcon={<EngineeringIcon />}
                     sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
                   >
-                    Tildel team
+                    {t('loc.assignTeam')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -4258,7 +4257,7 @@ export function LocationManagementPanel({
                     startIcon={<DuplicateIcon />}
                     sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
                   >
-                    Kopier tags
+                    {t('loc.copyTags')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -4266,7 +4265,7 @@ export function LocationManagementPanel({
                     startIcon={<ExportIcon />}
                     sx={{ minHeight: TOUCH_TARGET_SIZE, whiteSpace: 'nowrap' }}
                   >
-                    Eksporter call sheet
+                    {t('loc.exportCallSheet')}
                   </Button>
                 </Box>
               </CardContent>
@@ -4303,7 +4302,7 @@ export function LocationManagementPanel({
               >
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>
-                    Kart + kort (60/40)
+                    {t('loc.mapCards6040')}
                   </Typography>
                   <Box
                     sx={{
@@ -4348,7 +4347,7 @@ export function LocationManagementPanel({
                       {mapLocations.length === 0 ? (
                         <Box sx={{ height: '100%', display: 'grid', placeItems: 'center' }}>
                           <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.9rem' }}>
-                            Ingen koordinater tilgjengelig i gjeldende visning.
+                            {t('loc.noCoordsInView')}
                           </Typography>
                         </Box>
                       ) : (
@@ -4411,7 +4410,7 @@ export function LocationManagementPanel({
                                   },
                                 }}
                               >
-                                Åpne kart
+                                {t('loc.openMap')}
                               </Button>
                             </Box>
                           ) : null}
@@ -4430,7 +4429,7 @@ export function LocationManagementPanel({
                               }}
                             >
                               <Typography sx={{ color: 'rgba(255,255,255,0.92)', fontSize: '0.7rem', fontWeight: 600 }}>
-                                Aktiv: {activeMapLocation.name}
+                                {t('loc.activeLabel', { name: activeMapLocation.name })}
                               </Typography>
                             </Box>
                           ) : null}
@@ -4490,7 +4489,7 @@ export function LocationManagementPanel({
                             </Typography>
                             <Chip
                               size="small"
-                              label={hasCoordinates ? (metric ? `${metric.readinessScore}%` : '-') : 'Ingen koordinater'}
+                              label={hasCoordinates ? (metric ? `${metric.readinessScore}%` : '-') : t('loc.noCoords')}
                               sx={{
                                 bgcolor: hasCoordinates ? 'rgba(255,255,255,0.12)' : 'rgba(248,113,113,0.16)',
                                 color: hasCoordinates ? '#fff' : '#fca5a5',
@@ -4511,10 +4510,10 @@ export function LocationManagementPanel({
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      Pro-arbeidsliste
+                      {t('loc.proWorklist')}
                     </Typography>
                     <Chip
-                      label={`${proFilteredAndSortedLocations.length} lokasjoner`}
+                      label={t('loc.countLocations', { n: proFilteredAndSortedLocations.length })}
                       size="small"
                       sx={{
                         bgcolor: ROLE_ROOM_COLORS.accentSoft,
@@ -4550,10 +4549,10 @@ export function LocationManagementPanel({
                           ? (loadFlowStatusRaw as LoadFlowStatus)
                           : 'planned';
                       const loadFlowStatusMeta: Record<LoadFlowStatus, { label: string; color: string }> = {
-                        planned: { label: 'Planlagt', color: '#c084fc' },
-                        ready: { label: 'Klar', color: '#34d399' },
-                        in_progress: { label: 'Pågår', color: 'var(--role-cyan, #22d3ee)' },
-                        completed: { label: 'Ferdig', color: '#86efac' },
+                        planned: { label: t('loc.statusPlanned'), color: '#c084fc' },
+                        ready: { label: t('loc.statusReady'), color: '#34d399' },
+                        in_progress: { label: t('loc.statusInProgress'), color: 'var(--role-cyan, #22d3ee)' },
+                        completed: { label: t('loc.statusDone'), color: '#86efac' },
                       };
                       const isEditingLoadFlow = editingLoadFlowIds.has(location.id);
                       const isSavingLoadFlow = savingLoadFlowIds.has(location.id);
@@ -4662,7 +4661,7 @@ export function LocationManagementPanel({
                                 <Checkbox
                                   checked={selectedIds.has(location.id)}
                                   onChange={() => handleToggleSelect(location.id)}
-                                  inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
+                                  inputProps={{ 'aria-label': t('loc.selectLocationAria', { name: location.name }) }}
                                   sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: ROLE_ROOM_COLORS.accent } }}
                                 />
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -4671,25 +4670,25 @@ export function LocationManagementPanel({
                                   </Typography>
                                   <Stack direction="row" spacing={0.75} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
                                     <Chip size="small" label={getTypeLabel(location.type)} sx={{ bgcolor: `${typeColor}2b`, color: typeColor }} />
-                                    <Chip size="small" label={`${metric?.readinessScore ?? 0}% klar`} sx={{ bgcolor: 'rgba(34,211,238,0.2)', color: '#67e8f9' }} />
-                                    <Chip size="small" label={`Risiko ${metric?.riskScore ?? 0}`} sx={{ bgcolor: `${riskColor}26`, color: riskColor }} />
+                                    <Chip size="small" label={t('loc.pctReady', { n: metric?.readinessScore ?? 0 })} sx={{ bgcolor: 'rgba(34,211,238,0.2)', color: '#67e8f9' }} />
+                                    <Chip size="small" label={t('loc.riskScore', { n: metric?.riskScore ?? 0 })} sx={{ bgcolor: `${riskColor}26`, color: riskColor }} />
                                   </Stack>
                                 </Box>
                               </Box>
                               <Stack direction="row" spacing={0.5}>
-                                <Tooltip title={favorites.has(location.id) ? 'Fjern favoritt' : 'Favoritt'}>
+                                <Tooltip title={favorites.has(location.id) ? t('loc.removeFavorite') : t('loc.favorite')}>
                                   <IconButton
                                     onClick={() => toggleFavorite(location.id)}
-                                    aria-label={favorites.has(location.id) ? `Fjern ${location.name} fra favoritter` : `Legg til ${location.name} i favoritter`}
+                                    aria-label={favorites.has(location.id) ? t('loc.removeFromFavoritesAria', { name: location.name }) : t('loc.addToFavoritesAria', { name: location.name })}
                                     sx={{ color: favorites.has(location.id) ? '#facc15' : 'rgba(255,255,255,0.35)' }}
                                   >
                                     {favorites.has(location.id) ? <StarIcon /> : <StarBorderIcon />}
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Analyser lokasjon">
+                                <Tooltip title={t('loc.analyzeLocation')}>
                                   <IconButton
                                     onClick={() => handleOpenAnalysisDialog(location)}
-                                    aria-label={`Analyser ${location.name}`}
+                                    aria-label={t('loc.analyzeAria', { name: location.name })}
                                     sx={{ color: ROLE_ROOM_COLORS.secondary }}
                                   >
                                     <AnalyticsIcon />
@@ -4701,13 +4700,13 @@ export function LocationManagementPanel({
                             <Box sx={{ mt: 1.1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'wrap' }}>
                                 <Typography sx={{ color: 'rgba(255,255,255,0.84)', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
-                                  Oversikt
+                                  {t('loc.overview')}
                                 </Typography>
                                 {consistencySection === 'summary' ? (
                                   <Chip
                                     size="small"
                                     icon={<ExploreIcon sx={{ fontSize: 14 }} />}
-                                    label="Fra konsistenssjekk"
+                                    label={t('loc.fromConsistencyCheck')}
                                     sx={{
                                       bgcolor: 'rgba(251,191,36,0.22)',
                                       color: '#fde68a',
@@ -4722,7 +4721,7 @@ export function LocationManagementPanel({
                                 onClick={() => toggleProSection(location.id, 'summary')}
                                 sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
                               >
-                                {summaryExpanded ? 'Skjul' : 'Vis'}
+                                {summaryExpanded ? t('loc.hide') : t('loc.show')}
                               </Button>
                             </Box>
                             <Collapse in={summaryExpanded}>
@@ -4748,25 +4747,25 @@ export function LocationManagementPanel({
                                 }}
                               >
                                 <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Logistikk</Typography>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>{t('loc.logistics')}</Typography>
                                   <Typography sx={{ color: '#fff', fontSize: '0.82rem', mt: 0.4 }}>
-                                    {hasCoordinates ? 'Koordinater klare' : 'Mangler koordinater'}
+                                    {hasCoordinates ? t('loc.coordsReady') : t('loc.coordsMissing')}
                                   </Typography>
                                   <Typography sx={{ color: ROLE_ROOM_COLORS.secondary, fontWeight: 700, fontSize: '0.8rem' }}>
                                     {location.capacity || 0} kapasitet
                                   </Typography>
                                 </Box>
                                 <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Tillatelser</Typography>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>{t('loc.permits')}</Typography>
                                   <Typography sx={{ color: metric?.permitMissing ? '#fbbf24' : '#34d399', fontWeight: 700, fontSize: '0.82rem', mt: 0.4 }}>
-                                    {metric?.permitMissing ? 'Mangler dokumentasjon' : 'Dokumentert'}
+                                    {metric?.permitMissing ? t('loc.missingDocs') : t('loc.documented')}
                                   </Typography>
                                   <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.76rem' }}>
                                     {location.facilities?.length || 0} fasiliteter
                                   </Typography>
                                 </Box>
                                 <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Teknisk</Typography>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>{t('loc.technical')}</Typography>
                                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', mt: 0.4 }}>
                                     {metric?.technicalCoverage ?? 0}% dekning
                                   </Typography>
@@ -4775,12 +4774,12 @@ export function LocationManagementPanel({
                                   </Typography>
                                 </Box>
                                 <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Kost</Typography>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>{t('loc.cost')}</Typography>
                                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', mt: 0.4 }}>
                                     {new Intl.NumberFormat('nb-NO').format(metric?.estimatedCost ?? 0)} kr
                                   </Typography>
                                   <Typography sx={{ color: metric?.overBudget ? '#f87171' : '#34d399', fontSize: '0.76rem' }}>
-                                    {metric?.overBudget ? 'Over budsjettgrense' : 'Innenfor budsjett'}
+                                    {metric?.overBudget ? t('loc.overBudgetLimit') : t('loc.withinBudget')}
                                   </Typography>
                                 </Box>
                               </Box>
@@ -4799,13 +4798,13 @@ export function LocationManagementPanel({
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                   <BasecampIcon sx={{ fontSize: 16, color: '#67e8f9' }} />
                                   <Typography sx={{ color: '#67e8f9', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
-                                    Basecamp + load-in/out
+                                    {t('loc.basecampLoadInOut')}
                                   </Typography>
                                   {consistencySection === 'loadFlow' ? (
                                     <Chip
                                       size="small"
                                       icon={<ExploreIcon sx={{ fontSize: 14 }} />}
-                                      label="Fra konsistenssjekk"
+                                      label={t('loc.fromConsistencyCheck')}
                                       sx={{
                                         bgcolor: 'rgba(251,191,36,0.22)',
                                         color: '#fde68a',
@@ -4826,7 +4825,7 @@ export function LocationManagementPanel({
                                       px: 1,
                                     }}
                                   >
-                                    {isSavingBasecamp ? 'Lagrer...' : isBasecamp ? 'Basecamp aktiv' : 'Sett basecamp'}
+                                    {isSavingBasecamp ? t('loc.saving') : isBasecamp ? t('loc.basecampActive') : t('loc.setBasecamp')}
                                   </Button>
                                   <Button
                                     size="small"
@@ -4835,7 +4834,7 @@ export function LocationManagementPanel({
                                     }
                                     sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {isEditingLoadFlow ? 'Lukk flow' : 'Rediger flow'}
+                                    {isEditingLoadFlow ? t('loc.closeFlow') : t('loc.editFlow')}
                                   </Button>
                                   <Button
                                     size="small"
@@ -4843,7 +4842,7 @@ export function LocationManagementPanel({
                                     onClick={() => toggleProSection(location.id, 'loadFlow')}
                                     sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {loadFlowExpanded ? 'Skjul' : 'Vis'}
+                                    {loadFlowExpanded ? t('loc.hide') : t('loc.show')}
                                   </Button>
                                 </Box>
                               </Box>
@@ -4853,7 +4852,7 @@ export function LocationManagementPanel({
                                   <Chip
                                     size="small"
                                     icon={<BasecampIcon sx={{ fontSize: 15 }} />}
-                                    label={isBasecamp ? 'Basecamp' : 'Ikke basecamp'}
+                                    label={isBasecamp ? t('loc.basecamp') : t('loc.notBasecamp')}
                                     sx={{
                                       bgcolor: isBasecamp ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.08)',
                                       color: isBasecamp ? '#86efac' : 'rgba(255,255,255,0.72)',
@@ -4870,12 +4869,12 @@ export function LocationManagementPanel({
                                   />
                                   <Chip
                                     size="small"
-                                    label={`Load-in ${formatDateTimeShort(loadFlow.loadInAt)}`}
+                                    label={t('loc.loadInLabel', { time: formatDateTimeShort(loadFlow.loadInAt) })}
                                     sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.84)' }}
                                   />
                                   <Chip
                                     size="small"
-                                    label={`Load-out ${formatDateTimeShort(loadFlow.loadOutAt)}`}
+                                    label={t('loc.loadOutLabel', { time: formatDateTimeShort(loadFlow.loadOutAt) })}
                                     sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.84)' }}
                                   />
                                 </Box>
@@ -4908,7 +4907,7 @@ export function LocationManagementPanel({
                                     <TextField
                                       size="small"
                                       type="datetime-local"
-                                      label="Load-in"
+                                      label={t('loc.loadIn')}
                                       InputLabelProps={{ shrink: true }}
                                       value={loadFlowDraft.loadInAt}
                                       onChange={(event) => handleLoadFlowDraftChange(location.id, 'loadInAt', event.target.value)}
@@ -4920,7 +4919,7 @@ export function LocationManagementPanel({
                                     <TextField
                                       size="small"
                                       type="datetime-local"
-                                      label="Start opptak"
+                                      label={t('loc.shootStart')}
                                       InputLabelProps={{ shrink: true }}
                                       value={loadFlowDraft.shootStartAt}
                                       onChange={(event) => handleLoadFlowDraftChange(location.id, 'shootStartAt', event.target.value)}
@@ -4932,7 +4931,7 @@ export function LocationManagementPanel({
                                     <TextField
                                       size="small"
                                       type="datetime-local"
-                                      label="Wrap"
+                                      label={t('loc.wrap')}
                                       InputLabelProps={{ shrink: true }}
                                       value={loadFlowDraft.wrapAt}
                                       onChange={(event) => handleLoadFlowDraftChange(location.id, 'wrapAt', event.target.value)}
@@ -4944,7 +4943,7 @@ export function LocationManagementPanel({
                                     <TextField
                                       size="small"
                                       type="datetime-local"
-                                      label="Load-out"
+                                      label={t('loc.loadOut')}
                                       InputLabelProps={{ shrink: true }}
                                       value={loadFlowDraft.loadOutAt}
                                       onChange={(event) => handleLoadFlowDraftChange(location.id, 'loadOutAt', event.target.value)}
@@ -4954,10 +4953,10 @@ export function LocationManagementPanel({
                                       }}
                                     />
                                     <FormControl size="small">
-                                      <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Status</InputLabel>
+                                      <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>{t('loc.status')}</InputLabel>
                                       <Select
                                         value={loadFlowDraft.status}
-                                        label="Status"
+                                        label={t('loc.status')}
                                         onChange={(event) =>
                                           handleLoadFlowDraftChange(location.id, 'status', String(event.target.value))
                                         }
@@ -4966,15 +4965,15 @@ export function LocationManagementPanel({
                                           '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
                                         }}
                                       >
-                                        <MenuItem value="planned">Planlagt</MenuItem>
-                                        <MenuItem value="ready">Klar</MenuItem>
-                                        <MenuItem value="in_progress">Pågår</MenuItem>
-                                        <MenuItem value="completed">Ferdig</MenuItem>
+                                        <MenuItem value="planned">{t('loc.statusPlanned')}</MenuItem>
+                                        <MenuItem value="ready">{t('loc.statusReady')}</MenuItem>
+                                        <MenuItem value="in_progress">{t('loc.statusInProgress')}</MenuItem>
+                                        <MenuItem value="completed">{t('loc.statusDone')}</MenuItem>
                                       </Select>
                                     </FormControl>
                                     <TextField
                                       size="small"
-                                      label="Flow-notat"
+                                      label={t('loc.flowNote')}
                                       value={loadFlowDraft.notes}
                                       onChange={(event) => handleLoadFlowDraftChange(location.id, 'notes', event.target.value)}
                                       sx={{
@@ -4991,7 +4990,7 @@ export function LocationManagementPanel({
                                         disabled={isSavingLoadFlow}
                                         sx={{ textTransform: 'none', bgcolor: ROLE_ROOM_COLORS.secondary, '&:hover': { bgcolor: '#06b6d4' } }}
                                       >
-                                        {isSavingLoadFlow ? 'Lagrer...' : 'Lagre flow'}
+                                        {isSavingLoadFlow ? t('loc.saving') : t('loc.saveFlow')}
                                       </Button>
                                       <Button
                                         size="small"
@@ -4999,7 +4998,7 @@ export function LocationManagementPanel({
                                         disabled={isSavingLoadFlow}
                                         sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
                                       >
-                                        Avbryt
+                                        {t('loc.cancel')}
                                       </Button>
                                     </Box>
                                   </Box>
@@ -5020,13 +5019,13 @@ export function LocationManagementPanel({
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                   <LinkIcon sx={{ fontSize: 16, color: '#d8b4fe' }} />
                                   <Typography sx={{ color: '#e9d5ff', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
-                                    Scene-kobling (crew/callback/shot/utstyr/storyboard)
+                                    {t('loc.sceneLinkHeading')}
                                   </Typography>
                                   {consistencySection === 'sceneLinks' ? (
                                     <Chip
                                       size="small"
                                       icon={<ExploreIcon sx={{ fontSize: 14 }} />}
-                                      label="Fra konsistenssjekk"
+                                      label={t('loc.fromConsistencyCheck')}
                                       sx={{
                                         bgcolor: 'rgba(251,191,36,0.22)',
                                         color: '#fde68a',
@@ -5045,7 +5044,7 @@ export function LocationManagementPanel({
                                     }
                                     sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {isEditingSceneLinks ? 'Lukk kobling' : 'Koble scener'}
+                                    {isEditingSceneLinks ? t('loc.closeLink') : t('loc.linkScenes')}
                                   </Button>
                                   <Button
                                     size="small"
@@ -5053,26 +5052,26 @@ export function LocationManagementPanel({
                                     onClick={() => toggleProSection(location.id, 'sceneLinks')}
                                     sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {sceneLinksExpanded ? 'Skjul' : 'Vis'}
+                                    {sceneLinksExpanded ? t('loc.hide') : t('loc.show')}
                                   </Button>
                                 </Box>
                               </Box>
 
                               <Collapse in={sceneLinksExpanded}>
                                 <Box sx={{ mt: 1, display: 'flex', gap: 0.65, flexWrap: 'wrap' }}>
-                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneIds.length} scener`} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#fff' }} />
-                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.shots} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
-                                  <Chip size="small" icon={<CallbackIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.callbacks} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
-                                  <Chip size="small" icon={<CrewLinkIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.crew} crew-touchpoints`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
-                                  <Chip size="small" icon={<EquipmentIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.equipment} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
-                                  <Chip size="small" icon={<StoryboardIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.storyboard} storyboard`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={t('loc.countScenes', { n: linkedSceneIds.length })} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#fff' }} />
+                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={t('loc.countShots', { n: linkedSceneSummary.shots })} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                                  <Chip size="small" icon={<CallbackIcon sx={{ fontSize: 15 }} />} label={t('loc.countCallbacks', { n: linkedSceneSummary.callbacks })} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
+                                  <Chip size="small" icon={<CrewLinkIcon sx={{ fontSize: 15 }} />} label={t('loc.countCrewTouchpoints', { n: linkedSceneSummary.crew })} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
+                                  <Chip size="small" icon={<EquipmentIcon sx={{ fontSize: 15 }} />} label={t('loc.countEquipment', { n: linkedSceneSummary.equipment })} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
+                                  <Chip size="small" icon={<StoryboardIcon sx={{ fontSize: 15 }} />} label={t('loc.countStoryboard', { n: linkedSceneSummary.storyboard })} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
                                 </Box>
 
                                 {isEditingSceneLinks ? (
                                   <Box sx={{ mt: 1, maxHeight: 230, overflow: 'auto', pr: 0.5 }}>
                                     {proSceneOptions.length === 0 ? (
                                       <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.8rem' }}>
-                                        Ingen scener funnet i prosjektet ennå.
+                                        {t('loc.noScenesInProject')}
                                       </Typography>
                                     ) : (
                                       <Stack spacing={0.75}>
@@ -5107,10 +5106,10 @@ export function LocationManagementPanel({
                                                       {scene.label}
                                                     </Typography>
                                                     <Box sx={{ mt: 0.35, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                                      <Chip size="small" label={`${insight?.shotCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
-                                                      <Chip size="small" label={`${insight?.callbackCount ?? 0} callback`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
-                                                      <Chip size="small" label={`${insight?.equipment.length ?? 0} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
-                                                      <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                                      <Chip size="small" label={t('loc.countShots', { n: insight?.shotCount ?? 0 })} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                                                      <Chip size="small" label={t('loc.countCallbackSingular', { n: insight?.callbackCount ?? 0 })} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
+                                                      <Chip size="small" label={t('loc.countEquipment', { n: insight?.equipment.length ?? 0 })} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
+                                                      <Chip size="small" label={t('loc.storyboardPct', { n: storyboardCoverage })} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
                                                     </Box>
                                                   </Box>
                                                 }
@@ -5134,7 +5133,7 @@ export function LocationManagementPanel({
                                           '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
                                         }}
                                       >
-                                        {isSavingSceneLinks ? 'Lagrer...' : 'Lagre scene-kobling'}
+                                        {isSavingSceneLinks ? t('loc.saving') : t('loc.saveSceneLinks')}
                                       </Button>
                                       <Button
                                         size="small"
@@ -5142,7 +5141,7 @@ export function LocationManagementPanel({
                                         disabled={isSavingSceneLinks}
                                         sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
                                       >
-                                        Avbryt
+                                        {t('loc.cancel')}
                                       </Button>
                                     </Box>
                                   </Box>
@@ -5150,7 +5149,7 @@ export function LocationManagementPanel({
                                   <Box sx={{ mt: 1 }}>
                                     {linkedSceneInsights.length === 0 ? (
                                       <Typography sx={{ color: 'rgba(255,255,255,0.58)', fontSize: '0.78rem' }}>
-                                        Ingen scener koblet til denne lokasjonen ennå.
+                                        {t('loc.noScenesLinked')}
                                       </Typography>
                                     ) : (
                                       <Stack spacing={0.7}>
@@ -5171,10 +5170,10 @@ export function LocationManagementPanel({
                                                 {scene.sceneLabel}
                                               </Typography>
                                               <Box sx={{ mt: 0.45, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                                <Chip size="small" label={`${scene.shotListCount} shotlists`} sx={{ bgcolor: 'rgba(34,211,238,0.15)', color: '#67e8f9' }} />
-                                                <Chip size="small" label={`${scene.callbackCount} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
-                                                <Chip size="small" label={`${scene.crewTouchpoints} crew`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
-                                                <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                                <Chip size="small" label={t('loc.countShotlists', { n: scene.shotListCount })} sx={{ bgcolor: 'rgba(34,211,238,0.15)', color: '#67e8f9' }} />
+                                                <Chip size="small" label={t('loc.countCallbacks', { n: scene.callbackCount })} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
+                                                <Chip size="small" label={t('loc.countCrew', { n: scene.crewTouchpoints })} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
+                                                <Chip size="small" label={t('loc.storyboardPct', { n: storyboardCoverage })} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
                                               </Box>
                                               {scene.equipment.length > 0 ? (
                                                 <Box sx={{ mt: 0.5, display: 'flex', gap: 0.45, flexWrap: 'wrap' }}>
@@ -5234,13 +5233,13 @@ export function LocationManagementPanel({
                                       fontWeight: 700,
                                     }}
                                   >
-                                    Lokasjonsbilder + storyboard
+                                    {t('loc.locationImagesStoryboard')}
                                   </Typography>
                                   {consistencySection === 'media' ? (
                                     <Chip
                                       size="small"
                                       icon={<ExploreIcon sx={{ fontSize: 14 }} />}
-                                      label="Fra konsistenssjekk"
+                                      label={t('loc.fromConsistencyCheck')}
                                       sx={{
                                         bgcolor: 'rgba(251,191,36,0.22)',
                                         color: '#fde68a',
@@ -5257,7 +5256,7 @@ export function LocationManagementPanel({
                                     }
                                     sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {isEditingMedia ? 'Lukk media' : 'Rediger media'}
+                                    {isEditingMedia ? t('loc.closeMedia') : t('loc.editMedia')}
                                   </Button>
                                   <Button
                                     size="small"
@@ -5265,7 +5264,7 @@ export function LocationManagementPanel({
                                     onClick={() => toggleProSection(location.id, 'media')}
                                     sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {mediaExpanded ? 'Skjul' : 'Vis'}
+                                    {mediaExpanded ? t('loc.hide') : t('loc.show')}
                                   </Button>
                                 </Box>
                               </Box>
@@ -5275,20 +5274,20 @@ export function LocationManagementPanel({
                                 <Chip
                                   size="small"
                                   icon={<ImageIcon sx={{ fontSize: 15 }} />}
-                                  label={`${locationMediaImages.length} lokasjonsbilder`}
+                                  label={t('loc.countLocationImages', { n: locationMediaImages.length })}
                                   sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }}
                                 />
                                 <Chip
                                   size="small"
                                   icon={<StoryboardIcon sx={{ fontSize: 15 }} />}
-                                  label={`${storyboardMediaImages.length} storyboard-bilder`}
+                                  label={t('loc.countStoryboardImages', { n: storyboardMediaImages.length })}
                                   sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }}
                                 />
                                 {mediaDraft.storyboardSceneIds.length > 0 ? (
                                   <Chip
                                     size="small"
                                     icon={<LinkIcon sx={{ fontSize: 15 }} />}
-                                    label={`${mediaDraft.storyboardSceneIds.length} scener valgt`}
+                                    label={t('loc.countScenesSelected', { n: mediaDraft.storyboardSceneIds.length })}
                                     sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }}
                                   />
                                 ) : null}
@@ -5315,7 +5314,7 @@ export function LocationManagementPanel({
                                     }}
                                   >
                                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.8rem' }}>
-                                      Lokasjonsbilder
+                                      {t('loc.locationImages')}
                                     </Typography>
                                     <Box
                                       sx={{
@@ -5333,7 +5332,7 @@ export function LocationManagementPanel({
                                     >
                                       <TextField
                                         size="small"
-                                        label="Bilde-URL"
+                                        label={t('loc.imageUrl')}
                                         value={mediaDraft.locationImageUrlInput}
                                         onChange={(event) =>
                                           handleMediaDraftFieldChange(
@@ -5352,7 +5351,7 @@ export function LocationManagementPanel({
                                       />
                                       <TextField
                                         size="small"
-                                        label="Bildetekst"
+                                        label={t('loc.imageCaption')}
                                         value={mediaDraft.locationImageCaptionInput}
                                         onChange={(event) =>
                                           handleMediaDraftFieldChange(
@@ -5385,7 +5384,7 @@ export function LocationManagementPanel({
                                           onClick={() => handleAddMediaFromUrl(location.id, 'location')}
                                           sx={{ textTransform: 'none', color: '#67e8f9', borderColor: 'rgba(34,211,238,0.45)' }}
                                         >
-                                          Legg til URL
+                                          {t('loc.addUrl')}
                                         </Button>
                                         <Button
                                           size="small"
@@ -5394,7 +5393,7 @@ export function LocationManagementPanel({
                                           startIcon={<UploadFileIcon sx={{ fontSize: 15 }} />}
                                           sx={{ textTransform: 'none', color: '#67e8f9', borderColor: 'rgba(34,211,238,0.45)' }}
                                         >
-                                          Last opp bilde
+                                          {t('loc.uploadImage')}
                                           <input
                                             type="file"
                                             hidden
@@ -5437,7 +5436,7 @@ export function LocationManagementPanel({
                                     >
                                       {locationMediaImages.length === 0 ? (
                                         <Typography sx={{ color: 'rgba(255,255,255,0.58)', fontSize: '0.76rem' }}>
-                                          Ingen lokasjonsbilder lagt til ennå.
+                                          {t('loc.noLocationImagesYet')}
                                         </Typography>
                                       ) : (
                                         locationMediaImages.map((asset, index) => (
@@ -5465,7 +5464,7 @@ export function LocationManagementPanel({
                                               <Box
                                                 component="img"
                                                 src={asset.url}
-                                                alt={asset.caption || `Lokasjonsbilde ${index + 1}`}
+                                                alt={asset.caption || t('loc.locationImageAlt', { n: index + 1 })}
                                                 sx={{
                                                   width: '100%',
                                                   height: 88,
@@ -5492,7 +5491,7 @@ export function LocationManagementPanel({
                                                   whiteSpace: 'nowrap',
                                                 }}
                                               >
-                                                {asset.caption || 'Lokasjonsbilde'}
+                                                {asset.caption || t('loc.locationImage')}
                                               </Typography>
                                               <IconButton
                                                 size="small"
@@ -5519,18 +5518,18 @@ export function LocationManagementPanel({
                                     }}
                                   >
                                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.8rem' }}>
-                                      Storyboard-bilder
+                                      {t('loc.storyboardImages')}
                                     </Typography>
                                     <Typography sx={{ mt: 0.35, color: 'rgba(255,255,255,0.62)', fontSize: '0.72rem' }}>
-                                      Koble bilder til relevante scener for crew, callback, shotlist og utstyr.
+                                      {t('loc.storyboardHelp')}
                                     </Typography>
                                     <Box sx={{ mt: 0.7 }}>
                                       <Typography sx={{ color: '#d8b4fe', fontSize: '0.7rem', fontWeight: 700 }}>
-                                        Scener for neste storyboard-bilde
+                                        {t('loc.scenesForNextStoryboard')}
                                       </Typography>
                                       {mediaSceneOptions.length === 0 ? (
                                         <Typography sx={{ mt: 0.35, color: 'rgba(255,255,255,0.58)', fontSize: '0.74rem' }}>
-                                          Koble scener til lokasjonen først.
+                                          {t('loc.linkScenesFirst')}
                                         </Typography>
                                       ) : (
                                         <Box sx={{ mt: 0.5, display: 'flex', gap: 0.45, flexWrap: 'wrap' }}>
@@ -5575,7 +5574,7 @@ export function LocationManagementPanel({
                                     >
                                       <TextField
                                         size="small"
-                                        label="Storyboard URL"
+                                        label={t('loc.storyboardUrl')}
                                         value={mediaDraft.storyboardImageUrlInput}
                                         onChange={(event) =>
                                           handleMediaDraftFieldChange(
@@ -5594,7 +5593,7 @@ export function LocationManagementPanel({
                                       />
                                       <TextField
                                         size="small"
-                                        label="Storyboard-tekst"
+                                        label={t('loc.storyboardCaption')}
                                         value={mediaDraft.storyboardImageCaptionInput}
                                         onChange={(event) =>
                                           handleMediaDraftFieldChange(
@@ -5627,7 +5626,7 @@ export function LocationManagementPanel({
                                           onClick={() => handleAddMediaFromUrl(location.id, 'storyboard')}
                                           sx={{ textTransform: 'none', color: '#d8b4fe', borderColor: 'rgba(168,85,247,0.45)' }}
                                         >
-                                          Legg til URL
+                                          {t('loc.addUrl')}
                                         </Button>
                                         <Button
                                           size="small"
@@ -5636,7 +5635,7 @@ export function LocationManagementPanel({
                                           startIcon={<UploadFileIcon sx={{ fontSize: 15 }} />}
                                           sx={{ textTransform: 'none', color: '#d8b4fe', borderColor: 'rgba(168,85,247,0.45)' }}
                                         >
-                                          Last opp bilde
+                                          {t('loc.uploadImage')}
                                           <input
                                             type="file"
                                             hidden
@@ -5666,7 +5665,7 @@ export function LocationManagementPanel({
                                     >
                                       {storyboardMediaImages.length === 0 ? (
                                         <Typography sx={{ color: 'rgba(255,255,255,0.58)', fontSize: '0.76rem' }}>
-                                          Ingen storyboard-bilder lagt til ennå.
+                                          {t('loc.noStoryboardImagesYet')}
                                         </Typography>
                                       ) : (
                                         storyboardMediaImages.map((asset, index) => {
@@ -5696,7 +5695,7 @@ export function LocationManagementPanel({
                                                 <Box
                                                   component="img"
                                                   src={asset.url}
-                                                  alt={asset.caption || `Storyboard ${index + 1}`}
+                                                  alt={asset.caption || t('loc.storyboardAlt', { n: index + 1 })}
                                                   sx={{
                                                     width: '100%',
                                                     height: 88,
@@ -5723,7 +5722,7 @@ export function LocationManagementPanel({
                                                     whiteSpace: 'nowrap',
                                                   }}
                                                 >
-                                                  {asset.caption || 'Storyboard'}
+                                                  {asset.caption || t('loc.storyboard')}
                                                 </Typography>
                                                 <IconButton
                                                   size="small"
@@ -5808,7 +5807,7 @@ export function LocationManagementPanel({
                                         '&:hover': { bgcolor: '#06b6d4' },
                                       }}
                                     >
-                                      {isSavingMedia ? 'Lagrer...' : 'Lagre media'}
+                                      {isSavingMedia ? t('loc.saving') : t('loc.saveMedia')}
                                     </Button>
                                     <Button
                                       size="small"
@@ -5816,7 +5815,7 @@ export function LocationManagementPanel({
                                       disabled={isSavingMedia}
                                       sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
                                     >
-                                      Avbryt
+                                      {t('loc.cancel')}
                                     </Button>
                                   </Box>
                                 </Box>
@@ -5831,11 +5830,11 @@ export function LocationManagementPanel({
                                 >
                                   <Box sx={{ p: 0.8, borderRadius: 1.2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)' }}>
                                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem' }}>
-                                      Lokasjonsbilder
+                                      {t('loc.locationImages')}
                                     </Typography>
                                     {locationMediaImages.length === 0 ? (
                                       <Typography sx={{ mt: 0.45, color: 'rgba(255,255,255,0.58)', fontSize: '0.74rem' }}>
-                                        Ingen lokasjonsbilder lagt inn.
+                                        {t('loc.noLocationImages')}
                                       </Typography>
                                     ) : (
                                       <Box sx={{ mt: 0.55, display: 'flex', gap: 0.55, flexWrap: 'wrap' }}>
@@ -5858,7 +5857,7 @@ export function LocationManagementPanel({
                                             <Box
                                               component="img"
                                               src={asset.url}
-                                              alt={asset.caption || `Lokasjonsbilde ${index + 1}`}
+                                              alt={asset.caption || t('loc.locationImageAlt', { n: index + 1 })}
                                               sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                                             />
                                           </Box>
@@ -5876,11 +5875,11 @@ export function LocationManagementPanel({
 
                                   <Box sx={{ p: 0.8, borderRadius: 1.2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)' }}>
                                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem' }}>
-                                      Storyboard-bilder
+                                      {t('loc.storyboardImages')}
                                     </Typography>
                                     {storyboardMediaImages.length === 0 ? (
                                       <Typography sx={{ mt: 0.45, color: 'rgba(255,255,255,0.58)', fontSize: '0.74rem' }}>
-                                        Ingen storyboard-bilder lagt inn.
+                                        {t('loc.noStoryboardImages')}
                                       </Typography>
                                     ) : (
                                       <Stack spacing={0.7} sx={{ mt: 0.55 }}>
@@ -5915,7 +5914,7 @@ export function LocationManagementPanel({
                                                 <Box
                                                   component="img"
                                                   src={asset.url}
-                                                  alt={asset.caption || `Storyboard ${index + 1}`}
+                                                  alt={asset.caption || t('loc.storyboardAlt', { n: index + 1 })}
                                                   sx={{
                                                     width: '100%',
                                                     height: '100%',
@@ -5934,7 +5933,7 @@ export function LocationManagementPanel({
                                                     whiteSpace: 'nowrap',
                                                   }}
                                                 >
-                                                  {asset.caption || 'Storyboard'}
+                                                  {asset.caption || t('loc.storyboard')}
                                                 </Typography>
                                                 <Box sx={{ mt: 0.35, display: 'flex', gap: 0.35, flexWrap: 'wrap' }}>
                                                   {labels.length > 0 ? (
@@ -5952,7 +5951,7 @@ export function LocationManagementPanel({
                                                   ) : (
                                                     <Chip
                                                       size="small"
-                                                      label="Ingen scene-kobling"
+                                                      label={t('loc.noSceneLink')}
                                                       sx={{
                                                         bgcolor: 'rgba(255,255,255,0.08)',
                                                         color: 'rgba(255,255,255,0.72)',
@@ -5967,7 +5966,7 @@ export function LocationManagementPanel({
                                         {storyboardMediaImages.length > 3 ? (
                                           <Chip
                                             size="small"
-                                            label={`+${storyboardMediaImages.length - 3} flere storyboard-bilder`}
+                                            label={t('loc.moreStoryboardImages', { n: storyboardMediaImages.length - 3 })}
                                             sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
                                           />
                                         ) : null}
@@ -5990,13 +5989,13 @@ export function LocationManagementPanel({
                             >
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                                 <Typography sx={{ color: '#e9d5ff', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
-                                  Kontaktinfo
+                                  {t('loc.contactInfo')}
                                 </Typography>
                                 {consistencySection === 'contact' ? (
                                   <Chip
                                     size="small"
                                     icon={<ExploreIcon sx={{ fontSize: 14 }} />}
-                                    label="Fra konsistenssjekk"
+                                    label={t('loc.fromConsistencyCheck')}
                                     sx={{
                                       bgcolor: 'rgba(251,191,36,0.22)',
                                       color: '#fde68a',
@@ -6012,7 +6011,7 @@ export function LocationManagementPanel({
                                     }
                                     sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {isEditingProContact ? 'Lukk' : 'Rediger kontakt'}
+                                    {isEditingProContact ? t('loc.close') : t('loc.editContact')}
                                   </Button>
                                   <Button
                                     size="small"
@@ -6020,7 +6019,7 @@ export function LocationManagementPanel({
                                     onClick={() => toggleProSection(location.id, 'contact')}
                                     sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
                                   >
-                                    {contactExpanded ? 'Skjul' : 'Vis'}
+                                    {contactExpanded ? t('loc.hide') : t('loc.show')}
                                   </Button>
                                 </Box>
                               </Box>
@@ -6037,7 +6036,7 @@ export function LocationManagementPanel({
                                 >
                                   <TextField
                                     size="small"
-                                    label="Navn"
+                                    label={t('loc.name')}
                                     value={proContactDraft.name}
                                     onChange={(event) => handleProContactDraftChange(location.id, 'name', event.target.value)}
                                     sx={{
@@ -6050,7 +6049,7 @@ export function LocationManagementPanel({
                                   />
                                   <TextField
                                     size="small"
-                                    label="Telefon"
+                                    label={t('loc.phone')}
                                     value={proContactDraft.phone}
                                     onChange={(event) => handleProContactDraftChange(location.id, 'phone', event.target.value)}
                                     sx={{
@@ -6064,7 +6063,7 @@ export function LocationManagementPanel({
                                   <TextField
                                     size="small"
                                     type="email"
-                                    label="E-post"
+                                    label={t('loc.email')}
                                     value={proContactDraft.email}
                                     onChange={(event) => handleProContactDraftChange(location.id, 'email', event.target.value)}
                                     sx={{
@@ -6088,7 +6087,7 @@ export function LocationManagementPanel({
                                         '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
                                       }}
                                     >
-                                      {isSavingProContact ? 'Lagrer...' : 'Lagre kontakt'}
+                                      {isSavingProContact ? t('loc.saving') : t('loc.saveContact')}
                                     </Button>
                                     <Button
                                       size="small"
@@ -6096,7 +6095,7 @@ export function LocationManagementPanel({
                                       disabled={isSavingProContact}
                                       sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
                                     >
-                                      Avbryt
+                                      {t('loc.cancel')}
                                     </Button>
                                   </Box>
                                 </Box>
@@ -6128,7 +6127,7 @@ export function LocationManagementPanel({
                                   ) : null}
                                   {!proContactName && !proContactPhone && !proContactEmail ? (
                                     <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.76rem' }}>
-                                      Ingen kontaktinfo lagt inn.
+                                      {t('loc.noContactInfo')}
                                     </Typography>
                                   ) : null}
                                 </Box>
@@ -6137,7 +6136,7 @@ export function LocationManagementPanel({
                             </Box>
 
                             <Box sx={{ mt: 1.1, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                              <Chip size="small" icon={<TimelineIcon />} label={`${metric?.shotsCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                              <Chip size="small" icon={<TimelineIcon />} label={t('loc.countShots', { n: metric?.shotsCount ?? 0 })} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
                               {(metric?.missingTechnicalRoles ?? []).slice(0, 2).map((role) => (
                                 <Chip key={role} size="small" label={getRoleLabel(role)} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
                               ))}
@@ -6154,10 +6153,10 @@ export function LocationManagementPanel({
                                   textTransform: 'none',
                                 }}
                               >
-                                Vis i kart
+                                {t('loc.showOnMap')}
                               </Button>
                               <Button size="small" onClick={() => handleOpenDialog(location)} sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none' }}>
-                                Rediger
+                                {t('loc.edit')}
                               </Button>
                             </Box>
                           </CardContent>
@@ -6167,7 +6166,7 @@ export function LocationManagementPanel({
 
                     {proFilteredAndSortedLocations.length > proVisibleLocations.length && (
                       <Button variant="outlined" onClick={() => setProPageSize((current) => current + 24)}>
-                        Last inn flere ({proVisibleLocations.length}/{proFilteredAndSortedLocations.length})
+                        {t('loc.loadMore')} ({proVisibleLocations.length}/{proFilteredAndSortedLocations.length})
                       </Button>
                     )}
                   </Stack>
@@ -6187,18 +6186,18 @@ export function LocationManagementPanel({
                 <>
                   <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
                     <CardContent>
-                      <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>Crew + ShotList kobling</Typography>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>{t('loc.crewShotlistLink')}</Typography>
                       <Stack spacing={1}>
                         <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.25)' }}>
-                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Teknisk crew tilgjengelig</Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>{t('loc.techCrewAvailable')}</Typography>
                           <Typography sx={{ color: '#67e8f9', fontWeight: 800, fontSize: '1.1rem' }}>{technicalCrewPool.length}</Typography>
                         </Box>
                         <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)' }}>
-                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Shots koblet til lokasjoner</Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>{t('loc.shotsLinkedToLocations')}</Typography>
                           <Typography sx={{ color: '#d8b4fe', fontWeight: 800, fontSize: '1.1rem' }}>{allShots.filter((shot) => shot.locationId).length}</Typography>
                         </Box>
                         <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)' }}>
-                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Lokasjoner med tekniske hull</Typography>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>{t('loc.locationsWithTechGaps')}</Typography>
                           <Typography sx={{ color: '#fca5a5', fontWeight: 800, fontSize: '1.1rem' }}>
                             {locationProMetrics.filter((metric) => metric.missingTechnicalRoles.length > 0).length}
                           </Typography>
@@ -6209,16 +6208,16 @@ export function LocationManagementPanel({
 
                   <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
                     <CardContent>
-                      <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>Budsjett-intelligens</Typography>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>{t('loc.budgetIntelligence')}</Typography>
                       <Stack spacing={1}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>Prosjektbudsjett</Typography>
+                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>{t('loc.projectBudget')}</Typography>
                           <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                             {new Intl.NumberFormat('nb-NO').format(projectContext?.budget ?? 0)} {projectContext?.currency || 'NOK'}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>Estimert kost (scope)</Typography>
+                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>{t('loc.estimatedCostScope')}</Typography>
                           <Typography sx={{ color: '#fff', fontWeight: 700 }}>
                             {new Intl.NumberFormat('nb-NO').format(
                               proFilteredAndSortedLocations.reduce(
@@ -6230,7 +6229,7 @@ export function LocationManagementPanel({
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>Over budsjett</Typography>
+                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>{t('loc.opOverBudget')}</Typography>
                           <Typography sx={{ color: '#f87171', fontWeight: 700 }}>{operationalStats.overBudget}</Typography>
                         </Box>
                       </Stack>
@@ -6240,14 +6239,14 @@ export function LocationManagementPanel({
                   <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
-                        <Typography sx={{ color: '#fff', fontWeight: 700 }}>Konsistenssjekk</Typography>
+                        <Typography sx={{ color: '#fff', fontWeight: 700 }}>{t('loc.consistencyCheck')}</Typography>
                         <Button size="small" variant="outlined" onClick={handleNormalizeAnnotationColors}>
-                          Standardiser farger
+                          {t('loc.standardizeColors')}
                         </Button>
                       </Box>
                       <Stack spacing={0.75}>
                         {consistencyFindings.length === 0 ? (
-                          <Typography sx={{ color: '#86efac', fontSize: '0.85rem' }}>Ingen avvik funnet i nåværende datasett.</Typography>
+                          <Typography sx={{ color: '#86efac', fontSize: '0.85rem' }}>{t('loc.noDeviations')}</Typography>
                         ) : (
                           consistencyFindings.slice(0, 6).map((finding, index) => {
                             const location = locations.find((item) => item.id === finding.locationId);
@@ -6255,7 +6254,7 @@ export function LocationManagementPanel({
                               <Box key={`${finding.locationId}-${index}`} sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)' }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                                   <Typography sx={{ color: '#fecaca', fontWeight: 700, fontSize: '0.78rem' }}>
-                                    {location?.name || 'Ukjent lokasjon'}
+                                    {location?.name || t('loc.unknownLocation')}
                                   </Typography>
                                   <Button
                                     size="small"
@@ -6272,11 +6271,11 @@ export function LocationManagementPanel({
                                       },
                                     }}
                                   >
-                                    {finding.ctaLabel}
+                                    {t(finding.ctaLabelKey)}
                                   </Button>
                                 </Box>
                                 <Typography sx={{ mt: 0.35, color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>
-                                  {finding.warning}
+                                  {t(finding.messageKey)}
                                 </Typography>
                               </Box>
                             );
@@ -6317,7 +6316,7 @@ export function LocationManagementPanel({
         >
         <Box
           role="list"
-          aria-label="Liste over lokasjoner"
+          aria-label={t('loc.listAria')}
           sx={{
             display: 'grid',
             gridTemplateColumns: {
@@ -6409,7 +6408,7 @@ export function LocationManagementPanel({
                       <Checkbox
                         checked={selectedIds.has(location.id)}
                         onChange={() => handleToggleSelect(location.id)}
-                        inputProps={{ 'aria-label': `Velg lokasjon ${location.name}` }}
+                        inputProps={{ 'aria-label': t('loc.selectLocationAria', { name: location.name }) }}
                         sx={{
                           p: 0.25,
                           color: 'rgba(255,255,255,0.87)',
@@ -6512,7 +6511,7 @@ export function LocationManagementPanel({
                                   </Tooltip>
                                 ))}
                               {location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length > 4 && (
-                                <Tooltip title={`+${location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length - 4} fasiliteter til`} arrow>
+                                <Tooltip title={t('loc.moreFacilities', { n: location.facilities.filter((fac) => getFacilityIcon(fac) !== null).length - 4 })} arrow>
                                   <Box
                                     sx={{
                                       display: 'inline-flex',
@@ -6550,13 +6549,13 @@ export function LocationManagementPanel({
                     </Box>
                     <Stack direction="row" spacing={0.5} alignItems="center">
                       {location.address?.trim() && (
-                        <Tooltip title="Verifiser adresse mot Kartverket" arrow>
+                        <Tooltip title={t('loc.verifyAddressTooltip')} arrow>
                           <IconButton
                             onClick={(e) => {
                               e.stopPropagation();
                               setVerifyingLocation(location);
                             }}
-                            aria-label={`Verifiser ${location.name} mot Kartverket`}
+                            aria-label={t('loc.verifyAria', { name: location.name })}
                             sx={{
                               color: 'rgba(168,85,247,0.7)',
                               bgcolor: 'transparent',
@@ -6576,7 +6575,7 @@ export function LocationManagementPanel({
                       )}
                       <IconButton
                         onClick={() => toggleFavorite(location.id)}
-                        aria-label={favorites.has(location.id) ? 'Fjern favoritt' : 'Legg til favoritt'}
+                        aria-label={favorites.has(location.id) ? t('loc.removeFavorite') : t('loc.addFavorite')}
                         sx={{
                           color: favorites.has(location.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
                           bgcolor: favorites.has(location.id) ? 'rgba(251,191,36,0.12)' : 'transparent',
@@ -6628,7 +6627,7 @@ export function LocationManagementPanel({
                           coordinates={location.coordinates}
                           width={58}
                           height={58}
-                          label={`Kartvisning av ${location.name}`}
+                          label={t('loc.mapViewOf', { name: location.name })}
                         />
                       ) : (
                         <Box
@@ -6655,7 +6654,7 @@ export function LocationManagementPanel({
                             letterSpacing: '0.5px',
                           }}
                         >
-                          Adresse
+                          {t('loc.address')}
                         </Typography>
                         <Typography
                           sx={{
@@ -6672,7 +6671,7 @@ export function LocationManagementPanel({
                           {location.address}
                         </Typography>
                       </Box>
-                      <Tooltip title={copiedId === location.id ? 'Kopiert!' : 'Kopier'}>
+                      <Tooltip title={copiedId === location.id ? t('loc.copied') : t('loc.copy')}>
                         <IconButton
                           size="small"
                           onClick={() => handleCopyAddress(location.address ?? '', location.id)}
@@ -6733,13 +6732,13 @@ export function LocationManagementPanel({
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}>
-                          {location.address || 'Adresse validert'}
+                          {location.address || t('loc.addressValidated')}
                         </Typography>
                         <Typography sx={{ 
                           color: 'rgba(167,139,250,0.6)', 
                           fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' },
                         }}>
-                          Klikk for å åpne i kart
+                          {t('loc.clickToOpenMap')}
                         </Typography>
                       </Box>
                     </Box>
@@ -6758,7 +6757,7 @@ export function LocationManagementPanel({
                           mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                         }}
                       >
-                        Fasiliteter
+                        {t('loc.facilities')}
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
                         {location.facilities.slice(0, expandedCards.has(location.id) ? undefined : 4).map((facility) => (
@@ -6822,7 +6821,7 @@ export function LocationManagementPanel({
                         <AssessmentIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#c4b5fd' }} />
                       </Box>
                       <Typography sx={{ color: '#c4b5fd', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, fontWeight: 600 }}>
-                        {normalizeSceneIds(location.assignedScenes).length} scene{normalizeSceneIds(location.assignedScenes).length !== 1 ? 'r' : ''} tildelt
+                        {normalizeSceneIds(location.assignedScenes).length !== 1 ? t('loc.scenesAssignedMany', { n: normalizeSceneIds(location.assignedScenes).length }) : t('loc.scenesAssignedOne', { n: normalizeSceneIds(location.assignedScenes).length })}
                       </Typography>
                     </Box>
                   )}
@@ -6850,13 +6849,13 @@ export function LocationManagementPanel({
                               mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 },
                             }}
                           >
-                            Notater
+                            {t('loc.notes')}
                           </Typography>
                           <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.85rem', sm: '0.9rem', md: '0.875rem', lg: '0.95rem', xl: '1.05rem' } }}>
                             {location.notes}
                           </Typography>
                           <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: { xs: '0.7rem', sm: '0.75rem' }, mt: 0.6 }}>
-                            Skrevet av:{' '}
+                            {t('loc.writtenBy')}{' '}
                             {(() => {
                               const rawAuthor =
                                 location.notesAuthorName
@@ -6864,7 +6863,7 @@ export function LocationManagementPanel({
                                 ?? location.notesBy;
                               return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                                 ? rawAuthor.trim()
-                                : 'Ikke registrert';
+                                : t('loc.notRegistered');
                             })()}
                             {(() => {
                               const rawUpdatedAt =
@@ -6907,7 +6906,7 @@ export function LocationManagementPanel({
                               </Box>
                               <Box>
                                 <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, fontWeight: 600, textTransform: 'uppercase' }}>
-                                  Kontaktperson
+                                  {t('loc.contactPerson')}
                                 </Typography>
                                 <Typography sx={{ color: '#fff', fontSize: { xs: '0.9rem', sm: '0.95rem', md: '0.925rem', lg: '1rem', xl: '1.125rem' }, fontWeight: 600 }}>
                                   {location.contactInfo.name}
@@ -6942,7 +6941,7 @@ export function LocationManagementPanel({
                               </Box>
                               <Box>
                                 <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, fontWeight: 600, textTransform: 'uppercase' }}>
-                                  Telefon
+                                  {t('loc.phone')}
                                 </Typography>
                                 <Typography
                                   component="a"
@@ -6978,7 +6977,7 @@ export function LocationManagementPanel({
                       onClick={() => toggleCardExpanded(location.id)}
                       endIcon={expandedCards.has(location.id) ? <CollapseIcon /> : <ExpandIcon />}
                       aria-expanded={expandedCards.has(location.id)}
-                      aria-label={expandedCards.has(location.id) ? 'Skjul info' : 'Vis info'}
+                      aria-label={expandedCards.has(location.id) ? t('loc.hideInfo') : t('loc.showInfo')}
                       sx={{
                         bgcolor: expandedCards.has(location.id) ? '#6d28d9 !important' : '#7c3aed !important',
                         color: '#fff !important',
@@ -7015,7 +7014,7 @@ export function LocationManagementPanel({
                         ...focusVisibleStyles,
                       }}
                     >
-                      {expandedCards.has(location.id) ? 'Skjul detaljer' : 'Vis detaljer'}
+                      {expandedCards.has(location.id) ? t('loc.hideDetails') : t('loc.showDetails')}
                     </Button>
                     <Box
                       sx={{
@@ -7030,10 +7029,10 @@ export function LocationManagementPanel({
                         },
                       }}
                     >
-                      <Tooltip title="Analyser lokasjon" arrow>
+                      <Tooltip title={t('loc.analyzeLocation')} arrow>
                         <IconButton
                           onClick={() => handleOpenAnalysisDialog(location)}
-                          aria-label={`Analyser ${location.name}`}
+                          aria-label={t('loc.analyzeAria', { name: location.name })}
                           sx={{
                             minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
@@ -7062,10 +7061,10 @@ export function LocationManagementPanel({
                           <AnalyticsIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Dupliser" arrow>
+                      <Tooltip title={t('loc.duplicate')} arrow>
                         <IconButton
                           onClick={() => handleDuplicate(location)}
-                          aria-label={`Dupliser ${location.name}`}
+                          aria-label={t('loc.duplicateAria', { name: location.name })}
                           sx={{
                             minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
@@ -7086,10 +7085,10 @@ export function LocationManagementPanel({
                           <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger" arrow>
+                      <Tooltip title={t('loc.edit')} arrow>
                         <IconButton
                           onClick={() => handleOpenDialog(location)}
-                          aria-label={`Rediger ${location.name}`}
+                          aria-label={t('loc.editAria', { name: location.name })}
                           sx={{
                             minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
@@ -7110,10 +7109,10 @@ export function LocationManagementPanel({
                           <EditIcon sx={{ fontSize: { xs: 20, sm: 21, md: 22, lg: 23, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett" arrow>
+                      <Tooltip title={t('loc.delete')} arrow>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(location.id)}
-                          aria-label={`Slett ${location.name}`}
+                          aria-label={t('loc.deleteAria', { name: location.name })}
                           sx={{
                             minWidth: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
                             minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 54 },
@@ -7166,10 +7165,10 @@ export function LocationManagementPanel({
         open={undoSnackbarOpen}
         autoHideDuration={6000}
         onClose={() => setUndoSnackbarOpen(false)}
-        message={`"\${deletedLocation?.name}" slettet`}
+        message={t('loc.snackbarDeleted', { name: deletedLocation?.name ?? '' })}
         action={
           <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#a855f7' }}>
-            Angre
+            {t('loc.undo')}
           </Button>
         }
         sx={{
@@ -7258,16 +7257,16 @@ export function LocationManagementPanel({
             </Box>
             <Box>
               <Typography sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem', md: '1.1875rem', lg: '1.375rem', xl: '1.75rem' }, fontWeight: 700, lineHeight: 1.15 }}>
-                {editingLocation ? 'Rediger lokasjon' : 'Ny lokasjon'}
+                {editingLocation ? t('loc.editLocation') : t('loc.newLocation')}
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: { xs: '0.76rem', sm: '0.84rem', md: '0.8rem', lg: '0.88rem', xl: '0.95rem' }, mt: 0.35 }}>
-                Role Room lokasjonsregister
+                {t('loc.dialogSubtitle')}
               </Typography>
             </Box>
           </Stack>
           <IconButton
             onClick={handleCloseDialog}
-            aria-label="Lukk dialog"
+            aria-label={t('loc.closeDialogAria')}
             sx={{
               color: 'rgba(241,245,249,0.95)',
               mr: -0.5,
@@ -7305,11 +7304,11 @@ export function LocationManagementPanel({
               background: 'linear-gradient(135deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.36) 100%)',
             }}
           >
-            Fyll ut informasjon om lokasjonen. Felter merket med * er påkrevd.
+            {t('loc.dialogDesc')}
           </Typography>
           <Stack spacing={{ xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }}>
             <TextField
-              label="Navn *"
+              label={t('loc.nameRequired')}
               fullWidth
               value={formData.name || ''}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -7365,16 +7364,16 @@ export function LocationManagementPanel({
                 loading={addressSuggestionsLoading}
                 filterOptions={(x) => x}
                 getOptionLabel={(option) => typeof option === 'string' ? option : option.address}
-                groupBy={(option) => typeof option !== 'string' && (option as { _recent?: boolean })._recent ? 'Nylig brukt' : 'Forslag fra Kartverket'}
+                groupBy={(option) => typeof option !== 'string' && (option as { _recent?: boolean })._recent ? t('loc.recentlyUsed') : t('loc.kartverketSuggestions')}
                 value={formData.address || ''}
                 noOptionsText={
                   addressQuery.trim().length < 2
-                    ? 'Begynn å skrive minst 2 tegn …'
+                    ? t('loc.typeAtLeast2')
                     : addressSuggestionsLoading
-                      ? 'Henter forslag fra Kartverket …'
-                      : 'Finner ikke adressen i Kartverket — fortsett med fri tekst'
+                      ? t('loc.fetchingSuggestions')
+                      : t('loc.addressNotInKartverket')
                 }
-                loadingText="Henter forslag fra Kartverket …"
+                loadingText={t('loc.fetchingSuggestions')}
                 onInputChange={(_event, value) => {
                   // Når brukeren editerer adresse-feltet manuelt: bli kvitt
                   // tidligere koordinater siden de ikke lenger nødvendigvis
@@ -7440,8 +7439,8 @@ export function LocationManagementPanel({
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Adresse"
-                    placeholder="Begynn å skrive adresse — vi henter forslag fra Kartverket"
+                    label={t('loc.address')}
+                    placeholder={t('loc.addressPlaceholder')}
                     InputProps={{
                       ...params.InputProps,
                       startAdornment: (
@@ -7501,7 +7500,7 @@ export function LocationManagementPanel({
                   '&:hover': { borderColor: '#a855f7', bgcolor: 'rgba(168,85,247,0.1)' },
                 }}
               >
-                {validatingAddress ? 'Validerer...' : 'Valider adresse'}
+                {validatingAddress ? t('loc.validating') : t('loc.validateAddress')}
               </Button>
               {formData.coordinates && (
                 <Box
@@ -7527,18 +7526,18 @@ export function LocationManagementPanel({
                       letterSpacing: 0.2,
                     }}
                   >
-                    Kart-verifisert
+                    {t('loc.mapVerified')}
                   </Typography>
                 </Box>
               )}
             </Box>
 
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Type</InputLabel>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('loc.colType')}</InputLabel>
               <Select
                 value={formData.type || 'indoor'}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value as Location['type'] })}
-                label="Type"
+                label={t('loc.colType')}
                 MenuProps={{
                   sx: { zIndex: 100001 },
                   slotProps: {
@@ -7574,7 +7573,7 @@ export function LocationManagementPanel({
             </FormControl>
 
             <TextField
-              label="Kapasitet"
+              label={t('loc.colCapacity')}
               fullWidth
               type="number"
               value={formData.capacity || ''}
@@ -7605,7 +7604,7 @@ export function LocationManagementPanel({
 
             <Box>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-                Fasiliteter:
+                {t('loc.facilitiesColon')}
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
                 {commonFacilities.map((facility) => (
@@ -7632,7 +7631,7 @@ export function LocationManagementPanel({
             </Box>
 
             <TextField
-              label="Kontaktperson navn"
+              label={t('loc.contactPersonName')}
               fullWidth
               value={formData.contactInfo?.name || ''}
               onChange={(e) => setFormData({ ...formData, contactInfo: { ...formData.contactInfo, name: e.target.value } })}
@@ -7654,7 +7653,7 @@ export function LocationManagementPanel({
             />
 
             <TextField
-              label="Kontaktperson telefon"
+              label={t('loc.contactPersonPhone')}
               fullWidth
               value={formData.contactInfo?.phone || ''}
               onChange={(e) => setFormData({ ...formData, contactInfo: { ...formData.contactInfo, phone: e.target.value } })}
@@ -7676,7 +7675,7 @@ export function LocationManagementPanel({
             />
 
             <TextField
-              label="Kontaktperson e-post"
+              label={t('loc.contactPersonEmail')}
               fullWidth
               type="email"
               value={formData.contactInfo?.email || ''}
@@ -7699,7 +7698,7 @@ export function LocationManagementPanel({
             />
 
             <TextField
-              label="Notater"
+              label={t('loc.notes')}
               fullWidth
               multiline
               rows={3}
@@ -7721,7 +7720,7 @@ export function LocationManagementPanel({
               }}
             />
             <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
-              Skrevet av:{' '}
+              {t('loc.writtenBy')}{' '}
               {(() => {
                 const rawAuthor =
                   formData.notesAuthorName
@@ -7729,7 +7728,7 @@ export function LocationManagementPanel({
                   ?? formData.notesBy;
                 return typeof rawAuthor === 'string' && rawAuthor.trim().length > 0
                   ? rawAuthor.trim()
-                  : 'Ikke registrert';
+                  : t('loc.notRegistered');
               })()}
               {(() => {
                 const rawUpdatedAt =
@@ -7781,7 +7780,7 @@ export function LocationManagementPanel({
               '&:hover': { bgcolor: 'rgba(30,41,59,0.88)', borderColor: 'rgba(168,85,247,0.48)' },
             }}
           >
-            Avbryt
+            {t('loc.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -7803,7 +7802,7 @@ export function LocationManagementPanel({
               '&:hover': { backgroundImage: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)' },
             }}
           >
-            {editingLocation ? 'Lagre' : 'Opprett'}
+            {editingLocation ? t('loc.save') : t('loc.create')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -7822,10 +7821,10 @@ export function LocationManagementPanel({
           try {
             await castingService.saveLocation(projectId, merged);
             setLocations((prev) => prev.map((l) => (l.id === locationId ? merged : l)));
-            showSuccess('Lokasjonen oppdatert med Kartverket-data', 3000);
+            showSuccess(t('loc.toastKartverketUpdated'), 3000);
           } catch (err) {
             showError(
-              err instanceof Error ? err.message : 'Kunne ikke lagre Kartverket-oppdateringer',
+              err instanceof Error ? err.message : t('loc.errKartverketSave'),
               4000,
             );
           }

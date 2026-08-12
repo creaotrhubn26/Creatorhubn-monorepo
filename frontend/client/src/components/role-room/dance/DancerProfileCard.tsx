@@ -31,6 +31,8 @@ import {
 import type { DancerProfile, SkillLevel } from './dancerProfileService';
 import { getInitials } from './dancerProfile';
 import type { Dancer } from './formationTypes';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 // ─── Hjelpefunksjoner ───────────────────────────────────────────────────
 
@@ -41,12 +43,12 @@ const SKILL_RANK: Record<SkillLevel, number> = {
   pro: 4,
 };
 
-const SKILL_LABEL_NB: Record<SkillLevel, string> = {
-  beginner: 'Nybegynner',
-  intermediate: 'Mellomnivå',
-  advanced: 'Avansert',
-  pro: 'Pro',
-};
+const buildSKILL_LABEL_NB = (t: TFn): Record<SkillLevel, string> => ({
+  beginner: t('dancerProfCard.s003'),
+  intermediate: t('dancerProfCard.s002'),
+  advanced: t('dancerProfCard.s000'),
+  pro: t('dancerProfCard.s005'),
+});
 
 function topSkills(
   skillLevels: Partial<Record<string, SkillLevel>>,
@@ -115,6 +117,8 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
   compact,
   stats,
 }) => {
+  const { t } = useT();
+  const SKILL_LABEL_NB = useMemo(() => buildSKILL_LABEL_NB(t), [t]);
   const initials = dancer.initials || getInitials(dancer.name);
   const top = useMemo(
     () => (profile ? topSkills(profile.skillLevels, 3) : []),
@@ -158,10 +162,10 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                 {profile?.displayName || dancer.name}
               </Typography>
               {onEdit && profile && (
-                <Tooltip title="Rediger profil">
+                <Tooltip title={t('dancerProfCard.s007')}>
                   <IconButton
                     size="small"
-                    aria-label="Rediger danser-profil"
+                    aria-label={t('dancerProfCard.s006')}
                     data-testid={`dancer-profile-edit-${dancer.id}`}
                     onClick={onEdit}
                     sx={{ color: danceFlowColors.textMuted, p: 0.25, '&:hover': { color: danceFlowColors.lavender } }}
@@ -189,7 +193,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
             />
             <Chip
               size="small"
-              label={`${stats.rehearsalsCount} prøver`}
+              label={t('dancerProfCard.p00', { v0: stats.rehearsalsCount })}
               sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(96,165,250,0.15)', color: danceFlowColors.infoSoft }}
             />
             <Chip
@@ -203,7 +207,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
         {profile === null ? (
           <Box sx={{ mt: 1.5, textAlign: 'center' }}>
             <Typography sx={{ fontSize: 11, color: danceFlowColors.textDisabled, fontStyle: 'italic', mb: 0.75 }}>
-              Ingen profil enda
+              {t('dancerProfCard.s001')}
             </Typography>
             {onEdit && (
               <Button
@@ -220,7 +224,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                   '&:hover': { borderColor: danceFlowColors.lavender, bgcolor: 'rgba(139,92,246,0.08)' },
                 }}
               >
-                Opprett profil
+                {t('dancerProfCard.s004')}
               </Button>
             )}
           </Box>
@@ -293,7 +297,7 @@ export const DancerProfileCard: React.FC<DancerProfileCardProps> = ({
                   fontStyle: 'italic',
                 }}
               >
-                {availableNow ? '✓ Tilgjengelig nå' : '— Utenfor tilgjengelighets-vindu'}
+                {availableNow ? t('dancerProfCard.s008') : '— Utenfor tilgjengelighets-vindu'}
               </Typography>
             )}
           </Stack>

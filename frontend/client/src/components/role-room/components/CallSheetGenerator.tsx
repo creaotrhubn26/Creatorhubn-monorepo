@@ -68,6 +68,7 @@ import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Ro
 import { castingService } from '../services/castingService';
 import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
 import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
+import { useT } from '../../../i18n';
 
 // ============================================
 // INTERFACES
@@ -404,7 +405,7 @@ export function buildDayCallSheetFields(
 
 // Kompakt, e-postvennlig HTML av call-sheeten som sendes til crew. Escaper
 // dynamiske felter slik at scene-tekst/adresser ikke kan brekke markup.
-function buildCallSheetEmailHtml(cs: CallSheetData): string {
+function buildCallSheetEmailHtml(cs: CallSheetData, t: (key: string) => string): string {
   const esc = (v: string): string => String(v ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const loc = cs.locations?.[0];
@@ -414,11 +415,11 @@ function buildCallSheetEmailHtml(cs: CallSheetData): string {
   return [
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">',
     `<h2 style="margin:0 0 4px">Call Sheet · ${esc(cs.projectName)}</h2>`,
-    `<p><strong>Dato:</strong> ${esc(cs.date)} &nbsp;·&nbsp; <strong>Call:</strong> ${esc(cs.callTime)} &nbsp;·&nbsp; <strong>Wrap:</strong> ${esc(cs.estimatedWrap)}</p>`,
-    loc ? `<p><strong>Lokasjon:</strong> ${esc(loc.name)}, ${esc(loc.address)}${loc.parkingInfo ? `<br/><em>Parkering:</em> ${esc(loc.parkingInfo)}` : ''}${loc.contactPhone ? `<br/><em>Kontakt:</em> ${esc(loc.contactPerson)} ${esc(loc.contactPhone)}` : ''}</p>` : '',
-    cs.scenes?.length ? `<h3 style="margin:12px 0 4px">Scener</h3><table style="border-collapse:collapse;font-size:13px">${sceneRows}</table>` : '',
-    cs.specialInstructions ? `<h3 style="margin:12px 0 4px">Viktig</h3><p>${esc(cs.specialInstructions).replace(/\n/g, '<br/>')}</p>` : '',
-    '<p style="color:#888;font-size:12px;margin-top:16px">Sendt fra The Role Room · produksjonsplan</p>',
+    `<p><strong>${t('callSheet.email.dateLabel')}</strong> ${esc(cs.date)} &nbsp;·&nbsp; <strong>Call:</strong> ${esc(cs.callTime)} &nbsp;·&nbsp; <strong>Wrap:</strong> ${esc(cs.estimatedWrap)}</p>`,
+    loc ? `<p><strong>${t('callSheet.section.location')}:</strong> ${esc(loc.name)}, ${esc(loc.address)}${loc.parkingInfo ? `<br/><em>${t('callSheet.email.parkingLabel')}</em> ${esc(loc.parkingInfo)}` : ''}${loc.contactPhone ? `<br/><em>${t('callSheet.email.contactLabel')}</em> ${esc(loc.contactPerson)} ${esc(loc.contactPhone)}` : ''}</p>` : '',
+    cs.scenes?.length ? `<h3 style="margin:12px 0 4px">${t('callSheet.section.scenes')}</h3><table style="border-collapse:collapse;font-size:13px">${sceneRows}</table>` : '',
+    cs.specialInstructions ? `<h3 style="margin:12px 0 4px">${t('callSheet.email.important')}</h3><p>${esc(cs.specialInstructions).replace(/\n/g, '<br/>')}</p>` : '',
+    `<p style="color:#888;font-size:12px;margin-top:16px">${t('callSheet.email.footer')}</p>`,
     '</div>',
   ].join('');
 }
@@ -432,6 +433,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   onGenerate,
 }) => {
   const theme = useTheme();
+  const { t } = useT();
   const responsive = useResponsiveConfig();
   const printRef = useRef<HTMLDivElement>(null);
   
@@ -667,7 +669,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       .filter((c) => c.email && emailRe.test(c.email))
       .map((c) => ({ name: c.name, email: c.email as string }));
     if (recipients.length === 0) {
-      setSendFeedback({ severity: 'warning', text: 'Ingen crew med e-postadresse. Legg til e-post på crew-medlemmene først.' });
+      setSendFeedback({ severity: 'warning', text: t('callSheet.toast.noCrewEmail') });
       return;
     }
     setSendingCallSheet(true);
@@ -681,22 +683,22 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         body: JSON.stringify({
           projectId,
           subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,
-          html: buildCallSheetEmailHtml(callSheet),
+          html: buildCallSheetEmailHtml(callSheet, t),
           recipients,
         }),
       });
       const data = (await response.json().catch(() => ({}))) as { sent?: number; total?: number; error?: string };
-      if (!response.ok) throw new Error(data?.error || 'Sending feilet');
+      if (!response.ok) throw new Error(data?.error || t('callSheet.toast.sendFailedGeneric'));
       const sent = data.sent ?? 0;
       const total = data.total ?? recipients.length;
       setSendFeedback({
         severity: sent === total ? 'success' : 'warning',
         text: sent === total
-          ? `Call sheet sendt til alle ${total} crew-medlemmer.`
-          : `Sendt til ${sent} av ${total}. Sjekk e-postadressene til resten.`,
+          ? t('callSheet.toast.sentAll', { total })
+          : t('callSheet.toast.sentPartial', { sent, total }),
       });
     } catch (error) {
-      setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke sende call sheet.' });
+      setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : t('callSheet.toast.sendError') });
     } finally {
       setSendingCallSheet(false);
     }
@@ -713,7 +715,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Call Sheet - ${callSheet.projectName} - Dag ${callSheet.dayNumber}</title>
+          <title>${t('callSheet.print.title', { project: callSheet.projectName, day: callSheet.dayNumber })}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
@@ -934,7 +936,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2, gap: 2 }}>
           <CircularProgress size={20} />
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Laster data fra Casting...
+            {t('callSheet.loading')}
           </Typography>
         </Box>
       )}
@@ -949,7 +951,11 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
             '& .MuiAlert-message': { fontSize: responsive.fontSize.caption }
           }}
         >
-          Synkronisert: {castingCandidates.length} skuespillere, {castingCrew.length} crew, {castingLocations.length} lokasjoner
+          {t('callSheet.sync.summary', {
+            candidates: castingCandidates.length,
+            crew: castingCrew.length,
+            locations: castingLocations.length,
+          })}
         </Alert>
       )}
       
@@ -992,7 +998,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               color={editMode ? 'secondary' : 'primary'}
               sx={{ fontSize: responsive.fontSize.caption }}
             >
-              {responsive.showFullLabels ? (editMode ? 'Ferdig' : 'Rediger') : ''}
+              {responsive.showFullLabels ? (editMode ? t('callSheet.button.done') : t('callSheet.button.edit')) : ''}
             </Button>
             <Button
               variant="outlined"
@@ -1001,7 +1007,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               onClick={handlePrint}
               sx={{ fontSize: responsive.fontSize.caption }}
             >
-              {responsive.showFullLabels ? 'Skriv ut' : ''}
+              {responsive.showFullLabels ? t('callSheet.button.print') : ''}
             </Button>
             <Button
               variant="contained"
@@ -1010,7 +1016,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               onClick={handlePrint}
               sx={{ fontSize: responsive.fontSize.caption }}
             >
-              {responsive.showFullLabels ? 'Eksporter PDF' : 'PDF'}
+              {responsive.showFullLabels ? t('callSheet.button.exportPdf') : 'PDF'}
             </Button>
             <Button
               variant="contained"
@@ -1023,7 +1029,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               disabled={sendingCallSheet}
               sx={{ fontSize: responsive.fontSize.caption }}
             >
-              {responsive.showFullLabels ? (sendingCallSheet ? 'Sender…' : 'Send til crew') : ''}
+              {responsive.showFullLabels ? (sendingCallSheet ? t('callSheet.button.sending') : t('callSheet.button.sendToCrew')) : ''}
             </Button>
           </Stack>
           {sendFeedback && (
@@ -1061,7 +1067,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               '& .MuiAlert-message': { fontSize: responsive.fontSize.caption }
             }}
           >
-            Redigeringsmodus aktiv - Klikk på felt for å redigere. Trykk "Ferdig" når du er ferdig.
+            {t('callSheet.editBanner')}
           </Alert>
         )}
 
@@ -1151,14 +1157,14 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         {/* Meta Info Grid */}
         <Grid container spacing={responsive.spacing} sx={{ mb: responsive.spacing * 2 }}>
           {[
-            { label: 'DATO', key: 'date', value: new Date(callSheet.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }), editValue: callSheet.date, type: 'date' },
-            { label: 'DAG', key: 'dayNumber', value: `${callSheet.dayNumber} / ${callSheet.totalDays}`, editValue: callSheet.dayNumber, type: 'number' },
+            { label: t('callSheet.meta.date'), key: 'date', value: new Date(callSheet.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }), editValue: callSheet.date, type: 'date' },
+            { label: t('callSheet.meta.day'), key: 'dayNumber', value: `${callSheet.dayNumber} / ${callSheet.totalDays}`, editValue: callSheet.dayNumber, type: 'number' },
             { label: 'CREW CALL', key: 'callTime', value: callSheet.callTime, editValue: callSheet.callTime, type: 'time' },
             { label: 'SHOOTING CALL', key: 'shootingCallTime', value: callSheet.shootingCallTime, editValue: callSheet.shootingCallTime, type: 'time' },
-            { label: 'LUNSJ', key: 'lunchTime', value: callSheet.lunchTime, editValue: callSheet.lunchTime, type: 'time' },
+            { label: t('callSheet.meta.lunch'), key: 'lunchTime', value: callSheet.lunchTime, editValue: callSheet.lunchTime, type: 'time' },
             { label: 'EST. WRAP', key: 'estimatedWrap', value: callSheet.estimatedWrap, editValue: callSheet.estimatedWrap, type: 'time' },
-            { label: 'REGISSØR', key: 'director', value: callSheet.director, editValue: callSheet.director, type: 'text' },
-            { label: 'PRODUSENT', key: 'producer', value: callSheet.producer, editValue: callSheet.producer, type: 'text' },
+            { label: t('callSheet.meta.director'), key: 'director', value: callSheet.director, editValue: callSheet.director, type: 'text' },
+            { label: t('callSheet.meta.producer'), key: 'producer', value: callSheet.producer, editValue: callSheet.producer, type: 'text' },
           ].map((item, i) => (
             <Grid key={i} size={{ xs: responsive.gridColumns.meta }}>
               <Paper 
@@ -1277,7 +1283,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         <Box sx={{ mb: responsive.spacing * 2 }}>
           <SectionHeader 
             icon={<PlaceIcon sx={{ fontSize: responsive.iconSize }} />}
-            title="Lokasjon"
+            title={t('callSheet.section.location')}
             color={COLORS.location}
           />
           <Grid container spacing={responsive.spacing}>
@@ -1350,7 +1356,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                           mb: 0.5,
                         }}
                       >
-                        Kontaktperson
+                        {t('callSheet.location.contactPerson')}
                       </Typography>
                       <Typography 
                         sx={{ 
@@ -1383,7 +1389,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         <Box sx={{ mb: responsive.spacing * 2 }}>
           <SectionHeader 
             icon={<TheatersIcon sx={{ fontSize: responsive.iconSize }} />}
-            title="Scener"
+            title={t('callSheet.section.scenes')}
             color={COLORS.scenes}
           />
           <Grid container spacing={responsive.spacing * 0.75}>
@@ -1464,7 +1470,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                     <Stack direction="row" spacing={2}>
                       <Box>
                         <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
-                          Sider
+                          {t('callSheet.scene.pages')}
                         </Typography>
                         <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
                           {scene.pages}
@@ -1472,7 +1478,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                       </Box>
                       <Box>
                         <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
-                          Estimert
+                          {t('callSheet.scene.estimated')}
                         </Typography>
                         <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
                           {scene.estimatedTime}
@@ -1541,14 +1547,14 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         return (
                           <Tooltip
                             title={isBusy
-                              ? 'Produsent har markert kandidaten som opptatt denne dagen'
-                              : 'Produsent har markert kandidaten som tentativ denne dagen'}
+                              ? t('callSheet.cast.conflictBusyTooltip')
+                              : t('callSheet.cast.conflictHoldTooltip')}
                             arrow
                           >
                             <Chip
                               size="small"
                               icon={<WarningIcon sx={{ fontSize: 12 }} />}
-                              label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+                              label={isBusy ? t('callSheet.conflict.busyLabel') : t('callSheet.conflict.holdLabel')}
                               sx={{
                                 mt: 0.5,
                                 height: 18,
@@ -1598,7 +1604,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                     {member.makeupTime && (
                       <Grid size={{ xs: 6, sm: 3 }}>
                         <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
-                          Sminke
+                          {t('callSheet.cast.makeup')}
                         </Typography>
                         <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
                           {member.makeupTime}
@@ -1710,14 +1716,14 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                     return (
                       <Tooltip
                         title={isBusy
-                          ? 'Medlemmet har markert seg opptatt denne dagen i sin egen kalender'
-                          : 'Medlemmet har markert dagen som tentativ i sin egen kalender'}
+                          ? t('callSheet.crew.conflictBusyTooltip')
+                          : t('callSheet.crew.conflictHoldTooltip')}
                         arrow
                       >
                         <Chip
                           size="small"
                           icon={<WarningIcon sx={{ fontSize: 12 }} />}
-                          label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+                          label={isBusy ? t('callSheet.conflict.busyLabel') : t('callSheet.conflict.holdLabel')}
                           sx={{
                             mt: 0.5,
                             height: 18,
@@ -1743,7 +1749,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
           <Box sx={{ mb: responsive.spacing * 2 }}>
             <SectionHeader 
               icon={<WarningIcon sx={{ fontSize: responsive.iconSize }} />}
-              title="Spesielle Instruksjoner"
+              title={t('callSheet.section.instructions')}
               color={COLORS.instructions}
             />
             <Paper 
@@ -1774,7 +1780,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         <Box sx={{ mb: responsive.spacing * 2 }}>
           <SectionHeader 
             icon={<EmergencyIcon sx={{ fontSize: responsive.iconSize }} />}
-            title="Nødkontakter"
+            title={t('callSheet.section.emergency')}
             color={COLORS.emergency}
           />
           <Grid container spacing={responsive.spacing}>
@@ -1840,7 +1846,10 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               fontSize: responsive.fontSize.tiny,
             }}
           >
-            Generert {new Date().toLocaleString('nb-NO')} • {callSheet.productionCompany} • Konfidensielt dokument
+            {t('callSheet.footer', {
+              date: new Date().toLocaleString('nb-NO'),
+              company: callSheet.productionCompany,
+            })}
           </Typography>
         </Box>
       </Box>

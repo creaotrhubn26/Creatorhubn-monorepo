@@ -34,6 +34,7 @@ import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import { useT } from '../../../i18n';
 
 const palette = {
   bg: 'rgba(168,85,247,0.04)',
@@ -96,6 +97,7 @@ export default function EntityAttachmentsPanel({
   /** Callback når antall filer endrer seg (for parent å oppdatere badge) */
   onChange?: (count: number) => void;
 }) {
+  const { t } = useT();
   const [files, setFiles] = useState<AttachmentFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -110,7 +112,7 @@ export default function EntityAttachmentsPanel({
         { headers: authHeaders() },
       );
       if (!r.ok) {
-        setError(r.status === 401 ? 'Logg inn for å se vedlegg' : `HTTP ${r.status}`);
+        setError(r.status === 401 ? t('attach.errLogin') : `HTTP ${r.status}`);
         return;
       }
       const body = await r.json();
@@ -150,12 +152,12 @@ export default function EntityAttachmentsPanel({
         });
         if (r.status === 507) {
           const body = await r.json();
-          setError(body.detail ?? 'Kvoten på 1 GB er nådd.');
+          setError(body.detail ?? t('attach.errQuota'));
           break;
         }
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
-          setError(body.detail ?? `Opplasting feilet (HTTP ${r.status})`);
+          setError(body.detail ?? t('attach.uploadFailed', { status: r.status }));
           break;
         }
       }
@@ -166,7 +168,7 @@ export default function EntityAttachmentsPanel({
   };
 
   const handleDelete = async (fileId: string) => {
-    if (!confirm('Slett vedlegget?')) return;
+    if (!confirm(t('attach.confirmDelete'))) return;
     try {
       const r = await fetch(`/api/role-room/storage/files/${fileId}`, {
         method: 'DELETE',
@@ -194,7 +196,7 @@ export default function EntityAttachmentsPanel({
           style={{ display: 'none' }}
           onChange={(e) => handleUpload(e.target.files)}
         />
-        <Tooltip title={`${files.length} vedlegg — klikk for å laste opp`}>
+        <Tooltip title={t('attach.compactTooltip', { n: files.length })}>
           <Box
             onClick={() => fileInputRef.current?.click()}
             sx={{
@@ -227,7 +229,7 @@ export default function EntityAttachmentsPanel({
         <Stack direction="row" alignItems="center" spacing={1}>
           <AttachFileOutlinedIcon sx={{ color: palette.accent, fontSize: 18 }} />
           <Typography sx={{ fontWeight: 700, fontSize: '0.86rem', color: palette.textPrimary }}>
-            Vedlegg {files.length > 0 && <Chip
+            {t('attach.title')} {files.length > 0 && <Chip
               label={files.length}
               size="small"
               sx={{ ml: 0.6, height: 18, fontSize: '0.68rem', bgcolor: 'rgba(168,85,247,0.18)', color: palette.accent, fontWeight: 700 }}
@@ -247,7 +249,7 @@ export default function EntityAttachmentsPanel({
           startIcon={uploading ? <CircularProgress size={12} /> : <CloudUploadOutlinedIcon sx={{ fontSize: 14 }} />}
           sx={{ color: palette.accent, fontSize: '0.74rem', fontWeight: 700 }}
         >
-          {uploading ? 'Laster opp…' : 'Last opp'}
+          {uploading ? t('attach.uploading') : t('attach.upload')}
         </Button>
       </Stack>
 
@@ -263,8 +265,8 @@ export default function EntityAttachmentsPanel({
         </Box>
       ) : files.length === 0 ? (
         <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, fontStyle: 'italic' }}>
-          Ingen vedlegg ennå. Klikk "Last opp" for å feste et bilde, PDF eller annen fil
-          {entityLabel ? ` til denne ${entityLabel.toLowerCase()}` : ''}.
+          {t('attach.emptyState')}
+          {entityLabel ? t('attach.emptyStateFor', { label: entityLabel.toLowerCase() }) : ''}.
         </Typography>
       ) : (
         <Stack spacing={0.6}>

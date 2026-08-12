@@ -33,6 +33,8 @@ import { useDanceAnnotationsAggregate, type AggregatedAnnotation } from './useDa
 import { useDanceAnnotationCatalog } from './useDanceAnnotationCatalog';
 import { formatTimecode } from './timecode';
 import { danceFlowColors } from './danceFlowTheme';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 export interface DanceAnnotationsListViewProps {
   projectId: string | null;
@@ -86,6 +88,7 @@ export default function DanceAnnotationsListView({
   dancerOptions,
   onOpenAnnotation,
 }: DanceAnnotationsListViewProps): React.ReactElement {
+  const { t } = useT();
   const aggregate = useDanceAnnotationsAggregate({ projectId });
   const catalog = useDanceAnnotationCatalog({ projectId });
 
@@ -175,7 +178,7 @@ export default function DanceAnnotationsListView({
           <InputBase
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søk i label / clip-navn / notes…"
+            placeholder={t('danceAnnList.s005')}
             data-testid="dance-annotations-search"
             sx={{
               flex: 1, fontSize: 12, color: danceFlowColors.textSecondary,
@@ -199,7 +202,7 @@ export default function DanceAnnotationsListView({
             '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary },
           }}
         >
-          <MenuItem value="" sx={{ fontSize: 12 }}>Alle kategorier</MenuItem>
+          <MenuItem value="" sx={{ fontSize: 12 }}>{t('danceAnnList.s001')}</MenuItem>
           {catalog.categories.map((c) => (
             <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12 }}>
               <Box
@@ -224,7 +227,7 @@ export default function DanceAnnotationsListView({
             '& .MuiInputBase-input': { fontSize: 12, color: danceFlowColors.textSecondary },
           }}
         >
-          <MenuItem value="" sx={{ fontSize: 12 }}>Alle clips</MenuItem>
+          <MenuItem value="" sx={{ fontSize: 12 }}>{t('danceAnnList.s000')}</MenuItem>
           {aggregate.clips.map((c) => (
             <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12 }}>
               {c.title}
@@ -263,12 +266,12 @@ export default function DanceAnnotationsListView({
         >
           <Typography sx={{ fontSize: 14, color: danceFlowColors.textSecondary, mb: 1 }}>
             {aggregate.annotations.length === 0
-              ? 'Ingen annotations ennå'
-              : 'Ingen annotations matchet filtrene'}
+              ? t('danceAnnList.s003')
+              : t('danceAnnList.s004')}
           </Typography>
           {aggregate.annotations.length === 0 ? (
             <Typography sx={{ fontSize: 12, color: danceFlowColors.textMuted }}>
-              Velg en clip i Annotate-flaten og legg til annotations med tastatur-snarvei <strong>A</strong>.
+              {t('danceAnnList.s006')} <strong>A</strong>.
             </Typography>
           ) : (
             <Button
@@ -277,7 +280,7 @@ export default function DanceAnnotationsListView({
               data-testid="dance-annotations-clear-filters"
               sx={{ textTransform: 'none', color: danceFlowColors.lavender }}
             >
-              Fjern alle filtre
+              {t('danceAnnList.s002')}
             </Button>
           )}
         </Box>

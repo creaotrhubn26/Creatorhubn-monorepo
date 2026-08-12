@@ -18,6 +18,7 @@ import {
   Box,
   Paper,
   IconButton,
+  Button,
   Tooltip,
   Chip,
   CircularProgress,
@@ -53,6 +54,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   ChatBubbleOutline as CommentIcon,
+  Movie as MovieIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
 import { SceneNavigatorSidebar, reorderScenesInContent, buildLineCommentAnchor, resolveLineCommentAnchor, type ParsedScene } from './SceneNavigatorSidebar';
@@ -64,6 +66,7 @@ import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
 import { StoryStructurePanel } from './StoryStructurePanel';
 import { GrammarCheckPanel } from './screenplay/GrammarCheckPanel';
 import { StoryboardIntegrationView } from './StoryboardIntegrationView';
+import { useT } from '../../../i18n';
 import type { SceneBreakdown, UserRoleType, Role, Candidate } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
 import { analyzeScript, type BeatCard } from '../services/scriptAnalysisService';
@@ -301,6 +304,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   storyLogicData = null,
   manuscriptId,
 }) => {
+  const { t } = useT();
   const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
   const [storyFoundationOpen, setStoryFoundationOpen] = useState(false);
   // Per-linje kommentarer: rå ankre fra server (scene-relative), pluss valgt
@@ -443,6 +447,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     setCurrentLine(line);
     onCursorChange?.(line, column, element);
   }, [onCursorChange]);
+
+  // Gjeldende scene-overskrift (siste INT./EXT.-heading på eller før markør-linja).
+  // Vises som klistret «brødsmule» øverst i editoren så man alltid vet hvilken
+  // scene man er i når man skroller/skriver i en lang scene.
+  const currentSceneHeading = useMemo(() => {
+    const lines = value.split('\n');
+    const isHeading = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l.trim());
+    const upto = Math.min(Math.max(currentLine, 1), lines.length);
+    let heading = '';
+    for (let i = 0; i < upto; i++) { if (isHeading(lines[i])) heading = lines[i].trim(); }
+    return heading;
+  }, [value, currentLine]);
 
   const resolveEditorTextarea = useCallback(() => {
     if (editorTextareaRef.current && document.contains(editorTextareaRef.current)) {
@@ -676,6 +692,42 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     return () => document.removeEventListener('keydown', handler);
   }, [isFullscreen]);
 
+  // Auto-skjul metadata/verktøy-raden når man skroller nedover i editoren (Safari-
+  // stil) → mer skriveplass. Vises igjen ved oppskroll/nær toppen. Kun i normal-modus
+  // (aldri i skrivemodus, så «Avslutt skrivemodus» aldri gjemmes). Lytteren festes på
+  // SELVE editor-scrolleren (.cm-scroller/textarea), ikke navigatoren — så navigator-
+  // skrolling ikke trigger den.
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const lastEditorScrollTopRef = useRef(0);
+  useEffect(() => {
+    if (isFullscreen) { setToolbarCollapsed(false); return; }
+    const host = containerRef.current;
+    if (!host) return;
+    let scroller: HTMLElement | null = null;
+    const onScroll = () => {
+      if (!scroller) return;
+      const st = scroller.scrollTop;
+      const last = lastEditorScrollTopRef.current;
+      if (st < 28) setToolbarCollapsed(false);
+      else if (st > last + 6) setToolbarCollapsed(true);
+      else if (st < last - 6) setToolbarCollapsed(false);
+      lastEditorScrollTopRef.current = st;
+    };
+    let tries = 0;
+    let timer = 0;
+    const attach = () => {
+      scroller = (host.querySelector('.cm-scroller') as HTMLElement | null)
+        ?? (host.querySelector('textarea') as HTMLElement | null);
+      if (scroller) { scroller.addEventListener('scroll', onScroll, { passive: true }); return; }
+      if (tries++ < 20) timer = window.setTimeout(attach, 150);
+    };
+    attach();
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (scroller) scroller.removeEventListener('scroll', onScroll);
+    };
+  }, [isFullscreen, editorKey]);
+
   useEffect(() => () => stopRightPanelResize(), [stopRightPanelResize]);
 
   const storyboardPanelBounds = useMemo(() => {
@@ -709,7 +761,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         }),
       }}
     >
-      {/* Toolbar */}
+      {/* Toolbar — kollapser mykt ved nedskroll i editoren (mer skriveplass) */}
       <Paper
         elevation={0}
         sx={{
@@ -721,6 +773,17 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           bgcolor: 'rgba(30,30,50,0.8)',
           flexWrap: 'wrap',
           position: 'relative',
+          flexShrink: 0,
+          transition: 'max-height .2s ease, opacity .2s ease, padding .2s ease, border-color .2s ease',
+          overflow: 'hidden',
+          ...(toolbarCollapsed && !isFullscreen && {
+            maxHeight: 0,
+            opacity: 0,
+            pt: 0,
+            pb: 0,
+            borderColor: 'transparent',
+            pointerEvents: 'none',
+          }),
         }}
       >
         {/* Mobile Menu Button for Sidebar */}
@@ -811,25 +874,25 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`${headerSummary.pages} sider`}
+              label={t('editor.pillPages', { n: headerSummary.pages })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`~${headerSummary.runtimeMinutes} min`}
+              label={t('editor.pillRuntime', { n: headerSummary.runtimeMinutes })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`${headerSummary.sceneCount} scener`}
+              label={t('editor.pillScenes', { n: headerSummary.sceneCount })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             <Chip
               size={responsive.chipSize}
               variant="outlined"
-              label={`${headerSummary.characterCount} karakterer`}
+              label={t('editor.pillCharacters', { n: headerSummary.characterCount })}
               sx={{ fontSize: responsive.captionFontSize }}
             />
             {headerSummary.statusLabel && (
@@ -890,20 +953,36 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           </IconButton>
         </Tooltip>
 
-        {/* Fullscreen Toggle */}
-        <Tooltip title={isFullscreen ? 'Avslutt fullskjerm (Esc)' : 'Fullskjerm'}>
-          <IconButton
-            onClick={handleFullscreenToggle}
-            size={responsive.buttonSize}
-            sx={{ color: isFullscreen ? 'primary.main' : 'text.secondary' }}
-          >
-            {isFullscreen ? (
-              <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} />
-            ) : (
-              <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />
-            )}
-          </IconButton>
-        </Tooltip>
+        {/* Skrivemodus (fullskjerm) — skjuler ALT annet chrome for distraksjonsfri
+            skriving. Tydelig, navngitt knapp på desktop; ikon på mobil/tablet. */}
+        {(isMobile || isTablet) ? (
+          <Tooltip title={isFullscreen ? t('writingMode.exitTooltip') : t('writingMode.enter')}>
+            <IconButton
+              onClick={handleFullscreenToggle}
+              size={responsive.buttonSize}
+              aria-label={isFullscreen ? t('writingMode.exit') : t('writingMode.enter')}
+              sx={{ color: isFullscreen ? 'primary.main' : 'text.secondary' }}
+            >
+              {isFullscreen ? (
+                <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} />
+              ) : (
+                <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />
+              )}
+            </IconButton>
+          </Tooltip>
+        ) : (
+          <Tooltip title={isFullscreen ? t('writingMode.exitTooltip') : t('writingMode.tooltip')}>
+            <Button
+              onClick={handleFullscreenToggle}
+              size={responsive.buttonSize}
+              variant={isFullscreen ? 'contained' : 'outlined'}
+              startIcon={isFullscreen ? <FullscreenExitIcon sx={{ fontSize: responsive.iconSize }} /> : <FullscreenIcon sx={{ fontSize: responsive.iconSize }} />}
+              sx={{ whiteSpace: 'nowrap', fontSize: responsive.bodyFontSize, color: isFullscreen ? undefined : 'text.secondary' }}
+            >
+              {isFullscreen ? t('writingMode.exit') : t('writingMode.enter')}
+            </Button>
+          </Tooltip>
+        )}
 
         {!isMobile && <Divider orientation="vertical" flexItem />}
 
@@ -1086,7 +1165,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               </Collapse>
             </Box>
           )}
-          <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {/* I skrivemodus: sentrer editoren i en leselig «side»-bredde i stedet
+              for full skjermbredde (lange linjer er slitsomt å lese/skrive). */}
+          <Box sx={{ flex: 1, minHeight: 0, position: 'relative', width: '100%', ...(isFullscreen && { maxWidth: 960, mx: 'auto' }) }}>
           {isReadOnly && (
             <Alert
               severity="info"
@@ -1106,6 +1187,35 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                lockState === 'locked' ? (isMobile ? 'Låst' : 'Manuset er låst for redigering') :
                'Du har kun lesetilgang'}
             </Alert>
+          )}
+          {currentSceneHeading && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 4,
+                right: 12,
+                zIndex: 5,
+                pointerEvents: 'none',
+                maxWidth: '55%',
+                px: 1.25,
+                py: 0.25,
+                borderRadius: 1,
+                bgcolor: 'rgba(20,20,35,0.82)',
+                backdropFilter: 'blur(4px)',
+                border: '1px solid rgba(139,92,246,0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+              }}
+            >
+              <MovieIcon sx={{ fontSize: responsive.iconSize - 4, color: '#a78bfa', flexShrink: 0 }} />
+              <Typography
+                variant="caption"
+                sx={{ color: '#ddd6fe', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: responsive.captionFontSize }}
+              >
+                {currentSceneHeading}
+              </Typography>
+            </Box>
           )}
           <ScreenplayEditor
             key={editorKey}
@@ -1141,7 +1251,11 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             aria-orientation={rightPanel === 'storyboard' ? 'vertical' : undefined}
             onMouseDown={rightPanel === 'storyboard' ? startRightPanelResize : undefined}
             sx={{
-              width: rightPanel === 'storyboard' ? 10 : 1,
+              // NB: MUIs sizing-system tolker numerisk width i [0,1] som PROSENT
+              // (width:1 → 100%). Bruk eksplisitt '1px' så deleren blir 1 piksel
+              // og ikke fyller hele raden (som kollapset editoren + skjøv panelet
+              // ut av skjermen for alle ikke-storyboard-paneler).
+              width: rightPanel === 'storyboard' ? 10 : '1px',
               cursor: rightPanel === 'storyboard' ? 'col-resize' : 'default',
               bgcolor: rightPanel === 'storyboard' ? 'transparent' : 'rgba(255,255,255,0.1)',
               position: 'relative',

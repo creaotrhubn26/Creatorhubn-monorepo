@@ -42,6 +42,7 @@ import HourglassEmptyOutlinedIcon from '@mui/icons-material/HourglassEmptyOutlin
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useT } from '../../../../i18n';
 import { palette, radius } from '../theme';
 import {
   listTalentProposals,
@@ -52,6 +53,8 @@ import {
   type TalentProposal,
 } from '../../services/roleRoomPartnershipsService';
 
+type TFunc = ReturnType<typeof useT>['t'];
+
 interface Props {
   open: boolean;
   invitationId: string;
@@ -61,23 +64,17 @@ interface Props {
   roleIds?: string[] | null;
 }
 
-const STATUS_BADGE: Record<TalentProposal['status'], { label: string; color: string; bg: string }> = {
-  pending: { label: 'Venter', color: '#fbbf24', bg: 'rgba(251,191,36,0.16)' },
-  accepted: { label: 'Akseptert', color: '#34d399', bg: 'rgba(52,211,153,0.16)' },
-  declined: { label: 'Avslått', color: '#f87171', bg: 'rgba(248,113,113,0.16)' },
-  withdrawn: { label: 'Trukket', color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' },
-};
-
-function ageLine(t: ProposableTalent | TalentProposal): string {
-  const lo = t.playing_age_min;
-  const hi = t.playing_age_max;
-  if (lo && hi) return `Spille-alder ${lo}–${hi}`;
-  if (lo) return `Spille-alder fra ${lo}`;
-  if (hi) return `Spille-alder opp til ${hi}`;
+function ageLine(t: TFunc, item: ProposableTalent | TalentProposal): string {
+  const lo = item.playing_age_min;
+  const hi = item.playing_age_max;
+  if (lo && hi) return t('propTalents.ageRange', { lo, hi });
+  if (lo) return t('propTalents.ageFrom', { lo });
+  if (hi) return t('propTalents.ageUpTo', { hi });
   return '';
 }
 
 export default function ProposeTalentsDialog({ open, invitationId, projectName, onClose }: Props) {
+  const { t } = useT();
   const [tab, setTab] = useState<'discover' | 'mine'>('discover');
   const [q, setQ] = useState('');
   const [talents, setTalents] = useState<ProposableTalent[]>([]);
@@ -96,6 +93,16 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkNotes, setBulkNotes] = useState('');
 
+  const STATUS_BADGE = useMemo<Record<TalentProposal['status'], { label: string; color: string; bg: string }>>(
+    () => ({
+      pending: { label: t('propTalents.statusPending'), color: '#fbbf24', bg: 'rgba(251,191,36,0.16)' },
+      accepted: { label: t('propTalents.statusAccepted'), color: '#34d399', bg: 'rgba(52,211,153,0.16)' },
+      declined: { label: t('propTalents.statusDeclined'), color: '#f87171', bg: 'rgba(248,113,113,0.16)' },
+      withdrawn: { label: t('propTalents.statusWithdrawn'), color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' },
+    }),
+    [t],
+  );
+
   const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -112,11 +119,11 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
       const r = await proposableTalents(invitationId, q || undefined);
       setTalents(r.talents);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke hente talenter');
+      setError(e instanceof Error ? e.message : t('propTalents.loadTalentsError'));
     } finally {
       setLoading(false);
     }
-  }, [invitationId, q]);
+  }, [invitationId, q, t]);
 
   const loadProposals = useCallback(async () => {
     try {
@@ -154,16 +161,16 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
         talent_id: pendingTalent.id,
         agency_notes: agencyNotes || undefined,
       });
-      setInfo(`${pendingTalent.display_name} er foreslått.`);
+      setInfo(t('propTalents.proposedToast', { name: pendingTalent.display_name }));
       setPendingTalent(null);
       setAgencyNotes('');
       await Promise.all([loadTalents(), loadProposals()]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke foreslå');
+      setError(e instanceof Error ? e.message : t('propTalents.proposeError'));
     } finally {
       setBusy(false);
     }
-  }, [pendingTalent, invitationId, agencyNotes, loadTalents, loadProposals]);
+  }, [pendingTalent, invitationId, agencyNotes, loadTalents, loadProposals, t]);
 
   const handleBulkPropose = useCallback(async () => {
     if (selectedIds.size === 0) return;
@@ -175,32 +182,32 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
         talent_ids: Array.from(selectedIds),
         agency_notes: bulkNotes || undefined,
       });
-      const failedMsg = result.failed > 0 ? ` (${result.failed} kunne ikke foreslås)` : '';
-      setInfo(`${result.succeeded} talenter foreslått${failedMsg}.`);
+      const failedMsg = result.failed > 0 ? t('propTalents.bulkFailedSuffix', { n: result.failed }) : '';
+      setInfo(t('propTalents.bulkSuccessToast', { n: result.succeeded, suffix: failedMsg }));
       setSelectedIds(new Set());
       setBulkDialogOpen(false);
       setBulkNotes('');
       await Promise.all([loadTalents(), loadProposals()]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Bulk-foreslåelse feilet');
+      setError(e instanceof Error ? e.message : t('propTalents.bulkProposeError'));
     } finally {
       setBusy(false);
     }
-  }, [selectedIds, invitationId, bulkNotes, loadTalents, loadProposals]);
+  }, [selectedIds, invitationId, bulkNotes, loadTalents, loadProposals, t]);
 
   const handleWithdraw = useCallback(async (proposalId: string) => {
     setBusy(true);
     setError(null);
     try {
       await withdrawTalentProposal(proposalId);
-      setInfo('Forslag trukket.');
+      setInfo(t('propTalents.withdrawSuccessToast'));
       await Promise.all([loadProposals(), loadTalents()]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke trekke forslag');
+      setError(e instanceof Error ? e.message : t('propTalents.withdrawError'));
     } finally {
       setBusy(false);
     }
-  }, [loadProposals, loadTalents]);
+  }, [loadProposals, loadTalents, t]);
 
   const pendingCount = useMemo(
     () => proposals.filter((p) => p.status === 'pending').length,
@@ -227,9 +234,9 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
         <Stack direction="row" spacing={1.2} alignItems="center">
           <HandshakeOutlinedIcon sx={{ color: palette.accentBright }} />
           <Box>
-            <Typography sx={{ fontWeight: 800, fontSize: '1.1rem' }}>Foreslå talenter</Typography>
+            <Typography sx={{ fontWeight: 800, fontSize: '1.1rem' }}>{t('propTalents.dialogTitle')}</Typography>
             <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-              Til {projectName}
+              {t('propTalents.toProject', { name: projectName })}
             </Typography>
           </Box>
         </Stack>
@@ -246,8 +253,11 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
           onChange={(_, v) => setTab(v)}
           sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600 } }}
         >
-          <Tab value="discover" label="Finn talent" />
-          <Tab value="mine" label={`Mine forslag${pendingCount > 0 ? ` (${pendingCount})` : ''}`} />
+          <Tab value="discover" label={t('propTalents.discoverTab')} />
+          <Tab
+            value="mine"
+            label={`${t('propTalents.myProposalsTab')}${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+          />
         </Tabs>
 
         {tab === 'discover' ? (
@@ -255,7 +265,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
             <TextField
               fullWidth
               size="small"
-              placeholder="Søk talenter i ditt register…"
+              placeholder={t('propTalents.searchPlaceholder')}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               InputProps={{
@@ -272,7 +282,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
               </Box>
             ) : talents.length === 0 ? (
               <Typography sx={{ color: palette.textMuted, textAlign: 'center', py: 4 }}>
-                Ingen talenter funnet. Bare talenter som har gitt byrået ditt aktiv consent vises.
+                {t('propTalents.noTalentsFound')}
               </Typography>
             ) : (
               <>
@@ -290,7 +300,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                     }}
                   >
                     <Typography sx={{ fontWeight: 700, color: palette.textPrimary }}>
-                      {selectedIds.size} valgte talenter
+                      {t('propTalents.selectedCount', { n: selectedIds.size })}
                     </Typography>
                     <Stack direction="row" spacing={1}>
                       <Button
@@ -298,7 +308,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                         onClick={() => setSelectedIds(new Set())}
                         sx={{ textTransform: 'none', color: palette.textMuted }}
                       >
-                        Fjern valg
+                        {t('propTalents.clearSelection')}
                       </Button>
                       <Button
                         size="small"
@@ -317,17 +327,17 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                           },
                         }}
                       >
-                        Foreslå alle valgte
+                        {t('propTalents.proposeAllSelected')}
                       </Button>
                     </Stack>
                   </Box>
                 ) : null}
                 <Stack spacing={0.8}>
-                  {talents.map((t) => {
-                    const isSelected = selectedIds.has(t.id);
+                  {talents.map((talent) => {
+                    const isSelected = selectedIds.has(talent.id);
                     return (
                       <Box
-                        key={t.id}
+                        key={talent.id}
                         sx={{
                           p: 1.4,
                           borderRadius: 2,
@@ -336,11 +346,11 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                           display: 'flex',
                           alignItems: 'center',
                           gap: 1.4,
-                          cursor: t.already_proposed ? 'default' : 'pointer',
+                          cursor: talent.already_proposed ? 'default' : 'pointer',
                         }}
-                        onClick={() => { if (!t.already_proposed) toggleSelected(t.id); }}
+                        onClick={() => { if (!talent.already_proposed) toggleSelected(talent.id); }}
                       >
-                        {!t.already_proposed ? (
+                        {!talent.already_proposed ? (
                           <Box
                             sx={{
                               width: 22,
@@ -359,22 +369,22 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                         ) : (
                           <Box sx={{ width: 22, flexShrink: 0 }} />
                         )}
-                        <Avatar src={t.headshot_url ?? undefined} sx={{ width: 52, height: 52, border: `1px solid ${palette.borderSubtle}` }}>
-                          {t.display_name?.charAt(0) ?? '?'}
+                        <Avatar src={talent.headshot_url ?? undefined} sx={{ width: 52, height: 52, border: `1px solid ${palette.borderSubtle}` }}>
+                          {talent.display_name?.charAt(0) ?? '?'}
                         </Avatar>
                         <Box sx={{ flex: 1 }}>
                           <Typography sx={{ fontWeight: 700, color: palette.textPrimary }}>
-                            {t.display_name}
+                            {talent.display_name}
                           </Typography>
                           <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
-                            {[t.city, ageLine(t), t.gender].filter(Boolean).join(' · ')}
+                            {[talent.city, ageLine(t, talent), talent.gender].filter(Boolean).join(' · ')}
                           </Typography>
                         </Box>
-                        {t.already_proposed ? (
+                        {talent.already_proposed ? (
                           <Chip
                             size="small"
                             icon={<CheckCircleOutlineIcon sx={{ fontSize: 14, color: '#34d399 !important' }} />}
-                            label="Foreslått"
+                            label={t('propTalents.proposedChip')}
                             sx={{
                               bgcolor: 'rgba(52,211,153,0.16)',
                               color: '#34d399',
@@ -386,7 +396,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                           <Button
                             size="small"
                             disabled={busy}
-                            onClick={(e) => { e.stopPropagation(); setPendingTalent(t); setAgencyNotes(''); }}
+                            onClick={(e) => { e.stopPropagation(); setPendingTalent(talent); setAgencyNotes(''); }}
                             startIcon={<HandshakeOutlinedIcon />}
                             sx={{
                               textTransform: 'none',
@@ -400,7 +410,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                               },
                             }}
                           >
-                            Foreslå
+                            {t('propTalents.proposeButton')}
                           </Button>
                         )}
                       </Box>
@@ -416,7 +426,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
           <Stack spacing={1}>
             {proposals.length === 0 ? (
               <Typography sx={{ color: palette.textMuted, textAlign: 'center', py: 4 }}>
-                Ingen forslag sendt ennå.
+                {t('propTalents.noProposalsYet')}
               </Typography>
             ) : (
               proposals.map((p) => {
@@ -440,7 +450,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                           {p.display_name}
                         </Typography>
                         <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                          {[p.city, ageLine(p), p.role_name].filter(Boolean).join(' · ')}
+                          {[p.city, ageLine(t, p), p.role_name].filter(Boolean).join(' · ')}
                         </Typography>
                       </Box>
                       <Chip
@@ -462,12 +472,12 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                     </Stack>
                     {p.agency_notes ? (
                       <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 1, fontStyle: 'italic', pl: 7 }}>
-                        Din kommentar: «{p.agency_notes}»
+                        {t('propTalents.yourComment', { note: p.agency_notes })}
                       </Typography>
                     ) : null}
                     {p.production_notes ? (
                       <Typography sx={{ color: '#c4b5fd', fontSize: '0.78rem', mt: 0.8, pl: 7 }}>
-                        Produksjon: «{p.production_notes}»
+                        {t('propTalents.productionComment', { note: p.production_notes })}
                       </Typography>
                     ) : null}
                     {p.status === 'pending' ? (
@@ -484,7 +494,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                             '&:hover': { color: palette.textPrimary, bgcolor: 'rgba(255,255,255,0.04)' },
                           }}
                         >
-                          Trekk
+                          {t('propTalents.withdrawButton')}
                         </Button>
                       </Stack>
                     ) : null}
@@ -500,17 +510,17 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
           <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${palette.border}` }}>
             <Divider sx={{ mb: 1.6 }} />
             <Typography sx={{ fontWeight: 700, color: palette.textPrimary, mb: 1.2 }}>
-              Foreslå {pendingTalent.display_name}
+              {t('propTalents.proposeNameHeading', { name: pendingTalent.display_name })}
             </Typography>
             <TextField
               fullWidth
               size="small"
-              label="Hvorfor passer denne talenten? (valgfri)"
+              label={t('propTalents.notesLabel')}
               value={agencyNotes}
               onChange={(e) => setAgencyNotes(e.target.value)}
               multiline
               minRows={2}
-              placeholder="F.eks. 'Har tidligere spilt i lignende produksjon, snakker flytende fransk…'"
+              placeholder={t('propTalents.notesPlaceholder')}
               sx={{ mb: 1.4 }}
             />
             <Stack direction="row" spacing={1}>
@@ -519,7 +529,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                 onClick={() => { setPendingTalent(null); setAgencyNotes(''); }}
                 sx={{ textTransform: 'none', color: palette.textMuted }}
               >
-                Avbryt
+                {t('propTalents.cancel')}
               </Button>
               <Box sx={{ flex: 1 }} />
               <Button
@@ -538,7 +548,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                   },
                 }}
               >
-                Send forslag
+                {t('propTalents.sendProposal')}
               </Button>
             </Stack>
           </Box>
@@ -548,17 +558,17 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
         {bulkDialogOpen ? (
           <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${palette.border}` }}>
             <Typography sx={{ fontWeight: 700, color: palette.textPrimary, mb: 1.2 }}>
-              Foreslå {selectedIds.size} talenter
+              {t('propTalents.proposeCountHeading', { n: selectedIds.size })}
             </Typography>
             <TextField
               fullWidth
               size="small"
-              label="Felles begrunnelse for alle (valgfri)"
+              label={t('propTalents.bulkNotesLabel')}
               value={bulkNotes}
               onChange={(e) => setBulkNotes(e.target.value)}
               multiline
               minRows={2}
-              placeholder="F.eks. 'Alle har spilt i lignende drama tidligere'"
+              placeholder={t('propTalents.bulkNotesPlaceholder')}
               sx={{ mb: 1.4 }}
             />
             <Stack direction="row" spacing={1}>
@@ -567,7 +577,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                 onClick={() => { setBulkDialogOpen(false); setBulkNotes(''); }}
                 sx={{ textTransform: 'none', color: palette.textMuted }}
               >
-                Avbryt
+                {t('propTalents.cancel')}
               </Button>
               <Box sx={{ flex: 1 }} />
               <Button
@@ -586,7 +596,7 @@ export default function ProposeTalentsDialog({ open, invitationId, projectName, 
                   },
                 }}
               >
-                Foreslå {selectedIds.size}
+                {t('propTalents.proposeCountButton', { n: selectedIds.size })}
               </Button>
             </Stack>
           </Box>

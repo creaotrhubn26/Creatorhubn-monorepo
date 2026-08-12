@@ -17,6 +17,7 @@ import { getRoleTypeMeta } from "../config/roleType";
 import { emitRoleSyncEvent, onRoleSyncEvent } from "../services/roleSyncEvents";
 import { roleQueryKeys } from "../services/roleQueryKeys";
 import { TOUCH_TARGET_SIZE } from "../constants/accessibility";
+import { useT } from "../../../i18n";
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -72,6 +73,7 @@ function RoleManagementPanelInner({
   onCreateRole,
   profession,
 }: RoleManagementPanelProps) {
+  const { t } = useT();
   const queryClient = useQueryClient();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -92,10 +94,10 @@ function RoleManagementPanelInner({
   const roleTextMuted = 'rgba(220,205,255,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
   const roleContextLabel = profession === 'photographer'
-    ? 'Administrer roller og krav for foto-casting'
+    ? t('role.contextPhoto')
     : profession === 'videographer'
-      ? 'Administrer roller og krav for video-casting'
-      : 'Administrer roller og krav for casting';
+      ? t('role.contextVideo')
+      : t('role.contextDefault');
 
   // Unique IDs for accessibility
   const panelTitleId = useId();
@@ -148,7 +150,7 @@ function RoleManagementPanelInner({
 
   useEffect(() => {
     if ((poolMode === 'pool' || workspaceView === 'pro') && isPoolError) {
-      showError('Kunne ikke laste rollepool');
+      showError(t('role.errorLoadPool'));
     }
   }, [isPoolError, poolMode, showError, workspaceView]);
 
@@ -175,27 +177,27 @@ function RoleManagementPanelInner({
     try {
       const poolId = await rolePoolService.saveRoleToPool(role.id);
       if (poolId) {
-        showSuccess(`"${role.name}" lagret til rollepool`);
+        showSuccess(t('role.toastSavedToPool', { name: role.name }));
         emitRoleSyncEvent({ type: 'pool-updated', source: 'role-management' });
         await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
       } else {
-        showError('Kunne ikke lagre rolle til pool');
+        showError(t('role.errorSaveToPool'));
       }
     } catch (error) {
       console.error('Error saving role to pool:', error);
-      showError('Feil ved lagring til pool');
+      showError(t('role.errorSaveToPoolGeneric'));
     }
   };
 
   const handleImportFromPool = async (poolRole: PoolRole) => {
     if (!projectId) {
-      showError('Ingen prosjekt valgt');
+      showError(t('role.errorNoProject'));
       return;
     }
     try {
       const newRoleId = await rolePoolService.importToProject(poolRole.id, projectId);
       if (newRoleId) {
-        showSuccess(`"${poolRole.name}" importert til prosjektet`);
+        showSuccess(t('role.toastImported', { name: poolRole.name }));
         onRolesChange();
         emitRoleSyncEvent({
           type: 'pool-imported-to-project',
@@ -208,11 +210,11 @@ function RoleManagementPanelInner({
         await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
         setPoolMode('project');
       } else {
-        showError('Kunne ikke importere rolle');
+        showError(t('role.errorImport'));
       }
     } catch (error) {
       console.error('Error importing role from pool:', error);
-      showError('Feil ved import fra pool');
+      showError(t('role.errorImportGeneric'));
     }
   };
 
@@ -228,14 +230,14 @@ function RoleManagementPanelInner({
       const success = await rolePoolService.deleteFromPool(poolRole.id);
       if (success) {
         await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
-        showSuccess('Rolle fjernet fra pool');
+        showSuccess(t('role.toastRemovedFromPool'));
         emitRoleSyncEvent({ type: 'pool-updated', source: 'role-management' });
       } else {
-        showError('Kunne ikke fjerne rolle fra pool');
+        showError(t('role.errorRemoveFromPool'));
       }
     } catch (error) {
       console.error('Error deleting from pool:', error);
-      showError('Feil ved sletting fra pool');
+      showError(t('role.errorDeleteFromPool'));
     }
   };
 
@@ -632,40 +634,40 @@ function RoleManagementPanelInner({
       const risk = roleRiskMap.get(role.id);
       if (!risk) return;
       if (risk.level === 'hoy') {
-        alerts.push({ id: `${role.id}-high-risk`, severity: 'error', text: `${role.name}: høy risiko (${risk.score})` });
+        alerts.push({ id: `${role.id}-high-risk`, severity: 'error', text: t('role.alertHighRisk', { name: role.name, score: risk.score }) });
       }
       if (getRoleCandidateCount(role) === 0 && ['open', 'casting'].includes(String(role.status || 'draft'))) {
-        alerts.push({ id: `${role.id}-no-candidates`, severity: 'warning', text: `${role.name}: ingen kandidater` });
+        alerts.push({ id: `${role.id}-no-candidates`, severity: 'warning', text: t('role.alertNoCandidates', { name: role.name }) });
       }
       if (risk.deadlineDays !== null && risk.deadlineDays <= 7) {
-        alerts.push({ id: `${role.id}-deadline`, severity: 'warning', text: `${role.name}: frist om ${risk.deadlineDays} dag(er)` });
+        alerts.push({ id: `${role.id}-deadline`, severity: 'warning', text: t('role.alertDeadline', { name: role.name, days: risk.deadlineDays }) });
       }
       if (risk.staleDays >= 10) {
-        alerts.push({ id: `${role.id}-stale`, severity: 'info', text: `${role.name}: ikke oppdatert på ${risk.staleDays} dager` });
+        alerts.push({ id: `${role.id}-stale`, severity: 'info', text: t('role.alertStale', { name: role.name, days: risk.staleDays }) });
       }
     });
     return alerts.slice(0, 8);
-  }, [roleRiskMap, roles]);
+  }, [roleRiskMap, roles, t]);
 
   const getRecommendedAction = (role: Role | null) => {
-    if (!role) return { title: 'Ingen rolle valgt', description: 'Velg en rolle for anbefalte handlinger.', nextStatus: null as RoleWorkflowStatus | null };
+    if (!role) return { title: t('role.recNoRoleTitle'), description: t('role.recNoRoleDesc'), nextStatus: null as RoleWorkflowStatus | null };
     const risk = roleRiskMap.get(role.id);
     const candidates = getRoleCandidateCount(role);
     const status = String(role.status || 'draft') as RoleWorkflowStatus;
 
     if (status === 'draft') {
-      return { title: 'Publiser rollen', description: 'Flytt rollen til Åpen for å starte innhenting av kandidater.', nextStatus: 'open' as RoleWorkflowStatus };
+      return { title: t('role.recPublishTitle'), description: t('role.recPublishDesc'), nextStatus: 'open' as RoleWorkflowStatus };
     }
     if (status === 'open' && candidates === 0) {
-      return { title: 'Inviter kandidater', description: 'Ingen kandidater ennå. Del rollen eller importer fra pool.', nextStatus: 'casting' as RoleWorkflowStatus };
+      return { title: t('role.recInviteTitle'), description: t('role.recInviteDesc'), nextStatus: 'casting' as RoleWorkflowStatus };
     }
     if (status === 'casting' && candidates >= 3) {
-      return { title: 'Lås endelig valg', description: 'Rollen har nok kandidater. Vurder å sette rollen til Besatt.', nextStatus: 'filled' as RoleWorkflowStatus };
+      return { title: t('role.recLockTitle'), description: t('role.recLockDesc'), nextStatus: 'filled' as RoleWorkflowStatus };
     }
     if (risk?.level === 'hoy') {
-      return { title: 'Reduser risiko', description: 'Rollen er høy risiko. Oppdater status, kandidater eller frist.', nextStatus: null as RoleWorkflowStatus | null };
+      return { title: t('role.recReduceRiskTitle'), description: t('role.recReduceRiskDesc'), nextStatus: null as RoleWorkflowStatus | null };
     }
-    return { title: 'Hold tempoet', description: 'Rollen ser sunn ut. Fortsett pipeline-oppfølgingen.', nextStatus: null as RoleWorkflowStatus | null };
+    return { title: t('role.recHealthyTitle'), description: t('role.recHealthyDesc'), nextStatus: null as RoleWorkflowStatus | null };
   };
 
   const selectedRoleTimeline = useMemo(() => {
@@ -676,29 +678,29 @@ function RoleManagementPanelInner({
     if (created) {
       timeline.push({
         id: `${selectedProRole.id}-created`,
-        label: 'Rolle opprettet',
-        description: `${selectedProRole.name} ble opprettet.`,
+        label: t('role.timelineCreated'),
+        description: t('role.timelineCreatedDesc', { name: selectedProRole.name }),
         date: created,
       });
     }
     if (updated) {
       timeline.push({
         id: `${selectedProRole.id}-updated`,
-        label: 'Sist oppdatert',
-        description: 'Rolledata ble sist endret.',
+        label: t('role.timelineUpdated'),
+        description: t('role.timelineUpdatedDesc'),
         date: updated,
       });
     }
     timeline.push({
       id: `${selectedProRole.id}-status`,
-      label: 'Nåværende status',
-      description: `Status er ${getStatusLabel(selectedProRole.status)}.`,
+      label: t('role.timelineStatus'),
+      description: t('role.timelineStatusDesc', { status: getStatusLabel(selectedProRole.status) }),
       date: updated || created || Date.now(),
     });
     const sessionEvents = sessionTimeline[selectedProRole.id] || [];
     timeline.push(...sessionEvents);
     return timeline.sort((a, b) => b.date - a.date);
-  }, [selectedProRole, sessionTimeline]);
+  }, [selectedProRole, sessionTimeline, t]);
 
   const applyProPreset = (preset: ProPreset) => {
     setProPreset(preset);
@@ -888,7 +890,7 @@ function RoleManagementPanelInner({
         projectId,
       });
       setUndoSnackbarOpen(true);
-      showInfo(`🗑️ ${role.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+      showInfo(t('role.toastDeletedUndo', { name: role.name }), 6000);
     } catch (error) {
       console.error('Failed to delete role:', error);
       setDeletedRole(null);
@@ -905,7 +907,7 @@ function RoleManagementPanelInner({
           source: 'role-management',
           projectId,
         });
-        showSuccess(`↩️ ${deletedRole.name} gjenopprettet`, 3000);
+        showSuccess(t('role.toastRestored', { name: deletedRole.name }), 3000);
       } catch (error) {
         console.error('Failed to restore role:', error);
       }
@@ -945,17 +947,17 @@ function RoleManagementPanelInner({
       setSelectedIds(failedIds);
 
       if (successCount > 0 && failedCount === 0) {
-        showSuccess(`Slettet ${successCount} roller.`);
+        showSuccess(t('role.toastBulkDeleted', { n: successCount }));
         return;
       }
       if (successCount > 0 && failedCount > 0) {
-        showError(`${successCount} slettet, ${failedCount} feilet. Markerede feil ligger igjen for retry.`);
+        showError(t('role.toastBulkPartial', { success: successCount, failed: failedCount }));
         return;
       }
-      showError('Kunne ikke slette valgte roller.');
+      showError(t('role.errorBulkDelete'));
     } catch (error) {
       console.error('Failed to bulk delete roles:', error);
-      showError('Kunne ikke slette valgte roller.');
+      showError(t('role.errorBulkDelete'));
     }
   };
 
@@ -963,7 +965,7 @@ function RoleManagementPanelInner({
     const newRole: Role = {
       ...role,
       id: `role-${Date.now()}`,
-      name: `${role.name} (kopi)`,
+      name: `${role.name} ${t('role.copySuffix')}`,
       status: 'draft',
       candidateIds: [],
     };
@@ -1005,7 +1007,7 @@ function RoleManagementPanelInner({
     if (role.status === nextStatus) return true;
     const allowedTransitions = getRoleWorkflowMeta(role.status).allowedTransitions;
     if (!allowedTransitions.includes(nextStatus)) {
-      showError(`Kan ikke endre fra ${getStatusLabel(role.status)} til ${getStatusLabel(nextStatus)}`);
+      showError(t('role.errorTransition', { from: getStatusLabel(role.status), to: getStatusLabel(nextStatus) }));
       return false;
     }
     try {
@@ -1021,8 +1023,8 @@ function RoleManagementPanelInner({
       });
       pushSessionTimelineEvent(
         role.id,
-        'Status endret',
-        `${getStatusLabel(role.status)} → ${getStatusLabel(nextStatus)}`,
+        t('role.timelineStatusChanged'),
+        t('role.transitionArrow', { from: getStatusLabel(role.status), to: getStatusLabel(nextStatus) }),
       );
       if (trackHistory) {
         setTransitionUndoStack((prev) => [
@@ -1037,12 +1039,12 @@ function RoleManagementPanelInner({
         setTransitionRedoStack([]);
       }
       if (toast) {
-        showSuccess(`Status oppdatert til ${getStatusLabel(nextStatus)}`);
+        showSuccess(t('role.toastStatusUpdated', { status: getStatusLabel(nextStatus) }));
       }
       return true;
     } catch (error) {
       console.error('Failed to update role status:', error);
-      showError('Kunne ikke oppdatere rollestatus');
+      showError(t('role.errorUpdateStatus'));
       return false;
     }
   };
@@ -1063,7 +1065,7 @@ function RoleManagementPanelInner({
     if (!success) return;
     setTransitionUndoStack(remaining);
     setTransitionRedoStack((prev) => [lastTransition, ...prev].slice(0, 30));
-    showSuccess(`Angret: ${getStatusLabel(lastTransition.to)} → ${getStatusLabel(lastTransition.from)}`);
+    showSuccess(t('role.toastUndone', { from: getStatusLabel(lastTransition.to), to: getStatusLabel(lastTransition.from) }));
   };
 
   const handleRedoStatusTransition = async () => {
@@ -1078,14 +1080,14 @@ function RoleManagementPanelInner({
     if (!success) return;
     setTransitionRedoStack(remaining);
     setTransitionUndoStack((prev) => [lastTransition, ...prev].slice(0, 30));
-    showSuccess(`Gjentok: ${getStatusLabel(lastTransition.from)} → ${getStatusLabel(lastTransition.to)}`);
+    showSuccess(t('role.toastRedone', { from: getStatusLabel(lastTransition.from), to: getStatusLabel(lastTransition.to) }));
   };
 
   const handleExportCSV = async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        alert('Prosjekt ikke funnet');
+        alert(t('role.errorProjectNotFound'));
         return;
       }
 
@@ -1094,7 +1096,7 @@ function RoleManagementPanelInner({
       // Create a new window for printing/viewing
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        alert(t('role.errorExportWindow'));
         return;
       }
 
@@ -1107,7 +1109,7 @@ function RoleManagementPanelInner({
       }, 250);
     } catch (error) {
       console.error('Error exporting roles:', error);
-      alert('Kunne ikke eksportere roller');
+      alert(t('role.errorExport'));
     }
   };
 
@@ -1142,7 +1144,7 @@ function RoleManagementPanelInner({
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${project.name} - Roller</title>
+  <title>${project.name} - ${t('role.exportTitleSuffix')}</title>
   <style>
     @page {
       margin: 0;
@@ -1406,28 +1408,28 @@ function RoleManagementPanelInner({
     <div class="header">
       <div class="title">
         ${roleIconSVG}
-        ${project.name} - Roller
+        ${project.name} - ${t('role.exportTitleSuffix')}
       </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
+      <div class="subtitle">${t('role.exportExported', { date: dateStr })}</div>
     </div>
 
     <div class="summary">
       <div class="summary-title">
         ${roleIconSVG}
-        Oversikt
+        ${t('role.exportOverview')}
       </div>
       <div class="summary-grid">
         <div class="summary-item">
           <span class="summary-number">${totalRoles}</span>
-          <span class="summary-label">Totale Roller</span>
+          <span class="summary-label">${t('role.exportTotalRoles')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${openRoles}</span>
-          <span class="summary-label">Åpne Roller</span>
+          <span class="summary-label">${t('role.exportOpenRoles')}</span>
         </div>
         <div class="summary-item">
           <span class="summary-number">${filledRoles}</span>
-          <span class="summary-label">Fylte Roller</span>
+          <span class="summary-label">${t('role.exportFilledRoles')}</span>
           <div class="progress-bar">
             <div class="progress-fill" style="width: ${rolesFilledPercent}%"></div>
           </div>
@@ -1439,24 +1441,24 @@ function RoleManagementPanelInner({
       <div class="section-header">
         <div class="section-title">
           <span class="section-icon">${roleIconSVG}</span>
-          Roller
+          ${t('role.exportTitleSuffix')}
         </div>
-        <span class="section-count">${totalRoles} rolle${totalRoles !== 1 ? 'r' : ''}</span>
+        <span class="section-count">${totalRoles !== 1 ? t('role.exportRoleCountMany', { n: totalRoles }) : t('role.exportRoleCountOne', { n: totalRoles })}</span>
       </div>
       <div class="section-content">
         ${
           roles.length === 0
-            ? '<div class="empty-state">Ingen roller ennå</div>'
+            ? `<div class="empty-state">${t('role.exportEmpty')}</div>`
             : `<table>
           <thead>
             <tr>
-              <th style="width: 20%;">Navn</th>
-              <th style="width: 12%;">Status</th>
-              <th style="width: 25%;">Beskrivelse</th>
-              <th style="width: 10%;">Alder</th>
-              <th style="width: 20%;">Ferdigheter</th>
-              <th style="width: 8%;">Kandidater</th>
-              <th style="width: 5%;">Scener</th>
+              <th style="width: 20%;">${t('role.name')}</th>
+              <th style="width: 12%;">${t('role.status')}</th>
+              <th style="width: 25%;">${t('role.description')}</th>
+              <th style="width: 10%;">${t('role.age')}</th>
+              <th style="width: 20%;">${t('role.skills')}</th>
+              <th style="width: 8%;">${t('role.candidates')}</th>
+              <th style="width: 5%;">${t('role.scenes')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1491,7 +1493,7 @@ function RoleManagementPanelInner({
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
       <div class="footer-right">
-        <span class="page-number">Side </span>
+        <span class="page-number">${t('role.exportPage')}</span>
         <span>|</span>
         <span>${dateStr}</span>
       </div>
@@ -1528,7 +1530,7 @@ function RoleManagementPanelInner({
     const actions: Array<{ id: string; label: string; hint?: string; run: () => void }> = [
       {
         id: 'create-role',
-        label: 'Ny rolle',
+        label: t('role.cmdNewRole'),
         hint: 'Ctrl/Cmd + N',
         run: () => {
           onCreateRole();
@@ -1537,7 +1539,7 @@ function RoleManagementPanelInner({
       },
       {
         id: 'preset-critical',
-        label: 'Vis kritiske roller',
+        label: t('role.cmdShowCritical'),
         run: () => {
           applyProPreset('critical_roles');
           setCommandPaletteOpen(false);
@@ -1545,7 +1547,7 @@ function RoleManagementPanelInner({
       },
       {
         id: 'preset-all',
-        label: 'Vis alle roller',
+        label: t('role.cmdShowAll'),
         run: () => {
           applyProPreset('all_roles');
           setCommandPaletteOpen(false);
@@ -1553,7 +1555,7 @@ function RoleManagementPanelInner({
       },
       {
         id: 'toggle-compare',
-        label: proCompareMode ? 'Deaktiver sammenligning' : 'Aktiver sammenligning',
+        label: proCompareMode ? t('role.cmdDisableCompare') : t('role.cmdEnableCompare'),
         run: () => {
           setProCompareMode((prev) => !prev);
           setCommandPaletteOpen(false);
@@ -1571,7 +1573,7 @@ function RoleManagementPanelInner({
       const allowedStatusActions = getRoleWorkflowMeta(selectedProRole.status).allowedTransitions;
       actions.splice(1, 0, {
         id: 'edit-selected',
-        label: `Rediger: ${selectedProRole.name}`,
+        label: t('role.cmdEditSelected', { name: selectedProRole.name }),
         hint: 'Enter',
         run: () => {
           onEditRole(selectedProRole);
@@ -1581,7 +1583,7 @@ function RoleManagementPanelInner({
       allowedStatusActions.forEach((status) => {
         actions.push({
           id: `status-${status}`,
-          label: `Sett status: ${getStatusLabel(status)}`,
+          label: t('role.cmdSetStatus', { status: getStatusLabel(status) }),
           hint: statusHotkeyHints[status],
           run: () => {
             void handleTransitionStatus(selectedProRole, status);
@@ -1591,7 +1593,7 @@ function RoleManagementPanelInner({
       });
       actions.push({
         id: 'save-template',
-        label: `Lagre "${selectedProRole.name}" som mal`,
+        label: t('role.cmdSaveTemplate', { name: selectedProRole.name }),
         run: () => {
           void handleSaveToPool(selectedProRole);
           setCommandPaletteOpen(false);
@@ -1601,7 +1603,7 @@ function RoleManagementPanelInner({
     if (transitionUndoStack.length > 0) {
       actions.push({
         id: 'undo-transition',
-        label: 'Angre siste statusendring',
+        label: t('role.cmdUndoTransition'),
         run: () => {
           void handleUndoStatusTransition();
           setCommandPaletteOpen(false);
@@ -1611,7 +1613,7 @@ function RoleManagementPanelInner({
     if (transitionRedoStack.length > 0) {
       actions.push({
         id: 'redo-transition',
-        label: 'Gjenta siste statusendring',
+        label: t('role.cmdRedoTransition'),
         run: () => {
           void handleRedoStatusTransition();
           setCommandPaletteOpen(false);
@@ -1626,6 +1628,7 @@ function RoleManagementPanelInner({
     selectedProRole,
     transitionRedoStack.length,
     transitionUndoStack.length,
+    t,
   ]);
 
   return (
@@ -1724,7 +1727,7 @@ function RoleManagementPanelInner({
                 backgroundClip: 'text',
               }}
             >
-              Casting-roller
+              {t('role.title')}
             </Typography>
             <Typography
               sx={{
@@ -1752,11 +1755,11 @@ function RoleManagementPanelInner({
             justifyContent: { xs: 'space-between', sm: 'flex-end' },
           }}
         >
-          <Tooltip title="Eksporter til CSV (Ctrl+E)">
+          <Tooltip title={t('role.exportCsvTooltip')}>
             <Button
               variant="outlined"
               onClick={handleExportCSV}
-              aria-label="Eksporter roller til CSV"
+              aria-label={t('role.exportAria')}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
@@ -1774,11 +1777,11 @@ function RoleManagementPanelInner({
               }}
             >
               <ExportIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-              {!isMobile && <Box component="span" sx={{ ml: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>Eksporter</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>{t('role.export')}</Box>}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Vis/skjul statistikk">
+          <Tooltip title={t('role.toggleStatsTooltip')}>
             <Button
               variant="outlined"
               onClick={() => setShowStats(!showStats)}
@@ -1801,15 +1804,15 @@ function RoleManagementPanelInner({
               }}
             >
               <StatsIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-              {!isMobile && <Box component="span" sx={{ ml: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>Statistikk</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>{t('role.stats')}</Box>}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Ny rolle (Ctrl+N)">
+          <Tooltip title={t('role.newRoleTooltip')}>
             <Button
               variant="contained"
               onClick={onCreateRole}
-              aria-label="Ny rolle"
+              aria-label={t('role.newRole')}
               sx={{
                 bgcolor: roleTabAccent,
                 color: '#160a24',
@@ -1829,7 +1832,7 @@ function RoleManagementPanelInner({
               }}
             >
               <AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-              {!isMobile && <Box component="span" sx={{ ml: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>Ny rolle</Box>}
+              {!isMobile && <Box component="span" sx={{ ml: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>{t('role.newRole')}</Box>}
             </Button>
           </Tooltip>
         </Box>
@@ -1850,7 +1853,7 @@ function RoleManagementPanelInner({
         }}
       >
         <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
-          Vis:
+          {t('role.showLabel')}
         </Typography>
         <Button
           variant={poolMode === 'project' ? 'contained' : 'outlined'}
@@ -1866,7 +1869,7 @@ function RoleManagementPanelInner({
             },
           }}
         >
-          Prosjektroller ({roles.length})
+          {t('role.projectRolesN', { n: roles.length })}
         </Button>
         <Button
           variant={poolMode === 'pool' ? 'contained' : 'outlined'}
@@ -1882,7 +1885,7 @@ function RoleManagementPanelInner({
             },
           }}
         >
-          Maler ({poolRoles.length})
+          {t('role.templatesN', { n: poolRoles.length })}
         </Button>
       </Box>
 
@@ -1901,7 +1904,7 @@ function RoleManagementPanelInner({
         }}
       >
         <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
-          Visning:
+          {t('role.viewLabel')}
         </Typography>
         <Button
           variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
@@ -1917,7 +1920,7 @@ function RoleManagementPanelInner({
             },
           }}
         >
-          Standard
+          {t('role.standard')}
         </Button>
         <Button
           variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
@@ -1933,7 +1936,7 @@ function RoleManagementPanelInner({
             },
           }}
         >
-          Pro-visning
+          {t('role.proView')}
         </Button>
       </Box>
 
@@ -1952,9 +1955,9 @@ function RoleManagementPanelInner({
             }}
           >
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ alignItems: { md: 'center' }, flexWrap: 'wrap' }}>
-              <Typography sx={{ color: roleText, fontWeight: 700, minWidth: 110 }}>Pro View</Typography>
+              <Typography sx={{ color: roleText, fontWeight: 700, minWidth: 110 }}>{t('role.proViewTitle')}</Typography>
               <Chip
-                label={`${proRoles.length} roller`}
+                label={t('role.rolesCountN', { n: proRoles.length })}
                 sx={{
                   bgcolor: roleTabAccentSoft,
                   border: `1px solid ${roleBorder}`,
@@ -1968,7 +1971,7 @@ function RoleManagementPanelInner({
                 onClick={() => applyProPreset('casting_focus')}
                 sx={{ minHeight: 34, color: proPreset === 'casting_focus' ? '#160a24' : roleTextMuted, borderColor: roleBorder, bgcolor: proPreset === 'casting_focus' ? roleTabAccent : 'transparent' }}
               >
-                Casting-fokus
+                {t('role.presetCastingFocus')}
               </Button>
               <Button
                 size="small"
@@ -1976,7 +1979,7 @@ function RoleManagementPanelInner({
                 onClick={() => applyProPreset('critical_roles')}
                 sx={{ minHeight: 34, color: proPreset === 'critical_roles' ? '#160a24' : roleTextMuted, borderColor: roleBorder, bgcolor: proPreset === 'critical_roles' ? roleTabAccent : 'transparent' }}
               >
-                Kritiske roller
+                {t('role.presetCritical')}
               </Button>
               <Button
                 size="small"
@@ -1984,7 +1987,7 @@ function RoleManagementPanelInner({
                 onClick={() => applyProPreset('this_week')}
                 sx={{ minHeight: 34, color: proPreset === 'this_week' ? '#160a24' : roleTextMuted, borderColor: roleBorder, bgcolor: proPreset === 'this_week' ? roleTabAccent : 'transparent' }}
               >
-                Denne uka
+                {t('role.presetThisWeek')}
               </Button>
               <Button
                 size="small"
@@ -1992,7 +1995,7 @@ function RoleManagementPanelInner({
                 onClick={() => applyProPreset('all_roles')}
                 sx={{ minHeight: 34, color: proPreset === 'all_roles' ? '#160a24' : roleTextMuted, borderColor: roleBorder, bgcolor: proPreset === 'all_roles' ? roleTabAccent : 'transparent' }}
               >
-                Alle
+                {t('role.presetAll')}
               </Button>
             </Stack>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ alignItems: { md: 'center' }, flexWrap: 'wrap', justifyContent: { lg: 'flex-end' } }}>
@@ -2006,13 +2009,13 @@ function RoleManagementPanelInner({
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
                   }}
                 >
-                  <MenuItem value="risk">Risiko</MenuItem>
-                  <MenuItem value="name">Navn</MenuItem>
-                  <MenuItem value="status">Status</MenuItem>
-                  <MenuItem value="candidates">Kandidater</MenuItem>
-                  <MenuItem value="scenes">Scener</MenuItem>
-                  <MenuItem value="updatedAt">Oppdatert</MenuItem>
-                  <MenuItem value="deadline">Frist</MenuItem>
+                  <MenuItem value="risk">{t('role.risk')}</MenuItem>
+                  <MenuItem value="name">{t('role.name')}</MenuItem>
+                  <MenuItem value="status">{t('role.status')}</MenuItem>
+                  <MenuItem value="candidates">{t('role.candidates')}</MenuItem>
+                  <MenuItem value="scenes">{t('role.scenes')}</MenuItem>
+                  <MenuItem value="updatedAt">{t('role.sortUpdated')}</MenuItem>
+                  <MenuItem value="deadline">{t('role.sortDeadline')}</MenuItem>
                 </Select>
               </FormControl>
               <Button
@@ -2021,7 +2024,7 @@ function RoleManagementPanelInner({
                 onClick={() => setProSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
                 sx={{ minHeight: 34, color: roleText, borderColor: roleBorder }}
               >
-                {proSortDirection === 'asc' ? 'Stigende' : 'Synkende'}
+                {proSortDirection === 'asc' ? t('role.ascending') : t('role.descending')}
               </Button>
               <FormControl size="small" sx={{ minWidth: 132 }}>
                 <Select
@@ -2033,7 +2036,7 @@ function RoleManagementPanelInner({
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
                   }}
                 >
-                  <MenuItem value="all">Alle statuser</MenuItem>
+                  <MenuItem value="all">{t('role.allStatuses')}</MenuItem>
                   {ROLE_WORKFLOW_ORDER.map((status) => (
                     <MenuItem key={status} value={status}>
                       {getRoleWorkflowMeta(status).label}
@@ -2053,7 +2056,7 @@ function RoleManagementPanelInner({
                 }}
               >
                 <WarningIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                Kun hast
+                {t('role.onlyUrgent')}
               </Button>
               <Button
                 size="small"
@@ -2062,7 +2065,7 @@ function RoleManagementPanelInner({
                 sx={{ minHeight: 34, borderColor: roleBorder, color: proListMode === 'cards' ? '#160a24' : roleTextMuted, bgcolor: proListMode === 'cards' ? roleTabAccent : 'transparent' }}
               >
                 <GridViewIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                Kort
+                {t('role.viewCards')}
               </Button>
               <Button
                 size="small"
@@ -2071,7 +2074,7 @@ function RoleManagementPanelInner({
                 sx={{ minHeight: 34, borderColor: roleBorder, color: proListMode === 'table' ? '#160a24' : roleTextMuted, bgcolor: proListMode === 'table' ? roleTabAccent : 'transparent' }}
               >
                 <TableViewIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                Tabell
+                {t('role.viewTable')}
               </Button>
               <Button
                 size="small"
@@ -2080,9 +2083,9 @@ function RoleManagementPanelInner({
                 sx={{ minHeight: 34, borderColor: roleBorder, color: proCompareMode ? '#160a24' : roleTextMuted, bgcolor: proCompareMode ? roleTabAccent : 'transparent' }}
               >
                 <CompareArrowsIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                Sammenlign
+                {t('role.compare')}
               </Button>
-              <Tooltip title="Angre statusendring">
+              <Tooltip title={t('role.undoTransitionTooltip')}>
                 <span>
                   <IconButton
                     size="small"
@@ -2094,7 +2097,7 @@ function RoleManagementPanelInner({
                   </IconButton>
                 </span>
               </Tooltip>
-              <Tooltip title="Gjenta statusendring">
+              <Tooltip title={t('role.redoTransitionTooltip')}>
                 <span>
                   <IconButton
                     size="small"
@@ -2113,7 +2116,7 @@ function RoleManagementPanelInner({
                 sx={{ minHeight: 34, borderColor: roleBorder, color: roleTextMuted }}
               >
                 <TuneIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                Hurtighandlinger
+                {t('role.quickActions')}
               </Button>
               <Button
                 size="small"
@@ -2122,7 +2125,7 @@ function RoleManagementPanelInner({
                 sx={{ minHeight: 34, borderColor: roleBorder, color: roleTextMuted }}
               >
                 <CommandIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                Kommando
+                {t('role.command')}
               </Button>
             </Stack>
           </Box>
@@ -2137,7 +2140,7 @@ function RoleManagementPanelInner({
               alignItems: 'center',
             }}
           >
-            <Chip size="small" label="J/K: Naviger" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
+            <Chip size="small" label={t('role.hintNavigate')} sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
             {(['draft', 'open', 'casting', 'filled', 'cancelled'] as const).map((s, i) => {
               const meta = getRoleWorkflowMeta(s);
               return (
@@ -2154,9 +2157,9 @@ function RoleManagementPanelInner({
                 />
               );
             })}
-            <Chip size="small" label="Enter: Rediger" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label=".: Hurtighandlinger" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
-            <Chip size="small" label="Cmd/Ctrl+K: Kommando" sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
+            <Chip size="small" label={t('role.hintEdit')} sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
+            <Chip size="small" label={t('role.hintQuickActions')} sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
+            <Chip size="small" label={t('role.hintCommand')} sx={{ bgcolor: roleSurfaceMuted, color: roleTextMuted, border: `1px solid ${roleBorder}` }} />
           </Box>
 
           <Box
@@ -2183,7 +2186,7 @@ function RoleManagementPanelInner({
               }}
             >
               <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.05rem' }}>
-                Pipeline
+                {t('role.pipeline')}
               </Typography>
               <Stack spacing={0.75}>
                 {pipelineCounts.map((pipelineItem) => (
@@ -2207,12 +2210,12 @@ function RoleManagementPanelInner({
               </Stack>
               <Divider sx={{ borderColor: roleBorder, my: 0.5 }} />
               <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.05rem' }}>
-                Varsler
+                {t('role.alerts')}
               </Typography>
               <Box sx={{ maxHeight: 180, overflowY: 'auto', pr: 0.5 }}>
                 {proAlerts.length === 0 ? (
                   <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
-                    Ingen aktive varsler.
+                    {t('role.noActiveAlerts')}
                   </Typography>
                 ) : (
                   <Stack spacing={0.75}>
@@ -2234,13 +2237,13 @@ function RoleManagementPanelInner({
               </Box>
               <Divider sx={{ borderColor: roleBorder, my: 0.5 }} />
               <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.05rem' }}>
-                Rollepool
+                {t('role.rolePool')}
               </Typography>
               <TextField
                 size="small"
                 value={poolSearchQuery}
                 onChange={(event) => setPoolSearchQuery(event.target.value)}
-                placeholder="Søk i rollemaler..."
+                placeholder={t('role.searchTemplates')}
                 slotProps={{
                   input: {
                     startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
@@ -2258,9 +2261,9 @@ function RoleManagementPanelInner({
               />
               <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, pr: 0.5 }}>
                 {poolLoading ? (
-                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Laster maler...</Typography>
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>{t('role.loadingTemplates')}</Typography>
                 ) : filteredPoolRoles.length === 0 ? (
-                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Ingen treff i rollepool.</Typography>
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>{t('role.noPoolMatch')}</Typography>
                 ) : (
                   <Stack spacing={1}>
                     {filteredPoolRoles.slice(0, 8).map((poolRole) => (
@@ -2278,7 +2281,7 @@ function RoleManagementPanelInner({
                           </Typography>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.75 }}>
                             <Button size="small" onClick={() => handleImportFromPool(poolRole)} sx={{ color: roleTabAccent, minHeight: 32 }}>
-                              Importer
+                              {t('role.import')}
                             </Button>
                             <IconButton
                               size="small"
@@ -2313,7 +2316,7 @@ function RoleManagementPanelInner({
                   size="small"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Søk roller..."
+                  placeholder={t('role.searchRoles')}
                   slotProps={{
                     input: {
                       startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
@@ -2341,7 +2344,7 @@ function RoleManagementPanelInner({
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                     }}
                   >
-                    <MenuItem value="all">Alle statuser</MenuItem>
+                    <MenuItem value="all">{t('role.allStatuses')}</MenuItem>
                     {ROLE_WORKFLOW_ORDER.map((status) => (
                       <MenuItem key={status} value={status}>
                         {getRoleWorkflowMeta(status).label}
@@ -2350,7 +2353,7 @@ function RoleManagementPanelInner({
                   </Select>
                 </FormControl>
                 <Chip
-                  label={`${proRoles.length} aktive`}
+                  label={t('role.activeN', { n: proRoles.length })}
                   sx={{
                     color: roleTabAccent,
                     bgcolor: roleTabAccentSoft,
@@ -2361,18 +2364,18 @@ function RoleManagementPanelInner({
               </Box>
               <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, pr: 0.5 }}>
                 {proRoles.length === 0 ? (
-                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Ingen roller matcher pro-filteret.</Typography>
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>{t('role.noProFilterMatch')}</Typography>
                 ) : proListMode === 'table' ? (
                   <TableContainer component={Paper} sx={{ bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
                     <Table size="small" sx={{ minWidth: 560 }}>
                       <TableHead>
                         <TableRow>
                           <TableCell padding="checkbox" />
-                          <TableCell sx={{ color: roleText }}>Rolle</TableCell>
-                          <TableCell sx={{ color: roleText }}>Status</TableCell>
-                          <TableCell sx={{ color: roleText }}>Risiko</TableCell>
-                          <TableCell sx={{ color: roleText }}>Kandidater</TableCell>
-                          <TableCell sx={{ color: roleText }}>Scener</TableCell>
+                          <TableCell sx={{ color: roleText }}>{t('role.colRole')}</TableCell>
+                          <TableCell sx={{ color: roleText }}>{t('role.status')}</TableCell>
+                          <TableCell sx={{ color: roleText }}>{t('role.risk')}</TableCell>
+                          <TableCell sx={{ color: roleText }}>{t('role.candidates')}</TableCell>
+                          <TableCell sx={{ color: roleText }}>{t('role.scenes')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -2457,13 +2460,13 @@ function RoleManagementPanelInner({
                                 </Typography>
                                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
                                   <Chip label={getStatusLabel(role.status)} size="small" sx={{ bgcolor: `${getStatusColor(role.status)}22`, color: getStatusColor(role.status), fontWeight: 700, height: 22 }} />
-                                  <Chip label={`${getRoleCandidateCount(role)} kandidater`} size="small" sx={{ height: 22 }} />
-                                  <Chip label={`${getRoleSceneCount(role)} scener`} size="small" sx={{ height: 22 }} />
+                                  <Chip label={t('role.candidatesN', { n: getRoleCandidateCount(role) })} size="small" sx={{ height: 22 }} />
+                                  <Chip label={t('role.scenesN', { n: getRoleSceneCount(role) })} size="small" sx={{ height: 22 }} />
                                 </Box>
                                 {risk && (
                                   <Box sx={{ mt: 0.75 }}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                                      <Typography sx={{ color: roleTextMuted, fontSize: '0.72rem' }}>Risiko</Typography>
+                                      <Typography sx={{ color: roleTextMuted, fontSize: '0.72rem' }}>{t('role.risk')}</Typography>
                                       <Typography sx={{ color: riskColor, fontSize: '0.72rem', fontWeight: 700 }}>{risk.score}</Typography>
                                     </Box>
                                     <LinearProgress
@@ -2515,7 +2518,7 @@ function RoleManagementPanelInner({
                         <Chip label={getStatusLabel(selectedProRole.status)} size="small" sx={{ bgcolor: `${getStatusColor(selectedProRole.status)}20`, color: getStatusColor(selectedProRole.status), fontWeight: 700 }} />
                         {selectedProRoleRisk && (
                           <Chip
-                            label={`Risiko ${selectedProRoleRisk.score}`}
+                            label={t('role.riskChip', { score: selectedProRoleRisk.score })}
                             size="small"
                             sx={{
                               bgcolor: selectedProRoleRisk.level === 'hoy' ? 'rgba(239,68,68,0.15)' : selectedProRoleRisk.level === 'medium' ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)',
@@ -2539,35 +2542,35 @@ function RoleManagementPanelInner({
                       '& .MuiTabs-indicator': { backgroundColor: roleTabAccent },
                     }}
                   >
-                    <Tab value="oversikt" label="Oversikt" />
-                    <Tab value="pipeline" label="Pipeline" />
-                    <Tab value="sammenlign" label={`Sammenlign (${compareRoles.length})`} />
-                    <Tab value="historikk" label="Historikk" />
-                    <Tab value="handlinger" label="Handlinger" />
+                    <Tab value="oversikt" label={t('role.overview')} />
+                    <Tab value="pipeline" label={t('role.pipeline')} />
+                    <Tab value="sammenlign" label={t('role.tabCompareN', { n: compareRoles.length })} />
+                    <Tab value="historikk" label={t('role.tabHistory')} />
+                    <Tab value="handlinger" label={t('role.actions')} />
                   </Tabs>
                   <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, pr: 0.5 }}>
                     {proDetailTab === 'oversikt' && (
                       <Stack spacing={1}>
                         <Typography sx={{ color: roleTextMuted, fontSize: '0.9rem' }}>
-                          {selectedProRole.description || 'Ingen beskrivelse lagt inn.'}
+                          {selectedProRole.description || t('role.noDescription')}
                         </Typography>
                         <Box>
-                          <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Nøkkeldata</Typography>
+                          <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>{t('role.keyData')}</Typography>
                           <Stack spacing={0.6}>
                             <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>
-                              Kandidater: <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>{getRoleCandidateCount(selectedProRole)}</Box>
+                              {t('role.candidatesLabel')} <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>{getRoleCandidateCount(selectedProRole)}</Box>
                             </Typography>
                             <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>
-                              Scener: <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>{getRoleSceneCount(selectedProRole)}</Box>
+                              {t('role.scenesLabel')} <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>{getRoleSceneCount(selectedProRole)}</Box>
                             </Typography>
                             <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>
-                              Kjønn: <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>{getRoleRequirements(selectedProRole).gender || 'Ikke satt'}</Box>
+                              {t('role.genderLabel')} <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>{getRoleRequirements(selectedProRole).gender || t('role.notSet')}</Box>
                             </Typography>
                             <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>
-                              Alder: <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>
+                              {t('role.ageLabel')} <Box component="span" sx={{ color: roleText, fontWeight: 700 }}>
                                 {getRoleRequirements(selectedProRole).age
                                   ? `${getRoleRequirements(selectedProRole).age?.min || '?'}-${getRoleRequirements(selectedProRole).age?.max || '?'}`
-                                  : 'Ikke satt'}
+                                  : t('role.notSet')}
                               </Box>
                             </Typography>
                           </Stack>
@@ -2582,7 +2585,7 @@ function RoleManagementPanelInner({
                         >
                           <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 0.75 }}>
                             <AutoAwesomeIcon sx={{ fontSize: 16, color: roleTabAccent }} />
-                            Neste anbefalte steg
+                            {t('role.nextStep')}
                           </Typography>
                           <Typography sx={{ color: roleText, fontWeight: 600, mt: 0.5, fontSize: '0.9rem' }}>{recommendedAction.title}</Typography>
                           <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>{recommendedAction.description}</Typography>
@@ -2593,7 +2596,7 @@ function RoleManagementPanelInner({
                               onClick={() => void handleTransitionStatus(selectedProRole, recommendedAction.nextStatus as RoleWorkflowStatus)}
                               sx={{ mt: 0.75, bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700 }}
                             >
-                              Sett til {getStatusLabel(recommendedAction.nextStatus)}
+                              {t('role.setToStatus', { status: getStatusLabel(recommendedAction.nextStatus) })}
                             </Button>
                           )}
                         </Box>
@@ -2602,7 +2605,7 @@ function RoleManagementPanelInner({
                     {proDetailTab === 'pipeline' && (
                       <Stack spacing={1}>
                         <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.95rem' }}>
-                          Tillatte overganger
+                          {t('role.allowedTransitions')}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                           {getRoleWorkflowMeta(selectedProRole.status).allowedTransitions.length > 0 ? (
@@ -2618,7 +2621,7 @@ function RoleManagementPanelInner({
                               </Button>
                             ))
                           ) : (
-                            <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>Ingen videre overganger.</Typography>
+                            <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>{t('role.noFurtherTransitions')}</Typography>
                           )}
                         </Box>
                         <Divider sx={{ borderColor: roleBorder }} />
@@ -2631,7 +2634,7 @@ function RoleManagementPanelInner({
                             sx={{ color: roleText, borderColor: roleBorder }}
                           >
                             <UndoStatusIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                            Angre
+                            {t('role.undo')}
                           </Button>
                           <Button
                             size="small"
@@ -2641,7 +2644,7 @@ function RoleManagementPanelInner({
                             sx={{ color: roleText, borderColor: roleBorder }}
                           >
                             <RedoStatusIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                            Gjenta
+                            {t('role.redo')}
                           </Button>
                         </Box>
                       </Stack>
@@ -2650,7 +2653,7 @@ function RoleManagementPanelInner({
                       <Stack spacing={1}>
                         {compareRoles.length < 2 ? (
                           <Alert severity="info" sx={{ bgcolor: 'rgba(0,0,0,0.2)', color: '#fff' }}>
-                            Velg minst to roller med avhuking for å sammenligne.
+                            {t('role.compareHint')}
                           </Alert>
                         ) : (
                           compareRoles.map((role) => {
@@ -2662,9 +2665,9 @@ function RoleManagementPanelInner({
                                   <Typography sx={{ color: roleText, fontWeight: 700 }}>{role.name}</Typography>
                                   <Stack direction="row" spacing={0.75} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
                                     <Chip label={getStatusLabel(role.status)} size="small" sx={{ bgcolor: `${getStatusColor(role.status)}20`, color: getStatusColor(role.status), fontWeight: 700 }} />
-                                    <Chip label={`${getRoleCandidateCount(role)} kandidater`} size="small" />
-                                    <Chip label={`${getRoleSceneCount(role)} scener`} size="small" />
-                                    <Chip label={`Risiko ${risk?.score ?? '-'}`} size="small" sx={{ color: riskColor }} />
+                                    <Chip label={t('role.candidatesN', { n: getRoleCandidateCount(role) })} size="small" />
+                                    <Chip label={t('role.scenesN', { n: getRoleSceneCount(role) })} size="small" />
+                                    <Chip label={t('role.riskChip', { score: risk?.score ?? '-' })} size="small" sx={{ color: riskColor }} />
                                   </Stack>
                                 </CardContent>
                               </Card>
@@ -2676,7 +2679,7 @@ function RoleManagementPanelInner({
                     {proDetailTab === 'historikk' && (
                       <Stack spacing={0.9}>
                         {selectedRoleTimeline.length === 0 ? (
-                          <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>Ingen historikk tilgjengelig.</Typography>
+                          <Typography sx={{ color: roleTextMuted, fontSize: '0.84rem' }}>{t('role.noHistory')}</Typography>
                         ) : (
                           selectedRoleTimeline.map((entry) => (
                             <Box
@@ -2706,28 +2709,28 @@ function RoleManagementPanelInner({
                           onClick={() => onEditRole(selectedProRole)}
                           sx={{ bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700 }}
                         >
-                          Rediger rolle
+                          {t('role.editRole')}
                         </Button>
                         <Button
                           variant="outlined"
                           onClick={() => void handleSaveToPool(selectedProRole)}
                           sx={{ color: roleTabAccent, borderColor: roleBorder }}
                         >
-                          Lagre som mal
+                          {t('role.saveAsTemplate')}
                         </Button>
                         <Button
                           variant="outlined"
                           onClick={() => void handleDuplicate(selectedProRole)}
                           sx={{ color: roleText, borderColor: roleBorder }}
                         >
-                          Dupliser rolle
+                          {t('role.duplicateRole')}
                         </Button>
                         <Button
                           variant="outlined"
                           onClick={() => void handleDeleteWithUndo(selectedProRole)}
                           sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}
                         >
-                          Slett rolle
+                          {t('role.deleteRole')}
                         </Button>
                         <Button
                           variant="outlined"
@@ -2735,14 +2738,14 @@ function RoleManagementPanelInner({
                           sx={{ color: roleText, borderColor: roleBorder }}
                         >
                           <ChecklistIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                          Åpne hurtighandlinger
+                          {t('role.openQuickActions')}
                         </Button>
                       </Stack>
                     )}
                   </Box>
                 </>
               ) : (
-                <Typography sx={{ color: roleTextMuted }}>Velg en rolle for detaljer.</Typography>
+                <Typography sx={{ color: roleTextMuted }}>{t('role.selectRoleForDetails')}</Typography>
               )}
             </Box>
           </Box>
@@ -2762,7 +2765,7 @@ function RoleManagementPanelInner({
           >
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CommandIcon sx={{ color: roleTabAccent }} />
-              Kommando-palett
+              {t('role.commandPalette')}
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: roleBorder }}>
               <Stack spacing={0.75}>
@@ -2788,7 +2791,7 @@ function RoleManagementPanelInner({
             </DialogContent>
             <DialogActions sx={{ borderTop: `1px solid ${roleBorder}` }}>
               <Button onClick={() => setCommandPaletteOpen(false)} sx={{ color: roleTextMuted }}>
-                Lukk
+                {t('role.close')}
               </Button>
             </DialogActions>
           </Dialog>
@@ -2808,15 +2811,15 @@ function RoleManagementPanelInner({
           >
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <TuneIcon sx={{ color: roleTabAccent }} />
-              Hurtighandlinger
+              {t('role.quickActions')}
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: roleBorder }}>
               {!selectedProRole ? (
-                <Typography sx={{ color: roleTextMuted }}>Velg en rolle først.</Typography>
+                <Typography sx={{ color: roleTextMuted }}>{t('role.selectRoleFirst')}</Typography>
               ) : (
                 <Stack spacing={1}>
                   <Typography sx={{ color: roleTextMuted, fontSize: '0.8rem' }}>
-                    Status-snarveier: <strong>1</strong> Utkast, <strong>2</strong> Åpen, <strong>3</strong> Casting, <strong>4</strong> Besatt, <strong>5</strong> Kansellert
+                    {t('role.statusShortcutsLabel')} <strong>1</strong> {t('role.statusDraft')}, <strong>2</strong> {t('cstatus.open')}, <strong>3</strong> {t('cstatus.casting')}, <strong>4</strong> {t('cstatus.filled')}, <strong>5</strong> {t('role.statusCancelled')}
                   </Typography>
                   <Button
                     variant="outlined"
@@ -2826,7 +2829,7 @@ function RoleManagementPanelInner({
                     }}
                     sx={{ justifyContent: 'flex-start', color: roleText, borderColor: roleBorder }}
                   >
-                    Velg alle synlige roller
+                    {t('role.selectAllVisible')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -2836,7 +2839,7 @@ function RoleManagementPanelInner({
                     }}
                     sx={{ justifyContent: 'flex-start', color: roleText, borderColor: roleBorder }}
                   >
-                    Gå til pipeline-detaljer
+                    {t('role.goToPipeline')}
                   </Button>
                   {getRoleWorkflowMeta(selectedProRole.status).allowedTransitions.map((nextStatus) => (
                     <Button
@@ -2848,7 +2851,7 @@ function RoleManagementPanelInner({
                       }}
                       sx={{ justifyContent: 'space-between', color: roleText, borderColor: roleBorder }}
                     >
-                      <Box component="span">Sett status til {getStatusLabel(nextStatus)}</Box>
+                      <Box component="span">{t('role.setStatusTo', { status: getStatusLabel(nextStatus) })}</Box>
                       <Chip
                         size="small"
                         label={
@@ -2870,7 +2873,7 @@ function RoleManagementPanelInner({
                     }}
                     sx={{ justifyContent: 'flex-start', color: roleText, borderColor: roleBorder }}
                   >
-                    Lagre valgt rolle som mal
+                    {t('role.saveSelectedAsTemplate')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -2881,14 +2884,14 @@ function RoleManagementPanelInner({
                     }}
                     sx={{ justifyContent: 'flex-start', color: roleText, borderColor: roleBorder }}
                   >
-                    Start sammenligning
+                    {t('role.startComparison')}
                   </Button>
                 </Stack>
               )}
             </DialogContent>
             <DialogActions sx={{ borderTop: `1px solid ${roleBorder}` }}>
               <Button onClick={() => setQuickActionsOpen(false)} sx={{ color: roleTextMuted }}>
-                Lukk
+                {t('role.close')}
               </Button>
             </DialogActions>
           </Dialog>
@@ -2911,15 +2914,15 @@ function RoleManagementPanelInner({
           >
             <Typography variant="subtitle1" sx={{ color: roleTabAccent, fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
               <InventoryIcon sx={{ fontSize: 20 }} />
-              Slik bruker du rollemaler
+              {t('role.templatesGuideTitle')}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-              Maler lar deg lagre rollebeskrivelser for gjenbruk i fremtidige prosjekter.
+              {t('role.templatesGuideDesc')}
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'rgba(255,255,255,0.87)', '& li': { mb: 0.5, fontSize: '0.875rem' } }}>
-              <li><strong>Lagre som mal:</strong> Klikk på lagre-til-pool-ikonet på en prosjektrolle</li>
-              <li><strong>Importer:</strong> Klikk "Importer" for å kopiere malen til prosjektet</li>
-              <li><strong>Slett:</strong> Fjern maler du ikke trenger lenger</li>
+              <li><strong>{t('role.guideSaveLabel')}</strong> {t('role.guideSaveText')}</li>
+              <li><strong>{t('role.guideImportLabel')}</strong> {t('role.guideImportText')}</li>
+              <li><strong>{t('role.guideDeleteLabel')}</strong> {t('role.guideDeleteText')}</li>
             </Box>
           </Box>
 
@@ -2936,7 +2939,7 @@ function RoleManagementPanelInner({
               size="small"
               value={poolSearchQuery}
               onChange={(event) => setPoolSearchQuery(event.target.value)}
-              placeholder="Søk i rollemaler..."
+              placeholder={t('role.searchTemplates')}
               slotProps={{
                 input: {
                   startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
@@ -2954,7 +2957,7 @@ function RoleManagementPanelInner({
               }}
             />
             <Chip
-              label={`${filteredPoolRoles.length}/${poolRoles.length} maler`}
+              label={t('role.templatesCountN', { shown: filteredPoolRoles.length, total: poolRoles.length })}
               sx={{
                 alignSelf: { xs: 'flex-start', sm: 'center' },
                 color: roleTabAccent,
@@ -2967,7 +2970,7 @@ function RoleManagementPanelInner({
           
           {poolLoading ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography sx={{ color: roleTextMuted }}>Laster maler...</Typography>
+              <Typography sx={{ color: roleTextMuted }}>{t('role.loadingTemplates')}</Typography>
             </Box>
           ) : filteredPoolRoles.length === 0 ? (
             <Box sx={{ 
@@ -2979,12 +2982,12 @@ function RoleManagementPanelInner({
             }}>
               <TheaterComedyIcon sx={{ fontSize: 48, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
               <Typography sx={{ color: roleText, mb: 1 }}>
-                {poolSearchQuery ? 'Ingen rollemaler matcher søket' : 'Ingen rollemaler ennå'}
+                {poolSearchQuery ? t('role.noTemplatesMatch') : t('role.noTemplatesYet')}
               </Typography>
               <Typography variant="body2" sx={{ color: roleTextMuted }}>
                 {poolSearchQuery
-                  ? 'Prøv et annet søkeord eller fjern søket.'
-                  : 'Klikk på lagre-til-pool-ikonet på prosjektroller for å lagre som mal'}
+                  ? t('role.noTemplatesMatchDesc')
+                  : t('role.noTemplatesYetDesc')}
               </Typography>
             </Box>
           ) : (
@@ -3071,7 +3074,7 @@ function RoleManagementPanelInner({
                           '&:hover': { bgcolor: roleTabAccentSoft },
                         }}
                       >
-                        Importer
+                        {t('role.import')}
                       </Button>
                       
                       <IconButton
@@ -3112,7 +3115,7 @@ function RoleManagementPanelInner({
             border: `1px solid ${roleBorder}`,
           }}
           role="region"
-          aria-label="Statistikk over roller"
+          aria-label={t('role.statsRegionAria')}
         >
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3121,7 +3124,7 @@ function RoleManagementPanelInner({
             <Typography variant="h4" sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.total}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('role.statTotal')}</Typography>
           </Box>
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3130,7 +3133,7 @@ function RoleManagementPanelInner({
             <Typography variant="h4" sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.open}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Åpne</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('role.statOpen')}</Typography>
           </Box>
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3139,7 +3142,7 @@ function RoleManagementPanelInner({
             <Typography variant="h4" sx={{ color: '#ffb800', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.casting}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Casting</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('role.statCasting')}</Typography>
           </Box>
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3148,7 +3151,7 @@ function RoleManagementPanelInner({
             <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.filled}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Besatt</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('role.statFilled')}</Typography>
           </Box>
           <Box sx={statTileSx}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -3157,7 +3160,7 @@ function RoleManagementPanelInner({
             <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.favorites}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Favoritter</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>{t('role.statFavorites')}</Typography>
           </Box>
         </Box>
       </Collapse>
@@ -3179,7 +3182,7 @@ function RoleManagementPanelInner({
         }}
       >
         <TextField
-          placeholder={isMobile ? 'Søk...' : 'Søk på rollenavn, beskrivelse, ferdigheter...'}
+          placeholder={isMobile ? t('role.searchShort') : t('role.searchFull')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           size="small"
@@ -3188,7 +3191,7 @@ function RoleManagementPanelInner({
               startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
-            htmlInput: { 'aria-label': 'Søk i roller' },
+            htmlInput: { 'aria-label': t('role.searchAria') },
           }}
           sx={{
             flex: 1,
@@ -3208,7 +3211,7 @@ function RoleManagementPanelInner({
           <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            aria-label="Filtrer etter status"
+            aria-label={t('role.filterByStatusAria')}
             sx={{
               color: roleText,
               minHeight: TOUCH_TARGET_SIZE,
@@ -3220,7 +3223,7 @@ function RoleManagementPanelInner({
               '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
             }}
           >
-            <MenuItem value="all">Alle statuser</MenuItem>
+            <MenuItem value="all">{t('role.allStatuses')}</MenuItem>
             {ROLE_WORKFLOW_ORDER.map((status) => (
               <MenuItem key={status} value={status}>
                 {getRoleWorkflowMeta(status).label}
@@ -3230,7 +3233,7 @@ function RoleManagementPanelInner({
         </FormControl>
 
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-          <Tooltip title="Kortvisning">
+          <Tooltip title={t('role.gridViewTooltip')}>
             <Button
               variant={viewMode === 'grid' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('grid')}
@@ -3248,7 +3251,7 @@ function RoleManagementPanelInner({
             </Button>
           </Tooltip>
 
-          <Tooltip title="Tabellvisning">
+          <Tooltip title={t('role.tableViewTooltip')}>
             <Button
               variant={viewMode === 'table' ? 'contained' : 'outlined'}
               onClick={() => setViewMode('table')}
@@ -3268,7 +3271,7 @@ function RoleManagementPanelInner({
           </Tooltip>
 
           {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`}>
+            <Tooltip title={t('role.deleteSelectedN', { n: selectedIds.size })}>
               <Button
                 variant="contained"
                 onClick={handleBulkDelete}
@@ -3302,7 +3305,7 @@ function RoleManagementPanelInner({
             '& .MuiAlert-icon': { color: 'var(--role-accent, #b86bff)' },
           }}
         >
-          Viser {filteredAndSortedRoles.length} av {roles.length} roller
+          {t('role.showingCount', { shown: filteredAndSortedRoles.length, total: roles.length })}
         </Alert>
       )}
 
@@ -3311,16 +3314,16 @@ function RoleManagementPanelInner({
         roles.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={castingDirectorPng}
-          title="Kom i gang med casting"
-          subtitle="Definer rollene du trenger for produksjonen din, og start å legge til kandidater."
+          title={t('role.emptyTitle')}
+          subtitle={t('role.emptySubtitle')}
           color="#b86bff"
-          buttonLabel="Opprett din første rolle"
+          buttonLabel={t('role.emptyButton')}
           onAction={onCreateRole}
         />
       ) : filteredAndSortedRoles.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: { xs: 4, sm: 6, md: 5, lg: 6, xl: 8 }, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 }, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, opacity: 0.3 }} />
-          <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Ingen treff på søket</Typography>
+          <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>{t('role.noSearchResults')}</Typography>
         </Box>
       ) : viewMode === 'table' ? (
         /* Table View */
@@ -3334,7 +3337,7 @@ function RoleManagementPanelInner({
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          <Table aria-label="Roller tabell" sx={{ minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 } }}>
+          <Table aria-label={t('role.tableAria')} sx={{ minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 } }}>
             <TableHead>
               <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
                 <TableCell padding="checkbox" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3342,11 +3345,11 @@ function RoleManagementPanelInner({
                     checked={selectedIds.size === filteredAndSortedRoles.length && filteredAndSortedRoles.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedRoles.length}
                     onChange={handleSelectAll}
-                    aria-label="Velg alle roller"
+                    aria-label={t('role.selectAllAria')}
                     sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: 'var(--role-accent, #b86bff)' } }}
                   />
                 </TableCell>
-                <TableCell sx={{ color: '#fff', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>Favoritt</TableCell>
+                <TableCell sx={{ color: '#fff', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>{t('role.colFavorite')}</TableCell>
                 <TableCell sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'name'}
@@ -3354,7 +3357,7 @@ function RoleManagementPanelInner({
                     onClick={() => handleSort('name')}
                     sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Navn
+                    {t('role.name')}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3364,10 +3367,10 @@ function RoleManagementPanelInner({
                     onClick={() => handleSort('status')}
                     sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Status
+                    {t('role.status')}
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>Alder</TableCell>
+                <TableCell sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>{t('role.age')}</TableCell>
                 <TableCell sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'candidates'}
@@ -3375,7 +3378,7 @@ function RoleManagementPanelInner({
                     onClick={() => handleSort('candidates')}
                     sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Kandidater
+                    {t('role.candidates')}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -3385,10 +3388,10 @@ function RoleManagementPanelInner({
                     onClick={() => handleSort('scenes')}
                     sx={{ color: '#fff', '&:hover': { color: 'var(--role-accent, #b86bff)' } }}
                   >
-                    Scener
+                    {t('role.scenes')}
                   </TableSortLabel>
                 </TableCell>
-                <TableCell align="right" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>Handlinger</TableCell>
+                <TableCell align="right" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>{t('role.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -3435,22 +3438,22 @@ function RoleManagementPanelInner({
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
-                      <Tooltip title="Lagre til pool">
+                      <Tooltip title={t('role.saveToPoolTooltip')}>
                         <IconButton onClick={() => handleSaveToPool(role)} sx={{ color: '#b7794d', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <InventoryIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Dupliser">
+                      <Tooltip title={t('role.duplicateTooltip')}>
                         <IconButton onClick={() => handleDuplicate(role)} sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <DuplicateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Rediger">
+                      <Tooltip title={t('role.editTooltip')}>
                         <IconButton onClick={() => onEditRole(role)} sx={{ color: 'var(--role-accent, #b86bff)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Slett">
+                      <Tooltip title={t('role.deleteTooltip')}>
                         <IconButton onClick={() => handleDeleteWithUndo(role)} sx={{ color: '#ff4444', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
@@ -3592,7 +3595,7 @@ function RoleManagementPanelInner({
                       </Box>
                       <IconButton
                         onClick={() => toggleFavorite(role.id)}
-                        aria-label={favorites.has(role.id) ? 'Fjern fra favoritter' : 'Legg til favoritter'}
+                        aria-label={favorites.has(role.id) ? t('role.removeFromFavorites') : t('role.addToFavorites')}
                         sx={{
                           minWidth: TOUCH_TARGET_SIZE,
                           minHeight: TOUCH_TARGET_SIZE,
@@ -3667,7 +3670,7 @@ function RoleManagementPanelInner({
                                 letterSpacing: '0.5px',
                               }}
                             >
-                              Alderskrav
+                              {t('role.ageRequirement')}
                             </Typography>
                             <Typography
                               sx={{
@@ -3676,7 +3679,7 @@ function RoleManagementPanelInner({
                                 fontWeight: 700,
                               }}
                             >
-                              {role.requirements.age.min || '?'} - {role.requirements.age.max || '?'} år
+                              {role.requirements.age.min || '?'} - {role.requirements.age.max || '?'} {t('role.yearsSuffix')}
                             </Typography>
                           </Box>
                         </Box>
@@ -3717,7 +3720,7 @@ function RoleManagementPanelInner({
                               letterSpacing: '0.5px',
                             }}
                           >
-                            Kandidater
+                            {t('role.candidates')}
                           </Typography>
                           <Typography
                             sx={{
@@ -3726,7 +3729,7 @@ function RoleManagementPanelInner({
                               fontWeight: 700,
                             }}
                           >
-                            {role.candidateIds?.length || 0} påmeldt
+                            {role.candidateIds?.length || 0} {t('role.enrolled')}
                           </Typography>
                         </Box>
                       </Box>
@@ -3748,7 +3751,7 @@ function RoleManagementPanelInner({
                                 letterSpacing: '0.5px',
                               }}
                             >
-                              Ferdigheter
+                              {t('role.skills')}
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
                               {role.requirements.skills.map((skill, idx) => (
@@ -3804,7 +3807,7 @@ function RoleManagementPanelInner({
                                   letterSpacing: '0.5px',
                                 }}
                               >
-                                Tilknyttede scener
+                                {t('role.linkedScenes')}
                               </Typography>
                               <Typography
                                 sx={{
@@ -3813,7 +3816,7 @@ function RoleManagementPanelInner({
                                   fontWeight: 700,
                                 }}
                               >
-                                {role.sceneIds.length} scene{role.sceneIds.length !== 1 ? 'r' : ''}
+                                {role.sceneIds.length !== 1 ? t('role.sceneCountMany', { n: role.sceneIds.length }) : t('role.sceneCountOne', { n: role.sceneIds.length })}
                               </Typography>
                             </Box>
                           </Box>
@@ -3865,10 +3868,10 @@ function RoleManagementPanelInner({
                           ...focusVisibleStyles,
                         }}
                       >
-                        {expandedCards.has(role.id) ? 'Skjul detaljer' : 'Vis detaljer'}
+                        {expandedCards.has(role.id) ? t('role.hideDetails') : t('role.showDetails')}
                       </Button>
                       <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
-                        <Tooltip title="Lagre til pool">
+                        <Tooltip title={t('role.saveToPoolTooltip')}>
                           <IconButton
                             onClick={() => handleSaveToPool(role)}
                             sx={{
@@ -3882,7 +3885,7 @@ function RoleManagementPanelInner({
                             <InventoryIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Dupliser">
+                        <Tooltip title={t('role.duplicateTooltip')}>
                           <IconButton
                             onClick={() => handleDuplicate(role)}
                             sx={{
@@ -3896,7 +3899,7 @@ function RoleManagementPanelInner({
                             <DuplicateIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Rediger">
+                        <Tooltip title={t('role.editTooltip')}>
                           <IconButton
                             onClick={() => onEditRole(role)}
                             sx={{
@@ -3910,7 +3913,7 @@ function RoleManagementPanelInner({
                             <EditIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Slett">
+                        <Tooltip title={t('role.deleteTooltip')}>
                           <IconButton
                             onClick={() => handleDeleteWithUndo(role)}
                             sx={{
@@ -3942,10 +3945,10 @@ function RoleManagementPanelInner({
         open={undoSnackbarOpen}
         autoHideDuration={6000}
         onClose={() => setUndoSnackbarOpen(false)}
-        message="Rolle slettet"
+        message={t('role.roleDeleted')}
         action={
           <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: 'var(--role-accent, #b86bff)', fontSize: isDesktop ? '1rem' : isTablet ? '0.875rem' : '0.8125rem' }}>
-            Angre
+            {t('role.undo')}
           </Button>
         }
         sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#333' } }}
@@ -3969,22 +3972,22 @@ function RoleManagementPanelInner({
       >
         <DialogTitle id={dialogTitleId} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {branding.tokens.labels.deleteProjectLabel || 'Slett'}
+            {branding.tokens.labels.deleteProjectLabel || t('role.delete')}
           </Typography>
         </DialogTitle>
         <DialogContent id={dialogDescId}>
           <Typography sx={{ color: 'rgba(255,255,255,0.85)' }}>
-            {`Er du sikker på at du vil fjerne "${confirmDeletePoolRole?.name}" fra poolen?`}
+            {t('role.confirmDeletePool', { name: confirmDeletePoolRole?.name ?? '' })}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
           <Button onClick={() => setConfirmDeletePoolRole(null)} variant="outlined"
             sx={{ color: 'rgba(255,255,255,0.8)', borderColor: 'rgba(255,255,255,0.2)', textTransform: 'none' }}>
-            {branding.tokens.labels.cancelLabel || 'Avbryt'}
+            {branding.tokens.labels.cancelLabel || t('role.cancel')}
           </Button>
           <Button onClick={executeDeleteFromPool} variant="contained"
             sx={{ bgcolor: '#ff4444', color: '#fff', textTransform: 'none', fontWeight: 600, '&:hover': { bgcolor: '#ff3333' } }}>
-            {branding.tokens.labels.deleteProjectLabel || 'Slett'}
+            {branding.tokens.labels.deleteProjectLabel || t('role.delete')}
           </Button>
         </DialogActions>
       </Dialog>

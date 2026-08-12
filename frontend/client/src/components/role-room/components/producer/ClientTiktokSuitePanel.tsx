@@ -25,6 +25,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const palette = {
   bgCard: '#150b2e',
@@ -48,6 +50,7 @@ export default function ClientTiktokSuitePanel({
   configId: string;
   clientName: string;
 }) {
+  const { t } = useT();
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [advertiserId, setAdvertiserId] = useState('');
   const [loadingAdvertisers, setLoadingAdvertisers] = useState(false);
@@ -77,7 +80,7 @@ export default function ClientTiktokSuitePanel({
       setAdvertisers(data.advertisers ?? []);
       if (data.advertisers?.length === 1) setAdvertiserId(data.advertisers[0].id);
     } catch (err) {
-      setAdvertisersError(err instanceof Error ? err.message : 'Kunne ikke hente TikTok-advertisers');
+      setAdvertisersError(err instanceof Error ? err.message : t('ttSuite.s007'));
     } finally {
       setLoadingAdvertisers(false);
     }
@@ -101,7 +104,7 @@ export default function ClientTiktokSuitePanel({
       if (!r.ok || !data.authUrl) throw new Error(data.error || `HTTP ${r.status}`);
       window.location.href = data.authUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'OAuth-start feilet');
+      setError(err instanceof Error ? err.message : t('ttSuite.s011'));
     }
   };
 
@@ -124,7 +127,7 @@ export default function ClientTiktokSuitePanel({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setPixel({ pixelCode: data.pixelCode, pixelName: data.pixelName, baseCode: data.baseCode });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Pixel-provisioning feilet');
+      setError(err instanceof Error ? err.message : t('ttSuite.s014'));
     } finally {
       setProvisioning(false);
     }
@@ -142,7 +145,7 @@ export default function ClientTiktokSuitePanel({
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setSyncResult({ created: data.created?.length ?? 0 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sync feilet');
+      setError(err instanceof Error ? err.message : t('ttSuite.s021'));
     } finally {
       setSyncing(false);
     }
@@ -162,7 +165,7 @@ export default function ClientTiktokSuitePanel({
       setCapiSaved(true);
       setTimeout(() => setCapiSaved(false), 2400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Token-lagring feilet');
+      setError(err instanceof Error ? err.message : t('ttSuite.s025'));
     }
   };
 
@@ -191,7 +194,7 @@ export default function ClientTiktokSuitePanel({
               TikTok — Pixel + Events
             </Typography>
             <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem' }}>
-              Speil av Google/Meta/LinkedIn. Bruker TikTok Business API. Events API gated til token er satt.
+              {t('ttSuite.s016')}
             </Typography>
           </Box>
         </Stack>
@@ -201,7 +204,7 @@ export default function ClientTiktokSuitePanel({
         {/* Steg 1: OAuth + advertiser-velger */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 1 — Koble TikTok Business Account
+            {t('ttSuite.s017')}
           </Typography>
           {advertisersError || advertisers.length === 0 ? (
             <Stack direction="row" spacing={1} alignItems="center">
@@ -210,10 +213,10 @@ export default function ClientTiktokSuitePanel({
                 startIcon={<OpenInNewIcon fontSize="small" />}
                 sx={{ border: `1px solid ${palette.borderStrong}`, color: palette.accent, textTransform: 'none', fontWeight: 700 }}
               >
-                Koble TikTok
+                {t('ttSuite.s003')}
               </Button>
               <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
-                {advertisersError ?? 'Krever TikTok Business app-creds satt på server.'}
+                {advertisersError ?? t('ttSuite.s006')}
               </Typography>
             </Stack>
           ) : (
@@ -226,13 +229,13 @@ export default function ClientTiktokSuitePanel({
                 displayEmpty
                 sx={{ minWidth: 320, color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
               >
-                <MenuItem value=""><em style={{ color: palette.textMuted }}>Velg advertiser</em></MenuItem>
+                <MenuItem value=""><em style={{ color: palette.textMuted }}>{t('ttSuite.s027')}</em></MenuItem>
                 {advertisers.map((a) => (
                   <MenuItem key={a.id} value={a.id}>{a.name} ({a.currency})</MenuItem>
                 ))}
               </Select>
               <Button onClick={loadAdvertisers} size="small" sx={{ color: palette.accent, textTransform: 'none' }}>
-                Last på nytt
+                {t('ttSuite.s010')}
               </Button>
             </Stack>
           )}
@@ -243,7 +246,7 @@ export default function ClientTiktokSuitePanel({
         {/* Steg 2: Pixel */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 2 — Pixel
+            {t('ttSuite.s018')}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
             <Button
@@ -257,7 +260,7 @@ export default function ClientTiktokSuitePanel({
                 textTransform: 'none', fontWeight: 700,
               }}
             >
-              Opprett ny
+              {t('ttSuite.s012')}
             </Button>
             <Button
               size="small"
@@ -270,7 +273,7 @@ export default function ClientTiktokSuitePanel({
                 textTransform: 'none', fontWeight: 700,
               }}
             >
-              Bruk eksisterende {pixels.length > 0 ? `(${pixels.length})` : ''}
+              {t('ttSuite.s000')} {pixels.length > 0 ? `(${pixels.length})` : ''}
             </Button>
           </Stack>
 
@@ -283,7 +286,7 @@ export default function ClientTiktokSuitePanel({
               displayEmpty
               sx={{ minWidth: 320, color: palette.textPrimary, '& fieldset': { borderColor: palette.borderStrong } }}
             >
-              <MenuItem value=""><em style={{ color: palette.textMuted }}>Velg eksisterende pixel</em></MenuItem>
+              <MenuItem value=""><em style={{ color: palette.textMuted }}>{t('ttSuite.s028')}</em></MenuItem>
               {pixels.map((p) => (
                 <MenuItem key={p.code} value={p.code}>{p.name} ({p.code})</MenuItem>
               ))}
@@ -301,13 +304,13 @@ export default function ClientTiktokSuitePanel({
               '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
             }}
           >
-            {provisioning ? 'Klargjør…' : pixelMode === 'existing' ? 'Bruk valgt pixel' : `Opprett pixel for ${clientName}`}
+            {provisioning ? t('ttSuite.s002') : pixelMode === 'existing' ? t('ttSuite.s001') : t('ttSuite.p00', { v0: clientName })}
           </Button>
 
           {pixel ? (
             <Box sx={{ mt: 1.2 }}>
               <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
-                Pixel klar: <strong>{pixel.pixelName}</strong> ({pixel.pixelCode})
+                {t('ttSuite.s013')} <strong>{pixel.pixelName}</strong> ({pixel.pixelCode})
               </Alert>
               {pixel.baseCode ? (
                 <>
@@ -334,7 +337,7 @@ export default function ClientTiktokSuitePanel({
                     startIcon={snippetCopied ? <CheckCircleOutlineIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
                     sx={{ mt: 0.8, color: snippetCopied ? '#34d399' : palette.accent, textTransform: 'none' }}
                   >
-                    {snippetCopied ? 'Kopiert' : 'Kopier base-code'}
+                    {snippetCopied ? t('ttSuite.s005') : t('ttSuite.s004')}
                   </Button>
                 </>
               ) : null}
@@ -347,7 +350,7 @@ export default function ClientTiktokSuitePanel({
         {/* Steg 3: sync events */}
         <Box sx={{ mb: 1.4 }}>
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', mb: 0.6 }}>
-            Steg 3 — Sync events
+            {t('ttSuite.s019')}
           </Typography>
           <Button
             onClick={syncEvents}
@@ -358,7 +361,7 @@ export default function ClientTiktokSuitePanel({
               color: '#0a0a1a', textTransform: 'none', fontWeight: 800,
             }}
           >
-            {syncing ? 'Synker…' : 'Sync til TikTok'}
+            {syncing ? t('ttSuite.s023') : t('ttSuite.s022')}
           </Button>
           {syncResult ? (
             <Alert severity="success" sx={{ mt: 1 }}>
@@ -366,7 +369,7 @@ export default function ClientTiktokSuitePanel({
             </Alert>
           ) : null}
           <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', mt: 0.6 }}>
-            TikTok-events trenger ikke å "opprettes" via API — pixel registrerer dem automatisk ved første fyring. Sync-en mapper bare goal_category → riktig standard event-navn så AI-prompter får riktig kode.
+            {t('ttSuite.s024')}
           </Typography>
         </Box>
 
@@ -377,16 +380,16 @@ export default function ClientTiktokSuitePanel({
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.6 }}>
             <LockOutlinedIcon sx={{ color: '#fbbf24', fontSize: 18 }} />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-              Steg 4 — Events API (server-side)
+              {t('ttSuite.s020')}
             </Typography>
             <Chip
               size="small"
-              label="Trenger token fra TikTok Events Manager"
+              label={t('ttSuite.s026')}
               sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontWeight: 700, height: 20, fontSize: '0.68rem' }}
             />
           </Stack>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.82rem', mb: 1 }}>
-            Server-side fixer iOS ATT-blokkering + tillater offline-events. Token fås manuelt fra TikTok Events Manager → pixel → Settings → Set up Events API.
+            {t('ttSuite.s015')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
@@ -414,7 +417,7 @@ export default function ClientTiktokSuitePanel({
                 },
               }}
             >
-              {capiSaved ? 'Lagret' : 'Lagre'}
+              {capiSaved ? t('ttSuite.s009') : t('ttSuite.s008')}
             </Button>
           </Stack>
         </Box>

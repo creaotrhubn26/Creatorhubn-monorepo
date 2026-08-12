@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,7 @@ import {
   PlayArrow as PlayIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
+import { useT, type TranslationKey } from '../../../i18n';
 import { TeamIcon as GroupsIcon, ShareCustomIcon as ShareIcon } from './icons/CastingIcons';
 
 export type ProfessionType = 
@@ -64,17 +65,19 @@ interface ProfessionOnboardingContent {
   slides: OnboardingSlide[];
 }
 
-const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
+const buildProfessionContent = (
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): Record<ProfessionType, ProfessionOnboardingContent> => ({
   director: {
-    welcomeTitle: 'Velkommen, Regissør!',
-    welcomeSubtitle: 'Din visjon fortjener de rette verktøyene',
+    welcomeTitle: t('profOnboard.director.wTitle'),
+    welcomeSubtitle: t('profOnboard.director.wSub'),
     professionIcon: <MovieIcon sx={{ fontSize: 48 }} />,
     professionColor: '#e91e63',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Din digitale produksjonsassistent',
-        content: 'The Role Room er et komplett planleggingsverktøy designet for å hjelpe deg med å organisere, visualisere og gjennomføre produksjoner på en effektiv måte. Fra casting til ferdig shot list - alt på ett sted.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.director.s1sub'),
+        content: t('profOnboard.director.s1c'),
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -110,93 +113,93 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         ),
       },
       {
-        title: 'Som regissør får du...',
-        subtitle: 'Verktøy skreddersydd for din arbeidsprosess',
-        content: 'The Role Room gir deg full oversikt over produksjonen din, fra første idé til siste opptak.',
+        title: t('profOnboard.director.s2t'),
+        subtitle: t('profOnboard.director.s2sub'),
+        content: t('profOnboard.director.s2c'),
         features: [
           {
             icon: <VideocamIcon sx={{ color: '#e91e63' }} />,
-            title: 'Visuell Shot List',
-            description: 'Planlegg hver scene med detaljerte shot-beskrivelser, kameravinkler og referansebilder',
+            title: t('profOnboard.director.s2f1t'),
+            description: t('profOnboard.director.s2f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: '#e91e63' }} />,
-            title: 'Casting-oversikt',
-            description: 'Organiser auditions, sammenlign kandidater og ta informerte beslutninger om rollebesetning',
+            title: t('profOnboard.director.s2f2t'),
+            description: t('profOnboard.director.s2f2d'),
           },
           {
             icon: <TimelineIcon sx={{ color: '#e91e63' }} />,
-            title: 'AI-generert Storyboard',
-            description: 'La AI visualisere scenene dine basert på beskrivelsene du skriver',
+            title: t('profOnboard.director.s2f3t'),
+            description: t('profOnboard.director.s2f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan finne ting',
-        subtitle: 'Navigasjon i The Role Room',
-        content: 'Alt du trenger er organisert i logiske faner øverst i applikasjonen.',
+        title: t('profOnboard.howToFind'),
+        subtitle: t('profOnboard.director.s3sub'),
+        content: t('profOnboard.director.s3c'),
         features: [
           {
             icon: <SearchIcon sx={{ color: '#10b981' }} />,
-            title: 'Søkefunksjon',
-            description: 'Bruk søkefeltet for å finne scener, roller, kandidater eller opptak raskt',
+            title: t('profOnboard.director.s3f1t'),
+            description: t('profOnboard.director.s3f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#10b981' }} />,
-            title: 'Faner og paneler',
-            description: 'Bytt mellom Oversikt, Shot List, Roller, Kandidater og Team med ett klikk',
+            title: t('profOnboard.director.s3f2t'),
+            description: t('profOnboard.director.s3f2d'),
           },
           {
             icon: <MovieIcon sx={{ color: '#10b981' }} />,
-            title: 'Scener-visning',
-            description: 'Bruk Scener-fanen for å se alle opptak organisert etter scene og lokasjon',
+            title: t('profOnboard.director.s3f3t'),
+            description: t('profOnboard.director.s3f3d'),
           },
         ],
         tips: [
-          'Bruk Ctrl/Cmd + F for rask søk',
-          'Høyreklikk på elementer for hurtigmenyer',
-          'Dra og slipp for å omorganisere shots',
+          t('profOnboard.tipCtrlF'),
+          t('profOnboard.director.s3tip2'),
+          t('profOnboard.director.s3tip3'),
         ],
       },
       {
-        title: 'Del ansvar med teamet',
-        subtitle: 'Samarbeid gjort enkelt',
-        content: 'Inviter teammedlemmer og tildel oppgaver basert på deres rolle i produksjonen.',
+        title: t('profOnboard.director.s4t'),
+        subtitle: t('profOnboard.director.s4sub'),
+        content: t('profOnboard.director.s4c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del prosjektet',
-            description: 'Inviter fotografer, produsenter og andre ved å dele en link eller sende invitasjoner',
+            title: t('profOnboard.shareProject'),
+            description: t('profOnboard.director.s4f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Tildel oppgaver',
-            description: 'Marker shots med ansvarlig person og følg fremdriften i sanntid',
+            title: t('profOnboard.director.s4f2t'),
+            description: t('profOnboard.director.s4f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Kanban-tavle',
-            description: 'Bruk Team Dashboard for å se hvem som jobber med hva og hva som gjenstår',
+            title: t('profOnboard.director.s4f3t'),
+            description: t('profOnboard.director.s4f3d'),
           },
         ],
         tips: [
-          'Bruk @-nevninger for å varsle teammedlemmer',
-          'Sett frister på kritiske shots',
-          'Bruk kommentarfeltet for diskusjoner',
+          t('profOnboard.director.s4tip1'),
+          t('profOnboard.director.s4tip2'),
+          t('profOnboard.director.s4tip3'),
         ],
       },
     ],
   },
   photographer: {
-    welcomeTitle: 'Velkommen, Fotograf!',
-    welcomeSubtitle: 'Planlegg det perfekte bildet',
+    welcomeTitle: t('profOnboard.photographer.wTitle'),
+    welcomeSubtitle: t('profOnboard.photographer.wSub'),
     professionIcon: <CameraIcon sx={{ fontSize: 48 }} />,
     professionColor: '#10b981',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Ditt digitale planleggingsverktøy',
-        content: 'The Role Room hjelper deg å organisere fotoshoots, holde oversikt over modeller og planlegge hver eneste shot før du trykker på utløseren.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.photographer.s1sub'),
+        content: t('profOnboard.photographer.s1c'),
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -205,7 +208,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
             flexWrap: 'wrap',
             py: 2 
           }}>
-            {['Moodboard', 'Shot List', 'Modeller', 'Utstyr'].map((item, i) => (
+            {['Moodboard', 'Shot List', t('profOnboard.photographer.illo.models'), t('profOnboard.photographer.illo.equipment')].map((item, i) => (
               <Paper
                 key={item}
                 elevation={3}
@@ -232,88 +235,88 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         ),
       },
       {
-        title: 'Som fotograf får du...',
-        subtitle: 'Verktøy for profesjonell planlegging',
-        content: 'Fra mood boards til ferdig shot list - planlegg effektivt og lever konsistent kvalitet.',
+        title: t('profOnboard.photographer.s2t'),
+        subtitle: t('profOnboard.photographer.s2sub'),
+        content: t('profOnboard.photographer.s2c'),
         features: [
           {
             icon: <CameraIcon sx={{ color: '#10b981' }} />,
-            title: 'Detaljert Shot List',
-            description: 'Spesifiser linse, blender, lyssetting og komposisjon for hver shot',
+            title: t('profOnboard.photographer.s2f1t'),
+            description: t('profOnboard.photographer.s2f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: '#10b981' }} />,
-            title: 'Modell-database',
-            description: 'Hold oversikt over modeller, deres mål og tidligere samarbeid',
+            title: t('profOnboard.photographer.s2f2t'),
+            description: t('profOnboard.photographer.s2f2d'),
           },
           {
             icon: <TimelineIcon sx={{ color: '#10b981' }} />,
-            title: 'Tidsplanlegging',
-            description: 'Estimer tid per shot og lag realistiske tidsplaner for shootet',
+            title: t('profOnboard.photographer.s2f3t'),
+            description: t('profOnboard.photographer.s2f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan finne ting',
-        subtitle: 'Rask navigasjon',
-        content: 'Finn det du trenger med intuitive søk og filterverktøy.',
+        title: t('profOnboard.howToFind'),
+        subtitle: t('profOnboard.photographer.s3sub'),
+        content: t('profOnboard.photographer.s3c'),
         features: [
           {
             icon: <SearchIcon sx={{ color: '#10b981' }} />,
-            title: 'Smart søk',
-            description: 'Søk etter modeller, locations eller spesifikke shots',
+            title: t('profOnboard.photographer.s3f1t'),
+            description: t('profOnboard.photographer.s3f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#10b981' }} />,
-            title: 'Kategorier',
-            description: 'Organiser shots etter type: portrett, produkt, editorial, etc.',
+            title: t('profOnboard.photographer.s3f2t'),
+            description: t('profOnboard.photographer.s3f2d'),
           },
           {
             icon: <CameraIcon sx={{ color: '#10b981' }} />,
-            title: 'Referansebilder',
-            description: 'Last opp inspirasjon og referanser direkte til hver shot',
+            title: t('profOnboard.photographer.s3f3t'),
+            description: t('profOnboard.photographer.s3f3d'),
           },
         ],
         tips: [
-          'Bruk filtre for å vise kun visse shot-typer',
-          'Legg til tags for enklere søk senere',
-          'Eksporter shot list som PDF for shootet',
+          t('profOnboard.photographer.s3tip1'),
+          t('profOnboard.photographer.s3tip2'),
+          t('profOnboard.photographer.s3tip3'),
         ],
       },
       {
-        title: 'Samarbeid med teamet',
-        subtitle: 'Profesjonelt teamarbeid',
-        content: 'Del planene med stylister, makeup-artister og assistenter.',
+        title: t('profOnboard.photographer.s4t'),
+        subtitle: t('profOnboard.photographer.s4sub'),
+        content: t('profOnboard.photographer.s4c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del moodboards',
-            description: 'Gi teamet tilgang til visjonen din før shootet',
+            title: t('profOnboard.photographer.s4f1t'),
+            description: t('profOnboard.photographer.s4f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Sjekklister',
-            description: 'Opprett sjekklister for utstyr, styling og location',
+            title: t('profOnboard.checklists'),
+            description: t('profOnboard.photographer.s4f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Rollefordeling',
-            description: 'Tildel ansvar til hvert teammedlem for smidig gjennomføring',
+            title: t('profOnboard.photographer.s4f3t'),
+            description: t('profOnboard.photographer.s4f3d'),
           },
         ],
       },
     ],
   },
   cinematographer: {
-    welcomeTitle: 'Velkommen, Filmfotograf!',
-    welcomeSubtitle: 'Visualiser historien din',
+    welcomeTitle: t('profOnboard.cinematographer.wTitle'),
+    welcomeSubtitle: t('profOnboard.cinematographer.wSub'),
     professionIcon: <VideocamIcon sx={{ fontSize: 48 }} />,
     professionColor: '#f59e0b',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Profesjonell pre-produksjon',
-        content: 'The Role Room er designet for å hjelpe filmfotografer med å planlegge kamerabevegelser, lyssetting og visuelle stilvalg før innspilling starter.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.cinematographer.s1sub'),
+        content: t('profOnboard.cinematographer.s1c'),
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -322,7 +325,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
             flexWrap: 'wrap',
             py: 2 
           }}>
-            {['Kamera', 'Lys', 'Bevegelse', 'Farge'].map((item, i) => (
+            {[t('profOnboard.cinematographer.illo.camera'), t('profOnboard.cinematographer.illo.light'), t('profOnboard.cinematographer.illo.movement'), t('profOnboard.cinematographer.illo.color')].map((item, i) => (
               <Paper
                 key={item}
                 elevation={3}
@@ -349,83 +352,83 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         ),
       },
       {
-        title: 'Som filmfotograf får du...',
-        subtitle: 'Tekniske verktøy for visuell historiefortelling',
-        content: 'Planlegg hvert bilde med presisjon og kommuniser visjonen din effektivt.',
+        title: t('profOnboard.cinematographer.s2t'),
+        subtitle: t('profOnboard.cinematographer.s2sub'),
+        content: t('profOnboard.cinematographer.s2c'),
         features: [
           {
             icon: <VideocamIcon sx={{ color: '#f59e0b' }} />,
-            title: 'Kamerabevegelser',
-            description: 'Dokumenter dolly, crane, steadicam og drone-shots i detalj',
+            title: t('profOnboard.cinematographer.s2f1t'),
+            description: t('profOnboard.cinematographer.s2f1d'),
           },
           {
             icon: <TipIcon sx={{ color: '#f59e0b' }} />,
-            title: 'Lysdesign',
-            description: 'Planlegg lyssetting med referansebilder og tekniske notater',
+            title: t('profOnboard.cinematographer.s2f2t'),
+            description: t('profOnboard.cinematographer.s2f2d'),
           },
           {
             icon: <TimelineIcon sx={{ color: '#f59e0b' }} />,
             title: 'Storyboard',
-            description: 'Visualiser sekvenser med AI-genererte storyboard-frames',
+            description: t('profOnboard.cinematographer.s2f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan finne ting',
-        subtitle: 'Effektiv arbeidsflyt',
-        content: 'Alt er organisert for rask tilgang under hektiske produksjoner.',
+        title: t('profOnboard.howToFind'),
+        subtitle: t('profOnboard.cinematographer.s3sub'),
+        content: t('profOnboard.cinematographer.s3c'),
         features: [
           {
             icon: <SearchIcon sx={{ color: '#f59e0b' }} />,
-            title: 'Scenebasert søk',
-            description: 'Finn shots basert på scene, lokasjon eller tid på dagen',
+            title: t('profOnboard.cinematographer.s3f1t'),
+            description: t('profOnboard.cinematographer.s3f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#f59e0b' }} />,
-            title: 'Tekniske spesifikasjoner',
-            description: 'Filtrer etter linse, kameratype eller bevegelsestype',
+            title: t('profOnboard.cinematographer.s3f2t'),
+            description: t('profOnboard.cinematographer.s3f2d'),
           },
           {
             icon: <VideocamIcon sx={{ color: '#f59e0b' }} />,
-            title: 'Utstyrssjekkliste',
-            description: 'Se hvilke shots som krever spesialutstyr',
+            title: t('profOnboard.cinematographer.s3f3t'),
+            description: t('profOnboard.cinematographer.s3f3d'),
           },
         ],
       },
       {
-        title: 'Kommuniser med teamet',
-        subtitle: 'Sømløst samarbeid',
-        content: 'Del den visuelle planen med regissør, gaffer og kamerateam.',
+        title: t('profOnboard.cinematographer.s4t'),
+        subtitle: t('profOnboard.cinematographer.s4sub'),
+        content: t('profOnboard.cinematographer.s4c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del lookbook',
-            description: 'Gi hele teamet tilgang til visuelle referanser',
+            title: t('profOnboard.cinematographer.s4f1t'),
+            description: t('profOnboard.cinematographer.s4f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Lys-planer',
-            description: 'Del detaljerte lysoppsett med gaffer og elektriker',
+            title: t('profOnboard.cinematographer.s4f2t'),
+            description: t('profOnboard.cinematographer.s4f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Kamera-team',
-            description: 'Koordiner med focus puller, dolly grip og assistenter',
+            title: t('profOnboard.cinematographer.s4f3t'),
+            description: t('profOnboard.cinematographer.s4f3d'),
           },
         ],
       },
     ],
   },
   producer: {
-    welcomeTitle: 'Velkommen, Innholdsprodusent!',
-    welcomeSubtitle: 'Planlegg, produser og lever innhold med flyt',
+    welcomeTitle: t('profOnboard.producer.wTitle'),
+    welcomeSubtitle: t('profOnboard.producer.wSub'),
     professionIcon: <TaskIcon sx={{ fontSize: 48 }} />,
     professionColor: '#8b5cf6',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Innholdsproduksjon samlet på ett sted',
-        content: 'The Role Room gir deg oversikt over idé, storyboard, media, klientsamarbeid og levering, slik at du kan drive hele innholdsproduksjonen fra én arbeidsflate.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.producer.s1sub'),
+        content: t('profOnboard.producer.s1c'),
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -434,7 +437,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
             flexWrap: 'wrap',
             py: 2 
           }}>
-            {['Storyboard', 'Media', 'Tidslinje', 'Levering'].map((item, i) => (
+            {['Storyboard', 'Media', t('profOnboard.producer.illo.timeline'), t('profOnboard.producer.illo.delivery')].map((item, i) => (
               <Paper
                 key={item}
                 elevation={3}
@@ -461,331 +464,331 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         ),
       },
       {
-        title: 'Som innholdsprodusent får du...',
-        subtitle: 'Arbeidsflyt for innhold og leveranser',
-        content: 'Hold styr på fremdrift, versjoner, leveranser og samarbeid uten å hoppe mellom flere verktøy.',
+        title: t('profOnboard.producer.s2t'),
+        subtitle: t('profOnboard.producer.s2sub'),
+        content: t('profOnboard.producer.s2c'),
         features: [
           {
             icon: <TimelineIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Tidslinje og status',
-            description: 'Se hvor produksjonen står, hva som gjenstår og hva som er klart for levering',
+            title: t('profOnboard.producer.s2f1t'),
+            description: t('profOnboard.producer.s2f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Klientsamarbeid',
-            description: 'Samle tilbakemeldinger, del materiale og hold kunden oppdatert i samme flyt',
+            title: t('profOnboard.producer.s2f2t'),
+            description: t('profOnboard.producer.s2f2d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Eksport og levering',
-            description: 'Klargjør filer, overleveringer og produksjonsgrunnlag uten ekstra mellomledd',
+            title: t('profOnboard.producer.s2f3t'),
+            description: t('profOnboard.producer.s2f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan finne ting',
-        subtitle: 'Rask tilgang til riktig workspace',
-        content: 'Fanene i toppen er bygget for innholdsprodusentflyten, slik at du raskt kommer til storyboard, media, økonomi og levering.',
+        title: t('profOnboard.howToFind'),
+        subtitle: t('profOnboard.producer.s3sub'),
+        content: t('profOnboard.producer.s3c'),
         features: [
           {
             icon: <SearchIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Storyboard og plan',
-            description: 'Start i storyboardet og bygg opp innhold, shot-behov og struktur før opptak',
+            title: t('profOnboard.producer.s3f1t'),
+            description: t('profOnboard.producer.s3f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Media og økonomi',
-            description: 'Bytt raskt mellom mediebibliotek, leveranser og økonomi uten å miste kontekst',
+            title: t('profOnboard.producer.s3f2t'),
+            description: t('profOnboard.producer.s3f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Klient og eksport',
-            description: 'Finn alt som handler om godkjenning, deling og sluttlevering i egne dedikerte faner',
+            title: t('profOnboard.producer.s3f3t'),
+            description: t('profOnboard.producer.s3f3d'),
           },
         ],
       },
       {
-        title: 'Koordiner leveransen',
-        subtitle: 'Effektiv flyt fra idé til ferdig levering',
-        content: 'Bruk The Role Room til å holde team, kunde og leveranser samlet rundt én tydelig produksjonsflyt.',
+        title: t('profOnboard.producer.s4t'),
+        subtitle: t('profOnboard.producer.s4sub'),
+        content: t('profOnboard.producer.s4c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: '#10b981' }} />,
-            title: 'Del riktig materiale',
-            description: 'Gi tilgang til storyboard, filer og leveranser uten å eksponere unødvendige arbeidsflater',
+            title: t('profOnboard.producer.s4f1t'),
+            description: t('profOnboard.producer.s4f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#10b981' }} />,
-            title: 'Hold produksjonen i bevegelse',
-            description: 'Bruk tidslinje og statusvisning for å sikre at innholdet går fremover uten flaskehalser',
+            title: t('profOnboard.producer.s4f2t'),
+            description: t('profOnboard.producer.s4f2d'),
           },
           {
             icon: <CheckIcon sx={{ color: '#10b981' }} />,
-            title: 'Samle godkjenninger',
-            description: 'Bruk klientsamarbeid og eksportflyten til å få innspill og levere ferdig materiale raskere',
+            title: t('profOnboard.producer.s4f3t'),
+            description: t('profOnboard.producer.s4f3d'),
           },
         ],
       },
     ],
   },
   art_director: {
-    welcomeTitle: 'Velkommen, Art Director!',
-    welcomeSubtitle: 'Skap den visuelle identiteten',
+    welcomeTitle: t('profOnboard.art_director.wTitle'),
+    welcomeSubtitle: t('profOnboard.art_director.wSub'),
     professionIcon: <ArtIcon sx={{ fontSize: 48 }} />,
     professionColor: '#ec4899',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Visuell planlegging',
-        content: 'The Role Room hjelper deg å definere og kommunisere den visuelle retningen for produksjonen.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.art_director.s1sub'),
+        content: t('profOnboard.art_director.s1c'),
         features: [
           {
             icon: <ArtIcon sx={{ color: '#ec4899' }} />,
             title: 'Mood boards',
-            description: 'Samle referanser og inspirasjon på ett sted',
+            description: t('profOnboard.art_director.s1f1d'),
           },
           {
             icon: <CameraIcon sx={{ color: '#ec4899' }} />,
-            title: 'Stilguider',
-            description: 'Dokumenter fargepaletter, teksturer og rekvisitter',
+            title: t('profOnboard.art_director.s1f2t'),
+            description: t('profOnboard.art_director.s1f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: '#ec4899' }} />,
-            title: 'Teamkommunikasjon',
-            description: 'Del visjonen med rekvisittør og scenograf',
+            title: t('profOnboard.art_director.s1f3t'),
+            description: t('profOnboard.art_director.s1f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan finne ting',
-        content: 'Bruk søk og kategorier for å finne referanser og spesifikasjoner raskt.',
+        title: t('profOnboard.howToFind'),
+        content: t('profOnboard.art_director.s2c'),
         features: [
           {
             icon: <SearchIcon sx={{ color: '#ec4899' }} />,
-            title: 'Visuelt søk',
-            description: 'Finn referansebilder og mood boards',
+            title: t('profOnboard.art_director.s2f1t'),
+            description: t('profOnboard.art_director.s2f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#ec4899' }} />,
-            title: 'Scenebasert',
-            description: 'Se art direction-notater per scene',
+            title: t('profOnboard.art_director.s2f2t'),
+            description: t('profOnboard.art_director.s2f2d'),
           },
         ],
       },
       {
-        title: 'Del med teamet',
-        content: 'Koordiner med scenografi, rekvisitt og kostyme.',
+        title: t('profOnboard.art_director.s3t'),
+        content: t('profOnboard.art_director.s3c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del stilguide',
-            description: 'Gi alle tilgang til den visuelle retningen',
+            title: t('profOnboard.art_director.s3f1t'),
+            description: t('profOnboard.art_director.s3f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Sjekklister',
-            description: 'Opprett lister for rekvisitter og sceneelementer',
+            title: t('profOnboard.checklists'),
+            description: t('profOnboard.art_director.s3f2d'),
           },
         ],
       },
     ],
   },
   music_video: {
-    welcomeTitle: 'Velkommen, Musikkvideo-skaper!',
-    welcomeSubtitle: 'Visualiser musikken',
+    welcomeTitle: t('profOnboard.music_video.wTitle'),
+    welcomeSubtitle: t('profOnboard.music_video.wSub'),
     professionIcon: <MusicIcon sx={{ fontSize: 48 }} />,
     professionColor: '#06b6d4',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Planlegging for musikkvideoer',
-        content: 'The Role Room er perfekt for å synkronisere visuelle elementer med musikk og planlegge dynamiske sekvenser.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.music_video.s1sub'),
+        content: t('profOnboard.music_video.s1c'),
         features: [
           {
             icon: <MusicIcon sx={{ color: '#06b6d4' }} />,
-            title: 'Beat-synkronisering',
-            description: 'Planlegg shots etter musikkens struktur',
+            title: t('profOnboard.music_video.s1f1t'),
+            description: t('profOnboard.music_video.s1f1d'),
           },
           {
             icon: <VideocamIcon sx={{ color: '#06b6d4' }} />,
-            title: 'Dynamiske sekvenser',
-            description: 'Visualiser raske klipp og overganger',
+            title: t('profOnboard.music_video.s1f2t'),
+            description: t('profOnboard.music_video.s1f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: '#06b6d4' }} />,
-            title: 'Artist-koordinering',
-            description: 'Hold oversikt over artisten og dansere',
+            title: t('profOnboard.music_video.s1f3t'),
+            description: t('profOnboard.music_video.s1f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan det hjelper deg',
-        content: 'Planlegg effektivt og maksimer opptaksdagen.',
+        title: t('profOnboard.music_video.s2t'),
+        content: t('profOnboard.music_video.s2c'),
         features: [
           {
             icon: <TimelineIcon sx={{ color: '#06b6d4' }} />,
             title: 'Storyboard',
-            description: 'Visualiser hele videoen før opptak',
+            description: t('profOnboard.music_video.s2f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#06b6d4' }} />,
-            title: 'Shot-liste',
-            description: 'Organiser etter vers, refreng og bridge',
+            title: t('profOnboard.music_video.s2f2t'),
+            description: t('profOnboard.music_video.s2f2d'),
           },
         ],
       },
       {
-        title: 'Teamarbeid',
-        content: 'Koordiner med koreograf, stylist og artist.',
+        title: t('profOnboard.music_video.s3t'),
+        content: t('profOnboard.music_video.s3c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del konseptet',
-            description: 'Gi alle tilgang til visjonen',
+            title: t('profOnboard.music_video.s3f1t'),
+            description: t('profOnboard.music_video.s3f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Rolleoversikt',
-            description: 'Hold styr på alle involverte',
+            title: t('profOnboard.music_video.s3f2t'),
+            description: t('profOnboard.music_video.s3f2d'),
           },
         ],
       },
     ],
   },
   commercial: {
-    welcomeTitle: 'Velkommen, Reklamefilm-skaper!',
-    welcomeSubtitle: 'Lever budskapet effektivt',
+    welcomeTitle: t('profOnboard.commercial.wTitle'),
+    welcomeSubtitle: t('profOnboard.commercial.wSub'),
     professionIcon: <PlayIcon sx={{ fontSize: 48 }} />,
     professionColor: '#f97316',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Profesjonell reklameplanlegging',
-        content: 'The Role Room hjelper deg å planlegge kommersielle produksjoner med fokus på budskap, merkevare og effektivitet.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.commercial.s1sub'),
+        content: t('profOnboard.commercial.s1c'),
         features: [
           {
             icon: <PlayIcon sx={{ color: '#f97316' }} />,
-            title: 'Konseptutvikling',
-            description: 'Fra brief til ferdig shot list',
+            title: t('profOnboard.commercial.s1f1t'),
+            description: t('profOnboard.commercial.s1f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: '#f97316' }} />,
             title: 'Casting',
-            description: 'Finn de rette ansiktene for merkevaren',
+            description: t('profOnboard.commercial.s1f2d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#f97316' }} />,
-            title: 'Klientpresentasjon',
-            description: 'Del storyboard og konsept med kunden',
+            title: t('profOnboard.commercial.s1f3t'),
+            description: t('profOnboard.commercial.s1f3d'),
           },
         ],
       },
       {
-        title: 'Effektiv planlegging',
-        content: 'Maksimer produksjonsdagen og hold budsjett.',
+        title: t('profOnboard.commercial.s2t'),
+        content: t('profOnboard.commercial.s2c'),
         features: [
           {
             icon: <TimelineIcon sx={{ color: '#f97316' }} />,
-            title: 'Tidsplan',
-            description: 'Planlegg hvert opptak ned til minutter',
+            title: t('profOnboard.commercial.s2f1t'),
+            description: t('profOnboard.commercial.s2f1d'),
           },
           {
             icon: <CheckIcon sx={{ color: '#f97316' }} />,
-            title: 'Sjekklister',
-            description: 'Sikre at alle elementer er på plass',
+            title: t('profOnboard.checklists'),
+            description: t('profOnboard.commercial.s2f2d'),
           },
         ],
       },
       {
-        title: 'Samarbeid',
-        content: 'Koordiner med byrå, kunde og produksjonsteam.',
+        title: t('profOnboard.commercial.s3t'),
+        content: t('profOnboard.commercial.s3c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del med klient',
-            description: 'Gi kunden innsyn i planleggingen',
+            title: t('profOnboard.commercial.s3f1t'),
+            description: t('profOnboard.commercial.s3f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Byrå-samarbeid',
-            description: 'Hold byrået oppdatert på fremdrift',
+            title: t('profOnboard.commercial.s3f2t'),
+            description: t('profOnboard.commercial.s3f2d'),
           },
         ],
       },
     ],
   },
   documentary: {
-    welcomeTitle: 'Velkommen, Dokumentarfilmskaper!',
-    welcomeSubtitle: 'Fortell de viktige historiene',
+    welcomeTitle: t('profOnboard.documentary.wTitle'),
+    welcomeSubtitle: t('profOnboard.documentary.wSub'),
     professionIcon: <MovieIcon sx={{ fontSize: 48 }} />,
     professionColor: '#84cc16',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Planlegging for dokumentar',
-        content: 'The Role Room hjelper deg å strukturere research, intervjuer og opptak for dokumentarprosjekter.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.documentary.s1sub'),
+        content: t('profOnboard.documentary.s1c'),
         features: [
           {
             icon: <MovieIcon sx={{ color: '#84cc16' }} />,
-            title: 'Research-organisering',
-            description: 'Samle kilder, intervjuobjekter og fakta',
+            title: t('profOnboard.documentary.s1f1t'),
+            description: t('profOnboard.documentary.s1f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: '#84cc16' }} />,
-            title: 'Intervjuoversikt',
-            description: 'Hold styr på alle intervjuobjekter',
+            title: t('profOnboard.documentary.s1f2t'),
+            description: t('profOnboard.documentary.s1f2d'),
           },
           {
             icon: <TimelineIcon sx={{ color: '#84cc16' }} />,
-            title: 'Narrativ struktur',
-            description: 'Planlegg historiens bue og sekvenser',
+            title: t('profOnboard.documentary.s1f3t'),
+            description: t('profOnboard.documentary.s1f3d'),
           },
         ],
       },
       {
-        title: 'Fleksibel planlegging',
-        content: 'Dokumentar krever fleksibilitet - The Role Room tilpasser seg.',
+        title: t('profOnboard.documentary.s2t'),
+        content: t('profOnboard.documentary.s2c'),
         features: [
           {
             icon: <TaskIcon sx={{ color: '#84cc16' }} />,
-            title: 'Løst strukturert',
-            description: 'Planlegg uten å låse deg til rigid shot list',
+            title: t('profOnboard.documentary.s2f1t'),
+            description: t('profOnboard.documentary.s2f1d'),
           },
           {
             icon: <SearchIcon sx={{ color: '#84cc16' }} />,
-            title: 'Søk i research',
-            description: 'Finn raskt tilbake til kilder og notater',
+            title: t('profOnboard.documentary.s2f2t'),
+            description: t('profOnboard.documentary.s2f2d'),
           },
         ],
       },
       {
-        title: 'Teamkoordinering',
-        content: 'Samarbeid med research-team og redigerere.',
+        title: t('profOnboard.documentary.s3t'),
+        content: t('profOnboard.documentary.s3c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del research',
-            description: 'Gi teamet tilgang til alle kilder',
+            title: t('profOnboard.documentary.s3f1t'),
+            description: t('profOnboard.documentary.s3f1d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Produksjonsteam',
-            description: 'Koordiner feltopptak og intervjuer',
+            title: t('profOnboard.documentary.s3f2t'),
+            description: t('profOnboard.documentary.s3f2d'),
           },
         ],
       },
     ],
   },
   general: {
-    welcomeTitle: 'Velkommen til The Role Room!',
-    welcomeSubtitle: 'Din komplette planleggingsløsning',
+    welcomeTitle: t('profOnboard.general.wTitle'),
+    welcomeSubtitle: t('profOnboard.general.wSub'),
     professionIcon: <MovieIcon sx={{ fontSize: 48 }} />,
     professionColor: '#6366f1',
     slides: [
       {
-        title: 'Hva er The Role Room?',
-        subtitle: 'Alt-i-ett produksjonsplanlegging',
-        content: 'The Role Room er et komplett verktøy for å planlegge, organisere og gjennomføre film-, foto- og videoproduksjoner.',
+        title: t('profOnboard.whatIsTitle'),
+        subtitle: t('profOnboard.general.s1sub'),
+        content: t('profOnboard.general.s1c'),
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -821,79 +824,79 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         ),
       },
       {
-        title: 'Hovedfunksjoner',
-        subtitle: 'Alt du trenger for produksjonen',
-        content: 'Fra første idé til ferdig opptak - The Role Room følger deg hele veien.',
+        title: t('profOnboard.general.s2t'),
+        subtitle: t('profOnboard.general.s2sub'),
+        content: t('profOnboard.general.s2c'),
         features: [
           {
             icon: <GroupsIcon sx={{ color: '#6366f1' }} />,
             title: 'Casting',
-            description: 'Organiser roller, kandidater og auditions',
+            description: t('profOnboard.general.s2f1d'),
           },
           {
             icon: <VideocamIcon sx={{ color: '#6366f1' }} />,
             title: 'Shot List',
-            description: 'Planlegg hvert opptak med detaljer og referanser',
+            description: t('profOnboard.general.s2f2d'),
           },
           {
             icon: <TimelineIcon sx={{ color: '#6366f1' }} />,
             title: 'AI Storyboard',
-            description: 'La AI visualisere scenene basert på beskrivelser',
+            description: t('profOnboard.general.s2f3d'),
           },
         ],
       },
       {
-        title: 'Hvordan finne ting',
-        subtitle: 'Enkel navigasjon',
-        content: 'Alt er organisert i logiske faner og paneler.',
+        title: t('profOnboard.howToFind'),
+        subtitle: t('profOnboard.general.s3sub'),
+        content: t('profOnboard.general.s3c'),
         features: [
           {
             icon: <SearchIcon sx={{ color: '#6366f1' }} />,
-            title: 'Søk',
-            description: 'Finn alt med kraftig søkefunksjon',
+            title: t('profOnboard.general.s3f1t'),
+            description: t('profOnboard.general.s3f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: '#6366f1' }} />,
-            title: 'Faner',
-            description: 'Bytt mellom Oversikt, Shots, Roller og Team',
+            title: t('profOnboard.general.s3f2t'),
+            description: t('profOnboard.general.s3f2d'),
           },
           {
             icon: <MovieIcon sx={{ color: '#6366f1' }} />,
-            title: 'Scener',
-            description: 'Se opptak organisert etter scene',
+            title: t('profOnboard.general.s3f3t'),
+            description: t('profOnboard.general.s3f3d'),
           },
         ],
         tips: [
-          'Bruk Ctrl/Cmd + F for rask søk',
-          'Dra og slipp for å omorganisere',
-          'Høyreklikk for hurtigmenyer',
+          t('profOnboard.tipCtrlF'),
+          t('profOnboard.general.s3tip2'),
+          t('profOnboard.general.s3tip3'),
         ],
       },
       {
-        title: 'Teamsamarbeid',
-        subtitle: 'Jobb sammen effektivt',
-        content: 'Inviter teammedlemmer og del ansvaret.',
+        title: t('profOnboard.general.s4t'),
+        subtitle: t('profOnboard.general.s4sub'),
+        content: t('profOnboard.general.s4c'),
         features: [
           {
             icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Del prosjektet',
-            description: 'Inviter via link eller e-post',
+            title: t('profOnboard.shareProject'),
+            description: t('profOnboard.general.s4f1d'),
           },
           {
             icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
-            title: 'Oppgaver',
-            description: 'Tildel shots til teammedlemmer',
+            title: t('profOnboard.general.s4f2t'),
+            description: t('profOnboard.general.s4f2d'),
           },
           {
             icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Kanban',
-            description: 'Følg fremdriften i sanntid',
+            description: t('profOnboard.general.s4f3d'),
           },
         ],
       },
     ],
   },
-};
+});
 
 interface ProfessionOnboardingDialogProps {
   open: boolean;
@@ -914,6 +917,8 @@ export function ProfessionOnboardingDialog({
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left');
   
+  const { t } = useT();
+  const professionContent = useMemo(() => buildProfessionContent(t), [t]);
   const content = professionContent[profession] || professionContent.general;
   const slides = content.slides;
   const totalSlides = slides.length;
@@ -996,7 +1001,7 @@ export function ProfessionOnboardingDialog({
         <IconButton
           onClick={handleSkip}
           size="small"
-          aria-label="Lukk onboarding"
+          aria-label={t('profOnboard.aria.close')}
           sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: 'white' } }}
         >
           <CloseIcon />
@@ -1230,9 +1235,7 @@ export function ProfessionOnboardingDialog({
                     bgcolor: 'rgba(255,255,255,0.05)',
                   },
                 }}
-              >
-                Tilbake
-              </Button>
+              >{t('profOnboard.back')}</Button>
             )}
 
             <Button
@@ -1247,7 +1250,7 @@ export function ProfessionOnboardingDialog({
                 },
               }}
             >
-              {currentSlide === totalSlides - 1 ? 'Kom i gang' : 'Neste'}
+              {currentSlide === totalSlides - 1 ? t('profOnboard.getStarted') : t('profOnboard.next')}
             </Button>
           </Box>
         </Box>

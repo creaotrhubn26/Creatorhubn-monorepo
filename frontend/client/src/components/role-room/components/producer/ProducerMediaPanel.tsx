@@ -186,6 +186,8 @@ import MarketingPlanWorkspace from './MarketingPlanWorkspace';
 import { useResearchProgress } from '../../hooks/useResearchProgress';
 import DataSourcesPanel from './DataSourcesPanel';
 import AccountProviderLogo from './AccountProviderLogo';
+import { useT, translate, getLang } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ProducerMediaPanelProps {
   project: CastingProject;
@@ -398,29 +400,29 @@ const EMPTY_MATERIAL_DRAFT: ClientMaterialDraft = {
   projectFileDownloadUrl: '',
 };
 
-const MATERIAL_TYPE_LABELS: Record<ProducerClientMaterialType, string> = {
-  brief_note: 'Briefnotat',
-  asset_link: 'Lenke til materiale',
-  brand_asset: 'Merkevarefil',
-  brand_logo: 'Logo',
-  brand_colors: 'Farger / profil',
-  brand_fonts: 'Fonter',
-  reference: 'Referanse',
-  document: 'Dokument',
-  feedback: 'Tilbakemelding',
-  other: 'Annet',
-};
+const buildMATERIAL_TYPE_LABELS = (t: TFn): Record<ProducerClientMaterialType, string> => ({
+  brief_note: t('prodMedia.s040'),
+  asset_link: t('prodMedia.s419'),
+  brand_asset: t('prodMedia.s485'),
+  brand_logo: t('prodMedia.s437'),
+  brand_colors: t('prodMedia.s112'),
+  brand_fonts: t('prodMedia.s127'),
+  reference: t('prodMedia.s559'),
+  document: t('prodMedia.s095'),
+  feedback: t('prodMedia.s655'),
+  other: t('prodMedia.s004'),
+});
 
-const MATERIAL_STATUS_LABELS: Record<string, string> = {
-  provided: 'Levert',
-  in_review: 'Til gjennomgang',
-  approved: 'Godkjent',
-  outdated: 'Trenger oppdatering',
-};
+const buildMATERIAL_STATUS_LABELS = (t: TFn): Record<string, string> => ({
+  provided: t('prodMedia.s433'),
+  in_review: t('prodMedia.s651'),
+  approved: t('prodMedia.s162'),
+  outdated: t('prodMedia.s663'),
+});
 
 const formatFileSize = (value?: number | null): string => {
   if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) {
-    return 'Ukjent størrelse';
+    return translate(getLang(), 'prodMedia.s669');
   }
   if (value < 1024 * 1024) {
     return `${Math.max(1, Math.round(value / 1024))} KB`;
@@ -448,15 +450,15 @@ const getLogoTimingPreview = (
         end: 3,
         total: 15,
         label: 'Intro',
-        detail: 'Logoen vises i introen og tar de første 3 sekundene av videoen.',
+        detail: translate(getLang(), 'prodMedia.s449'),
       };
     case 'throughout':
       return {
         start: 0,
         end: 15,
         total: 15,
-        label: 'Hele videoen',
-        detail: 'Logoen ligger synlig gjennom hele videoen.',
+        label: translate(getLang(), 'prodMedia.s171'),
+        detail: translate(getLang(), 'prodMedia.s447'),
       };
     case 'custom': {
       const total = Math.max(15, customEnd + 3);
@@ -465,7 +467,7 @@ const getLogoTimingPreview = (
         end: customEnd,
         total,
         label: `${formatVideoSecond(customStart)}-${formatVideoSecond(customEnd)}`,
-        detail: `Logoen vises fra ${formatVideoSecond(customStart)} til ${formatVideoSecond(customEnd)} i videoen.`,
+        detail: translate(getLang(), 'prodMedia.p18', { v0: formatVideoSecond(customStart), v1: formatVideoSecond(customEnd) }),
       };
     }
     case 'none':
@@ -473,8 +475,8 @@ const getLogoTimingPreview = (
         start: 0,
         end: 0,
         total: 15,
-        label: 'Skjult',
-        detail: 'Logoen vises ikke i denne videoen.',
+        label: translate(getLang(), 'prodMedia.s605'),
+        detail: translate(getLang(), 'prodMedia.s451'),
       };
     case 'outro':
     default:
@@ -483,12 +485,12 @@ const getLogoTimingPreview = (
         end: 15,
         total: 15,
         label: 'Outro',
-        detail: 'Logoen vises i outroen og følger de siste 3 sekundene av videoen.',
+        detail: translate(getLang(), 'prodMedia.s450'),
       };
   }
 };
 
-const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
+const buildWORKSPACE_SUPPORT_PRIORITY_THEME = (t: TFn): Record<WorkspaceSupportPriority, {
   label: string;
   border: string;
   panelBackground: string;
@@ -500,9 +502,9 @@ const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
   actionBackground: string;
   actionColor: string;
   actionHover: string;
-}> = {
+}> => ({
   critical: {
-    label: 'Haster',
+    label: t('prodMedia.s169'),
     border: 'rgba(248,113,113,0.28)',
     panelBackground: 'linear-gradient(180deg, rgba(69,10,10,0.3) 0%, rgba(9,17,32,0.94) 100%)',
     glow: 'rgba(248,113,113,0.14)',
@@ -515,7 +517,7 @@ const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
     actionHover: '#ea580c',
   },
   warning: {
-    label: 'Prioritet',
+    label: t('prodMedia.s543'),
     border: 'rgba(251,191,36,0.24)',
     panelBackground: 'linear-gradient(180deg, rgba(68,41,8,0.28) 0%, rgba(9,17,32,0.94) 100%)',
     glow: 'rgba(251,191,36,0.12)',
@@ -528,7 +530,7 @@ const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
     actionHover: '#f59e0b',
   },
   info: {
-    label: 'Neste',
+    label: t('prodMedia.s509'),
     border: 'rgba(96,165,250,0.2)',
     panelBackground: 'linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(9,17,32,0.94) 100%)',
     glow: 'rgba(96,165,250,0.1)',
@@ -541,7 +543,7 @@ const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
     actionHover: '#0ea5e9',
   },
   ready: {
-    label: 'Klar',
+    label: t('prodMedia.s276'),
     border: 'rgba(74,222,128,0.2)',
     panelBackground: 'linear-gradient(180deg, rgba(6,46,31,0.24) 0%, rgba(9,17,32,0.94) 100%)',
     glow: 'rgba(74,222,128,0.1)',
@@ -553,118 +555,118 @@ const WORKSPACE_SUPPORT_PRIORITY_THEME: Record<WorkspaceSupportPriority, {
     actionColor: '#052e16',
     actionHover: '#16a34a',
   },
-};
+});
 
-const MATERIAL_PRIORITY_LABELS: Record<ClientMaterialDraft['priority'], string> = {
-  critical: 'Kritisk',
-  important: 'Viktig',
-  reference: 'Referanse',
-};
+const buildMATERIAL_PRIORITY_LABELS = (t: TFn): Record<ClientMaterialDraft['priority'], string> => ({
+  critical: t('prodMedia.s341'),
+  important: t('prodMedia.s703'),
+  reference: t('prodMedia.s559'),
+});
 
-const CLIENT_MATERIAL_TEMPLATES: ClientMaterialTemplate[] = [
+const buildCLIENT_MATERIAL_TEMPLATES = (t: TFn): ClientMaterialTemplate[] => ([
   {
     id: 'brand-pack',
-    label: 'Logo og merkevarefiler',
-    helper: 'Logo, profilmanual, fonter og godkjente brand assets.',
+    label: t('prodMedia.s439'),
+    helper: t('prodMedia.s443'),
     draft: {
       entryType: 'brand_asset',
-      title: 'Logo og merkevarefiler',
-      description: 'Legg inn logo, profilmanual, fonter og andre filer som styrer uttrykket i produksjonen.',
+      title: t('prodMedia.s439'),
+      description: t('prodMedia.s404'),
       phase: 'preproduction',
       status: 'provided',
       fileName: 'brand-pack.zip',
       versionLabel: 'v1',
-      usageNotes: 'Brukes i grafikk, lower thirds, thumbnails og leveranser.',
-      sourceLabel: 'Klient',
+      usageNotes: t('prodMedia.s053'),
+      sourceLabel: t('prodMedia.s282'),
       priority: 'critical',
     },
   },
   {
     id: 'reference-film',
-    label: 'Referansefilm',
-    helper: 'Eksempler på stil, pacing, stemning eller oppbygging.',
+    label: t('prodMedia.s563'),
+    helper: t('prodMedia.s101'),
     draft: {
       entryType: 'reference',
-      title: 'Referansefilm / visuell retning',
-      description: 'Legg inn filmer eller eksempler som viser ønsket uttrykk, tempo eller oppbygning.',
+      title: t('prodMedia.s564'),
+      description: t('prodMedia.s400'),
       phase: 'preproduction',
       status: 'provided',
       fileName: '',
       versionLabel: '',
-      usageNotes: 'Brukes til konsept, storyboard og shotlist.',
-      sourceLabel: 'Klient',
+      usageNotes: t('prodMedia.s066'),
+      sourceLabel: t('prodMedia.s282'),
       priority: 'important',
     },
   },
   {
     id: 'brief-note',
     label: 'Kort briefnotat',
-    helper: 'Kjernepunkter om mål, leveranse og budskap.',
+    helper: t('prodMedia.s275'),
     draft: {
       entryType: 'brief_note',
       title: 'Kort briefnotat',
-      description: 'Oppsummer mål, leveranser, budskap og eventuelle avgrensninger som produsenten må ta hensyn til.',
+      description: t('prodMedia.s531'),
       phase: 'preproduction',
       status: 'provided',
       fileName: '',
       versionLabel: '',
-      usageNotes: 'Brukes som beslutningsgrunnlag i planleggingen.',
-      sourceLabel: 'Klient',
+      usageNotes: t('prodMedia.s062'),
+      sourceLabel: t('prodMedia.s282'),
       priority: 'critical',
     },
   },
   {
     id: 'product-docs',
-    label: 'Dokumentasjon og krav',
-    helper: 'Produktark, HMS-krav, fakta eller annet faggrunnlag.',
+    label: t('prodMedia.s096'),
+    helper: t('prodMedia.s546'),
     draft: {
       entryType: 'document',
-      title: 'Dokumentasjon og prosjektkrav',
-      description: 'Legg inn produktark, prosedyrer, HMS-krav, talepunkter eller annen dokumentasjon produksjonen skal bygge på.',
+      title: t('prodMedia.s097'),
+      description: t('prodMedia.s411'),
       phase: 'preproduction',
       status: 'provided',
       fileName: 'grunnlagsdokumenter.pdf',
       versionLabel: 'v1',
-      usageNotes: 'Brukes i manus, scene-notater og kvalitetssikring.',
-      sourceLabel: 'Klient',
+      usageNotes: t('prodMedia.s055'),
+      sourceLabel: t('prodMedia.s282'),
       priority: 'important',
     },
   },
   {
     id: 'location-practicals',
-    label: 'Praktisk info',
-    helper: 'Lokasjon, tilgang, kontaktpunkt og logistikk.',
+    label: t('prodMedia.s538'),
+    helper: t('prodMedia.s452'),
     draft: {
       entryType: 'document',
-      title: 'Praktisk informasjon for opptaksdag',
-      description: 'Legg inn lokasjon, tilganger, sikkerhetskrav, parkering, kontaktpersoner og annen praktisk info.',
+      title: t('prodMedia.s539'),
+      description: t('prodMedia.s407'),
       phase: 'production',
       status: 'provided',
       fileName: 'praktisk-info.pdf',
       versionLabel: 'v1',
-      usageNotes: 'Brukes på produksjonsdagen og i tidslinjen.',
-      sourceLabel: 'Klient',
+      usageNotes: t('prodMedia.s061'),
+      sourceLabel: t('prodMedia.s282'),
       priority: 'important',
     },
   },
   {
     id: 'approval-feedback',
-    label: 'Tilbakemelding',
-    helper: 'Klientsvar på utkast, leveranser eller ønskede endringer.',
+    label: t('prodMedia.s655'),
+    helper: t('prodMedia.s294'),
     draft: {
       entryType: 'feedback',
-      title: 'Klienttilbakemelding',
-      description: 'Skriv inn endringer, godkjenninger eller kommentarer til pågående arbeid.',
+      title: t('prodMedia.s296'),
+      description: t('prodMedia.s625'),
       phase: 'postproduction',
       status: 'in_review',
       fileName: '',
       versionLabel: '',
-      usageNotes: 'Brukes til revisjoner og endelig levering.',
-      sourceLabel: 'Klient',
+      usageNotes: t('prodMedia.s068'),
+      sourceLabel: t('prodMedia.s282'),
       priority: 'important',
     },
   },
-];
+]);
 
 const WORKSPACE_COLOR_OPTIONS = ['#38bdf8', '#fbbf24', '#a855f7', '#22c55e', '#fb7185', '#f97316', '#14b8a6', '#94a3b8'];
 const ACCOUNT_ACCESS_PLATFORM_ORDER: ProducerAccountAccessPlatform[] = ['google', 'meta', 'linkedin', 'youtube', 'tiktok'];
@@ -723,52 +725,52 @@ const getWorkspaceSurfaceDescription = (
 ): string => {
   if (surface === 'materials') {
     return isClientReviewerMode
-      ? 'Referanser, dokumenter, merkevarefiler og eksisterende materiale.'
-      : 'Referanser, dokumenter, brand assets og tilbakemeldinger.';
+      ? translate(getLang(), 'prodMedia.s569')
+      : translate(getLang(), 'prodMedia.s568');
   }
   if (surface === 'brand') {
     return isClientReviewerMode
-      ? 'Logo, farger, fonter og uttrykk som skal styre leveransene.'
-      : 'Logo, farger, fonter og visuell retning.';
+      ? translate(getLang(), 'prodMedia.s441')
+      : translate(getLang(), 'prodMedia.s442');
   }
   if (surface === 'storyboard') {
     return isClientReviewerMode
-      ? 'Oversikt over storyboardet og et sted for inspirasjoner, referanser og visuelle innspill.'
-      : 'Scenevis storyboard med klientinspirasjoner og framekontekst.';
+      ? translate(getLang(), 'prodMedia.s535')
+      : translate(getLang(), 'prodMedia.s582');
   }
   if (surface === 'manuscript') {
     return isClientReviewerMode
-      ? 'Les manus og skriv forslag til endringer uten å redigere originalteksten direkte.'
-      : 'Samle manuslesning, klientforslag og neste omskrivninger på ett sted.';
+      ? translate(getLang(), 'prodMedia.s422')
+      : translate(getLang(), 'prodMedia.s577');
   }
   if (surface === 'shotlist') {
     return isClientReviewerMode
-      ? 'En ryddig, lesbar oversikt over planlagte shots, scene og sted uten produksjonsstøy.'
-      : 'Klientvennlig shotlistoversikt som speiler scene- og storyboarddekning.';
+      ? translate(getLang(), 'prodMedia.s108')
+      : translate(getLang(), 'prodMedia.s298');
   }
   if (surface === 'accounts') {
     return isClientReviewerMode
-      ? 'Trygg tilgangsstyring med OAuth, invite og klientstyrte bekreftelser.'
-      : 'Vedvarende konto- og publiseringstilgang uten delte passord.';
+      ? translate(getLang(), 'prodMedia.s665')
+      : translate(getLang(), 'prodMedia.s681');
   }
   if (surface === 'delivery') {
     return isClientReviewerMode
-      ? 'Hvordan dere vil motta filer, mapper, versjoner og finaler.'
-      : 'Filnavn, versjoner, mapper, final/draft og backup.';
+      ? translate(getLang(), 'prodMedia.s189')
+      : translate(getLang(), 'prodMedia.s120');
   }
   if (surface === 'meetings') {
     return isClientReviewerMode
-      ? 'Agenda, klientsync, beslutninger og oppfølging i samme flate.'
-      : 'Møteagenda, live-notater, beslutninger og oppfølging.';
+      ? translate(getLang(), 'prodMedia.s001')
+      : translate(getLang(), 'prodMedia.s505');
   }
   if (surface === 'marketing-plan') {
     return isClientReviewerMode
-      ? 'Markedsplan-dashboard med pillars, posts og fremdrift.'
-      : 'KPI-oversikt, pillars, post-kalender og redigering av markedsplanen.';
+      ? translate(getLang(), 'prodMedia.s471')
+      : translate(getLang(), 'prodMedia.s271');
   }
   return isClientReviewerMode
-    ? 'Mål, leveranser, målgruppe og timing for produsenten.'
-    : 'Mål, målgruppe, budskap og timing.';
+    ? translate(getLang(), 'prodMedia.s497')
+    : translate(getLang(), 'prodMedia.s498');
 };
 
 const hasText = (value: string | null | undefined): value is string => typeof value === 'string' && value.trim().length > 0;
@@ -781,7 +783,7 @@ function withClientWorkspaceTimeout<T>(promise: Promise<T>, label: string): Prom
     promise,
     new Promise<T>((_resolve, reject) => {
       timeout = setTimeout(() => {
-        reject(new Error(`${label} tok for lang tid å laste.`));
+        reject(new Error(translate(getLang(), 'prodMedia.p49', { v0: label })));
       }, CLIENT_WORKSPACE_LOAD_TIMEOUT_MS);
     }),
   ]).finally(() => {
@@ -842,39 +844,39 @@ interface AccountAccessPlatformFlowConfig {
   secondaryHref?: string;
 }
 
-const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform, AccountAccessPlatformFlowConfig> = {
+const buildACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG = (t: TFn): Record<ProducerAccountAccessPlatform, AccountAccessPlatformFlowConfig> => ({
   google: {
     primaryLabel: 'Google Workspace',
     primaryHref: '',
-    primaryDescription: 'Én Google-kobling dekker både prosjektflyten (Drive, Kalender, Meet) og agentens analytics-oppsett (GA4, Search Console, Site Verification).',
+    primaryDescription: t('prodMedia.s766'),
   },
   meta: {
-    primaryLabel: 'Åpne Meta Business',
+    primaryLabel: t('prodMedia.s728'),
     primaryHref: 'https://business.facebook.com/latest/settings/people',
-    primaryDescription: 'Kontoeier gir tilgang fra Meta Business Settings, ikke med delt passord.',
-    secondaryLabel: 'Meta Business-hjelp',
+    primaryDescription: t('prodMedia.s332'),
+    secondaryLabel: t('prodMedia.s490'),
     secondaryHref: 'https://www.facebook.com/business/help',
   },
   linkedin: {
-    primaryLabel: 'Åpne LinkedIn-hjelp',
+    primaryLabel: t('prodMedia.s727'),
     primaryHref: 'https://www.linkedin.com/help/linkedin',
-    primaryDescription: 'Sideeier må gi admin- eller super admin-tilgang i LinkedIn Page admin.',
+    primaryDescription: t('prodMedia.s601'),
   },
   youtube: {
-    primaryLabel: 'Åpne YouTube Studio',
+    primaryLabel: t('prodMedia.s730'),
     primaryHref: 'https://studio.youtube.com',
-    primaryDescription: 'Kanalrettigheter eller Brand Account-roller gis i YouTube Studio, ikke via delt Google-login.',
-    secondaryLabel: 'YouTube-hjelp',
+    primaryDescription: t('prodMedia.s273'),
+    secondaryLabel: t('prodMedia.s712'),
     secondaryHref: 'https://support.google.com/youtube/',
   },
   tiktok: {
-    primaryLabel: 'Åpne TikTok Business Center',
+    primaryLabel: t('prodMedia.s729'),
     primaryHref: 'https://business.tiktok.com',
-    primaryDescription: 'Inviter bruker eller partner fra TikTok Business Center i stedet for å dele konto.',
-    secondaryLabel: 'TikTok-hjelp',
+    primaryDescription: t('prodMedia.s269'),
+    secondaryLabel: t('prodMedia.s650'),
     secondaryHref: 'https://business.tiktok.com/help',
   },
-};
+});
 
 const ACCOUNT_ACCESS_SECRET_PATTERN = /(?:passord|password|pwd|api(?:\s|-)?key|access(?:\s|-)?token|refresh(?:\s|-)?token|secret|backup(?:\s|-)?code|recovery(?:\s|-)?code|gjenopprettingskode|2fa|otp)\s*[:=]\s*\S+/i;
 const ACCOUNT_ACCESS_TOKEN_PATTERN = /\b(?:ghp_[A-Za-z0-9]{20,}|sk_(?:live|test)_[A-Za-z0-9]+|AIza[0-9A-Za-z\-_]{20,}|ya29\.[0-9A-Za-z\-_]+)\b/;
@@ -888,7 +890,7 @@ const detectAccountAccessSecret = (value: unknown): string | null => {
     return null;
   }
   if (ACCOUNT_ACCESS_SECRET_PATTERN.test(trimmed) || ACCOUNT_ACCESS_TOKEN_PATTERN.test(trimmed)) {
-    return 'Dette feltet ser ut til å inneholde en hemmelighet. Bruk sikker deling eller maskert referanse i stedet for rå credentials.';
+    return translate(getLang(), 'prodMedia.s084');
   }
   return null;
 };
@@ -950,22 +952,22 @@ const fromDateTimeLocalValue = (value: string): string | undefined => {
   return date.toISOString();
 };
 
-const VAULT_REVEAL_REQUEST_STATUS_LABELS: Record<RoleRoomAccessVaultRevealRequest['status'], string> = {
-  pending: 'Venter på godkjenning',
-  approved: 'Godkjent for innsyn',
-  rejected: 'Avvist',
-  revealed: 'Åpnet én gang',
-  expired: 'Utløpt',
-};
+const buildVAULT_REVEAL_REQUEST_STATUS_LABELS = (t: TFn): Record<RoleRoomAccessVaultRevealRequest['status'], string> => ({
+  pending: t('prodMedia.s696'),
+  approved: t('prodMedia.s163'),
+  rejected: t('prodMedia.s012'),
+  revealed: t('prodMedia.s765'),
+  expired: t('prodMedia.s672'),
+});
 
-const VAULT_AUDIT_ACTION_LABELS: Record<string, string> = {
-  secret_saved: 'Secret lagret',
-  secret_revoked: 'Secret tilbakekalt',
-  reveal_requested: 'Innsyn bedt om',
-  reveal_approved: 'Innsyn godkjent',
-  reveal_rejected: 'Innsyn avvist',
-  secret_revealed: 'Secret åpnet',
-};
+const buildVAULT_AUDIT_ACTION_LABELS = (t: TFn): Record<string, string> => ({
+  secret_saved: t('prodMedia.s595'),
+  secret_revoked: t('prodMedia.s596'),
+  reveal_requested: t('prodMedia.s258'),
+  reveal_approved: t('prodMedia.s262'),
+  reveal_rejected: t('prodMedia.s257'),
+  secret_revealed: t('prodMedia.s597'),
+});
 
 const EMPTY_VAULT_SECRET_DRAFT: VaultSecretDraft = {
   label: '',
@@ -1122,32 +1124,32 @@ const getColorDistance = (leftHex: string, rightHex: string): number => {
 
 const getBrandLogoMarkTypeLabel = (value?: ProducerBrandLogoDetection['markType']): string => {
   if (value === 'wordmark') {
-    return 'Ordmerke';
+    return translate(getLang(), 'prodMedia.s532');
   }
   if (value === 'symbol') {
     return 'Symbol';
   }
   if (value === 'combination') {
-    return 'Kombinasjonslogo';
+    return translate(getLang(), 'prodMedia.s322');
   }
-  return 'Ukjent';
+  return translate(getLang(), 'prodMedia.s668');
 };
 
 const BRAND_LOGO_VARIANT_ORDER: ProducerBrandLogoVariantType[] = ['primary', 'light', 'dark', 'icon'];
 
-const BRAND_LOGO_VARIANT_LABELS: Record<ProducerBrandLogoVariantType, string> = {
-  primary: 'Primær',
-  light: 'Lys',
-  dark: 'Mørk',
-  icon: 'Ikon',
-};
+const buildBRAND_LOGO_VARIANT_LABELS = (t: TFn): Record<ProducerBrandLogoVariantType, string> => ({
+  primary: t('prodMedia.s541'),
+  light: t('prodMedia.s455'),
+  dark: t('prodMedia.s503'),
+  icon: t('prodMedia.s206'),
+});
 
-const BRAND_LOGO_VARIANT_HELPERS: Record<ProducerBrandLogoVariantType, string> = {
-  primary: 'Hovedlogoen som normalt brukes i preview, overlevering og produksjon.',
-  light: 'Brukes når logoen må stå lyst mot mørkere flater eller videobakgrunner.',
-  dark: 'Brukes når logoen må stå mørkt mot lyse flater eller videobakgrunner.',
-  icon: 'Brukes når formatet trenger et kompakt symbol i stedet for full logo.',
-};
+const buildBRAND_LOGO_VARIANT_HELPERS = (t: TFn): Record<ProducerBrandLogoVariantType, string> => ({
+  primary: t('prodMedia.s176'),
+  light: t('prodMedia.s059'),
+  dark: t('prodMedia.s060'),
+  icon: t('prodMedia.s058'),
+});
 
 const syncBrandGuideWithLogoVariant = (
   brandGuide: ProducerProjectPlanning['brandGuide'],
@@ -1184,7 +1186,7 @@ const loadImageFromObjectUrl = (objectUrl: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Kunne ikke lese logofilen som bilde.'));
+    image.onerror = () => reject(new Error(translate(getLang(), 'prodMedia.s360')));
     image.src = objectUrl;
   })
 );
@@ -1193,7 +1195,7 @@ const analyzeBrandLogoFile = async (file: File): Promise<ProducerBrandLogoDetect
   if (typeof document === 'undefined') {
     return {
       sourceFileName: file.name,
-      note: 'Logoanalysen er bare tilgjengelig i nettleseren.',
+      note: translate(getLang(), 'prodMedia.s445'),
       detectedAt: new Date().toISOString(),
     };
   }
@@ -1210,7 +1212,7 @@ const analyzeBrandLogoFile = async (file: File): Promise<ProducerBrandLogoDetect
     canvas.height = height;
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) {
-      throw new Error('Canvas er ikke tilgjengelig for logoanalyse.');
+      throw new Error(translate(getLang(), 'prodMedia.s072'));
     }
 
     context.clearRect(0, 0, width, height);
@@ -1274,9 +1276,9 @@ const analyzeBrandLogoFile = async (file: File): Promise<ProducerBrandLogoDetect
       .slice(0, 3)
       .map((hex, colorIndex) => ({
         id: `detected-brand-color-${colorIndex + 1}`,
-        label: colorIndex === 0 ? 'Primærfarge' : colorIndex === 1 ? 'Sekundærfarge' : 'Accent',
+        label: colorIndex === 0 ? translate(getLang(), 'prodMedia.s542') : colorIndex === 1 ? translate(getLang(), 'prodMedia.s598') : 'Accent',
         hex,
-        usage: colorIndex === 0 ? 'Brukes i logo og hovedmarkeringer.' : colorIndex === 1 ? 'Brukes i sekundære flater og bakplater.' : 'Brukes i små detaljer eller CTA-er.',
+        usage: colorIndex === 0 ? translate(getLang(), 'prodMedia.s054') : colorIndex === 1 ? translate(getLang(), 'prodMedia.s056') : translate(getLang(), 'prodMedia.s057'),
       }));
     const primaryLuminance = dominantColors[0] ? getColorLuminance(dominantColors[0].hex) : 0.5;
     const suggestedTreatment = !hasTransparency
@@ -1295,12 +1297,12 @@ const analyzeBrandLogoFile = async (file: File): Promise<ProducerBrandLogoDetect
     const suggestedSafeZoneVerticalPercent = markType === 'wordmark' ? 7 : 8;
     const suggestedMarginPixelsAt1080 = markType === 'wordmark' ? 88 : 72;
     const note = [
-      hasTransparency ? 'Transparent logo gjør ren overlay mulig.' : 'Logoen trenger bakplate eller badge for trygg kontrast.',
+      hasTransparency ? translate(getLang(), 'prodMedia.s661') : translate(getLang(), 'prodMedia.s448'),
       markType === 'wordmark'
-        ? 'Bred logo får mest luft nederst i rammen.'
+        ? translate(getLang(), 'prodMedia.s033')
         : markType === 'symbol'
-          ? 'Kompakt logo tåler mindre footprint og kan ligge høyere i formatet.'
-          : 'Kombinasjonslogo trenger litt ekstra safe zone og ro rundt seg.',
+          ? translate(getLang(), 'prodMedia.s324')
+          : translate(getLang(), 'prodMedia.s323'),
     ].join(' ');
 
     return {
@@ -1328,7 +1330,7 @@ const analyzeBrandLogoFile = async (file: File): Promise<ProducerBrandLogoDetect
 
 const formatTimestamp = (value?: string): string => {
   if (!value) {
-    return 'Ikke lagret ennå';
+    return translate(getLang(), 'prodMedia.s199');
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -1379,7 +1381,7 @@ const getSceneDisplayLabel = (
     ? String(scene.sceneNumber).trim()
     : '';
   const sceneTitle = readFirstNonEmptyString(scene.sceneName, scene.sceneHeading, scene.heading, scene.id);
-  const prefix = sceneNumber ? `Scene ${sceneNumber}` : 'Scene';
+  const prefix = sceneNumber ? `Scene ${sceneNumber}` : translate(getLang(), 'prodMedia.s579');
   return sceneTitle ? `${prefix} · ${sceneTitle}` : prefix;
 };
 
@@ -1540,7 +1542,7 @@ const resolveWorkspaceFocusArtifact = (
         surface: 'delivery',
         title: linkedAgreement.title,
         subtitle: `${linkedAgreement.counterparty_name} · ${linkedAgreement.google_signature ? getAgreementSignatureLabel(linkedAgreement.google_signature) : PROJECT_AGREEMENT_STATUS_LABELS[linkedAgreement.status]}`,
-        actionLabel: matchedArtifact.webViewUrl ? 'Åpne dokument' : undefined,
+        actionLabel: matchedArtifact.webViewUrl ? translate(getLang(), 'prodMedia.s735') : undefined,
         actionUrl: matchedArtifact.webViewUrl ?? matchedArtifact.webContentLink ?? undefined,
       };
     }
@@ -1568,9 +1570,9 @@ const resolveWorkspaceFocusArtifact = (
       title: matchedAgreement.title,
       subtitle: `${matchedAgreement.counterparty_name} · ${matchedAgreement.google_signature ? getAgreementSignatureLabel(matchedAgreement.google_signature) : PROJECT_AGREEMENT_STATUS_LABELS[matchedAgreement.status]}`,
       actionLabel: signedPdfArtifact?.webViewUrl || pdfSnapshotArtifact?.webViewUrl || matchedAgreement.google_signature?.requestUrl
-        ? 'Åpne juridisk dokument'
+        ? translate(getLang(), 'prodMedia.s740')
         : auditArtifact?.webViewUrl
-          ? 'Åpne signaturspor'
+          ? translate(getLang(), 'prodMedia.s756')
           : undefined,
       actionUrl: signedPdfArtifact?.webViewUrl
         ?? pdfSnapshotArtifact?.webViewUrl
@@ -1594,8 +1596,8 @@ const resolveWorkspaceFocusArtifact = (
       title: matchedMaterial.title,
       subtitle: matchedMaterial.description?.trim()
         || metadata.usageNotes
-        || 'Fokusert fra delt arbeidsflate.',
-      actionLabel: metadata.projectFileDownloadUrl || matchedMaterial.external_url ? 'Åpne kilde' : undefined,
+        || translate(getLang(), 'prodMedia.s125'),
+      actionLabel: metadata.projectFileDownloadUrl || matchedMaterial.external_url ? translate(getLang(), 'prodMedia.s742') : undefined,
       actionUrl: metadata.projectFileDownloadUrl || matchedMaterial.external_url || undefined,
     };
   }
@@ -1606,8 +1608,8 @@ const resolveWorkspaceFocusArtifact = (
       artifactId: normalizedArtifactId,
       surface: getSurfaceForProjectFile(matchedFile),
       title: matchedFile.name,
-      subtitle: getProjectFileMetadataString(matchedFile, 'folderPath', 'packageName') || 'Fokusert prosjektfil fra delt arbeidsflate.',
-      actionLabel: matchedFile.downloadUrl ? 'Åpne fil' : undefined,
+      subtitle: getProjectFileMetadataString(matchedFile, 'folderPath', 'packageName') || translate(getLang(), 'prodMedia.s126'),
+      actionLabel: matchedFile.downloadUrl ? translate(getLang(), 'prodMedia.s736') : undefined,
       actionUrl: getAbsoluteProjectFileUrl(matchedFile.downloadUrl) || undefined,
     };
   }
@@ -1616,8 +1618,8 @@ const resolveWorkspaceFocusArtifact = (
     return {
       artifactId: normalizedArtifactId,
       surface: 'brief',
-      title: 'Brief-sammendrag',
-      subtitle: 'Generert prosjektretning synket fra arbeidsflaten.',
+      title: translate(getLang(), 'prodMedia.s035'),
+      subtitle: translate(getLang(), 'prodMedia.s156'),
     };
   }
 
@@ -1625,8 +1627,8 @@ const resolveWorkspaceFocusArtifact = (
     return {
       artifactId: normalizedArtifactId,
       surface: 'materials',
-      title: 'Materialgrunnlag',
-      subtitle: 'Samlet klientmateriale og innspill.',
+      title: translate(getLang(), 'prodMedia.s481'),
+      subtitle: translate(getLang(), 'prodMedia.s578'),
     };
   }
 
@@ -1634,8 +1636,8 @@ const resolveWorkspaceFocusArtifact = (
     return {
       artifactId: normalizedArtifactId,
       surface: 'brand',
-      title: 'Merkevareguide',
-      subtitle: 'Logo, farger, fonter og føringer for prosjektet.',
+      title: translate(getLang(), 'prodMedia.s486'),
+      subtitle: translate(getLang(), 'prodMedia.s440'),
     };
   }
 
@@ -1643,8 +1645,8 @@ const resolveWorkspaceFocusArtifact = (
     return {
       artifactId: normalizedArtifactId,
       surface: 'delivery',
-      title: normalizedArtifactId === 'delivery-manifest' ? 'Leveringsmanifest' : 'Godkjenningskø',
-      subtitle: 'Fokusert fra delt arbeidsflate.',
+      title: normalizedArtifactId === 'delivery-manifest' ? translate(getLang(), 'prodMedia.s429') : translate(getLang(), 'prodMedia.s161'),
+      subtitle: translate(getLang(), 'prodMedia.s125'),
     };
   }
 
@@ -1652,8 +1654,8 @@ const resolveWorkspaceFocusArtifact = (
     return {
       artifactId: normalizedArtifactId,
       surface: 'meetings',
-      title: 'Møteworkspace',
-      subtitle: 'Agenda, beslutninger og oppfølging for klientsyncen.',
+      title: translate(getLang(), 'prodMedia.s506'),
+      subtitle: translate(getLang(), 'prodMedia.s000'),
     };
   }
 
@@ -1666,8 +1668,8 @@ const resolveWorkspaceFocusArtifact = (
         surface: 'meetings',
         title: meetingDecision.title,
         subtitle: meetingDecision.clientVisible
-          ? 'Klientsynlig møtebeslutning.'
-          : 'Intern møtebeslutning.',
+          ? translate(getLang(), 'prodMedia.s295')
+          : translate(getLang(), 'prodMedia.s264'),
       };
     }
   }
@@ -1680,7 +1682,7 @@ const resolveWorkspaceFocusArtifact = (
         artifactId: normalizedArtifactId,
         surface: 'meetings',
         title: followUp.title,
-        subtitle: followUp.notes?.trim() || 'Oppfølgingspunkt fra møteworkspace.',
+        subtitle: followUp.notes?.trim() || translate(getLang(), 'prodMedia.s529'),
       };
     }
   }
@@ -1886,6 +1888,17 @@ export default function ProducerMediaPanel({
   onUnsavedStateChange,
 }: ProducerMediaPanelProps) {
   const { uploadProjectFile, deleteProjectFile, getProjectFiles } = useProject();
+  const { t } = useT();
+  const MATERIAL_TYPE_LABELS = useMemo(() => buildMATERIAL_TYPE_LABELS(t), [t]);
+  const MATERIAL_STATUS_LABELS = useMemo(() => buildMATERIAL_STATUS_LABELS(t), [t]);
+  const MATERIAL_PRIORITY_LABELS = useMemo(() => buildMATERIAL_PRIORITY_LABELS(t), [t]);
+  const WORKSPACE_SUPPORT_PRIORITY_THEME = useMemo(() => buildWORKSPACE_SUPPORT_PRIORITY_THEME(t), [t]);
+  const CLIENT_MATERIAL_TEMPLATES = useMemo(() => buildCLIENT_MATERIAL_TEMPLATES(t), [t]);
+  const VAULT_REVEAL_REQUEST_STATUS_LABELS = useMemo(() => buildVAULT_REVEAL_REQUEST_STATUS_LABELS(t), [t]);
+  const VAULT_AUDIT_ACTION_LABELS = useMemo(() => buildVAULT_AUDIT_ACTION_LABELS(t), [t]);
+  const BRAND_LOGO_VARIANT_LABELS = useMemo(() => buildBRAND_LOGO_VARIANT_LABELS(t), [t]);
+  const BRAND_LOGO_VARIANT_HELPERS = useMemo(() => buildBRAND_LOGO_VARIANT_HELPERS(t), [t]);
+  const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG = useMemo(() => buildACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG(t), [t]);
   const theme = useTheme();
   const isMobileWorkspace = useMediaQuery(theme.breakpoints.down('sm'));
   const useLocalAgreementFallback = shouldUseRoleRoomLocalFallback();
@@ -2265,8 +2278,8 @@ export default function ProducerMediaPanel({
             shot.sceneId,
             shot.id,
           ),
-          locationLabel: locationLabel || 'Ikke satt',
-          castSummary: castSummary || 'Ikke spesifisert',
+          locationLabel: locationLabel || t('prodMedia.s202'),
+          castSummary: castSummary || t('prodMedia.s203'),
           description: readFirstNonEmptyString(
             shot.description,
             shot.notes,
@@ -2383,8 +2396,8 @@ export default function ProducerMediaPanel({
     setError(null);
     try {
       const [nextIntake, nextMaterials] = await Promise.allSettled([
-        withClientWorkspaceTimeout(producerWorkflowService.getClientIntake(projectId), 'Klientbrief'),
-        withClientWorkspaceTimeout(producerWorkflowService.getClientMaterials(projectId), 'Klientmateriale'),
+        withClientWorkspaceTimeout(producerWorkflowService.getClientIntake(projectId), t('prodMedia.m47')),
+        withClientWorkspaceTimeout(producerWorkflowService.getClientMaterials(projectId), t('prodMedia.m51')),
       ]);
 
       if (isStaleRequest()) {
@@ -2411,7 +2424,7 @@ export default function ProducerMediaPanel({
       }
 
       if (clientInputFailures.some(isRoleRoomSessionFailure)) {
-        setError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+        setError(t('prodMedia.s575'));
         if (foreground) {
           setLoading(false);
         }
@@ -2430,8 +2443,8 @@ export default function ProducerMediaPanel({
       }
 
       const [nextReviews, nextTimelineItems] = await Promise.allSettled([
-        withClientWorkspaceTimeout(producerWorkflowService.getReviews(projectId), 'Godkjenninger'),
-        withClientWorkspaceTimeout(producerWorkflowService.getTimeline(projectId), 'Tidslinje'),
+        withClientWorkspaceTimeout(producerWorkflowService.getReviews(projectId), t('prodMedia.s160')),
+        withClientWorkspaceTimeout(producerWorkflowService.getTimeline(projectId), t('prodMedia.s646')),
       ]);
 
       if (isStaleRequest()) {
@@ -2453,8 +2466,8 @@ export default function ProducerMediaPanel({
       managedWorkflowSyncProjectRef.current = projectId;
 
       await Promise.allSettled([
-        withClientWorkspaceTimeout(producerWorkflowService.ensureClientGroundingTimeline(projectId), 'Klientgrunnlag tidslinje'),
-        withClientWorkspaceTimeout(producerWorkflowService.ensureClientGroundingReviews(projectId), 'Klientgrunnlag godkjenninger'),
+        withClientWorkspaceTimeout(producerWorkflowService.ensureClientGroundingTimeline(projectId), t('prodMedia.s290')),
+        withClientWorkspaceTimeout(producerWorkflowService.ensureClientGroundingReviews(projectId), t('prodMedia.s289')),
       ]);
 
       if (isStaleRequest()) {
@@ -2467,7 +2480,7 @@ export default function ProducerMediaPanel({
             projectId,
             normalizeProducerProjectPlanning(latestProjectRef.current),
           ),
-          'Møteworkspace',
+          t('prodMedia.s506'),
         ),
       ]);
 
@@ -2482,7 +2495,7 @@ export default function ProducerMediaPanel({
       }
     } catch (loadError) {
       if (!isStaleRequest() && isRoleRoomSessionFailure(loadError)) {
-        setError('Role Room-sesjonen mangler eller har utløpt. Logg inn på nytt.');
+        setError(t('prodMedia.s575'));
       }
     } finally {
       if (foreground && !isStaleRequest()) {
@@ -2752,10 +2765,10 @@ export default function ProducerMediaPanel({
           }
         }, 1200);
       } else {
-        setError(body?.error ?? 'Kunne ikke starte Google-koblingen.');
+        setError(body?.error ?? t('prodMedia.s364'));
       }
     } catch {
-      setError('Kunne ikke starte Google-koblingen.');
+      setError(t('prodMedia.s364'));
     } finally {
       setGoogleOauthStarting(false);
     }
@@ -2926,7 +2939,7 @@ export default function ProducerMediaPanel({
         projectId,
         message: vaultError instanceof Error ? vaultError.message : String(vaultError),
       });
-      setAccessVaultError(describeProducerError(vaultError, 'hente Client Access Vault'));
+      setAccessVaultError(describeProducerError(vaultError, t('prodMedia.s713')));
     } finally {
       setLoadingAccessVault(false);
     }
@@ -3022,7 +3035,7 @@ export default function ProducerMediaPanel({
         console.error('[ProducerMediaPanel] Failed to load Role Room Agent access', accessError);
         if (active) {
           setRoleRoomAgentAccess(null);
-          setRoleRoomAgentError('Kunne ikke hente tilgang til The Role Room Agent.');
+          setRoleRoomAgentError(t('prodMedia.s351'));
         }
       })
       .finally(() => {
@@ -3116,7 +3129,7 @@ export default function ProducerMediaPanel({
       });
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save workspace navigation', saveError);
-      setError('Kunne ikke lagre workspace-oppsettet.');
+      setError(t('prodMedia.s358'));
     } finally {
       setSavingPlanning(false);
     }
@@ -3124,7 +3137,7 @@ export default function ProducerMediaPanel({
 
   const handleSaveIntake = useCallback(async () => {
     if (isBriefLockedByApproval) {
-      setError('Briefen er låst fordi prosjektet er godkjent.');
+      setError(t('prodMedia.s039'));
       return;
     }
 
@@ -3141,7 +3154,7 @@ export default function ProducerMediaPanel({
       savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save client intake', saveError);
-      setError('Kunne ikke lagre klientbrief og content logic.');
+      setError(t('prodMedia.s353'));
     } finally {
       setSavingIntake(false);
     }
@@ -3160,7 +3173,7 @@ export default function ProducerMediaPanel({
       savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
     } catch (publishError) {
       console.error('[ProducerMediaPanel] Failed to publish client intake', publishError);
-      setError('Kunne ikke publisere briefen til klienten.');
+      setError(t('prodMedia.s361'));
     } finally {
       setPublishingIntake(false);
     }
@@ -3189,10 +3202,10 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     if (researchProgress.status === 'done' && researchProgress.result) {
       setRoleRoomAgentResult(researchProgress.result);
-      setRoleRoomAgentNotice('The Role Room Agent har laget et nytt utkast for kundeprofil, brief og story logikk.');
+      setRoleRoomAgentNotice(t('prodMedia.s645'));
       setRoleRoomAgentGenerating(false);
     } else if (researchProgress.status === 'error') {
-      const message = researchProgress.error ?? 'Kunne ikke generere forslag fra The Role Room Agent.';
+      const message = researchProgress.error ?? t('prodMedia.s350');
       console.error('[ProducerMediaPanel] Research stream failed', message);
       setRoleRoomAgentError(message);
       setRoleRoomAgentGenerating(false);
@@ -3201,7 +3214,7 @@ export default function ProducerMediaPanel({
 
   const handleApplyRoleRoomAgent = useCallback(async (result: RoleRoomAgentProducerBootstrapResult) => {
     if (isBriefLockedByApproval) {
-      const message = 'Briefen er låst fordi prosjektet er godkjent.';
+      const message = t('prodMedia.s039');
       setRoleRoomAgentError(message);
       setError(message);
       return;
@@ -3338,12 +3351,12 @@ export default function ProducerMediaPanel({
       setRoleRoomAgentResult(result);
       setRoleRoomAgentDialogOpen(false);
       setMarketingReloadNonce((n) => n + 1);
-      setRoleRoomAgentNotice('The Role Room Agent fylte nå brief, branding-utkast og story logikk i prosjektet.');
+      setRoleRoomAgentNotice(t('prodMedia.s644'));
     } catch (agentError) {
       console.error('[ProducerMediaPanel] Failed to apply Role Room Agent result', agentError);
       const message = agentError instanceof Error
         ? agentError.message
-        : 'Kunne ikke bruke forslagene fra The Role Room Agent.';
+        : t('prodMedia.s347');
       setRoleRoomAgentError(message);
       setError(message);
     } finally {
@@ -3357,7 +3370,7 @@ export default function ProducerMediaPanel({
     }
 
     const draft = result.projectCreationDraft;
-    const companyName = draft?.clientCompanyName || result.companyProfile.companyName || result.brregCompany?.name || 'Kunde';
+    const companyName = draft?.clientCompanyName || result.companyProfile.companyName || result.brregCompany?.name || t('prodMedia.s345');
     const agreementNotes = draft?.suggestedAgreementNotes
       || (result.agreementSuggestions ?? []).map((entry) => `${entry.title}: ${entry.detail}`).join('\n');
     const socialProfiles = (result.socialProfileCandidates ?? [])
@@ -3384,23 +3397,23 @@ export default function ProducerMediaPanel({
     const description = [
       draft?.description || result.companyProfile.summary || '',
       result.brregCompany?.lookupStatus === 'verified' && result.brregCompany.organizationNumber
-        ? `Brreg-verifisert org.nr: ${result.brregCompany.organizationNumber}.`
+        ? t('prodMedia.u02', { v0: result.brregCompany.organizationNumber })
         : '',
       result.companyAge?.label ? `Selskapsalder: ${result.companyAge.label}.` : '',
       socialProfiles.length > 0
-        ? `Sosiale kontoer foreslått:\n${socialProfiles.map((entry) => `${entry.platform}: ${entry.url} (${entry.confidence}%)`).join('\n')}`
+        ? t('prodMedia.p28', { v0: socialProfiles.map((entry) => `${entry.platform}: ${entry.url} (${entry.confidence}%)`).join('\n') })
         : '',
       competitorSummary
         ? `Konkurrentanalyse:\n${competitorSummary}`
         : '',
       result.competitorAnalysis?.marketingOpportunities?.length
-        ? `Markedsføringsmuligheter:\n${result.competitorAnalysis.marketingOpportunities.slice(0, 4).join('\n')}`
+        ? t('prodMedia.p21', { v0: result.competitorAnalysis.marketingOpportunities.slice(0, 4).join('\n') })
         : '',
       localPresenceSummary
-        ? `Lokal synlighet/event:\n${localPresenceSummary}`
+        ? t('prodMedia.u06', { v0: localPresenceSummary })
         : '',
       result.localPresencePlan?.recommendedEventConcepts?.length
-        ? `Lokale eventkonsepter:\n${result.localPresencePlan.recommendedEventConcepts.slice(0, 4).join('\n')}`
+        ? t('prodMedia.u07', { v0: result.localPresencePlan.recommendedEventConcepts.slice(0, 4).join('\n') })
         : '',
       agreementNotes ? `Avtalenotater:\n${agreementNotes}` : '',
     ]
@@ -3445,7 +3458,7 @@ export default function ProducerMediaPanel({
     });
     setRoleRoomAgentDialogOpen(false);
     setMarketingReloadNonce((n) => n + 1);
-    setRoleRoomAgentNotice('Prosjektmodalen er forhåndsutfylt med Brreg-data og agentens avtaleforslag. Kontroller kontaktfelt og lagre prosjektet.');
+    setRoleRoomAgentNotice(t('prodMedia.s551'));
   }, [onCreateProjectFromAgent]);
 
   const handleImportGoogleContact = useCallback(async (contact: {
@@ -3484,7 +3497,7 @@ export default function ProducerMediaPanel({
 
   const handleSubmitManuscriptSuggestion = useCallback(async () => {
     if (!manuscriptSuggestionDraft.title.trim() || !manuscriptSuggestionDraft.suggestion.trim()) {
-      setError('Forslaget må ha en tittel og en konkret endring.');
+      setError(t('prodMedia.s136'));
       return;
     }
 
@@ -3514,7 +3527,7 @@ export default function ProducerMediaPanel({
       });
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save manuscript suggestion', saveError);
-      setError('Kunne ikke lagre manusforslaget.');
+      setError(t('prodMedia.s356'));
     } finally {
       setSavingMaterial(false);
     }
@@ -3522,7 +3535,7 @@ export default function ProducerMediaPanel({
 
   const handleSubmitStoryboardInspiration = useCallback(async () => {
     if (!storyboardInspirationDraft.title.trim()) {
-      setError('Inspirasjonen må ha en tittel.');
+      setError(t('prodMedia.s263'));
       return;
     }
 
@@ -3551,7 +3564,7 @@ export default function ProducerMediaPanel({
       }));
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save storyboard inspiration', saveError);
-      setError('Kunne ikke lagre storyboard-inspirasjonen.');
+      setError(t('prodMedia.s357'));
     } finally {
       setSavingMaterial(false);
     }
@@ -3574,7 +3587,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save planning context', saveError);
-      setError('Kunne ikke lagre arbeidsflateoppsettet.');
+      setError(t('prodMedia.s352'));
     } finally {
       setSavingPlanning(false);
     }
@@ -3643,7 +3656,7 @@ export default function ProducerMediaPanel({
       brand: 'merkevare',
       accounts: 'kontotilgang',
       delivery: 'levering',
-      meetings: 'møter',
+      meetings: t('prodMedia.s719'),
     };
     return labels[activeWorkspace] ?? 'prosjektrom';
   }, [activeWorkspace]);
@@ -3703,12 +3716,12 @@ export default function ProducerMediaPanel({
         email: project.clientEmail ?? intakeDraft.contactEmail ?? undefined,
       });
       if (!hasText(response.authorizationUrl)) {
-        throw new Error('Mangler autorisasjonslenke fra LinkedIn.');
+        throw new Error(t('prodMedia.s461'));
       }
       window.location.assign(response.authorizationUrl);
     } catch (linkError) {
       console.error('[ProducerMediaPanel] Failed to start LinkedIn account link', linkError);
-      setError(linkError instanceof Error ? linkError.message : 'Kunne ikke starte LinkedIn-koblingen.');
+      setError(linkError instanceof Error ? linkError.message : t('prodMedia.s365'));
     } finally {
       setLinkedInAccessActionKey(null);
     }
@@ -3739,7 +3752,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (persistError) {
       console.error('[ProducerMediaPanel] Failed to persist account access entry', persistError);
-      setError('Kunne ikke lagre kontotilgangen.');
+      setError(t('prodMedia.s355'));
     } finally {
       setAccountAccessActionKey(null);
     }
@@ -3759,14 +3772,14 @@ export default function ProducerMediaPanel({
         if (!body?.meta?.verified) {
           setAccessVaultError(
             body?.meta?.connected
-              ? 'Meta-koblingen finnes, men svarer ikke (utløpt token?) — koble til på nytt før bekreftelse.'
-              : 'Fant ingen fungerende Meta-kobling på prosjektet — fullfør invite/OAuth-flyten først.',
+              ? t('prodMedia.s492')
+              : t('prodMedia.s111'),
           );
           return;
         }
         setAgentConnectionStatus((cur) => (cur ? { ...cur, meta: body.meta } : cur));
       } catch {
-        setAccessVaultError('Kunne ikke verifisere Meta-koblingen akkurat nå — prøv igjen.');
+        setAccessVaultError(t('prodMedia.s366'));
         return;
       }
     }
@@ -3785,7 +3798,7 @@ export default function ProducerMediaPanel({
     try {
       await roleRoomAccessVaultApi.upsertSecret(projectId, entry.platform, {
         label: readFirstNonEmptyString(draft.label, entry.accountLabel, PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]),
-        secretType: readFirstNonEmptyString(draft.secretType, entry.secretLabel, 'Kontoopplysning'),
+        secretType: readFirstNonEmptyString(draft.secretType, entry.secretLabel, t('prodMedia.m54')),
         username: draft.username.trim() || undefined,
         secretValue: draft.secretValue.trim() || undefined,
         backupCode: draft.backupCode.trim() || undefined,
@@ -3808,7 +3821,7 @@ export default function ProducerMediaPanel({
         [entry.platform]: {
           ...(previous[entry.platform] ?? EMPTY_VAULT_SECRET_DRAFT),
           label: readFirstNonEmptyString(draft.label, entry.accountLabel, PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]) ?? '',
-          secretType: readFirstNonEmptyString(draft.secretType, entry.secretLabel, 'Kontoopplysning') ?? '',
+          secretType: readFirstNonEmptyString(draft.secretType, entry.secretLabel, t('prodMedia.m54')) ?? '',
           username: '',
           secretValue: '',
           backupCode: '',
@@ -3817,7 +3830,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to save access vault secret', vaultError);
-      setAccessVaultError(describeProducerError(vaultError, 'lagre secret-en'));
+      setAccessVaultError(describeProducerError(vaultError, t('prodMedia.s716')));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3831,7 +3844,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to revoke access vault secret', vaultError);
-      setAccessVaultError(describeProducerError(vaultError, 'tilbakekalle secret-en'));
+      setAccessVaultError(describeProducerError(vaultError, t('prodMedia.s721')));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3864,12 +3877,12 @@ export default function ProducerMediaPanel({
                 emailCode: details.availableMethods?.emailCode ?? true,
               },
               policy: details.policy ?? 'mfa_required',
-              message: details.message ?? 'Bekreft med 2FA for å se passordet.',
+              message: details.message ?? t('prodMedia.s019'),
             },
           };
         }
       }
-      return { ok: false, errorMessage: err instanceof Error ? err.message : 'Kunne ikke be om innsyn.' };
+      return { ok: false, errorMessage: err instanceof Error ? err.message : t('prodMedia.s346') };
     }
   }, [accessVaultDrafts, projectId]);
 
@@ -3896,7 +3909,7 @@ export default function ProducerMediaPanel({
           message: result.needsMfa.message,
         });
       } else {
-        setAccessVaultError(result.errorMessage ?? 'Kunne ikke be om innsyn.');
+        setAccessVaultError(result.errorMessage ?? t('prodMedia.s346'));
       }
     } finally {
       setAccessVaultActionKey(null);
@@ -3951,7 +3964,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to decide access vault reveal', vaultError);
-      setAccessVaultError(describeProducerError(vaultError, 'oppdatere reveal-forespørselen'));
+      setAccessVaultError(describeProducerError(vaultError, t('prodMedia.s720')));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3971,7 +3984,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to reveal access vault secret', vaultError);
-      setAccessVaultError(describeProducerError(vaultError, 'åpne secret-en'));
+      setAccessVaultError(describeProducerError(vaultError, t('prodMedia.s767')));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3996,21 +4009,21 @@ export default function ProducerMediaPanel({
     return [
       `[Kontotilgang · ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}]`,
       '',
-      'Dette må avklares for å fullføre publisering og overlevering:',
-      `Plattform: ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}`,
-      `Metode: ${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]}`,
-      `Status: ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
-      `Konto / side: ${readFirstNonEmptyString(entry.accountLabel, 'Ikke satt')}`,
-      `Invite / kontakt: ${readFirstNonEmptyString(entry.inviteTarget, intakeDraft.contactEmail, project.clientEmail, 'Ikke satt')}`,
-      `Scope / rolle: ${readFirstNonEmptyString(entry.accessScope, 'Ikke satt')}`,
-      `Kontoeier: ${readFirstNonEmptyString(entry.ownerName, 'Ikke satt')}`,
-      `2-faktor hos kontoeier: ${entry.twoFactorRequired ? 'Ja' : 'Nei'}`,
-      `Offisiell flyt: ${platformFlow.primaryDescription}`,
-      entry.platform !== 'google' && hasText(platformFlow.primaryHref) ? `Åpne plattformen: ${platformFlow.primaryHref}` : '',
-      entry.platform !== 'google' && hasText(platformFlow.secondaryHref) ? `Offisiell veiledning: ${platformFlow.secondaryHref}` : '',
-      entry.notes ? `Notat: ${entry.notes}` : '',
+      t('prodMedia.s087'),
+      t('prodMedia.zz0', { v0: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform] }),
+      t('prodMedia.r07', { v0: PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method] }),
+      t('prodMedia.r10', { v0: PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status] }),
+      t('prodMedia.r04', { v0: readFirstNonEmptyString(entry.accountLabel, t('prodMedia.s202')) }),
+      t('prodMedia.r03', { v0: readFirstNonEmptyString(entry.inviteTarget, intakeDraft.contactEmail, project.clientEmail, t('prodMedia.s202')) }),
+      t('prodMedia.r08', { v0: readFirstNonEmptyString(entry.accessScope, t('prodMedia.s202')) }),
+      t('prodMedia.r05', { v0: readFirstNonEmptyString(entry.ownerName, t('prodMedia.s202')) }),
+      t('prodMedia.r00', { v0: entry.twoFactorRequired ? t('prodMedia.k03') : t('prodMedia.k05') }),
+      t('prodMedia.u08', { v0: platformFlow.primaryDescription }),
+      entry.platform !== 'google' && hasText(platformFlow.primaryHref) ? t('prodMedia.p58', { v0: platformFlow.primaryHref }) : '',
+      entry.platform !== 'google' && hasText(platformFlow.secondaryHref) ? t('prodMedia.u09', { v0: platformFlow.secondaryHref }) : '',
+      entry.notes ? t('prodMedia.zz1', { v0: entry.notes }) : '',
       reviewUrl ? '' : '',
-      reviewUrl ? `Åpne review og bekreft saken her: ${reviewUrl}` : '',
+      reviewUrl ? t('prodMedia.p59', { v0: reviewUrl }) : '',
     ].filter((value) => value !== '').join('\n');
   }, [buildAccountAccessReviewUrl, intakeDraft.contactEmail, project.clientEmail]);
 
@@ -4024,7 +4037,7 @@ export default function ProducerMediaPanel({
       return;
     }
     if (typeof window !== 'undefined') {
-      window.prompt('Kopier invite-instruksen manuelt:', text);
+      window.prompt(t('prodMedia.s338'), text);
     }
   }, [buildAccountAccessInviteText]);
 
@@ -4112,7 +4125,7 @@ export default function ProducerMediaPanel({
     }
     const siblingCount = sortPagesByParent(activeSection.pages, parentPageId).length;
     const nextPage = createProducerWorkspacePage(surface, {
-      title: parentPageId ? `${PRODUCER_WORKSPACE_SURFACE_LABELS[surface]} underside` : PRODUCER_WORKSPACE_SURFACE_LABELS[surface],
+      title: parentPageId ? t('prodMedia.u33', { v0: PRODUCER_WORKSPACE_SURFACE_LABELS[surface] }) : PRODUCER_WORKSPACE_SURFACE_LABELS[surface],
       color: PRODUCER_WORKSPACE_SURFACE_COLORS[surface],
       pinned: parentPageId === null,
       order: siblingCount,
@@ -4431,7 +4444,7 @@ export default function ProducerMediaPanel({
       void loadDeliveryWorkspaceAssets();
     } catch (deleteError) {
       console.error('[ProducerMediaPanel] Failed to delete client material', deleteError);
-      setError('Kunne ikke slette klientmateriale.');
+      setError(t('prodMedia.s362'));
     } finally {
       setDeletingMaterialId(null);
     }
@@ -4472,23 +4485,23 @@ export default function ProducerMediaPanel({
 
   const workflowOpenLabels = isClientReviewerMode
     ? {
-      storyboard: 'Se storyboard',
-      manuscript: 'Se manus',
-      shotList: 'Se shotlist',
-      sceneNotes: 'Se scene-notater',
+      storyboard: t('prodMedia.s591'),
+      manuscript: t('prodMedia.s586'),
+      shotList: t('prodMedia.s590'),
+      sceneNotes: t('prodMedia.s588'),
     }
     : {
-      storyboard: 'Åpne storyboard',
-      manuscript: 'Åpne manus',
-      shotList: 'Åpne shotlist',
-      sceneNotes: 'Åpne scene-notater',
+      storyboard: t('prodMedia.s758'),
+      manuscript: t('prodMedia.s748'),
+      shotList: t('prodMedia.s755'),
+      sceneNotes: t('prodMedia.s753'),
     };
 
   const intakeUpdatedLabel = useMemo(() => {
     if (!intakeDraft.updatedAt) {
-      return 'Klientbrief er ikke lagret ennå.';
+      return t('prodMedia.s286');
     }
-    const roleLabel = intakeDraft.updatedByRole ? ` · sist oppdatert av ${intakeDraft.updatedByRole}` : '';
+    const roleLabel = intakeDraft.updatedByRole ? t('prodMedia.u00', { v0: intakeDraft.updatedByRole }) : '';
     return `${formatTimestamp(intakeDraft.updatedAt)}${roleLabel}`;
   }, [intakeDraft.updatedAt, intakeDraft.updatedByRole]);
 
@@ -4517,22 +4530,22 @@ export default function ProducerMediaPanel({
   const deliveryWorkflowMissingItems = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(planningDraft.deliveryWorkflow.fileNamingConvention)) {
-      items.push({ id: 'delivery-file-naming', label: 'Filnavnregel mangler' });
+      items.push({ id: 'delivery-file-naming', label: t('prodMedia.s121') });
     }
     if (!hasText(planningDraft.deliveryWorkflow.versioningRule)) {
-      items.push({ id: 'delivery-versioning', label: 'Versjoneringsregel mangler' });
+      items.push({ id: 'delivery-versioning', label: t('prodMedia.s701') });
     }
     if (!hasText(planningDraft.deliveryWorkflow.folderStructure)) {
-      items.push({ id: 'delivery-folders', label: 'Mappestruktur mangler' });
+      items.push({ id: 'delivery-folders', label: t('prodMedia.s470') });
     }
     if (!hasText(planningDraft.deliveryWorkflow.draftVsFinalRule)) {
-      items.push({ id: 'delivery-draft-final', label: 'Draft vs final mangler' });
+      items.push({ id: 'delivery-draft-final', label: t('prodMedia.s099') });
     }
     if (!hasText(planningDraft.deliveryWorkflow.backupRoutine)) {
-      items.push({ id: 'delivery-backup', label: 'Backuprutine mangler' });
+      items.push({ id: 'delivery-backup', label: t('prodMedia.s014') });
     }
     if (!hasText(planningDraft.deliveryWorkflow.deliveryCadence)) {
-      items.push({ id: 'delivery-cadence', label: 'Leveringsrytme mangler' });
+      items.push({ id: 'delivery-cadence', label: t('prodMedia.s432') });
     }
     return items;
   }, [planningDraft.deliveryWorkflow]);
@@ -4546,7 +4559,7 @@ export default function ProducerMediaPanel({
         planningDraft.deliveryWorkflow.versioningRule,
         planningDraft.deliveryWorkflow.folderStructure,
       ].filter((value) => hasText(value ?? '')).join(' · '),
-      'Leveringsrutinen er klar for team og overlevering.',
+      t('prodMedia.s431'),
     );
   }, [
     deliveryWorkflowMissingItems.length,
@@ -4667,14 +4680,14 @@ export default function ProducerMediaPanel({
   );
   const accountAccessSummary = useMemo(() => {
     if (requiredAccountEntries.length === 0) {
-      return 'Ingen kontoer er markert som nødvendige ennå.';
+      return t('prodMedia.s224');
     }
     return readFirstNonEmptyString(
       requiredAccountEntries
         .map((entry) => `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}: ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`)
         .slice(0, 3)
         .join(' · '),
-      'Konto- og publiseringstilgang er ikke avklart ennå.',
+      t('prodMedia.s331'),
     );
   }, [requiredAccountEntries]);
   const accountAccessMissingItems = useMemo(
@@ -4682,7 +4695,7 @@ export default function ProducerMediaPanel({
       .filter((entry) => entry.status !== 'connected')
       .map((entry) => ({
         id: `account-${entry.platform}`,
-        label: `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} venter på sikker tilgang`,
+        label: t('prodMedia.p51', { v0: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform] }),
       })),
     [requiredAccountEntries],
   );
@@ -4760,31 +4773,31 @@ export default function ProducerMediaPanel({
     const requests: string[] = [];
 
     if (!hasText(intakeDraft.projectGoal)) {
-      requests.push('Beskriv tydelig hva prosjektet skal oppnå.');
+      requests.push(t('prodMedia.s030'));
     }
     if (!hasText(intakeDraft.deliverables)) {
-      requests.push('List opp hvilke leveranser, formater og kanaler som faktisk er ønsket.');
+      requests.push(t('prodMedia.s436'));
     }
     if (!hasText(intakeDraft.targetAudience)) {
-      requests.push('Presiser hvem innholdet skal treffe.');
+      requests.push(t('prodMedia.s540'));
     }
     if (!hasText(intakeDraft.keyMessage)) {
-      requests.push('Formuler hovedbudskapet som må sitte igjen etter leveransen.');
+      requests.push(t('prodMedia.s134'));
     }
     if (!materials.some((item) => item.entry_type === 'brand_asset')) {
-      requests.push('Legg inn logo, profilmanual, fonter og andre merkevarefiler.');
+      requests.push(t('prodMedia.s405'));
     }
     if (!materials.some((item) => item.entry_type === 'reference')) {
-      requests.push('Legg inn visuelle referanser eller tidligere filmer som peker retning.');
+      requests.push(t('prodMedia.s415'));
     }
     if (!materials.some((item) => item.entry_type === 'document')) {
-      requests.push('Legg inn dokumentasjon, faktaark, sikkerhetskrav eller annen faginfo.');
+      requests.push(t('prodMedia.s395'));
     }
     if (planningDraft.contentCalendar.length > 0 && !hasText(intakeDraft.materialOverview)) {
-      requests.push('Beskriv hvilket eksisterende materiale som kan gjenbrukes i content-kalenderen.');
+      requests.push(t('prodMedia.s026'));
     }
     if (shotLists.length > 0 && !materials.some((item) => hasText(item.linked_shot_list_id))) {
-      requests.push('Knytt minst ett relevant materiale til shotlist der det finnes scene- eller leveransespesifikke avhengigheter.');
+      requests.push(t('prodMedia.s301'));
     }
 
     return requests.slice(0, 6);
@@ -4808,10 +4821,10 @@ export default function ProducerMediaPanel({
   const missingGoalFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(intakeDraft.projectGoal)) {
-      items.push({ id: 'project-goal', label: 'Prosjektmål mangler' });
+      items.push({ id: 'project-goal', label: t('prodMedia.s552') });
     }
     if (!hasText(intakeDraft.deliverables)) {
-      items.push({ id: 'deliverables', label: 'Leveranser mangler' });
+      items.push({ id: 'deliverables', label: t('prodMedia.s427') });
     }
     return items;
   }, [
@@ -4821,10 +4834,10 @@ export default function ProducerMediaPanel({
   const missingAudienceFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(intakeDraft.targetAudience)) {
-      items.push({ id: 'target-audience', label: 'Målgruppe mangler' });
+      items.push({ id: 'target-audience', label: t('prodMedia.s500') });
     }
     if (!hasText(intakeDraft.keyMessage)) {
-      items.push({ id: 'key-message', label: 'Kjernebudskap mangler' });
+      items.push({ id: 'key-message', label: t('prodMedia.s274') });
     }
     return items;
   }, [
@@ -4834,16 +4847,16 @@ export default function ProducerMediaPanel({
   const missingLogicFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(contentLogicDraft.objective)) {
-      items.push({ id: 'logic-objective', label: 'Innholdsplan-mål mangler' });
+      items.push({ id: 'logic-objective', label: t('prodMedia.s255') });
     }
     if (!hasText(contentLogicDraft.audience)) {
-      items.push({ id: 'logic-audience', label: 'Innholdsplan-målgruppe mangler' });
+      items.push({ id: 'logic-audience', label: t('prodMedia.s256') });
     }
     if (!hasText(contentLogicDraft.hook)) {
-      items.push({ id: 'logic-hook', label: 'Hook mangler' });
+      items.push({ id: 'logic-hook', label: t('prodMedia.s175') });
     }
     if (!hasText(contentLogicDraft.callToAction)) {
-      items.push({ id: 'logic-cta', label: 'CTA mangler' });
+      items.push({ id: 'logic-cta', label: t('prodMedia.s071') });
     }
     return items;
   }, [
@@ -4855,13 +4868,13 @@ export default function ProducerMediaPanel({
   const missingFoundationFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(intakeDraft.timingConstraints)) {
-      items.push({ id: 'timing-constraints', label: 'Tidsrammer og avhengigheter mangler' });
+      items.push({ id: 'timing-constraints', label: t('prodMedia.s648') });
     }
     if (!hasText(intakeDraft.brandNotes)) {
-      items.push({ id: 'brand-notes', label: 'Merkevarenotater mangler' });
+      items.push({ id: 'brand-notes', label: t('prodMedia.s489') });
     }
     if (!hasText(intakeDraft.materialOverview)) {
-      items.push({ id: 'material-overview', label: 'Eksisterende materiale er ikke beskrevet' });
+      items.push({ id: 'material-overview', label: t('prodMedia.s102') });
     }
     return items;
   }, [
@@ -4872,13 +4885,13 @@ export default function ProducerMediaPanel({
   const missingReferenceFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(intakeDraft.referenceLinks) && !materials.some((item) => item.entry_type === 'reference')) {
-      items.push({ id: 'reference-links', label: 'Referanser mangler' });
+      items.push({ id: 'reference-links', label: t('prodMedia.s566') });
     }
     if (contentLogicDraft.proofPoints.length === 0) {
-      items.push({ id: 'proof-points', label: 'Proof points mangler' });
+      items.push({ id: 'proof-points', label: t('prodMedia.s548') });
     }
     if (!hasText(contentLogicDraft.distributionPlan)) {
-      items.push({ id: 'distribution-plan', label: 'Distribusjonsplan mangler' });
+      items.push({ id: 'distribution-plan', label: t('prodMedia.s094') });
     }
     return items;
   }, [
@@ -4890,10 +4903,10 @@ export default function ProducerMediaPanel({
   const missingContactFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(intakeDraft.contactName)) {
-      items.push({ id: 'contact-name', label: 'Kontaktperson mangler' });
+      items.push({ id: 'contact-name', label: t('prodMedia.s326') });
     }
     if (!hasText(intakeDraft.contactEmail)) {
-      items.push({ id: 'contact-email', label: 'Kontakt-e-post mangler' });
+      items.push({ id: 'contact-email', label: t('prodMedia.s325') });
     }
     return items;
   }, [
@@ -4976,56 +4989,56 @@ export default function ProducerMediaPanel({
   const briefStepDescriptors = useMemo(() => ([
     {
       key: 'goal' as const,
-      label: 'Mål og leveranse',
-      description: 'Hva prosjektet skal oppnå og hva som faktisk skal leveres.',
+      label: t('prodMedia.s494'),
+      description: t('prodMedia.s179'),
       status: briefStepProgress.goal.ready === briefStepProgress.goal.total
-        ? 'Klar'
-        : `${briefStepProgress.goal.ready}/${briefStepProgress.goal.total} fylt`,
+        ? t('prodMedia.s276')
+        : t('prodMedia.u37', { v0: briefStepProgress.goal.ready, v1: briefStepProgress.goal.total }),
       missing: missingGoalFields,
     },
     {
       key: 'audience' as const,
-      label: 'Målgruppe og budskap',
-      description: 'Hvem innholdet er for og hva de skal sitte igjen med.',
+      label: t('prodMedia.s501'),
+      description: t('prodMedia.s186'),
       status: briefStepProgress.audience.ready === briefStepProgress.audience.total
-        ? 'Klar'
-        : `${briefStepProgress.audience.ready}/${briefStepProgress.audience.total} fylt`,
+        ? t('prodMedia.s276')
+        : t('prodMedia.u37', { v0: briefStepProgress.audience.ready, v1: briefStepProgress.audience.total }),
       missing: missingAudienceFields,
     },
     {
       key: 'logic' as const,
-      label: 'Innholdsplan',
-      description: 'Mål, krok og handling slik produsenten planlegger videre.',
+      label: t('prodMedia.m38'),
+      description: t('prodMedia.s496'),
       status: briefStepProgress.logic.ready === briefStepProgress.logic.total
-        ? 'Klar'
-        : `${briefStepProgress.logic.ready}/${briefStepProgress.logic.total} fylt`,
+        ? t('prodMedia.s276')
+        : t('prodMedia.u37', { v0: briefStepProgress.logic.ready, v1: briefStepProgress.logic.total }),
       missing: missingLogicFields,
     },
     {
       key: 'foundation' as const,
-      label: 'Grunnlag',
-      description: 'Tidsrammer, avklaringer og hva som allerede finnes.',
+      label: t('prodMedia.s164'),
+      description: t('prodMedia.s649'),
       status: briefStepProgress.foundation.ready === briefStepProgress.foundation.total
-        ? 'Klar'
-        : `${briefStepProgress.foundation.ready}/${briefStepProgress.foundation.total} fylt`,
+        ? t('prodMedia.s276')
+        : t('prodMedia.u37', { v0: briefStepProgress.foundation.ready, v1: briefStepProgress.foundation.total }),
       missing: missingFoundationFields,
     },
     {
       key: 'references' as const,
-      label: 'Referanser og bevis',
-      description: 'Referanser, proof points og hvordan innholdet skal fordeles.',
+      label: t('prodMedia.s567'),
+      description: t('prodMedia.s572'),
       status: briefStepProgress.references.ready === briefStepProgress.references.total
-        ? 'Klar'
-        : `${briefStepProgress.references.ready}/${briefStepProgress.references.total} fylt`,
+        ? t('prodMedia.s276')
+        : t('prodMedia.u37', { v0: briefStepProgress.references.ready, v1: briefStepProgress.references.total }),
       missing: missingReferenceFields,
     },
     {
       key: 'contact' as const,
-      label: 'Kontakt',
-      description: 'Kontaktpunkt og siste avklaringer.',
+      label: t('prodMedia.z02'),
+      description: t('prodMedia.s328'),
       status: briefStepProgress.contact.ready === briefStepProgress.contact.total
-        ? 'Klar'
-        : `${briefStepProgress.contact.ready}/${briefStepProgress.contact.total} fylt`,
+        ? t('prodMedia.s276')
+        : t('prodMedia.u37', { v0: briefStepProgress.contact.ready, v1: briefStepProgress.contact.total }),
       missing: missingContactFields,
     },
   ]), [
@@ -5073,14 +5086,14 @@ export default function ProducerMediaPanel({
       return readFirstNonEmptyString(
         intakeDraft.projectGoal,
         intakeDraft.deliverables,
-        'Mål og leveranse er ikke skrevet inn ennå.',
+        t('prodMedia.s495'),
       );
     }
     if (activeBriefStep === 'audience') {
       return readFirstNonEmptyString(
         intakeDraft.targetAudience,
         intakeDraft.keyMessage,
-        'Målgruppe og kjernebudskap er ikke beskrevet ennå.',
+        t('prodMedia.s502'),
       );
     }
     if (activeBriefStep === 'logic') {
@@ -5088,7 +5101,7 @@ export default function ProducerMediaPanel({
         contentLogicDraft.objective,
         contentLogicDraft.hook,
         contentLogicDraft.callToAction,
-        'Innholdsplan er ikke fylt ut ennå.',
+        t('prodMedia.s252'),
       );
     }
     if (activeBriefStep === 'foundation') {
@@ -5096,7 +5109,7 @@ export default function ProducerMediaPanel({
         intakeDraft.timingConstraints,
         intakeDraft.materialOverview,
         intakeDraft.brandNotes,
-        'Avhengigheter, materiale og avklaringer er ikke beskrevet ennå.',
+        t('prodMedia.s009'),
       );
     }
     if (activeBriefStep === 'references') {
@@ -5104,14 +5117,14 @@ export default function ProducerMediaPanel({
         intakeDraft.referenceLinks,
         stringifyLineSeparatedValues(contentLogicDraft.proofPoints),
         contentLogicDraft.distributionPlan,
-        'Referanser, proof points og distribusjon er ikke beskrevet ennå.',
+        t('prodMedia.s570'),
       );
     }
     return readFirstNonEmptyString(
       intakeDraft.contactName,
       intakeDraft.contactEmail,
       intakeDraft.contactPhone,
-      'Kontaktpunkt og siste avklaringer er ikke lagt inn ennå.',
+      t('prodMedia.s327'),
     );
   }, [
     activeBriefStep,
@@ -5135,55 +5148,55 @@ export default function ProducerMediaPanel({
   const briefSummarySections = useMemo(() => ([
     {
       key: 'goal',
-      label: 'Mål',
+      label: t('prodMedia.s493'),
       value: readFirstNonEmptyString(
         intakeDraft.projectGoal,
         contentLogicDraft.objective,
       ),
-      helper: 'Hva prosjektet skal oppnå.',
+      helper: t('prodMedia.s180'),
       status: hasText(intakeDraft.projectGoal) || hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
     },
     {
       key: 'deliverables',
-      label: 'Leveranse',
+      label: t('prodMedia.s423'),
       value: readFirstNonEmptyString(
         intakeDraft.deliverables,
         intakeDraft.materialOverview,
       ),
-      helper: 'Hva som faktisk skal leveres.',
+      helper: t('prodMedia.s185'),
       status: hasText(intakeDraft.deliverables) ? 'filled' : 'missing',
     },
     {
       key: 'audience',
-      label: 'Målgruppe',
+      label: t('prodMedia.s499'),
       value: readFirstNonEmptyString(
         intakeDraft.targetAudience,
         contentLogicDraft.audience,
       ),
-      helper: 'Hvem innholdet er for.',
+      helper: t('prodMedia.s187'),
       status: hasText(intakeDraft.targetAudience) || hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
     },
     {
       key: 'message',
-      label: 'Budskap og handling',
+      label: t('prodMedia.s070'),
       value: readFirstNonEmptyString(
         intakeDraft.keyMessage,
         contentLogicDraft.hook,
         contentLogicDraft.callToAction,
       ),
-      helper: 'Hva publikum skal sitte igjen med og gjøre.',
+      helper: t('prodMedia.s181'),
       status: hasText(intakeDraft.keyMessage) || hasText(contentLogicDraft.hook) || hasText(contentLogicDraft.callToAction) ? 'filled' : 'missing',
     },
     {
       key: 'references',
-      label: 'Referanser og bevis',
+      label: t('prodMedia.s567'),
       value: readFirstNonEmptyString(
         intakeDraft.referenceLinks,
         stringifyLineSeparatedValues(contentLogicDraft.proofPoints),
         contentLogicDraft.distributionPlan,
-        briefReferenceMaterials.length > 0 ? `${briefReferenceMaterials.length} referanse${briefReferenceMaterials.length === 1 ? '' : 'r'} lastet opp` : '',
+        briefReferenceMaterials.length > 0 ? (briefReferenceMaterials.length === 1 ? t('prodMedia.refUploadedOne', { v0: briefReferenceMaterials.length }) : t('prodMedia.refUploadedOther', { v0: briefReferenceMaterials.length })) : '',
       ),
-      helper: 'Referanser, proof points og distribusjon.',
+      helper: t('prodMedia.s571'),
       status: hasText(intakeDraft.referenceLinks)
         || contentLogicDraft.proofPoints.length > 0
         || hasText(contentLogicDraft.distributionPlan)
@@ -5193,13 +5206,13 @@ export default function ProducerMediaPanel({
     },
     {
       key: 'contact',
-      label: 'Kontakt',
+      label: t('prodMedia.z02'),
       value: readFirstNonEmptyString(
         intakeDraft.contactName,
         intakeDraft.contactEmail,
         intakeDraft.contactPhone,
       ),
-      helper: 'Hvem produsenten følger opp.',
+      helper: t('prodMedia.s188'),
       status: hasText(intakeDraft.contactName) || hasText(intakeDraft.contactEmail) ? 'filled' : 'missing',
     },
   ]), [
@@ -5227,40 +5240,40 @@ export default function ProducerMediaPanel({
   const materialSourceMissingItems = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(materialDraft.title)) {
-      items.push({ id: 'material-title', label: 'Materialet må ha en tittel før du går videre.' });
+      items.push({ id: 'material-title', label: t('prodMedia.s477') });
     }
     return items;
   }, [materialDraft.title]);
   const materialWizardDescriptors = useMemo(() => ([
     {
       key: 'source' as const,
-      label: 'Start',
-      description: 'Velg mal, fil eller lenke og gi materialet et tydelig navn.',
+      label: t('prodMedia.s635'),
+      description: t('prodMedia.s690'),
       missing: materialSourceMissingItems,
     },
     {
       key: 'details' as const,
-      label: 'Detaljer',
-      description: 'Beskriv hva materialet er, hvor viktig det er, og hvilken fase det tilhører.',
+      label: t('prodMedia.k00'),
+      description: t('prodMedia.s022'),
       missing: !hasText(materialDraft.description) && !hasText(materialDraft.usageNotes)
-        ? [{ id: 'material-description', label: 'Legg gjerne inn en kort beskrivelse eller brukskontekst.' }]
+        ? [{ id: 'material-description', label: t('prodMedia.s391') }]
         : [],
     },
     {
       key: 'linking' as const,
-      label: 'Kobling',
-      description: 'Knytt materialet til plan, shotlist eller leveringsstruktur når det er relevant.',
+      label: t('prodMedia.s319'),
+      description: t('prodMedia.s300'),
       missing: !hasText(materialDraft.linkedCalendarItemId)
         && !hasText(materialDraft.linkedShotListId)
         && !hasText(materialDraft.folderPath)
         && !hasText(materialDraft.packageName)
-        ? [{ id: 'material-linking', label: 'Vurder å koble materialet til plan eller leveranse før du lagrer.' }]
+        ? [{ id: 'material-linking', label: t('prodMedia.s709') }]
         : [],
     },
     {
       key: 'review' as const,
-      label: 'Kontroll',
-      description: 'Se over oppsettet og lagre materialet når det er klart.',
+      label: t('prodMedia.m55'),
+      description: t('prodMedia.s587'),
       missing: [],
     },
   ]), [
@@ -5294,10 +5307,10 @@ export default function ProducerMediaPanel({
     [materialWizardDescriptors],
   );
   const activeMaterialStepStatusLabel = activeMaterialWizardDescriptor.missing.length === 0
-    ? 'Fylt ut'
+    ? t('prodMedia.s154')
     : activeMaterialWizardStep === 'source'
-      ? 'Mangler'
-      : 'Anbefalt';
+      ? t('prodMedia.s460')
+      : t('prodMedia.m02');
   const canAdvanceMaterialWizard = activeMaterialWizardStep !== 'source' || materialSourceMissingItems.length === 0;
   const materialWizardReviewRows = useMemo(() => ([
     {
@@ -5305,32 +5318,32 @@ export default function ProducerMediaPanel({
       value: MATERIAL_TYPE_LABELS[materialDraft.entryType],
     },
     {
-      label: 'Tittel',
-      value: readFirstNonEmptyString(materialDraft.title, 'Ikke satt'),
+      label: t('prodMedia.s658'),
+      value: readFirstNonEmptyString(materialDraft.title, t('prodMedia.s202')),
     },
     {
-      label: 'Beskrivelse',
-      value: readFirstNonEmptyString(materialDraft.description, materialDraft.usageNotes, 'Ikke beskrevet'),
+      label: t('prodMedia.m14'),
+      value: readFirstNonEmptyString(materialDraft.description, materialDraft.usageNotes, t('prodMedia.s193')),
     },
     {
-      label: 'Fase',
-      value: materialDraft.phase ? PRODUCER_PLANNING_PHASE_LABELS[materialDraft.phase] : 'Ikke koblet til fase',
+      label: t('prodMedia.s114'),
+      value: materialDraft.phase ? PRODUCER_PLANNING_PHASE_LABELS[materialDraft.phase] : t('prodMedia.s197'),
     },
     {
-      label: 'Kobling',
+      label: t('prodMedia.s319'),
       value: readFirstNonEmptyString(
         contentCalendarOptions.find((option) => option.id === materialDraft.linkedCalendarItemId)?.label,
         shotListOptions.find((option) => option.id === materialDraft.linkedShotListId)?.label,
-        'Ingen kobling valgt',
+        t('prodMedia.s221'),
       ),
     },
     {
-      label: 'Leveranse',
+      label: t('prodMedia.s423'),
       value: readFirstNonEmptyString(
         materialDraft.folderPath,
         materialDraft.packageName,
         materialDraft.fileName,
-        'Ikke plassert i leveranseflyten',
+        t('prodMedia.s201'),
       ),
     },
   ]), [
@@ -5356,33 +5369,33 @@ export default function ProducerMediaPanel({
     if (activeMaterialWizardStep === 'source') {
       return readFirstNonEmptyString(
         hasText(materialDraft.title) ? `${MATERIAL_TYPE_LABELS[materialDraft.entryType]}: ${materialDraft.title}` : '',
-        materialDraft.projectFileId ? `Prosjektfil er koblet til materialet.` : '',
-        hasText(materialDraft.externalUrl) ? 'Ekstern lenke er lagt inn.' : '',
-        'Start er klart for neste steg.',
+        materialDraft.projectFileId ? t('prodMedia.p26') : '',
+        hasText(materialDraft.externalUrl) ? t('prodMedia.s106') : '',
+        t('prodMedia.s636'),
       );
     }
     if (activeMaterialWizardStep === 'details') {
       return readFirstNonEmptyString(
         materialDraft.description,
         materialDraft.usageNotes,
-        materialDraft.phase ? `Knyttet til ${PRODUCER_PLANNING_PHASE_LABELS[materialDraft.phase]}.` : '',
-        'Detaljene er klare for neste steg.',
+        materialDraft.phase ? t('prodMedia.p14', { v0: PRODUCER_PLANNING_PHASE_LABELS[materialDraft.phase] }) : '',
+        t('prodMedia.s078'),
       );
     }
     if (activeMaterialWizardStep === 'linking') {
       return readFirstNonEmptyString(
-        linkedCalendarLabel ? `Koblet til ${linkedCalendarLabel}.` : '',
-        linkedShotListLabel ? `Koblet til shotlist: ${linkedShotListLabel}.` : '',
+        linkedCalendarLabel ? t('prodMedia.p16', { v0: linkedCalendarLabel }) : '',
+        linkedShotListLabel ? t('prodMedia.p15', { v0: linkedShotListLabel }) : '',
         hasText(materialDraft.folderPath) || hasText(materialDraft.packageName)
           ? readFirstNonEmptyString(
             materialDraft.folderPath ? `Leveringsmappe: ${materialDraft.folderPath}.` : '',
-            materialDraft.packageName ? `Pakke: ${materialDraft.packageName}.` : '',
+            materialDraft.packageName ? t('prodMedia.u11', { v0: materialDraft.packageName }) : '',
           )
           : '',
-        'Koblingene er klare for lagring.',
+        t('prodMedia.s321'),
       );
     }
-    return 'Materialet er klart til å lagres.';
+    return t('prodMedia.s476');
   }, [
     activeMaterialWizardDescriptor.missing.length,
     activeMaterialWizardStep,
@@ -5437,20 +5450,20 @@ export default function ProducerMediaPanel({
   const workflowReadinessCards = useMemo(() => ([
     {
       key: 'foundation',
-      label: 'Produksjonsgrunnlag',
-      value: `${briefReadyCount}/6 brief · ${materials.length} materialer`,
+      label: t('prodMedia.m81'),
+      value: t('prodMedia.u36', { v0: briefReadyCount, v1: materials.length }),
       tone: briefMissingItems.length > 0 ? '#fde68a' : '#86efac',
     },
     {
       key: 'production',
-      label: 'Produksjon',
-      value: foundationBlockingItems.length > 0 ? 'Venter på produksjonsgrunnlag' : `${storyboardCount} storyboard · ${shotCount} shots`,
+      label: t('prodMedia.s544'),
+      value: foundationBlockingItems.length > 0 ? t('prodMedia.s698') : `${storyboardCount} storyboard · ${shotCount} shots`,
       tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (storyboardCount > 0 || shotCount > 0 ? '#bfdbfe' : '#cbd5e1'),
     },
     {
       key: 'decision',
-      label: 'Beslutning',
-      value: foundationBlockingItems.length > 0 ? `Låst — ${foundationBlockingItems.length} mangler i grunnlaget` : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
+      label: t('prodMedia.s031'),
+      value: foundationBlockingItems.length > 0 ? t('prodMedia.p19', { v0: foundationBlockingItems.length }) : t('prodMedia.p56', { v0: pendingReviewCount, v1: openMeetingFollowUpCount }),
       tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (pendingReviewCount > 0 || openMeetingFollowUpCount > 0 ? '#fcd34d' : '#86efac'),
     },
   ]), [
@@ -5514,8 +5527,8 @@ export default function ProducerMediaPanel({
       entryType: 'reference',
       phase: 'preproduction',
       status: 'provided',
-      sourceLabel: isClientReviewerMode ? 'Klient' : (referenceTemplate?.draft.sourceLabel ?? 'Produsent'),
-      usageNotes: referenceTemplate?.draft.usageNotes ?? 'Brukes til tone, tempo og forventninger i briefen.',
+      sourceLabel: isClientReviewerMode ? t('prodMedia.s282') : (referenceTemplate?.draft.sourceLabel ?? t('prodMedia.s547')),
+      usageNotes: referenceTemplate?.draft.usageNotes ?? t('prodMedia.s069'),
     };
   }, [isClientReviewerMode]);
 
@@ -5557,7 +5570,7 @@ export default function ProducerMediaPanel({
       folderPath,
       packageName,
       versionLabel: draft.versionLabel.trim() || 'v1',
-      sourceLabel: draft.sourceLabel.trim() || (isClientReviewerMode ? 'Klient' : 'Produsent'),
+      sourceLabel: draft.sourceLabel.trim() || (isClientReviewerMode ? t('prodMedia.s282') : t('prodMedia.s547')),
       usageNotes: draft.usageNotes.trim() || undefined,
       priority: draft.priority,
     });
@@ -5576,11 +5589,11 @@ export default function ProducerMediaPanel({
       externalUrl: downloadUrl || draft.externalUrl,
       fileName: draft.fileName.trim().length > 0 ? draft.fileName : file.name,
       versionLabel: draft.versionLabel.trim().length > 0 ? draft.versionLabel : 'v1',
-      sourceLabel: draft.sourceLabel.trim().length > 0 ? draft.sourceLabel : (isClientReviewerMode ? 'Klient' : 'Produsent'),
+      sourceLabel: draft.sourceLabel.trim().length > 0 ? draft.sourceLabel : (isClientReviewerMode ? t('prodMedia.s282') : t('prodMedia.s547')),
       description: draft.description.trim().length > 0
         ? draft.description
-        : `Prosjektfil lastet opp: ${file.name}`,
-      usageNotes: draft.usageNotes.trim().length > 0 ? draft.usageNotes : 'Brukes som prosjektfil i klientgrunnlaget.',
+        : t('prodMedia.p27', { v0: file.name }),
+      usageNotes: draft.usageNotes.trim().length > 0 ? draft.usageNotes : t('prodMedia.s063'),
       status: draft.status.trim().length > 0 ? draft.status : 'provided',
       folderPath,
       packageName,
@@ -5591,7 +5604,7 @@ export default function ProducerMediaPanel({
 
   const handleOpenBriefReferenceFilePicker = useCallback(() => {
     if (isBriefLockedByApproval) {
-      setError('Briefen er låst fordi prosjektet er godkjent.');
+      setError(t('prodMedia.s039'));
       return;
     }
 
@@ -5608,7 +5621,7 @@ export default function ProducerMediaPanel({
 
   const handleOpenBriefReferenceCameraPicker = useCallback(() => {
     if (isBriefLockedByApproval) {
-      setError('Briefen er låst fordi prosjektet er godkjent.');
+      setError(t('prodMedia.s039'));
       return;
     }
 
@@ -5625,7 +5638,7 @@ export default function ProducerMediaPanel({
 
   const handleSubmitMaterial = useCallback(async () => {
     if (!materialDraft.title.trim()) {
-      setError('Materialet må ha en tittel.');
+      setError(t('prodMedia.s478'));
       return;
     }
 
@@ -5648,7 +5661,7 @@ export default function ProducerMediaPanel({
       resetMaterialFileInput();
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save client material', saveError);
-      setError('Kunne ikke lagre klientmateriale.');
+      setError(t('prodMedia.s354'));
     } finally {
       setSavingMaterial(false);
     }
@@ -5656,13 +5669,13 @@ export default function ProducerMediaPanel({
 
   const handleSubmitBriefReference = useCallback(async () => {
     if (isBriefLockedByApproval) {
-      setError('Briefen er låst fordi prosjektet er godkjent.');
+      setError(t('prodMedia.s039'));
       return;
     }
 
     const hasExistingProjectFile = hasText(materialDraft.projectFileId);
     if (!selectedMaterialFile && !hasExistingProjectFile) {
-      setError('Velg en referansefil før du legger den til i briefen.');
+      setError(t('prodMedia.s686'));
       return;
     }
 
@@ -5675,10 +5688,10 @@ export default function ProducerMediaPanel({
         entryType: 'reference',
         phase: materialDraft.phase || 'preproduction',
         status: materialDraft.status.trim() || 'provided',
-        sourceLabel: materialDraft.sourceLabel.trim() || (isClientReviewerMode ? 'Klient' : 'Produsent'),
-        title: materialDraft.title.trim() || selectedMaterialFile?.name.replace(/\.[^.]+$/u, '').trim() || 'Referanse',
-        description: materialDraft.description.trim() || 'Referanse lastet opp direkte i briefen.',
-        usageNotes: materialDraft.usageNotes.trim() || 'Brukes til retning, tone og forventninger i briefen.',
+        sourceLabel: materialDraft.sourceLabel.trim() || (isClientReviewerMode ? t('prodMedia.s282') : t('prodMedia.s547')),
+        title: materialDraft.title.trim() || selectedMaterialFile?.name.replace(/\.[^.]+$/u, '').trim() || t('prodMedia.s559'),
+        description: materialDraft.description.trim() || t('prodMedia.s562'),
+        usageNotes: materialDraft.usageNotes.trim() || t('prodMedia.s067'),
         priority: materialDraft.priority || 'important',
       };
 
@@ -5697,7 +5710,7 @@ export default function ProducerMediaPanel({
       void loadDeliveryWorkspaceAssets();
     } catch (saveError) {
       console.error('[ProducerMediaPanel] Failed to save brief reference', saveError);
-      setError('Kunne ikke legge til referansen i briefen.');
+      setError(t('prodMedia.s359'));
     } finally {
       setSavingMaterial(false);
     }
@@ -5732,7 +5745,7 @@ export default function ProducerMediaPanel({
 
   const handleUploadMaterialFile = useCallback(async () => {
     if (!selectedMaterialFile) {
-      setError('Velg en fil før du laster opp til prosjektet.');
+      setError(t('prodMedia.s683'));
       return;
     }
 
@@ -5748,7 +5761,7 @@ export default function ProducerMediaPanel({
       setError(null);
     } catch (uploadError) {
       console.error('[ProducerMediaPanel] Failed to upload client material file', uploadError);
-      setError(describeProducerError(uploadError, 'laste opp filen til prosjektet'));
+      setError(describeProducerError(uploadError, t('prodMedia.s717')));
     } finally {
       setUploadingMaterialFile(false);
     }
@@ -5775,8 +5788,8 @@ export default function ProducerMediaPanel({
         folderPath,
         packageName,
         versionLabel: 'v1',
-        sourceLabel: isClientReviewerMode ? 'Klient' : 'Produsent',
-        usageNotes: 'Brukes som prosjektlogo i merkevareguide, preview og overlay-spec.',
+        sourceLabel: isClientReviewerMode ? t('prodMedia.s282') : t('prodMedia.s547'),
+        usageNotes: t('prodMedia.s064'),
       });
       const projectFileId = readFirstNonEmptyString((uploadedFile as Record<string, unknown>).id);
       const downloadUrl = readFirstNonEmptyString((uploadedFile as Record<string, unknown>).downloadUrl);
@@ -5820,7 +5833,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (brandLogoError) {
       console.error('[ProducerMediaPanel] Failed to upload or analyze brand logo', brandLogoError);
-      setError(describeProducerError(brandLogoError, 'laste opp og analysere logoen'));
+      setError(describeProducerError(brandLogoError, t('prodMedia.s718')));
     } finally {
       setUploadingBrandLogo(false);
       if (brandLogoFileInputRef.current) {
@@ -5864,7 +5877,7 @@ export default function ProducerMediaPanel({
       linkedCalendarItemId: task.linkedCalendarItemId ?? '',
       status: 'provided',
       usageNotes: task.suggestedUsageNotes,
-      sourceLabel: 'Klient',
+      sourceLabel: t('prodMedia.s282'),
       priority: task.status === 'missing' ? 'critical' : 'important',
     });
   }, [openSurfaceWorkspace, recommendedBriefStep]);
@@ -5896,95 +5909,95 @@ export default function ProducerMediaPanel({
       key: 'brief' as const,
       title: 'Brief',
       subtitle: isClientReviewerMode
-        ? 'Beskriv mål, leveranser, målgruppe og timing for produsenten.'
-        : 'Mål, målgruppe, budskap og timing.',
-      progressLabel: `${briefReadyCount}/6 klare`,
-      detail: hasText(intakeDraft.projectGoal) ? intakeDraft.projectGoal : 'Prosjektmålet er ikke formulert ennå.',
+        ? t('prodMedia.s028')
+        : t('prodMedia.s498'),
+      progressLabel: t('prodMedia.r21', { v0: briefReadyCount }),
+      detail: hasText(intakeDraft.projectGoal) ? intakeDraft.projectGoal : t('prodMedia.s553'),
       accent: 'rgba(56,189,248,0.18)',
       textColor: '#bfdbfe',
       icon: <ArticleOutlinedIcon sx={{ color: '#7dd3fc' }} />,
     },
     {
       key: 'materials' as const,
-      title: 'Materiale',
+      title: t('prodMedia.s473'),
       subtitle: isClientReviewerMode
-        ? 'Legg inn referanser, dokumenter, eksisterende filer og tilbakemeldinger.'
-        : 'Referanser, dokumenter, brand assets og tilbakemeldinger.',
-      progressLabel: `${materials.length} registrert`,
+        ? t('prodMedia.s413')
+        : t('prodMedia.s568'),
+      progressLabel: t('prodMedia.u32', { v0: materials.length }),
       detail: linkedCalendarMaterialCount > 0
-        ? `${linkedCalendarMaterialCount} materialer er koblet til content-kalenderen.`
-        : 'Ingen materialer er koblet til content-kalenderen ennå.',
+        ? t('prodMedia.p43', { v0: linkedCalendarMaterialCount })
+        : t('prodMedia.s232'),
       accent: 'rgba(251,191,36,0.16)',
       textColor: '#fde68a',
       icon: <PermMediaIcon sx={{ color: '#fcd34d' }} />,
     },
     {
       key: 'storyboard' as const,
-      title: 'Storyboard',
+      title: t('prodMedia.s639'),
       subtitle: isClientReviewerMode
-        ? 'Se scener og legg inn visuelle inspirasjoner uten å rote til produksjonsflaten.'
-        : 'Storyboard med sceneoversikt, frames og klientinspirasjoner.',
-      progressLabel: storyboardFrameCount > 0 ? `${storyboardFrameCount} frames` : 'Ingen frames ennå',
+        ? t('prodMedia.s589')
+        : t('prodMedia.s640'),
+      progressLabel: storyboardFrameCount > 0 ? `${storyboardFrameCount} frames` : t('prodMedia.s215'),
       detail: storyboardInspirations.length > 0
-        ? `${storyboardInspirations.length} inspirasjoner er lagt inn på storyboardet.`
-        : 'Ingen inspirasjoner er koblet til storyboardet ennå.',
+        ? t('prodMedia.p37', { v0: storyboardInspirations.length })
+        : t('prodMedia.s217'),
       accent: 'rgba(251,113,133,0.16)',
       textColor: '#fecdd3',
       icon: <SpaceDashboardOutlinedIcon sx={{ color: '#fda4af' }} />,
     },
     {
       key: 'manuscript' as const,
-      title: 'Manus',
+      title: t('prodMedia.s462'),
       subtitle: isClientReviewerMode
-        ? 'Les manus og skriv foreslåtte endringer uten å overskrive originalen.'
-        : 'Samle manuslesning og klientforslag i én arbeidsflate.',
-      progressLabel: primaryManuscript ? `${manuscriptSuggestions.length} forslag` : 'Manus mangler',
+        ? t('prodMedia.s421')
+        : t('prodMedia.s576'),
+      progressLabel: primaryManuscript ? t('prodMedia.r12', { v0: manuscriptSuggestions.length }) : t('prodMedia.s464'),
       detail: primaryManuscript?.title
         ? `${primaryManuscript.title}${primaryManuscript.version ? ` · ${primaryManuscript.version}` : ''}`
-        : 'Ingen manus er koblet til prosjektet ennå.',
+        : t('prodMedia.s230'),
       accent: 'rgba(129,140,248,0.16)',
       textColor: '#c7d2fe',
       icon: <ArticleOutlinedIcon sx={{ color: '#a5b4fc' }} />,
     },
     {
       key: 'shotlist' as const,
-      title: 'Shotlist',
+      title: t('prodMedia.s599'),
       subtitle: isClientReviewerMode
-        ? 'En ren oversikt over scene, sted, cast og beskrivelser for planlagte shots.'
-        : 'Klientvennlig shotlist-tabell med dekning og sceneoversikt.',
-      progressLabel: `${shotLists.length} lister · ${totalShotCount} shots`,
+        ? t('prodMedia.s107')
+        : t('prodMedia.s297'),
+      progressLabel: t('prodMedia.u28', { v0: shotLists.length, v1: totalShotCount }),
       detail: shotListRows.length > 0
         ? uncoveredStoryboardSceneCount > 0
-          ? `${shotListRows.length} oversiktsrader klare · ${uncoveredStoryboardSceneCount} storyboardscener mangler shotlist.`
-          : `${shotListRows.length} oversiktsrader klare for klientvisning.`
-        : 'Ingen shotlist-rader er klare for klientoversikt ennå.',
+          ? t('prodMedia.p46', { v0: shotListRows.length, v1: uncoveredStoryboardSceneCount })
+          : t('prodMedia.p45', { v0: shotListRows.length })
+        : t('prodMedia.s240'),
       accent: 'rgba(34,211,238,0.16)',
       textColor: '#bae6fd',
       icon: <GridViewOutlinedIcon sx={{ color: '#67e8f9' }} />,
     },
     {
       key: 'brand' as const,
-      title: 'Merkevareguide',
+      title: t('prodMedia.s486'),
       subtitle: isClientReviewerMode
-        ? 'Logo, farger, fonter og uttrykk som skal styre leveransene.'
-        : 'Logo, farger, fonter og visuell retning.',
-      progressLabel: `${brandGuideReadyCount}/5 klare`,
+        ? t('prodMedia.s441')
+        : t('prodMedia.s442'),
+      progressLabel: t('prodMedia.r20', { v0: brandGuideReadyCount }),
       detail: hasText(planningDraft.brandGuide.visualStyle)
         ? planningDraft.brandGuide.visualStyle ?? ''
-        : 'Visuell stil og tone of voice bør defineres tydelig.',
+        : t('prodMedia.s708'),
       accent: 'rgba(168,85,247,0.16)',
       textColor: '#e9d5ff',
       icon: <PaletteOutlinedIcon sx={{ color: '#c4b5fd' }} />,
     },
     {
       key: 'accounts' as const,
-      title: 'Kontotilgang',
+      title: t('prodMedia.s334'),
       subtitle: isClientReviewerMode
-        ? 'Trygg tilgang med invite, OAuth og klientstyrt 2-faktor.'
-        : 'Vedvarende konto- og publiseringstilgang uten delte passord.',
+        ? t('prodMedia.s664')
+        : t('prodMedia.s681'),
       progressLabel: requiredAccountEntries.length > 0
-        ? `${connectedRequiredAccountCount}/${requiredAccountEntries.length} koblet`
-        : 'Ingen krav ennå',
+        ? t('prodMedia.p57', { v0: connectedRequiredAccountCount, v1: requiredAccountEntries.length })
+        : t('prodMedia.s225'),
       detail: accountAccessSummary,
       accent: 'rgba(20,184,166,0.16)',
       textColor: '#99f6e4',
@@ -5992,28 +6005,28 @@ export default function ProducerMediaPanel({
     },
     {
       key: 'delivery' as const,
-      title: 'Leveringsrutine',
+      title: t('prodMedia.m61'),
       subtitle: isClientReviewerMode
-        ? 'Hvordan dere vil motta filer, mapper, versjoner og finaler.'
-        : 'Filnavn, versjoner, mapper, final/draft og backup.',
-      progressLabel: `${deliveryWorkflowReadyCount}/6 klare`,
+        ? t('prodMedia.s189')
+        : t('prodMedia.s120'),
+      progressLabel: t('prodMedia.r21', { v0: deliveryWorkflowReadyCount }),
       detail: hasText(planningDraft.deliveryWorkflow.fileNamingConvention)
         ? planningDraft.deliveryWorkflow.fileNamingConvention ?? ''
-        : 'Filnavnregel og leveringsstruktur mangler fortsatt.',
+        : t('prodMedia.s122'),
       accent: 'rgba(34,197,94,0.16)',
       textColor: '#bbf7d0',
       icon: <FactCheckOutlinedIcon sx={{ color: '#86efac' }} />,
     },
     {
       key: 'meetings' as const,
-      title: 'Møte',
+      title: t('prodMedia.s504'),
       subtitle: isClientReviewerMode
-        ? 'Hold agenda, klientsync og oppfølging samlet rundt møtene.'
-        : 'Koble Meet, agenda, beslutninger og oppfølging til samme prosjektflate.',
-      progressLabel: `${meetingAgendaCoverageCount} agenda · ${openMeetingFollowUpCount} åpne`,
+        ? t('prodMedia.s172')
+        : t('prodMedia.s305'),
+      progressLabel: t('prodMedia.p33', { v0: meetingAgendaCoverageCount, v1: openMeetingFollowUpCount }),
       detail: hasText(planningDraft.meetingWorkspace.liveNotes)
         ? planningDraft.meetingWorkspace.liveNotes ?? ''
-        : 'Bruk møteflaten til agenda, live-notater, beslutninger og oppfølging.',
+        : t('prodMedia.s047'),
       accent: 'rgba(249,115,22,0.16)',
       textColor: '#fdba74',
       icon: <VideoCallOutlinedIcon sx={{ color: '#fdba74' }} />,
@@ -6047,11 +6060,11 @@ export default function ProducerMediaPanel({
   const activeWorkspaceCard = workspaceCards.find((card) => card.key === activeWorkspace) ?? workspaceCards[0];
   const mediaHeaderDescription = useMemo(() => {
     if (briefBlocksForwardFlow) {
-      return 'Fullfør produksjonsgrunnlaget først. Brief og materiale skal være tydelige før storyboard, levering og beslutning får ta plass.';
+      return t('prodMedia.s149');
     }
     return isClientReviewerMode
-      ? 'Del mål, materiale, merkevaregrunnlag, leveringspreferanser og møtepunkter i én samlet workspace-shell.'
-      : `${activeWorkspaceCard.title} er nå hovedflaten. Hold retning, materiale og neste handling koblet til samme produksjonsgrunnlag.`;
+      ? t('prodMedia.s074')
+      : t('prodMedia.p36', { v0: activeWorkspaceCard.title });
   }, [activeWorkspaceCard.title, briefBlocksForwardFlow, isClientReviewerMode]);
   const displayWorkspaceNavigation = useMemo(
     () => (showWorkspaceOperations ? effectiveWorkspaceNavigation : {
@@ -6071,17 +6084,17 @@ export default function ProducerMediaPanel({
     intakeDraft.contactName,
     project.clientName,
     project.clientCompanyName,
-    'Klient',
+    t('prodMedia.s282'),
   );
   const clientMetaLabel = readFirstNonEmptyString(
     project.clientCompanyName,
     intakeDraft.contactEmail,
     intakeDraft.contactPhone,
-    'Deler brief, materiale og godkjenninger',
+    t('prodMedia.s075'),
   );
-  const producerDisplayName = isClientReviewerMode ? 'Produsent' : 'Innholdsprodusent';
+  const producerDisplayName = isClientReviewerMode ? t('prodMedia.s547') : t('prodMedia.m39');
   const workspaceFocusLabel = showClientWorkspaceEmptyState
-    ? 'Ingen rom åpnet'
+    ? t('prodMedia.s237')
     : activeSection
     ? `${activeSection.title} · ${activePage?.title ?? PRODUCER_WORKSPACE_SURFACE_LABELS[activeWorkspace]}`
     : PRODUCER_WORKSPACE_SURFACE_LABELS[activeWorkspace];
@@ -6093,7 +6106,7 @@ export default function ProducerMediaPanel({
     planningDraft.activationPlan.direction,
     planningDraft.activationPlan.idea,
     intakeDraft.projectGoal,
-    'Kreativ retning er ikke tydelig formulert ennå.',
+    t('prodMedia.s340'),
   );
   const creativeDirectionTags = useMemo(
     () => extractWorkspacePhrases(
@@ -6119,7 +6132,7 @@ export default function ProducerMediaPanel({
     if (storyboardScenes.length > 0) {
       return storyboardScenes.slice(0, 3).map((scene, index) => ({
         id: scene.id,
-        eyebrow: index === 0 ? 'Storyboard' : 'Scene',
+        eyebrow: index === 0 ? t('prodMedia.s639') : t('prodMedia.s579'),
         title: getSceneDisplayLabel(scene),
         meta: `${scene.storyboardFrames?.length ?? 0} frames`,
         storyArcFocus: { sceneId: scene.id },
@@ -6128,7 +6141,7 @@ export default function ProducerMediaPanel({
     if (shotLists.length > 0) {
       return shotLists.slice(0, 3).map((shotList, index) => ({
         id: shotList.id,
-        eyebrow: index === 0 ? 'Shot list' : 'Sceneplan',
+        eyebrow: index === 0 ? 'Shot list' : t('prodMedia.m90'),
         title: getShotListLabel(shotList),
         meta: `${shotList.shots.length} shots`,
         storyArcFocus: shotList.sceneId ? { sceneId: shotList.sceneId } : undefined,
@@ -6137,7 +6150,7 @@ export default function ProducerMediaPanel({
     if (planningDraft.contentCalendar.length > 0) {
       return planningDraft.contentCalendar.slice(0, 3).map((item) => ({
         id: item.id,
-        eyebrow: 'Publiseringspunkt',
+        eyebrow: t('prodMedia.m82'),
         title: item.title,
         meta: readFirstNonEmptyString(item.channel, item.format, PRODUCER_PLANNING_PHASE_LABELS[item.phase]),
       }));
@@ -6145,15 +6158,15 @@ export default function ProducerMediaPanel({
     return [
       {
         id: 'storyboard-placeholder-1',
-        eyebrow: 'Storyboard',
-        title: 'Første scene er ikke planlagt ennå',
-        meta: 'Koble brief, retning og shotlist for å fylle denne raden.',
+        eyebrow: t('prodMedia.s639'),
+        title: t('prodMedia.s155'),
+        meta: t('prodMedia.s306'),
       },
       {
         id: 'storyboard-placeholder-2',
-        eyebrow: 'Opptaksplan',
-        title: 'Neste opptaksøyeblikk kommer fra shotlist og kalender',
-        meta: 'Åpne storyboard eller shotlist for å fylle planverket.',
+        eyebrow: t('prodMedia.m77'),
+        title: t('prodMedia.s512'),
+        meta: t('prodMedia.s759'),
       },
     ];
   }, [planningDraft.contentCalendar, shotLists, storyboardScenes]);
@@ -6164,57 +6177,57 @@ export default function ProducerMediaPanel({
   const workspaceSummaryRows = useMemo(() => {
     if (activeWorkspace === 'materials') {
       return [
-        { label: 'Registrert', value: `${materials.length} materialer` },
-        { label: 'Koblet til plan', value: linkedCalendarMaterialCount > 0 ? `${linkedCalendarMaterialCount} kalenderpunkter` : 'Ingen koblinger ennå' },
-        { label: 'Shotlist', value: materials.some((item) => hasText(item.linked_shot_list_id)) ? 'Koblet til scener' : 'Ikke koblet til shotlist' },
+        { label: t('prodMedia.s574'), value: t('prodMedia.u29', { v0: materials.length }) },
+        { label: t('prodMedia.s317'), value: linkedCalendarMaterialCount > 0 ? t('prodMedia.u26', { v0: linkedCalendarMaterialCount }) : t('prodMedia.s222') },
+        { label: t('prodMedia.s599'), value: materials.some((item) => hasText(item.linked_shot_list_id)) ? t('prodMedia.s318') : t('prodMedia.s198') },
       ];
     }
     if (activeWorkspace === 'storyboard') {
       return [
-        { label: 'Scener', value: `${storyboardScenes.length} registrert` },
-        { label: 'Frames', value: storyboardFrameCount > 0 ? `${storyboardFrameCount} frames` : 'Ingen frames ennå' },
-        { label: 'Inspirasjoner', value: storyboardInspirations.length > 0 ? `${storyboardInspirations.length} lagt inn` : 'Ingen inspirasjoner ennå' },
+        { label: t('prodMedia.s581'), value: t('prodMedia.u32', { v0: storyboardScenes.length }) },
+        { label: 'Frames', value: storyboardFrameCount > 0 ? `${storyboardFrameCount} frames` : t('prodMedia.s215') },
+        { label: t('prodMedia.m40'), value: storyboardInspirations.length > 0 ? t('prodMedia.u27', { v0: storyboardInspirations.length }) : t('prodMedia.s216') },
       ];
     }
     if (activeWorkspace === 'manuscript') {
       return [
-        { label: 'Manus', value: primaryManuscript ? primaryManuscript.title : 'Ingen manus koblet ennå' },
-        { label: 'Scener', value: storyboardScenes.length > 0 ? `${storyboardScenes.length} scener` : 'Ingen scener koblet' },
-        { label: 'Forslag', value: manuscriptSuggestions.length > 0 ? `${manuscriptSuggestions.length} forslag` : 'Ingen forslag ennå' },
+        { label: t('prodMedia.s462'), value: primaryManuscript ? primaryManuscript.title : t('prodMedia.s231') },
+        { label: t('prodMedia.s581'), value: storyboardScenes.length > 0 ? t('prodMedia.r17', { v0: storyboardScenes.length }) : t('prodMedia.s238') },
+        { label: t('prodMedia.k02'), value: manuscriptSuggestions.length > 0 ? t('prodMedia.r12', { v0: manuscriptSuggestions.length }) : t('prodMedia.s214') },
       ];
     }
     if (activeWorkspace === 'shotlist') {
       return [
-        { label: 'Lister', value: `${shotLists.length} shotlists` },
-        { label: 'Shots', value: `${totalShotCount} planlagt` },
-        { label: 'Dekning', value: uncoveredStoryboardSceneCount > 0 ? `${uncoveredStoryboardSceneCount} scener mangler shotlist` : 'Alle storyboardscener er koblet' },
+        { label: t('prodMedia.m64'), value: `${shotLists.length} shotlists` },
+        { label: 'Shots', value: t('prodMedia.r15', { v0: totalShotCount }) },
+        { label: t('prodMedia.m22'), value: uncoveredStoryboardSceneCount > 0 ? t('prodMedia.p48', { v0: uncoveredStoryboardSceneCount }) : t('prodMedia.s002') },
       ];
     }
     if (activeWorkspace === 'brand') {
       return [
-        { label: 'Tone', value: readFirstNonEmptyString(planningDraft.brandGuide.toneOfVoice, 'Ikke definert') },
-        { label: 'Visuell stil', value: readFirstNonEmptyString(planningDraft.brandGuide.visualStyle, 'Ikke definert') },
-        { label: 'Farger', value: parseBrandColors(brandColorsDraft).length > 0 ? `${parseBrandColors(brandColorsDraft).length} valgt` : 'Ingen farger registrert' },
+        { label: 'Tone', value: readFirstNonEmptyString(planningDraft.brandGuide.toneOfVoice, t('prodMedia.s194')) },
+        { label: t('prodMedia.s706'), value: readFirstNonEmptyString(planningDraft.brandGuide.visualStyle, t('prodMedia.s194')) },
+        { label: t('prodMedia.m29'), value: parseBrandColors(brandColorsDraft).length > 0 ? t('prodMedia.u35', { v0: parseBrandColors(brandColorsDraft).length }) : t('prodMedia.s213') },
       ];
     }
     if (activeWorkspace === 'delivery') {
       return [
-        { label: 'Filnavn', value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.fileNamingConvention, 'Ikke satt') },
-        { label: 'Versjon', value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.versioningRule, 'Ikke satt') },
-        { label: 'Mappe', value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.folderStructure, 'Ikke satt') },
+        { label: t('prodMedia.s118'), value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.fileNamingConvention, t('prodMedia.s202')) },
+        { label: t('prodMedia.s700'), value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.versioningRule, t('prodMedia.s202')) },
+        { label: t('prodMedia.s467'), value: readFirstNonEmptyString(planningDraft.deliveryWorkflow.folderStructure, t('prodMedia.s202')) },
       ];
     }
     if (activeWorkspace === 'meetings') {
       return [
-        { label: 'Møte', value: readFirstNonEmptyString(planningDraft.meetingWorkspace.sessionLabel, 'Klientsync') },
-        { label: 'Status', value: planningDraft.meetingWorkspace.status ? PRODUCER_MEETING_WORKSPACE_STATUS_LABELS[planningDraft.meetingWorkspace.status] : 'Planlagt' },
-        { label: 'Oppfølging', value: openMeetingFollowUpCount > 0 ? `${openMeetingFollowUpCount} åpne punkter` : 'Ingen åpne punkter' },
+        { label: t('prodMedia.s504'), value: readFirstNonEmptyString(planningDraft.meetingWorkspace.sessionLabel, t('prodMedia.k04')) },
+        { label: 'Status', value: planningDraft.meetingWorkspace.status ? PRODUCER_MEETING_WORKSPACE_STATUS_LABELS[planningDraft.meetingWorkspace.status] : t('prodMedia.k06') },
+        { label: t('prodMedia.s528'), value: openMeetingFollowUpCount > 0 ? t('prodMedia.p55', { v0: openMeetingFollowUpCount }) : t('prodMedia.s248') },
       ];
     }
     return [
-      { label: 'Mål', value: readFirstNonEmptyString(intakeDraft.projectGoal, planningDraft.activationPlan.businessGoal, 'Ikke satt') },
-      { label: 'Leveranse', value: readFirstNonEmptyString(intakeDraft.deliverables, planningDraft.activationPlan.activation, 'Ikke satt') },
-      { label: 'Målgruppe', value: readFirstNonEmptyString(intakeDraft.targetAudience, planningDraft.activationPlan.targetAudience, 'Ikke satt') },
+      { label: t('prodMedia.s493'), value: readFirstNonEmptyString(intakeDraft.projectGoal, planningDraft.activationPlan.businessGoal, t('prodMedia.s202')) },
+      { label: t('prodMedia.s423'), value: readFirstNonEmptyString(intakeDraft.deliverables, planningDraft.activationPlan.activation, t('prodMedia.s202')) },
+      { label: t('prodMedia.s499'), value: readFirstNonEmptyString(intakeDraft.targetAudience, planningDraft.activationPlan.targetAudience, t('prodMedia.s202')) },
     ];
   }, [
     activeWorkspace,
@@ -6301,13 +6314,13 @@ export default function ProducerMediaPanel({
         : null;
       return {
         id: item.id,
-        title: readFirstNonEmptyString(item.title, 'Uten tittel'),
-        channel: readFirstNonEmptyString(item.channel, 'Kanal ikke satt'),
-        formatLabel: readFirstNonEmptyString(item.format, 'Format ikke satt'),
+        title: readFirstNonEmptyString(item.title, t('prodMedia.s670')),
+        channel: readFirstNonEmptyString(item.channel, t('prodMedia.s272')),
+        formatLabel: readFirstNonEmptyString(item.format, t('prodMedia.s133')),
         formatValue,
         logoVariantSelection: item.logoVariantSelection ?? 'auto',
         phaseLabel: PRODUCER_PLANNING_PHASE_LABELS[item.phase],
-        publishLabel: item.publishAt ? formatTimestamp(item.publishAt) : 'Publisering ikke satt',
+        publishLabel: item.publishAt ? formatTimestamp(item.publishAt) : t('prodMedia.s556'),
         statusLabel: PRODUCER_CONTENT_CALENDAR_STATUS_LABELS[item.status ?? 'planned'],
       };
     })
@@ -6382,12 +6395,12 @@ export default function ProducerMediaPanel({
   const brandPreviewVariantLabel = brandPreviewVariantResolution.resolvedLabel;
   const brandPreviewVariantDetail = useMemo(() => {
     if (!autoBrandPreviewVariant) {
-      return 'Ingen aktiv logovariant valgt ennå.';
+      return t('prodMedia.s208');
     }
     if (brandPreviewVariantSelection === 'auto') {
-      return `Anbefalt variant for ${activeBrandPreviewFormat}: ${brandPreviewVariantResolution.recommendedLabel}. Previewen bruker ${brandPreviewVariantResolution.resolvedLabel.toLowerCase()}.`;
+      return t('prodMedia.p01', { v0: activeBrandPreviewFormat, v1: brandPreviewVariantResolution.recommendedLabel, v2: brandPreviewVariantResolution.resolvedLabel.toLowerCase() });
     }
-    return `${brandPreviewVariantResolution.resolvedLabel} er låst manuelt for denne leveransen i ${activeBrandPreviewFormat}.`;
+    return t('prodMedia.p35', { v0: brandPreviewVariantResolution.resolvedLabel, v1: activeBrandPreviewFormat });
   }, [activeBrandPreviewFormat, autoBrandPreviewVariant, brandPreviewVariantResolution.recommendedLabel, brandPreviewVariantResolution.resolvedLabel, brandPreviewVariantSelection]);
   const brandLogoDetection = activeBrandLogoVariant?.detection ?? planningDraft.brandGuide.logoDetection;
   const brandLogoDetectionColors = brandLogoDetection?.dominantColors ?? [];
@@ -6397,16 +6410,16 @@ export default function ProducerMediaPanel({
     }
     return {
       markTypeLabel: getBrandLogoMarkTypeLabel(brandLogoDetection.markType),
-      transparencyLabel: brandLogoDetection.hasTransparency ? 'Transparent bakgrunn' : 'Bakplate trengs',
+      transparencyLabel: brandLogoDetection.hasTransparency ? t('prodMedia.s660') : t('prodMedia.s015'),
       placementLabel: brandLogoDetection.suggestedPlacement
         ? PRODUCER_BRAND_LOGO_PLACEMENT_LABELS[brandLogoDetection.suggestedPlacement]
-        : 'Ikke foreslått',
+        : t('prodMedia.s195'),
       timingLabel: brandLogoDetection.suggestedTiming
         ? PRODUCER_BRAND_LOGO_TIMING_LABELS[brandLogoDetection.suggestedTiming]
-        : 'Ikke foreslått',
+        : t('prodMedia.s195'),
       treatmentLabel: brandLogoDetection.suggestedTreatment
         ? PRODUCER_BRAND_LOGO_TREATMENT_LABELS[brandLogoDetection.suggestedTreatment]
-        : 'Ikke foreslått',
+        : t('prodMedia.s195'),
     };
   }, [brandLogoDetection]);
   const setBrandColorsFromEntries = useCallback((colors: ProducerBrandGuideColor[]) => {
@@ -6438,7 +6451,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (brandSuggestionError) {
       console.error('[ProducerMediaPanel] Failed to apply brand logo suggestions', brandSuggestionError);
-      setError('Kunne ikke bruke logoforslagene.');
+      setError(t('prodMedia.s348'));
     } finally {
       setSavingPlanning(false);
     }
@@ -6462,7 +6475,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (brandVariantError) {
       console.error('[ProducerMediaPanel] Failed to persist active brand logo variant', brandVariantError);
-      setError('Kunne ikke bytte aktiv logovariant.');
+      setError(t('prodMedia.s349'));
     } finally {
       setSavingPlanning(false);
       setBrandLogoVariantBusyKey(null);
@@ -6507,7 +6520,7 @@ export default function ProducerMediaPanel({
       void loadDeliveryWorkspaceAssets();
     } catch (deleteVariantError) {
       console.error('[ProducerMediaPanel] Failed to delete brand logo variant', deleteVariantError);
-      setError('Kunne ikke slette logovarianten.');
+      setError(t('prodMedia.s363'));
     } finally {
       setSavingPlanning(false);
       setBrandLogoVariantBusyKey(null);
@@ -6617,19 +6630,19 @@ export default function ProducerMediaPanel({
   const brandGuideMissingItems = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(planningDraft.brandGuide.logoUrl)) {
-      items.push({ id: 'brand-logo', label: 'Logo mangler' });
+      items.push({ id: 'brand-logo', label: t('prodMedia.s438') });
     }
     if (parsedBrandColors.length === 0) {
-      items.push({ id: 'brand-colors', label: 'Merkevarefarger mangler' });
+      items.push({ id: 'brand-colors', label: t('prodMedia.s484') });
     }
     if (parsedBrandFonts.length === 0) {
-      items.push({ id: 'brand-fonts', label: 'Fonter mangler' });
+      items.push({ id: 'brand-fonts', label: t('prodMedia.s128') });
     }
     if (!hasText(planningDraft.brandGuide.toneOfVoice)) {
-      items.push({ id: 'brand-tone', label: 'Tone of voice mangler' });
+      items.push({ id: 'brand-tone', label: t('prodMedia.s659') });
     }
     if (!hasText(planningDraft.brandGuide.visualStyle)) {
-      items.push({ id: 'brand-style', label: 'Visuell stil mangler' });
+      items.push({ id: 'brand-style', label: t('prodMedia.s707') });
     }
     return items;
   }, [
@@ -6645,12 +6658,12 @@ export default function ProducerMediaPanel({
     }
     return readFirstNonEmptyString(
       [
-        parsedBrandColors.length > 0 ? `${parsedBrandColors.length} farger` : '',
-        parsedBrandFonts.length > 0 ? `${parsedBrandFonts.length} fonter` : '',
+        parsedBrandColors.length > 0 ? t('prodMedia.u20', { v0: parsedBrandColors.length }) : '',
+        parsedBrandFonts.length > 0 ? t('prodMedia.u22', { v0: parsedBrandFonts.length }) : '',
         hasText(planningDraft.brandGuide.toneOfVoice) ? planningDraft.brandGuide.toneOfVoice : '',
         hasText(planningDraft.brandGuide.visualStyle) ? planningDraft.brandGuide.visualStyle : '',
       ].filter(Boolean).join(' · '),
-      'Merkevareguiden er klar for produksjon.',
+      t('prodMedia.s487'),
     );
   }, [
     brandGuideMissingItems.length,
@@ -6696,18 +6709,18 @@ export default function ProducerMediaPanel({
       const foundationItems = foundationBlockingItems.slice(0, 4).map((item, index) => ({
         id: item.id,
         title: item.label,
-        detail: clientGroundingRequests[index] ?? 'Dette må fylles ut før resten av planen gir mening.',
+        detail: clientGroundingRequests[index] ?? t('prodMedia.s089'),
       }));
       const sections: WorkspaceSupportSection[] = [
         {
           id: 'foundation',
-          title: 'Produksjonsgrunnlag',
-          description: 'Fullfør dette først. Storyboard, leveranser og beslutninger skal ikke konkurrere med et uferdig grunnlag.',
+          title: t('prodMedia.m81'),
+          description: t('prodMedia.s148'),
           items: foundationItems,
           actions: [
             {
               id: 'open-brief',
-              label: activeWorkspace === 'brief' ? 'Fortsett i briefen' : 'Åpne brief',
+              label: activeWorkspace === 'brief' ? t('prodMedia.s139') : t('prodMedia.s733'),
               variant: 'contained',
               onClick: () => {
                 setActiveBriefStep(recommendedBriefStep);
@@ -6721,8 +6734,8 @@ export default function ProducerMediaPanel({
       if (clientGroundingRequests.length > 0) {
         sections.push({
           id: 'grounding',
-          title: 'Klientinnspill',
-          description: 'Disse innspillene blokkerer videre arbeid akkurat nå.',
+          title: t('prodMedia.m50'),
+          description: t('prodMedia.s091'),
           items: clientGroundingRequests.slice(0, 2).map((request, index) => ({
             id: `grounding-${index}`,
             title: request,
@@ -6730,7 +6743,7 @@ export default function ProducerMediaPanel({
           actions: canEditClientInput ? [
             {
               id: 'open-materials',
-              label: 'Åpne materiale',
+              label: t('prodMedia.s749'),
               variant: 'outlined',
               onClick: () => {
                 setMaterialsMode('capture');
@@ -6742,15 +6755,15 @@ export default function ProducerMediaPanel({
       }
 
       return {
-        title: 'Neste steg',
+        title: t('prodMedia.s513'),
         intro: activeWorkspace === 'brief'
-          ? 'Fullfør briefen før produksjon og godkjenning åpnes opp som parallelle spor.'
-          : 'Hold fokus på produksjonsgrunnlaget først. Resten av flyten skal vente til briefen er tydelig.',
+          ? t('prodMedia.s147')
+          : t('prodMedia.s173'),
         // Navngi det første som mangler så chipen er handlingsorientert, ikke
         // bare et tall — Stig ser umiddelbart hvor han skal begynne.
         chipLabel: foundationBlockingItems[0]
-          ? `${foundationBlockingItems.length} mangler — start med «${foundationBlockingItems[0].label}»`
-          : `${foundationBlockingItems.length} mangler`,
+          ? t('prodMedia.p42', { v0: foundationBlockingItems.length, v1: foundationBlockingItems[0].label })
+          : t('prodMedia.p40', { v0: foundationBlockingItems.length }),
         priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
         sections,
       };
@@ -6758,21 +6771,21 @@ export default function ProducerMediaPanel({
 
     if (activeWorkspace === 'brief') {
       return {
-        title: 'Neste steg',
-        intro: 'Briefen er klar nok til å drive produksjonen videre. Bruk sidekolonnen til å velge hva som faktisk skjer etter grunnlaget.',
-        chipLabel: `${pendingReviewCount} åpne beslutninger`,
+        title: t('prodMedia.s513'),
+        intro: t('prodMedia.s037'),
+        chipLabel: t('prodMedia.p53', { v0: pendingReviewCount }),
         priority: pendingReviewCount > 0 ? 'info' : 'ready',
         sections: [
           {
             id: 'production',
-            title: 'Produksjon',
-            description: 'Oversett briefen til storyboard, shotlist og manus.',
+            title: t('prodMedia.s544'),
+            description: t('prodMedia.s534'),
             items: storyboardPreviewTiles.slice(0, 2).map((tile) => ({
               id: tile.id,
               eyebrow: tile.eyebrow,
               title: tile.title,
               detail: tile.meta,
-              actionLabel: tile.storyArcFocus && onOpenStoryboard ? 'Åpne scene' : undefined,
+              actionLabel: tile.storyArcFocus && onOpenStoryboard ? t('prodMedia.s752') : undefined,
               onAction: tile.storyArcFocus && onOpenStoryboard
                 ? () => onOpenStoryboard(tile.storyArcFocus)
                 : undefined,
@@ -6800,38 +6813,38 @@ export default function ProducerMediaPanel({
           },
           {
             id: 'decision',
-            title: 'Beslutning',
+            title: t('prodMedia.s031'),
             description: isClientReviewerMode
-              ? 'Dette er det som kommer tilbake som godkjenning og neste handling.'
-              : 'Forbered det som skal videre til klient, økonomi eller review.',
+              ? t('prodMedia.s079')
+              : t('prodMedia.s132'),
             items: (nextSignalList.length > 0
               ? nextSignalList.slice(0, 2).map((task) => ({
                 id: task.id,
                 eyebrow: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
                 title: task.title,
                 detail: task.detail,
-                actionLabel: canEditClientInput ? 'Åpne' : undefined,
+                actionLabel: canEditClientInput ? t('prodMedia.s726') : undefined,
                 onAction: canEditClientInput ? () => applyContributionTask(task) : undefined,
               }))
               : [
                 {
                   id: 'decision-ready',
-                  title: pendingReviewCount > 0 ? `${pendingReviewCount} reviewpunkter venter` : 'Ingen åpne reviewpunkter',
+                  title: pendingReviewCount > 0 ? t('prodMedia.r16', { v0: pendingReviewCount }) : t('prodMedia.s249'),
                   detail: pendingReviewCount > 0
-                    ? 'Klargjør de viktigste beslutningene og send dem videre i riktig rekkefølge.'
-                    : 'Når produksjonsgrunnlaget er klart, kan du sende storyboard, manus eller shotlist videre.',
+                    ? t('prodMedia.s279')
+                    : t('prodMedia.s519'),
                 },
               ]),
             actions: !isClientReviewerMode ? [
               {
                 id: 'prepare-storyboard',
-                label: 'Klargjør storyboard',
+                label: t('prodMedia.s281'),
                 variant: 'outlined',
                 onClick: onPrepareStoryboardReview,
               },
               {
                 id: 'prepare-shotlist',
-                label: 'Klargjør shotlist',
+                label: t('prodMedia.s280'),
                 variant: 'text',
                 onClick: onPrepareShotListReview,
               },
@@ -6843,38 +6856,38 @@ export default function ProducerMediaPanel({
 
     if (activeWorkspace === 'brand') {
       return {
-        title: 'Neste steg',
-        intro: 'Merkevaren skal støtte det som faktisk skal produseres, ikke leve som et separat spor.',
-        chipLabel: `${brandGuideReadyCount}/5 klare`,
+        title: t('prodMedia.s513'),
+        intro: t('prodMedia.s488'),
+        chipLabel: t('prodMedia.r20', { v0: brandGuideReadyCount }),
         priority: brandGuideReadyCount < 3 ? 'warning' : 'info',
         sections: [
           {
             id: 'brand-signals',
-            title: 'Merkevaresignaler',
-            description: 'Hold uttrykket stramt nok til at storyboard og leveranser blir konsistente.',
+            title: t('prodMedia.m71'),
+            description: t('prodMedia.s174'),
             items: [
               {
                 id: 'brand-colors',
-                title: parsedBrandColors.length > 0 ? `${parsedBrandColors.length} farger registrert` : 'Farger mangler',
-                detail: parsedBrandColors.length > 0 ? parsedBrandColors.slice(0, 3).map((color) => color.label).join(', ') : 'Definer primærfarger som faktisk skal brukes.',
+                title: parsedBrandColors.length > 0 ? t('prodMedia.u21', { v0: parsedBrandColors.length }) : t('prodMedia.s113'),
+                detail: parsedBrandColors.length > 0 ? parsedBrandColors.slice(0, 3).map((color) => color.label).join(', ') : t('prodMedia.s073'),
               },
               {
                 id: 'brand-fonts',
-                title: parsedBrandFonts.length > 0 ? `${parsedBrandFonts.length} fonter definert` : 'Fonter mangler',
-                detail: parsedBrandFonts.length > 0 ? parsedBrandFonts.slice(0, 3).join(', ') : 'Legg inn fontvalg som styrer grafikk og tekst.',
+                title: parsedBrandFonts.length > 0 ? t('prodMedia.u23', { v0: parsedBrandFonts.length }) : t('prodMedia.s128'),
+                detail: parsedBrandFonts.length > 0 ? parsedBrandFonts.slice(0, 3).join(', ') : t('prodMedia.s402'),
               },
               {
                 id: 'brand-rules',
                 title: `${parsedBrandDos.length} do's · ${parsedBrandDonts.length} don'ts`,
                 detail: parsedBrandDos.length > 0 || parsedBrandDonts.length > 0
                   ? [...parsedBrandDos.slice(0, 1), ...parsedBrandDonts.slice(0, 1)].join(' · ')
-                  : 'Tydelige do’s og don’ts gjør uttrykket enklere å holde konsekvent.',
+                  : t('prodMedia.s666'),
               },
             ],
             actions: !materials.some((item) => item.entry_type === 'brand_asset') && brandPackTemplate && canEditClientInput ? [
               {
                 id: 'add-brand-pack',
-                label: 'Legg til merkevarefil',
+                label: t('prodMedia.s417'),
                 variant: 'contained',
                 onClick: () => applyMaterialTemplate(brandPackTemplate),
               },
@@ -6882,14 +6895,14 @@ export default function ProducerMediaPanel({
           },
           {
             id: 'brand-production',
-            title: 'Neste i produksjon',
-            description: 'Knytt uttrykket til konkrete planer og produksjonselementer.',
+            title: t('prodMedia.s511'),
+            description: t('prodMedia.s304'),
             items: storyboardPreviewTiles.slice(0, 2).map((tile) => ({
               id: `brand-${tile.id}`,
               eyebrow: tile.eyebrow,
               title: tile.title,
               detail: tile.meta,
-              actionLabel: tile.storyArcFocus && onOpenStoryboard ? 'Åpne scene' : undefined,
+              actionLabel: tile.storyArcFocus && onOpenStoryboard ? t('prodMedia.s752') : undefined,
               onAction: tile.storyArcFocus && onOpenStoryboard
                 ? () => onOpenStoryboard(tile.storyArcFocus)
                 : undefined,
@@ -6916,17 +6929,17 @@ export default function ProducerMediaPanel({
     if (activeWorkspace === 'accounts') {
       const primaryPendingAccount = requiredAccountEntries.find((entry) => entry.status !== 'connected') ?? null;
       return {
-        title: 'Neste steg',
-        intro: 'Kontotilgang holdes samlet i ett sikkert spor. Første godkjenning skjer eksplisitt, deretter brukes samme tilgang videre uten delte passord.',
+        title: t('prodMedia.s513'),
+        intro: t('prodMedia.s335'),
         chipLabel: requiredAccountEntries.length > 0
-          ? `${connectedRequiredAccountCount}/${requiredAccountEntries.length} koblet`
-          : 'Ingen krav ennå',
+          ? t('prodMedia.p57', { v0: connectedRequiredAccountCount, v1: requiredAccountEntries.length })
+          : t('prodMedia.s225'),
         priority: pendingRequiredAccountCount > 0 ? 'warning' : 'ready',
         sections: [
           {
             id: 'accounts-status',
-            title: 'Kontoer i dette prosjektet',
-            description: 'Dette er tilgangene som faktisk må avklares før publisering og overlevering.',
+            title: t('prodMedia.s333'),
+            description: t('prodMedia.s082'),
             items: (requiredAccountEntries.length > 0
               ? requiredAccountEntries.slice(0, 3).map((entry) => ({
                 id: `account-status-${entry.platform}`,
@@ -6940,24 +6953,24 @@ export default function ProducerMediaPanel({
                   entry.accessScope || '',
                   entry.notes || '',
                 ) ?? (({
-                  not_started: 'Ikke startet — åpne kontotilgang for å koble kontoen, eller be klienten om tilgang.',
-                  client_action: 'Venter på klienten — be klienten koble kontoen eller godta invitasjonen.',
-                  invite_sent: 'Invitasjon sendt — venter på at klienten godtar.',
-                  connected: 'Koblet og klar.',
-                  revoked: 'Tilgangen er trukket tilbake — koble på nytt hvis den fortsatt trengs.',
-                } as Record<string, string>)[entry.status] ?? 'Tilgangen er ikke avklart ennå.'),
+                  not_started: t('prodMedia.s205'),
+                  client_action: t('prodMedia.s697'),
+                  invite_sent: t('prodMedia.s266'),
+                  connected: t('prodMedia.s315'),
+                  revoked: t('prodMedia.s657'),
+                } as Record<string, string>)[entry.status] ?? t('prodMedia.s656')),
               }))
               : [
                 {
                   id: 'account-status-empty',
-                  title: 'Ingen kontoer er markert som nødvendige ennå',
-                  detail: 'Så snart kanalvalg og publiseringsløp er tydeligere, vil riktige kontoer dukke opp her.',
+                  title: t('prodMedia.s223'),
+                  detail: t('prodMedia.s642'),
                 },
               ]),
             actions: primaryPendingAccount ? [
               {
                 id: 'open-account-track',
-                label: 'Fortsett i kontotilgang',
+                label: t('prodMedia.s140'),
                 variant: 'contained',
                 onClick: () => openSurfaceWorkspace('accounts'),
               },
@@ -6965,25 +6978,25 @@ export default function ProducerMediaPanel({
           },
           {
             id: 'accounts-security',
-            title: 'Sikker praksis',
-            description: 'Dette er et vedvarende tilgangsspor, ikke et manuelt passordarkiv.',
+            title: t('prodMedia.s602'),
+            description: t('prodMedia.s080'),
             items: [
               {
                 id: 'security-oauth',
-                title: 'Bruk rollebasert tilgang',
-                detail: 'Meta, LinkedIn og YouTube bør bruke invite eller rollebasert tilgang som kan beholdes gjennom prosjektet.',
+                title: t('prodMedia.s049'),
+                detail: t('prodMedia.s491'),
               },
               {
                 id: 'security-two-factor',
-                title: '2-faktor blir hos kontoeier',
-                detail: 'Klienten beholder 2-faktor. Produsenten får bare nødvendig rolle eller kobling.',
+                title: t('prodMedia.z00'),
+                detail: t('prodMedia.s287'),
               },
               {
                 id: 'security-revoke',
-                title: 'Planlegg når tilgangen fjernes',
+                title: t('prodMedia.s537'),
                 detail: readFirstNonEmptyString(
                   planningDraft.accountAccess.revokePlan ?? '',
-                  'Avklar når kontoer eller koblinger skal ryddes bort etter publisering.',
+                  t('prodMedia.s010'),
                 ),
               },
             ],
@@ -6995,35 +7008,35 @@ export default function ProducerMediaPanel({
 
     if (activeWorkspace === 'materials') {
       return {
-        title: 'Neste steg',
-        intro: 'Materialet skal ikke bare samles. Det skal kobles til plan, shotlist og leveranse.',
-        chipLabel: `${clientContributionTasks.length} åpne innspill`,
+        title: t('prodMedia.s513'),
+        intro: t('prodMedia.s480'),
+        chipLabel: t('prodMedia.p54', { v0: clientContributionTasks.length }),
         priority: clientContributionTasks.length > 0 ? 'warning' : 'info',
         sections: [
           {
             id: 'materials-missing',
-            title: 'Dette mangler fortsatt',
-            description: 'Velg de materialene som faktisk blocker videre produksjon.',
+            title: t('prodMedia.s086'),
+            description: t('prodMedia.s682'),
             items: (nextSignalList.length > 0
               ? nextSignalList.slice(0, 3).map((task) => ({
                 id: task.id,
                 eyebrow: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
                 title: task.title,
                 detail: task.detail,
-                actionLabel: canEditClientInput ? 'Åpne' : undefined,
+                actionLabel: canEditClientInput ? t('prodMedia.s726') : undefined,
                 onAction: canEditClientInput ? () => applyContributionTask(task) : undefined,
               }))
               : [
                 {
                   id: 'materials-ready',
-                  title: 'Ingen åpne materialforespørsler akkurat nå',
-                  detail: 'Neste steg er å koble materialet til shotlist, kalender eller leveringspunkt.',
+                  title: t('prodMedia.s247'),
+                  detail: t('prodMedia.s514'),
                 },
               ]),
             actions: canEditClientInput ? [
               {
                 id: 'open-materials',
-                label: 'Registrer materiale',
+                label: t('prodMedia.s573'),
                 variant: 'contained',
                 onClick: () => openSurfaceWorkspace('materials'),
               },
@@ -7031,23 +7044,23 @@ export default function ProducerMediaPanel({
           },
           {
             id: 'materials-production',
-            title: 'Kobling til produksjon',
-            description: 'Materialet må leve sammen med planen, ikke ved siden av den.',
+            title: t('prodMedia.s320'),
+            description: t('prodMedia.s479'),
             items: [
               {
                 id: 'materials-calendar',
-                title: `${linkedCalendarMaterialCount} koblet til kalender`,
-                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til innlegg som skal ut eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
+                title: t('prodMedia.p38', { v0: linkedCalendarMaterialCount }),
+                detail: linkedCalendarMaterialCount > 0 ? t('prodMedia.s474') : t('prodMedia.s307'),
               },
               {
                 id: 'materials-shotlist',
-                title: `${linkedShotListMaterialCount} koblet til shotlist`,
-                detail: linkedShotListMaterialCount > 0 ? 'Shotlist har materiale knyttet til seg.' : 'Knytt materiale til shotlist der scener eller leveranser har avhengigheter.',
+                title: t('prodMedia.p39', { v0: linkedShotListMaterialCount }),
+                detail: linkedShotListMaterialCount > 0 ? t('prodMedia.s600') : t('prodMedia.s299'),
               },
               {
                 id: 'materials-reference',
-                title: `${referenceMaterialCount} referanser registrert`,
-                detail: referenceMaterialCount > 0 ? 'Referanser gir produksjonen et faktisk visuelt utgangspunkt.' : 'Legg inn minst én referanse som peker ut retning og uttrykk.',
+                title: t('prodMedia.u31', { v0: referenceMaterialCount }),
+                detail: referenceMaterialCount > 0 ? t('prodMedia.s565') : t('prodMedia.s409'),
               },
             ],
             actions: [
@@ -7071,42 +7084,42 @@ export default function ProducerMediaPanel({
 
     const latestPackageLabel = deliveryWorkspaceAssets.latestPackage
       ? `${deliveryWorkspaceAssets.latestPackage.name} · ${formatTimestamp(deliveryWorkspaceAssets.latestPackage.uploadedAt)}`
-      : 'Ingen klientpakke er skrevet ennå.';
+      : t('prodMedia.s219');
 
     return {
-      title: 'Neste steg',
-      intro: 'Overlevering skal oppleves som ett ryddig spor: pakke, juridikk og siste kontroll.',
-      chipLabel: `${legalAgreementPendingCount} venter`,
+      title: t('prodMedia.s513'),
+      intro: t('prodMedia.s533'),
+      chipLabel: t('prodMedia.r19', { v0: legalAgreementPendingCount }),
       priority: legalAgreementPendingCount > 0 ? 'warning' : 'ready',
       sections: [
         {
           id: 'delivery-readiness',
-          title: 'Levering',
-          description: 'Sørg for at klientpakken og arbeidsområdet faktisk er klare.',
+          title: t('prodMedia.s428'),
+          description: t('prodMedia.s643'),
           items: [
             {
               id: 'delivery-package',
-              title: deliveryWorkspaceAssets.latestPackage ? 'Klientpakke klar' : 'Klientpakke mangler',
+              title: deliveryWorkspaceAssets.latestPackage ? t('prodMedia.s291') : t('prodMedia.s292'),
               detail: latestPackageLabel,
             },
             {
               id: 'delivery-workspace',
-              title: `${deliveryWorkspaceAssets.workspaceFiles.length} arbeidsfiler skrevet`,
+              title: t('prodMedia.u17', { v0: deliveryWorkspaceAssets.workspaceFiles.length }),
               detail: deliveryWorkspaceAssets.workspaceFiles.length > 0
-                ? 'Eksportfanen har skrevet konkrete arbeidsfiler med mappe, pakke og versjon.'
-                : 'Arbeidsområdet opprettes når leveransen pakkes fra eksport.',
+                ? t('prodMedia.s103')
+                : t('prodMedia.s006'),
             },
           ],
           actions: [
             ...(deliveryWorkspaceAssets.latestPackage?.downloadUrl ? [{
               id: 'open-delivery-package',
-              label: 'Åpne klientpakke',
+              label: t('prodMedia.s743'),
               variant: 'contained' as const,
               href: deliveryWorkspaceAssets.latestPackage.downloadUrl,
             }] : []),
             {
               id: 'open-delivery-workspace',
-              label: 'Åpne leveringsrutine',
+              label: t('prodMedia.s747'),
               variant: deliveryWorkspaceAssets.latestPackage?.downloadUrl ? 'text' : 'outlined',
               onClick: () => openSurfaceWorkspace('delivery'),
             },
@@ -7114,8 +7127,8 @@ export default function ProducerMediaPanel({
         },
         {
           id: 'delivery-legal',
-          title: 'Juridisk status',
-          description: 'Dette kan fortsatt blokkere overlevering eller sign-off.',
+          title: t('prodMedia.s270'),
+          description: t('prodMedia.s085'),
           items: (deliveryWorkspaceAssets.legalAgreements.length > 0
             ? deliveryWorkspaceAssets.legalAgreements.slice(0, 2).map((agreement) => {
               const signatureProgress = getAgreementSignatureProgress(agreement);
@@ -7124,7 +7137,7 @@ export default function ProducerMediaPanel({
                 ?? null;
               const signatureLabel = signatureProgress.issueLabel
                 ?? currentSignatureStep?.label
-                ?? 'Ikke startet';
+                ?? t('prodMedia.s204');
               return {
                 id: agreement.id,
                 eyebrow: PROJECT_AGREEMENT_STATUS_LABELS[agreement.status],
@@ -7135,20 +7148,20 @@ export default function ProducerMediaPanel({
             : [
               {
                 id: 'delivery-legal-empty',
-                title: 'Ingen juridiske dokumenter registrert',
-                detail: 'Avtaler og signering vil dukke opp her når de kobles til prosjektet.',
+                title: t('prodMedia.s218'),
+                detail: t('prodMedia.s011'),
               },
             ]),
           actions: [
             ...(primaryLegalAgreement ? [{
               id: 'open-primary-legal',
-              label: 'Åpne juridisk spor',
+              label: t('prodMedia.s741'),
               variant: 'outlined' as const,
               onClick: () => openSurfaceWorkspace('delivery', { artifactId: `agreement:${primaryLegalAgreement.id}` }),
             }] : []),
             ...(primaryLegalAgreementUrl ? [{
               id: 'open-primary-legal-doc',
-              label: 'Åpne dokument',
+              label: t('prodMedia.s735'),
               variant: 'text' as const,
               href: primaryLegalAgreementUrl,
             }] : []),
@@ -7245,15 +7258,15 @@ export default function ProducerMediaPanel({
       .map((request) => ({
         id: `vault-request-${request.id}`,
         platform: request.platform,
-        eyebrow: 'Vault-innsyn',
+        eyebrow: t('prodMedia.s680'),
         title: `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[request.platform]} · ${VAULT_REVEAL_REQUEST_STATUS_LABELS[request.status]}`,
         detail: readFirstNonEmptyString(
           request.requestReason ?? '',
-          request.requestedAt ? `Bedt om ${formatTimestamp(request.requestedAt)}` : '',
-          request.expiresAt ? `Utløper ${formatTimestamp(request.expiresAt)}` : '',
-          'Secret krever beslutning eller innsyn.',
+          request.requestedAt ? t('prodMedia.u01', { v0: formatTimestamp(request.requestedAt) }) : '',
+          request.expiresAt ? t('prodMedia.p32', { v0: formatTimestamp(request.expiresAt) }) : '',
+          t('prodMedia.s594'),
         ),
-        actionLabel: request.status === 'approved' ? 'Åpne secrets' : 'Se forespørsel',
+        actionLabel: request.status === 'approved' ? t('prodMedia.s754') : t('prodMedia.s584'),
         href: '',
       }));
     const reviewRequests = pendingAccountAccessReviews.map((review) => {
@@ -7262,14 +7275,14 @@ export default function ProducerMediaPanel({
       return {
         id: `review-${review.id}`,
         platform: primaryPlatform,
-        eyebrow: 'Klientbekreftelse',
+        eyebrow: t('prodMedia.m46'),
         title: review.title,
         detail: readFirstNonEmptyString(
           review.description ?? '',
           review.due_at ? `Frist ${formatTimestamp(review.due_at)}` : '',
-          review.requested_at ? `Bedt om ${formatTimestamp(review.requested_at)}` : '',
+          review.requested_at ? t('prodMedia.u01', { v0: formatTimestamp(review.requested_at) }) : '',
         ),
-        actionLabel: 'Åpne review',
+        actionLabel: t('prodMedia.s751'),
         href: buildAccountAccessReviewUrl(review.id),
       };
     });
@@ -7278,17 +7291,17 @@ export default function ProducerMediaPanel({
       .map((entry) => ({
         id: `request-${entry.platform}`,
         platform: entry.platform,
-        eyebrow: entry.status === 'invite_sent' ? 'Invitasjon sendt' : 'Trenger avklaring',
+        eyebrow: entry.status === 'invite_sent' ? t('prodMedia.s265') : t('prodMedia.s662'),
         title: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
         detail: readFirstNonEmptyString(
           entry.accessScope,
           entry.status === 'client_action'
-            ? 'Klienten må fullføre delegert tilgang eller bekrefte ansvarlig person.'
+            ? t('prodMedia.s288')
             : entry.status === 'invite_sent'
-              ? 'Invitasjonen er sendt, men er ikke bekreftet ferdig ennå.'
-              : 'Ingen sikker tilgang er definert ennå.',
+              ? t('prodMedia.s267')
+              : t('prodMedia.s242'),
         ),
-        actionLabel: 'Åpne konto',
+        actionLabel: t('prodMedia.s744'),
         href: '',
       }));
     return [...vaultRequests, ...reviewRequests, ...operationalRequests];
@@ -7319,14 +7332,14 @@ export default function ProducerMediaPanel({
       return accessVaultState.audit.map((item) => ({
         id: item.id,
         platform: item.platform ?? null,
-        title: VAULT_AUDIT_ACTION_LABELS[item.action ?? ''] ?? 'Vault-hendelse',
+        title: VAULT_AUDIT_ACTION_LABELS[item.action ?? ''] ?? t('prodMedia.s679'),
         detail: readFirstNonEmptyString(
           typeof item.metadata.label === 'string' ? item.metadata.label : '',
           typeof item.metadata.requestReason === 'string' ? item.metadata.requestReason : '',
           typeof item.metadata.approvalNotes === 'string' ? item.metadata.approvalNotes : '',
           typeof item.metadata.revealPolicy === 'string' ? `Policy: ${item.metadata.revealPolicy}` : '',
-          item.actorRole ? `Utført som ${item.actorRole}` : '',
-          'Ingen detaljer loggført.',
+          item.actorRole ? t('prodMedia.p31', { v0: item.actorRole }) : '',
+          t('prodMedia.s211'),
         ),
         createdAt: item.createdAt ?? '',
       }));
@@ -7336,18 +7349,18 @@ export default function ProducerMediaPanel({
       .map((entry) => ({
         id: `audit-${entry.platform}`,
         platform: entry.platform,
-        title: `${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]} oppdatert`,
+        title: t('prodMedia.u30', { v0: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform] }),
         detail: [
           PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status],
           PRODUCER_ACCOUNT_ACCESS_TIER_LABELS[entry.tier ?? 'delegated_access'],
-          entry.ownerName ? `Eier: ${entry.ownerName}` : '',
+          entry.ownerName ? t('prodMedia.zz2', { v0: entry.ownerName }) : '',
         ].filter(hasText).join(' · '),
         createdAt: entry.lastUpdatedAt ?? '',
       }));
     const reviewEvents = pendingAccountAccessReviews.map((review) => ({
       id: `audit-review-${review.id}`,
       platform: readAccountAccessPlatformsFromReview(review)[0] ?? null,
-      title: review.status === 'changes_requested' ? 'Klient ba om endringer' : 'Klientreview venter',
+      title: review.status === 'changes_requested' ? t('prodMedia.s283') : t('prodMedia.s293'),
       detail: review.title,
       createdAt: review.requested_at ?? review.created_at ?? '',
     }));
@@ -7366,11 +7379,11 @@ export default function ProducerMediaPanel({
       })
       .map((item) => ({
         id: item.id,
-        title: readFirstNonEmptyString(item.title, 'Leveranse uten tittel'),
+        title: readFirstNonEmptyString(item.title, t('prodMedia.s424')),
         eyebrow: PRODUCER_CONTENT_CALENDAR_STATUS_LABELS[item.status ?? 'planned'],
         detail: [
-          readFirstNonEmptyString(item.channel, 'Kanal ikke satt'),
-          readFirstNonEmptyString(item.format, 'Format ikke satt'),
+          readFirstNonEmptyString(item.channel, t('prodMedia.s272')),
+          readFirstNonEmptyString(item.format, t('prodMedia.s133')),
           item.publishAt ? formatTimestamp(item.publishAt) : '',
         ].filter(hasText).join(' · '),
       })),
@@ -7399,19 +7412,19 @@ export default function ProducerMediaPanel({
     const leadCard: ClientDashboardCard = foundationBlockingItems.length > 0
       ? {
         id: 'now',
-        title: 'Dette må du gjøre nå',
-        summary: 'Produksjonsgrunnlaget må være tydelig før godkjenninger, leveranser og publisering gir mening.',
-        chipLabel: `${foundationBlockingItems.length} blokkerer`,
+        title: t('prodMedia.s088'),
+        summary: t('prodMedia.s545'),
+        chipLabel: t('prodMedia.u19', { v0: foundationBlockingItems.length }),
         priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
         items: foundationBlockingItems.slice(0, 3).map((item, index) => ({
           id: item.id,
-          eyebrow: index === 0 ? 'Grunnlag' : undefined,
+          eyebrow: index === 0 ? t('prodMedia.s164') : undefined,
           title: item.label,
-          detail: clientGroundingRequests[index] ?? 'Dette må fylles ut før videre beslutninger blir presise.',
+          detail: clientGroundingRequests[index] ?? t('prodMedia.s090'),
         })),
         action: {
           id: 'open-brief-dashboard',
-          label: activeWorkspace === 'brief' ? 'Fortsett i briefen' : 'Åpne briefen',
+          label: activeWorkspace === 'brief' ? t('prodMedia.s139') : t('prodMedia.s734'),
           variant: 'contained',
           onClick: () => {
             setActiveBriefStep(recommendedBriefStep);
@@ -7422,9 +7435,9 @@ export default function ProducerMediaPanel({
       : pendingAccountAccessReviews.length > 0
         ? {
           id: 'now',
-          title: 'Dette må du gjøre nå',
-          summary: 'Kontotilgang må avklares før publisering, handoff og overlevering kan kjøres trygt.',
-          chipLabel: `${pendingAccountAccessReviews.length} åpne`,
+          title: t('prodMedia.s088'),
+          summary: t('prodMedia.s336'),
+          chipLabel: t('prodMedia.p52', { v0: pendingAccountAccessReviews.length }),
           priority: pendingAccountAccessReviews.some((review) => review.status === 'changes_requested') ? 'warning' : 'info',
           items: pendingAccountAccessReviews.slice(0, 3).map((review) => {
             const platformLabels = readAccountAccessPlatformsFromReview(review)
@@ -7436,17 +7449,17 @@ export default function ProducerMediaPanel({
               title: review.title,
               detail: readFirstNonEmptyString(
                 review.description ?? '',
-                review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
-                `Bedt om ${formatTimestamp(review.requested_at)}`,
+                review.due_at ? t('prodMedia.u15', { v0: formatTimestamp(review.due_at) }) : '',
+                t('prodMedia.u01', { v0: formatTimestamp(review.requested_at) }),
               ),
-              actionLabel: 'Åpne review',
+              actionLabel: t('prodMedia.s751'),
               href: buildAccountAccessReviewUrl(review.id),
             };
           }),
           action: clientPortalAccountAccessReviewUrl
             ? {
               id: 'open-account-access-reviews-dashboard',
-              label: 'Åpne kontotilgang',
+              label: t('prodMedia.s745'),
               variant: 'contained',
               href: clientPortalAccountAccessReviewUrl,
             }
@@ -7455,24 +7468,24 @@ export default function ProducerMediaPanel({
         : pendingClientReviews.length > 0
         ? {
           id: 'now',
-          title: 'Dette må du gjøre nå',
-          summary: 'Det ligger åpne godkjenninger som stopper neste del av flyten.',
-          chipLabel: `${pendingClientReviews.length} åpne`,
+          title: t('prodMedia.s088'),
+          summary: t('prodMedia.s077'),
+          chipLabel: t('prodMedia.p52', { v0: pendingClientReviews.length }),
           priority: pendingClientReviews.some((review) => review.status === 'changes_requested') ? 'warning' : 'info',
           items: pendingClientReviews.slice(0, 3).map((review) => ({
             id: review.id,
-            eyebrow: review.status === 'changes_requested' ? 'Endringer ønsket' : 'Venter på svar',
+            eyebrow: review.status === 'changes_requested' ? t('prodMedia.s109') : t('prodMedia.s699'),
             title: review.title,
             detail: readFirstNonEmptyString(
               review.description ?? '',
-              review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
-              `Bedt om ${formatTimestamp(review.requested_at)}`,
+              review.due_at ? t('prodMedia.u15', { v0: formatTimestamp(review.due_at) }) : '',
+              t('prodMedia.u01', { v0: formatTimestamp(review.requested_at) }),
             ),
           })),
           action: clientPortalReviewUrl
             ? {
               id: 'open-reviews-dashboard',
-              label: 'Åpne godkjenninger',
+              label: t('prodMedia.s737'),
               variant: 'contained',
               href: clientPortalReviewUrl,
             }
@@ -7481,21 +7494,21 @@ export default function ProducerMediaPanel({
         : clientContributionTasks.length > 0
           ? {
             id: 'now',
-            title: 'Dette må du gjøre nå',
-            summary: 'Neste beslutning ligger i brief, merkevare, materialer eller leveringsrutine.',
-            chipLabel: `${clientContributionTasks.length} åpne`,
+            title: t('prodMedia.s088'),
+            summary: t('prodMedia.s510'),
+            chipLabel: t('prodMedia.p52', { v0: clientContributionTasks.length }),
             priority: 'info',
             items: clientContributionTasks.slice(0, 3).map((task) => ({
               id: task.id,
               eyebrow: PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType],
               title: task.title,
               detail: task.detail,
-              actionLabel: 'Åpne',
+              actionLabel: t('prodMedia.s726'),
               onAction: () => applyContributionTask(task),
             })),
             action: {
               id: 'open-next-choice-dashboard',
-              label: 'Fortsett i arbeidsflaten',
+              label: t('prodMedia.s138'),
               variant: 'contained',
               onClick: () => applyContributionTask(clientContributionTasks[0]!),
             },
@@ -7503,15 +7516,15 @@ export default function ProducerMediaPanel({
           : readyDeliveryItems.length > 0
             ? {
               id: 'now',
-              title: 'Dette må du gjøre nå',
-              summary: 'Leveranser er klare til overlevering eller publisering.',
-              chipLabel: `${readyDeliveryItems.length} klare`,
+              title: t('prodMedia.s088'),
+              summary: t('prodMedia.s426'),
+              chipLabel: t('prodMedia.r13', { v0: readyDeliveryItems.length }),
               priority: 'ready',
               items: readyDeliveryItems.slice(0, 3),
               action: clientPortalExportUrl
                 ? {
                   id: 'open-export-dashboard',
-                  label: 'Åpne leveranser',
+                  label: t('prodMedia.s746'),
                   variant: 'contained',
                   href: clientPortalExportUrl,
                 }
@@ -7519,15 +7532,15 @@ export default function ProducerMediaPanel({
             }
             : {
               id: 'now',
-              title: 'Dette må du gjøre nå',
-              summary: 'Ingen akutte blokkere akkurat nå. Neste steg er å holde godkjenninger og leveranser stramme.',
-              chipLabel: 'Rolig spor',
+              title: t('prodMedia.s088'),
+              summary: t('prodMedia.s209'),
+              chipLabel: t('prodMedia.m87'),
               priority: 'ready',
               items: [
                 {
                   id: 'now-clear',
-                  title: 'Grunnlaget er på plass',
-                  detail: 'Fortsett med merkevare, godkjenning eller leveranse når dere er klare.',
+                  title: t('prodMedia.s165'),
+                  detail: t('prodMedia.s141'),
                 },
               ],
             };
@@ -7536,11 +7549,11 @@ export default function ProducerMediaPanel({
       leadCard,
       {
         id: 'choices',
-        title: 'Ventende valg',
+        title: t('prodMedia.s695'),
         summary: clientContributionTasks.length > 0
-          ? 'Dette er valgene som fortsatt trenger klientinnspill eller bekreftelse.'
-          : 'Ingen åpne valg akkurat nå.',
-        chipLabel: `${clientContributionTasks.length} valg`,
+          ? t('prodMedia.s083')
+          : t('prodMedia.s251'),
+        chipLabel: t('prodMedia.u34', { v0: clientContributionTasks.length }),
         priority: clientContributionTasks.length > 0 ? 'warning' : 'ready',
         items: clientContributionTasks.length > 0
           ? clientContributionTasks.slice(0, 3).map((task) => ({
@@ -7548,18 +7561,18 @@ export default function ProducerMediaPanel({
             eyebrow: `${PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS[task.sourceType]} · ${PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS[task.status]}`,
             title: task.title,
             detail: task.detail,
-            actionLabel: 'Åpne',
+            actionLabel: t('prodMedia.s726'),
             onAction: () => applyContributionTask(task),
           }))
           : [{
             id: 'choice-clear',
-            title: 'Alle valg er avklart',
-            detail: 'Brief, materiale, merkevare og leveringsrutine er i en tilstand som ikke krever nye klientvalg akkurat nå.',
+            title: t('prodMedia.s003'),
+            detail: t('prodMedia.s034'),
           }],
         action: clientContributionTasks.length > 0
           ? {
             id: 'open-choices-dashboard',
-            label: 'Åpne valg',
+            label: t('prodMedia.s760'),
             variant: 'outlined',
             onClick: () => applyContributionTask(clientContributionTasks[0]!),
           }
@@ -7567,10 +7580,10 @@ export default function ProducerMediaPanel({
       },
       {
         id: 'approvals',
-        title: 'Ventende godkjenninger',
+        title: t('prodMedia.s694'),
         summary: pendingClientReviews.length > 0
-          ? 'Disse sakene må godkjennes eller få endringsønsker før flyten går videre.'
-          : 'Ingen åpne godkjenninger akkurat nå.',
+          ? t('prodMedia.s092')
+          : t('prodMedia.s246'),
         chipLabel: `${pendingClientReviews.length} reviews`,
         priority: pendingClientReviews.length > 0 ? 'info' : 'ready',
         items: pendingClientReviews.length > 0
@@ -7584,27 +7597,27 @@ export default function ProducerMediaPanel({
               eyebrow: isAccountAccessReview
                 ? `Kontotilgang · ${platformLabels}`
                 : review.status === 'changes_requested'
-                  ? 'Endringer ønsket'
-                  : 'Venter på godkjenning',
+                  ? t('prodMedia.s109')
+                  : t('prodMedia.s696'),
               title: review.title,
               detail: readFirstNonEmptyString(
                 review.description ?? '',
-                review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
-                `Bedt om ${formatTimestamp(review.requested_at)}`,
+                review.due_at ? t('prodMedia.u15', { v0: formatTimestamp(review.due_at) }) : '',
+                t('prodMedia.u01', { v0: formatTimestamp(review.requested_at) }),
               ),
-              actionLabel: isAccountAccessReview ? 'Åpne review' : undefined,
+              actionLabel: isAccountAccessReview ? t('prodMedia.s751') : undefined,
               href: isAccountAccessReview ? buildAccountAccessReviewUrl(review.id) : undefined,
             };
           })
           : [{
             id: 'approval-clear',
-            title: 'Ingen åpne reviews',
-            detail: 'Når noe sendes til godkjenning, dukker det opp her med direkte vei til reviewsporet.',
+            title: t('prodMedia.s250'),
+            detail: t('prodMedia.s518'),
           }],
         action: pendingClientReviews.length > 0 && clientPortalReviewUrl
           ? {
             id: 'open-approvals-dashboard',
-            label: 'Åpne godkjenninger',
+            label: t('prodMedia.s737'),
             variant: 'outlined',
             href: clientPortalReviewUrl,
           }
@@ -7612,33 +7625,33 @@ export default function ProducerMediaPanel({
       },
       {
         id: 'deliveries',
-        title: 'Klare leveranser',
+        title: t('prodMedia.s278'),
         summary: readyDeliveryItems.length > 0
-          ? 'Dette er leveranser som allerede er klare for overlevering, eksport eller publisering.'
+          ? t('prodMedia.s081')
           : planningDraft.contentCalendar.length > 0
-            ? 'Ingen leveranser er markert klare ennå.'
-            : 'Ingen leveranser er planlagt ennå.',
-        chipLabel: `${readyDeliveryItems.length} klare`,
+            ? t('prodMedia.s226')
+            : t('prodMedia.s227'),
+        chipLabel: t('prodMedia.r13', { v0: readyDeliveryItems.length }),
         priority: readyDeliveryItems.length > 0 ? 'ready' : 'info',
         items: readyDeliveryItems.length > 0
           ? readyDeliveryItems.slice(0, 3)
           : [{
             id: 'delivery-clear',
-            title: planningDraft.contentCalendar.length > 0 ? 'Leveranser bygges fortsatt' : 'Ingen leveranser planlagt',
+            title: planningDraft.contentCalendar.length > 0 ? t('prodMedia.s425') : t('prodMedia.s228'),
             detail: planningDraft.contentCalendar.length > 0
-              ? 'Når et punkt er planlagt publisert eller publisert, vises det her som klart spor.'
-              : 'Legg inn leveranser i content-kalenderen for å få et konkret publiserings- og eksportløp.',
+              ? t('prodMedia.s517')
+              : t('prodMedia.s403'),
           }],
         action: readyDeliveryItems.length > 0 && clientPortalExportUrl
           ? {
             id: 'open-deliveries-dashboard',
-            label: 'Åpne leveranser',
+            label: t('prodMedia.s746'),
             variant: 'outlined',
             href: clientPortalExportUrl,
           }
           : {
             id: 'open-delivery-workspace-dashboard',
-            label: 'Åpne leveringsrutine',
+            label: t('prodMedia.s747'),
             variant: 'outlined',
             onClick: () => openSurfaceWorkspace('delivery'),
           },
@@ -7671,20 +7684,20 @@ export default function ProducerMediaPanel({
         border: '1px solid rgba(34,197,94,0.18)',
         background: 'rgba(34,197,94,0.1)',
         color: '#86efac',
-        label: 'Fylt ut',
+        label: t('prodMedia.s154'),
       }
       : status === 'optional'
         ? {
           border: '1px solid rgba(148,163,184,0.14)',
           background: 'rgba(148,163,184,0.08)',
           color: 'rgba(203,213,225,0.78)',
-          label: 'Valgfritt',
+          label: t('prodMedia.s674'),
         }
         : {
           border: '1px solid rgba(96,165,250,0.14)',
           background: 'rgba(59,130,246,0.1)',
           color: '#bfdbfe',
-          label: 'Mangler',
+          label: t('prodMedia.s460'),
         };
 
     return (
@@ -7794,7 +7807,7 @@ export default function ProducerMediaPanel({
                   {page.title}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.62)', fontSize: '0.76rem' }} noWrap>
-                  {`${PRODUCER_WORKSPACE_SURFACE_LABELS[page.surface]} · ${page.clientVisible !== false ? 'Klient ser' : 'Kun internt'}`}
+                  {`${PRODUCER_WORKSPACE_SURFACE_LABELS[page.surface]} · ${page.clientVisible !== false ? t('prodMedia.s284') : t('prodMedia.s344')}`}
                 </Typography>
               </Box>
             </Stack>
@@ -7829,10 +7842,10 @@ export default function ProducerMediaPanel({
       <Stack direction={{ xs: 'column', sm: 'row', xl: 'column' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
         <Box>
           <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-            Sider i {activeSection.title}
+            {t('prodMedia.zz12')} {activeSection.title}
           </Typography>
           <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.8rem', mt: 0.25 }}>
-            Dra en side til linjen for å endre rekkefølge, eller slipp den på en annen side for å lage underside.
+            {t('prodMedia.j000')}
           </Typography>
         </Box>
         {canManageWorkspaceShell ? (
@@ -7845,7 +7858,7 @@ export default function ProducerMediaPanel({
             }}
             sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
           >
-            Ny side
+            {t('prodMedia.m75')}
           </Button>
         ) : null}
       </Stack>
@@ -7865,7 +7878,7 @@ export default function ProducerMediaPanel({
             fontSize: '0.78rem',
           }}
         >
-          Slipp her for å gjøre siden til toppnivå
+          {t('prodMedia.j001')}
         </Box>
       ) : null}
 
@@ -7895,7 +7908,7 @@ export default function ProducerMediaPanel({
     >
       <Box sx={{ px: 0.45, pb: 0.2 }}>
         <Typography sx={{ color: 'rgba(191,219,254,0.6)', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-          Arbeidsflate
+          {t('prodMedia.m03')}
         </Typography>
         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', mt: 0.15 }}>
           {activeSection?.title ?? 'Workspace'}
@@ -7988,7 +8001,7 @@ export default function ProducerMediaPanel({
                 fontFamily: '"Manrope","Avenir Next","Segoe UI",sans-serif',
               }}
             >
-              {isClientReviewerMode ? 'Klientflate' : 'Creative Sync Workspace'}
+              {isClientReviewerMode ? t('prodMedia.m48') : 'Creative Sync Workspace'}
             </Typography>
             <Box
               sx={{
@@ -8069,10 +8082,10 @@ export default function ProducerMediaPanel({
                 },
               }}
             >
-              {showWorkspaceOperations ? 'Skjul oppsett' : 'Workspace-oppsett'}
+              {showWorkspaceOperations ? t('prodMedia.s604') : t('prodMedia.k07')}
             </Button>
             {canManageWorkspaceShell ? (
-              <Tooltip title="Flere workspace-valg">
+              <Tooltip title={t('prodMedia.s124')}>
                 <IconButton
                   onClick={handleOpenWorkspaceTools}
                   sx={{
@@ -8094,7 +8107,7 @@ export default function ProducerMediaPanel({
 
       {error ? <Alert severity="error">{error}</Alert> : null}
       {roleRoomAgentNotice ? <Alert severity="success">{roleRoomAgentNotice}</Alert> : null}
-      {loading ? <Alert severity="info">Laster klientbrief og materiale.</Alert> : null}
+      {loading ? <Alert severity="info">{t('prodMedia.j002')}</Alert> : null}
 
       <Box
         sx={{
@@ -8112,7 +8125,7 @@ export default function ProducerMediaPanel({
               {mediaHeaderMeta}
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.86)', fontSize: '0.74rem', lineHeight: 1.4 }}>
-              {focusedArtifact ? `Fokus: ${focusedArtifact.title}` : clientMetaLabel}
+              {focusedArtifact ? t('prodMedia.u04', { v0: focusedArtifact.title }) : clientMetaLabel}
             </Typography>
           </Stack>
           <Stack
@@ -8125,7 +8138,7 @@ export default function ProducerMediaPanel({
             }}
           >
             <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.88rem' }}>
-              Retning · {creativeDirectionTitle}
+              {t('prodMedia.m86')} {creativeDirectionTitle}
             </Typography>
             <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.75rem', lineHeight: 1.42 }}>
               {directionSupportText}
@@ -8151,26 +8164,26 @@ export default function ProducerMediaPanel({
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ md: 'center' }}>
               <Box>
                 <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.96rem' }}>
-                  Dette må klienten holde styr på
+                  {t('prodMedia.j003')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.22 }}>
-                  Ett sted for valg, godkjenninger og leveranser. Ingen skjult arbeidsflyt bak flere paneler.
+                  {t('prodMedia.j004')}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
                 <Chip
                   size="small"
-                  label={`${clientContributionTasks.length} valg`}
+                  label={t('prodMedia.u34', { v0: clientContributionTasks.length })}
                   sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
                 />
                 <Chip
                   size="small"
-                  label={`${pendingClientReviews.length} godkjenninger`}
+                  label={t('prodMedia.u24', { v0: pendingClientReviews.length })}
                   sx={{ bgcolor: 'rgba(248,250,252,0.08)', color: '#e2e8f0' }}
                 />
                 <Chip
                   size="small"
-                  label={`${readyDeliveryItems.length} klare leveranser`}
+                  label={t('prodMedia.r14', { v0: readyDeliveryItems.length })}
                   sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
                 />
               </Stack>
@@ -8426,7 +8439,7 @@ export default function ProducerMediaPanel({
                               {page.title}
                             </Typography>
                             <Typography sx={{ color: 'rgba(203,213,225,0.54)', fontSize: '0.73rem' }} noWrap>
-                              {`${sectionTitle} · ${page.clientVisible !== false ? 'Klient ser' : 'Kun internt'}`}
+                              {`${sectionTitle} · ${page.clientVisible !== false ? t('prodMedia.s284') : t('prodMedia.s344')}`}
                             </Typography>
                           </Box>
                         </Stack>
@@ -8450,7 +8463,7 @@ export default function ProducerMediaPanel({
                       borderColor: 'rgba(96,165,250,0.18)',
                     }}
                   >
-                    Organiser workspace
+                    {t('prodMedia.m78')}
                   </Button>
                 ) : null}
               </>
@@ -8505,12 +8518,12 @@ export default function ProducerMediaPanel({
                               {section.title}
                             </Typography>
                             <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>
-                              {`${flattenProducerWorkspacePages(section).length} sider · ${PRODUCER_WORKSPACE_LAYOUT_LABELS[section.layout ?? 'split']}`}
+                              {t('prodMedia.r18', { v0: flattenProducerWorkspacePages(section).length, v1: PRODUCER_WORKSPACE_LAYOUT_LABELS[section.layout ?? 'split'] })}
                             </Typography>
                           </Box>
                         </Stack>
                         {canManageWorkspaceShell ? (
-                          <Tooltip title={section.pinned ? 'Løsne seksjon' : 'Fest seksjon'}>
+                          <Tooltip title={section.pinned ? t('prodMedia.s458') : t('prodMedia.s116')}>
                             <IconButton
                               size="small"
                               onClick={(event) => {
@@ -8535,12 +8548,12 @@ export default function ProducerMediaPanel({
                     }}
                   >
                     <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem', mb: 0.25 }}>
-                      Sider i {activeSection.title}
+                      {t('prodMedia.zz12')} {activeSection.title}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.58)', fontSize: '0.76rem', mb: 0.75 }}>
                       {canManageWorkspaceShell
-                        ? 'Drag sider for rekkefølge, eller legg dem som undersider.'
-                        : 'Velg siden som skal være aktiv akkurat nå.'}
+                        ? t('prodMedia.s100')
+                        : t('prodMedia.s693')}
                     </Typography>
                     {canManageWorkspaceShell ? (
                       <Button
@@ -8552,7 +8565,7 @@ export default function ProducerMediaPanel({
                         }}
                         sx={{ textTransform: 'none', fontWeight: 700, mb: 0.85, alignSelf: 'flex-start' }}
                       >
-                        Ny side
+                        {t('prodMedia.m75')}
                       </Button>
                     ) : null}
                     {canManageWorkspaceShell ? (
@@ -8570,7 +8583,7 @@ export default function ProducerMediaPanel({
                           fontSize: '0.78rem',
                         }}
                       >
-                        Slipp her for å gjøre siden til toppnivå
+                        {t('prodMedia.j001')}
                       </Box>
                     ) : null}
                     <Stack spacing={0.55}>
@@ -8644,7 +8657,7 @@ export default function ProducerMediaPanel({
                   }}
                   sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                 >
-                  Ny seksjon
+                  {t('prodMedia.m74')}
                 </Button>
               ) : null}
             </Stack>
@@ -8666,8 +8679,8 @@ export default function ProducerMediaPanel({
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.82rem', mt: 0.25 }}>
                     {activeSection
-                      ? `${activeSection.title} er aktiv seksjon. ${activeSectionPages.length} sider tilgjengelig.`
-                      : 'Velg en seksjon for å åpne brief, materiale, merkevareguide eller leveringsrutine.'}
+                      ? t('prodMedia.r11', { v0: activeSection.title, v1: activeSectionPages.length })
+                      : t('prodMedia.s687')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center">
@@ -8678,7 +8691,7 @@ export default function ProducerMediaPanel({
                   />
                   <Chip
                     size="small"
-                    label={displayWorkspaceNavigation.navigationPinned ? 'Navigasjon festet' : 'Navigasjon flytende'}
+                    label={displayWorkspaceNavigation.navigationPinned ? t('prodMedia.s507') : t('prodMedia.s508')}
                     sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
                   />
                   {!displayWorkspaceNavigation.navigationPinned && activeSectionPages.length > 0 ? (
@@ -8764,7 +8777,7 @@ export default function ProducerMediaPanel({
                       />
                       <Chip
                         size="small"
-                        label={page.clientVisible !== false ? 'Klient ser' : 'Kun internt'}
+                        label={page.clientVisible !== false ? t('prodMedia.s284') : t('prodMedia.s344')}
                         sx={{
                           bgcolor: page.clientVisible !== false ? 'rgba(52,211,153,0.14)' : 'rgba(148,163,184,0.12)',
                           color: page.clientVisible !== false ? '#bbf7d0' : '#cbd5e1',
@@ -8815,13 +8828,13 @@ export default function ProducerMediaPanel({
             >
               <Stack spacing={1.1}>
                 <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.28rem' }}>
-                  Ingen rom er åpnet for klient ennå
+                  {t('prodMedia.j005')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', lineHeight: 1.65, maxWidth: 560 }}>
-                  Produsenten har ikke delt noen rom i prosjektrommet ennå. Når et rom åpnes for klient, dukker det opp her automatisk.
+                  {t('prodMedia.j006')}
                 </Typography>
                 <Alert severity="info" sx={{ bgcolor: 'rgba(8,47,73,0.34)', color: '#e2e8f0' }}>
-                  Be produsenten åpne de rommene du skal bruke, for eksempel brief, materiale, levering eller møter.
+                  {t('prodMedia.j007')}
                 </Alert>
               </Stack>
             </Box>
@@ -8869,12 +8882,12 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.62rem', lineHeight: 1.05 }}>
-                    Fullfør briefen
+                    {t('prodMedia.j008')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.86rem', lineHeight: 1.55, mt: 0.3, maxWidth: 620 }}>
                     {isClientReviewerMode
-                      ? 'Fyll inn grunnlaget produsenten trenger for å planlegge riktig.'
-                      : 'Fyll inn prosjektgrunnlaget før du går videre til produksjon og godkjenning.'}
+                      ? t('prodMedia.s151')
+                      : t('prodMedia.s152')}
                   </Typography>
                 </Box>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.55} alignItems={{ md: 'flex-start' }}>
@@ -8899,7 +8912,7 @@ export default function ProducerMediaPanel({
                           lineHeight: 1.1,
                         }}
                       >
-                        {briefWizardEnabled ? 'Wizard' : 'Fri flyt'}
+                        {briefWizardEnabled ? t('prodMedia.s710') : t('prodMedia.s145')}
                       </Typography>
                     </Box>
                     <Box
@@ -8942,7 +8955,7 @@ export default function ProducerMediaPanel({
                             lineHeight: 1.1,
                           }}
                         >
-                          Mobilutkast lagres automatisk
+                          {t('prodMedia.j009')}
                         </Typography>
                       </Box>
                     ) : null}
@@ -8963,7 +8976,7 @@ export default function ProducerMediaPanel({
                         alignSelf: 'flex-start',
                       }}
                     >
-                      {briefWizardEnabled ? 'Gå fritt' : 'Start wizard'}
+                      {briefWizardEnabled ? t('prodMedia.s166') : 'Start wizard'}
                     </Button>
                   ) : null}
                 </Stack>
@@ -8988,16 +9001,16 @@ export default function ProducerMediaPanel({
                   >
                     <Box>
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.98rem' }}>
-                        Brief-sammendrag
+                        {t('prodMedia.s035')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.2 }}>
-                        Ett skjermkort med det viktigste produsenten trenger for å forstå retning, leveranse og oppfølging.
+                        {t('prodMedia.j010')}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                       <Chip
                         size="small"
-                        label={`${briefSummarySections.length - briefSummaryMissingCount}/${briefSummarySections.length} felt klare`}
+                        label={t('prodMedia.r22', { v0: briefSummarySections.length - briefSummaryMissingCount, v1: briefSummarySections.length })}
                         sx={{
                           bgcolor: 'rgba(56,189,248,0.14)',
                           color: '#bfdbfe',
@@ -9006,7 +9019,7 @@ export default function ProducerMediaPanel({
                       {briefSummaryMissingCount > 0 ? (
                         <Chip
                           size="small"
-                          label={`${briefSummaryMissingCount} mangler fortsatt`}
+                          label={t('prodMedia.p41', { v0: briefSummaryMissingCount })}
                           sx={{
                             bgcolor: 'rgba(251,191,36,0.14)',
                             color: '#fde68a',
@@ -9015,7 +9028,7 @@ export default function ProducerMediaPanel({
                       ) : (
                         <Chip
                           size="small"
-                          label="Klar til produksjon"
+                          label={t('prodMedia.s277')}
                           sx={{
                             bgcolor: 'rgba(34,197,94,0.14)',
                             color: '#86efac',
@@ -9057,7 +9070,7 @@ export default function ProducerMediaPanel({
                           </Typography>
                           <Chip
                             size="small"
-                            label={section.status === 'filled' ? 'Fylt ut' : 'Mangler'}
+                            label={section.status === 'filled' ? t('prodMedia.s154') : t('prodMedia.s460')}
                             sx={{
                               height: 20,
                               bgcolor: section.status === 'filled'
@@ -9068,7 +9081,7 @@ export default function ProducerMediaPanel({
                           />
                         </Stack>
                         <Typography sx={{ color: section.status === 'filled' ? 'rgba(226,232,240,0.92)' : 'rgba(253,230,138,0.92)', fontSize: '0.8rem', lineHeight: 1.5 }}>
-                          {section.value || 'Ikke fylt ut ennå.'}
+                          {section.value || t('prodMedia.s196')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem', lineHeight: 1.4, mt: 0.45 }}>
                           {section.helper}
@@ -9113,7 +9126,7 @@ export default function ProducerMediaPanel({
               >
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                    {`Steg ${activeBriefStepIndex + 1} av ${briefStepDescriptors.length}`}
+                    {t('prodMedia.u14', { v0: activeBriefStepIndex + 1, v1: briefStepDescriptors.length })}
                   </Typography>
                   <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.15 }}>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.96rem' }}>
@@ -9131,7 +9144,7 @@ export default function ProducerMediaPanel({
                     {isBriefLockedByApproval ? (
                       <Chip
                         size="small"
-                        label="Låst etter godkjenning"
+                        label={t('prodMedia.s456')}
                         sx={{
                           height: 22,
                           bgcolor: 'rgba(250,204,21,0.14)',
@@ -9158,10 +9171,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Fremdrift
+                    {t('prodMedia.m35')}
                   </Typography>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                    {`${completedBriefStepCount}/${briefStepDescriptors.length} klare`}
+                    {t('prodMedia.r23', { v0: completedBriefStepCount, v1: briefStepDescriptors.length })}
                   </Typography>
                   <Box
                     sx={{
@@ -9183,12 +9196,12 @@ export default function ProducerMediaPanel({
                   </Box>
                   <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
                     {isBriefLockedByApproval
-                      ? 'Briefen er låst etter godkjenning. Endringer krever en ny godkjenningsrunde.'
+                      ? t('prodMedia.s038')
                       : nextBriefStepDescriptor && nextBriefStepDescriptor.key !== activeBriefStep
-                      ? `Deretter: ${nextBriefStepDescriptor.label}`
+                      ? t('prodMedia.zz3', { v0: nextBriefStepDescriptor.label })
                       : activeBriefStepDescriptor.missing.length > 0
-                        ? `Fyll ut ${activeBriefStepDescriptor.label.toLowerCase()} før du går videre.`
-                        : 'Briefen er klar for neste arbeidsfase.'}
+                        ? t('prodMedia.p09', { v0: activeBriefStepDescriptor.label.toLowerCase() })
+                        : t('prodMedia.s036')}
                   </Typography>
                 </Stack>
               </Stack>
@@ -9205,7 +9218,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-                    {`Dette mangler i ${activeBriefStepDescriptor.label.toLowerCase()}`}
+                    {t('prodMedia.p06', { v0: activeBriefStepDescriptor.label.toLowerCase() })}
                   </Typography>
                   <Stack spacing={0.18}>
                     {activeBriefStepDescriptor.missing.map((item) => (
@@ -9231,7 +9244,7 @@ export default function ProducerMediaPanel({
                     },
                   }}
                 >
-                  Briefen er låst fordi prosjektet er godkjent. Endringer i mål, budskap, referanser og kontaktpunkt må tas gjennom en ny godkjenningsrunde.
+                  {t('prodMedia.j011')}
                 </Alert>
               ) : null}
 
@@ -9254,11 +9267,11 @@ export default function ProducerMediaPanel({
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv målet for prosjektet.',
+                        t('prodMedia.s629'),
                         hasText(intakeDraft.projectGoal) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Hva skal prosjektet oppnå?"
+                        label={t('prodMedia.s183')}
                         value={intakeDraft.projectGoal ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, projectGoal: event.target.value }))}
                         fullWidth
@@ -9267,11 +9280,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hva som skal leveres.',
+                        t('prodMedia.s614'),
                         hasText(intakeDraft.deliverables) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Hva skal leveres?"
+                        label={t('prodMedia.s182')}
                         value={intakeDraft.deliverables ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, deliverables: event.target.value }))}
                         fullWidth
@@ -9285,11 +9298,11 @@ export default function ProducerMediaPanel({
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvem innholdet er for.',
+                        t('prodMedia.s615'),
                         hasText(intakeDraft.targetAudience) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Målgruppe"
+                        label={t('prodMedia.s499')}
                         value={intakeDraft.targetAudience ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, targetAudience: event.target.value }))}
                         fullWidth
@@ -9298,11 +9311,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hva publikum skal sitte igjen med.',
+                        t('prodMedia.s611'),
                         hasText(intakeDraft.keyMessage) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Kjernebudskap"
+                        label={t('prodMedia.m44')}
                         value={intakeDraft.keyMessage ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, keyMessage: event.target.value }))}
                         fullWidth
@@ -9323,20 +9336,20 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Innholdsplan
+                        {t('prodMedia.m38')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
-                        Samme struktur som produsenten bruker videre i planlegging og levering. Klienten beskriver målet, kroken og handlingen direkte her.
+                        {t('prodMedia.j012')}
                       </Typography>
                       <Stack spacing={1.2}>
                         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
                           <Box sx={{ flex: 1 }}>
                             {renderFieldLead(
-                              'Skriv hva innholdet faktisk skal oppnå.',
+                              t('prodMedia.s609'),
                               hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Innholdsplan mål"
+                              label={t('prodMedia.s253')}
                               value={contentLogicDraft.objective}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9356,11 +9369,11 @@ export default function ProducerMediaPanel({
                           </Box>
                           <Box sx={{ flex: 1 }}>
                             {renderFieldLead(
-                              'Skriv hvem innholdet skal treffe.',
+                              t('prodMedia.s616'),
                               hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Innholdsplan målgruppe"
+                              label={t('prodMedia.s254')}
                               value={contentLogicDraft.audience}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9382,7 +9395,7 @@ export default function ProducerMediaPanel({
                         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.2}>
                           <Box sx={{ flex: 1 }}>
                             {renderFieldLead(
-                              'Skriv første vinkling som skal få folk til å stoppe opp.',
+                              t('prodMedia.s608'),
                               hasText(contentLogicDraft.hook) ? 'filled' : 'missing',
                             )}
                             <TextField
@@ -9406,7 +9419,7 @@ export default function ProducerMediaPanel({
                           </Box>
                           <Box sx={{ flex: 1 }}>
                             {renderFieldLead(
-                              'Skriv hva publikum skal gjøre etter å ha sett innholdet.',
+                              t('prodMedia.s610'),
                               hasText(contentLogicDraft.callToAction) ? 'filled' : 'missing',
                             )}
                             <TextField
@@ -9434,11 +9447,11 @@ export default function ProducerMediaPanel({
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv tidsrammer og avhengigheter.',
+                        t('prodMedia.s631'),
                         hasText(intakeDraft.timingConstraints) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Tidsrammer og avhengigheter"
+                        label={t('prodMedia.s647')}
                         value={intakeDraft.timingConstraints ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, timingConstraints: event.target.value }))}
                         fullWidth
@@ -9449,11 +9462,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv brand- eller kommunikasjonsnotater.',
+                        t('prodMedia.s606'),
                         hasText(intakeDraft.brandNotes) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Merkevare- og kommunikasjonsnotater"
+                        label={t('prodMedia.s483')}
                         value={intakeDraft.brandNotes ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, brandNotes: event.target.value }))}
                         fullWidth
@@ -9464,11 +9477,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hva slags materiale som allerede finnes.',
+                        t('prodMedia.s612'),
                         hasText(intakeDraft.materialOverview) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Hva slags materiale finnes allerede?"
+                        label={t('prodMedia.s184')}
                         value={intakeDraft.materialOverview ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, materialOverview: event.target.value }))}
                         fullWidth
@@ -9484,11 +9497,11 @@ export default function ProducerMediaPanel({
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Legg inn referanser som skal påvirke retningen.',
+                        t('prodMedia.s412'),
                         hasText(intakeDraft.referenceLinks) || materials.some((item) => item.entry_type === 'reference') ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Referanselenker"
+                        label={t('prodMedia.m85')}
                         value={intakeDraft.referenceLinks ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, referenceLinks: event.target.value }))}
                         fullWidth
@@ -9513,10 +9526,10 @@ export default function ProducerMediaPanel({
                       >
                         <Box sx={{ minWidth: 0 }}>
                           <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                            Last opp referanser direkte i briefen
+                            {t('prodMedia.j013')}
                           </Typography>
                           <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5 }}>
-                            Legg ved filmer, PDF-er, bilder eller annet grunnlag her. Referansen blir lagret i prosjektet og kan brukes videre i prosjektrommet.
+                            {t('prodMedia.j014')}
                           </Typography>
                         </Box>
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ md: 'flex-start' }}>
@@ -9527,7 +9540,7 @@ export default function ProducerMediaPanel({
                             disabled={!canEditBriefInput}
                             sx={{ textTransform: 'none', fontWeight: 700 }}
                           >
-                            Velg referansefil
+                            {t('prodMedia.j015')}
                           </Button>
                           {isMobileWorkspace ? (
                             <Button
@@ -9537,7 +9550,7 @@ export default function ProducerMediaPanel({
                               disabled={!canEditBriefInput}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Ta bilde/video
+                              {t('prodMedia.m103')}
                             </Button>
                           ) : null}
                           <Button
@@ -9549,7 +9562,7 @@ export default function ProducerMediaPanel({
                             disabled={!canEditBriefInput || savingMaterial || uploadingMaterialFile || !canSubmitBriefReference}
                             sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                           >
-                            {savingMaterial || uploadingMaterialFile ? 'Laster opp...' : 'Legg til referanse'}
+                            {savingMaterial || uploadingMaterialFile ? t('prodMedia.s390') : t('prodMedia.s418')}
                           </Button>
                         </Stack>
                       </Stack>
@@ -9569,7 +9582,7 @@ export default function ProducerMediaPanel({
                               <Box
                                 component="img"
                                 src={selectedMaterialPreviewUrl}
-                                alt={selectedMaterialFile?.name || 'Valgt referanse'}
+                                alt={selectedMaterialFile?.name || t('prodMedia.s678')}
                                 sx={{
                                   width: 64,
                                   height: 64,
@@ -9595,12 +9608,12 @@ export default function ProducerMediaPanel({
                             )}
                             <Box sx={{ minWidth: 0 }}>
                               <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
-                                {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || 'Referanse klar'}
+                                {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || t('prodMedia.s560')}
                               </Typography>
                               <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.74rem', mt: 0.18 }}>
                                 {selectedMaterialFile
                                   ? `${selectedMaterialFile.type || 'Fil'} · ${formatFileSize(selectedMaterialFile.size)}`
-                                  : 'Prosjektfil er allerede koblet og klar til lagring.'}
+                                  : t('prodMedia.s549')}
                               </Typography>
                             </Box>
                           </Stack>
@@ -9620,11 +9633,11 @@ export default function ProducerMediaPanel({
                         >
                           <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.8rem', fontWeight: 700 }}>
                             {selectedMaterialFile
-                              ? `Klar til opplasting: ${selectedMaterialFile.name}`
-                              : `Klar til å lagres: ${materialDraft.fileName || materialDraft.title || 'Referanse'}`}
+                              ? t('prodMedia.p12', { v0: selectedMaterialFile.name })
+                              : t('prodMedia.p13', { v0: materialDraft.fileName || materialDraft.title || t('prodMedia.s559') })}
                           </Typography>
                           <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.24 }}>
-                            Referansen lagres som en egen prosjektressurs og blir tilgjengelig videre i Prosjektrom.
+                            {t('prodMedia.j016')}
                           </Typography>
                         </Box>
                       ) : null}
@@ -9632,7 +9645,7 @@ export default function ProducerMediaPanel({
                       {briefReferenceMaterials.length > 0 ? (
                         <Stack spacing={0.65} sx={{ mt: 0.95 }}>
                           <Typography sx={{ color: 'rgba(191,219,254,0.72)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-                            Referanser som allerede er lagt inn
+                            {t('prodMedia.j017')}
                           </Typography>
                           {briefReferenceMaterials.map((material) => {
                             const metadata = parseMaterialMetadata(material);
@@ -9660,16 +9673,16 @@ export default function ProducerMediaPanel({
                                   </Typography>
                                   <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.2 }}>
                                     {readFirstNonEmptyString(
-                                      metadata.fileName ? `Fil: ${metadata.fileName}` : '',
+                                      metadata.fileName ? t('prodMedia.u03', { v0: metadata.fileName }) : '',
                                       material.description ?? '',
-                                      'Referanse lagt til i briefen.',
+                                      t('prodMedia.s561'),
                                     )}
                                   </Typography>
                                 </Box>
                                 <Stack direction="row" spacing={0.65} alignItems="center">
                                   <Chip
                                     size="small"
-                                    label={metadata.sourceLabel || 'Klient'}
+                                    label={metadata.sourceLabel || t('prodMedia.s282')}
                                     sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe' }}
                                   />
                                   {hasText(materialLink) ? (
@@ -9681,7 +9694,7 @@ export default function ProducerMediaPanel({
                                       rel="noreferrer"
                                       sx={{ textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.82)' }}
                                     >
-                                      Åpne
+                                      {t('prodMedia.s726')}
                                     </Button>
                                   ) : null}
                                 </Stack>
@@ -9694,7 +9707,7 @@ export default function ProducerMediaPanel({
                             onClick={() => openSurfaceWorkspace('materials')}
                             sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                           >
-                            Se alle referanser i Prosjektrom
+                            {t('prodMedia.j018')}
                           </Button>
                         </Stack>
                       ) : null}
@@ -9708,19 +9721,19 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Innholdsplan videreføring
+                        {t('prodMedia.j019')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
-                        Her konkretiseres hva som beviser budskapet og hvordan innholdet skal fordeles på flater.
+                        {t('prodMedia.j020')}
                       </Typography>
                       <Stack spacing={1.2}>
                         <Box>
                           {renderFieldLead(
-                            'Skriv konkrete proof points eller bevis, ett per linje.',
+                            t('prodMedia.s626'),
                             contentLogicDraft.proofPoints.length > 0 ? 'filled' : 'missing',
                           )}
                           <TextField
-                            label="Bevis / proof points"
+                            label={t('prodMedia.s032')}
                             value={stringifyLineSeparatedValues(contentLogicDraft.proofPoints)}
                             onChange={(event) => setPlanningDraft((previous) => ({
                               ...previous,
@@ -9738,11 +9751,11 @@ export default function ProducerMediaPanel({
                         </Box>
                         <Box>
                           {renderFieldLead(
-                            'Skriv hvordan innholdet skal fordeles mellom nettside, feed, reels eller andre flater.',
+                            t('prodMedia.s620'),
                             hasText(contentLogicDraft.distributionPlan) ? 'filled' : 'missing',
                           )}
                           <TextField
-                            label="Distribusjon og kanalbruk"
+                            label={t('prodMedia.s093')}
                             value={contentLogicDraft.distributionPlan}
                             onChange={(event) => setPlanningDraft((previous) => ({
                               ...previous,
@@ -9771,11 +9784,11 @@ export default function ProducerMediaPanel({
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvem produsenten skal forholde seg til.',
+                        t('prodMedia.s617'),
                         hasText(intakeDraft.contactName) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Kontaktperson"
+                        label={t('prodMedia.m52')}
                         value={intakeDraft.contactName ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactName: event.target.value }))}
                         fullWidth
@@ -9784,11 +9797,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv e-posten som brukes til godkjenning og oppfølging.',
+                        t('prodMedia.s607'),
                         hasText(intakeDraft.contactEmail) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Kontakt-e-post"
+                        label={t('prodMedia.z03')}
                         value={intakeDraft.contactEmail ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactEmail: event.target.value }))}
                         fullWidth
@@ -9797,11 +9810,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Legg inn telefonnummer hvis det trengs i raske avklaringer.',
+                        t('prodMedia.s414'),
                         hasText(intakeDraft.contactPhone) ? 'filled' : 'optional',
                       )}
                       <TextField
-                        label="Kontakttelefon"
+                        label={t('prodMedia.m53')}
                         value={intakeDraft.contactPhone ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, contactPhone: event.target.value }))}
                         fullWidth
@@ -9810,11 +9823,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Legg inn ekstra notater hvis noe viktig mangler over.',
+                        t('prodMedia.s396'),
                         hasText(intakeDraft.additionalNotes) ? 'filled' : 'optional',
                       )}
                       <TextField
-                        label="Tilleggsnotater"
+                        label={t('prodMedia.m106')}
                         value={intakeDraft.additionalNotes ?? ''}
                         onChange={(event) => setIntakeDraft((previous) => ({ ...previous, additionalNotes: event.target.value }))}
                         fullWidth
@@ -9852,7 +9865,7 @@ export default function ProducerMediaPanel({
                       lineHeight: 1.3,
                     }}
                   >
-                    Kort oppsummering
+                    {t('prodMedia.m57')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
                     {activeBriefStepSummary}
@@ -9881,7 +9894,7 @@ export default function ProducerMediaPanel({
                           disabled={activeBriefStepIndex === 0}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
-                          Tilbake
+                          {t('prodMedia.m104')}
                         </Button>
                         <Button
                           size="small"
@@ -9893,7 +9906,7 @@ export default function ProducerMediaPanel({
                           disabled={!canEditBriefInput || savingIntake}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
-                          {savingIntake ? 'Lagrer...' : 'Lagre'}
+                          {savingIntake ? t('prodMedia.s384') : t('prodMedia.s367')}
                         </Button>
                       </Stack>
                       <Button
@@ -9911,8 +9924,8 @@ export default function ProducerMediaPanel({
                         sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                       >
                         {nextBriefStepDescriptor && activeBriefStepIndex < briefStepDescriptors.length - 1
-                          ? `Fortsett til ${nextBriefStepDescriptor.label}`
-                          : 'Fortsett til Materiale'}
+                          ? t('prodMedia.p08', { v0: nextBriefStepDescriptor.label })
+                          : t('prodMedia.s142')}
                       </Button>
                     </>
                   ) : (
@@ -9925,7 +9938,7 @@ export default function ProducerMediaPanel({
                           disabled={activeBriefStepIndex === 0}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
-                          {previousBriefStepDescriptor && activeBriefStepIndex > 0 ? `Til ${previousBriefStepDescriptor.label}` : 'Forrige steg'}
+                          {previousBriefStepDescriptor && activeBriefStepIndex > 0 ? t('prodMedia.p29', { v0: previousBriefStepDescriptor.label }) : t('prodMedia.s135')}
                         </Button>
                         <Button
                           size="small"
@@ -9934,7 +9947,7 @@ export default function ProducerMediaPanel({
                           disabled={activeBriefStepIndex === briefStepDescriptors.length - 1}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
-                          {nextBriefStepDescriptor && activeBriefStepIndex < briefStepDescriptors.length - 1 ? `Til ${nextBriefStepDescriptor.label}` : 'Neste steg'}
+                          {nextBriefStepDescriptor && activeBriefStepIndex < briefStepDescriptors.length - 1 ? t('prodMedia.p29', { v0: nextBriefStepDescriptor.label }) : t('prodMedia.s513')}
                         </Button>
                       </Stack>
                       <Button
@@ -9947,7 +9960,7 @@ export default function ProducerMediaPanel({
                         disabled={!canEditBriefInput || savingIntake}
                         sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                       >
-                        {savingIntake ? 'Lagrer brief...' : 'Lagre utkast'}
+                        {savingIntake ? t('prodMedia.s376') : t('prodMedia.s374')}
                       </Button>
                       <Button
                         size="small"
@@ -9960,10 +9973,10 @@ export default function ProducerMediaPanel({
                         sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#0f766e', color: '#fff', '&:hover': { bgcolor: '#0d655e' } }}
                       >
                         {publishingIntake
-                          ? 'Publiserer...'
+                          ? t('prodMedia.zz4')
                           : intakeDraft.publishedAt
-                            ? 'Publiser oppdatering'
-                            : 'Publiser til klient'}
+                            ? t('prodMedia.s554')
+                            : t('prodMedia.s555')}
                       </Button>
                       {intakeDraft.publishedAt ? (
                         <Button
@@ -9973,7 +9986,7 @@ export default function ProducerMediaPanel({
                           disabled={publishingIntake}
                           sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.7)' }}
                         >
-                          Avpubliser
+                          {t('prodMedia.m07')}
                         </Button>
                       ) : null}
                     </>
@@ -10008,16 +10021,16 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Storyboard og inspirasjoner
+                    {t('prodMedia.j021')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 720 }}>
-                    Klienten ser scener og frames i rolig form, og kan legge inn inspirasjoner og referanser direkte på riktig scene uten å rote til produksjonseditoren.
+                    {t('prodMedia.j022')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
-                  <Chip size="small" label={`${storyboardScenes.length} scener`} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
+                  <Chip size="small" label={t('prodMedia.r17', { v0: storyboardScenes.length })} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
                   <Chip size="small" label={`${storyboardFrameCount} frames`} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
-                  <Chip size="small" label={`${storyboardInspirations.length} inspirasjoner`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
+                  <Chip size="small" label={t('prodMedia.u25', { v0: storyboardInspirations.length })} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
                 </Stack>
               </Stack>
 
@@ -10038,10 +10051,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
-                    Sceneoversikt
+                    {t('prodMedia.m89')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.22, mb: 0.9 }}>
-                    Klienten får oversikt over hvilke scener som faktisk er blokkert i storyboardet og kan peke inspirasjoner inn på rett sted.
+                    {t('prodMedia.j023')}
                   </Typography>
                   {storyboardScenes.length > 0 ? (
                     <Box
@@ -10089,7 +10102,7 @@ export default function ProducerMediaPanel({
                                 {getSceneDisplayLabel(scene)}
                               </Typography>
                               <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', lineHeight: 1.45, mt: 0.22 }}>
-                                {readFirstNonEmptyString(scene.locationName, scene.intExt, scene.description, 'Storyboardscene uten ekstra notat')}
+                                {readFirstNonEmptyString(scene.locationName, scene.intExt, scene.description, t('prodMedia.s641'))}
                               </Typography>
                               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.7 }}>
                                 <Chip size="small" label={`${scene.storyboardFrames?.length ?? 0} frames`} sx={{ bgcolor: 'rgba(251,113,133,0.14)', color: '#fecdd3' }} />
@@ -10104,7 +10117,7 @@ export default function ProducerMediaPanel({
                     </Box>
                   ) : (
                     <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
-                      Ingen storyboardscener er koblet til prosjektet ennå.
+                      {t('prodMedia.j024')}
                     </Typography>
                   )}
                 </Box>
@@ -10118,15 +10131,15 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
-                    Legg til inspirasjon
+                    {t('prodMedia.j025')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.22, mb: 0.9 }}>
-                    Bruk denne til visuelle referanser, tone, lys, komposisjon eller andre pekere produsenten skal ta med seg videre.
+                    {t('prodMedia.j026')}
                   </Typography>
                   <Stack spacing={1.05}>
                     <TextField
                       select
-                      label="Scene"
+                      label={t('prodMedia.s579')}
                       value={storyboardInspirationDraft.sceneId}
                       onChange={(event) => {
                         const nextSceneId = event.target.value;
@@ -10148,7 +10161,7 @@ export default function ProducerMediaPanel({
                     </TextField>
                     <TextField
                       select
-                      label="Frame (valgfritt)"
+                      label={t('prodMedia.s144')}
                       value={storyboardInspirationDraft.storyboardFrameId}
                       onChange={(event) => setStoryboardInspirationDraft((previous) => ({
                         ...previous,
@@ -10157,7 +10170,7 @@ export default function ProducerMediaPanel({
                       fullWidth
                       disabled={!canEditClientInput || storyboardFrameOptions.length === 0}
                     >
-                      <MenuItem value="">Hele scenen</MenuItem>
+                      <MenuItem value="">{t('prodMedia.j027')}</MenuItem>
                       {storyboardFrameOptions.map((frame) => (
                         <MenuItem key={frame.id} value={frame.id}>
                           {frame.label}
@@ -10165,7 +10178,7 @@ export default function ProducerMediaPanel({
                       ))}
                     </TextField>
                     <TextField
-                      label="Tittel"
+                      label={t('prodMedia.s658')}
                       value={storyboardInspirationDraft.title}
                       onChange={(event) => setStoryboardInspirationDraft((previous) => ({ ...previous, title: event.target.value }))}
                       fullWidth
@@ -10173,7 +10186,7 @@ export default function ProducerMediaPanel({
                       disabled={!canEditClientInput}
                     />
                     <TextField
-                      label="Lenke til referanse (valgfritt)"
+                      label={t('prodMedia.s420')}
                       value={storyboardInspirationDraft.externalUrl}
                       onChange={(event) => setStoryboardInspirationDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
                       fullWidth
@@ -10181,7 +10194,7 @@ export default function ProducerMediaPanel({
                       disabled={!canEditClientInput}
                     />
                     <TextField
-                      label="Hva bør teamet se etter?"
+                      label={t('prodMedia.s177')}
                       value={storyboardInspirationDraft.note}
                       onChange={(event) => setStoryboardInspirationDraft((previous) => ({ ...previous, note: event.target.value }))}
                       fullWidth
@@ -10200,7 +10213,7 @@ export default function ProducerMediaPanel({
                         disabled={savingMaterial}
                         sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, bgcolor: '#fb7185', '&:hover': { bgcolor: '#f43f5e' } }}
                       >
-                        {savingMaterial ? 'Lagrer inspirasjon...' : 'Lagre inspirasjon'}
+                        {savingMaterial ? t('prodMedia.s378') : t('prodMedia.s369')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -10216,10 +10229,10 @@ export default function ProducerMediaPanel({
                 }}
               >
                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem', mb: 0.22 }}>
-                  Lagrede inspirasjoner
+                  {t('prodMedia.j028')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mb: 0.95 }}>
-                  Alle innspill her er knyttet til scene og kan plukkes opp videre i storyboard- og shot-arbeidet.
+                  {t('prodMedia.j029')}
                 </Typography>
                 {storyboardInspirations.length > 0 ? (
                   <Stack spacing={0.8}>
@@ -10253,7 +10266,7 @@ export default function ProducerMediaPanel({
                                 {material.title}
                               </Typography>
                               <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.78rem', lineHeight: 1.5, mt: 0.28 }}>
-                                {material.description ?? 'Ingen ekstra notat lagt inn.'}
+                                {material.description ?? t('prodMedia.s212')}
                               </Typography>
                               <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.72rem', mt: 0.55 }}>
                                 {formatTimestamp(material.updated_at ?? material.created_at ?? '')}
@@ -10270,7 +10283,7 @@ export default function ProducerMediaPanel({
                                   rel="noreferrer"
                                   sx={{ textTransform: 'none', fontWeight: 700 }}
                                 >
-                                  Åpne referanse
+                                  {t('prodMedia.j030')}
                                 </Button>
                               ) : null}
                               {canEditClientInput ? (
@@ -10283,7 +10296,7 @@ export default function ProducerMediaPanel({
                                   disabled={deletingMaterialId === material.id}
                                   sx={{ textTransform: 'none', fontWeight: 700, color: '#fda4af' }}
                                 >
-                                  {deletingMaterialId === material.id ? 'Sletter...' : 'Fjern'}
+                                  {deletingMaterialId === material.id ? t('prodMedia.zz5') : t('prodMedia.s123')}
                                 </Button>
                               ) : null}
                             </Stack>
@@ -10294,7 +10307,7 @@ export default function ProducerMediaPanel({
                   </Stack>
                 ) : (
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
-                    Ingen storyboard-inspirasjoner er registrert ennå.
+                    {t('prodMedia.j031')}
                   </Typography>
                 )}
               </Box>
@@ -10326,15 +10339,15 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Manus og endringsforslag
+                    {t('prodMedia.j032')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 720 }}>
-                    Klienten leser manus i oversiktlig form og skriver forslag til endringer som egne innspill. Originalteksten blir ikke overskrevet direkte i klientflaten.
+                    {t('prodMedia.j033')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
-                  <Chip size="small" label={primaryManuscript ? (primaryManuscript.version ? `Versjon ${primaryManuscript.version}` : 'Manus koblet') : 'Ingen manus'} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
-                  <Chip size="small" label={`${manuscriptSuggestions.length} forslag`} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
+                  <Chip size="small" label={primaryManuscript ? (primaryManuscript.version ? t('prodMedia.zz6', { v0: primaryManuscript.version }) : t('prodMedia.s463')) : t('prodMedia.s229')} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
+                  <Chip size="small" label={t('prodMedia.r12', { v0: manuscriptSuggestions.length })} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
                 </Stack>
               </Stack>
 
@@ -10355,7 +10368,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
-                    Manusoversikt
+                    {t('prodMedia.m68')}
                   </Typography>
                   {primaryManuscript ? (
                     <>
@@ -10363,7 +10376,7 @@ export default function ProducerMediaPanel({
                         {primaryManuscript.title}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.18 }}>
-                        {[primaryManuscript.author, primaryManuscript.subtitle, primaryManuscript.format].filter(Boolean).join(' · ') || 'Manusdetaljer er ikke satt'}
+                        {[primaryManuscript.author, primaryManuscript.subtitle, primaryManuscript.format].filter(Boolean).join(' · ') || t('prodMedia.s465')}
                       </Typography>
                       <Box
                         sx={{
@@ -10375,17 +10388,17 @@ export default function ProducerMediaPanel({
                         }}
                       >
                         <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', mb: 0.35 }}>
-                          Utdrag
+                          {t('prodMedia.m108')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.92)', fontSize: '0.82rem', lineHeight: 1.7 }}>
-                          {manuscriptExcerpt || 'Manuset har ikke tekstinnhold ennå.'}
+                          {manuscriptExcerpt || t('prodMedia.s466')}
                           {manuscriptExcerpt && primaryManuscript.content.length > manuscriptExcerpt.length ? '…' : ''}
                         </Typography>
                       </Box>
                     </>
                   ) : (
                     <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem', mt: 0.6 }}>
-                      Ingen manus er koblet til prosjektet ennå.
+                      {t('prodMedia.s230')}
                     </Typography>
                   )}
                   <Box
@@ -10398,7 +10411,7 @@ export default function ProducerMediaPanel({
                     }}
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.86rem', mb: 0.55 }}>
-                      Scenegrunnlag
+                      {t('prodMedia.m88')}
                     </Typography>
                     {storyboardSceneOptions.length > 0 ? (
                       <Stack spacing={0.42}>
@@ -10410,7 +10423,7 @@ export default function ProducerMediaPanel({
                       </Stack>
                     ) : (
                       <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem' }}>
-                        Ingen scener er koblet til manusgrunnlaget ennå.
+                        {t('prodMedia.j034')}
                       </Typography>
                     )}
                   </Box>
@@ -10425,15 +10438,15 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem' }}>
-                    Foreslå endring
+                    {t('prodMedia.j035')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.22, mb: 0.9 }}>
-                    Bruk dette til omskrivninger, tydeliggjøringer eller forslag til scenen, ikke til å redigere selve manuset direkte.
+                    {t('prodMedia.j036')}
                   </Typography>
                   <Stack spacing={1.05}>
                     <TextField
                       select
-                      label="Manus"
+                      label={t('prodMedia.s462')}
                       value={manuscriptSuggestionDraft.manuscriptId}
                       onChange={(event) => setManuscriptSuggestionDraft((previous) => ({
                         ...previous,
@@ -10450,7 +10463,7 @@ export default function ProducerMediaPanel({
                     </TextField>
                     <TextField
                       select
-                      label="Scene (valgfritt)"
+                      label={t('prodMedia.s580')}
                       value={manuscriptSuggestionDraft.sceneId}
                       onChange={(event) => setManuscriptSuggestionDraft((previous) => ({
                         ...previous,
@@ -10459,7 +10472,7 @@ export default function ProducerMediaPanel({
                       fullWidth
                       disabled={!canEditClientInput || storyboardSceneOptions.length === 0}
                     >
-                      <MenuItem value="">Hele manuset</MenuItem>
+                      <MenuItem value="">{t('prodMedia.s170')}</MenuItem>
                       {storyboardSceneOptions.map((scene) => (
                         <MenuItem key={scene.id} value={scene.id}>
                           {scene.label}
@@ -10467,7 +10480,7 @@ export default function ProducerMediaPanel({
                       ))}
                     </TextField>
                     <TextField
-                      label="Kort tittel"
+                      label={t('prodMedia.s339')}
                       value={manuscriptSuggestionDraft.title}
                       onChange={(event) => setManuscriptSuggestionDraft((previous) => ({ ...previous, title: event.target.value }))}
                       fullWidth
@@ -10475,7 +10488,7 @@ export default function ProducerMediaPanel({
                       disabled={!canEditClientInput}
                     />
                     <TextField
-                      label="Hva foreslår du å endre?"
+                      label={t('prodMedia.s178')}
                       value={manuscriptSuggestionDraft.suggestion}
                       onChange={(event) => setManuscriptSuggestionDraft((previous) => ({ ...previous, suggestion: event.target.value }))}
                       fullWidth
@@ -10485,7 +10498,7 @@ export default function ProducerMediaPanel({
                       disabled={!canEditClientInput}
                     />
                     <TextField
-                      label="Hvorfor?"
+                      label={t('prodMedia.s191')}
                       value={manuscriptSuggestionDraft.rationale}
                       onChange={(event) => setManuscriptSuggestionDraft((previous) => ({ ...previous, rationale: event.target.value }))}
                       fullWidth
@@ -10504,7 +10517,7 @@ export default function ProducerMediaPanel({
                         disabled={savingMaterial}
                         sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, bgcolor: '#818cf8', '&:hover': { bgcolor: '#6366f1' } }}
                       >
-                        {savingMaterial ? 'Lagrer forslag...' : 'Lagre forslag'}
+                        {savingMaterial ? t('prodMedia.s377') : t('prodMedia.s368')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -10520,10 +10533,10 @@ export default function ProducerMediaPanel({
                 }}
               >
                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem', mb: 0.22 }}>
-                  Forslagslogg
+                  {t('prodMedia.m33')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mb: 0.95 }}>
-                  Endringsforslagene ligger som egne punkter teamet kan følge opp, uten å blande klientkommentarer inn i selve manusstrukturen.
+                  {t('prodMedia.j037')}
                 </Typography>
                 {manuscriptSuggestions.length > 0 ? (
                   <Stack spacing={0.8}>
@@ -10546,7 +10559,7 @@ export default function ProducerMediaPanel({
                                 {sceneLabel ? (
                                   <Chip size="small" label={getSceneDisplayLabel(sceneLabel)} sx={{ bgcolor: 'rgba(129,140,248,0.14)', color: '#c7d2fe' }} />
                                 ) : (
-                                  <Chip size="small" label="Hele manuset" sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
+                                  <Chip size="small" label={t('prodMedia.s170')} sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0' }} />
                                 )}
                                 <Chip size="small" label={material.status ?? 'suggested'} sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#bae6fd' }} />
                               </Stack>
@@ -10575,7 +10588,7 @@ export default function ProducerMediaPanel({
                                 disabled={deletingMaterialId === material.id}
                                 sx={{ textTransform: 'none', fontWeight: 700, color: '#c7d2fe', alignSelf: { md: 'flex-start' } }}
                               >
-                                {deletingMaterialId === material.id ? 'Sletter...' : 'Fjern'}
+                                {deletingMaterialId === material.id ? t('prodMedia.zz5') : t('prodMedia.s123')}
                               </Button>
                             ) : null}
                           </Stack>
@@ -10585,7 +10598,7 @@ export default function ProducerMediaPanel({
                   </Stack>
                 ) : (
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.84rem' }}>
-                    Ingen manusforslag er registrert ennå.
+                    {t('prodMedia.j038')}
                   </Typography>
                 )}
               </Box>
@@ -10606,10 +10619,10 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Shotlist overview
+                    {t('prodMedia.j039')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 760 }}>
-                    Dette er klientvisningen av shotlisten: tydelig, rolig og sceneorientert. Den viser hva som skal dekkes, hvor og med hvem, men ikke den interne produksjonsstøyen.
+                    {t('prodMedia.j040')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
@@ -10617,7 +10630,7 @@ export default function ProducerMediaPanel({
                   <Chip size="small" label={`${totalShotCount} shots`} sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a' }} />
                   <Chip
                     size="small"
-                    label={uncoveredStoryboardSceneCount > 0 ? `${uncoveredStoryboardSceneCount} scener mangler` : 'Full storyboarddekning'}
+                    label={uncoveredStoryboardSceneCount > 0 ? t('prodMedia.p47', { v0: uncoveredStoryboardSceneCount }) : t('prodMedia.s146')}
                     sx={{
                       bgcolor: uncoveredStoryboardSceneCount > 0 ? 'rgba(251,113,133,0.14)' : 'rgba(34,197,94,0.14)',
                       color: uncoveredStoryboardSceneCount > 0 ? '#fecdd3' : '#bbf7d0',
@@ -10636,10 +10649,10 @@ export default function ProducerMediaPanel({
                 }}
               >
                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.96rem', mb: 0.22 }}>
-                  Klientformat
+                  {t('prodMedia.m49')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                  Oversikten er bevisst komprimert til plan, scene, sted, cast og beskrivelse. Det gjør den rask å lese i møter og trygg å sende til klient uten at de må tolke intern shot-detaljering.
+                  {t('prodMedia.j041')}
                 </Typography>
               </Box>
 
@@ -10656,10 +10669,10 @@ export default function ProducerMediaPanel({
                   <TableHead>
                     <TableRow sx={{ bgcolor: 'rgba(245,158,11,0.9)' }}>
                       <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', width: 120 }}>Plan</TableCell>
-                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 220 }}>Scene / klipp</TableCell>
-                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 150 }}>Sted</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 220 }}>{t('prodMedia.j042')}</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 150 }}>{t('prodMedia.m101')}</TableCell>
                       <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 180 }}>Cast</TableCell>
-                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 260 }}>Beskrivelse</TableCell>
+                      <TableCell sx={{ color: '#111827', fontWeight: 800, fontSize: '0.78rem', minWidth: 260 }}>{t('prodMedia.m14')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -10691,7 +10704,7 @@ export default function ProducerMediaPanel({
                     }) : (
                       <TableRow>
                         <TableCell colSpan={5} sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.84rem', py: 2.4, textAlign: 'center' }}>
-                          Ingen shotlist-rader er klare for klientoversikt ennå.
+                          {t('prodMedia.s240')}
                         </TableCell>
                       </TableRow>
                     )}
@@ -10728,12 +10741,12 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Fullfør merkevareguiden
+                    {t('prodMedia.j043')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 620 }}>
                     {isClientReviewerMode
-                      ? 'Legg inn det som faktisk skal styre uttrykket i produksjonen.'
-                      : 'Fyll inn det teamet faktisk skal bruke for å holde uttrykket konsistent.'}
+                      ? t('prodMedia.s393')
+                      : t('prodMedia.s150')}
                   </Typography>
                 </Box>
                 <Stack
@@ -10750,10 +10763,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Fremdrift
+                    {t('prodMedia.m35')}
                   </Typography>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                    {`${brandGuideReadyCount}/5 klare`}
+                    {t('prodMedia.r20', { v0: brandGuideReadyCount })}
                   </Typography>
                   <Box
                     sx={{
@@ -10775,8 +10788,8 @@ export default function ProducerMediaPanel({
                   </Box>
                   <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
                     {brandGuideMissingItems.length > 0
-                      ? `Fyll ut ${brandGuideMissingItems[0]?.label.toLowerCase()} før du går videre.`
-                      : 'Merkevareguiden er klar for produksjon.'}
+                      ? t('prodMedia.p09', { v0: brandGuideMissingItems[0]?.label.toLowerCase() })
+                      : t('prodMedia.s487')}
                   </Typography>
                 </Stack>
               </Stack>
@@ -10793,7 +10806,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-                    Dette mangler i merkevareguiden
+                    {t('prodMedia.j044')}
                   </Typography>
                   <Stack spacing={0.18}>
                     {brandGuideMissingItems.map((item) => (
@@ -10827,10 +10840,10 @@ export default function ProducerMediaPanel({
                       lineHeight: 1.3,
                     }}
                   >
-                    Klart
+                    {t('prodMedia.m45')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
-                    Merkevareguiden er klar for produksjon.
+                    {t('prodMedia.s487')}
                   </Typography>
                 </Stack>
               )}
@@ -10849,10 +10862,10 @@ export default function ProducerMediaPanel({
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
                     <Box>
                       <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.2 }}>
-                        Dette bør du legge inn i materialet
+                        {t('prodMedia.j045')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.4 }}>
-                        Legg inn logo og profilfiler i materialbanken, så teamet bruker samme filer i produksjon og levering.
+                        {t('prodMedia.j046')}
                       </Typography>
                     </Box>
                     {canEditClientInput ? (
@@ -10862,7 +10875,7 @@ export default function ProducerMediaPanel({
                         onClick={() => applyMaterialTemplate(brandPackTemplate)}
                         sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
                       >
-                        Legg til merkevarefil
+                        {t('prodMedia.s417')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -10885,19 +10898,19 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
-                    Legg inn visuell profil
+                    {t('prodMedia.j047')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
-                    Fyll inn det som faktisk skal styre logo, farger og fonter i produksjonen.
+                    {t('prodMedia.j048')}
                   </Typography>
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Legg inn logoen teamet faktisk skal bruke videre i produksjon og levering.',
+                        t('prodMedia.s406'),
                         hasText(planningDraft.brandGuide.logoUrl) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Logo-lenke"
+                        label={t('prodMedia.s444')}
                         value={planningDraft.brandGuide.logoUrl ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -10928,8 +10941,8 @@ export default function ProducerMediaPanel({
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
                           {uploadingBrandLogo && brandLogoUploadVariantType === 'primary'
-                            ? 'Laster opp og analyserer...'
-                            : 'Last opp primærlogo'}
+                            ? t('prodMedia.s389')
+                            : t('prodMedia.s387')}
                         </Button>
                         {resolvedBrandLogoUrl ? (
                           <Button
@@ -10941,7 +10954,7 @@ export default function ProducerMediaPanel({
                             rel="noreferrer"
                             sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                           >
-                            Åpne logofil
+                            {t('prodMedia.j049')}
                           </Button>
                         ) : null}
                       </Stack>
@@ -10985,7 +10998,7 @@ export default function ProducerMediaPanel({
                                 </Box>
                                 <Chip
                                   size="small"
-                                  label={isActiveVariant ? 'Aktiv' : variant ? 'Klar' : 'Mangler'}
+                                  label={isActiveVariant ? t('prodMedia.z04') : variant ? t('prodMedia.s276') : t('prodMedia.s460')}
                                   sx={{
                                     bgcolor: isActiveVariant
                                       ? 'rgba(56,189,248,0.16)'
@@ -11020,7 +11033,7 @@ export default function ProducerMediaPanel({
                                   {isAutoPreviewVariant ? (
                                     <Chip
                                       size="small"
-                                      label={`Brukes nå i ${activeBrandPreviewFormat}`}
+                                      label={t('prodMedia.p03', { v0: activeBrandPreviewFormat })}
                                       sx={{ bgcolor: 'rgba(34,197,94,0.12)', color: '#dcfce7', fontWeight: 700 }}
                                     />
                                   ) : null}
@@ -11030,7 +11043,7 @@ export default function ProducerMediaPanel({
                                 {readFirstNonEmptyString(
                                   variant?.fileName,
                                   variantDetection?.sourceFileName,
-                                  'Ingen variant lastet opp ennå.',
+                                  t('prodMedia.s245'),
                                 )}
                               </Typography>
                               {variantDetection ? (
@@ -11050,10 +11063,10 @@ export default function ProducerMediaPanel({
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                                 >
                                   {uploadingBrandLogo && brandLogoUploadVariantType === variantType
-                                    ? 'Laster opp...'
+                                    ? t('prodMedia.s390')
                                     : variant
-                                      ? 'Bytt fil'
-                                      : 'Last opp'}
+                                      ? t('prodMedia.m19')
+                                      : t('prodMedia.s386')}
                                 </Button>
                                 {variant ? (
                                   <Button
@@ -11073,10 +11086,10 @@ export default function ProducerMediaPanel({
                                     }}
                                   >
                                     {brandLogoVariantBusyKey === `activate:${variantType}`
-                                      ? 'Lagrer...'
+                                      ? t('prodMedia.s384')
                                       : isActiveVariant
-                                        ? 'I preview nå'
-                                        : 'Bruk i preview'}
+                                        ? t('prodMedia.s192')
+                                        : t('prodMedia.s045')}
                                   </Button>
                                 ) : null}
                                 {variant ? (
@@ -11093,10 +11106,10 @@ export default function ProducerMediaPanel({
                                     sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                                   >
                                     {brandLogoVariantBusyKey === `delete:${variantType}`
-                                      ? 'Sletter...'
+                                      ? t('prodMedia.zz5')
                                       : isDeleteConfirmOpen
-                                        ? 'Lukk'
-                                        : 'Slett'}
+                                        ? t('prodMedia.s453')
+                                        : t('prodMedia.s633')}
                                   </Button>
                                 ) : null}
                               </Stack>
@@ -11116,7 +11129,7 @@ export default function ProducerMediaPanel({
                                       Slette {variantLabel.toLowerCase()}?
                                     </Typography>
                                     <Typography sx={{ fontSize: '0.74rem', color: 'rgba(254,243,199,0.86)', lineHeight: 1.45 }}>
-                                      Varianten fjernes fra prosjektet og filen slettes også hvis den er lastet opp her.
+                                      {t('prodMedia.j050')}
                                     </Typography>
                                     <Stack direction="row" spacing={0.7} sx={{ mt: 0.8 }}>
                                       <Button
@@ -11129,7 +11142,7 @@ export default function ProducerMediaPanel({
                                         disabled={!canEditClientInput || uploadingBrandLogo || savingPlanning}
                                         sx={{ textTransform: 'none', fontWeight: 700 }}
                                       >
-                                        {brandLogoVariantBusyKey === `delete:${variantType}` ? 'Sletter...' : 'Bekreft sletting'}
+                                        {brandLogoVariantBusyKey === `delete:${variantType}` ? t('prodMedia.zz5') : t('prodMedia.s020')}
                                       </Button>
                                       <Button
                                         size="small"
@@ -11138,7 +11151,7 @@ export default function ProducerMediaPanel({
                                         disabled={brandLogoVariantBusyKey === `delete:${variantType}`}
                                         sx={{ textTransform: 'none', fontWeight: 700, color: '#fde68a' }}
                                       >
-                                        Avbryt
+                                        {t('prodMedia.m04')}
                                       </Button>
                                     </Stack>
                                   </Alert>
@@ -11178,7 +11191,7 @@ export default function ProducerMediaPanel({
                                   <Box
                                     component="img"
                                     src={resolvedBrandLogoUrl}
-                                    alt="Opplastet logo"
+                                    alt={t('prodMedia.s530')}
                                     sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                                   />
                                 ) : (
@@ -11195,27 +11208,27 @@ export default function ProducerMediaPanel({
                                   />
                                   <Chip
                                     size="small"
-                                    label={`Aktiv variant · ${BRAND_LOGO_VARIANT_LABELS[activeBrandLogoVariant?.type ?? 'primary']}`}
+                                    label={t('prodMedia.p00', { v0: BRAND_LOGO_VARIANT_LABELS[activeBrandLogoVariant?.type ?? 'primary'] })}
                                     sx={{ bgcolor: 'rgba(14,165,233,0.14)', color: '#dbeafe' }}
                                   />
                                   <Chip
                                     size="small"
-                                    label={brandLogoDetectionSummary?.markTypeLabel ?? 'Ukjent'}
+                                    label={brandLogoDetectionSummary?.markTypeLabel ?? t('prodMedia.s668')}
                                     sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#f5d0fe' }}
                                   />
                                   <Chip
                                     size="small"
-                                    label={brandLogoDetectionSummary?.transparencyLabel ?? 'Ingen analyse'}
+                                    label={brandLogoDetectionSummary?.transparencyLabel ?? t('prodMedia.s210')}
                                     sx={{ bgcolor: 'rgba(15,118,110,0.16)', color: '#99f6e4' }}
                                   />
                                 </Stack>
                                 <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>
-                                  {readFirstNonEmptyString(brandLogoDetection.sourceFileName, 'Opplastet logo')}
+                                  {readFirstNonEmptyString(brandLogoDetection.sourceFileName, t('prodMedia.s530'))}
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.78rem', mt: 0.22, lineHeight: 1.45 }}>
                                   {readFirstNonEmptyString(
                                     brandLogoDetection.note,
-                                    'Vi har lest logoen og laget forslag til farger, plassering og treatment.',
+                                    t('prodMedia.s702'),
                                   )}
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(191,219,254,0.78)', fontSize: '0.74rem', mt: 0.28 }}>
@@ -11240,7 +11253,7 @@ export default function ProducerMediaPanel({
                                     }}
                                     sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                                   >
-                                    Bruk forslag
+                                    {t('prodMedia.j051')}
                                   </Button>
                                   {brandLogoDetectionColors.length > 0 ? (
                                     <Button
@@ -11249,13 +11262,13 @@ export default function ProducerMediaPanel({
                                       onClick={() => setBrandColorsFromEntries(brandLogoDetectionColors)}
                                       sx={{ textTransform: 'none', fontWeight: 700, minHeight: 40 }}
                                     >
-                                      Bruk bare farger
+                                      {t('prodMedia.m17')}
                                     </Button>
                                   ) : null}
                                 </>
                               ) : null}
                               <Typography sx={{ color: 'rgba(148,163,184,0.72)', fontSize: '0.72rem', maxWidth: 250, textAlign: { md: 'right' } }}>
-                                Forslagene fyller ut merkevareguiden, men klienten kan fortsatt justere alt manuelt etterpå.
+                                {t('prodMedia.j052')}
                               </Typography>
                             </Stack>
                           </Stack>
@@ -11291,7 +11304,7 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Velg hvor logoen skal ligge, når den skal vises, og hvordan den skal behandles i videoen.',
+                        t('prodMedia.s688'),
                         hasText(planningDraft.brandGuide.logoUrl) ? 'filled' : 'optional',
                       )}
                       <Stack spacing={0.85}>
@@ -11336,7 +11349,7 @@ export default function ProducerMediaPanel({
                           ))}
                         </ToggleButtonGroup>
                         <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.72rem', lineHeight: 1.45 }}>
-                          Dra logoen i previewen for å snappe den til nærmeste plassering. Valget under oppdateres automatisk.
+                          {t('prodMedia.j053')}
                         </Typography>
                         <ToggleButtonGroup
                           size="small"
@@ -11392,7 +11405,7 @@ export default function ProducerMediaPanel({
                             <TextField
                               size="small"
                               type="number"
-                              label="Fra sekund"
+                              label={t('prodMedia.s143')}
                               value={planningDraft.brandGuide.logoStartSecond ?? 0}
                               disabled={!canEditClientInput}
                               inputProps={{ min: 0, step: 1 }}
@@ -11407,12 +11420,12 @@ export default function ProducerMediaPanel({
                                   },
                                 }));
                               }}
-                              helperText="Velg når overlayet skal starte i videoen."
+                              helperText={t('prodMedia.s692')}
                             />
                             <TextField
                               size="small"
                               type="number"
-                              label="Til sekund"
+                              label={t('prodMedia.s652')}
                               value={planningDraft.brandGuide.logoEndSecond ?? 3}
                               disabled={!canEditClientInput}
                               inputProps={{ min: (planningDraft.brandGuide.logoStartSecond ?? 0) + 1, step: 1 }}
@@ -11426,7 +11439,7 @@ export default function ProducerMediaPanel({
                                   },
                                 }));
                               }}
-                              helperText="Velg når overlayet skal forsvinne igjen."
+                              helperText={t('prodMedia.s691')}
                             />
                           </Stack>
                         ) : null}
@@ -11442,7 +11455,7 @@ export default function ProducerMediaPanel({
                                 Finjuster logo-timing
                               </Typography>
                               <Typography sx={{ color: 'rgba(125,211,252,0.9)', fontSize: '0.73rem', fontWeight: 700 }}>
-                                {planningDraft.brandGuide.logoTiming === 'custom' ? 'Tilpasset' : 'Dra for å gjøre tilpasset'}
+                                {planningDraft.brandGuide.logoTiming === 'custom' ? t('prodMedia.m107') : t('prodMedia.s098')}
                               </Typography>
                             </Stack>
                             <Slider
@@ -11491,7 +11504,7 @@ export default function ProducerMediaPanel({
                         >
                           <Stack direction="row" justifyContent="space-between" spacing={1}>
                             <Typography sx={{ color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}>
-                              Logo i videoen
+                              {t('prodMedia.m65')}
                             </Typography>
                             <Typography sx={{ color: '#93c5fd', fontSize: '0.78rem', fontWeight: 700 }}>
                               {logoTimingPreview.label}
@@ -11621,14 +11634,14 @@ export default function ProducerMediaPanel({
                               selectedBrandPreviewDelivery
                                 ? `${selectedBrandPreviewDelivery.title} · ${selectedBrandPreviewDelivery.channel} · ${selectedBrandPreviewDelivery.formatLabel}`
                                 : '',
-                              hasText(planningDraft.brandGuide.logoUrl) ? 'Logoen er koblet til prosjektet.' : '',
+                              hasText(planningDraft.brandGuide.logoUrl) ? t('prodMedia.s446') : '',
                               logoTimingPreview.detail,
-                              'Slik ser logo- og overlay-retningen ut i videorammen.',
+                              t('prodMedia.s634'),
                             )}
                           </Typography>
                           {isClientPortalView || isClientReviewerMode ? (
                             <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.74rem', mt: 0.55, lineHeight: 1.45 }}>
-                              Velg leveransen du faktisk skal vurdere. Previewen oppdaterer safe zone, margin og logo-oppførsel mot riktig format for klientvisningen.
+                              {t('prodMedia.j054')}
                             </Typography>
                           ) : null}
                           <Typography sx={{ color: 'rgba(148,163,184,0.82)', fontSize: '0.72rem', mt: 0.45, lineHeight: 1.45 }}>
@@ -11753,10 +11766,10 @@ export default function ProducerMediaPanel({
                               }}
                             >
                               <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-                                Logovariant for denne leveransen
+                                {t('prodMedia.j055')}
                               </Typography>
                               <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', mt: 0.2, lineHeight: 1.45 }}>
-                                {`${selectedBrandPreviewDelivery.title} bruker nå ${brandPreviewVariantResolution.resolvedLabel.toLowerCase()}. Anbefalt for ${activeBrandPreviewFormat} er ${brandPreviewVariantResolution.recommendedLabel.toLowerCase()}.`}
+                                {t('prodMedia.p34', { v0: selectedBrandPreviewDelivery.title, v1: brandPreviewVariantResolution.resolvedLabel.toLowerCase(), v2: activeBrandPreviewFormat, v3: brandPreviewVariantResolution.recommendedLabel.toLowerCase() })}
                               </Typography>
                               <ToggleButtonGroup
                                 size="small"
@@ -11789,11 +11802,11 @@ export default function ProducerMediaPanel({
                                 }}
                               >
                                 <ToggleButton value="auto" disabled={!canEditClientInput}>
-                                  Bruk anbefalt variant
+                                  {t('prodMedia.m16')}
                                 </ToggleButton>
                                 {brandLogoVariants.map((variant) => (
                                   <ToggleButton key={variant.id} value={variant.type} disabled={!canEditClientInput}>
-                                    {`Tving ${BRAND_LOGO_VARIANT_LABELS[variant.type]}`}
+                                    {t('prodMedia.p30', { v0: BRAND_LOGO_VARIANT_LABELS[variant.type] })}
                                   </ToggleButton>
                                 ))}
                               </ToggleButtonGroup>
@@ -11888,7 +11901,7 @@ export default function ProducerMediaPanel({
                             </Box>
                           </Box>
                           <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem', mt: 0.55 }}>
-                            Dra logoen i rammen for å velge plassering. Previewen bruker nå aktiv logovariant og riktig safe zone for valgt leveranse.
+                            {t('prodMedia.j056')}
                           </Typography>
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} useFlexGap sx={{ mt: 0.9 }}>
                             <Chip
@@ -11910,7 +11923,7 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Legg inn fargene som faktisk skal brukes i design og grafikk.',
+                        t('prodMedia.s399'),
                         parsedBrandColors.length > 0 ? 'filled' : 'missing',
                       )}
                       <Stack spacing={0.8}>
@@ -11941,14 +11954,14 @@ export default function ProducerMediaPanel({
                             />
                             <TextField
                               size="small"
-                              label="Fargenavn"
+                              label={t('prodMedia.m28')}
                               value={color.label}
                               disabled={!canEditClientInput}
                               onChange={(event) => handleBrandColorChange(index, { label: event.target.value })}
                             />
                             <TextField
                               size="small"
-                              label="Bruk"
+                              label={t('prodMedia.s041')}
                               value={color.usage ?? ''}
                               disabled={!canEditClientInput}
                               onChange={(event) => handleBrandColorChange(index, { usage: event.target.value })}
@@ -11961,13 +11974,13 @@ export default function ProducerMediaPanel({
                                 onClick={() => handleRemoveBrandColor(index)}
                                 sx={{ textTransform: 'none', fontWeight: 700, justifySelf: 'flex-start' }}
                               >
-                                Fjern
+                                {t('prodMedia.s123')}
                               </Button>
                             ) : null}
                           </Box>
                         )) : (
                           <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.78rem', lineHeight: 1.45 }}>
-                            Ingen farger er valgt ennå. Legg inn minst hovedfarge og aksentfarge.
+                            {t('prodMedia.j057')}
                           </Typography>
                         )}
                         {canEditClientInput ? (
@@ -11978,18 +11991,18 @@ export default function ProducerMediaPanel({
                             onClick={handleAddBrandColor}
                             sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700 }}
                           >
-                            Legg til farge
+                            {t('prodMedia.j058')}
                           </Button>
                         ) : null}
                       </Stack>
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Legg inn fontene som skal brukes i grafikk, teksting og overlays.',
+                        t('prodMedia.s401'),
                         parsedBrandFonts.length > 0 ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Fonter (én per linje)"
+                        label={t('prodMedia.m32')}
                         value={brandFontsDraft}
                         onChange={(event) => setBrandFontsDraft(event.target.value)}
                         fullWidth
@@ -12010,15 +12023,15 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
-                    Definer språk og regler
+                    {t('prodMedia.j059')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
-                    Fyll inn hvordan merkevaren skal høres ut, se ut og holdes konsekvent.
+                    {t('prodMedia.j060')}
                   </Typography>
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvordan merkevaren skal høres ut i tekst, voice-over, dialog og kundehenvendelser.',
+                        t('prodMedia.s623'),
                         hasText(planningDraft.brandGuide.toneOfVoice) ? 'filled' : 'missing',
                       )}
                       <TextField
@@ -12039,11 +12052,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv looken som skal styre foto, lys, farger, komposisjon og tempo.',
+                        t('prodMedia.s628'),
                         hasText(planningDraft.brandGuide.visualStyle) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Visuell stil"
+                        label={t('prodMedia.s706')}
                         value={planningDraft.brandGuide.visualStyle ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -12060,11 +12073,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv konkrete ting produksjonen alltid bør gjøre.',
+                        t('prodMedia.s627'),
                         parsedBrandDos.length > 0 ? 'filled' : 'optional',
                       )}
                       <TextField
-                        label="Do&apos;s (én per linje)"
+                        label={t('prodMedia.m24')}
                         value={brandDosDraft}
                         onChange={(event) => setBrandDosDraft(event.target.value)}
                         fullWidth
@@ -12075,11 +12088,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv tydelige ting teamet skal unngå.',
+                        t('prodMedia.s632'),
                         parsedBrandDonts.length > 0 ? 'filled' : 'optional',
                       )}
                       <TextField
-                        label="Don&apos;ts (én per linje)"
+                        label={t('prodMedia.m25')}
                         value={brandDontsDraft}
                         onChange={(event) => setBrandDontsDraft(event.target.value)}
                         fullWidth
@@ -12117,7 +12130,7 @@ export default function ProducerMediaPanel({
                       lineHeight: 1.3,
                     }}
                   >
-                    Kort oppsummering
+                    {t('prodMedia.m57')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
                     {brandGuideSummary}
@@ -12138,7 +12151,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
-                    Lagre når uttrykket faktisk kan brukes av produksjonsteamet.
+                    {t('prodMedia.j061')}
                   </Typography>
                   <Button
                     size="small"
@@ -12159,7 +12172,7 @@ export default function ProducerMediaPanel({
                       '&:hover': { bgcolor: '#9333ea' },
                     }}
                   >
-                    {savingPlanning ? 'Lagrer merkevareguide...' : 'Lagre og bruk i produksjon'}
+                    {savingPlanning ? t('prodMedia.s382') : t('prodMedia.s372')}
                   </Button>
                 </Stack>
               ) : null}
@@ -12210,14 +12223,11 @@ export default function ProducerMediaPanel({
                         '&:hover': { bgcolor: 'rgba(34,211,238,0.16)', borderColor: 'rgba(34,211,238,0.4)' },
                       }}
                     >
-                      Slik fungerer sikkerheten
+                      {t('prodMedia.m100')}
                     </Button>
                   </Stack>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 660 }}>
-                    Hold all klienttilgang i ett kontrollert spor. Passord krypteres med AES-256-GCM,
-                    krever 2FA-bekreftelse hver gang de skal vises, og alle reveal-events logges i
-                    audit-historikken. Start med delegert tilgang og invite-flyt — hvis kunden faktisk
-                    må dele noe sensitivt, blir det aldri lagret som klartekst.
+                    {t('prodMedia.j062')}
                   </Typography>
                 </Box>
                 <Stack
@@ -12234,12 +12244,12 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Fremdrift
+                    {t('prodMedia.m35')}
                   </Typography>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                     {requiredAccountEntries.length > 0
-                      ? `${connectedRequiredAccountCount}/${requiredAccountEntries.length} koblet`
-                      : 'Ingen krav ennå'}
+                      ? t('prodMedia.p57', { v0: connectedRequiredAccountCount, v1: requiredAccountEntries.length })
+                      : t('prodMedia.s225')}
                   </Typography>
                   <Box
                     sx={{
@@ -12261,8 +12271,8 @@ export default function ProducerMediaPanel({
                   </Box>
                   <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
                     {pendingRequiredAccountCount > 0
-                      ? `${pendingRequiredAccountCount} nødvendige kontoer venter fortsatt på sikker tilgang.`
-                      : 'Nødvendige kontoer er koblet eller klarert.'}
+                      ? t('prodMedia.p44', { v0: pendingRequiredAccountCount })
+                      : t('prodMedia.s525')}
                   </Typography>
                 </Stack>
               </Stack>
@@ -12330,7 +12340,7 @@ export default function ProducerMediaPanel({
                     '& .MuiAlert-icon': { color: '#7dd3fc' },
                   }}
                 >
-                  Henter Client Access Vault fra server...
+                  {t('prodMedia.m36')}
                 </Alert>
               ) : null}
               {accessVaultError ? (
@@ -12357,7 +12367,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-                    Dette mangler i kontotilgang
+                    {t('prodMedia.j063')}
                   </Typography>
                   <Stack spacing={0.18}>
                     {accountAccessMissingItems.map((item) => (
@@ -12391,10 +12401,10 @@ export default function ProducerMediaPanel({
                       lineHeight: 1.3,
                     }}
                   >
-                    Klart
+                    {t('prodMedia.m45')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
-                    Kontotilgangen er avklart for de plattformene dette prosjektet faktisk bruker.
+                    {t('prodMedia.j064')}
                   </Typography>
                 </Stack>
               ))}
@@ -12419,10 +12429,10 @@ export default function ProducerMediaPanel({
                   >
                     <Box>
                       <Typography sx={{ color: '#e0f2fe', fontWeight: 700, fontSize: '0.84rem' }}>
-                        Åpne kontotilgangsreviews
+                        {t('prodMedia.j065')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(224,242,254,0.82)', fontSize: '0.75rem', lineHeight: 1.45, mt: 0.15 }}>
-                        Disse sakene trenger klientbekreftelse eller handling i samme sikre spor.
+                        {t('prodMedia.j066')}
                       </Typography>
                     </Box>
                     {clientPortalAccountAccessReviewUrl ? (
@@ -12440,7 +12450,7 @@ export default function ProducerMediaPanel({
                           color: '#e0f2fe',
                         }}
                       >
-                        Åpne første review
+                        {t('prodMedia.j067')}
                       </Button>
                     ) : null}
                   </Stack>
@@ -12471,8 +12481,8 @@ export default function ProducerMediaPanel({
                               <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.72rem', lineHeight: 1.4, mt: 0.12 }}>
                                 {readFirstNonEmptyString(
                                   review.description ?? '',
-                                  review.due_at ? `Svar innen ${formatTimestamp(review.due_at)}` : '',
-                                  `Bedt om ${formatTimestamp(review.requested_at)}`,
+                                  review.due_at ? t('prodMedia.u15', { v0: formatTimestamp(review.due_at) }) : '',
+                                  t('prodMedia.u01', { v0: formatTimestamp(review.requested_at) }),
                                 )}
                               </Typography>
                             </Box>
@@ -12493,7 +12503,7 @@ export default function ProducerMediaPanel({
                                 },
                               }}
                             >
-                              Åpne review
+                              {t('prodMedia.s751')}
                             </Button>
                           </Stack>
                         </Box>
@@ -12517,25 +12527,24 @@ export default function ProducerMediaPanel({
                 <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.85} justifyContent="space-between">
                   <Box>
                     <Typography sx={{ color: '#f0fdfa', fontWeight: 700, fontSize: '0.9rem' }}>
-                      Sikkerhetsmodell
+                      {t('prodMedia.m97')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(204,251,241,0.84)', fontSize: '0.76rem', lineHeight: 1.5, mt: 0.25 }}>
                       {readFirstNonEmptyString(
                         planningDraft.accountAccess.securityNotes ?? '',
-                        'Bruk OAuth, invite eller klientstyrt handling. Role Room skal ikke være et lager for passord eller 2-faktor-koder.',
+                        t('prodMedia.s042'),
                       )}
                     </Typography>
                     {/* Bridge til Datakilder-fanen — håndhilse-tekst som
                         forklarer at konto-tilgang og KPI-OAuth er to steg */}
                     <Typography sx={{ color: 'rgba(165,243,252,0.72)', fontSize: '0.72rem', mt: 0.5, fontStyle: 'italic' }}>
-                      Tips: når kontoen er koblet, gå til <strong>Datakilder</strong>-fanen for å konfigurere
-                      automatisk KPI-henting (analytics, posts, engagement).
+                      {t('prodMedia.j068')} <strong>{t('prodMedia.m20')}</strong>{t('prodMedia.j069')}
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems={{ lg: 'flex-start' }}>
-                    <Chip size="small" icon={<AdminPanelSettingsOutlinedIcon />} label="Ingen passord" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                    <Chip size="small" icon={<AdminPanelSettingsOutlinedIcon />} label={t('prodMedia.s235')} sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
                     <Chip size="small" icon={<HubOutlinedIcon />} label="Invite / OAuth" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
-                    <Chip size="small" icon={<CloudDoneOutlinedIcon />} label="2-faktor hos kontoeier" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                    <Chip size="small" icon={<CloudDoneOutlinedIcon />} label={t('prodMedia.z01')} sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
                   </Stack>
                 </Stack>
               </Box>
@@ -12552,10 +12561,10 @@ export default function ProducerMediaPanel({
                 sx={{ mb: 0.9 }}
               >
                 {([
-                  ['connected', 'koblet', 'rgba(34,197,94,0.16)', '#bbf7d0'],
-                  ['invite_sent', 'invite sendt', 'rgba(56,189,248,0.16)', '#dbeafe'],
-                  ['client_action', 'venter på klient', 'rgba(245,158,11,0.18)', '#fde68a'],
-                  ['not_started', 'ikke startet', 'rgba(148,163,184,0.16)', '#e2e8f0'],
+                  ['connected', t('prodMedia.k08'), 'rgba(34,197,94,0.16)', '#bbf7d0'],
+                  ['invite_sent', t('prodMedia.s715'), 'rgba(56,189,248,0.16)', '#dbeafe'],
+                  ['client_action', t('prodMedia.s724'), 'rgba(245,158,11,0.18)', '#fde68a'],
+                  ['not_started', t('prodMedia.s714'), 'rgba(148,163,184,0.16)', '#e2e8f0'],
                 ] as const).map(([statusKey, label, bg, fg]) => {
                   const count = effectiveAccountEntries.filter((e) => e.platform !== 'google' && e.status === statusKey).length;
                   if (count === 0) return null;
@@ -12571,7 +12580,7 @@ export default function ProducerMediaPanel({
                 {effectiveAccountEntries.some((e) => !e.expiresAt) ? (
                   <Chip
                     size="small"
-                    label={`${effectiveAccountEntries.filter((e) => !e.expiresAt).length} uten utløpsdato`}
+                    label={t('prodMedia.p50', { v0: effectiveAccountEntries.filter((e) => !e.expiresAt).length })}
                     sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
                   />
                 ) : null}
@@ -12583,7 +12592,7 @@ export default function ProducerMediaPanel({
                     onClick={() => setAccountAccessAdvanced((v) => !v)}
                     sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28, color: accountAccessAdvanced ? '#c084fc' : 'rgba(148,163,184,0.8)' }}
                   >
-                    {accountAccessAdvanced ? 'Avansert ✓' : 'Vis avansert'}
+                    {accountAccessAdvanced ? t('prodMedia.s008') : t('prodMedia.s704')}
                   </Button>
                 ) : null}
                 <Button
@@ -12597,7 +12606,7 @@ export default function ProducerMediaPanel({
                   }}
                   sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28 }}
                 >
-                  {effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]) ? 'Lukk alle' : 'Åpne alle'}
+                  {effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]) ? t('prodMedia.s454') : t('prodMedia.s731')}
                 </Button>
               </Stack>
               <Box
@@ -12617,24 +12626,24 @@ export default function ProducerMediaPanel({
                   const googleConnectionDetail = isGoogleEntry && agentConnectionStatus
                     ? (agentConnectionStatus.google.connected
                       ? (agentConnectionStatus.google.source === 'project'
-                        ? `Prosjektets kobling: ${agentConnectionStatus.google.email ?? 'ukjent konto'} — klient-eid oppsett (GA4/GSC lander her).`
-                        : `Din Google-konto (${agentConnectionStatus.google.email ?? 'ukjent'}) — oppsett lander hos deg. Koble klientens konto på prosjektet for klient-eierskap.`)
-                      : 'Ingen Google-kobling på prosjektet ennå — GA4-/Search Console-oppsettet i agenten krever den.')
+                        ? t('prodMedia.p25', { v0: agentConnectionStatus.google.email ?? t('prodMedia.s723') })
+                        : t('prodMedia.p07', { v0: agentConnectionStatus.google.email ?? t('prodMedia.s722') }))
+                      : t('prodMedia.s207'))
                     : '';
                   const linkedInConnectionDetail = isLinkedInEntry
                     ? readFirstNonEmptyString(
                       linkedInAccessStatus?.connection?.linkedInName && linkedInAccessStatus?.connection?.linkedInEmail
-                        ? `Medlemskonto koblet: ${linkedInAccessStatus.connection.linkedInName} (${linkedInAccessStatus.connection.linkedInEmail})`
+                        ? t('prodMedia.p23', { v0: linkedInAccessStatus.connection.linkedInName, v1: linkedInAccessStatus.connection.linkedInEmail })
                         : '',
                       linkedInAccessStatus?.connection?.linkedInName
-                        ? `Medlemskonto koblet: ${linkedInAccessStatus.connection.linkedInName}`
+                        ? t('prodMedia.p22', { v0: linkedInAccessStatus.connection.linkedInName })
                         : '',
                       linkedInAccessStatus?.state === 'expired'
-                        ? 'LinkedIn-koblingen er utløpt. Koble på nytt før publisering.'
+                        ? t('prodMedia.s435')
                         : '',
                       linkedInAccessStatus?.connection?.lastError ?? '',
                       linkedInAccessStatus && !linkedInAccessStatus.configured && linkedInAccessStatus.missing.length > 0
-                        ? `Mangler: ${linkedInAccessStatus.missing.join(', ')}`
+                        ? t('prodMedia.p20', { v0: linkedInAccessStatus.missing.join(', ') })
                         : '',
                     )
                     : '';
@@ -12685,20 +12694,20 @@ export default function ProducerMediaPanel({
                             ) : null}
                             <Chip
                               size="small"
-                              label={isRequired ? 'Nødvendig i dette prosjektet' : 'Valgfri plattform'}
+                              label={isRequired ? t('prodMedia.s524') : t('prodMedia.s673')}
                               sx={{ bgcolor: isRequired ? 'rgba(20,184,166,0.16)' : 'rgba(148,163,184,0.1)', color: isRequired ? '#ccfbf1' : '#cbd5e1' }}
                             />
                             {!entry.expiresAt && !expandedAccountCards[entry.platform] ? (
                               <Chip
                                 size="small"
-                                label="Ingen utløp satt"
+                                label={t('prodMedia.s244')}
                                 sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
                               />
                             ) : null}
                             {isLinkedInEntry && linkedInAccessStatus?.state === 'connected' ? (
                               <Chip
                                 size="small"
-                                label="Medlemskonto koblet"
+                                label={t('prodMedia.s482')}
                                 sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#dbeafe' }}
                               />
                             ) : null}
@@ -12721,7 +12730,7 @@ export default function ProducerMediaPanel({
                               linkedInConnectionDetail,
                               platformFlow.primaryDescription,
                               entry.notes || '',
-                              'Ingen sikker tilgang definert ennå.',
+                              t('prodMedia.s241'),
                             )}
                           </Typography>
                           {(() => {
@@ -12737,22 +12746,22 @@ export default function ProducerMediaPanel({
                               m.gscSites.slice(0, 3).forEach((s) => styrer.push(
                                 `Search Console: ${s.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')}`,
                               ));
-                              if (m.gscError === 'needs_reauth') styrer.push('Search Console: krever ny innlogging');
+                              if (m.gscError === 'needs_reauth') styrer.push(t('prodMedia.s592'));
                             }
                             if (entry.platform === 'meta') {
                               if (m.igUsername) styrer.push(`Instagram: @${m.igUsername}`);
-                              if (m.facebookPageName) styrer.push(`Facebook-side: ${m.facebookPageName}`);
+                              if (m.facebookPageName) styrer.push(t('prodMedia.r02', { v0: m.facebookPageName }));
                               m.metaPages.filter((p) => p !== m.facebookPageName).slice(0, 3)
-                                .forEach((p) => styrer.push(`Side: ${p}`));
+                                .forEach((p) => styrer.push(t('prodMedia.r09', { v0: p })));
                             }
                             if (entry.platform === 'youtube') {
-                              m.youtubeChannels.slice(0, 3).forEach((c) => styrer.push(`Kanal: ${c}`));
+                              m.youtubeChannels.slice(0, 3).forEach((c) => styrer.push(t('prodMedia.p11', { v0: c })));
                             }
                             if (styrer.length === 0) return null;
                             return (
                               <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap sx={{ mt: 0.55 }}>
                                 <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.7rem', fontWeight: 700, alignSelf: 'center' }}>
-                                  Styrer:
+                                  {t('prodMedia.m102')}
                                 </Typography>
                                 {styrer.map((label) => (
                                   <Chip
@@ -12771,7 +12780,7 @@ export default function ProducerMediaPanel({
                             {agentConnectionStatus?.google.connected ? (
                               <Chip
                                 size="small"
-                                label={`Koblet: ${agentConnectionStatus.google.email ?? 'ukjent konto'}`}
+                                label={t('prodMedia.p17', { v0: agentConnectionStatus.google.email ?? t('prodMedia.s723') })}
                                 sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
                               />
                             ) : null}
@@ -12784,10 +12793,10 @@ export default function ProducerMediaPanel({
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
                                 {googleOauthStarting
-                                  ? 'Starter...'
+                                  ? t('prodMedia.zz7')
                                   : agentConnectionStatus?.google.connected
-                                    ? 'Koble til på nytt'
-                                    : 'Koble til Google'}
+                                    ? t('prodMedia.s312')
+                                    : t('prodMedia.s309')}
                               </Button>
                             ) : null}
                           </Stack>
@@ -12797,8 +12806,8 @@ export default function ProducerMediaPanel({
                               <Chip
                                 size="small"
                                 label={agentConnectionStatus.meta.verified
-                                  ? `Koblet: ${agentConnectionStatus.manages?.igUsername ? `@${agentConnectionStatus.manages.igUsername}` : agentConnectionStatus.meta.name ?? 'verifisert'}`
-                                  : 'Koblet (ikke verifisert)'}
+                                  ? t('prodMedia.p17', { v0: agentConnectionStatus.manages?.igUsername ? `@${agentConnectionStatus.manages.igUsername}` : agentConnectionStatus.meta.name ?? t('prodMedia.s725') })
+                                  : t('prodMedia.s314')}
                                 sx={{
                                   bgcolor: agentConnectionStatus.meta.verified ? 'rgba(34,197,94,0.16)' : 'rgba(245,158,11,0.18)',
                                   color: agentConnectionStatus.meta.verified ? '#bbf7d0' : '#fde68a',
@@ -12813,13 +12822,13 @@ export default function ProducerMediaPanel({
                                 onClick={() => openOauthPopupAndRefresh(`/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`)}
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
-                                {agentConnectionStatus?.meta.connected ? 'Koble til på nytt' : 'Koble til Meta'}
+                                {agentConnectionStatus?.meta.connected ? t('prodMedia.s312') : t('prodMedia.s311')}
                               </Button>
                             ) : null}
                           </Stack>
                         ) : isLinkedInEntry ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
-                            <Tooltip title="Oppdater LinkedIn-status">
+                            <Tooltip title={t('prodMedia.s526')}>
                               <span>
                                 <IconButton
                                   onClick={() => {
@@ -12849,12 +12858,12 @@ export default function ProducerMediaPanel({
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
                                 {linkedInAccessStatus?.configured === false
-                                  ? 'LinkedIn ikke konfigurert'
+                                  ? t('prodMedia.s434')
                                   : linkedInAccessActionKey === 'connect'
-                                    ? 'Starter...'
+                                    ? t('prodMedia.zz7')
                                     : linkedInAccessStatus?.state === 'connected'
-                                      ? 'Koble til på nytt'
-                                      : 'Koble til LinkedIn'}
+                                      ? t('prodMedia.s312')
+                                      : t('prodMedia.s310')}
                               </Button>
                             ) : null}
                           </Stack>
@@ -12863,7 +12872,7 @@ export default function ProducerMediaPanel({
                             {agentConnectionStatus?.google.connected ? (
                               <Chip
                                 size="small"
-                                label="Bruker Google-koblingen"
+                                label={t('prodMedia.s050')}
                                 sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
                               />
                             ) : null}
@@ -12876,10 +12885,10 @@ export default function ProducerMediaPanel({
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
                                 {googleOauthStarting
-                                  ? 'Starter...'
+                                  ? t('prodMedia.zz7')
                                   : agentConnectionStatus?.google.connected
-                                    ? 'Koble til på nytt'
-                                    : 'Koble til Google'}
+                                    ? t('prodMedia.s312')
+                                    : t('prodMedia.s309')}
                               </Button>
                             ) : null}
                           </Stack>
@@ -12894,7 +12903,7 @@ export default function ProducerMediaPanel({
                               rel="noreferrer"
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                             >
-                              Åpne TikTok Business Center
+                              {t('prodMedia.s729')}
                             </Button>
                           </Stack>
                         ) : linkedAccountReview ? (
@@ -12906,7 +12915,7 @@ export default function ProducerMediaPanel({
                               variant="outlined"
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                             >
-                              Åpne review
+                              {t('prodMedia.s751')}
                             </Button>
                           </Stack>
                         ) : null}
@@ -12927,7 +12936,7 @@ export default function ProducerMediaPanel({
                           color: 'rgba(165,243,252,0.85)',
                         }}
                       >
-                        {expandedAccountCards[entry.platform] ? '▾ Skjul redigering' : '▸ Rediger tilgang og detaljer'}
+                        {expandedAccountCards[entry.platform] ? t('prodMedia.s769') : t('prodMedia.s768')}
                       </Button>
                       <Collapse in={Boolean(expandedAccountCards[entry.platform])} unmountOnExit>
                       <Box>
@@ -12972,8 +12981,8 @@ export default function ProducerMediaPanel({
                               },
                             }}
                           >
-                            <ToggleButton value="business_invite" disabled={!canEditClientInput}>Delegert invite</ToggleButton>
-                            <ToggleButton value="manual_handoff" disabled={!canEditClientInput}>Sensitiv handoff</ToggleButton>
+                            <ToggleButton value="business_invite" disabled={!canEditClientInput}>{t('prodMedia.j070')}</ToggleButton>
+                            <ToggleButton value="manual_handoff" disabled={!canEditClientInput}>{t('prodMedia.m92')}</ToggleButton>
                           </ToggleButtonGroup>
 
                           <ToggleButtonGroup
@@ -13009,11 +13018,11 @@ export default function ProducerMediaPanel({
                               },
                             }}
                           >
-                            <ToggleButton value="not_started" disabled={!canEditClientInput}>Ikke startet</ToggleButton>
-                            <ToggleButton value="client_action" disabled={!canEditClientInput}>Venter på klient</ToggleButton>
-                            <ToggleButton value="invite_sent" disabled={!canEditClientInput}>Invite sendt</ToggleButton>
-                            <ToggleButton value="connected" disabled={!canEditClientInput}>Koblet</ToggleButton>
-                            <ToggleButton value="revoked" disabled={!canEditClientInput}>Avsluttet</ToggleButton>
+                            <ToggleButton value="not_started" disabled={!canEditClientInput}>{t('prodMedia.s204')}</ToggleButton>
+                            <ToggleButton value="client_action" disabled={!canEditClientInput}>{t('prodMedia.j071')}</ToggleButton>
+                            <ToggleButton value="invite_sent" disabled={!canEditClientInput}>{t('prodMedia.m41')}</ToggleButton>
+                            <ToggleButton value="connected" disabled={!canEditClientInput}>{t('prodMedia.j072')}</ToggleButton>
+                            <ToggleButton value="revoked" disabled={!canEditClientInput}>{t('prodMedia.m08')}</ToggleButton>
                           </ToggleButtonGroup>
 
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.9 }}>
@@ -13036,7 +13045,7 @@ export default function ProducerMediaPanel({
                               }}
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                             >
-                              Åpne invite-utkast
+                              {t('prodMedia.j073')}
                             </Button>
                             <Button
                               size="small"
@@ -13046,7 +13055,7 @@ export default function ProducerMediaPanel({
                               }}
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                             >
-                              Kopier invite-instruks
+                              {t('prodMedia.m56')}
                             </Button>
                             {platformFlow.secondaryHref ? (
                               <Button
@@ -13058,7 +13067,7 @@ export default function ProducerMediaPanel({
                                 variant="text"
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                               >
-                                {platformFlow.secondaryLabel ?? 'Åpne veiledning'}
+                                {platformFlow.secondaryLabel ?? t('prodMedia.s761')}
                               </Button>
                             ) : null}
                             {canEditClientInput && entry.status !== 'connected' ? (
@@ -13071,7 +13080,7 @@ export default function ProducerMediaPanel({
                                 disabled={accountAccessActionKey === `${entry.platform}:persist`}
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                               >
-                                {accountAccessActionKey === `${entry.platform}:persist` ? 'Lagrer...' : 'Bekreft koblet'}
+                                {accountAccessActionKey === `${entry.platform}:persist` ? t('prodMedia.s384') : t('prodMedia.s018')}
                               </Button>
                             ) : null}
                             {linkedAccountReview ? (
@@ -13082,7 +13091,7 @@ export default function ProducerMediaPanel({
                                 variant="text"
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                               >
-                                Åpne review
+                                {t('prodMedia.s751')}
                               </Button>
                             ) : null}
                           </Stack>
@@ -13093,7 +13102,7 @@ export default function ProducerMediaPanel({
                         {!entry.expiresAt ? (
                           <Chip
                             size="small"
-                            label="Ingen utløp satt"
+                            label={t('prodMedia.s244')}
                             sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
                           />
                         ) : null}
@@ -13103,13 +13112,13 @@ export default function ProducerMediaPanel({
                           onClick={() => setExpandedAccessDetails((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 28, fontSize: '0.74rem' }}
                         >
-                          {expandedAccessDetails[entry.platform] ? 'Skjul detaljer' : 'Detaljer'}
+                          {expandedAccessDetails[entry.platform] ? t('prodMedia.s603') : t('prodMedia.k00')}
                         </Button>
                         {expandedAccessDetails[entry.platform] ? (
                           <>
                             <Chip
                               size="small"
-                              label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
+                              label={t('prodMedia.p05', { v0: readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), t('prodMedia.s234')) })}
                               sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
                             />
                             <Chip
@@ -13120,7 +13129,7 @@ export default function ProducerMediaPanel({
                             {entry.expiresAt ? (
                               <Chip
                                 size="small"
-                                label={`Utløper ${formatTimestamp(entry.expiresAt)}`}
+                                label={t('prodMedia.p32', { v0: formatTimestamp(entry.expiresAt) })}
                                 sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
                               />
                             ) : null}
@@ -13136,7 +13145,7 @@ export default function ProducerMediaPanel({
                         }}
                       >
                         <TextField
-                          label="Konto / side / kanal"
+                          label={t('prodMedia.s330')}
                           value={entry.accountLabel ?? ''}
                           onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                             ...current,
@@ -13146,7 +13155,7 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                         />
                         <TextField
-                          label="Invite til / kontakt"
+                          label={t('prodMedia.s268')}
                           value={entry.inviteTarget ?? ''}
                           onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                             ...current,
@@ -13156,7 +13165,7 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                         />
                         <TextField
-                          label="Scope / rolle"
+                          label={t('prodMedia.s583')}
                           value={entry.accessScope ?? ''}
                           onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                             ...current,
@@ -13166,7 +13175,7 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                         />
                         <TextField
-                          label="Ansvarlig hos klient"
+                          label={t('prodMedia.s005')}
                           value={entry.ownerName ?? ''}
                           onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                             ...current,
@@ -13176,7 +13185,7 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                         />
                         <TextField
-                          label="Delt med roller"
+                          label={t('prodMedia.s076')}
                           value={stringifyAccountAccessRoleTargets(entry.sharedWithRoles)}
                           onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                             ...current,
@@ -13184,11 +13193,11 @@ export default function ProducerMediaPanel({
                           }))}
                           fullWidth
                           disabled={!canEditClientInput}
-                          helperText="For eksempel Klienteier, Innholdsprodusent, Editor, SoMe-ansvarlig."
+                          helperText={t('prodMedia.s130')}
                         />
                         <Box>
                           <TextField
-                            label="Utløper"
+                            label={t('prodMedia.s671')}
                             type="datetime-local"
                             value={toDateTimeLocalValue(entry.expiresAt)}
                             onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
@@ -13198,7 +13207,7 @@ export default function ProducerMediaPanel({
                             fullWidth
                             disabled={!canEditClientInput}
                             InputLabelProps={{ shrink: true }}
-                            helperText={entry.expiresAt ? undefined : 'Evigvarende delegert tilgang er risikoen vaulten skal fjerne.'}
+                            helperText={entry.expiresAt ? undefined : t('prodMedia.s110')}
                           />
                           {!entry.expiresAt && canEditClientInput ? (
                             <Button
@@ -13210,7 +13219,7 @@ export default function ProducerMediaPanel({
                               }))}
                               sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', mt: 0.25 }}
                             >
-                              Sett 90 dager (anbefalt)
+                              {t('prodMedia.m93')}
                             </Button>
                           ) : null}
                         </Box>
@@ -13257,8 +13266,8 @@ export default function ProducerMediaPanel({
                             },
                           }}
                         >
-                          <ToggleButton value="delegated_access" disabled={!canEditClientInput}>Delegert tilgang</ToggleButton>
-                          <ToggleButton value="sensitive_secret" disabled={!canEditClientInput}>Sensitiv hemmelighet</ToggleButton>
+                          <ToggleButton value="delegated_access" disabled={!canEditClientInput}>{t('prodMedia.j074')}</ToggleButton>
+                          <ToggleButton value="sensitive_secret" disabled={!canEditClientInput}>{t('prodMedia.j075')}</ToggleButton>
                         </ToggleButtonGroup>
                         <ToggleButtonGroup
                           size="small"
@@ -13292,15 +13301,15 @@ export default function ProducerMediaPanel({
                             },
                           }}
                         >
-                          <ToggleButton value="low" disabled={!canEditClientInput}>Lav risiko</ToggleButton>
-                          <ToggleButton value="medium" disabled={!canEditClientInput}>Middels</ToggleButton>
-                          <ToggleButton value="high" disabled={!canEditClientInput}>Høy</ToggleButton>
+                          <ToggleButton value="low" disabled={!canEditClientInput}>{t('prodMedia.j076')}</ToggleButton>
+                          <ToggleButton value="medium" disabled={!canEditClientInput}>{t('prodMedia.m72')}</ToggleButton>
+                          <ToggleButton value="high" disabled={!canEditClientInput}>{t('prodMedia.j077')}</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
                       )}
 
                       <TextField
-                        label="Notater"
+                        label={t('prodMedia.m73')}
                         value={entry.notes ?? ''}
                         onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                           ...current,
@@ -13311,7 +13320,7 @@ export default function ProducerMediaPanel({
                         minRows={2}
                         disabled={!canEditClientInput}
                         error={Boolean(accountAccessEntryWarnings[`entry:${entry.platform}:notes`])}
-                        helperText={accountAccessEntryWarnings[`entry:${entry.platform}:notes`] ?? 'Bruk notater til prosess og ansvar, ikke hemmeligheter.'}
+                        helperText={accountAccessEntryWarnings[`entry:${entry.platform}:notes`] ?? t('prodMedia.s048')}
                         sx={{ mt: 0.85 }}
                       />
 
@@ -13326,10 +13335,10 @@ export default function ProducerMediaPanel({
                           }}
                         >
                           <Typography sx={{ color: '#f5d0fe', fontWeight: 700, fontSize: '0.82rem', mb: 0.15 }}>
-                            Sikker deling
+                            {t('prodMedia.j078')}
                           </Typography>
                           <Typography sx={{ color: 'rgba(245,208,254,0.8)', fontSize: '0.73rem', lineHeight: 1.45, mb: 0.7 }}>
-                            Role Room kan lagre hemmeligheten kryptert i Client Access Vault. Hold likevel vanlig prosjekttekst fri for passord, backup-koder og tokens.
+                            {t('prodMedia.j079')}
                           </Typography>
                           <Box
                             sx={{
@@ -13339,7 +13348,7 @@ export default function ProducerMediaPanel({
                             }}
                           >
                             <TextField
-                              label="Type hemmelighet"
+                              label={t('prodMedia.s667')}
                               value={entry.secretLabel ?? ''}
                               onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                                 ...current,
@@ -13347,10 +13356,10 @@ export default function ProducerMediaPanel({
                               }))}
                               fullWidth
                               disabled={!canEditClientInput}
-                              helperText="For eksempel API key, recovery code, CMS-bruker eller annonsekonto."
+                              helperText={t('prodMedia.s129')}
                             />
                             <TextField
-                              label="Maskert referanse"
+                              label={t('prodMedia.s472')}
                               value={entry.maskedReference ?? ''}
                               onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
                                 ...current,
@@ -13358,7 +13367,7 @@ export default function ProducerMediaPanel({
                               }))}
                               fullWidth
                               disabled={!canEditClientInput}
-                              helperText="For eksempel brukernavn eller de siste 4 tegnene. Ikke legg inn selve hemmeligheten."
+                              helperText={t('prodMedia.s131')}
                             />
                           </Box>
                           <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.7} sx={{ mt: 0.75 }}>
@@ -13394,10 +13403,10 @@ export default function ProducerMediaPanel({
                                 },
                               }}
                             >
-                              <ToggleButton value="not_shared" disabled={!canEditClientInput}>Ikke delt</ToggleButton>
-                              <ToggleButton value="requested" disabled={!canEditClientInput}>Etterspurt</ToggleButton>
-                              <ToggleButton value="stored_externally" disabled={!canEditClientInput}>Ligger sikkert utenfor</ToggleButton>
-                              <ToggleButton value="revoked" disabled={!canEditClientInput}>Tilbakekalt</ToggleButton>
+                              <ToggleButton value="not_shared" disabled={!canEditClientInput}>{t('prodMedia.j080')}</ToggleButton>
+                              <ToggleButton value="requested" disabled={!canEditClientInput}>{t('prodMedia.m26')}</ToggleButton>
+                              <ToggleButton value="stored_externally" disabled={!canEditClientInput}>{t('prodMedia.m63')}</ToggleButton>
+                              <ToggleButton value="revoked" disabled={!canEditClientInput}>{t('prodMedia.m105')}</ToggleButton>
                             </ToggleButtonGroup>
                             <ToggleButtonGroup
                               size="small"
@@ -13431,9 +13440,9 @@ export default function ProducerMediaPanel({
                                 },
                               }}
                             >
-                              <ToggleButton value="approval_required" disabled={!canEditClientInput}>Krever godkjenning</ToggleButton>
-                              <ToggleButton value="one_time" disabled={!canEditClientInput}>Kun én visning</ToggleButton>
-                              <ToggleButton value="manual_only" disabled={!canEditClientInput}>Manuell utlevering</ToggleButton>
+                              <ToggleButton value="approval_required" disabled={!canEditClientInput}>{t('prodMedia.m58')}</ToggleButton>
+                              <ToggleButton value="one_time" disabled={!canEditClientInput}>{t('prodMedia.m60')}</ToggleButton>
+                              <ToggleButton value="manual_only" disabled={!canEditClientInput}>{t('prodMedia.m67')}</ToggleButton>
                             </ToggleButtonGroup>
                           </Stack>
                         </Box>
@@ -13442,9 +13451,9 @@ export default function ProducerMediaPanel({
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.6} justifyContent="space-between" alignItems={{ sm: 'center' }} sx={{ mt: 0.85 }}>
                         <Typography sx={{ color: 'rgba(148,163,184,0.74)', fontSize: '0.74rem', lineHeight: 1.4 }}>
                           {readFirstNonEmptyString(
-                            entry.lastUsedAt ? `Sist brukt ${formatTimestamp(entry.lastUsedAt)}` : '',
-                            entry.lastUpdatedAt ? `Sist oppdatert ${formatTimestamp(entry.lastUpdatedAt)}` : '',
-                            'Ikke loggført ennå.',
+                            entry.lastUsedAt ? t('prodMedia.u12', { v0: formatTimestamp(entry.lastUsedAt) }) : '',
+                            entry.lastUpdatedAt ? t('prodMedia.u13', { v0: formatTimestamp(entry.lastUpdatedAt) }) : '',
+                            t('prodMedia.s200'),
                           )}
                         </Typography>
                         <ToggleButtonGroup
@@ -13480,9 +13489,9 @@ export default function ProducerMediaPanel({
                             },
                           }}
                         >
-                          <ToggleButton value="enabled" disabled={!canEditClientInput}>2FA aktiv</ToggleButton>
-                          <ToggleButton value="missing" disabled={!canEditClientInput}>2FA mangler</ToggleButton>
-                          <ToggleButton value="unknown" disabled={!canEditClientInput}>Ikke bekreftet</ToggleButton>
+                          <ToggleButton value="enabled" disabled={!canEditClientInput}>{t('prodMedia.m00')}</ToggleButton>
+                          <ToggleButton value="missing" disabled={!canEditClientInput}>{t('prodMedia.j081')}</ToggleButton>
+                          <ToggleButton value="unknown" disabled={!canEditClientInput}>{t('prodMedia.j082')}</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
                       </Box>
@@ -13505,14 +13514,14 @@ export default function ProducerMediaPanel({
                 }}
               >
                 <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                  Sikkerhetsnotat og tilbakekalling
+                  {t('prodMedia.j083')}
                 </Typography>
                 <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35, lineHeight: 1.5, mb: 0.8 }}>
-                  Skriv kort hvordan dere håndterer sikkerhet og når tilgang skal fjernes igjen etter publisering eller prosjektavslutning.
+                  {t('prodMedia.j084')}
                 </Typography>
                 <Stack spacing={0.85}>
                   <TextField
-                    label="Sikkerhetsnotat"
+                    label={t('prodMedia.m98')}
                     value={planningDraft.accountAccess.securityNotes ?? ''}
                     onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                       ...workspace,
@@ -13523,10 +13532,10 @@ export default function ProducerMediaPanel({
                     minRows={2}
                     disabled={!canEditClientInput}
                     error={Boolean(accountAccessWorkspaceWarnings.securityNotes)}
-                    helperText={accountAccessWorkspaceWarnings.securityNotes ?? 'Bruk dette til policy og ansvar. Ikke legg inn passord, tokens eller backup-koder.'}
+                    helperText={accountAccessWorkspaceWarnings.securityNotes ?? t('prodMedia.s044')}
                   />
                   <TextField
-                    label="Plan for tilbakekalling av tilgang"
+                    label={t('prodMedia.s536')}
                     value={planningDraft.accountAccess.revokePlan ?? ''}
                     onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                       ...workspace,
@@ -13537,7 +13546,7 @@ export default function ProducerMediaPanel({
                     minRows={2}
                     disabled={!canEditClientInput}
                     error={Boolean(accountAccessWorkspaceWarnings.revokePlan)}
-                    helperText={accountAccessWorkspaceWarnings.revokePlan ?? 'Beskriv når tilgang trekkes tilbake, hvem som gjør det, og hva som må roteres.'}
+                    helperText={accountAccessWorkspaceWarnings.revokePlan ?? t('prodMedia.s029')}
                   />
                 </Stack>
               </Box>
@@ -13554,10 +13563,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
-                    Tilgangsforespørsler
+                    {t('prodMedia.j085')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
-                    Samle alt som venter på klient, review eller invitasjonsbekreftelse i én arbeidsliste.
+                    {t('prodMedia.j086')}
                   </Typography>
                   <Stack spacing={0.75}>
                     {accessVaultPendingRequests.map((request) => {
@@ -13578,7 +13587,7 @@ export default function ProducerMediaPanel({
                                 <AccountProviderLogo platform={request.platform} size={34} />
                                 <Box sx={{ minWidth: 0 }}>
                                   <Typography sx={{ color: '#bfdbfe', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
-                                    Vault-innsyn
+                                    {t('prodMedia.s680')}
                                   </Typography>
                                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
                                     {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[request.platform]} · {VAULT_REVEAL_REQUEST_STATUS_LABELS[request.status]}
@@ -13586,22 +13595,22 @@ export default function ProducerMediaPanel({
                                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
                                     {readFirstNonEmptyString(
                                       request.requestReason ?? '',
-                                      request.requestedAt ? `Bedt om ${formatTimestamp(request.requestedAt)}` : '',
-                                      'Innsyn er bedt om og venter på godkjenning.',
+                                      request.requestedAt ? t('prodMedia.u01', { v0: formatTimestamp(request.requestedAt) }) : '',
+                                      t('prodMedia.s259'),
                                     )}
                                   </Typography>
                                 </Box>
                               </Stack>
                               <Chip
                                 size="small"
-                                label={request.requestedByRole ? `Bedt om som ${request.requestedByRole}` : 'Venter på godkjenning'}
+                                label={request.requestedByRole ? t('prodMedia.p02', { v0: request.requestedByRole }) : t('prodMedia.s696')}
                                 sx={{ bgcolor: 'rgba(96,165,250,0.14)', color: '#dbeafe' }}
                               />
                             </Stack>
                             {canApproveAccessVaultReveal ? (
                               <>
                                 <TextField
-                                  label="Notat til beslutning"
+                                  label={t('prodMedia.s515')}
                                   value={draft.approvalNotes}
                                   onChange={(event) => updateAccessVaultDraft(request.platform, (current) => ({
                                     ...current,
@@ -13610,7 +13619,7 @@ export default function ProducerMediaPanel({
                                   fullWidth
                                   multiline
                                   minRows={2}
-                                  helperText="Legg gjerne ved instruks eller begrunnelse for godkjenningen."
+                                  helperText={t('prodMedia.s392')}
                                 />
                                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.6}>
                                   <Button
@@ -13622,7 +13631,7 @@ export default function ProducerMediaPanel({
                                     disabled={Boolean(accessVaultActionKey)}
                                     sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#14b8a6', '&:hover': { bgcolor: '#0f766e' } }}
                                   >
-                                    {accessVaultActionKey === `${request.id}:approve` ? 'Godkjenner...' : 'Godkjenn innsyn'}
+                                    {accessVaultActionKey === `${request.id}:approve` ? t('prodMedia.zz8') : t('prodMedia.s159')}
                                   </Button>
                                   <Button
                                     size="small"
@@ -13633,13 +13642,13 @@ export default function ProducerMediaPanel({
                                     disabled={Boolean(accessVaultActionKey)}
                                     sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(244,114,182,0.28)', color: '#fbcfe8' }}
                                   >
-                                    {accessVaultActionKey === `${request.id}:reject` ? 'Avviser...' : 'Avvis'}
+                                    {accessVaultActionKey === `${request.id}:reject` ? t('prodMedia.zz9') : t('prodMedia.m09')}
                                   </Button>
                                 </Stack>
                               </>
                             ) : (
                               <Alert severity="info" sx={{ borderRadius: 1.5 }}>
-                                Innsynsforespørselen venter på en godkjenner med riktig rolle.
+                                {t('prodMedia.j087')}
                               </Alert>
                             )}
                           </Stack>
@@ -13666,7 +13675,7 @@ export default function ProducerMediaPanel({
                               <AccountProviderLogo platform={request.platform} size={34} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography sx={{ color: '#86efac', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.1 }}>
-                                  Innsyn klart
+                                  {t('prodMedia.j088')}
                                 </Typography>
                                 <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', lineHeight: 1.35 }}>
                                   {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[request.platform]} · {VAULT_REVEAL_REQUEST_STATUS_LABELS[request.status]}
@@ -13675,7 +13684,7 @@ export default function ProducerMediaPanel({
                                   {readFirstNonEmptyString(
                                     request.approvalNotes ?? '',
                                     request.approvedAt ? `Godkjent ${formatTimestamp(request.approvedAt)}` : '',
-                                    'Innsyn er godkjent og kan åpnes én gang.',
+                                    t('prodMedia.s260'),
                                   )}
                                 </Typography>
                               </Box>
@@ -13690,15 +13699,15 @@ export default function ProducerMediaPanel({
                                 disabled={Boolean(accessVaultActionKey)}
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
                               >
-                                {accessVaultActionKey === `${request.id}:reveal` ? 'Åpner...' : 'Åpne én gang'}
+                                {accessVaultActionKey === `${request.id}:reveal` ? t('prodMedia.s763') : t('prodMedia.s762')}
                               </Button>
                             ) : (
-                              <Chip size="small" label="Kun den som ba om innsyn kan åpne" sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
+                              <Chip size="small" label={t('prodMedia.s343')} sx={{ bgcolor: 'rgba(148,163,184,0.14)', color: '#cbd5e1' }} />
                             )}
                           </Stack>
                           {revealed ? (
                             <Alert severity="warning" sx={{ borderRadius: 1.5, mt: 0.8 }}>
-                              Secret er åpnet. Denne visningen bør behandles som midlertidig og roteres ved behov.
+                              {t('prodMedia.j089')}
                             </Alert>
                           ) : null}
                         </Box>
@@ -13751,7 +13760,7 @@ export default function ProducerMediaPanel({
                     && accessVaultApprovedRequests.length === 0
                     && accountAccessOperationalRequestCards.length === 0 ? (
                       <Alert severity="success" sx={{ borderRadius: 1.5 }}>
-                        Ingen åpne tilgangsforespørsler akkurat nå.
+                        {t('prodMedia.j090')}
                       </Alert>
                     ) : null}
                   </Stack>
@@ -13769,10 +13778,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
-                    Delte hemmeligheter
+                    {t('prodMedia.m23')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(245,208,254,0.82)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
-                    Dette er den sikre flaten for sensitiv tilgang. Secrets lagres kryptert i backend, reveal krever egen flyt, og vanlig prosjekttekst skal fortsatt være fri for passord og backup-koder.
+                    {t('prodMedia.j091')}
                   </Typography>
                   <Stack spacing={0.75}>
                     {accountAccessSensitiveEntries.length > 0 ? accountAccessSensitiveEntries.map((entry) => {
@@ -13813,19 +13822,19 @@ export default function ProducerMediaPanel({
                                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
                                     {readFirstNonEmptyString(
                                       serverSecret?.secretType ?? entry.secretLabel,
-                                      serverSecret?.maskedReference ? `Maskert referanse: ${serverSecret.maskedReference}` : '',
-                                      entry.maskedReference ? `Maskert referanse: ${entry.maskedReference}` : '',
+                                      serverSecret?.maskedReference ? t('prodMedia.r06', { v0: serverSecret.maskedReference }) : '',
+                                      entry.maskedReference ? t('prodMedia.r06', { v0: entry.maskedReference }) : '',
                                       PRODUCER_ACCOUNT_ACCESS_REVEAL_POLICY_LABELS[(serverSecret?.revealPolicy as ProducerAccountAccessRevealPolicy | undefined) ?? entry.revealPolicy ?? 'approval_required'],
-                                      'Ingen sensitiv deling definert ennå.',
+                                      t('prodMedia.s239'),
                                     )}
                                   </Typography>
                                 </Box>
                               </Stack>
                               <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
                                 <Chip size="small" label={PRODUCER_ACCOUNT_ACCESS_RISK_LABELS[(serverSecret?.riskLevel as ProducerAccountAccessRiskLevel | undefined) ?? entry.riskLevel ?? 'low']} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
-                                <Chip size="small" label={(serverSecret?.expiresAt ?? entry.expiresAt) ? `Utløper ${formatTimestamp(serverSecret?.expiresAt ?? entry.expiresAt ?? '')}` : 'Ingen utløp'} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
+                                <Chip size="small" label={(serverSecret?.expiresAt ?? entry.expiresAt) ? t('prodMedia.p32', { v0: formatTimestamp(serverSecret?.expiresAt ?? entry.expiresAt ?? '') }) : t('prodMedia.s243')} sx={{ bgcolor: 'rgba(236,72,153,0.14)', color: '#fbcfe8' }} />
                                 {serverSecret?.hasStoredSecret ? (
-                                  <Chip size="small" label="Kryptert lagret" sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
+                                  <Chip size="small" label={t('prodMedia.s342')} sx={{ bgcolor: 'rgba(20,184,166,0.14)', color: '#ccfbf1' }} />
                                 ) : null}
                               </Stack>
                             </Stack>
@@ -13848,7 +13857,7 @@ export default function ProducerMediaPanel({
                                 disabled={!canManageAccessVaultSecrets}
                               />
                               <TextField
-                                label="Type hemmelighet"
+                                label={t('prodMedia.s667')}
                                 value={draft.secretType}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
                                   ...current,
@@ -13858,7 +13867,7 @@ export default function ProducerMediaPanel({
                                 disabled={!canManageAccessVaultSecrets}
                               />
                               <TextField
-                                label="Brukernavn / konto"
+                                label={t('prodMedia.s051')}
                                 value={draft.username}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
                                   ...current,
@@ -13866,10 +13875,10 @@ export default function ProducerMediaPanel({
                                 }))}
                                 fullWidth
                                 disabled={!canManageAccessVaultSecrets}
-                                helperText={serverSecret?.hasUsername ? 'Brukernavn er lagret sikkert på serveren.' : 'Valgfritt. La stå tomt hvis bare selve secret skal lagres.'}
+                                helperText={serverSecret?.hasUsername ? t('prodMedia.s052') : t('prodMedia.s675')}
                               />
                               <TextField
-                                label="Maskert referanse"
+                                label={t('prodMedia.s472')}
                                 value={draft.maskedReference}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
                                   ...current,
@@ -13879,7 +13888,7 @@ export default function ProducerMediaPanel({
                                 disabled={!canManageAccessVaultSecrets}
                               />
                               <TextField
-                                label="Secret"
+                                label={t('prodMedia.s593')}
                                 type="password"
                                 value={draft.secretValue}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
@@ -13888,10 +13897,10 @@ export default function ProducerMediaPanel({
                                 }))}
                                 fullWidth
                                 disabled={!canManageAccessVaultSecrets}
-                                helperText={serverSecret?.hasStoredSecret ? 'Ny verdi overskriver lagret secret. La stå tomt for å beholde dagens.' : 'Lagres kryptert på serveren når du trykker lagre.'}
+                                helperText={serverSecret?.hasStoredSecret ? t('prodMedia.s516') : t('prodMedia.s385')}
                               />
                               <TextField
-                                label="Backup-kode / recovery"
+                                label={t('prodMedia.m11')}
                                 type="password"
                                 value={draft.backupCode}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
@@ -13900,10 +13909,10 @@ export default function ProducerMediaPanel({
                                 }))}
                                 fullWidth
                                 disabled={!canManageAccessVaultSecrets}
-                                helperText={serverSecret?.hasBackupCode ? 'Backup-kode er allerede lagret. Fyll inn på nytt for å oppdatere.' : 'Valgfritt. Lagres kryptert hvis du fyller det inn.'}
+                                helperText={serverSecret?.hasBackupCode ? t('prodMedia.s013') : t('prodMedia.s676')}
                               />
                               <TextField
-                                label="Utløper"
+                                label={t('prodMedia.s671')}
                                 type="datetime-local"
                                 value={draft.expiresAt}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
@@ -13926,7 +13935,7 @@ export default function ProducerMediaPanel({
                                 }}
                               >
                                 <Typography sx={{ color: '#fde68a', fontWeight: 700, fontSize: '0.78rem', mb: 0.45 }}>
-                                  Åpnet secret
+                                  {t('prodMedia.j092')}
                                 </Typography>
                                 <Box
                                   sx={{
@@ -13935,9 +13944,9 @@ export default function ProducerMediaPanel({
                                     gap: 0.75,
                                   }}
                                 >
-                                  <TextField label="Brukernavn" value={revealed.username ?? ''} fullWidth InputProps={{ readOnly: true }} />
-                                  <TextField label="Secret" value={revealed.secretValue ?? ''} fullWidth InputProps={{ readOnly: true }} />
-                                  <TextField label="Backup-kode" value={revealed.backupCode ?? ''} fullWidth InputProps={{ readOnly: true }} />
+                                  <TextField label={t('prodMedia.m18')} value={revealed.username ?? ''} fullWidth InputProps={{ readOnly: true }} />
+                                  <TextField label={t('prodMedia.s593')} value={revealed.secretValue ?? ''} fullWidth InputProps={{ readOnly: true }} />
+                                  <TextField label={t('prodMedia.m10')} value={revealed.backupCode ?? ''} fullWidth InputProps={{ readOnly: true }} />
                                 </Box>
                                 <VaultRevealCountdown
                                   revealedAt={revealed.revealedAt}
@@ -13965,7 +13974,7 @@ export default function ProducerMediaPanel({
                                   disabled={Boolean(accessVaultActionKey)}
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
                                 >
-                                  {accessVaultActionKey === `${entry.platform}:save` ? 'Lagrer sikkert...' : 'Lagre sikkert'}
+                                  {accessVaultActionKey === `${entry.platform}:save` ? t('prodMedia.s383') : t('prodMedia.s373')}
                                 </Button>
                               ) : null}
                               {canRequestAccessVaultReveal && serverSecret?.hasStoredSecret && !activeRevealRequest ? (
@@ -13978,7 +13987,7 @@ export default function ProducerMediaPanel({
                                   disabled={Boolean(accessVaultActionKey)}
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(125,211,252,0.28)', color: '#e0f2fe' }}
                                 >
-                                  {accessVaultActionKey === `${entry.platform}::request` ? 'Ber om innsyn...' : 'Be om innsyn'}
+                                  {accessVaultActionKey === `${entry.platform}::request` ? t('prodMedia.s021') : t('prodMedia.s016')}
                                 </Button>
                               ) : null}
                               {canRevealApprovedSecret && activeRevealRequest ? (
@@ -13991,7 +14000,7 @@ export default function ProducerMediaPanel({
                                   disabled={Boolean(accessVaultActionKey)}
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(192,132,252,0.28)', color: '#f5d0fe' }}
                                 >
-                                  {accessVaultActionKey === `${activeRevealRequest.id}:reveal` ? 'Åpner...' : 'Åpne godkjent innsyn'}
+                                  {accessVaultActionKey === `${activeRevealRequest.id}:reveal` ? t('prodMedia.s763') : t('prodMedia.s738')}
                                 </Button>
                               ) : null}
                               {canManageAccessVaultSecrets && serverSecret ? (
@@ -14005,14 +14014,14 @@ export default function ProducerMediaPanel({
                                   disabled={Boolean(accessVaultActionKey)}
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34 }}
                                 >
-                                  {accessVaultActionKey === `${entry.platform}:revoke` ? 'Tilbakekaller...' : 'Tilbakekall secret'}
+                                  {accessVaultActionKey === `${entry.platform}:revoke` ? t('prodMedia.zz10') : t('prodMedia.s654')}
                                 </Button>
                               ) : null}
                             </Stack>
 
                             {canRequestAccessVaultReveal && serverSecret?.hasStoredSecret && !activeRevealRequest ? (
                               <TextField
-                                label="Hvorfor trenger du innsyn?"
+                                label={t('prodMedia.s190')}
                                 value={draft.requestReason}
                                 onChange={(event) => updateAccessVaultDraft(entry.platform, (current) => ({
                                   ...current,
@@ -14021,7 +14030,7 @@ export default function ProducerMediaPanel({
                                 fullWidth
                                 multiline
                                 minRows={2}
-                                helperText="Begrunnelsen logges i audit og vises for godkjenner."
+                                helperText={t('prodMedia.s017')}
                               />
                             ) : null}
 
@@ -14031,8 +14040,8 @@ export default function ProducerMediaPanel({
                                 sx={{ borderRadius: 1.5 }}
                               >
                                 {activeRevealRequest.status === 'approved'
-                                  ? 'Innsyn er godkjent. Åpne det her eller fra Tilgangsforespørsler.'
-                                  : `Innsyn venter allerede på behandling for ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}.`}
+                                  ? t('prodMedia.s261')
+                                  : t('prodMedia.p10', { v0: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform] })}
                               </Alert>
                             ) : null}
 
@@ -14040,7 +14049,7 @@ export default function ProducerMediaPanel({
                             {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).length > 0 ? (
                               <Box sx={{ mt: 0.6, pt: 0.6, borderTop: '1px dashed rgba(148,163,184,0.18)' }}>
                                 <Typography sx={{ color: 'rgba(196,181,253,0.92)', fontSize: '0.72rem', fontWeight: 700, mb: 0.5 }}>
-                                  Flere kontoer på denne plattformen
+                                  {t('prodMedia.j093')}
                                 </Typography>
                                 <Stack spacing={0.6}>
                                   {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).map((extra) => {
@@ -14051,39 +14060,39 @@ export default function ProducerMediaPanel({
                                       <Box key={`extra-${extra.id}`} sx={{ p: 0.8, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(15,23,42,0.45)' }}>
                                         <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" rowGap={0.4}>
                                           <Typography sx={{ color: '#fff', fontSize: '0.82rem', fontWeight: 700 }}>
-                                            {extra.accountLabel || extra.label || 'Konto'}
+                                            {extra.accountLabel || extra.label || t('prodMedia.s329')}
                                           </Typography>
-                                          <Chip size="small" label={extra.ownerSide === 'client' ? 'Klient-eid' : 'Produsent'} sx={{ height: 17, fontSize: '0.58rem', fontWeight: 700, color: extra.ownerSide === 'client' ? '#6ee7b7' : '#c4b5fd', bgcolor: extra.ownerSide === 'client' ? 'rgba(16,185,129,0.12)' : 'rgba(168,85,247,0.14)' }} />
+                                          <Chip size="small" label={extra.ownerSide === 'client' ? t('prodMedia.s285') : t('prodMedia.s547')} sx={{ height: 17, fontSize: '0.58rem', fontWeight: 700, color: extra.ownerSide === 'client' ? '#6ee7b7' : '#c4b5fd', bgcolor: extra.ownerSide === 'client' ? 'rgba(16,185,129,0.12)' : 'rgba(168,85,247,0.14)' }} />
                                           {extra.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{extra.maskedReference}</Typography> : null}
                                         </Stack>
                                         <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" rowGap={0.4}>
                                           {canRequestAccessVaultReveal && extra.hasStoredSecret && !exReq ? (
                                             <Button size="small" variant="outlined" disabled={exBusy} onClick={() => { void handleRequestAccessVaultReveal(entry.platform, extra.accountLabel ?? ''); }}
                                               sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34 }}>
-                                              {exBusy ? 'Ber om…' : 'Be om innsyn'}
+                                              {exBusy ? t('prodMedia.m13') : t('prodMedia.s016')}
                                             </Button>
                                           ) : null}
                                           {exReq && exReq.status === 'pending' && canDecideAccessVaultReveal ? (
                                             <>
-                                              <Button size="small" variant="contained" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'approve'); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#0f766e' }}>Godkjenn</Button>
-                                              <Button size="small" variant="text" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'reject'); }} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.74rem', minHeight: 34, color: 'rgba(252,165,165,0.9)' }}>Avslå</Button>
+                                              <Button size="small" variant="contained" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'approve'); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#0f766e' }}>{t('prodMedia.j094')}</Button>
+                                              <Button size="small" variant="text" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'reject'); }} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.74rem', minHeight: 34, color: 'rgba(252,165,165,0.9)' }}>{t('prodMedia.j095')}</Button>
                                             </>
                                           ) : null}
                                           {exReq && exReq.status === 'pending' && !canDecideAccessVaultReveal ? (
-                                            <Typography sx={{ color: 'rgba(251,191,36,0.9)', fontSize: '0.74rem', fontWeight: 600, alignSelf: 'center' }}>Venter på godkjenning</Typography>
+                                            <Typography sx={{ color: 'rgba(251,191,36,0.9)', fontSize: '0.74rem', fontWeight: 600, alignSelf: 'center' }}>{t('prodMedia.s696')}</Typography>
                                           ) : null}
                                           {canRevealApprovedSecret && exReq && exReq.status === 'approved' && !exRevealed ? (
                                             <Button size="small" variant="contained" onClick={() => { void handleRevealAccessVaultSecret(exReq); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#7c3aed' }}>
-                                              {accessVaultActionKey === `${exReq.id}:reveal` ? 'Åpner…' : 'Åpne godkjent innsyn'}
+                                              {accessVaultActionKey === `${exReq.id}:reveal` ? t('prodMedia.s764') : t('prodMedia.s738')}
                                             </Button>
                                           ) : null}
                                         </Stack>
                                         {exRevealed && exReq ? (
                                           <Box sx={{ mt: 0.6, p: 0.7, borderRadius: 1.5, bgcolor: 'rgba(120,53,15,0.28)', border: '1px solid rgba(245,158,11,0.35)' }}>
                                             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0,1fr))' }, gap: 0.6 }}>
-                                              <TextField label="Brukernavn" value={exRevealed.username ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
-                                              <TextField label="Secret" value={exRevealed.secretValue ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
-                                              <TextField label="Backup-kode" value={exRevealed.backupCode ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label={t('prodMedia.m18')} value={exRevealed.username ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label={t('prodMedia.s593')} value={exRevealed.secretValue ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label={t('prodMedia.m10')} value={exRevealed.backupCode ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
                                             </Box>
                                             <VaultRevealCountdown
                                               revealedAt={exRevealed.revealedAt}
@@ -14103,7 +14112,7 @@ export default function ProducerMediaPanel({
                       );
                     }) : (
                       <Alert severity="info" sx={{ borderRadius: 1.5 }}>
-                        Ingen sensitive secrets er registrert. Hold deg helst til delegert tilgang og invitasjoner.
+                        {t('prodMedia.j096')}
                       </Alert>
                     )}
                   </Stack>
@@ -14121,10 +14130,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
-                    Plattformrettigheter
+                    {t('prodMedia.m80')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
-                    Vis hvem som eier kontoen, hvem som får tilgang, hvilken rolle som trengs og om 2FA er bekreftet.
+                    {t('prodMedia.j097')}
                   </Typography>
                   <Stack spacing={0.75}>
                     {effectiveAccountEntries.map((entry) => (
@@ -14145,16 +14154,16 @@ export default function ProducerMediaPanel({
                                 {PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}
                               </Typography>
                               <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.74rem', lineHeight: 1.42, mt: 0.14 }}>
-                                {readFirstNonEmptyString(entry.accessScope, 'Ingen rolle eller scope er definert ennå.')}
+                                {readFirstNonEmptyString(entry.accessScope, t('prodMedia.s236'))}
                               </Typography>
                             </Box>
                           </Stack>
                           <Stack spacing={0.18} sx={{ minWidth: { md: 280 } }}>
                             <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem' }}>
-                              Eier: {readFirstNonEmptyString(entry.ownerName, 'Ikke satt')}
+                              {t('prodMedia.zz13')} {readFirstNonEmptyString(entry.ownerName, t('prodMedia.s202'))}
                             </Typography>
                             <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem' }}>
-                              Delt med: {readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere')}
+                              {t('prodMedia.j098')} {readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), t('prodMedia.s233'))}
                             </Typography>
                             <Typography sx={{ color: '#cbd5e1', fontSize: '0.74rem' }}>
                               {PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
@@ -14178,10 +14187,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18 }}>
-                    Aktivitetslogg
+                    {t('prodMedia.m01')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.82rem', lineHeight: 1.5, mb: 0.9 }}>
-                    Se når kontoer ble oppdatert, hvilke reviews som venter, og hvilke plattformer som nylig har endret status.
+                    {t('prodMedia.j099')}
                   </Typography>
                   <Stack spacing={0.72}>
                     {accountAccessAuditItems.length > 0 ? accountAccessAuditItems.map((item) => (
@@ -14214,7 +14223,7 @@ export default function ProducerMediaPanel({
                       </Stack>
                     )) : (
                       <Alert severity="info" sx={{ borderRadius: 1.5 }}>
-                        Ingen loggførte hendelser ennå.
+                        {t('prodMedia.j100')}
                       </Alert>
                     )}
                   </Stack>
@@ -14232,10 +14241,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Nødtilgang og tilbakekalling
+                    {t('prodMedia.j101')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35, lineHeight: 1.5, mb: 0.8 }}>
-                    Definer hvem som kontaktes hvis publisering stopper opp, hvordan tilgang tilbakekalles, og hva som må roteres når prosjektet avsluttes.
+                    {t('prodMedia.j102')}
                   </Typography>
                   <Box
                     sx={{
@@ -14246,7 +14255,7 @@ export default function ProducerMediaPanel({
                     }}
                   >
                     <TextField
-                      label="Nødkontakt"
+                      label={t('prodMedia.s520')}
                       value={planningDraft.accountAccess.emergencyContactName ?? ''}
                       onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                         ...workspace,
@@ -14256,7 +14265,7 @@ export default function ProducerMediaPanel({
                       disabled={!canEditClientInput}
                     />
                     <TextField
-                      label="Nødkontakt e-post"
+                      label={t('prodMedia.s521')}
                       value={planningDraft.accountAccess.emergencyContactEmail ?? ''}
                       onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                         ...workspace,
@@ -14266,7 +14275,7 @@ export default function ProducerMediaPanel({
                       disabled={!canEditClientInput}
                     />
                     <TextField
-                      label="Nødkontakt telefon"
+                      label={t('prodMedia.s522')}
                       value={planningDraft.accountAccess.emergencyContactPhone ?? ''}
                       onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                         ...workspace,
@@ -14278,7 +14287,7 @@ export default function ProducerMediaPanel({
                   </Box>
                   <Stack spacing={0.85}>
                     <TextField
-                      label="Sikkerhetsnotat"
+                      label={t('prodMedia.m98')}
                       value={planningDraft.accountAccess.securityNotes ?? ''}
                       onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                         ...workspace,
@@ -14289,10 +14298,10 @@ export default function ProducerMediaPanel({
                       minRows={2}
                       disabled={!canEditClientInput}
                       error={Boolean(accountAccessWorkspaceWarnings.securityNotes)}
-                      helperText={accountAccessWorkspaceWarnings.securityNotes ?? 'Beskriv hva systemet lagrer, hva klienten eier, og hvilken metode som er foretrukket.'}
+                      helperText={accountAccessWorkspaceWarnings.securityNotes ?? t('prodMedia.s024')}
                     />
                     <TextField
-                      label="Plan for tilbakekalling av tilgang"
+                      label={t('prodMedia.s536')}
                       value={planningDraft.accountAccess.revokePlan ?? ''}
                       onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                         ...workspace,
@@ -14303,10 +14312,10 @@ export default function ProducerMediaPanel({
                       minRows={2}
                       disabled={!canEditClientInput}
                       error={Boolean(accountAccessWorkspaceWarnings.revokePlan)}
-                      helperText={accountAccessWorkspaceWarnings.revokePlan ?? 'Beskriv hvordan passord, tokens og invitasjoner roteres eller avsluttes etter prosjektet.'}
+                      helperText={accountAccessWorkspaceWarnings.revokePlan ?? t('prodMedia.s027')}
                     />
                     <TextField
-                      label="Nødtilgangsnotat"
+                      label={t('prodMedia.s523')}
                       value={planningDraft.accountAccess.emergencyAccessNotes ?? ''}
                       onChange={(event) => updateAccountAccessWorkspace((workspace) => ({
                         ...workspace,
@@ -14317,7 +14326,7 @@ export default function ProducerMediaPanel({
                       minRows={3}
                       disabled={!canEditClientInput}
                       error={Boolean(accountAccessWorkspaceWarnings.emergencyAccessNotes)}
-                      helperText={accountAccessWorkspaceWarnings.emergencyAccessNotes ?? 'Beskriv hvem som kan godkjenne reveal, når nødtilgang er lov, og hvordan klienten varsles.'}
+                      helperText={accountAccessWorkspaceWarnings.emergencyAccessNotes ?? t('prodMedia.s025')}
                     />
                   </Stack>
                 </Box>
@@ -14346,7 +14355,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
-                    Lagre når vault-flyten faktisk speiler hvem som har tilgang, hva som krever klienthandling, og hvordan tilgang stoppes igjen.
+                    {t('prodMedia.j103')}
                   </Typography>
                   <Button
                     size="small"
@@ -14367,7 +14376,7 @@ export default function ProducerMediaPanel({
                       '&:hover': { bgcolor: '#0f766e' },
                     }}
                   >
-                    {savingPlanning ? 'Lagrer kontotilgang...' : 'Lagre vault'}
+                    {savingPlanning ? t('prodMedia.s379') : t('prodMedia.s375')}
                   </Button>
                 </Stack>
               ) : null}
@@ -14398,12 +14407,12 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.42rem', lineHeight: 1.05 }}>
-                    Fullfør leveringsrutinen
+                    {t('prodMedia.j104')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem', lineHeight: 1.5, mt: 0.3, maxWidth: 620 }}>
                     {isClientReviewerMode
-                      ? 'Legg inn det teamet trenger for å levere riktig fil på riktig sted.'
-                      : 'Fyll inn reglene teamet faktisk skal bruke når prosjektet pakkes, deles og leveres.'}
+                      ? t('prodMedia.s394')
+                      : t('prodMedia.s153')}
                   </Typography>
                 </Box>
                 <Stack
@@ -14420,10 +14429,10 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Fremdrift
+                    {t('prodMedia.m35')}
                   </Typography>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                    {`${deliveryWorkflowReadyCount}/6 klare`}
+                    {t('prodMedia.r21', { v0: deliveryWorkflowReadyCount })}
                   </Typography>
                   <Box
                     sx={{
@@ -14445,8 +14454,8 @@ export default function ProducerMediaPanel({
                   </Box>
                   <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
                     {deliveryWorkflowMissingItems.length > 0
-                      ? `Fyll ut ${deliveryWorkflowMissingItems[0]?.label.toLowerCase()} før du går videre.`
-                      : 'Leveringsrutinen er klar for prosjektet.'}
+                      ? t('prodMedia.p09', { v0: deliveryWorkflowMissingItems[0]?.label.toLowerCase() })
+                      : t('prodMedia.s430')}
                   </Typography>
                 </Stack>
               </Stack>
@@ -14463,7 +14472,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-                    Dette mangler i leveringsrutinen
+                    {t('prodMedia.j105')}
                   </Typography>
                   <Stack spacing={0.18}>
                     {deliveryWorkflowMissingItems.map((item) => (
@@ -14497,10 +14506,10 @@ export default function ProducerMediaPanel({
                       lineHeight: 1.3,
                     }}
                   >
-                    Klart
+                    {t('prodMedia.m45')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
-                    Leveringsrutinen er klar for team og overlevering.
+                    {t('prodMedia.s431')}
                   </Typography>
                 </Stack>
               )}
@@ -14517,22 +14526,22 @@ export default function ProducerMediaPanel({
                 <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={0.9} sx={{ mb: 0.9 }}>
                   <Box>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
-                      Velg leveringsmal
+                      {t('prodMedia.j106')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.76rem', lineHeight: 1.45, mt: 0.2 }}>
-                      Start med en mal og juster bare det som faktisk avviker for prosjektet.
+                      {t('prodMedia.j107')}
                     </Typography>
                   </Box>
                   {selectedDeliveryPreset ? (
                     <Chip
                       size="small"
-                      label={`Aktiv: ${selectedDeliveryPreset.label}`}
+                      label={t('prodMedia.r01', { v0: selectedDeliveryPreset.label })}
                       sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#dbeafe', alignSelf: { md: 'flex-start' } }}
                     />
                   ) : (
                     <Chip
                       size="small"
-                      label="Tilpasset"
+                      label={t('prodMedia.m107')}
                       sx={{ bgcolor: 'rgba(148,163,184,0.16)', color: '#e2e8f0', alignSelf: { md: 'flex-start' } }}
                     />
                   )}
@@ -14577,7 +14586,7 @@ export default function ProducerMediaPanel({
                             }))}
                             sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { sm: 'flex-start' } }}
                           >
-                            {preset.id === planningDraft.deliveryWorkflow.presetId ? 'Aktiv' : 'Bruk mal'}
+                            {preset.id === planningDraft.deliveryWorkflow.presetId ? t('prodMedia.z04') : t('prodMedia.s046')}
                           </Button>
                         ) : null}
                       </Stack>
@@ -14603,12 +14612,12 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Siste klientpakke
+                    {t('prodMedia.m99')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35 }}>
                     {deliveryWorkspaceAssets.latestPackage
                       ? `${deliveryWorkspaceAssets.latestPackage.name} · ${formatTimestamp(deliveryWorkspaceAssets.latestPackage.uploadedAt)}`
-                      : 'Ingen klientpakke er skrevet til prosjektfiler ennå.'}
+                      : t('prodMedia.s220')}
                   </Typography>
                   {deliveryWorkspaceAssets.latestPackage?.downloadUrl ? (
                     <Button
@@ -14619,7 +14628,7 @@ export default function ProducerMediaPanel({
                       rel="noreferrer"
                       sx={{ mt: 0.85, textTransform: 'none', fontWeight: 700 }}
                     >
-                      Åpne klientpakke
+                      {t('prodMedia.s743')}
                     </Button>
                   ) : null}
                 </Box>
@@ -14633,18 +14642,18 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                    Leveransearbeidsområde
+                    {t('prodMedia.j108')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35 }}>
                     {deliveryWorkspaceAssets.workspaceFiles.length > 0
-                      ? 'Eksportfanen har skrevet konkrete prosjektfiler per leveransepunkt med riktig mappe, pakke og versjon.'
-                      : 'Arbeidsområdet opprettes når produsenten skriver leveransearbeidsområdet fra eksport.'}
+                      ? t('prodMedia.s104')
+                      : t('prodMedia.s007')}
                   </Typography>
                   {deliveryWorkspaceAssets.workspaceFiles.length > 0 ? (
                     <Stack spacing={0.35} sx={{ mt: 0.85 }}>
                       {deliveryWorkspaceAssets.workspaceFiles.slice(0, 3).map((file) => (
                         <Typography key={file.id} sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.8rem' }}>
-                          {`${getProjectFileMetadataString(file, 'folderPath') || 'Mappe ikke satt'} · ${getProjectFileMetadataString(file, 'deliveryTitle', 'workspaceType') || file.name}`}
+                          {`${getProjectFileMetadataString(file, 'folderPath') || t('prodMedia.s469')} · ${getProjectFileMetadataString(file, 'deliveryTitle', 'workspaceType') || file.name}`}
                         </Typography>
                       ))}
                     </Stack>
@@ -14664,15 +14673,15 @@ export default function ProducerMediaPanel({
                 <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
                   <Box>
                     <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                      Juridiske dokumenter
+                      {t('prodMedia.m42')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.84rem', mt: 0.35 }}>
-                      NDA-er, samarbeidsavtaler og øvrige juridiske dokumenter følger samme leveringsflate som resten av prosjektet.
+                      {t('prodMedia.j109')}
                     </Typography>
                   </Box>
                   <Chip
                     size="small"
-                    label={`${deliveryWorkspaceAssets.legalAgreements.length} avtaler`}
+                    label={t('prodMedia.u18', { v0: deliveryWorkspaceAssets.legalAgreements.length })}
                     sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#e9d5ff' }}
                   />
                 </Stack>
@@ -14711,7 +14720,7 @@ export default function ProducerMediaPanel({
                                 />
                                 <Chip
                                   size="small"
-                                  label={`Juridisk signatur · ${getAgreementSignatureLabel(agreement.google_signature)}`}
+                                  label={t('prodMedia.u05', { v0: getAgreementSignatureLabel(agreement.google_signature) })}
                                   sx={{ bgcolor: signatureTone.background, color: signatureTone.color }}
                                 />
                               </Stack>
@@ -14786,7 +14795,7 @@ export default function ProducerMediaPanel({
                                 onClick={() => openSurfaceWorkspace('delivery', { artifactId: `agreement:${agreement.id}` })}
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                {isClientReviewerMode ? 'Åpne avtalen' : 'Åpne i workspace'}
+                                {isClientReviewerMode ? t('prodMedia.s732') : t('prodMedia.s739')}
                               </Button>
                               {primaryUrl ? (
                                 <Button
@@ -14798,7 +14807,7 @@ export default function ProducerMediaPanel({
                                   rel="noreferrer"
                                   sx={{ textTransform: 'none', fontWeight: 700 }}
                                 >
-                                  {agreement.google_signature?.status === 'signed' ? 'Åpne signert avtale' : 'Åpne dokument'}
+                                  {agreement.google_signature?.status === 'signed' ? t('prodMedia.s757') : t('prodMedia.s735')}
                                 </Button>
                               ) : null}
                               {auditArtifact?.webViewUrl ? (
@@ -14811,7 +14820,7 @@ export default function ProducerMediaPanel({
                                   rel="noreferrer"
                                   sx={{ textTransform: 'none', fontWeight: 700 }}
                                 >
-                                  Signaturspor
+                                  {t('prodMedia.m96')}
                                 </Button>
                               ) : null}
                             </Stack>
@@ -14822,7 +14831,7 @@ export default function ProducerMediaPanel({
                   </Stack>
                 ) : (
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.88rem' }}>
-                    Ingen juridiske dokumenter er koblet til leveringsflaten ennå.
+                    {t('prodMedia.j110')}
                   </Typography>
                 )}
               </Box>
@@ -14843,19 +14852,19 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
-                    Definer struktur
+                    {t('prodMedia.m21')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
-                    Fyll inn reglene som styrer navn, versjoner og mapper.
+                    {t('prodMedia.j111')}
                   </Typography>
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv mønsteret alle filer skal følge.',
+                        t('prodMedia.s630'),
                         hasText(planningDraft.deliveryWorkflow.fileNamingConvention) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Filnavnregel"
+                        label={t('prodMedia.m30')}
                         value={planningDraft.deliveryWorkflow.fileNamingConvention ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -14871,11 +14880,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvordan versjoner skal navngis og gå fra intern til klientklar.',
+                        t('prodMedia.s624'),
                         hasText(planningDraft.deliveryWorkflow.versioningRule) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Versjoneringsregel"
+                        label={t('prodMedia.m110')}
                         value={planningDraft.deliveryWorkflow.versioningRule ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -14893,11 +14902,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvordan mapper skal bygges opp i leveranseflyten.',
+                        t('prodMedia.s621'),
                         hasText(planningDraft.deliveryWorkflow.folderStructure) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Mappestruktur"
+                        label={t('prodMedia.m69')}
                         value={planningDraft.deliveryWorkflow.folderStructure ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -14925,15 +14934,15 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.18, fontSize: '0.98rem' }}>
-                    Avklar rutiner
+                    {t('prodMedia.m06')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
-                    Fyll inn reglene som styrer draft, backup og deling.
+                    {t('prodMedia.j112')}
                   </Typography>
                   <Stack spacing={1.35}>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hva som er intern arbeidsfil og hva som er klientklar leveranse.',
+                        t('prodMedia.s613'),
                         hasText(planningDraft.deliveryWorkflow.draftVsFinalRule) ? 'filled' : 'missing',
                       )}
                       <TextField
@@ -14955,11 +14964,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvor backup ligger og når den tas.',
+                        t('prodMedia.s618'),
                         hasText(planningDraft.deliveryWorkflow.backupRoutine) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Backuprutine"
+                        label={t('prodMedia.m12')}
                         value={planningDraft.deliveryWorkflow.backupRoutine ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -14977,11 +14986,11 @@ export default function ProducerMediaPanel({
                     </Box>
                     <Box>
                       {renderFieldLead(
-                        'Skriv hvor ofte og i hvilke steg filer skal deles.',
+                        t('prodMedia.s619'),
                         hasText(planningDraft.deliveryWorkflow.deliveryCadence) ? 'filled' : 'missing',
                       )}
                       <TextField
-                        label="Leveringsrytme"
+                        label={t('prodMedia.m62')}
                         value={planningDraft.deliveryWorkflow.deliveryCadence ?? ''}
                         onChange={(event) => setPlanningDraft((previous) => ({
                           ...previous,
@@ -15026,7 +15035,7 @@ export default function ProducerMediaPanel({
                       lineHeight: 1.3,
                     }}
                   >
-                    Kort oppsummering
+                    {t('prodMedia.m57')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
                     {deliveryWorkflowSummary}
@@ -15046,7 +15055,7 @@ export default function ProducerMediaPanel({
                   }}
                 >
                   <Typography sx={{ color: 'rgba(148,163,184,0.76)', fontSize: '0.76rem', lineHeight: 1.45 }}>
-                    Lagre når rutinen faktisk kan brukes av teamet i eksport og overlevering.
+                    {t('prodMedia.j113')}
                   </Typography>
                   <Button
                     size="small"
@@ -15058,7 +15067,7 @@ export default function ProducerMediaPanel({
                     disabled={savingPlanning}
                     sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, textTransform: 'none', fontWeight: 700, bgcolor: '#22c55e', color: '#052e16', '&:hover': { bgcolor: '#16a34a' } }}
                   >
-                    {savingPlanning ? 'Lagrer leveringsrutine...' : 'Lagre og bruk i levering'}
+                    {savingPlanning ? t('prodMedia.s380') : t('prodMedia.s371')}
                   </Button>
                 </Stack>
               ) : null}
@@ -15122,12 +15131,12 @@ export default function ProducerMediaPanel({
                 <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1.25 }}>
                   <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1.3rem', lineHeight: 1.05 }}>
-                    {materialsMode === 'capture' ? 'Legg inn neste materiale' : 'Gå gjennom materialet'}
+                    {materialsMode === 'capture' ? t('prodMedia.s410') : t('prodMedia.s167')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', lineHeight: 1.5, mt: 0.25, maxWidth: 620 }}>
                     {materialsMode === 'capture'
-                      ? 'Legg inn ett materiale om gangen og koble det til plan eller levering.'
-                      : 'Se hva som er registrert, og rediger bare det som faktisk må endres.'}
+                      ? t('prodMedia.s398')
+                      : t('prodMedia.s585')}
                     </Typography>
                   </Box>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ md: 'flex-start' }}>
@@ -15135,7 +15144,7 @@ export default function ProducerMediaPanel({
                       <>
                         <Chip
                           size="small"
-                          label="Wizard på"
+                          label={t('prodMedia.s711')}
                           sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#bfdbfe', alignSelf: 'flex-start' }}
                         />
                         <Button
@@ -15144,7 +15153,7 @@ export default function ProducerMediaPanel({
                           onClick={() => setMaterialsMode('library')}
                           sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                         >
-                          Bibliotek
+                          {t('prodMedia.m15')}
                         </Button>
                         {canEditClientInput ? (
                           <Button
@@ -15153,7 +15162,7 @@ export default function ProducerMediaPanel({
                             onClick={() => setMaterialWizardEnabled(false)}
                             sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start' }}
                           >
-                            Gå fritt
+                            {t('prodMedia.s166')}
                           </Button>
                         ) : null}
                       </>
@@ -15170,8 +15179,8 @@ export default function ProducerMediaPanel({
                           }}
                           sx={{ alignSelf: { md: 'flex-start' } }}
                         >
-                          <ToggleButton value="capture">Legg inn</ToggleButton>
-                          <ToggleButton value="library">Bibliotek</ToggleButton>
+                          <ToggleButton value="capture">{t('prodMedia.j114')}</ToggleButton>
+                          <ToggleButton value="library">{t('prodMedia.m15')}</ToggleButton>
                         </ToggleButtonGroup>
                         {canEditClientInput && materialsMode === 'capture' ? (
                           <Button
@@ -15190,7 +15199,7 @@ export default function ProducerMediaPanel({
                     )}
                     <Chip
                       size="small"
-                      label={materialDraft.id ? 'Redigerer' : `${materials.length} registrert`}
+                      label={materialDraft.id ? t('prodMedia.m84') : t('prodMedia.u32', { v0: materials.length })}
                       sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe', alignSelf: 'flex-start' }}
                     />
                   </Stack>
@@ -15212,7 +15221,7 @@ export default function ProducerMediaPanel({
                     }}
                   >
                     <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-                      Dette mangler i materialgrunnlaget
+                      {t('prodMedia.j115')}
                     </Typography>
                     <Stack spacing={0.18}>
                       {clientGroundingRequests.slice(0, 4).map((request) => (
@@ -15246,10 +15255,10 @@ export default function ProducerMediaPanel({
                         lineHeight: 1.3,
                       }}
                     >
-                      Klart
+                      {t('prodMedia.m45')}
                     </Typography>
                     <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
-                      Materialgrunnlaget er klart for neste steg.
+                      {t('prodMedia.m70')}
                     </Typography>
                   </Stack>
                 )}
@@ -15266,15 +15275,15 @@ export default function ProducerMediaPanel({
                   <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0.8} justifyContent="space-between" alignItems={{ xs: 'flex-start', lg: 'center' }}>
                     <Box sx={{ minWidth: 0 }}>
                       <Typography sx={{ color: 'rgba(191,219,254,0.62)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                        {isMaterialWizardActive ? `Steg ${activeMaterialWizardIndex + 1} av ${materialWizardDescriptors.length}` : 'Gjør dette nå'}
+                        {isMaterialWizardActive ? t('prodMedia.u14', { v0: activeMaterialWizardIndex + 1, v1: materialWizardDescriptors.length }) : t('prodMedia.s158')}
                       </Typography>
                       <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.15 }}>
                         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
                           {isMaterialWizardActive
                             ? activeMaterialWizardDescriptor.label
                             : materialsMode === 'capture'
-                              ? 'Legg inn neste materiale'
-                              : 'Gå gjennom registrert materiale'}
+                              ? t('prodMedia.s410')
+                              : t('prodMedia.s168')}
                         </Typography>
                         {isMaterialWizardActive ? (
                           <Chip
@@ -15292,8 +15301,8 @@ export default function ProducerMediaPanel({
                         {isMaterialWizardActive
                           ? activeMaterialWizardDescriptor.description
                           : materialsMode === 'capture'
-                            ? 'Velg mal eller fil, fyll inn det viktigste og lagre.'
-                            : 'Bruk biblioteket til kontroll og raske endringer.'}
+                            ? t('prodMedia.s689')
+                            : t('prodMedia.s043')}
                       </Typography>
                     </Box>
                     {isMaterialWizardActive ? (
@@ -15311,10 +15320,10 @@ export default function ProducerMediaPanel({
                         }}
                       >
                         <Typography sx={{ color: 'rgba(191,219,254,0.56)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                          Fremdrift
+                          {t('prodMedia.m35')}
                         </Typography>
                         <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                          {`${completedMaterialStepCount}/${materialWizardDescriptors.length} klare`}
+                          {t('prodMedia.r23', { v0: completedMaterialStepCount, v1: materialWizardDescriptors.length })}
                         </Typography>
                         <Box
                           sx={{
@@ -15336,10 +15345,10 @@ export default function ProducerMediaPanel({
                         </Box>
                         <Typography sx={{ color: 'rgba(203,213,225,0.66)', fontSize: '0.74rem', lineHeight: 1.4 }}>
                           {nextMaterialWizardDescriptor && nextMaterialWizardDescriptor.key !== activeMaterialWizardStep
-                            ? `Deretter: ${nextMaterialWizardDescriptor.label}`
+                            ? t('prodMedia.zz3', { v0: nextMaterialWizardDescriptor.label })
                             : activeMaterialWizardDescriptor.missing.length > 0
-                              ? `Fyll ut ${activeMaterialWizardDescriptor.label.toLowerCase()} før du går videre.`
-                              : 'Materialet er klart for neste steg.'}
+                              ? t('prodMedia.p09', { v0: activeMaterialWizardDescriptor.label.toLowerCase() })
+                              : t('prodMedia.s475')}
                         </Typography>
                       </Stack>
                     ) : null}
@@ -15365,12 +15374,12 @@ export default function ProducerMediaPanel({
                         }}
                       >
                         <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.65, fontSize: '0.94rem' }}>
-                          {isClientReviewerMode ? 'Start med det du vil sende inn' : 'Start med en ferdig mal'}
+                          {isClientReviewerMode ? t('prodMedia.s637') : t('prodMedia.s638')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5, mb: 0.8 }}>
                           {isClientReviewerMode
-                            ? 'Velg en mal og fyll inn det viktigste raskt.'
-                            : 'Velg en mal og fyll inn vanlige leveranser raskt.'}
+                            ? t('prodMedia.s684')
+                            : t('prodMedia.s685')}
                         </Typography>
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                           {CLIENT_MATERIAL_TEMPLATES.map((template) => (
@@ -15398,18 +15407,18 @@ export default function ProducerMediaPanel({
                         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} justifyContent="space-between">
                           <Box sx={{ minWidth: 0 }}>
                             <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.3, fontSize: '0.94rem' }}>
-                              Last opp fil til prosjektet
+                              {t('prodMedia.j116')}
                             </Typography>
                             <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5 }}>
-                              Last opp filen først, og koble den deretter til materialet.
+                              {t('prodMedia.j117')}
                             </Typography>
                             {selectedMaterialFile ? (
                               <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
-                                Valgt fil: {selectedMaterialFile.name}
+                                {t('prodMedia.m109')} {selectedMaterialFile.name}
                               </Typography>
                             ) : materialDraft.projectFileId ? (
                               <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
-                                Koblet prosjektfil: {materialDraft.fileName || materialDraft.projectFileId}
+                                {t('prodMedia.j118')} {materialDraft.fileName || materialDraft.projectFileId}
                               </Typography>
                             ) : null}
                           </Box>
@@ -15420,7 +15429,7 @@ export default function ProducerMediaPanel({
                               onClick={handleOpenMaterialFilePicker}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Velg fil
+                              {t('prodMedia.j119')}
                             </Button>
                             {isMobileWorkspace ? (
                               <Button
@@ -15429,7 +15438,7 @@ export default function ProducerMediaPanel({
                                 onClick={handleOpenMaterialCameraPicker}
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                Kamera
+                                {t('prodMedia.m43')}
                               </Button>
                             ) : null}
                             <Button
@@ -15441,7 +15450,7 @@ export default function ProducerMediaPanel({
                               disabled={uploadingMaterialFile || !selectedMaterialFile}
                               sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                             >
-                              {uploadingMaterialFile ? 'Laster opp...' : 'Last opp til prosjekt'}
+                              {uploadingMaterialFile ? t('prodMedia.s390') : t('prodMedia.s388')}
                             </Button>
                           </Stack>
                         </Stack>
@@ -15460,7 +15469,7 @@ export default function ProducerMediaPanel({
                                 <Box
                                   component="img"
                                   src={selectedMaterialPreviewUrl}
-                                  alt={selectedMaterialFile?.name || 'Valgt fil'}
+                                  alt={selectedMaterialFile?.name || t('prodMedia.s677')}
                                   sx={{
                                     width: 64,
                                     height: 64,
@@ -15486,12 +15495,12 @@ export default function ProducerMediaPanel({
                               )}
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
-                                  {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || 'Fil klar'}
+                                  {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || t('prodMedia.k01')}
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.74rem', mt: 0.18 }}>
                                   {selectedMaterialFile
                                     ? `${selectedMaterialFile.type || 'Fil'} · ${formatFileSize(selectedMaterialFile.size)}`
-                                    : 'Prosjektfil er koblet og klar til materialet.'}
+                                    : t('prodMedia.s550')}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -15517,12 +15526,12 @@ export default function ProducerMediaPanel({
                         }}
                       >
                         <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.65, fontSize: '0.94rem' }}>
-                          {isClientReviewerMode ? 'Start med det du vil sende inn' : 'Start med en ferdig mal'}
+                          {isClientReviewerMode ? t('prodMedia.s637') : t('prodMedia.s638')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5, mb: 0.8 }}>
                           {isClientReviewerMode
-                            ? 'Velg en mal og fyll inn det viktigste raskt.'
-                            : 'Velg en mal og fyll inn vanlige leveranser raskt.'}
+                            ? t('prodMedia.s684')
+                            : t('prodMedia.s685')}
                         </Typography>
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                           {CLIENT_MATERIAL_TEMPLATES.map((template) => (
@@ -15550,18 +15559,18 @@ export default function ProducerMediaPanel({
                         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.1} justifyContent="space-between">
                           <Box sx={{ minWidth: 0 }}>
                             <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.3, fontSize: '0.94rem' }}>
-                              Last opp fil til prosjektet
+                              {t('prodMedia.j116')}
                             </Typography>
                             <Typography sx={{ color: 'rgba(203,213,225,0.75)', fontSize: '0.8rem', lineHeight: 1.5 }}>
-                              Last opp filen først, og koble den deretter til materialet.
+                              {t('prodMedia.j117')}
                             </Typography>
                             {selectedMaterialFile ? (
                               <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
-                                Valgt fil: {selectedMaterialFile.name}
+                                {t('prodMedia.m109')} {selectedMaterialFile.name}
                               </Typography>
                             ) : materialDraft.projectFileId ? (
                               <Typography sx={{ color: 'rgba(191,219,254,0.84)', fontSize: '0.82rem', mt: 0.55 }}>
-                                Koblet prosjektfil: {materialDraft.fileName || materialDraft.projectFileId}
+                                {t('prodMedia.j118')} {materialDraft.fileName || materialDraft.projectFileId}
                               </Typography>
                             ) : null}
                           </Box>
@@ -15572,7 +15581,7 @@ export default function ProducerMediaPanel({
                               onClick={handleOpenMaterialFilePicker}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              Velg fil
+                              {t('prodMedia.j119')}
                             </Button>
                             {isMobileWorkspace ? (
                               <Button
@@ -15581,7 +15590,7 @@ export default function ProducerMediaPanel({
                                 onClick={handleOpenMaterialCameraPicker}
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                Kamera
+                                {t('prodMedia.m43')}
                               </Button>
                             ) : null}
                             <Button
@@ -15593,7 +15602,7 @@ export default function ProducerMediaPanel({
                               disabled={uploadingMaterialFile || !selectedMaterialFile}
                               sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
                             >
-                              {uploadingMaterialFile ? 'Laster opp...' : 'Last opp til prosjekt'}
+                              {uploadingMaterialFile ? t('prodMedia.s390') : t('prodMedia.s388')}
                             </Button>
                           </Stack>
                         </Stack>
@@ -15612,7 +15621,7 @@ export default function ProducerMediaPanel({
                                 <Box
                                   component="img"
                                   src={selectedMaterialPreviewUrl}
-                                  alt={selectedMaterialFile?.name || 'Valgt fil'}
+                                  alt={selectedMaterialFile?.name || t('prodMedia.s677')}
                                   sx={{
                                     width: 64,
                                     height: 64,
@@ -15638,12 +15647,12 @@ export default function ProducerMediaPanel({
                               )}
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.84rem' }}>
-                                  {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || 'Fil klar'}
+                                  {selectedMaterialFile?.name || materialDraft.fileName || materialDraft.title || t('prodMedia.k01')}
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.74rem', mt: 0.18 }}>
                                   {selectedMaterialFile
                                     ? `${selectedMaterialFile.type || 'Fil'} · ${formatFileSize(selectedMaterialFile.size)}`
-                                    : 'Prosjektfil er koblet og klar til materialet.'}
+                                    : t('prodMedia.s550')}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -15669,7 +15678,7 @@ export default function ProducerMediaPanel({
                           }}
                         >
                           <Typography sx={{ color: 'rgba(191,219,254,0.7)', fontSize: '0.72rem', fontWeight: 700, lineHeight: 1.35, mb: 0.32 }}>
-                            {`Dette mangler i ${activeMaterialWizardDescriptor.label.toLowerCase()}`}
+                            {t('prodMedia.p06', { v0: activeMaterialWizardDescriptor.label.toLowerCase() })}
                           </Typography>
                           <Stack spacing={0.18}>
                             {activeMaterialWizardDescriptor.missing.map((item) => (
@@ -15716,11 +15725,11 @@ export default function ProducerMediaPanel({
                               </TextField>
                             <Box>
                               {renderFieldLead(
-                                'Gi materialet et tydelig navn som gjør det lett å bruke videre.',
+                                t('prodMedia.s157'),
                                 hasText(materialDraft.title) ? 'filled' : 'missing',
                               )}
                             <TextField
-                              label="Tittel"
+                              label={t('prodMedia.s658')}
                               value={materialDraft.title}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, title: event.target.value }))}
                               disabled={!canEditClientInput}
@@ -15728,11 +15737,11 @@ export default function ProducerMediaPanel({
                             </Box>
                             <Box>
                               {renderFieldLead(
-                                'Legg inn en lenke hvis materialet ligger eksternt.',
+                                t('prodMedia.s397'),
                                 hasText(materialDraft.externalUrl) ? 'filled' : 'optional',
                               )}
                             <TextField
-                              label="Ekstern lenke"
+                              label={t('prodMedia.s105')}
                               value={materialDraft.externalUrl}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
                               disabled={!canEditClientInput}
@@ -15746,7 +15755,7 @@ export default function ProducerMediaPanel({
                           <Stack spacing={1}>
                             <TextField
                               select
-                              label="Fase"
+                              label={t('prodMedia.s114')}
                               value={materialDraft.phase}
                               onChange={(event) => setMaterialDraft((previous) => ({
                                 ...previous,
@@ -15754,7 +15763,7 @@ export default function ProducerMediaPanel({
                               }))}
                               disabled={!canEditClientInput}
                             >
-                              <MenuItem value="">Ikke knyttet til fase</MenuItem>
+                              <MenuItem value="">{t('prodMedia.j120')}</MenuItem>
                               {Object.entries(PRODUCER_PLANNING_PHASE_LABELS).map(([value, label]) => (
                                 <MenuItem key={value} value={value}>
                                   {label}
@@ -15776,7 +15785,7 @@ export default function ProducerMediaPanel({
                             </TextField>
                             <TextField
                               select
-                              label="Prioritet"
+                              label={t('prodMedia.s543')}
                               value={materialDraft.priority}
                               onChange={(event) => setMaterialDraft((previous) => ({
                                 ...previous,
@@ -15792,7 +15801,7 @@ export default function ProducerMediaPanel({
                               </TextField>
                             <Box>
                               {renderFieldLead(
-                                'Beskriv hva materialet faktisk er.',
+                                t('prodMedia.s023'),
                                 hasText(materialDraft.description)
                                   ? 'filled'
                                   : hasText(materialDraft.usageNotes)
@@ -15800,7 +15809,7 @@ export default function ProducerMediaPanel({
                                     : 'missing',
                               )}
                             <TextField
-                              label="Beskrivelse"
+                              label={t('prodMedia.m14')}
                               value={materialDraft.description}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, description: event.target.value }))}
                               multiline
@@ -15810,7 +15819,7 @@ export default function ProducerMediaPanel({
                             </Box>
                             <Box>
                               {renderFieldLead(
-                                'Skriv hvordan materialet skal brukes i produksjonen.',
+                                t('prodMedia.s622'),
                                 hasText(materialDraft.usageNotes)
                                   ? 'filled'
                                   : hasText(materialDraft.description)
@@ -15818,7 +15827,7 @@ export default function ProducerMediaPanel({
                                     : 'missing',
                               )}
                             <TextField
-                              label="Brukes til"
+                              label={t('prodMedia.s065')}
                               value={materialDraft.usageNotes}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, usageNotes: event.target.value }))}
                               disabled={!canEditClientInput}
@@ -15831,12 +15840,12 @@ export default function ProducerMediaPanel({
                           <Stack spacing={1}>
                             <Box>
                               {renderFieldLead(
-                                'Koble materialet til plan eller publisering hvis timing betyr noe.',
+                                t('prodMedia.s308'),
                                 hasText(materialDraft.linkedCalendarItemId) ? 'filled' : 'optional',
                               )}
                             <TextField
                               select
-                              label="Knytt til content-kalender"
+                              label={t('prodMedia.s302')}
                               value={materialDraft.linkedCalendarItemId}
                               onChange={(event) => {
                                 const nextValue = event.target.value;
@@ -15852,7 +15861,7 @@ export default function ProducerMediaPanel({
                               }}
                               disabled={!canEditClientInput}
                             >
-                              <MenuItem value="">Ingen kobling</MenuItem>
+                              <MenuItem value="">{t('prodMedia.m37')}</MenuItem>
                               {contentCalendarOptions.map((option) => (
                                 <MenuItem key={option.id} value={option.id}>
                                   {option.label}
@@ -15862,17 +15871,17 @@ export default function ProducerMediaPanel({
                             </Box>
                             <Box>
                               {renderFieldLead(
-                                'Koble til shotlist hvis materialet styrer opptak eller klipp.',
+                                t('prodMedia.s313'),
                                 hasText(materialDraft.linkedShotListId) ? 'filled' : 'optional',
                               )}
                             <TextField
                               select
-                              label="Knytt til shotlist"
+                              label={t('prodMedia.s303')}
                               value={materialDraft.linkedShotListId}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, linkedShotListId: event.target.value }))}
                               disabled={!canEditClientInput}
                             >
-                              <MenuItem value="">Ingen kobling</MenuItem>
+                              <MenuItem value="">{t('prodMedia.m37')}</MenuItem>
                               {shotListOptions.map((option) => (
                                 <MenuItem key={option.id} value={option.id}>
                                   {option.label}
@@ -15882,17 +15891,17 @@ export default function ProducerMediaPanel({
                             </Box>
                             <Box>
                               {renderFieldLead(
-                                'Legg inn mappe eller pakke hvis materialet skal inn i leveranseflyten.',
+                                t('prodMedia.s408'),
                                 hasText(materialDraft.folderPath) || hasText(materialDraft.packageName) ? 'filled' : 'optional',
                               )}
                             <TextField
-                              label="Filnavn / assetnavn"
+                              label={t('prodMedia.s119')}
                               value={materialDraft.fileName}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, fileName: event.target.value }))}
                               disabled={!canEditClientInput}
                             />
                             <TextField
-                              label="Versjon"
+                              label={t('prodMedia.s700')}
                               value={materialDraft.versionLabel}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, versionLabel: event.target.value }))}
                               disabled={!canEditClientInput}
@@ -15904,13 +15913,13 @@ export default function ProducerMediaPanel({
                               disabled={!canEditClientInput}
                             />
                             <TextField
-                              label="Mappe i leveranseflyt"
+                              label={t('prodMedia.s468')}
                               value={materialDraft.folderPath}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, folderPath: event.target.value }))}
                               disabled={!canEditClientInput}
                             />
                             <TextField
-                              label="Pakke"
+                              label={t('prodMedia.m79')}
                               value={materialDraft.packageName}
                               onChange={(event) => setMaterialDraft((previous) => ({ ...previous, packageName: event.target.value }))}
                               disabled={!canEditClientInput}
@@ -15968,7 +15977,7 @@ export default function ProducerMediaPanel({
                               lineHeight: 1.3,
                             }}
                           >
-                            Kort oppsummering
+                            {t('prodMedia.m57')}
                           </Typography>
                           <Typography sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.79rem', lineHeight: 1.45 }}>
                             {activeMaterialStepSummary}
@@ -15997,7 +16006,7 @@ export default function ProducerMediaPanel({
                               }}
                               sx={{ textTransform: 'none', fontWeight: 700 }}
                             >
-                              {activeMaterialWizardIndex === 0 ? 'Gå fritt' : 'Tilbake'}
+                              {activeMaterialWizardIndex === 0 ? t('prodMedia.s166') : t('prodMedia.s653')}
                             </Button>
                             {materialDraft.id ? (
                               <Button
@@ -16013,17 +16022,17 @@ export default function ProducerMediaPanel({
                                 }}
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                Avbryt redigering
+                                {t('prodMedia.m05')}
                               </Button>
                             ) : null}
                           </Stack>
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.65} alignItems={{ xs: 'flex-start', sm: 'center' }}>
                             <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
                               {activeMaterialWizardStep === 'review'
-                                ? 'Kontroller koblinger og metadata før du lagrer.'
+                                ? t('prodMedia.s337')
                                 : nextMaterialWizardDescriptor
-                                  ? `Neste: ${nextMaterialWizardDescriptor.label}`
-                                  : 'Fortsett ett steg om gangen.'}
+                                  ? t('prodMedia.p24', { v0: nextMaterialWizardDescriptor.label })
+                                  : t('prodMedia.s137')}
                             </Typography>
                             <Button
                               size="small"
@@ -16042,10 +16051,10 @@ export default function ProducerMediaPanel({
                               sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
                             >
                               {activeMaterialWizardStep === 'review'
-                                ? (savingMaterial ? 'Lagrer materiale...' : materialDraft.id ? 'Oppdater materiale' : 'Lagre materiale')
+                                ? (savingMaterial ? t('prodMedia.s381') : materialDraft.id ? t('prodMedia.s527') : t('prodMedia.s370'))
                                 : nextMaterialWizardDescriptor
-                                  ? `Fortsett til ${nextMaterialWizardDescriptor.label}`
-                                  : 'Fortsett'}
+                                  ? t('prodMedia.p08', { v0: nextMaterialWizardDescriptor.label })
+                                  : t('prodMedia.m34')}
                             </Button>
                           </Stack>
                         </Stack>
@@ -16062,10 +16071,10 @@ export default function ProducerMediaPanel({
                         }}
                       >
                         <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.18, fontSize: '0.94rem' }}>
-                          Registrer materiale
+                          {t('prodMedia.s573')}
                         </Typography>
                         <Typography sx={{ color: 'rgba(203,213,225,0.64)', fontSize: '0.76rem', lineHeight: 1.5, mb: 0.85 }}>
-                          Fyll inn det som trengs for å bruke materialet videre.
+                          {t('prodMedia.j121')}
                         </Typography>
 
                         <Box
@@ -16084,7 +16093,7 @@ export default function ProducerMediaPanel({
                             }}
                           >
                             <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.65, fontSize: '0.98rem' }}>
-                              Innhold og status
+                              {t('prodMedia.j122')}
                             </Typography>
                             <Stack spacing={1}>
                               <TextField
@@ -16104,13 +16113,13 @@ export default function ProducerMediaPanel({
                                 ))}
                               </TextField>
                               <TextField
-                                label="Tittel"
+                                label={t('prodMedia.s658')}
                                 value={materialDraft.title}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, title: event.target.value }))}
                                 disabled={!canEditClientInput}
                               />
                               <TextField
-                                label="Ekstern lenke"
+                                label={t('prodMedia.s105')}
                                 value={materialDraft.externalUrl}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, externalUrl: event.target.value }))}
                                 disabled={!canEditClientInput}
@@ -16118,7 +16127,7 @@ export default function ProducerMediaPanel({
                               />
                               <TextField
                                 select
-                                label="Fase"
+                                label={t('prodMedia.s114')}
                                 value={materialDraft.phase}
                                 onChange={(event) => setMaterialDraft((previous) => ({
                                   ...previous,
@@ -16126,7 +16135,7 @@ export default function ProducerMediaPanel({
                                 }))}
                                 disabled={!canEditClientInput}
                               >
-                                <MenuItem value="">Ikke knyttet til fase</MenuItem>
+                                <MenuItem value="">{t('prodMedia.j120')}</MenuItem>
                                 {Object.entries(PRODUCER_PLANNING_PHASE_LABELS).map(([value, label]) => (
                                   <MenuItem key={value} value={value}>
                                     {label}
@@ -16148,7 +16157,7 @@ export default function ProducerMediaPanel({
                               </TextField>
                               <TextField
                                 select
-                                label="Prioritet"
+                                label={t('prodMedia.s543')}
                                 value={materialDraft.priority}
                                 onChange={(event) => setMaterialDraft((previous) => ({
                                   ...previous,
@@ -16163,7 +16172,7 @@ export default function ProducerMediaPanel({
                                 ))}
                               </TextField>
                               <TextField
-                                label="Beskrivelse"
+                                label={t('prodMedia.m14')}
                                 value={materialDraft.description}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, description: event.target.value }))}
                                 multiline
@@ -16182,12 +16191,12 @@ export default function ProducerMediaPanel({
                             }}
                           >
                             <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 0.65, fontSize: '0.98rem' }}>
-                              Koblinger og levering
+                              {t('prodMedia.j123')}
                             </Typography>
                             <Stack spacing={1}>
                               <TextField
                                 select
-                                label="Knytt til content-kalender"
+                                label={t('prodMedia.s302')}
                                 value={materialDraft.linkedCalendarItemId}
                                 onChange={(event) => {
                                   const nextValue = event.target.value;
@@ -16203,7 +16212,7 @@ export default function ProducerMediaPanel({
                                 }}
                                 disabled={!canEditClientInput}
                               >
-                                <MenuItem value="">Ingen kobling</MenuItem>
+                                <MenuItem value="">{t('prodMedia.m37')}</MenuItem>
                                 {contentCalendarOptions.map((option) => (
                                   <MenuItem key={option.id} value={option.id}>
                                     {option.label}
@@ -16212,12 +16221,12 @@ export default function ProducerMediaPanel({
                               </TextField>
                               <TextField
                                 select
-                                label="Knytt til shotlist"
+                                label={t('prodMedia.s303')}
                                 value={materialDraft.linkedShotListId}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, linkedShotListId: event.target.value }))}
                                 disabled={!canEditClientInput}
                               >
-                                <MenuItem value="">Ingen kobling</MenuItem>
+                                <MenuItem value="">{t('prodMedia.m37')}</MenuItem>
                                 {shotListOptions.map((option) => (
                                   <MenuItem key={option.id} value={option.id}>
                                     {option.label}
@@ -16225,19 +16234,19 @@ export default function ProducerMediaPanel({
                                 ))}
                               </TextField>
                               <TextField
-                                label="Filnavn / assetnavn"
+                                label={t('prodMedia.s119')}
                                 value={materialDraft.fileName}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, fileName: event.target.value }))}
                                 disabled={!canEditClientInput}
                               />
                               <TextField
-                                label="Versjon"
+                                label={t('prodMedia.s700')}
                                 value={materialDraft.versionLabel}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, versionLabel: event.target.value }))}
                                 disabled={!canEditClientInput}
                               />
                               <TextField
-                                label="Brukes til"
+                                label={t('prodMedia.s065')}
                                 value={materialDraft.usageNotes}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, usageNotes: event.target.value }))}
                                 disabled={!canEditClientInput}
@@ -16249,13 +16258,13 @@ export default function ProducerMediaPanel({
                                 disabled={!canEditClientInput}
                               />
                               <TextField
-                                label="Mappe i leveranseflyt"
+                                label={t('prodMedia.s468')}
                                 value={materialDraft.folderPath}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, folderPath: event.target.value }))}
                                 disabled={!canEditClientInput}
                               />
                               <TextField
-                                label="Pakke"
+                                label={t('prodMedia.m79')}
                                 value={materialDraft.packageName}
                                 onChange={(event) => setMaterialDraft((previous) => ({ ...previous, packageName: event.target.value }))}
                                 disabled={!canEditClientInput}
@@ -16288,13 +16297,13 @@ export default function ProducerMediaPanel({
                                 }}
                                 sx={{ textTransform: 'none', fontWeight: 700 }}
                               >
-                                Avbryt redigering
+                                {t('prodMedia.m05')}
                               </Button>
                             ) : null}
                           </Box>
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.65} alignItems={{ xs: 'flex-start', sm: 'center' }}>
                             <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.72rem', lineHeight: 1.4 }}>
-                              Lagre når metadata, koblinger og leveranseplassering er klare.
+                              {t('prodMedia.j124')}
                             </Typography>
                             <Button
                               size="small"
@@ -16306,7 +16315,7 @@ export default function ProducerMediaPanel({
                               disabled={savingMaterial}
                               sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#fbbf24', color: '#111827', '&:hover': { bgcolor: '#f59e0b' } }}
                             >
-                              {savingMaterial ? 'Lagrer materiale...' : materialDraft.id ? 'Oppdater materiale' : 'Legg til materiale'}
+                              {savingMaterial ? t('prodMedia.s381') : materialDraft.id ? t('prodMedia.s527') : t('prodMedia.s416')}
                             </Button>
                           </Stack>
                         </Stack>
@@ -16329,10 +16338,10 @@ export default function ProducerMediaPanel({
                   <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
                     <Box>
                       <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.94rem' }}>
-                        Registrert materiale
+                        {t('prodMedia.j125')}
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.8rem', mt: 0.2 }}>
-                        Se det som allerede er registrert, uten å blande det med nye innsendinger.
+                        {t('prodMedia.j126')}
                       </Typography>
                   </Box>
                   {canEditClientInput ? (
@@ -16349,24 +16358,24 @@ export default function ProducerMediaPanel({
                         }}
                         sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' } }}
                       >
-                        Nytt materiale
+                        {t('prodMedia.j127')}
                       </Button>
                     ) : null}
                   </Stack>
                 <Stack spacing={1}>
                   {materials.length === 0 ? (
                     <Alert severity="info">
-                      Ingen klientmaterialer er registrert ennå.
+                      {t('prodMedia.j128')}
                     </Alert>
                   ) : visibleLibraryMaterials.map((material) => {
                     const metadata = parseMaterialMetadata(material);
                     const detailRows = [
                       metadata.fileName ? `Filnavn: ${metadata.fileName}` : '',
-                      metadata.versionLabel ? `Versjon: ${metadata.versionLabel}` : '',
+                      metadata.versionLabel ? t('prodMedia.zz11', { v0: metadata.versionLabel }) : '',
                       metadata.sourceLabel ? `Kilde: ${metadata.sourceLabel}` : '',
-                      metadata.usageNotes ? `Brukes til: ${metadata.usageNotes}` : '',
+                      metadata.usageNotes ? t('prodMedia.p04', { v0: metadata.usageNotes }) : '',
                       metadata.folderPath ? `Mappe: ${metadata.folderPath}` : '',
-                      metadata.packageName ? `Pakke: ${metadata.packageName}` : '',
+                      metadata.packageName ? t('prodMedia.u10', { v0: metadata.packageName }) : '',
                       metadata.projectFileId ? `Prosjektfil: ${metadata.projectFileId}` : '',
                       metadata.linkedCalendarItemId
                         ? `Kalenderpunkt: ${contentCalendarOptions.find((option) => option.id === metadata.linkedCalendarItemId)?.label ?? metadata.linkedCalendarItemId}`
@@ -16379,9 +16388,9 @@ export default function ProducerMediaPanel({
                     const libraryMetaParts = [
                       material.phase ? PRODUCER_PLANNING_PHASE_LABELS[material.phase] : '',
                       MATERIAL_PRIORITY_LABELS[metadata.priority],
-                      MATERIAL_STATUS_LABELS[material.status ?? 'provided'] ?? (material.status ?? 'Levert'),
+                      MATERIAL_STATUS_LABELS[material.status ?? 'provided'] ?? (material.status ?? t('prodMedia.s433')),
                       metadata.linkedCalendarItemId
-                        ? contentCalendarOptions.find((option) => option.id === metadata.linkedCalendarItemId)?.label ?? 'Koblet til kalender'
+                        ? contentCalendarOptions.find((option) => option.id === metadata.linkedCalendarItemId)?.label ?? t('prodMedia.s316')
                         : '',
                     ].filter(hasText);
 
@@ -16427,7 +16436,7 @@ export default function ProducerMediaPanel({
                               </Stack>
                             ) : null}
                             <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.82rem', mt: 0.65 }}>
-                              {shotListOptions.find((option) => option.id === material.linked_shot_list_id)?.label ?? 'Ikke koblet til shotlist'}
+                              {shotListOptions.find((option) => option.id === material.linked_shot_list_id)?.label ?? t('prodMedia.s198')}
                               {' · '}
                               {formatTimestamp(material.updated_at ?? material.created_at)}
                               {material.created_by_role ? ` · ${material.created_by_role}` : ''}
@@ -16455,7 +16464,7 @@ export default function ProducerMediaPanel({
                                   color: 'rgba(191,219,254,0.82)',
                                 }}
                               >
-                                Åpne
+                                {t('prodMedia.s726')}
                               </Button>
                             ) : null}
                             {canEditClientInput ? (
@@ -16479,7 +16488,7 @@ export default function ProducerMediaPanel({
                                   color: 'rgba(226,232,240,0.84)',
                                 }}
                               >
-                                Rediger
+                                {t('prodMedia.m83')}
                               </Button>
                             ) : null}
                             {canEditClientInput ? (
@@ -16498,7 +16507,7 @@ export default function ProducerMediaPanel({
                                   color: 'rgba(252,165,165,0.9)',
                                 }}
                               >
-                                Fjern
+                                {t('prodMedia.s123')}
                               </Button>
                             ) : null}
                           </Stack>
@@ -16513,7 +16522,7 @@ export default function ProducerMediaPanel({
                       onClick={() => setShowAllMaterials((previous) => !previous)}
                       sx={{ textTransform: 'none', fontWeight: 700, alignSelf: 'flex-start', minHeight: 44 }}
                     >
-                      {showAllMaterials ? 'Vis færre' : `Vis alle (${sortedMaterials.length})`}
+                      {showAllMaterials ? t('prodMedia.s705') : t('prodMedia.u16', { v0: sortedMaterials.length })}
                     </Button>
                   ) : null}
                 </Stack>
@@ -16677,15 +16686,15 @@ export default function ProducerMediaPanel({
               <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.1} justifyContent="space-between" sx={{ mb: 1.15 }}>
                 <Box>
                   <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
-                    Klientoppgaver akkurat nå
+                    {t('prodMedia.j129')}
                   </Typography>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.86rem', mt: 0.35 }}>
-                    Disse punktene er beregnet fra brief, content-kalender, merkevareguide og leveringsrutine.
+                    {t('prodMedia.j130')}
                   </Typography>
                 </Box>
                 <Chip
                   size="small"
-                  label={`${clientContributionTasks.length} åpne innspill`}
+                  label={t('prodMedia.p54', { v0: clientContributionTasks.length })}
                   sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#bfdbfe', alignSelf: { lg: 'flex-start' } }}
                 />
               </Stack>
@@ -16745,12 +16754,12 @@ export default function ProducerMediaPanel({
                           }}
                         >
                           {task.sourceType === 'framework'
-                            ? 'Åpne brief'
+                            ? t('prodMedia.s733')
                             : task.sourceType === 'brand'
-                              ? 'Åpne merkevareguide'
+                              ? t('prodMedia.s750')
                               : task.sourceType === 'delivery'
-                                ? 'Åpne leveringsrutine'
-                                : 'Åpne materiale'}
+                                ? t('prodMedia.s747')
+                                : t('prodMedia.s749')}
                         </Button>
                       ) : null}
                     </Stack>
@@ -16782,7 +16791,7 @@ export default function ProducerMediaPanel({
       >
         <Box onClick={(event) => event.stopPropagation()}>
           <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.85 }}>
-            Workspace-oppsett
+            {t('prodMedia.m111')}
           </Typography>
           <Stack spacing={1.1}>
             <ToggleButtonGroup
@@ -16809,8 +16818,8 @@ export default function ProducerMediaPanel({
               value={activeLayout}
               onChange={handleLayoutChange}
             >
-              <ToggleButton value="focus"><SpaceDashboardOutlinedIcon sx={{ mr: 0.5, fontSize: 18 }} />Fokus</ToggleButton>
-              <ToggleButton value="split"><VerticalSplitOutlinedIcon sx={{ mr: 0.5, fontSize: 18 }} />Delt</ToggleButton>
+              <ToggleButton value="focus"><SpaceDashboardOutlinedIcon sx={{ mr: 0.5, fontSize: 18 }} />{t('prodMedia.m31')}</ToggleButton>
+              <ToggleButton value="split"><VerticalSplitOutlinedIcon sx={{ mr: 0.5, fontSize: 18 }} />{t('prodMedia.j131')}</ToggleButton>
               <ToggleButton value="grid"><GridViewOutlinedIcon sx={{ mr: 0.5, fontSize: 18 }} />Grid</ToggleButton>
             </ToggleButtonGroup>
             <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -16823,7 +16832,7 @@ export default function ProducerMediaPanel({
                 }}
                 sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                {workspaceNavigation.navigationPinned ? 'Løsne navigasjon' : 'Fest navigasjon'}
+                {workspaceNavigation.navigationPinned ? t('prodMedia.s457') : t('prodMedia.s115')}
               </Button>
               <Button
                 variant="outlined"
@@ -16834,7 +16843,7 @@ export default function ProducerMediaPanel({
                 }}
                 sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                Ny seksjon
+                {t('prodMedia.m74')}
               </Button>
               <Button
                 variant="outlined"
@@ -16846,7 +16855,7 @@ export default function ProducerMediaPanel({
                 disabled={!activeSection}
                 sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                Ny side
+                {t('prodMedia.m75')}
               </Button>
             </Stack>
           </Stack>
@@ -16873,12 +16882,12 @@ export default function ProducerMediaPanel({
         {workspaceContextMenu ? (
           <Box onClick={(event) => event.stopPropagation()}>
             <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.85 }}>
-              {workspaceContextMenu.targetType === 'section' ? 'Rediger seksjon' : 'Rediger side'}
+              {workspaceContextMenu.targetType === 'section' ? t('prodMedia.s557') : t('prodMedia.s558')}
             </Typography>
             <Stack spacing={1}>
               <TextField
                 size="small"
-                label={workspaceContextMenu.targetType === 'section' ? 'Seksjonsnavn' : 'Sidetittel'}
+                label={workspaceContextMenu.targetType === 'section' ? t('prodMedia.m91') : t('prodMedia.m95')}
                 value={workspaceContextMenu.renameValue}
                 onChange={(event) => setWorkspaceContextMenu((previous) => previous ? { ...previous, renameValue: event.target.value } : previous)}
               />
@@ -16902,7 +16911,7 @@ export default function ProducerMediaPanel({
                   <TextField
                     select
                     size="small"
-                    label="Sideflate"
+                    label={t('prodMedia.m94')}
                     value={workspaceContextMenu.surfaceValue ?? 'brief'}
                     onChange={(event) => setWorkspaceContextMenu((previous) => previous ? {
                       ...previous,
@@ -16927,17 +16936,17 @@ export default function ProducerMediaPanel({
                       } : previous);
                     }}
                   >
-                    <ToggleButton value="client">Synlig for klient</ToggleButton>
-                    <ToggleButton value="internal">Kun internt</ToggleButton>
+                    <ToggleButton value="client">{t('prodMedia.j132')}</ToggleButton>
+                    <ToggleButton value="internal">{t('prodMedia.m59')}</ToggleButton>
                   </ToggleButtonGroup>
                   <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.76rem', lineHeight: 1.5 }}>
-                    Dette styrer hvilke rom klientrollen kan åpne i Prosjektrom.
+                    {t('prodMedia.j133')}
                   </Typography>
                 </>
               )}
               <Box>
                 <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.78rem', mb: 0.55 }}>
-                  Farge
+                  {t('prodMedia.m27')}
                 </Typography>
                 <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap>
                   {WORKSPACE_COLOR_OPTIONS.map((color) => (
@@ -16967,7 +16976,7 @@ export default function ProducerMediaPanel({
                     }}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    {workspaceSections.find((section) => section.id === workspaceContextMenu.sectionId)?.pinned ? 'Løsne seksjon' : 'Fest seksjon'}
+                    {workspaceSections.find((section) => section.id === workspaceContextMenu.sectionId)?.pinned ? t('prodMedia.s458') : t('prodMedia.s116')}
                   </Button>
                 ) : (
                   <>
@@ -16981,7 +16990,7 @@ export default function ProducerMediaPanel({
                       }}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Ny underside
+                      {t('prodMedia.m76')}
                     </Button>
                     <Button
                       variant="outlined"
@@ -16994,7 +17003,7 @@ export default function ProducerMediaPanel({
                       }}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      {activeSection?.pages.find((page) => page.id === workspaceContextMenu.pageId)?.pinned ? 'Løsne side' : 'Fest side'}
+                      {activeSection?.pages.find((page) => page.id === workspaceContextMenu.pageId)?.pinned ? t('prodMedia.s459') : t('prodMedia.s117')}
                     </Button>
                   </>
                 )}
@@ -17010,7 +17019,7 @@ export default function ProducerMediaPanel({
                     disabled={savingPlanning}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Lagre
+                    {t('prodMedia.s367')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -17018,7 +17027,7 @@ export default function ProducerMediaPanel({
                     onClick={closeWorkspaceContextMenu}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Lukk
+                    {t('prodMedia.m66')}
                   </Button>
                 </Stack>
                 {workspaceContextMenu.targetType === 'section' ? (
@@ -17032,7 +17041,7 @@ export default function ProducerMediaPanel({
                     disabled={workspaceSections.length <= 1}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Fjern seksjon
+                    {t('prodMedia.j134')}
                   </Button>
                 ) : (
                   <Button
@@ -17047,7 +17056,7 @@ export default function ProducerMediaPanel({
                     disabled={(activeSection?.pages.length ?? 0) <= 1}
                     sx={{ textTransform: 'none', fontWeight: 700 }}
                   >
-                    Fjern side
+                    {t('prodMedia.j135')}
                   </Button>
                 )}
               </Stack>

@@ -12,7 +12,7 @@
  */
 
 import { danceFlowColors } from './danceFlowTheme';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Box,
   Stack,
@@ -42,6 +42,8 @@ import {
 import { listChoreographies, getChoreography } from './choreographyService';
 import type { Choreography } from './choreographyTypes';
 import { VideoReviewRoom } from './VideoReviewRoom';
+import { useT } from '../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
@@ -49,11 +51,11 @@ const BG = danceFlowColors.bgBase;
 const CARD = danceFlowColors.bgCard;
 const BORDER = 'rgba(139,92,246,0.25)';
 
-const KIND_LABEL: Record<VideoClipKind, string> = {
-  rehearsal: 'Prøve',
-  reference: 'Referanse',
-  performance: 'Forestilling',
-};
+const buildKIND_LABEL = (t: TFn): Record<VideoClipKind, string> => ({
+  rehearsal: t('danceVideoLib.s006'),
+  reference: t('danceVideoLib.s007'),
+  performance: t('danceVideoLib.s000'),
+});
 
 const KIND_COLOR: Record<VideoClipKind, string> = {
   rehearsal: '#a78bfa',
@@ -78,6 +80,8 @@ export function VideoLibrary({
   projectId,
   currentUserId,
 }: VideoLibraryProps): React.ReactElement {
+  const { t } = useT();
+  const KIND_LABEL = useMemo(() => buildKIND_LABEL(t), [t]);
   const [clips, setClips] = React.useState<VideoClip[]>([]);
   const [clipFilter, setClipFilter] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
@@ -111,7 +115,7 @@ export function VideoLibrary({
         setActiveClipId(clipList[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke laste klipp');
+      setError(err instanceof Error ? err.message : t('danceVideoLib.s003'));
     } finally {
       setLoading(false);
     }
@@ -169,14 +173,14 @@ export function VideoLibrary({
   };
 
   const handleDelete = async (id: string): Promise<void> => {
-    if (!window.confirm('Slette klippet permanent?')) return;
+    if (!window.confirm(t('danceVideoLib.s010'))) return;
     try {
       await deleteClip(id);
       setClips((prev) => prev.filter((c) => c.id !== id));
       if (activeClipId === id) setActiveClipId(null);
       if (compareClipId === id) setCompareClipId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunne ikke slette');
+      setError(err instanceof Error ? err.message : t('danceVideoLib.s004'));
     }
   };
 
@@ -241,7 +245,7 @@ export function VideoLibrary({
               disabled={uploadState.uploading || choreographies.length === 0}
             >
               {choreographies.length === 0 ? (
-                <MenuItem value="">Ingen stykker — opprett under "Stykker"</MenuItem>
+                <MenuItem value="">{t('danceVideoLib.s002')}</MenuItem>
               ) : null}
               {choreographies.map((c) => (
                 <MenuItem key={c.id} value={c.id} sx={{ fontSize: 12 }}>{c.title}</MenuItem>
@@ -288,7 +292,7 @@ export function VideoLibrary({
               }}
               data-testid="video-library-upload"
             >
-              {uploadState.uploading ? `Laster opp ${uploadPct}%` : 'Last opp video'}
+              {uploadState.uploading ? t('danceVideoLib.p00', { v0: uploadPct }) : t('danceVideoLib.s005')}
             </Button>
             {uploadState.uploading ? (
               <LinearProgress
@@ -313,7 +317,7 @@ export function VideoLibrary({
         <Box sx={{ mb: 1 }}>
           <input
             type="search"
-            placeholder="Søk klipp…"
+            placeholder={t('danceVideoLib.s011')}
             value={clipFilter}
             onChange={(e) => setClipFilter(e.target.value)}
             data-testid="video-library-search"
@@ -368,7 +372,7 @@ export function VideoLibrary({
                         <Typography noWrap sx={{ fontSize: 12, fontWeight: 600, color: '#fff', flex: 1 }}>
                           {c.title}
                         </Typography>
-                        <Tooltip title={isCompare ? 'Sammenlikning aktiv' : 'Sammenlikne med aktivt klipp'}>
+                        <Tooltip title={isCompare ? t('danceVideoLib.s009') : t('danceVideoLib.s008')}>
                           <IconButton
                             size="small"
                             onClick={(e) => {
@@ -397,7 +401,7 @@ export function VideoLibrary({
         })}
         {clips.length === 0 && !loading ? (
           <Typography sx={{ fontSize: 11, color: 'rgba(229,231,235,0.5)', fontStyle: 'italic' }}>
-            Ingen klipp ennå. Last opp ditt første prøveopptak ovenfor.
+            {t('danceVideoLib.s001')}
           </Typography>
         ) : null}
       </Box>
@@ -423,7 +427,7 @@ export function VideoLibrary({
             spacing={2}
             sx={{ minHeight: 320, color: 'rgba(229,231,235,0.5)', p: 4 }}
           >
-            <Chip label="Velg eller last opp et klipp" sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT }} />
+            <Chip label={t('danceVideoLib.s012')} sx={{ bgcolor: 'rgba(139,92,246,0.18)', color: PURPLE_LIGHT }} />
           </Stack>
         )}
       </Box>

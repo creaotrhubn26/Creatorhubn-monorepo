@@ -57,6 +57,7 @@ import type {
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
 import type { ConfirmedCustomerEntity } from './CustomerEntityConfirmationDialog';
+import { useT } from '../../../../i18n';
 
 interface MerchCooperationDialogProps {
   open: boolean;
@@ -72,44 +73,28 @@ interface MerchCooperationDialogProps {
   confirmedEntity?: ConfirmedCustomerEntity | null;
 }
 
-const PARTNER_TYPES: ReadonlyArray<{ id: MerchPartnerType; label: string }> = [
-  { id: 'sportsklubb', label: 'Sportsklubb' },
-  { id: 'event', label: 'Event / arrangement' },
-  { id: 'skole', label: 'Skole / utdanning' },
-  { id: 'forening', label: 'Forening / lokallag' },
-  { id: 'bedrift', label: 'Bedriftspartner' },
-];
-
-const DEAL_TYPES: ReadonlyArray<{ id: MerchDealType; label: string; hint: string }> = [
-  { id: 'sponsor', label: 'Sponsoravtale', hint: 'Logo + synlighet i bytte mot støtte/produkter' },
-  { id: 'kit_supplier', label: 'Kit-supplier', hint: '1-3 sesonger drakter/uniformer' },
-  { id: 'cross_promo', label: 'Kryss-promotering', hint: 'Innhold begge veier, ingen direkte penger' },
-  { id: 'give_away', label: 'Give-away / aktivering', hint: 'Engangs-aktivering på event eller kampanje' },
-  { id: 'long_term_partnership', label: 'Langsiktig partnerskap', hint: 'Bredt samarbeid over flere år' },
-];
-
-function draftToMarkdown(d: MerchCooperationDraft, partnerName: string): string {
+function draftToMarkdown(d: MerchCooperationDraft, partnerName: string, t: ReturnType<typeof useT>['t']): string {
   const sections: string[] = [
     `# ${d.dealHeadline}`,
     ``,
     d.openingPitch,
     ``,
-    `## Vi tilbyr ${partnerName}`,
+    `## ${t('merchCoop.md.weOffer', { partner: partnerName })}`,
     ...d.weProposeToOffer.map((x) => `- ${x}`),
     ``,
-    `## ${partnerName} tilbyr oss`,
+    `## ${t('merchCoop.md.theyOffer', { partner: partnerName })}`,
     ...d.theyOffer.map((x) => `- ${x}`),
     ``,
-    `## Kommersiell ramme`,
+    `## ${t('merchCoop.md.commercialFrame')}`,
     d.commercialFraming,
     ``,
-    `## Avtaleutkast`,
+    `## ${t('merchCoop.md.draftAgreement')}`,
     ...d.draftAgreementParagraphs.map((p, i) => `${i + 1}. ${p}`),
     ``,
-    `## Risiko å sjekke før signering`,
+    `## ${t('merchCoop.md.risks')}`,
     ...d.riskNotes.map((x) => `- ${x}`),
     ``,
-    `## Neste steg`,
+    `## ${t('merchCoop.md.nextSteps')}`,
     ...d.nextSteps.map((x) => `- ${x}`),
   ];
   return sections.join('\n');
@@ -123,6 +108,23 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   supplier,
   confirmedEntity,
 }) => {
+  const { t } = useT();
+  const PARTNER_TYPES: ReadonlyArray<{ id: MerchPartnerType; label: string }> = useMemo(() => [
+    { id: 'sportsklubb', label: t('merchCoop.ptSportsklubb') },
+    { id: 'event', label: t('merchCoop.ptEvent') },
+    { id: 'skole', label: t('merchCoop.ptSkole') },
+    { id: 'forening', label: t('merchCoop.ptForening') },
+    { id: 'bedrift', label: t('merchCoop.ptBedrift') },
+  ], [t]);
+
+  const DEAL_TYPES: ReadonlyArray<{ id: MerchDealType; label: string; hint: string }> = useMemo(() => [
+    { id: 'sponsor', label: t('merchCoop.dtSponsorLabel'), hint: t('merchCoop.dtSponsorHint') },
+    { id: 'kit_supplier', label: t('merchCoop.dtKitLabel'), hint: t('merchCoop.dtKitHint') },
+    { id: 'cross_promo', label: t('merchCoop.dtCrossLabel'), hint: t('merchCoop.dtCrossHint') },
+    { id: 'give_away', label: t('merchCoop.dtGiveLabel'), hint: t('merchCoop.dtGiveHint') },
+    { id: 'long_term_partnership', label: t('merchCoop.dtLongLabel'), hint: t('merchCoop.dtLongHint') },
+  ], [t]);
+
   const customerName = confirmedEntity?.legalName?.trim() || bootstrap?.companyProfile?.companyName || '';
   const customerIndustry = bootstrap?.companyProfile?.industry ?? '';
   const customerBrief = bootstrap?.companyProfile?.summary ?? '';
@@ -291,9 +293,9 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   const mailto = useMemo(() => {
     if (!draft) return null;
     const subject = encodeURIComponent(draft.dealHeadline);
-    const body = encodeURIComponent(draftToMarkdown(draft, partnerName));
+    const body = encodeURIComponent(draftToMarkdown(draft, partnerName, t));
     return `mailto:?subject=${subject}&body=${body}`;
-  }, [draft, partnerName]);
+  }, [draft, partnerName, t]);
 
   // Slice 7a: when the picked partner has a scraped contact email, build
   // a direct mailto with the recipient pre-filled. Producer can hit
@@ -301,9 +303,9 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
   const mailtoDirect = useMemo(() => {
     if (!draft || !partnerEmail) return null;
     const subject = encodeURIComponent(draft.dealHeadline);
-    const body = encodeURIComponent(draftToMarkdown(draft, partnerName));
+    const body = encodeURIComponent(draftToMarkdown(draft, partnerName, t));
     return `mailto:${encodeURIComponent(partnerEmail)}?subject=${subject}&body=${body}`;
-  }, [draft, partnerEmail, partnerName]);
+  }, [draft, partnerEmail, partnerName, t]);
 
   // Slice 7b — backend send-and-log via Gmail SMTP. Distinct from mailto
   // because this records the send in role_room_merch_partner_emails so
@@ -320,21 +322,21 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
         partnerEmail,
         producerCcEmail: null,
         subject: draft.dealHeadline,
-        bodyMarkdown: draftToMarkdown(draft, partnerName),
+        bodyMarkdown: draftToMarkdown(draft, partnerName, t),
       });
       if (r.ok) {
         setSendResult({
           ok: true,
-          message: `Sendt til ${partnerEmail} · loggført i prosjekt-historikk`,
+          message: t('merchCoop.sentOk', { email: partnerEmail }),
         });
       } else {
         setSendResult({
           ok: false,
           message: r.reason === 'missing_email_config'
-            ? 'Gmail-konfigurasjon mangler i backend-env. Be admin sette GMAIL_USER + GMAIL_APP_PASSWORD i Render.'
+            ? t('merchCoop.errMissingConfig')
             : r.reason === 'invalid_recipient'
-              ? 'Mottaker-adressen ser ut som en placeholder (bruker@domene.no e.l.) og ble avvist.'
-              : `Feilet: ${r.reason ?? 'ukjent feil'}`,
+              ? t('merchCoop.errInvalidRecipient')
+              : t('merchCoop.sendFailed', { reason: r.reason ?? t('merchCoop.unknownError') }),
         });
       }
     } catch (err) {
@@ -345,7 +347,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
     } finally {
       setSending(false);
     }
-  }, [projectId, draft, partnerName, partnerEmail, partnerOrgnrSelected]);
+  }, [projectId, draft, partnerName, partnerEmail, partnerOrgnrSelected, t]);
 
   const canGenerate = Boolean(projectId && customerName.trim() && partnerName.trim() && !loading);
 
@@ -353,13 +355,13 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ pr: 6, display: 'flex', alignItems: 'center', gap: 1 }}>
         <HandshakeIcon sx={{ color: '#a5b4fc' }} />
-        Samarbeidsforslag {customerName ? `· ${customerName}` : ''}
+        {t('merchCoop.title')} {customerName ? `· ${customerName}` : ''}
         <IconButton
           onClick={onClose}
           size="small"
           disabled={loading}
           sx={{ position: 'absolute', right: 8, top: 8 }}
-          aria-label="Lukk"
+          aria-label={t('merchCoop.closeAria')}
         >
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -370,24 +372,24 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
           {/* Input form */}
           <Box>
             <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'text.secondary', mb: 1 }}>
-              Hvem skal vi foreslå et samarbeid med?
+              {t('merchCoop.formTitle')}
             </Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4}>
               <TextField
-                label="Motpartens navn"
+                label={t('merchCoop.partnerNameLabel')}
                 value={partnerName}
                 onChange={(e) => {
                   setPartnerName(e.target.value);
                   setSelectedCandidateOrg(null);
                 }}
-                placeholder="f.eks. Lindeberg Sportsklubb FOTBALL — eller bruk forslagene under"
+                placeholder={t('merchCoop.partnerNamePlaceholder')}
                 fullWidth
                 size="small"
                 disabled={loading}
               />
               <TextField
                 select
-                label="Type motpart"
+                label={t('merchCoop.partnerTypeLabel')}
                 value={partnerType}
                 onChange={(e) => setPartnerType(e.target.value as MerchPartnerType)}
                 size="small"
@@ -400,7 +402,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               </TextField>
               <TextField
                 select
-                label="Type avtale"
+                label={t('merchCoop.dealTypeLabel')}
                 value={dealType}
                 onChange={(e) => setDealType(e.target.value as MerchDealType)}
                 size="small"
@@ -418,10 +420,10 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               </TextField>
             </Stack>
             <TextField
-              label="Notater om motparten (valgfritt)"
+              label={t('merchCoop.notesLabel')}
               value={partnerNotes}
               onChange={(e) => setPartnerNotes(e.target.value)}
-              placeholder="f.eks. 'Klubben har 320 spillere, 4 lag, hjemmebane på Lyn stadion. Sponsoravtale går ut 2026-12.'"
+              placeholder={t('merchCoop.notesPlaceholder')}
               fullWidth
               multiline
               minRows={2}
@@ -433,7 +435,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
             {supplier ? (
               <Chip
                 size="small"
-                label={`Tiltenkt leverandør: ${supplier.name}`}
+                label={t('merchCoop.intendedSupplier', { name: supplier.name })}
                 sx={{ mt: 1, bgcolor: 'rgba(99,102,241,0.16)', color: '#e0e7ff' }}
               />
             ) : null}
@@ -447,23 +449,22 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                   <Stack direction="row" spacing={0.6} alignItems="center">
                     <SearchIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
                     <Typography sx={{ fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'text.secondary' }}>
-                      Forslag i kundens nabolag
+                      {t('merchCoop.suggestionsInArea')}
                     </Typography>
                     {discoveryLoading ? <CircularProgress size={12} sx={{ ml: 0.5 }} /> : null}
                   </Stack>
                   <TextField
                     value={areaOverride}
                     onChange={(e) => setAreaOverride(e.target.value)}
-                    placeholder="bydel-overstyring (f.eks. lindeberg)"
+                    placeholder={t('merchCoop.areaPlaceholder')}
                     size="small"
                     sx={{ maxWidth: 240, '& .MuiInputBase-root': { fontSize: '0.78rem' } }}
-                    helperText={areaOverride ? null : 'Auto-detektert fra postnummer'}
+                    helperText={areaOverride ? null : t('merchCoop.autoDetected')}
                   />
                 </Stack>
                 {partnerCandidates.length === 0 && !discoveryLoading ? (
                   <Alert severity="info" sx={{ fontSize: '0.82rem' }}>
-                    Ingen Brreg-treff funnet i nabolaget. Skriv navnet direkte over, eller
-                    overstyr bydel-keyword.
+                    {t('merchCoop.noNeighborHits')}
                   </Alert>
                 ) : (
                   <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
@@ -520,7 +521,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                             {c.areaMatch ? (
                               <Chip
                                 size="small"
-                                label={`Bydel-match: ${c.areaMatch}`}
+                                label={t('merchCoop.areaMatchChip', { area: c.areaMatch })}
                                 sx={{ alignSelf: 'flex-start', height: 18, fontSize: '0.66rem', bgcolor: 'rgba(34,197,94,0.12)', color: '#bbf7d0' }}
                               />
                             ) : null}
@@ -548,7 +549,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                         <Chip
                           size="small"
                           icon={<EmailIcon sx={{ fontSize: 12, color: '#bbf7d0 !important' }} />}
-                          label={`Forslaget kan sendes direkte til ${partnerEmail}`}
+                          label={t('merchCoop.canSendDirect', { email: partnerEmail })}
                           sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', height: 22, fontSize: '0.72rem' }}
                         />
                       </Box>
@@ -567,11 +568,11 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               onClick={() => void generate()}
               sx={{ textTransform: 'none', fontWeight: 700 }}
             >
-              {loading ? 'Genererer …' : draft ? 'Generer på nytt' : 'Lag forslag'}
+              {loading ? t('merchCoop.generating') : draft ? t('merchCoop.regenerate') : t('merchCoop.generateBtn')}
             </Button>
             {!customerName ? (
               <Typography sx={{ color: 'warning.main', fontSize: '0.82rem' }}>
-                Kjør Research-fanen først for å hente kunde-profilen.
+                {t('merchCoop.runResearchFirst')}
               </Typography>
             ) : null}
           </Stack>
@@ -579,7 +580,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
           {error ? (
             <Alert severity="error" action={
               <Button size="small" startIcon={<RefreshIcon />} onClick={() => void generate()}>
-                Prøv igjen
+                {t('merchCoop.tryAgain')}
               </Button>
             }>
               {error.detail}
@@ -604,15 +605,15 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                   <Button
                     size="small"
                     startIcon={copied === 'all' ? <CheckIcon /> : <CopyIcon />}
-                    onClick={() => void handleCopy('all', draftToMarkdown(draft, partnerName))}
+                    onClick={() => void handleCopy('all', draftToMarkdown(draft, partnerName, t))}
                     variant="outlined"
                     sx={{ textTransform: 'none' }}
                   >
-                    {copied === 'all' ? 'Kopiert' : 'Kopier alt'}
+                    {copied === 'all' ? t('merchCoop.copied') : t('merchCoop.copyAll')}
                   </Button>
                   {mailto ? (
                     <Button size="small" startIcon={<EmailIcon />} variant="outlined" href={mailto} sx={{ textTransform: 'none' }}>
-                      Åpne i e-post
+                      {t('merchCoop.openInEmail')}
                     </Button>
                   ) : null}
                   {mailtoDirect && partnerEmail ? (
@@ -623,7 +624,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                       href={mailtoDirect}
                       sx={{ textTransform: 'none', fontWeight: 700 }}
                     >
-                      Åpne hos meg ({partnerEmail})
+                      {t('merchCoop.openWithMe', { email: partnerEmail })}
                     </Button>
                   ) : null}
                   {partnerEmail ? (
@@ -640,7 +641,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                         '&:hover': { bgcolor: 'rgba(34,197,94,0.6)' },
                       }}
                     >
-                      {sending ? 'Sender …' : `Send via system + logg`}
+                      {sending ? t('merchCoop.sending') : t('merchCoop.sendViaSystem')}
                     </Button>
                   ) : null}
                 </Stack>
@@ -658,21 +659,21 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               {/* Three-column value exchange */}
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.4} sx={{ mt: 2.2 }}>
                 <SectionCard
-                  title={`Vi tilbyr ${partnerName}`}
+                  title={t('merchCoop.weOffer', { partner: partnerName })}
                   items={draft.weProposeToOffer}
                   accentColor="rgba(34,197,94,0.36)"
                   bgColor="rgba(6,78,59,0.16)"
                   textColor="#bbf7d0"
                 />
                 <SectionCard
-                  title={`${partnerName} tilbyr oss`}
+                  title={t('merchCoop.theyOffer', { partner: partnerName })}
                   items={draft.theyOffer}
                   accentColor="rgba(99,102,241,0.4)"
                   bgColor="rgba(30,27,75,0.32)"
                   textColor="#c7d2fe"
                 />
                 <SectionCard
-                  title="Kommersiell ramme"
+                  title={t('merchCoop.commercialFraming')}
                   items={[draft.commercialFraming]}
                   accentColor="rgba(34,211,238,0.36)"
                   bgColor="rgba(8,47,73,0.24)"
@@ -685,7 +686,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               <Box sx={{ mt: 2.2 }}>
                 <SectionHeader
                   icon={<MagicIcon sx={{ fontSize: 18, color: 'text.secondary' }} />}
-                  title="Avtaleutkast — første utkast, ikke endelig juss"
+                  title={t('merchCoop.draftAgreementTitle')}
                   onCopy={() =>
                     handleCopy(
                       'paragraphs',
@@ -736,7 +737,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                 <Box sx={{ flex: 1 }}>
                   <SectionHeader
                     icon={<WarningIcon sx={{ fontSize: 18, color: '#fde68a' }} />}
-                    title="Risiko å sjekke før signering"
+                    title={t('merchCoop.riskTitle')}
                     onCopy={() => handleCopy('risk', draft.riskNotes.map((x) => `• ${x}`).join('\n'))}
                     copied={copied === 'risk'}
                   />
@@ -765,7 +766,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
                 <Box sx={{ flex: 1 }}>
                   <SectionHeader
                     icon={<ChecklistIcon sx={{ fontSize: 18, color: '#a5f3fc' }} />}
-                    title="Neste steg"
+                    title={t('merchCoop.nextStepsTitle')}
                     onCopy={() => handleCopy('next', draft.nextSteps.map((x, i) => `${i + 1}. ${x}`).join('\n'))}
                     copied={copied === 'next'}
                   />
@@ -810,8 +811,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               </Stack>
 
               <Typography sx={{ mt: 2, color: 'text.secondary', fontSize: '0.74rem', lineHeight: 1.5 }}>
-                Generert av CI · {new Date(draft.generatedAt).toLocaleString('nb-NO')}.
-                Avtale-paragrafer er kun et første utkast — ved verdier over ~50 000 NOK skal endelig avtale gjennomgås av advokat.
+                {t('merchCoop.footerNote', { date: new Date(draft.generatedAt).toLocaleString('nb-NO') })}
               </Typography>
             </Box>
           ) : null}
@@ -819,7 +819,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
       </DialogContent>
 
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose} disabled={loading}>Lukk</Button>
+        <Button onClick={onClose} disabled={loading}>{t('merchCoop.closeBtn')}</Button>
       </DialogActions>
     </Dialog>
   );

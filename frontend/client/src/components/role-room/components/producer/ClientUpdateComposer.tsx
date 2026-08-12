@@ -14,6 +14,8 @@ import {
 } from '@mui/material';
 import { Campaign as CampaignIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 /**
  * Producer-facing "Send oppdatering til klient" action. Sends a data-driven
@@ -22,6 +24,7 @@ import roleRoomAgentService from '../../services/roleRoomAgentService';
  * the marketing-plan panel without threading state.
  */
 export default function ClientUpdateComposer({ planId }: { planId: string }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
@@ -38,18 +41,18 @@ export default function ClientUpdateComposer({ planId }: { planId: string }) {
       if (res.total === 0) {
         setToast({
           severity: 'warning',
-          msg: 'Oppdateringen ble lagret, men klienten har ingen aktiv portal-tilgang ennå. Inviter klienten til portalen for å nå dem på e-post.',
+          msg: t('clientUpdate.s002'),
         });
       } else {
         setToast({
           severity: 'success',
-          msg: `Oppdatering sendt til ${res.sent} av ${res.total} klient${res.total === 1 ? '' : 'er'} — også synlig i klientportalen.`,
+          msg: t('clientUpdate.p01', { v0: res.sent, v1: res.total, v2: res.total === 1 ? '' : t('clientUpdate.s009') }),
         });
       }
     } catch (err) {
       setToast({
         severity: 'error',
-        msg: `Kunne ikke sende oppdatering: ${err instanceof Error ? err.message : 'ukjent feil'}`,
+        msg: t('clientUpdate.p00', { v0: err instanceof Error ? err.message : t('clientUpdate.s010') }),
       });
     } finally {
       setSending(false);
@@ -64,29 +67,27 @@ export default function ClientUpdateComposer({ planId }: { planId: string }) {
         startIcon={<CampaignIcon />}
         onClick={() => setOpen(true)}
       >
-        Send oppdatering til klient
+        {t('clientUpdate.s006')}
       </Button>
 
       <Dialog open={open} onClose={() => !sending && setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Send oppdatering til klient</DialogTitle>
+        <DialogTitle>{t('clientUpdate.s006')}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Vi setter automatisk sammen en oppsummering av det som er publisert og planlagt,
-            og legger ved den datadrevne innsikten om beste tid å poste. Klienten får den på
-            e-post og i sin egen portal.
+            {t('clientUpdate.s008')}
           </DialogContentText>
           <Box sx={{ mb: 2 }}>
             <Chip
               icon={<AutoAwesomeIcon />}
-              label="Publisert + planlagt + beste tid å poste legges til automatisk"
+              label={t('clientUpdate.s004')}
               size="small"
               color="secondary"
               variant="outlined"
             />
           </Box>
           <TextField
-            label="Personlig melding til klienten (valgfritt)"
-            placeholder="F.eks. «Vi tester en ny stil denne uken — gi oss gjerne en tilbakemelding.»"
+            label={t('clientUpdate.s003')}
+            placeholder={t('clientUpdate.s001')}
             multiline
             minRows={3}
             fullWidth
@@ -97,10 +98,10 @@ export default function ClientUpdateComposer({ planId }: { planId: string }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)} disabled={sending}>
-            Avbryt
+            {t('clientUpdate.s000')}
           </Button>
           <Button onClick={handleSend} variant="contained" disabled={sending} startIcon={<CampaignIcon />}>
-            {sending ? 'Sender…' : 'Send oppdatering'}
+            {sending ? t('clientUpdate.s007') : t('clientUpdate.s005')}
           </Button>
         </DialogActions>
       </Dialog>

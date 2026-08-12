@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import type { Consent, ConsentSignatureData, ConsentType } from '../../models/casting';
 import SignaturePad from './SignaturePad';
+import { useT } from '../../../../i18n';
 
 interface ConsentSignatureDialogProps {
   open: boolean;
@@ -42,26 +43,26 @@ const lightFieldSx = {
   '& .MuiOutlinedInput-root': { borderRadius: 2.5, bgcolor: alpha(BRAND, 0.03) },
 } as const;
 
-const getConsentTypeLabel = (type: ConsentType): string => {
+const getConsentTypeLabel = (t: ReturnType<typeof useT>['t'], type: ConsentType): string => {
   const labels: Record<ConsentType, string> = {
-    photo_release: 'Foto-samtykke',
-    video_release: 'Video-samtykke',
-    audio_release: 'Lyd-samtykke',
-    location_release: 'Lokasjon-samtykke',
-    minor_consent: 'Mindreårig-samtykke',
-    other: 'Annet samtykke',
+    photo_release: t('consentSig.typePhoto'),
+    video_release: t('consentSig.typeVideo'),
+    audio_release: t('consentSig.typeAudio'),
+    location_release: t('consentSig.typeLocation'),
+    minor_consent: t('consentSig.typeMinor'),
+    other: t('consentSig.typeOther'),
   };
   return labels[type] || type;
 };
 
-const getConsentDescription = (type: ConsentType): string => {
+const getConsentDescription = (t: ReturnType<typeof useT>['t'], type: ConsentType): string => {
   const descriptions: Record<ConsentType, string> = {
-    photo_release: 'Jeg gir herved tillatelse til å bruke fotografier av meg i forbindelse med dette prosjektet for markedsføring, publisering og andre kommersielle formål.',
-    video_release: 'Jeg gir herved tillatelse til å bruke videoopptak av meg i forbindelse med dette prosjektet for kringkasting, streaming og andre kommersielle formål.',
-    audio_release: 'Jeg gir herved tillatelse til å bruke lydopptak av meg i forbindelse med dette prosjektet for publisering, streaming og andre kommersielle formål.',
-    location_release: 'Jeg gir herved tillatelse til å filme/fotografere på min eiendom i forbindelse med dette prosjektet.',
-    minor_consent: 'Som foresatt/verge gir jeg herved tillatelse til at den mindreårige kan delta i dette prosjektet under de angitte vilkårene.',
-    other: 'Jeg bekrefter herved samtykke til de angitte vilkårene i dette dokumentet.',
+    photo_release: t('consentSig.descPhoto'),
+    video_release: t('consentSig.descVideo'),
+    audio_release: t('consentSig.descAudio'),
+    location_release: t('consentSig.descLocation'),
+    minor_consent: t('consentSig.descMinor'),
+    other: t('consentSig.descOther'),
   };
   return descriptions[type] || '';
 };
@@ -88,6 +89,7 @@ export default function ConsentSignatureDialog({
   onSign,
   onClose,
 }: ConsentSignatureDialogProps) {
+  const { t } = useT();
   const [signature, setSignature] = useState('');
   const [signedByName, setSignedByName] = useState(candidateName || '');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -156,13 +158,13 @@ export default function ConsentSignatureDialog({
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-            Signer samtykke
+            {t('consentSig.headerTitle')}
           </Typography>
           <Typography variant="caption" sx={{ opacity: 0.92 }} noWrap>
-            {consent.title || getConsentTypeLabel(consent.type)}
+            {consent.title || getConsentTypeLabel(t, consent.type)}
           </Typography>
         </Box>
-        <IconButton onClick={onClose} aria-label="Lukk" sx={{ color: '#fff' }}>
+        <IconButton onClick={onClose} aria-label={t('consentSig.close')} sx={{ color: '#fff' }}>
           <CloseIcon />
         </IconButton>
       </Box>
@@ -173,8 +175,8 @@ export default function ConsentSignatureDialog({
           spacing={2}
           sx={{ p: 2, mb: 2.5, borderRadius: 3, bgcolor: alpha(BRAND, 0.05) }}
         >
-          <InfoCell label="Prosjekt" value={projectName} />
-          <InfoCell label="Type" value={getConsentTypeLabel(consent.type)} />
+          <InfoCell label={t('consentSig.projectLabel')} value={projectName} />
+          <InfoCell label="Type" value={getConsentTypeLabel(t, consent.type)} />
         </Stack>
 
         <Box sx={{ mb: 3 }}>
@@ -182,7 +184,7 @@ export default function ConsentSignatureDialog({
             variant="overline"
             sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em' }}
           >
-            Samtykketekst
+            {t('consentSig.consentTextLabel')}
           </Typography>
           <Box
             sx={{
@@ -195,13 +197,13 @@ export default function ConsentSignatureDialog({
             }}
           >
             <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
-              {consent.description || getConsentDescription(consent.type)}
+              {consent.description || getConsentDescription(t, consent.type)}
             </Typography>
           </Box>
         </Box>
 
         <TextField
-          label="Fullt navn"
+          label={t('consentSig.fullNameLabel')}
           value={signedByName}
           onChange={(e) => setSignedByName(e.target.value)}
           fullWidth
@@ -214,7 +216,7 @@ export default function ConsentSignatureDialog({
             variant="overline"
             sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: '0.08em' }}
           >
-            Signatur
+            {t('consentSig.signatureLabel')}
           </Typography>
           <ToggleButtonGroup
             size="small"
@@ -235,8 +237,8 @@ export default function ConsentSignatureDialog({
               },
             }}
           >
-            <ToggleButton value="draw"><DrawIcon sx={{ fontSize: 16, mr: 0.5 }} />Tegn</ToggleButton>
-            <ToggleButton value="type"><TypeIcon sx={{ fontSize: 16, mr: 0.5 }} />Skriv</ToggleButton>
+            <ToggleButton value="draw"><DrawIcon sx={{ fontSize: 16, mr: 0.5 }} />{t('consentSig.drawTab')}</ToggleButton>
+            <ToggleButton value="type"><TypeIcon sx={{ fontSize: 16, mr: 0.5 }} />{t('consentSig.typeTab')}</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
 
@@ -250,7 +252,7 @@ export default function ConsentSignatureDialog({
             required
             multiline
             rows={3}
-            placeholder="Skriv din signatur her…"
+            placeholder={t('consentSig.signaturePlaceholder')}
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2.5,
@@ -263,7 +265,7 @@ export default function ConsentSignatureDialog({
           />
         )}
         <Typography variant="caption" sx={{ display: 'block', mt: 0.75, mb: 2.5, color: 'text.secondary' }}>
-          Signaturen lagres med tidspunkt og enhet for sporbarhet.
+          {t('consentSig.traceabilityNote')}
         </Typography>
 
         <FormControlLabel
@@ -276,7 +278,7 @@ export default function ConsentSignatureDialog({
           }
           label={
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Jeg har lest og forstått vilkårene, og samtykker til bruken som beskrevet ovenfor.
+              {t('consentSig.acceptTerms')}
             </Typography>
           }
           sx={{ alignItems: 'flex-start', mr: 0 }}
@@ -285,7 +287,7 @@ export default function ConsentSignatureDialog({
 
       <DialogActions sx={{ px: { xs: 2.5, sm: 3 }, pb: 3, pt: 0, gap: 1 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2.5, color: 'text.secondary' }}>
-          Avbryt
+          {t('consentSig.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -304,7 +306,7 @@ export default function ConsentSignatureDialog({
             '&.Mui-disabled': { background: alpha(BRAND, 0.35), color: 'rgba(255,255,255,0.85)' },
           }}
         >
-          Signer samtykke
+          {t('consentSig.headerTitle')}
         </Button>
       </DialogActions>
     </Dialog>

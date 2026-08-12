@@ -38,6 +38,7 @@ import {
   presentReviewStatus,
 } from './reviewStatusVocabulary';
 import type { RoleRoomViewportMode } from '../../hooks/useRoleRoomViewportMode';
+import { useT } from '../../../../i18n';
 
 export interface ReviewDetailComment {
   id: string;
@@ -108,6 +109,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
   onAddComment,
   inline,
 }) => {
+  const { t } = useT();
   const useDrawer = !inline && (mode === 'tabletPortrait' || mode === 'tabletLandscape');
 
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
@@ -133,7 +135,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
       await onDecision('approved');
       onClose();
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Kunne ikke godkjenne');
+      setLocalError(err instanceof Error ? err.message : t('mobReview.errApprove'));
     } finally {
       setPendingDecision(null);
     }
@@ -149,7 +151,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
       setReasonInput('');
       onClose();
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Kunne ikke oppdatere status');
+      setLocalError(err instanceof Error ? err.message : t('mobReview.errUpdate'));
     } finally {
       setPendingDecision(null);
     }
@@ -163,7 +165,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
       await onAddComment(commentDraft.trim());
       setCommentDraft('');
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Kunne ikke legge til kommentar');
+      setLocalError(err instanceof Error ? err.message : t('mobReview.errComment'));
     } finally {
       setCommentPending(false);
     }
@@ -203,7 +205,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
         ) : null}
         <IconButton
           onClick={onClose}
-          aria-label="Lukk review"
+          aria-label={t('mobReview.closeAria')}
           sx={{
             width: 'var(--rr-touch-target-min, 44px)',
             height: 'var(--rr-touch-target-min, 44px)',
@@ -223,18 +225,18 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
 
       {review.dueAt ? (
         <Typography variant="caption" color="text.secondary">
-          Frist: {formatTimestamp(review.dueAt)}
+          {t('mobReview.due', { date: formatTimestamp(review.dueAt) })}
         </Typography>
       ) : null}
 
       {/* Item 133: review history as inline timeline. */}
       <Stack spacing={1.25}>
         <Typography variant="overline" color="text.secondary">
-          Historikk
+          {t('mobReview.history')}
         </Typography>
         {review.comments.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            Ingen kommentarer ennå.
+            {t('mobReview.noComments')}
           </Typography>
         ) : (
           review.comments.map((comment) => (
@@ -248,7 +250,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
               }}
             >
               <Typography variant="caption" color="text.secondary">
-                {comment.author || 'Ukjent'}
+                {comment.author || t('mobReview.unknown')}
                 {comment.role ? ` • ${comment.role}` : ''}
                 {comment.createdAt ? ` • ${formatTimestamp(comment.createdAt)}` : ''}
               </Typography>
@@ -265,7 +267,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
           <TextField
             value={commentDraft}
             onChange={(event) => setCommentDraft(event.target.value)}
-            label="Legg til kommentar"
+            label={t('mobReview.addCommentLabel')}
             multiline
             minRows={2}
             fullWidth
@@ -276,7 +278,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
             onClick={handleAddComment}
             sx={{ alignSelf: 'flex-end', minHeight: 'var(--rr-touch-target-min, 44px)' }}
           >
-            {commentPending ? 'Sender …' : 'Legg til'}
+            {commentPending ? t('mobReview.sending') : t('mobReview.add')}
           </Button>
         </Stack>
       ) : null}
@@ -319,7 +321,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
               fontWeight: 700,
             }}
           >
-            {pendingDecision === 'approved' ? <CircularProgress size={20} color="inherit" /> : 'Godkjenn'}
+            {pendingDecision === 'approved' ? <CircularProgress size={20} color="inherit" /> : t('mobReview.approve')}
           </Button>
         ) : null}
         <Stack direction="row" spacing={1}>
@@ -332,7 +334,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
               onClick={() => setConfirmDecision('changes_requested')}
               sx={{ minHeight: 'var(--rr-touch-target-min, 44px)' }}
             >
-              Be om endring
+              {t('mobReview.requestChanges')}
             </Button>
           ) : null}
           {canReject ? (
@@ -344,7 +346,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
               onClick={() => setConfirmDecision('rejected')}
               sx={{ minHeight: 'var(--rr-touch-target-min, 44px)' }}
             >
-              Avslå
+              {t('mobReview.reject')}
             </Button>
           ) : null}
         </Stack>
@@ -372,18 +374,18 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
       fullWidth
     >
       <DialogTitle>
-        {confirmDecision === 'rejected' ? 'Bekreft avslag' : 'Bekreft endringsforespørsel'}
+        {confirmDecision === 'rejected' ? t('mobReview.confirmReject') : t('mobReview.confirmChanges')}
       </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>
           {confirmDecision === 'rejected'
-            ? 'Avslag kan være synlig for klienten umiddelbart. Skriv gjerne en begrunnelse.'
-            : 'Klienten vil se at du ber om endring. Beskriv hva som må endres.'}
+            ? t('mobReview.rejectBody')
+            : t('mobReview.changesBody')}
         </DialogContentText>
         <TextField
           value={reasonInput}
           onChange={(event) => setReasonInput(event.target.value)}
-          label="Begrunnelse (valgfri)"
+          label={t('mobReview.reasonLabel')}
           multiline
           minRows={3}
           fullWidth
@@ -398,7 +400,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
           }}
           disabled={pendingDecision !== null}
         >
-          Avbryt
+          {t('mobReview.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -406,7 +408,7 @@ export const MobileReviewDetailSheet: React.FC<MobileReviewDetailSheetProps> = (
           onClick={handleConfirmDestructive}
           disabled={pendingDecision !== null}
         >
-          {pendingDecision !== null ? <CircularProgress size={20} color="inherit" /> : 'Bekreft'}
+          {pendingDecision !== null ? <CircularProgress size={20} color="inherit" /> : t('mobReview.confirm')}
         </Button>
       </DialogActions>
     </Dialog>

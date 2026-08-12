@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import { Link as LinkIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import authSessionService from '../services/authSessionService';
+import { useT } from '../../../i18n';
 
 const ACCENT = '#8B5CF6';
 
@@ -25,15 +26,17 @@ interface Connection {
   tokenCount: number;
 }
 
-const scopeLabel = (scope: string[]): string =>
-  scope.includes('projects.write') ? 'Lese og lage utkast' : 'Lese';
-
 const fmtDate = (iso: string): string => {
   try { return new Date(iso).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }); }
   catch { return ''; }
 };
 
 export function ConnectedAppsPanel() {
+  const { t } = useT();
+  const scopeLabel = useCallback(
+    (scope: string[]): string => (scope.includes('projects.write') ? t('connapps.scopeWrite') : t('connapps.scopeRead')),
+    [t],
+  );
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -48,7 +51,7 @@ export function ConnectedAppsPanel() {
       const data = (await res.json()) as { connections?: Connection[] };
       setConnections(data.connections ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke hente tilkoblede apper');
+      setError(e instanceof Error ? e.message : t('connapps.errLoad'));
       setConnections([]);
     }
   }, []);
@@ -63,7 +66,7 @@ export function ConnectedAppsPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kunne ikke trekke tilbake tilgangen');
+      setError(e instanceof Error ? e.message : t('connapps.errRevoke'));
     } finally { setRevoking(null); }
   };
 
@@ -71,10 +74,10 @@ export function ConnectedAppsPanel() {
     <Box sx={{ mt: 3 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
         <LinkIcon sx={{ color: ACCENT, fontSize: 20 }} />
-        <Typography sx={{ fontWeight: 700, fontSize: 16 }}>Tilkoblede apper</Typography>
+        <Typography sx={{ fontWeight: 700, fontSize: 16 }}>{t('connapps.title')}</Typography>
       </Stack>
       <Typography sx={{ color: 'text.secondary', fontSize: 13.5, mb: 1.5 }}>
-        AI-apper (Claude, Cursor m.fl.) du har gitt tilgang til dine Role Room-data via «Sign in with The Role Room».
+        {t('connapps.subtitle')}
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError(null)}>{error}</Alert>}
@@ -82,7 +85,7 @@ export function ConnectedAppsPanel() {
       {connections === null ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box>
       ) : connections.length === 0 ? (
-        <Typography sx={{ color: 'text.secondary', fontSize: 13.5, py: 1 }}>Ingen tilkoblede apper.</Typography>
+        <Typography sx={{ color: 'text.secondary', fontSize: 13.5, py: 1 }}>{t('connapps.empty')}</Typography>
       ) : (
         <Stack spacing={1}>
           {connections.map((c) => (
@@ -91,14 +94,14 @@ export function ConnectedAppsPanel() {
                 <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{c.clientName || c.clientId}</Typography>
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5, flexWrap: 'wrap' }}>
                   <Chip label={scopeLabel(c.scope)} size="small" sx={{ height: 20, bgcolor: 'rgba(139,92,246,0.14)', color: ACCENT, fontWeight: 700, fontSize: 11 }} />
-                  <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>Tilkoblet {fmtDate(c.connectedAt)}</Typography>
+                  <Typography sx={{ color: 'text.secondary', fontSize: 12 }}>{t('connapps.connectedOn')} {fmtDate(c.connectedAt)}</Typography>
                 </Stack>
               </Box>
               <Button
                 size="small" color="error" startIcon={<DeleteIcon />} disabled={revoking === c.clientId}
                 onClick={() => setConfirm(c)} sx={{ textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
               >
-                {revoking === c.clientId ? 'Trekker…' : 'Trekk tilbake'}
+                {revoking === c.clientId ? t('connapps.revoking') : t('connapps.revoke')}
               </Button>
             </Card>
           ))}
@@ -106,15 +109,15 @@ export function ConnectedAppsPanel() {
       )}
 
       <Dialog open={!!confirm} onClose={() => setConfirm(null)}>
-        <DialogTitle sx={{ fontWeight: 700 }}>Trekk tilbake tilgangen?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>{t('connapps.revokeTitle')}</DialogTitle>
         <DialogContent>
           <Typography sx={{ fontSize: 14 }}>
-            «{confirm?.clientName || confirm?.clientId}» mister umiddelbart tilgang til dine Role Room-data. Appen må kobles til på nytt for å få tilgang igjen.
+            «{confirm?.clientName || confirm?.clientId}» {t('connapps.revokeBody')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirm(null)} sx={{ textTransform: 'none' }}>Avbryt</Button>
-          <Button color="error" variant="contained" onClick={() => confirm && revoke(confirm)} sx={{ textTransform: 'none', fontWeight: 700 }}>Trekk tilbake</Button>
+          <Button onClick={() => setConfirm(null)} sx={{ textTransform: 'none' }}>{t('connapps.cancel')}</Button>
+          <Button color="error" variant="contained" onClick={() => confirm && revoke(confirm)} sx={{ textTransform: 'none', fontWeight: 700 }}>{t('connapps.revoke')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

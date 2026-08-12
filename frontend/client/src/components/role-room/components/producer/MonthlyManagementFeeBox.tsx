@@ -16,6 +16,8 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
 import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface ConfigSummary {
   config_id: string;
@@ -43,6 +45,7 @@ export default function MonthlyManagementFeeBox({
 }: {
   clientProjectId: string;
 }) {
+  const { t } = useT();
   const [data, setData] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -84,10 +87,10 @@ export default function MonthlyManagementFeeBox({
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800, fontSize: '1.04rem' }}>
-              Ads-spend + management-fee — {monthLabel}
+              {t('monthlyFee.s001')} {monthLabel}
             </Typography>
             <Typography sx={{ color: 'rgba(196,181,253,0.85)', fontSize: '0.82rem' }}>
-              Fordelt på {data.configs.length} aktive ads-konfigurasjoner
+              {t('monthlyFee.j00', { v0: data.configs.length })}
             </Typography>
           </Box>
         </Stack>
@@ -104,17 +107,17 @@ export default function MonthlyManagementFeeBox({
           <SummaryCard
             label="Spend MTD"
             value={`${fmt(data.totals.spend_mtd_nok)} kr`}
-            sub="trekkes direkte fra dere til Google"
+            sub={t('monthlyFee.s010')}
             color="#60a5fa"
           />
           <SummaryCard
             label="Mgmt-fee MTD"
             value={`${fmt(data.totals.mgmt_fee_mtd_nok)} kr`}
-            sub="til innholdsprodusent (egen faktura)"
+            sub={t('monthlyFee.s009')}
             color="#fbbf24"
           />
           <SummaryCard
-            label="Totalt månedlig kost"
+            label={t('monthlyFee.s007')}
             value={`${fmt(data.totals.spend_mtd_nok + data.totals.mgmt_fee_mtd_nok)} kr`}
             sub="spend + mgmt-fee"
             color="#c084fc"
@@ -123,7 +126,7 @@ export default function MonthlyManagementFeeBox({
 
         {/* Fordeling per config */}
         <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-          Fordeling per konfigurasjon
+          {t('monthlyFee.s002')}
         </Typography>
         <Stack spacing={1}>
           {data.configs.map((c) => {
@@ -147,21 +150,21 @@ export default function MonthlyManagementFeeBox({
                     </Typography>
                     <Stack direction="row" spacing={0.6} sx={{ mt: 0.4 }}>
                       <Chip
-                        label={`${c.management_fee_pct}% mgmt-fee${c.is_negotiated ? ' (forhandlet)' : ''}`}
+                        label={`${c.management_fee_pct}% mgmt-fee${c.is_negotiated ? t('monthlyFee.s000') : ''}`}
                         size="small"
                         sx={{ bgcolor: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', height: 20 }}
                       />
                       {c.is_synced ? (
                         <Chip
                           icon={<CheckCircleOutlineIcon sx={{ color: '#34d399 !important', fontSize: 14 }} />}
-                          label="Synket med Google Ads"
+                          label={t('monthlyFee.s005')}
                           size="small"
                           sx={{ bgcolor: 'rgba(52,211,153,0.18)', color: '#34d399', fontSize: '0.7rem', height: 20 }}
                         />
                       ) : (
                         <Chip
                           icon={<ScheduleOutlinedIcon sx={{ color: '#94a3b8 !important', fontSize: 14 }} />}
-                          label="Venter på OAuth-setup"
+                          label={t('monthlyFee.s008')}
                           size="small"
                           sx={{ bgcolor: 'rgba(148,163,184,0.18)', color: '#94a3b8', fontSize: '0.7rem', height: 20 }}
                         />
@@ -173,7 +176,7 @@ export default function MonthlyManagementFeeBox({
                       {fmt(c.spend_mtd_nok)} kr
                     </Typography>
                     <Typography sx={{ color: 'rgba(196,181,253,0.7)', fontSize: '0.74rem' }}>
-                      spend {pctOfTotal > 0 ? `(${pctOfTotal}% av total)` : ''}
+                      spend {pctOfTotal > 0 ? t('monthlyFee.p00', { v0: pctOfTotal }) : ''}
                     </Typography>
                   </Box>
                 </Stack>
@@ -185,11 +188,11 @@ export default function MonthlyManagementFeeBox({
                   mt: 0.6,
                 }}>
                   <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem' }}>
-                    Mgmt-fee til produsent: {fmt(c.mgmt_fee_mtd_nok)} kr
+                    {t('monthlyFee.s004')} {fmt(c.mgmt_fee_mtd_nok)} kr
                   </Typography>
                   {!c.is_synced ? (
                     <Typography sx={{ color: '#fbbf24', fontSize: '0.74rem' }}>
-                      Tall fylles ut etter første ads-spend
+                      {t('monthlyFee.s006')}
                     </Typography>
                   ) : null}
                 </Box>
@@ -200,8 +203,7 @@ export default function MonthlyManagementFeeBox({
 
         {data.totals.spend_mtd_nok === 0 ? (
           <Typography sx={{ color: 'rgba(196,181,253,0.7)', fontSize: '0.78rem', mt: 1.4, fontStyle: 'italic' }}>
-            Ingen ads-spend registrert så langt denne måneden. Tall oppdateres hver time
-            når kampanjer er live og spend kommer inn fra Google Ads.
+            {t('monthlyFee.s003')}
           </Typography>
         ) : null}
       </CardContent>

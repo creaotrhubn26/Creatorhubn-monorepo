@@ -36,6 +36,7 @@ import {
 } from '@mui/icons-material';
 import { externalDataService } from '@/services/ExternalDataService';
 import type { Location } from '../models/casting';
+import { useT } from '../../../i18n';
 
 export interface VerifyLocationDialogProps {
   open: boolean;
@@ -69,6 +70,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
   onClose,
   onApply,
 }) => {
+  const { t } = useT();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<VerifyResult | null>(null);
@@ -96,7 +98,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
         if (controller.signal.aborted) return;
         const top = suggestions[0];
         if (!top) {
-          setError('Kartverket fant ingen treff på denne adressen. Vurder å redigere manuelt.');
+          setError(t('verifyLoc.noMatch'));
           setLoading(false);
           return;
         }
@@ -121,8 +123,8 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
         setLoading(false);
       } catch (err) {
         if (controller.signal.aborted) return;
-        const message = err instanceof Error ? err.message : 'Ukjent feil';
-        setError(`Kunne ikke verifisere mot Kartverket: ${message}`);
+        const message = err instanceof Error ? err.message : t('verifyLoc.unknownError');
+        setError(t('verifyLoc.verifyFailed', { message }));
         setLoading(false);
       }
     })();
@@ -130,7 +132,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
     return () => {
       controller.abort();
     };
-  }, [open, location]);
+  }, [open, location, t]);
 
   const handleApply = async () => {
     if (!location || !result) return;
@@ -178,13 +180,13 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
         <CompareIcon sx={{ color: '#a855f7' }} />
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontSize: '1.05rem', fontWeight: 700 }}>
-            Verifiser mot Kartverket
+            {t('verifyLoc.title')}
           </Typography>
           <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)' }}>
-            {location?.name || 'Lokasjon'}
+            {location?.name || t('verifyLoc.locationFallback')}
           </Typography>
         </Box>
-        <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }} aria-label="Lukk">
+        <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }} aria-label={t('verifyLoc.closeAria')}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -194,7 +196,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4, gap: 1.5 }}>
             <CircularProgress size={24} sx={{ color: '#a855f7' }} />
             <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontSize: '0.9rem' }}>
-              Henter fersk data fra Kartverket …
+              {t('verifyLoc.loadingText')}
             </Typography>
           </Box>
         )}
@@ -227,10 +229,10 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
             <CheckIcon sx={{ color: '#10b981', fontSize: 24 }} />
             <Box>
               <Typography sx={{ color: '#6ee7b7', fontWeight: 600 }}>
-                Alt stemmer med Kartverket
+                {t('verifyLoc.allMatches')}
               </Typography>
               <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem' }}>
-                Adresse, koordinater og administrative data er konsistente.
+                {t('verifyLoc.allMatchesSub')}
               </Typography>
             </Box>
           </Box>
@@ -239,13 +241,13 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
         {result && !noChanges && (
           <Stack spacing={1.25}>
             <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontSize: '0.85rem', mb: 0.5 }}>
-              Kartverket foreslår {result.differences.length} endring{result.differences.length === 1 ? '' : 'er'}:
+              {t('verifyLoc.suggests', { n: result.differences.length, unit: result.differences.length === 1 ? t('verifyLoc.changeSingular') : t('verifyLoc.changePlural') })}
             </Typography>
             {[
-              { key: 'address', label: 'Adresse', current: location?.address || '', proposed: result.proposedAddress },
+              { key: 'address', label: t('verifyLoc.rowAddress'), current: location?.address || '', proposed: result.proposedAddress },
               {
                 key: 'coordinates',
-                label: 'Koordinater',
+                label: t('verifyLoc.rowCoordinates'),
                 current: location?.coordinates
                   ? `${location.coordinates.lat.toFixed(5)}, ${location.coordinates.lng.toFixed(5)}`
                   : '—',
@@ -253,9 +255,9 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
                   ? `${result.proposedCoordinates.lat.toFixed(5)}, ${result.proposedCoordinates.lng.toFixed(5)}`
                   : '—',
               },
-              { key: 'municipality', label: 'Kommune', current: (location?.municipality as string | undefined) || '—', proposed: result.proposedMunicipality || '—' },
-              { key: 'county', label: 'Fylke', current: (location?.county as string | undefined) || '—', proposed: result.proposedCounty || '—' },
-              { key: 'postalCode', label: 'Postnummer', current: (location?.postalCode as string | undefined) || '—', proposed: result.proposedPostalCode || '—' },
+              { key: 'municipality', label: t('verifyLoc.rowMunicipality'), current: (location?.municipality as string | undefined) || '—', proposed: result.proposedMunicipality || '—' },
+              { key: 'county', label: t('verifyLoc.rowCounty'), current: (location?.county as string | undefined) || '—', proposed: result.proposedCounty || '—' },
+              { key: 'postalCode', label: t('verifyLoc.rowPostalCode'), current: (location?.postalCode as string | undefined) || '—', proposed: result.proposedPostalCode || '—' },
             ].map((row) => {
               const isDifferent = result.differences.includes(row.key);
               return (
@@ -308,7 +310,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
           startIcon={<CloseIcon />}
           sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}
         >
-          Behold nåværende
+          {t('verifyLoc.keepCurrent')}
         </Button>
         {result && !noChanges && (
           <Button
@@ -324,7 +326,7 @@ export const VerifyLocationDialog: React.FC<VerifyLocationDialogProps> = ({
               '&:hover': { bgcolor: '#a855f7' },
             }}
           >
-            {applying ? 'Oppdaterer …' : 'Bruk Kartverket-data'}
+            {applying ? t('verifyLoc.updating') : t('verifyLoc.applyBtn')}
           </Button>
         )}
       </DialogActions>

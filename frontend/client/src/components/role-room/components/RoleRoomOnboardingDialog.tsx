@@ -19,7 +19,8 @@
  *   5. Personvern + fullfør
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useT } from '../../../i18n';
 import {
   Autocomplete, Avatar, Box, Button, Chip, Dialog, DialogContent, IconButton,
   LinearProgress, MenuItem, Select, Stack, TextField, Typography,
@@ -112,24 +113,9 @@ const DEFAULT_CONFIG: OnboardingConfig = {
 const STEP_KEYS = ['welcome', 'image', 'profession', 'about', 'links', 'availability', 'privacy'] as const;
 type StepKey = typeof STEP_KEYS[number];
 
-const STEP_LABELS: Record<StepKey, string> = {
-  welcome: 'Velkommen',
-  image: 'Profilbilde',
-  profession: 'Profesjon',
-  about: 'Om meg',
-  links: 'Lenker',
-  availability: 'Tilgjengelighet',
-  privacy: 'Personvern',
-};
-
-// Starter-avsnitt for «Om meg» — hjelper brukeren i gang med å skrive.
-const BIO_PROMPTS: Array<{ label: string; template: string }> = [
-  { label: 'Hva jeg gjør', template: 'Jeg jobber med ' },
-  { label: 'Erfaring', template: 'Jeg har jobbet med dette i … år, blant annet med ' },
-  { label: 'Stil / signatur', template: 'Stilen min kjennetegnes av ' },
-  { label: 'Utstyr', template: 'Jeg jobber med utstyr som ' },
-  { label: 'Hva jeg ser etter', template: 'Jeg er interessert i prosjekter som ' },
-];
+// Step labels, bio prompts, work preferences, expertise areas og availability-
+// options er språkavhengige — bygges som t()-maps inne i komponenten (se
+// stepLabels/bioPrompts/workPreferenceOptions/expertiseAreaOptions/availabilityOptions).
 
 const EMPTY_FORM: FormState = {
   displayName: '',
@@ -158,30 +144,6 @@ const EMPTY_FORM: FormState = {
   profileImageFocalX: null,
   profileImageFocalY: null,
 };
-
-const WORK_PREFERENCE_OPTIONS = [
-  'Tilgjengelig for oppdrag', 'Frilans', 'Heltid', 'På sett', 'Remote',
-  'Kan reise', 'Kortoppdrag', 'Langtidsprosjekt',
-];
-
-// Fagområder / spesialiseringer for foto/video- OG film/TV-bransjen.
-const EXPERTISE_AREA_OPTIONS = [
-  // Film & TV
-  'Spillefilm', 'Kortfilm', 'TV-serie', 'TV-drama', 'TV-produksjon',
-  'Reklamefilm', 'Dokumentar', 'Streaming / OTT', 'Underholdning',
-  'Nyheter / aktualitet', 'Barne-TV', 'Realityproduksjon',
-  // Foto / video / kommersielt
-  'Bryllup', 'Musikkvideo', 'Reklame', 'Bedriftsfilm',
-  'Event', 'Portrett', 'Mote', 'Produkt', 'Sosiale medier',
-  'Drone / luftfoto', 'Live-produksjon', 'Podcast',
-  'Konsert', 'Sport', 'Mat', 'Eiendom', 'Reise',
-];
-
-const AVAILABILITY_OPTIONS: Array<{ value: AvailabilityStatus; label: string }> = [
-  { value: 'available', label: 'Tilgjengelig for oppdrag' },
-  { value: 'busy', label: 'Delvis opptatt' },
-  { value: 'unavailable', label: 'Ikke tilgjengelig nå' },
-];
 
 function profileToForm(profile: RoleRoomMemberProfile): FormState {
   return {
@@ -216,6 +178,7 @@ function profileToForm(profile: RoleRoomMemberProfile): FormState {
 export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> = ({
   open, onComplete, onMinimize, mode = 'onboarding', onClose,
 }) => {
+  const { t } = useT();
   const isEditMode = mode === 'edit';
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -230,6 +193,59 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
   const [brregOptions, setBrregOptions] = useState<BrregCompany[]>([]);
   const [brregLoading, setBrregLoading] = useState(false);
   const [certInput, setCertInput] = useState('');
+
+  const stepLabels: Record<StepKey, string> = useMemo(() => ({
+    welcome: t('rrOnboard.step.welcome'),
+    image: t('rrOnboard.step.image'),
+    profession: t('rrOnboard.step.profession'),
+    about: t('rrOnboard.aboutMe'),
+    links: t('rrOnboard.step.links'),
+    availability: t('rrOnboard.step.availability'),
+    privacy: t('rrOnboard.step.privacy'),
+  }), [t]);
+
+  // Starter-avsnitt for «Om meg» — hjelper brukeren i gang med å skrive.
+  const bioPrompts: Array<{ label: string; template: string }> = useMemo(() => [
+    { label: t('rrOnboard.bioPrompt.whatIDo.label'), template: t('rrOnboard.bioPrompt.whatIDo.template') },
+    { label: t('rrOnboard.bioPrompt.experience.label'), template: t('rrOnboard.bioPrompt.experience.template') },
+    { label: t('rrOnboard.bioPrompt.style.label'), template: t('rrOnboard.bioPrompt.style.template') },
+    { label: t('rrOnboard.bioPrompt.equipment.label'), template: t('rrOnboard.bioPrompt.equipment.template') },
+    { label: t('rrOnboard.bioPrompt.lookingFor.label'), template: t('rrOnboard.bioPrompt.lookingFor.template') },
+  ], [t]);
+
+  const workPreferenceOptions: string[] = useMemo(() => [
+    t('rrOnboard.workPref.available'), t('rrOnboard.workPref.freelance'),
+    t('rrOnboard.workPref.fullTime'), t('rrOnboard.workPref.onSet'),
+    t('rrOnboard.workPref.remote'), t('rrOnboard.workPref.canTravel'),
+    t('rrOnboard.workPref.shortTerm'), t('rrOnboard.workPref.longTerm'),
+  ], [t]);
+
+  // Fagområder / spesialiseringer for foto/video- OG film/TV-bransjen.
+  const expertiseAreaOptions: string[] = useMemo(() => [
+    // Film & TV
+    t('rrOnboard.expertise.featureFilm'), t('rrOnboard.expertise.shortFilm'),
+    t('rrOnboard.expertise.tvSeries'), t('rrOnboard.expertise.tvDrama'),
+    t('rrOnboard.expertise.tvProduction'), t('rrOnboard.expertise.commercial'),
+    t('rrOnboard.expertise.documentary'), t('rrOnboard.expertise.streaming'),
+    t('rrOnboard.expertise.entertainment'), t('rrOnboard.expertise.news'),
+    t('rrOnboard.expertise.kidsTv'), t('rrOnboard.expertise.reality'),
+    // Foto / video / kommersielt
+    t('rrOnboard.expertise.wedding'), t('rrOnboard.expertise.musicVideo'),
+    t('rrOnboard.expertise.advertising'), t('rrOnboard.expertise.corporate'),
+    t('rrOnboard.expertise.event'), t('rrOnboard.expertise.portrait'),
+    t('rrOnboard.expertise.fashion'), t('rrOnboard.expertise.product'),
+    t('rrOnboard.expertise.socialMedia'), t('rrOnboard.expertise.drone'),
+    t('rrOnboard.expertise.liveProduction'), t('rrOnboard.expertise.podcast'),
+    t('rrOnboard.expertise.concert'), t('rrOnboard.expertise.sport'),
+    t('rrOnboard.expertise.food'), t('rrOnboard.expertise.realEstate'),
+    t('rrOnboard.expertise.travel'),
+  ], [t]);
+
+  const availabilityOptions: Array<{ value: AvailabilityStatus; label: string }> = useMemo(() => [
+    { value: 'available', label: t('rrOnboard.workPref.available') },
+    { value: 'busy', label: t('rrOnboard.availability.busy') },
+    { value: 'unavailable', label: t('rrOnboard.availability.unavailable') },
+  ], [t]);
 
   // Debounced Brreg-søk når brukeren skriver firmanavn/org.nr
   useEffect(() => {
@@ -495,10 +511,10 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
         <Box sx={{ p: 3, pb: 1, background: 'linear-gradient(135deg, #1e1a2e, #2d1b4e)' }}>
           <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>
-            Steg {step + 1} av {totalSteps}
+            {t('rrOnboard.stepCounter', { current: step + 1, total: totalSteps })}
           </Typography>
           <Typography variant="h5" sx={{ color: 'white', mt: 0.5, fontWeight: 600 }}>
-            {STEP_LABELS[currentKey]}
+            {stepLabels[currentKey]}
           </Typography>
           <LinearProgress
             variant="determinate"
@@ -520,10 +536,10 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
               <Typography variant="body2" color="text.secondary">
                 {config.welcomeMessage}
               </Typography>
-              <TextField label="Visningsnavn" required={config.requiredFields?.displayName !== false} autoFocus
+              <TextField label={t('rrOnboard.displayNameLabel')} required={config.requiredFields?.displayName !== false} autoFocus
                           value={form.displayName}
                           onChange={(e) => updateField('displayName', e.target.value)}
-                          helperText="Slik vises navnet ditt for andre" />
+                          helperText={t('rrOnboard.displayNameHelper')} />
               <Autocomplete
                 freeSolo
                 options={brregOptions}
@@ -559,7 +575,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     <Box>
                       <Typography variant="body2">{opt.navn}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Org.nr {opt.organisasjonsnummer}
+                        {t('rrOnboard.orgNrInline', { n: opt.organisasjonsnummer })}
                       </Typography>
                     </Box>
                   </li>
@@ -567,9 +583,9 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Bedrift / studio"
+                    label={t('rrOnboard.companyLabel')}
                     required
-                    helperText="Søk på firmanavn eller org.nr — henter fra Brønnøysundregistrene"
+                    helperText={t('rrOnboard.companyHelper')}
                     InputProps={{
                       ...params.InputProps,
                       startAdornment: (
@@ -588,11 +604,11 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 )}
               />
               {form.organizationNumber && (
-                <TextField label="Organisasjonsnummer" value={form.organizationNumber}
+                <TextField label={t('rrOnboard.orgNumberLabel')} value={form.organizationNumber}
                             size="small" InputProps={{ readOnly: true }} />
               )}
               {form.businessAddress && (
-                <TextField label="Forretningsadresse" value={form.businessAddress}
+                <TextField label={t('rrOnboard.businessAddressLabel')} value={form.businessAddress}
                             size="small" InputProps={{ readOnly: true }} />
               )}
             </Stack>
@@ -618,7 +634,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
               <Button variant="outlined" component="label"
                        disabled={uploadingImage}
                        startIcon={uploadingImage ? <CircularProgress size={16} /> : <CloudUpload />}>
-                {profileImage ? 'Endre bilde' : 'Last opp bilde'}
+                {profileImage ? t('rrOnboard.changeImage') : t('rrOnboard.uploadImage')}
                 <input type="file" hidden accept="image/jpeg,image/png,image/webp,image/gif"
                         onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -626,16 +642,16 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 }} />
               </Button>
               <Typography variant="caption" color="text.secondary" align="center">
-                JPG, PNG, WebP eller GIF · maks 4 MB
+                {t('rrOnboard.imageFormatsHelper')}
               </Typography>
               {!profileImage && config.requiredFields?.profileImage === true && (
                 <Typography variant="caption" color="error" align="center" sx={{ mt: 2 }}>
-                  Profilbilde er påkrevd for å fullføre profilen.
+                  {t('rrOnboard.imageRequiredHelper')}
                 </Typography>
               )}
               {!profileImage && config.requiredFields?.profileImage !== true && (
                 <Typography variant="caption" color="text.secondary" align="center" sx={{ mt: 2 }}>
-                  Du kan hoppe over dette nå og legge til bilde senere.
+                  {t('rrOnboard.imageSkipHelper')}
                 </Typography>
               )}
             </Stack>
@@ -644,8 +660,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {!loading && currentKey === 'profession' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Hva er hovedrollen din i prosjektet? Velg gjerne en
-                tilleggsprofesjon også hvis du har det (f.eks. Regissør).
+                {t('rrOnboard.professionIntro')}
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                 {config.professionsOptions.map((p) => (
@@ -656,7 +671,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 ))}
               </Box>
               <TextField
-                label="År med erfaring (valgfri)"
+                label={t('rrOnboard.yearsExperienceLabel')}
                 type="number"
                 size="small"
                 value={form.yearsExperience ?? ''}
@@ -667,10 +682,10 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                 }}
                 inputProps={{ min: 0, max: 80 }}
                 sx={{ mt: 1, maxWidth: 220 }}
-                helperText="Hvor lenge har du jobbet i faget?"
+                helperText={t('rrOnboard.yearsExperienceHelper')}
               />
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Ferdigheter (valgfri)
+                {t('rrOnboard.skillsLabel')}
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                 {config.skillsOptions.map((s) => (
@@ -683,10 +698,10 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
               {/* Fagområder / spesialiseringer (film/TV + foto/video) */}
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Fagområder — hva spesialiserer du deg på? (valgfri)
+                {t('rrOnboard.expertiseAreasLabel')}
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {EXPERTISE_AREA_OPTIONS.map((a) => (
+                {expertiseAreaOptions.map((a) => (
                   <Chip key={a} label={a} clickable size="small"
                          color={form.expertiseAreas.includes(a) ? 'primary' : 'default'}
                          variant={form.expertiseAreas.includes(a) ? 'filled' : 'outlined'}
@@ -696,7 +711,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
               {/* Utstyr / gear — fra foto/video-katalog, med kategori-ikon */}
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Utstyr / gear (valgfri)
+                {t('rrOnboard.equipmentLabel')}
               </Typography>
               <Autocomplete<EquipmentCatalogItem, true, false, true>
                 multiple
@@ -744,14 +759,14 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     );
                   })}
                 renderInput={(params) => (
-                  <TextField {...params} placeholder="Søk kamera, objektiv, drone, lys …"
-                    helperText="Velg fra katalogen eller skriv inn eget utstyr" />
+                  <TextField {...params} placeholder={t('rrOnboard.equipmentSearchPlaceholder')}
+                    helperText={t('rrOnboard.equipmentHelper')} />
                 )}
               />
 
               {/* Sertifiseringer & lisenser */}
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Sertifiseringer & lisenser (valgfri)
+                {t('rrOnboard.certificationsLabel')}
               </Typography>
               {form.certifications.length > 0 && (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
@@ -772,11 +787,11 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     setCertInput('');
                   }
                 }}
-                placeholder="F.eks. Dronesertifikat A1/A3, HMS-kort — trykk Enter"
+                placeholder={t('rrOnboard.certificationsPlaceholder')}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <IconButton size="small" aria-label="Legg til sertifisering"
+                      <IconButton size="small" aria-label={t('rrOnboard.addCertificationAria')}
                         onClick={() => { addTag('certifications', certInput); setCertInput(''); }}>
                         <Add fontSize="small" />
                       </IconButton>
@@ -790,33 +805,33 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
           {!loading && currentKey === 'about' && (
             <Stack spacing={2}>
-              <TextField label="Om meg" multiline rows={4}
+              <TextField label={t('rrOnboard.aboutMe')} multiline rows={4}
                           value={form.bio}
                           onChange={(e) => updateField('bio', e.target.value)}
-                          placeholder="Skriv litt om hva du gjør, stil, erfaring …"
-                          helperText="Synlig for andre medlemmer" />
+                          placeholder={t('rrOnboard.bioPlaceholder')}
+                          helperText={t('rrOnboard.bioHelper')} />
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Trenger du hjelp i gang? Legg til et avsnitt:
+                  {t('rrOnboard.bioPromptIntro')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {BIO_PROMPTS.map((p) => (
+                  {bioPrompts.map((p) => (
                     <Chip key={p.label} label={p.label} clickable size="small" variant="outlined"
                            onClick={() => appendBioPrompt(p.template)} />
                   ))}
                 </Box>
               </Box>
               <Stack direction="row" spacing={1}>
-                <TextField label="By" fullWidth
+                <TextField label={t('rrOnboard.cityLabel')} fullWidth
                             value={form.locationCity}
                             onChange={(e) => updateField('locationCity', e.target.value)} />
-                <TextField label="Land" fullWidth
+                <TextField label={t('rrOnboard.countryLabel')} fullWidth
                             value={form.locationCountry}
                             onChange={(e) => updateField('locationCountry', e.target.value)} />
               </Stack>
               <Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Språk
+                  {t('rrOnboard.languagesLabel')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                   {config.languageOptions.map((lang) => (
@@ -830,73 +845,73 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
               <Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Tidligere prosjekter (valgfri)
+                  {t('rrOnboard.earlierProjectsLabel')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Vis hva du har jobbet med før — det hjelper andre å se erfaringen din.
+                  {t('rrOnboard.earlierProjectsHelper')}
                 </Typography>
                 <Stack spacing={1.5}>
                   {form.earlierProjects.map((proj, i) => (
                     <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
                       <Stack spacing={1} sx={{ flex: 1 }}>
-                        <TextField label="Prosjekt / tittel" size="small" value={proj.title}
+                        <TextField label={t('rrOnboard.projectTitleLabel')} size="small" value={proj.title}
                                     onChange={(e) => updateEarlierProject(i, 'title', e.target.value)}
-                                    placeholder="F.eks. musikkvideo for …" />
+                                    placeholder={t('rrOnboard.projectTitlePlaceholder')} />
                         <Stack direction="row" spacing={1}>
-                          <TextField label="Din rolle" size="small" fullWidth value={proj.role}
+                          <TextField label={t('rrOnboard.projectRoleLabel')} size="small" fullWidth value={proj.role}
                                       onChange={(e) => updateEarlierProject(i, 'role', e.target.value)}
-                                      placeholder="F.eks. Regissør" />
-                          <TextField label="År" size="small" value={proj.year}
+                                      placeholder={t('rrOnboard.projectRolePlaceholder')} />
+                          <TextField label={t('rrOnboard.projectYearLabel')} size="small" value={proj.year}
                                       onChange={(e) => updateEarlierProject(i, 'year', e.target.value)}
                                       placeholder="2024" sx={{ maxWidth: 96 }} />
                         </Stack>
                       </Stack>
                       <IconButton size="small" onClick={() => removeEarlierProject(i)}
-                                   sx={{ mt: 0.5 }} aria-label="Fjern prosjekt">
+                                   sx={{ mt: 0.5 }} aria-label={t('rrOnboard.removeProjectAria')}>
                         <DeleteOutline fontSize="small" />
                       </IconButton>
                     </Stack>
                   ))}
                   <Button startIcon={<Add />} onClick={addEarlierProject} size="small"
                            variant="outlined" sx={{ alignSelf: 'flex-start' }}>
-                    Legg til prosjekt
+                    {t('rrOnboard.addProjectButton')}
                   </Button>
                 </Stack>
               </Box>
 
               <Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Referanser & attester (valgfri)
+                  {t('rrOnboard.referencesLabel')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Kort attest fra tidligere kunder eller samarbeidspartnere.
+                  {t('rrOnboard.referencesHelper')}
                 </Typography>
                 <Stack spacing={1.5}>
                   {form.memberReferences.map((ref, i) => (
                     <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
                       <Stack spacing={1} sx={{ flex: 1 }}>
                         <Stack direction="row" spacing={1}>
-                          <TextField label="Navn" size="small" fullWidth value={ref.name}
+                          <TextField label={t('rrOnboard.referenceNameLabel')} size="small" fullWidth value={ref.name}
                                       onChange={(e) => updateReference(i, 'name', e.target.value)}
-                                      placeholder="F.eks. Kari Nordmann" />
-                          <TextField label="Rolle / firma" size="small" fullWidth value={ref.role}
+                                      placeholder={t('rrOnboard.referenceNamePlaceholder')} />
+                          <TextField label={t('rrOnboard.referenceRoleLabel')} size="small" fullWidth value={ref.role}
                                       onChange={(e) => updateReference(i, 'role', e.target.value)}
-                                      placeholder="F.eks. Produsent, NRK" />
+                                      placeholder={t('rrOnboard.referenceRolePlaceholder')} />
                         </Stack>
-                        <TextField label="Sitat / attest" size="small" multiline rows={2}
+                        <TextField label={t('rrOnboard.referenceQuoteLabel')} size="small" multiline rows={2}
                                     value={ref.quote}
                                     onChange={(e) => updateReference(i, 'quote', e.target.value)}
-                                    placeholder="«Leverte over forventning …»" />
+                                    placeholder={t('rrOnboard.referenceQuotePlaceholder')} />
                       </Stack>
                       <IconButton size="small" onClick={() => removeReference(i)}
-                                   sx={{ mt: 0.5 }} aria-label="Fjern referanse">
+                                   sx={{ mt: 0.5 }} aria-label={t('rrOnboard.removeReferenceAria')}>
                         <DeleteOutline fontSize="small" />
                       </IconButton>
                     </Stack>
                   ))}
                   <Button startIcon={<Add />} onClick={addReference} size="small"
                            variant="outlined" sx={{ alignSelf: 'flex-start' }}>
-                    Legg til referanse
+                    {t('rrOnboard.addReferenceButton')}
                   </Button>
                 </Stack>
               </Box>
@@ -906,13 +921,13 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {!loading && currentKey === 'links' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Legg til lenker til portefølje og sosiale medier (alt valgfritt).
+                {t('rrOnboard.linksIntro')}
               </Typography>
-              <TextField label="Nettside"
+              <TextField label={t('rrOnboard.websiteLabel')}
                           value={form.website}
                           onChange={(e) => updateField('website', e.target.value)}
                           placeholder="https://…" />
-              <TextField label="Showreel (Vimeo, YouTube …)"
+              <TextField label={t('rrOnboard.showreelLabel')}
                           value={form.showreelUrl}
                           onChange={(e) => updateField('showreelUrl', e.target.value)}
                           placeholder="https://vimeo.com/…" />
@@ -920,7 +935,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                           value={form.socialLinks.instagram ?? ''}
                           onChange={(e) => updateField('socialLinks',
                             { ...form.socialLinks, instagram: e.target.value })}
-                          placeholder="@brukernavn" />
+                          placeholder={t('rrOnboard.usernamePlaceholder')} />
               <TextField label="LinkedIn"
                           value={form.socialLinks.linkedin ?? ''}
                           onChange={(e) => updateField('socialLinks',
@@ -930,7 +945,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                           value={form.socialLinks.tiktok ?? ''}
                           onChange={(e) => updateField('socialLinks',
                             { ...form.socialLinks, tiktok: e.target.value })}
-                          placeholder="@brukernavn" />
+                          placeholder={t('rrOnboard.usernamePlaceholder')} />
               <TextField label="YouTube"
                           value={form.socialLinks.youtube ?? ''}
                           onChange={(e) => updateField('socialLinks',
@@ -945,31 +960,31 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
               {/* Portfolio / arbeidsprøver — flere lenker, hver med egen tittel */}
               <Box>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Portfolio / arbeidsprøver (valgfri)
+                  {t('rrOnboard.portfolioLabel')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Legg til så mange arbeidsprøver du vil — hver med tittel og lenke.
+                  {t('rrOnboard.portfolioHelper')}
                 </Typography>
                 <Stack spacing={1.5}>
                   {form.portfolioItems.map((item, i) => (
                     <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
                       <Stack spacing={1} sx={{ flex: 1 }}>
-                        <TextField label="Tittel" size="small" value={item.title}
+                        <TextField label={t('rrOnboard.portfolioTitleLabel')} size="small" value={item.title}
                                     onChange={(e) => updatePortfolioItem(i, 'title', e.target.value)}
-                                    placeholder="F.eks. Reklamefilm for …" />
-                        <TextField label="Lenke" size="small" value={item.url}
+                                    placeholder={t('rrOnboard.portfolioTitlePlaceholder')} />
+                        <TextField label={t('rrOnboard.portfolioUrlLabel')} size="small" value={item.url}
                                     onChange={(e) => updatePortfolioItem(i, 'url', e.target.value)}
                                     placeholder="https://vimeo.com/…" />
                       </Stack>
                       <IconButton size="small" onClick={() => removePortfolioItem(i)}
-                                   sx={{ mt: 0.5 }} aria-label="Fjern arbeidsprøve">
+                                   sx={{ mt: 0.5 }} aria-label={t('rrOnboard.removePortfolioAria')}>
                         <DeleteOutline fontSize="small" />
                       </IconButton>
                     </Stack>
                   ))}
                   <Button startIcon={<Add />} onClick={addPortfolioItem} size="small"
                            variant="outlined" sx={{ alignSelf: 'flex-start' }}>
-                    Legg til arbeidsprøve
+                    {t('rrOnboard.addPortfolioButton')}
                   </Button>
                 </Stack>
               </Box>
@@ -979,19 +994,17 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {!loading && currentKey === 'availability' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Vis når du er ledig for oppdrag. Produsenter ser dette når de
-                setter sammen team — så du slipper unødvendige forespørsler på
-                datoer du er opptatt.
+                {t('rrOnboard.availabilityIntro')}
               </Typography>
 
               <FormControl size="small" fullWidth>
-                <InputLabel>Generell status</InputLabel>
-                <Select label="Generell status"
+                <InputLabel>{t('rrOnboard.generalStatusLabel')}</InputLabel>
+                <Select label={t('rrOnboard.generalStatusLabel')}
                          value={form.availabilityStatus}
                          onChange={(e) => updateField('availabilityStatus',
                            e.target.value as AvailabilityStatus | '')}>
-                  <MenuItem value=""><em>Ikke oppgitt</em></MenuItem>
-                  {AVAILABILITY_OPTIONS.map((o) => (
+                  <MenuItem value=""><em>{t('rrOnboard.notSpecified')}</em></MenuItem>
+                  {availabilityOptions.map((o) => (
                     <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
                   ))}
                 </Select>
@@ -999,10 +1012,10 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                  Arbeidspreferanser
+                  {t('rrOnboard.workPreferencesLabel')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {WORK_PREFERENCE_OPTIONS.map((w) => (
+                  {workPreferenceOptions.map((w) => (
                     <Chip key={w} label={w} clickable size="small"
                            color={form.workPreferences.includes(w) ? 'secondary' : 'default'}
                            variant={form.workPreferences.includes(w) ? 'filled' : 'outlined'}
@@ -1013,7 +1026,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                  Kalender — marker konkrete datoer (auto-lagres)
+                  {t('rrOnboard.calendarLabel')}
                 </Typography>
                 <AvailabilityCalendar editable months={2} />
               </Box>
@@ -1023,20 +1036,20 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {!loading && currentKey === 'privacy' && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Hvem skal kunne se profilen din?
+                {t('rrOnboard.visibilityIntro')}
               </Typography>
               <FormControl fullWidth>
-                <InputLabel>Synlighet</InputLabel>
-                <Select label="Synlighet"
+                <InputLabel>{t('rrOnboard.visibilityLabel')}</InputLabel>
+                <Select label={t('rrOnboard.visibilityLabel')}
                          value={form.visibility}
                          onChange={(e) => updateField('visibility', e.target.value as ProfileVisibility)}>
-                  <MenuItem value="public">Offentlig — synlig for alle (også uten konto)</MenuItem>
-                  <MenuItem value="connections">Innloggede medlemmer — anbefalt</MenuItem>
-                  <MenuItem value="private">Privat — bare jeg ser den</MenuItem>
+                  <MenuItem value="public">{t('rrOnboard.visibilityPublic')}</MenuItem>
+                  <MenuItem value="connections">{t('rrOnboard.visibilityConnections')}</MenuItem>
+                  <MenuItem value="private">{t('rrOnboard.visibilityPrivate')}</MenuItem>
                 </Select>
               </FormControl>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
-                Du kan endre dette når som helst senere i Innstillinger.
+                {t('rrOnboard.visibilityChangeLaterHelper')}
               </Typography>
               <Box sx={{ background: 'rgba(160, 48, 192, 0.08)', p: 2, borderRadius: 2, mt: 2 }}>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
@@ -1049,18 +1062,18 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     {profileImage ? null : <Person />}
                   </Avatar>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    Oppsummering
+                    {t('rrOnboard.summaryLabel')}
                   </Typography>
                 </Stack>
                 <Typography variant="caption" color="text.secondary" component="div">
-                  <strong>{form.displayName || '(uten navn)'}</strong>
+                  <strong>{form.displayName || t('rrOnboard.noNamePlaceholder')}</strong>
                   {form.companyName && ` · ${form.companyName}`}
                   <br />
                   {form.professions.length > 0 && (
-                    <>Rolle: {form.professions.join(', ')}<br /></>
+                    <>{t('rrOnboard.roleSummaryPrefix')}{form.professions.join(', ')}<br /></>
                   )}
                   {form.skills.length > 0 && (
-                    <>Ferdigheter: {form.skills.length}<br /></>
+                    <>{t('rrOnboard.skillsSummaryPrefix')}{form.skills.length}<br /></>
                   )}
                   {(form.locationCity || form.locationCountry) && (
                     <>{[form.locationCity, form.locationCountry].filter(Boolean).join(', ')}<br /></>
@@ -1082,19 +1095,19 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           {step > 0 ? (
             <Button onClick={() => setStep((s) => s - 1)} disabled={saving}
                      startIcon={<ArrowBack />}>
-              Tilbake
+              {t('rrOnboard.backButton')}
             </Button>
           ) : <Box />}
           {isLastStep ? (
             <Button onClick={finishOnboarding} disabled={saving || loading || !canFinish}
                      variant="contained" endIcon={saving ? <CircularProgress size={14} /> : <Check />}>
-              {isEditMode ? 'Lagre endringer' : 'Fullfør profil'}
+              {isEditMode ? t('rrOnboard.saveChangesButton') : t('rrOnboard.finishProfileButton')}
             </Button>
           ) : (
             <Button onClick={() => void saveStep(step + 1)}
                      disabled={!canProgressFromCurrent() || saving || loading}
                      variant="contained" endIcon={saving ? <CircularProgress size={14} /> : <ArrowForward />}>
-              Neste
+              {t('rrOnboard.nextButton')}
             </Button>
           )}
         </Box>

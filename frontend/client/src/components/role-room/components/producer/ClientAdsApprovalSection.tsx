@@ -10,7 +10,7 @@
  *   POST /api/role-room/ads-approvals/:configId/reject
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
   Stack, TextField, Typography,
@@ -19,6 +19,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface PendingConfig {
   config: {
@@ -48,23 +50,26 @@ interface PendingConfig {
   }>;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  purchase: 'Kjøp', add_to_cart: 'Add to cart', begin_checkout: 'Begin checkout',
-  submit_lead_form: 'Lead-skjema', book_appointment: 'Book avtale', sign_up: 'Sign-up',
-  subscribe: 'Subscribe', request_quote: 'Tilbudsforespørsel', contact: 'Kontakt',
-  page_view: 'Sidevisning', outbound_click: 'Outbound', other: 'Annet',
-};
+const buildCATEGORY_LABELS = (t: TFn): Record<string, string> => ({
+  purchase: t('clientAdsApproval.s013'), add_to_cart: 'Add to cart', begin_checkout: 'Begin checkout',
+  submit_lead_form: t('clientAdsApproval.s017'), book_appointment: t('clientAdsApproval.s007'), sign_up: 'Sign-up',
+  subscribe: 'Subscribe', request_quote: t('clientAdsApproval.s022'), contact: t('clientAdsApproval.s016'),
+  page_view: t('clientAdsApproval.s020'), outbound_click: 'Outbound', other: t('clientAdsApproval.s003'),
+});
 
-const TRIGGER_LABELS: Record<string, string> = {
-  page_load: 'Side-load', form_submit: 'Form submit', click: 'Klikk',
-  event: 'JS-event', outbound: 'Outbound', manual: 'Manuell',
-};
+const buildTRIGGER_LABELS = (t: TFn): Record<string, string> => ({
+  page_load: t('clientAdsApproval.s019'), form_submit: 'Form submit', click: t('clientAdsApproval.s015'),
+  event: 'JS-event', outbound: 'Outbound', manual: t('clientAdsApproval.s018'),
+});
 
 export default function ClientAdsApprovalSection({
   clientProjectId,
 }: {
   clientProjectId: string;
 }) {
+  const { t } = useT();
+  const CATEGORY_LABELS = useMemo(() => buildCATEGORY_LABELS(t), [t]);
+  const TRIGGER_LABELS = useMemo(() => buildTRIGGER_LABELS(t), [t]);
   const [pending, setPending] = useState<PendingConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +87,7 @@ export default function ClientAdsApprovalSection({
       const data = await r.json();
       setPending(data.pending ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Klarte ikke å hente anbefalinger');
+      setError(err instanceof Error ? err.message : t('clientAdsApproval.s014'));
     } finally {
       setLoading(false);
     }
@@ -100,7 +105,7 @@ export default function ClientAdsApprovalSection({
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Godkjenning feilet');
+      setError(err instanceof Error ? err.message : t('clientAdsApproval.s010'));
     } finally {
       setBusyConfigId(null);
     }
@@ -109,7 +114,7 @@ export default function ClientAdsApprovalSection({
   const reject = async (configId: string) => {
     const fb = (feedbackDrafts[configId] ?? '').trim();
     if (!fb) {
-      setError('Skriv en kort tilbakemelding først så innholdsprodusenten vet hva de skal endre.');
+      setError(t('clientAdsApproval.s021'));
       return;
     }
     setBusyConfigId(configId);
@@ -122,7 +127,7 @@ export default function ClientAdsApprovalSection({
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Avvisning feilet');
+      setError(err instanceof Error ? err.message : t('clientAdsApproval.s004'));
     } finally {
       setBusyConfigId(null);
     }
@@ -158,10 +163,10 @@ export default function ClientAdsApprovalSection({
           </Box>
           <Box>
             <Typography sx={{ fontWeight: 800, fontSize: '1.04rem' }}>
-              Ads-anbefalinger venter på din godkjenning
+              {t('clientAdsApproval.s002')}
             </Typography>
             <Typography sx={{ color: 'rgba(196,181,253,0.85)', fontSize: '0.82rem' }}>
-              {pending.length} {pending.length === 1 ? 'forslag' : 'forslag'} fra innholdsprodusenten
+              {pending.length} {pending.length === 1 ? t('clientAdsApproval.s025') : t('clientAdsApproval.s025')} {t('clientAdsApproval.s026')}
             </Typography>
           </Box>
         </Stack>
@@ -188,12 +193,12 @@ export default function ClientAdsApprovalSection({
                       {config.client_name}
                     </Typography>
                     <Typography sx={{ color: 'rgba(196,181,253,0.75)', fontSize: '0.82rem' }}>
-                      {config.client_website_url} · Bransje: {config.business_type}
+                      {config.client_website_url} {t('clientAdsApproval.s027')} {config.business_type}
                     </Typography>
                   </Box>
                   {daysLeft !== null ? (
                     <Chip
-                      label={daysLeft === 0 ? 'Frist i dag' : `${daysLeft} dager igjen`}
+                      label={daysLeft === 0 ? t('clientAdsApproval.s008') : t('clientAdsApproval.p00', { v0: daysLeft })}
                       size="small"
                       sx={{
                         bgcolor: daysLeft <= 1 ? 'rgba(248,113,113,0.18)' : 'rgba(96,165,250,0.18)',
@@ -206,7 +211,7 @@ export default function ClientAdsApprovalSection({
 
                 {config.approval_message ? (
                   <Typography sx={{ color: 'rgba(196,181,253,0.9)', fontStyle: 'italic', fontSize: '0.86rem', mb: 1.6, p: 1.2, bgcolor: 'rgba(168,85,247,0.10)', borderRadius: 1 }}>
-                    Beskjed fra innholdsprodusenten: «{config.approval_message}»
+                    {t('clientAdsApproval.s006')}{config.approval_message}»
                   </Typography>
                 ) : null}
 
@@ -219,22 +224,16 @@ export default function ClientAdsApprovalSection({
                   mb: 1.6,
                 }}>
                   <Typography sx={{ color: '#fbbf24', fontWeight: 700, fontSize: '0.82rem', mb: 0.4 }}>
-                    💰 Management fee: {Number(config.management_fee_pct).toFixed(0)}% av ads-spend
-                    {config.management_fee_negotiated ? ' (forhandlet)' : ' (standard)'}
+                    💰 Management fee: {Number(config.management_fee_pct).toFixed(0)}{t('clientAdsApproval.s001')}
+                    {config.management_fee_negotiated ? t('clientAdsApproval.s000') : ' (standard)'}
                   </Typography>
                   <Typography sx={{ color: 'rgba(196,181,253,0.85)', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                    Google Ads-kontoen står på dere som klient. Spend (annonse-kostnad) trekkes
-                    direkte fra deres betalingsmetode til Google — innholdsprodusenten håndterer
-                    aldri pengene. Innholdsprodusenten har kun OAuth-tilgang for å sette opp og
-                    optimalisere kampanjene. I tillegg fakturerer innholdsprodusenten
-                    {' '}{Number(config.management_fee_pct).toFixed(0)}% av spend som management-fee
-                    (deres inntekt for arbeidet). Eks ved 20 000 kr/mnd ads-spend →
-                    mgmt fee = {Math.round(20000 * Number(config.management_fee_pct) / 100).toLocaleString('nb-NO')} kr/mnd.
+                    {t('clientAdsApproval.j00', { v0: Number(config.management_fee_pct).toFixed(0), v1: Math.round(20000 * Number(config.management_fee_pct) / 100).toLocaleString('nb-NO') })}
                   </Typography>
                 </Box>
 
                 <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.74rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
-                  {actions.length} foreslåtte conversion-actions
+                  {actions.length} {t('clientAdsApproval.s024')}
                 </Typography>
 
                 <Box
@@ -264,10 +263,10 @@ export default function ClientAdsApprovalSection({
                 >
                   <thead>
                     <tr>
-                      <th>Handling</th>
+                      <th>{t('clientAdsApproval.s011')}</th>
                       <th>Type</th>
                       <th>Trigger</th>
-                      <th style={{ textAlign: 'right' }}>Verdi</th>
+                      <th style={{ textAlign: 'right' }}>{t('clientAdsApproval.s023')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -300,7 +299,7 @@ export default function ClientAdsApprovalSection({
                   rows={2}
                   fullWidth
                   size="small"
-                  label="Hvis du vil ha endringer — skriv kort hva (eller la stå tom og trykk Godkjenn)"
+                  label={t('clientAdsApproval.s012')}
                   value={feedbackDrafts[config.id] ?? ''}
                   onChange={(e) => setFeedbackDrafts({ ...feedbackDrafts, [config.id]: e.target.value })}
                   sx={{ mb: 1.4 }}
@@ -320,7 +319,7 @@ export default function ClientAdsApprovalSection({
                       border: '1px solid rgba(251,191,36,0.32)',
                     }}
                   >
-                    Be om endringer
+                    {t('clientAdsApproval.s005')}
                   </Button>
                   <Button
                     onClick={() => approve(config.id)}
@@ -335,7 +334,7 @@ export default function ClientAdsApprovalSection({
                       '&:hover': { background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)' },
                     }}
                   >
-                    Godkjenn alle {actions.length} actions
+                    {t('clientAdsApproval.s009')} {actions.length} actions
                   </Button>
                 </Stack>
               </Box>

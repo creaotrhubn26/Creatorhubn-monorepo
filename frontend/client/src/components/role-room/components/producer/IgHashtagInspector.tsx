@@ -18,6 +18,8 @@ import LaunchIcon from '@mui/icons-material/Launch';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useAuth } from '@/hooks/useAuth';
 import { ErrorAlert } from './ui';
+import { useT } from '../../../../i18n';
+type TFn = ReturnType<typeof useT>['t'];
 
 interface HashtagPost {
   id: string | null;
@@ -38,6 +40,7 @@ interface HashtagResult {
 }
 
 export function IgHashtagInspector() {
+  const { t } = useT();
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -102,7 +105,7 @@ export function IgHashtagInspector() {
       setResult(body as HashtagResult);
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') return; // newer keystroke superseded
-      setError(e instanceof Error ? e.message : 'Request feilet');
+      setError(e instanceof Error ? e.message : t('igHashtag.s008'));
     } finally {
       if (searchAbortRef.current === ctrl) setLoading(false);
     }
@@ -145,7 +148,7 @@ export function IgHashtagInspector() {
       }
       setSuggestions(body?.candidates || []);
     } catch (e) {
-      setSuggestError(e instanceof Error ? e.message : 'Suggest feilet');
+      setSuggestError(e instanceof Error ? e.message : t('igHashtag.s009'));
     } finally {
       setSuggesting(false);
     }
@@ -162,12 +165,12 @@ export function IgHashtagInspector() {
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body?.url) {
-        setError(body?.error || `Kunne ikke starte Meta OAuth (${response.status})`);
+        setError(body?.error || t('igHashtag.p00', { v0: response.status }));
         return;
       }
       window.location.href = body.url as string;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Connect-feilet');
+      setError(e instanceof Error ? e.message : t('igHashtag.s002'));
     }
   };
 
@@ -236,18 +239,18 @@ export function IgHashtagInspector() {
         ) : null}
 
         <Divider sx={{ opacity: 0.4 }}>
-          <Chip label="AI-foreslåtte hashtags" size="small" icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />} />
+          <Chip label={t('igHashtag.s001')} size="small" icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />} />
         </Divider>
 
         <Stack spacing={1.5}>
           <TextField
-            label="Innhold / brief / tema"
+            label={t('igHashtag.s005')}
             value={context}
             onChange={(e) => setContext(e.target.value)}
             fullWidth
             multiline
             minRows={2}
-            placeholder="Lim inn caption-utkast, tema, produkt eller målgruppe…"
+            placeholder={t('igHashtag.s006')}
             inputProps={{ 'data-testid': 'ig-hashtag-context' }}
           />
           <Stack direction="row" spacing={1.5}>
@@ -259,7 +262,7 @@ export function IgHashtagInspector() {
               data-testid="ig-hashtag-suggest"
               sx={{ textTransform: 'none', fontWeight: 700 }}
             >
-              {suggesting ? 'Genererer forslag…' : 'Foreslå hashtags (AI + Meta)'}
+              {suggesting ? t('igHashtag.s004') : t('igHashtag.s003')}
             </Button>
           </Stack>
           {suggestError ? <ErrorAlert message={suggestError} /> : null}
@@ -279,7 +282,7 @@ export function IgHashtagInspector() {
                   onClick={() => { setInput(s.hashtag); void handleSearch(s.hashtag); }}
                   color={s.hashtagId ? 'primary' : 'default'}
                   variant={s.hashtagId ? 'filled' : 'outlined'}
-                  title={`${s.reasoning}${s.hashtagId ? ` — klikk for å se top_media` : s.validationError ? ` (${s.validationError})` : ''}`}
+                  title={`${s.reasoning}${s.hashtagId ? t('igHashtag.s000') : s.validationError ? ` (${s.validationError})` : ''}`}
                   clickable
                   sx={{ fontWeight: 600 }}
                 />
@@ -312,8 +315,7 @@ export function IgHashtagInspector() {
               </Stack>
               {result.posts.length === 0 ? (
                 <Alert severity="info">
-                  Meta Graph API fant ingen top_media for denne hashtaggen — den eksisterer kanskje ikke,
-                  eller har ingen public posts. Dette er fortsatt en gyldig instagram_public_content_access-kall.
+                  {t('igHashtag.s007')}
                 </Alert>
               ) : (
                 <Grid container spacing={1.5}>
@@ -353,7 +355,7 @@ export function IgHashtagInspector() {
                           }}
                         >
                           <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                            {fmtNum(p.likeCount)} liker · {fmtNum(p.commentsCount)} kommentarer
+                            {fmtNum(p.likeCount)} {t('igHashtag.s011')} {fmtNum(p.commentsCount)} {t('igHashtag.s010')}
                           </Typography>
                         </Box>
                       </Box>

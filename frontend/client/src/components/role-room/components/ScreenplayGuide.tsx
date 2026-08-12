@@ -874,7 +874,7 @@ const STEPS: Step[] = [
   },
   {
     id: 'export',
-    label: 'Export & Fullscreen',
+    label: 'Export & Skrivemodus',
     icon: <ExportIcon fontSize="small" />,
     sections: [
       {
@@ -882,14 +882,15 @@ const STEPS: Step[] = [
         body: (
           <>
             <Typography variant="body2" sx={{ lineHeight: 1.8, mb: 1.5 }}>
-              Click the <strong>Export</strong> icon (toolbar, top-right) to download your
-              script. Export options available:
+              Click <strong>Eksporter ▾</strong> in the toolbar to download your script.
+              Formats in the menu:
             </Typography>
             <Box component="ul" sx={{ pl: 2.5 }}>
               {[
                 ['.fountain', 'Plain-text Fountain format — opens in Final Draft, Highland, etc.'],
-                ['PDF', 'Formatted screenplay PDF via ScreenplayPDFExport — maintains standard margins and fonts'],
                 ['FDX', 'Final Draft XML — for full round-trip compatibility with Final Draft'],
+                ['.json', 'Full production data — scenes, shots, storyboard and roles'],
+                ['PDF', 'Formatted screenplay PDF via the separate «Eksporter PDF» button (maintains standard margins and fonts)'],
               ].map(([fmt, desc]) => (
                 <Box key={fmt} component="li" sx={{ mb: 0.5 }}>
                   <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
@@ -903,21 +904,22 @@ const STEPS: Step[] = [
         screenshotLabel: 'Export menu showing Fountain, PDF, and FDX options',
       },
       {
-        heading: 'Fullscreen writing mode',
+        heading: 'Skrivemodus (distraction-free writing)',
         body: (
           <>
             <Typography variant="body2" sx={{ lineHeight: 1.8, mb: 1.5 }}>
-              Click the <strong>⛶ Fullscreen</strong> button (available in both the editor
-              toolbar and the outer navigator) to enter a distraction-free writing mode.
-              The UI chrome disappears and only the script text and a minimal toolbar are
-              shown.
+              Click the <strong>⛶ Skrivemodus</strong> button in the editor toolbar to enter a
+              distraction-free writing mode. All surrounding chrome (project nav, tabs, toolbars)
+              disappears and the script is centred in a readable page-width column — only the
+              text and a minimal toolbar remain.
             </Typography>
             <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-              Press <Key>Escape</Key> or click the fullscreen-exit icon to return to the
-              normal layout.
+              Press <Key>Escape</Key> or click <strong>Avslutt skrivemodus</strong> to return to
+              the normal layout. (Outside skrivemodus the editor toolbar also auto-hides when you
+              scroll down, and reappears when you scroll up.)
             </Typography>
             <Callout color="#6366f1">
-              In fullscreen the background changes to a dark navy (<code>#1a1a2e</code>)
+              In skrivemodus the background changes to a dark navy (<code>#1a1a2e</code>)
               for reduced eye strain during long writing sessions.
             </Callout>
           </>
@@ -984,6 +986,11 @@ const GUIDE_SCREENSHOTS: Record<string, string> = {
   'Live Fountain parsing with colour-coded elements': '/role-room-assets/guide-screenplay-overview.png',
   'Storyboard panel open alongside editor for a selected scene': '/role-room-assets/guide-storyboard.png',
   'Character cue in manuscript auto-creating a role in The Role Room': '/role-room-assets/guide-auto-create-role.png',
+  'Beat Board with story cards arranged in Act I / II / III columns': '/role-room-assets/guide-beat-board.png',
+  'Analysis panel with issue list and character extract': '/role-room-assets/guide-script-analysis.png',
+  'Story Structure panel showing three-act beat mapping': '/role-room-assets/guide-story-structure.png',
+  'Grammar Check panel with flagged issues': '/role-room-assets/guide-grammar.png',
+  'Table Read panel playing with current line highlighted': '/role-room-assets/guide-table-read.png',
 };
 
 export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({

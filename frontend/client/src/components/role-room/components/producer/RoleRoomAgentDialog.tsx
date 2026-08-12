@@ -76,6 +76,7 @@ import AgentCommandPalette from './AgentCommandPalette';
 import { isAdvancedTab } from './agentTabs';
 import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
+import { useT, translate, getLang, type TranslationKey } from '../../../../i18n';
 
 type RoleRoomAgentDialogProps = {
   open: boolean;
@@ -125,7 +126,7 @@ function renderList(items: string[]) {
   if (items.length === 0) {
     return (
       <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.88rem' }}>
-        Ingen forslag ennå.
+        {translate(getLang(), 'agentDlg.noSuggestionsYet')}
       </Typography>
     );
   }
@@ -221,17 +222,17 @@ function toAccessRequestPlatform(
   }
 }
 
-const LOCAL_OPPORTUNITY_LABELS: Record<string, string> = {
-  school: 'Skole',
-  sports_club: 'Idrettslag',
-  workplace: 'Arbeidsplass',
-  hotel: 'Hotell',
-  culture: 'Kulturarena',
-  retail: 'Handel',
-  fitness: 'Trening',
-  community: 'Nærmiljø',
-  venue: 'Venue',
-  tourism: 'Turisme',
+const LOCAL_OPPORTUNITY_LABELS: Record<string, TranslationKey> = {
+  school: 'agentDlg.local.school',
+  sports_club: 'agentDlg.local.sportsClub',
+  workplace: 'agentDlg.local.workplace',
+  hotel: 'agentDlg.local.hotel',
+  culture: 'agentDlg.local.culture',
+  retail: 'agentDlg.local.retail',
+  fitness: 'agentDlg.local.fitness',
+  community: 'agentDlg.local.community',
+  venue: 'agentDlg.local.venue',
+  tourism: 'agentDlg.local.tourism',
 };
 
 export default function RoleRoomAgentDialog({
@@ -259,6 +260,7 @@ export default function RoleRoomAgentDialog({
   progressError,
   initialTab,
 }: RoleRoomAgentDialogProps) {
+  const { t } = useT();
   const [websiteUrl, setWebsiteUrl] = useState(initialWebsiteUrl ?? '');
   const [organizationNumber, setOrganizationNumber] = useState(initialOrganizationNumber ?? '');
   const [companyName, setCompanyName] = useState(initialCompanyName ?? '');
@@ -451,10 +453,10 @@ export default function RoleRoomAgentDialog({
       if (body?.success) {
         setGscInsights({ siteUrl: body.siteUrl, period: body.period, rows: body.rows ?? [] });
       } else {
-        setGscInsightsError(body?.error ?? `Kunne ikke hente søkedata (${r.status}).`);
+        setGscInsightsError(body?.error ?? t('agentDlg.search.failed', { status: r.status }));
       }
     } catch {
-      setGscInsightsError('Kunne ikke hente søkedata.');
+      setGscInsightsError(t('agentDlg.search.failedGeneric'));
     } finally {
       setGscInsightsBusy(false);
     }
@@ -613,10 +615,10 @@ export default function RoleRoomAgentDialog({
     'research', 'marketing-plan', 'feed-planner', 'social-inbox', 'leads', 'social-analytics',
   ], []);
   const TAB_LABELS: Record<string, string> = {
-    research: 'Research', discovery: 'Oppdag', merch: 'Merch', 'marketing-plan': 'Markedsplan',
+    research: 'Research', discovery: t('agentDlg.tab.discover'), merch: 'Merch', 'marketing-plan': t('agentDlg.tab.marketingPlan'),
     'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
     'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
-    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: 'Omtaler', leads: 'Leads', events: 'Arrangement', 'social-analytics': 'Analytics', chat: 'Chat',
+    'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: t('agentDlg.tab.mentions'), leads: 'Leads', events: t('agentDlg.tab.events'), 'social-analytics': 'Analytics', chat: 'Chat',
   };
   const flowIndex = tabFlow.indexOf(activeTab);
   const showResearchSection = (s: 'oversikt' | 'kanaler' | 'marked'): boolean =>
@@ -638,16 +640,16 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
-        setGa4SetupOutcome({ ok: false, text: body?.error ?? `GA4-oppsett feilet (${r.status}).`, needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
+        setGa4SetupOutcome({ ok: false, text: body?.error ?? t('agentDlg.ga4.failed', { status: r.status }), needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
         return;
       }
       const parts = [
-        body.propertyCreated ? 'Property opprettet' : 'Gjenbrukte eksisterende property',
-        body.measurementId ? `måle-ID ${body.measurementId}` : null,
-        body.retentionSet ? 'datalagring 14 mnd' : null,
+        body.propertyCreated ? t('agentDlg.ga4.propertyCreated') : t('agentDlg.ga4.propertyReused'),
+        body.measurementId ? t('agentDlg.ga4.measurementId', { id: body.measurementId }) : null,
+        body.retentionSet ? t('agentDlg.ga4.retention') : null,
         body.keyEvents?.length ? `${body.keyEvents.length} key events` : null,
       ].filter(Boolean);
-      setGa4SetupOutcome({ ok: true, text: `${parts.join(' · ')}. ${body.ownershipNote ?? ''} Lim måle-ID-en inn i snippet-generatoren.` });
+      setGa4SetupOutcome({ ok: true, text: `${parts.join(' · ')}. ${body.ownershipNote ?? ''} ${t('agentDlg.ga4.pasteSnippet')}` });
     } catch (e) {
       setGa4SetupOutcome({ ok: false, text: String(e) });
     } finally {
@@ -670,21 +672,21 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
-        setGscSetupOutcome({ ok: false, text: body?.error ?? `GSC-oppsett feilet (${r.status}).`, needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
+        setGscSetupOutcome({ ok: false, text: body?.error ?? t('agentDlg.gsc.failed', { status: r.status }), needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
         return;
       }
       if (body.verification === 'pending') {
         setGscSetupOutcome({
           ok: true,
-          text: 'Domenet er ikke verifisert ennå: legg metataggen under i <head>, deploy, og klikk knappen igjen.',
+          text: t('agentDlg.gsc.pending'),
           metaTag: body.verificationMetaTag,
         });
         return;
       }
       const parts = [
-        body.verification === 'verified_now' ? 'Domenet verifisert' : 'Allerede verifisert',
-        body.siteAdded ? 'lagt til i Search Console' : null,
-        body.sitemapSubmitted ? `sitemap meldt inn (${body.sitemapUrl})` : null,
+        body.verification === 'verified_now' ? t('agentDlg.gsc.verifiedNow') : t('agentDlg.gsc.alreadyVerified'),
+        body.siteAdded ? t('agentDlg.gsc.siteAdded') : null,
+        body.sitemapSubmitted ? t('agentDlg.gsc.sitemapSubmitted', { url: body.sitemapUrl }) : null,
       ].filter(Boolean);
       setGscSetupOutcome({ ok: true, text: `${parts.join(' · ')}. ${body.ownershipNote ?? ''}` });
     } catch (e) {
@@ -739,17 +741,17 @@ export default function RoleRoomAgentDialog({
       });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body?.success) {
-        setPixelSetupOutcome({ ok: false, text: body?.error ?? `Pixel-oppsett feilet (${r.status}).`, needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
+        setPixelSetupOutcome({ ok: false, text: body?.error ?? t('agentDlg.pixel.failed', { status: r.status }), needsAccess: Boolean(body?.needsConnect || body?.needsReauth) });
         return;
       }
       const parts = [
-        body.pixelCreated ? 'Pixel opprettet' : 'Gjenbrukte eksisterende pixel',
+        body.pixelCreated ? t('agentDlg.pixel.created') : t('agentDlg.pixel.reused'),
         `ID ${body.pixelId}`,
-        body.adAccountName ? `konto: ${body.adAccountName}` : null,
+        body.adAccountName ? t('agentDlg.pixel.account', { name: body.adAccountName }) : null,
       ].filter(Boolean);
       setPixelSetupOutcome({
         ok: true,
-        text: `${parts.join(' · ')}. Pixelen er KOBLET, ikke aktivert for annonser — lim ID-en inn i snippet-generatoren (marketing-samtykke-gating følger med).`,
+        text: `${parts.join(' · ')}. ${t('agentDlg.pixel.connectedSuffix')}`,
       });
     } catch (e) {
       setPixelSetupOutcome({ ok: false, text: String(e) });
@@ -765,16 +767,16 @@ export default function RoleRoomAgentDialog({
     if (!result) return null;
     if (result.provider === 'openai') return 'Creatorhub Intelligence';
     if (result.provider === 'anthropic') return 'Creatorhub Intelligence';
-    return 'Fallback-analyse';
+    return t('agentDlg.provider.fallback');
   }, [result]);
   const runtimeLabel = useMemo(() => {
     if (!access?.provider) {
       return null;
     }
     if (access.providerConfigured) {
-      return `${access.provider === 'openai' ? 'OpenAI' : access.provider} · ${access.defaultModel || 'modell ikke satt'}`;
+      return `${access.provider === 'openai' ? 'OpenAI' : access.provider} · ${access.defaultModel || t('agentDlg.runtime.modelNotSet')}`;
     }
-    return 'OpenAI ikke konfigurert';
+    return t('agentDlg.runtime.openaiNotConfigured');
   }, [access]);
   const storyClassification = useMemo(() => {
     const classification = result?.storyLogicDraft?.classification;
@@ -794,14 +796,14 @@ export default function RoleRoomAgentDialog({
     if (!result?.businessSignals?.rating || !result.businessSignals.userRatingCount) {
       return null;
     }
-    return `${result.businessSignals.rating.toFixed(1)} stjerner · ${result.businessSignals.userRatingCount} anmeldelser`;
+    return t('agentDlg.label.reviews', { rating: result.businessSignals.rating.toFixed(1), count: result.businessSignals.userRatingCount });
   }, [result]);
   const retrievalLabel = useMemo(() => {
     if (!result?.retrievalMeta) {
       return null;
     }
     const meta = result.retrievalMeta;
-    return `${meta.websitePagesSelected}/${meta.websitePagesReviewed} sider · ${meta.reviewsSelected}/${meta.reviewsReviewed} reviews`;
+    return t('agentDlg.label.retrieval', { a: meta.websitePagesSelected, b: meta.websitePagesReviewed, c: meta.reviewsSelected, d: meta.reviewsReviewed });
   }, [result]);
   const brregCompany = result?.brregCompany ?? null;
   const brregVerified = brregCompany?.lookupStatus === 'verified';
@@ -809,12 +811,12 @@ export default function RoleRoomAgentDialog({
     if (!brregCompany) return null;
     if (brregCompany.lookupStatus === 'verified') {
       return brregCompany.matchedBy === 'organization_number'
-        ? 'Brreg verifisert på org.nr'
-        : 'Brreg verifisert på navn';
+        ? t('agentDlg.brreg.verifiedOrgNr')
+        : t('agentDlg.brreg.verifiedName');
     }
-    if (brregCompany.lookupStatus === 'invalid') return 'Ugyldig org.nr';
-    if (brregCompany.lookupStatus === 'not_found') return 'Ikke funnet i Brreg';
-    if (brregCompany.lookupStatus === 'unavailable') return 'Brreg utilgjengelig';
+    if (brregCompany.lookupStatus === 'invalid') return t('agentDlg.brreg.invalidOrgNr');
+    if (brregCompany.lookupStatus === 'not_found') return t('agentDlg.brreg.notFound');
+    if (brregCompany.lookupStatus === 'unavailable') return t('agentDlg.brreg.unavailable');
     return null;
   }, [brregCompany]);
   const criticalAgreementCount = useMemo(
@@ -847,10 +849,10 @@ export default function RoleRoomAgentDialog({
       return null;
     }
     const rating = typeof competitorAnalysis.averageRating === 'number'
-      ? `${competitorAnalysis.averageRating.toFixed(1)} snitt-rating`
+      ? t('agentDlg.comp.avgRating', { v: competitorAnalysis.averageRating.toFixed(1) })
       : null;
     const reviews = typeof competitorAnalysis.averageReviewCount === 'number'
-      ? `${competitorAnalysis.averageReviewCount} snitt-anmeldelser`
+      ? t('agentDlg.comp.avgReviews', { v: competitorAnalysis.averageReviewCount })
       : null;
     return [rating, reviews].filter(Boolean).join(' · ') || null;
   }, [competitorAnalysis]);
@@ -871,9 +873,7 @@ export default function RoleRoomAgentDialog({
     if (hasUnsavedAgentWork) {
       const ok = typeof window !== 'undefined'
         ? window.confirm(
-            'Du har generert forslag fra The Role Room Agent som ikke er lagret. ' +
-            'Lagre med «Bruk forslag» (inn i dette prosjektet) eller «Opprett prosjekt» (ny kunde) først — ' +
-            'lukker du nå, mister du analysen ved neste refresh. Vil du fortsette?',
+            t('agentDlg.confirm.unsavedClose'),
           )
         : true;
       if (!ok) return;
@@ -971,9 +971,7 @@ export default function RoleRoomAgentDialog({
                     fontSize: { xs: '0.78rem', md: '0.88rem' },
                     display: { xs: 'none', sm: 'block' },
                   }}
-                >
-                  Admin-test for kundeprofil, brief, branding og story logikk i innholdsprodusent-flyt.
-                </Typography>
+                >{t('agentDlg.header.subtitle')}</Typography>
               </Box>
             </Stack>
             <Stack
@@ -986,24 +984,24 @@ export default function RoleRoomAgentDialog({
             >
               {showAdminChrome ? (
                 <>
-                  <Tooltip title="Denne testflaten er kun synlig for admin-brukere" disableInteractive>
-                    <Chip label="Kun admin" size="small" aria-label="Tilgang: kun admin" sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
+                  <Tooltip title={t('agentDlg.chip.adminOnlyTip')} disableInteractive>
+                    <Chip label={t('agentDlg.chip.adminOnly')} size="small" aria-label={t('agentDlg.chip.adminOnlyAria')} sx={{ bgcolor: 'rgba(15,118,110,0.18)', color: '#99f6e4' }} />
                   </Tooltip>
-                  <Tooltip title="Rollen agenten kjører som: innholdsprodusent-flyt" disableInteractive>
+                  <Tooltip title={t('agentDlg.chip.roleTip')} disableInteractive>
                     <Chip
-                      label="Innholdsprodusent"
+                      label={t('agentDlg.chip.roleProducer')}
                       size="small"
-                      aria-label="Rolle: innholdsprodusent"
+                      aria-label={t('agentDlg.chip.roleProducerAria')}
                       sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#f0abfc', display: { xs: 'none', sm: 'inline-flex' } }}
                     />
                   </Tooltip>
                 </>
               ) : null}
-              <Tooltip title={`Aktivt prosjekt: ${projectName}`} disableInteractive>
+              <Tooltip title={t('agentDlg.chip.activeProject', { name: projectName })} disableInteractive>
                 <Chip
                   label={projectName}
                   size="small"
-                  aria-label={`Aktivt prosjekt: ${projectName}`}
+                  aria-label={t('agentDlg.chip.activeProject', { name: projectName })}
                   sx={{
                     bgcolor: 'rgba(59,130,246,0.16)',
                     color: '#bfdbfe',
@@ -1029,11 +1027,11 @@ export default function RoleRoomAgentDialog({
                   System status
                 </Button>
               ) : null}
-              <Tooltip title={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'} disableInteractive>
+              <Tooltip title={showAdminChrome ? t('agentDlg.tip.hideAdmin') : t('agentDlg.tip.showAdmin')} disableInteractive>
                 <IconButton
                   size="small"
                   onClick={() => setShowAdminChrome((v) => !v)}
-                  aria-label={showAdminChrome ? 'Skjul admin-detaljer' : 'Vis admin-detaljer'}
+                  aria-label={showAdminChrome ? t('agentDlg.tip.hideAdmin') : t('agentDlg.tip.showAdmin')}
                   data-testid="agent-admin-toggle"
                   sx={{ color: showAdminChrome ? 'var(--role-cyan, #22d3ee)' : 'rgba(148,163,184,0.55)' }}
                 >
@@ -1072,10 +1070,10 @@ export default function RoleRoomAgentDialog({
           data-testid="agent-toggle-tabs"
           sx={{ textTransform: 'none', color: 'rgba(226,232,240,0.7)', minWidth: 0 }}
         >
-          {showAllTabs ? 'Skjul verktøy' : 'Flere verktøy'}
+          {showAllTabs ? t('agentDlg.btn.hideTools') : t('agentDlg.btn.moreTools')}
         </Button>
         <Typography sx={{ flex: 1, color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem', textAlign: 'center' }}>
-          {flowIndex >= 0 ? `Steg ${flowIndex + 1} av ${tabFlow.length}: ${TAB_LABELS[activeTab] ?? ''}` : ''}
+          {flowIndex >= 0 ? t('agentDlg.step', { n: flowIndex + 1, total: tabFlow.length, label: TAB_LABELS[activeTab] ?? '' }) : ''}
         </Typography>
         <Button
           size="small"
@@ -1084,9 +1082,7 @@ export default function RoleRoomAgentDialog({
           onClick={() => { if (flowIndex > 0) setActiveTab(tabFlow[flowIndex - 1]); }}
           data-testid="agent-prev-step"
           sx={{ textTransform: 'none', color: '#cbd5e1', minWidth: 0 }}
-        >
-          ← Forrige
-        </Button>
+        >{t('agentDlg.btn.prev')}</Button>
         <Button
           size="small"
           variant="outlined"
@@ -1094,9 +1090,7 @@ export default function RoleRoomAgentDialog({
           onClick={() => { if (flowIndex < tabFlow.length - 1) setActiveTab(tabFlow[flowIndex + 1]); }}
           data-testid="agent-next-step"
           sx={{ textTransform: 'none', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', borderColor: 'rgba(34,211,238,0.5)' }}
-        >
-          Neste →
-        </Button>
+        >{t('agentDlg.btn.next')}</Button>
       </Stack>
       {showAllTabs ? (
       <Stack
@@ -1144,7 +1138,7 @@ export default function RoleRoomAgentDialog({
         />
         <Tab
           value="marketing-plan"
-          label="Markedsplan"
+          label={t('agentDlg.tab.marketingPlan')}
           icon={<RocketIcon fontSize="small" />}
           iconPosition="start"
         />
@@ -1170,7 +1164,7 @@ export default function RoleRoomAgentDialog({
         />
         <Tab
           value="events"
-          label="Arrangement"
+          label={t('agentDlg.tab.events')}
           icon={<EventsTabIcon fontSize="small" />}
           iconPosition="start"
           data-testid="agent-tab-events"
@@ -1201,9 +1195,7 @@ export default function RoleRoomAgentDialog({
           fontWeight: isAdvancedTab(activeTab) ? 700 : 600,
           color: isAdvancedTab(activeTab) ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.72)',
         }}
-      >
-        Avansert
-      </Button>
+      >{t('agentDlg.btn.advanced')}</Button>
       <Menu
         anchorEl={advancedAnchor}
         open={Boolean(advancedAnchor)}
@@ -1214,14 +1206,14 @@ export default function RoleRoomAgentDialog({
           onClick={() => { setActiveTab('discovery'); setAdvancedAnchor(null); }}
           data-testid="agent-tab-discovery"
         >
-          <DiscoveryTabIcon fontSize="small" sx={{ mr: 1 }} /> Oppdag
+          <DiscoveryTabIcon fontSize="small" sx={{ mr: 1 }} /> {t('agentDlg.tab.discover')}
         </MenuItem>
         <MenuItem
           selected={activeTab === 'mentions'}
           onClick={() => { setActiveTab('mentions'); setAdvancedAnchor(null); }}
           data-testid="agent-tab-mentions"
         >
-          <MentionsTabIcon fontSize="small" sx={{ mr: 1 }} /> Omtaler
+          <MentionsTabIcon fontSize="small" sx={{ mr: 1 }} /> {t('agentDlg.tab.mentions')}
         </MenuItem>
         <MenuItem
           selected={activeTab === 'ads-attribution'}
@@ -1259,7 +1251,7 @@ export default function RoleRoomAgentDialog({
                   background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
                 }}
               >
-                {applying ? 'Lagrer…' : 'Bruk forslag (lagre her)'}
+                {applying ? t('agentDlg.btn.saving') : t('agentDlg.btn.applyHere')}
               </Button>
               {onCreateProject ? (
                 <Button
@@ -1268,16 +1260,12 @@ export default function RoleRoomAgentDialog({
                   onClick={handleCreateProjectAndMark}
                   disabled={generating || applying}
                   sx={{ textTransform: 'none', fontWeight: 700, color: '#fcd34d', borderColor: 'rgba(251,191,36,0.5)' }}
-                >
-                  Opprett nytt prosjekt
-                </Button>
+                >{t('agentDlg.btn.createNewProject')}</Button>
               ) : null}
             </Stack>
           }
         >
-          Forslag fra The Role Room Agent er ikke lagret ennå. <strong>Bruk forslag</strong> lagrer
-          dem i <strong>dette prosjektet</strong>; <strong>Opprett nytt prosjekt</strong> lager et
-          for en ny kunde. Lukker du uten å lagre, mister du analysen ved neste refresh.
+          {t('agentDlg.banner.notSavedYet')} <strong>{t('agentDlg.btn.useSuggestions')}</strong> {t('agentDlg.banner.savesThemIn')} <strong>{t('agentDlg.banner.thisProject')}</strong>; <strong>{t('agentDlg.btn.createNewProject')}</strong> {t('agentDlg.banner.createsForNew')}
         </Alert>
       ) : agentWorkSaved ? (
         <Alert
@@ -1295,8 +1283,8 @@ export default function RoleRoomAgentDialog({
           }}
         >
           {projectCreatedFromResult
-            ? 'Prosjekt opprettet og lagret.'
-            : 'Forslagene er lagret i prosjektet.'}
+            ? t('agentDlg.banner.savedCreated')
+            : t('agentDlg.banner.savedApplied')}
         </Alert>
       ) : null}
       <DialogContent
@@ -1347,16 +1335,14 @@ export default function RoleRoomAgentDialog({
                 bgcolor: 'rgba(2,6,23,0.4)',
               }}
             >
-              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', fontWeight: 800 }}>
-                Agenten ser:
-              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.76rem', fontWeight: 800 }}>{t('agentDlg.conn.agentSees')}</Typography>
               <Chip
                 size="small"
                 label={connStatus.google.connected
                   ? (connStatus.google.source === 'project'
-                    ? `Google: klientens konto (${connStatus.google.email ?? 'ukjent'}) ✓ klient-eierskap`
-                    : `Google: din konto (${connStatus.google.email ?? 'ukjent'}) — oppsett lander hos deg`)
-                  : 'Google: ikke koblet'}
+                    ? t('agentDlg.conn.googleClient', { email: connStatus.google.email ?? t('agentDlg.conn.unknown') })
+                    : t('agentDlg.conn.googleSelf', { email: connStatus.google.email ?? t('agentDlg.conn.unknown') }))
+                  : t('agentDlg.conn.googleNotConnected')}
                 sx={{
                   bgcolor: connStatus.google.connected
                     ? (connStatus.google.source === 'project' ? 'rgba(34,197,94,0.16)' : 'rgba(245,158,11,0.16)')
@@ -1369,7 +1355,7 @@ export default function RoleRoomAgentDialog({
                 }}
               />
               {connStatus.manages?.gscError === 'needs_reauth' ? (
-                <Chip size="small" label="Search Console: krever ny innlogging"
+                <Chip size="small" label={t('agentDlg.conn.gscNeedsReauth')}
                   sx={{ bgcolor: 'rgba(239,68,68,0.16)', color: '#fecaca', fontWeight: 700, fontSize: '0.7rem' }} />
               ) : null}
               {connStatus.manages?.ga4MeasurementId ? (
@@ -1380,9 +1366,9 @@ export default function RoleRoomAgentDialog({
                 size="small"
                 label={connStatus.meta.connected
                   ? (connStatus.meta.verified
-                    ? `Meta: koblet${connStatus.manages?.igUsername ? ` (@${connStatus.manages.igUsername})` : ''}`
-                    : 'Meta: koblet, ikke verifisert')
-                  : 'Meta: ikke koblet'}
+                    ? `${t('agentDlg.conn.metaConnected')}${connStatus.manages?.igUsername ? ` (@${connStatus.manages.igUsername})` : ''}`
+                    : t('agentDlg.conn.metaUnverified'))
+                  : t('agentDlg.conn.metaNotConnected')}
                 sx={{
                   bgcolor: connStatus.meta.connected && connStatus.meta.verified
                     ? 'rgba(34,197,94,0.16)'
@@ -1396,9 +1382,7 @@ export default function RoleRoomAgentDialog({
               />
               {(!connStatus.google.connected || connStatus.manages?.gscError === 'needs_reauth') && onOpenAccountAccess ? (
                 <Button size="small" variant="text" onClick={onOpenAccountAccess}
-                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', minHeight: 26 }}>
-                  Åpne Kontotilgang
-                </Button>
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', minHeight: 26 }}>{t('agentDlg.conn.openAccountAccess')}</Button>
               ) : null}
             </Stack>
             {(() => {
@@ -1407,8 +1391,8 @@ export default function RoleRoomAgentDialog({
               const googleOk = connStatus.google.connected && connStatus.manages?.gscError !== 'needs_reauth';
               const metaOk = connStatus.meta.connected && connStatus.meta.verified;
               const missing: string[] = [];
-              if (!googleOk) missing.push(connStatus.google.connected ? 'Google trenger ny innlogging' : 'Google-kobling');
-              if (!metaOk) missing.push(connStatus.meta.connected ? 'Meta-verifisering' : 'Meta-kobling');
+              if (!googleOk) missing.push(connStatus.google.connected ? t('agentDlg.missing.googleReauth') : t('agentDlg.missing.googleConn'));
+              if (!metaOk) missing.push(connStatus.meta.connected ? t('agentDlg.missing.metaVerify') : t('agentDlg.missing.metaConn'));
               if (missing.length === 0) {
                 return (
                   <Stack
@@ -1425,12 +1409,8 @@ export default function RoleRoomAgentDialog({
                       bgcolor: 'rgba(15,118,110,0.14)',
                     }}
                   >
-                    <Typography sx={{ color: '#bbf7d0', fontWeight: 800, fontSize: '0.82rem' }}>
-                      Alle koblinger registrert ✓
-                    </Typography>
-                    <Typography sx={{ color: 'rgba(204,251,241,0.78)', fontSize: '0.76rem', flex: 1, minWidth: 200 }}>
-                      Agenten kan nå bygge hele synlighetsstrategien på ekte data: eventoppsett, søk/innhold, GEO/AI-synlighet, kanalplan og Google Ads — holdt innenfor budsjett, påslag og kontrakt.
-                    </Typography>
+                    <Typography sx={{ color: '#bbf7d0', fontWeight: 800, fontSize: '0.82rem' }}>{t('agentDlg.strat.allConnected')}</Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.78)', fontSize: '0.76rem', flex: 1, minWidth: 200 }}>{t('agentDlg.strat.blurb')}</Typography>
                     {/* Synlig budsjettvakt: klientens FAKTISKE tak fra Økonomi,
                         faktisk forbruk og gjenstående ramme — før generering. */}
                     {economyCtx ? (
@@ -1438,9 +1418,9 @@ export default function RoleRoomAgentDialog({
                         size="small"
                         label={economyCtx.budget
                           ? (economyCtx.budget.isOverBudget
-                            ? `Budsjett brukt opp (${Number(economyCtx.budget.effectiveCapNok).toLocaleString('nb-NO')} kr) — ingen ny Ads`
-                            : `Ads-ramme igjen: ${Math.max(0, Number(economyCtx.budget.remainingNok)).toLocaleString('nb-NO')} kr av ${Number(economyCtx.budget.effectiveCapNok).toLocaleString('nb-NO')} kr`)
-                          : 'Ingen budsjett satt i Økonomi'}
+                            ? t('agentDlg.budget.usedUp', { cap: Number(economyCtx.budget.effectiveCapNok).toLocaleString('nb-NO') })
+                            : t('agentDlg.budget.remaining', { remaining: Math.max(0, Number(economyCtx.budget.remainingNok)).toLocaleString('nb-NO'), cap: Number(economyCtx.budget.effectiveCapNok).toLocaleString('nb-NO') }))
+                          : t('agentDlg.budget.none')}
                         sx={{
                           bgcolor: !economyCtx.budget
                             ? 'rgba(148,163,184,0.16)'
@@ -1468,14 +1448,14 @@ export default function RoleRoomAgentDialog({
                       onClick={() => { void runVisibilityStrategy(); }}
                       sx={{ textTransform: 'none', fontWeight: 800, minHeight: 34 }}
                     >
-                      {visibilityStrategyBusy ? 'Samler data…' : 'Lag synlighetsstrategi'}
+                      {visibilityStrategyBusy ? t('agentDlg.btn.gathering') : t('agentDlg.btn.buildStrategy')}
                     </Button>
                   </Stack>
                 );
               }
               return (
                 <Typography sx={{ color: 'rgba(148,163,184,0.75)', fontSize: '0.73rem', mt: 0.6 }}>
-                  {`Synlighetsstrategien låses opp når alle koblinger er registrert — mangler: ${missing.join(', ')}.`}
+                  {t('agentDlg.strat.locked', { missing: missing.join(', ') })}
                 </Typography>
               );
             })()}
@@ -1521,7 +1501,7 @@ export default function RoleRoomAgentDialog({
                   projectId,
                 );
                 if (result !== null) return result;
-                return 'Denne handlingen bekreftes i prosjekt-arbeidsflaten (dashbordet), ikke her.';
+                return t('agentDlg.chat.confirmElsewhere');
               }}
             />
           </Box>
@@ -1597,12 +1577,10 @@ export default function RoleRoomAgentDialog({
             }}
           >
             <Stack spacing={1.2}>
-              <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1rem', md: '1.1rem' } }}>
-                Lim inn kundens nettside — så finner jeg ut resten
-              </Typography>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: { xs: '1rem', md: '1.1rem' } }}>{t('agentDlg.form.pasteWebsite')}</Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
                 <TextField
-                  label="Kundens nettside"
+                  label={t('agentDlg.form.websiteLabel')}
                   value={websiteUrl}
                   onChange={(event) => setWebsiteUrl(event.target.value)}
                   fullWidth
@@ -1631,7 +1609,7 @@ export default function RoleRoomAgentDialog({
                     background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
                   }}
                 >
-                  {generating ? 'Finner ut…' : 'Finn ut alt om kunden'}
+                  {generating ? t('agentDlg.btn.findingOut') : t('agentDlg.btn.findOut')}
                 </Button>
               </Stack>
               <Button
@@ -1640,12 +1618,12 @@ export default function RoleRoomAgentDialog({
                 onClick={() => setShowMoreResearchDetails((v) => !v)}
                 sx={{ alignSelf: 'flex-start', textTransform: 'none', color: 'rgba(226,232,240,0.7)' }}
               >
-                {showMoreResearchDetails ? 'Skjul flere detaljer' : 'Flere detaljer (valgfritt)'}
+                {showMoreResearchDetails ? t('agentDlg.btn.hideMore') : t('agentDlg.btn.moreDetails')}
               </Button>
               <Collapse in={showMoreResearchDetails}>
                 <Stack spacing={1.1} sx={{ pt: 0.4 }}>
                   <TextField
-                    label="Organisasjonsnummer (valgfritt)"
+                    label={t('agentDlg.form.orgNumber')}
                     value={organizationNumber}
                     onChange={(event) => setOrganizationNumber(event.target.value)}
                     fullWidth
@@ -1653,7 +1631,7 @@ export default function RoleRoomAgentDialog({
                     InputLabelProps={{ shrink: true }}
                   />
                   <TextField
-                    label="Firmanavn (valgfritt)"
+                    label={t('agentDlg.form.companyName')}
                     value={companyName}
                     onChange={(event) => setCompanyName(event.target.value)}
                     fullWidth
@@ -1661,13 +1639,13 @@ export default function RoleRoomAgentDialog({
                     InputLabelProps={{ shrink: true }}
                   />
                   <TextField
-                    label="Noe spesielt jeg bør vite? (valgfritt)"
+                    label={t('agentDlg.form.extraContext')}
                     value={extraContext}
                     onChange={(event) => setExtraContext(event.target.value)}
                     fullWidth
                     multiline
                     minRows={3}
-                    placeholder="F.eks. kampanjemål, målgruppe eller leveranser du vil at jeg skal ta hensyn til."
+                    placeholder={t('agentDlg.form.extraPlaceholder')}
                     InputLabelProps={{ shrink: true }}
                   />
                 </Stack>
@@ -1695,10 +1673,8 @@ export default function RoleRoomAgentDialog({
               <Stack direction="row" spacing={1.2} alignItems="center">
                 <CircularProgress size={22} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
                 <Box>
-                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Jeg jobber…</Typography>
-                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.84rem' }}>
-                    Leser nettsiden, sjekker offentlige registre og finner sosiale kontoer. Dette tar vanligvis et halvt minutt.
-                  </Typography>
+                  <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>{t('agentDlg.working.title')}</Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.84rem' }}>{t('agentDlg.working.body')}</Typography>
                 </Box>
               </Stack>
             </Box>
@@ -1706,17 +1682,15 @@ export default function RoleRoomAgentDialog({
 
           {/* Empty state: nothing analysed yet — a warm pointer, not a blank gap. */}
           {!result && !generating ? (
-            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.86rem', textAlign: 'center', py: 1 }}>
-              Lim inn en nettside over og klikk «Finn ut alt om kunden» — så dukker forslagene opp her.
-            </Typography>
+            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.86rem', textAlign: 'center', py: 1 }}>{t('agentDlg.empty.pointer')}</Typography>
           ) : null}
 
           {result ? (
             <Stack spacing={1.2}>
               <Alert severity={brregVerified ? 'success' : 'info'}>
                 {brregVerified
-                  ? `Bekreftet i offentlige registre. Klar til å lagre ${result.companyProfile.companyName} som prosjekt — klikk «Bruk forslag» nederst.`
-                  : brregCompany?.statusMessage || 'Utkastet er klart. (Ikke bekreftet mot offentlige registre for denne kunden.)'}
+                  ? t('agentDlg.result.verified', { name: result.companyProfile.companyName })
+                  : brregCompany?.statusMessage || t('agentDlg.result.draftReady')}
               </Alert>
 
               {/* Multi-turn refinement: user tells the agent "actually X" and
@@ -1732,20 +1706,14 @@ export default function RoleRoomAgentDialog({
                 }}
               >
                 <Stack spacing={0.85}>
-                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>
-                    Be om en endring
-                  </Typography>
-                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                    Ikke helt treff? Fortell agenten hva som er feil, så genererer den på nytt
-                    med den korreksjonen som nyeste signal. Eksempler: «Vi er B2B, ikke B2C»,
-                    «Fjern fokus på lokalt event», «Tone of voice skal være humoristisk».
-                  </Typography>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem' }}>{t('agentDlg.refine.title')}</Typography>
+                  <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.82rem', lineHeight: 1.5 }}>{t('agentDlg.refine.body')}</Typography>
                   {refinementHistory.length > 0 ? (
                     <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                       {refinementHistory.map((entry, index) => (
                         <Chip
                           key={`rr-refinement-${index}`}
-                          label={`Runde ${index + 1}: ${entry.length > 60 ? `${entry.slice(0, 60)}…` : entry}`}
+                          label={t('agentDlg.refine.round', { n: index + 1, text: entry.length > 60 ? `${entry.slice(0, 60)}…` : entry })}
                           size="small"
                           sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#a5f3fc', maxWidth: '100%' }}
                         />
@@ -1762,7 +1730,7 @@ export default function RoleRoomAgentDialog({
                           submitRefinement();
                         }
                       }}
-                      placeholder="Hva bør agenten endre i utkastet?"
+                      placeholder={t('agentDlg.refine.placeholder')}
                       size="small"
                       multiline
                       minRows={2}
@@ -1788,7 +1756,7 @@ export default function RoleRoomAgentDialog({
                         '&:hover': { bgcolor: 'rgba(34,211,238,1)' },
                       }}
                     >
-                      {generating ? 'Endrer…' : 'Send endring'}
+                      {generating ? t('agentDlg.btn.changing') : t('agentDlg.btn.sendChange')}
                     </Button>
                   </Stack>
                 </Stack>
@@ -1813,9 +1781,7 @@ export default function RoleRoomAgentDialog({
                     letterSpacing: '0.08em',
                     mb: 0.6,
                   }}
-                >
-                  Sammendrag
-                </Typography>
+                >{t('agentDlg.summary.title')}</Typography>
                 <Typography sx={{ color: '#e2e8f0', lineHeight: 1.6 }}>
                   {result.companyProfile.summary}
                 </Typography>
@@ -1827,10 +1793,10 @@ export default function RoleRoomAgentDialog({
                     <Chip size="small" label={result.companyAge.label} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#bbf7d0' }} />
                   ) : null}
                   {socialProfileCandidates.length > 0 ? (
-                    <Chip size="small" label={`${socialProfileCandidates.length} sosiale kontoer`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
+                    <Chip size="small" label={t('agentDlg.summary.socialCount', { n: socialProfileCandidates.length })} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#bfdbfe' }} />
                   ) : null}
                   {competitorAnalysis?.competitors?.length ? (
-                    <Chip size="small" label={`${competitorAnalysis.competitors.length} konkurrenter`} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#f0abfc' }} />
+                    <Chip size="small" label={t('agentDlg.summary.competitorCount', { n: competitorAnalysis.competitors.length })} sx={{ bgcolor: 'rgba(168,85,247,0.16)', color: '#f0abfc' }} />
                   ) : null}
                 </Stack>
                 {(() => {
@@ -1839,9 +1805,7 @@ export default function RoleRoomAgentDialog({
                     : localPresencePlan?.recommendedEventConcepts ?? []).slice(0, 3);
                   return recs.length > 0 ? (
                     <Box sx={{ mt: 1.2 }}>
-                      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontWeight: 700, fontSize: '0.72rem', mb: 0.4 }}>
-                        Anbefalte neste steg
-                      </Typography>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontWeight: 700, fontSize: '0.72rem', mb: 0.4 }}>{t('agentDlg.summary.nextSteps')}</Typography>
                       <Stack component="ol" spacing={0.4} sx={{ m: 0, pl: 2.2 }}>
                         {recs.map((r, i) => (
                           <Typography key={i} component="li" sx={{ color: '#e2e8f0', fontSize: '0.86rem', lineHeight: 1.5 }}>
@@ -1859,14 +1823,14 @@ export default function RoleRoomAgentDialog({
                 flexWrap="wrap"
                 useFlexGap
                 role="tablist"
-                aria-label="Research-seksjoner"
+                aria-label={t('agentDlg.section.aria')}
                 sx={{ mb: 0.2 }}
               >
                 {([
-                  ['alle', 'Alle'],
-                  ['oversikt', 'Oversikt'],
-                  ['kanaler', 'Kanaler'],
-                  ['marked', 'Marked'],
+                  ['alle', t('agentDlg.section.all')],
+                  ['oversikt', t('agentDlg.section.overview')],
+                  ['kanaler', t('agentDlg.section.channels')],
+                  ['marked', t('agentDlg.section.market')],
                 ] as const).map(([key, label]) => {
                   const selected = researchSection === key;
                   return (
@@ -1905,7 +1869,7 @@ export default function RoleRoomAgentDialog({
                 >
                   <Stack spacing={0.9}>
                     <Stack direction="row" spacing={0.9} alignItems="center" justifyContent="space-between">
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Om kunden</Typography>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.about.title')}</Typography>
                       <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap justifyContent="flex-end">
                         {providerLabel ? (
                           <Chip label={providerLabel} size="small" sx={{ bgcolor: 'rgba(34,211,238,0.12)', color: '#a5f3fc' }} />
@@ -1926,22 +1890,20 @@ export default function RoleRoomAgentDialog({
                         <Chip icon={<LanguageIcon sx={{ fontSize: '1rem !important' }} />} label={result.companyProfile.websiteUrl} size="small" />
                       ) : null}
                       {result.companyProfile.organizationNumber ? (
-                        <Chip label={`Org.nr ${result.companyProfile.organizationNumber}`} size="small" />
+                        <Chip label={t('agentDlg.chip.orgNr', { n: result.companyProfile.organizationNumber })} size="small" />
                       ) : null}
                       {brregStatusLabel ? (
                         <Chip label={brregStatusLabel} size="small" sx={{ bgcolor: brregVerified ? 'rgba(16,185,129,0.14)' : 'rgba(250,204,21,0.14)', color: brregVerified ? '#a7f3d0' : '#fde68a' }} />
                       ) : null}
                     </Stack>
                     {renderClassificationChips([
-                      `Bransje: ${result.companyProfile.industry}`,
-                      `Underbransje: ${result.companyProfile.subIndustry}`,
-                      `Modell: ${result.companyProfile.businessModel}`,
+                      t('agentDlg.cls.industry', { v: result.companyProfile.industry }),
+                      t('agentDlg.cls.subIndustry', { v: result.companyProfile.subIndustry }),
+                      t('agentDlg.cls.model', { v: result.companyProfile.businessModel }),
                     ])}
                     {result.companyProfile.businessModel ? (
                       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.25 }}>
-                        <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.72rem' }}>
-                          Rett modell hvis feil:
-                        </Typography>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.72rem' }}>{t('agentDlg.about.fixModel')}</Typography>
                         {['B2C', 'B2B', 'B2B/B2C'].map((model) => {
                           const selected = businessModelChoice === model;
                           return (
@@ -1964,10 +1926,8 @@ export default function RoleRoomAgentDialog({
                       </Stack>
                     ) : null}
                     <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
-                    <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-                      Tilbud og målgruppe
-                    </Typography>
-                    {renderList([...result.companyProfile.offerings, ...result.companyProfile.targetAudience.map((entry) => `Målgruppe: ${entry}`)])}
+                    <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{t('agentDlg.about.offerAudience')}</Typography>
+                    {renderList([...result.companyProfile.offerings, ...result.companyProfile.targetAudience.map((entry) => t('agentDlg.cls.audience', { v: entry }))])}
                   </Stack>
                 </Box>
 
@@ -1981,21 +1941,19 @@ export default function RoleRoomAgentDialog({
                   }}
                 >
                   <Stack spacing={0.9}>
-                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Branding og brief</Typography>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.branding.title')}</Typography>
                     <Typography sx={{ color: 'rgba(226,232,240,0.84)', lineHeight: 1.6 }}>
                       {result.intakeDraft.keyMessage}
                     </Typography>
-                    <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-                      Tone og brand-signaler
-                    </Typography>
+                    <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{t('agentDlg.branding.tone')}</Typography>
                     {renderList(result.companyProfile.toneAndBrandSignals)}
                     {renderClassificationChips([
-                      `Innholdskategori: ${result.companyProfile.contentCategory}`,
-                      `Produksjonsgrep: ${result.companyProfile.productionApproach}`,
+                      t('agentDlg.cls.contentCategory', { v: result.companyProfile.contentCategory }),
+                      t('agentDlg.cls.productionApproach', { v: result.companyProfile.productionApproach }),
                     ])}
                     {result.planningDraft.brandGuide.logoUrl ? (
                       <Typography sx={{ color: '#94a3b8', fontSize: '0.82rem' }}>
-                        Logo funnet: {result.planningDraft.brandGuide.logoUrl}
+                        {t('agentDlg.branding.logoFound', { url: result.planningDraft.brandGuide.logoUrl })}
                       </Typography>
                     ) : null}
                   </Stack>
@@ -2015,27 +1973,25 @@ export default function RoleRoomAgentDialog({
                   >
                     <Stack spacing={0.85}>
                       <Stack direction="row" spacing={0.8} alignItems="center" justifyContent="space-between">
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Brreg og selskapsstatus</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.brreg.title')}</Typography>
                         {result.companyAge?.label ? (
                           <Chip size="small" label={result.companyAge.label} sx={{ bgcolor: 'rgba(16,185,129,0.16)', color: '#bbf7d0' }} />
                         ) : null}
                       </Stack>
                       {renderClassificationChips([
-                        brregCompany?.organizationForm?.description ? `Form: ${brregCompany.organizationForm.description}` : null,
-                        brregCompany?.industryCode?.description ? `Næring: ${brregCompany.industryCode.description}` : null,
-                        brregCompany?.vatRegistered === true ? 'MVA-registrert' : brregCompany?.vatRegistered === false ? 'Ikke MVA-registrert' : null,
-                        typeof brregCompany?.employeeCount === 'number' ? `${brregCompany.employeeCount} ansatte` : null,
-                        brregCompany?.registrationDate ? `Registrert: ${formatNorwegianDate(brregCompany.registrationDate)}` : null,
+                        brregCompany?.organizationForm?.description ? t('agentDlg.cls.form', { v: brregCompany.organizationForm.description }) : null,
+                        brregCompany?.industryCode?.description ? t('agentDlg.cls.nace', { v: brregCompany.industryCode.description }) : null,
+                        brregCompany?.vatRegistered === true ? t('agentDlg.brreg.vatYes') : brregCompany?.vatRegistered === false ? t('agentDlg.brreg.vatNo') : null,
+                        typeof brregCompany?.employeeCount === 'number' ? t('agentDlg.cls.employees', { n: brregCompany.employeeCount }) : null,
+                        brregCompany?.registrationDate ? t('agentDlg.cls.registered', { date: formatNorwegianDate(brregCompany.registrationDate) ?? '' }) : null,
                       ])}
                       {brregCompany?.businessAddress ? (
                         <Typography sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.9rem' }}>
-                          Adresse: {brregCompany.businessAddress}
+                          {t('agentDlg.cls.address', { v: brregCompany.businessAddress })}
                         </Typography>
                       ) : null}
                       {brregCompany?.statusFlags && Object.values(brregCompany.statusFlags).some(Boolean) ? (
-                        <Alert severity="warning">
-                          Brreg viser statusflagg på kunden. Kontroller dette manuelt før avtale sendes.
-                        </Alert>
+                        <Alert severity="warning">{t('agentDlg.brreg.statusFlags')}</Alert>
                       ) : null}
                     </Stack>
                   </Box>
@@ -2050,7 +2006,7 @@ export default function RoleRoomAgentDialog({
                     }}
                   >
                     <Stack spacing={0.85}>
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Avtaleforslag</Typography>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.agreement.title')}</Typography>
                       {agreementSuggestions.length > 0 ? (
                         <Stack spacing={0.8}>
                           {agreementSuggestions.map((suggestion) => (
@@ -2058,7 +2014,7 @@ export default function RoleRoomAgentDialog({
                               <Stack direction="row" spacing={0.7} alignItems="center" sx={{ mb: 0.4 }}>
                                 <Chip
                                   size="small"
-                                  label={suggestion.priority === 'critical' ? 'Kritisk' : suggestion.priority === 'recommended' ? 'Anbefalt' : 'Standard'}
+                                  label={suggestion.priority === 'critical' ? t('agentDlg.agreement.critical') : suggestion.priority === 'recommended' ? t('agentDlg.agreement.recommended') : t('agentDlg.agreement.standard')}
                                   sx={{
                                     bgcolor: suggestion.priority === 'critical' ? 'rgba(248,113,113,0.18)' : suggestion.priority === 'recommended' ? 'rgba(250,204,21,0.16)' : 'rgba(59,130,246,0.14)',
                                     color: suggestion.priority === 'critical' ? '#fecaca' : suggestion.priority === 'recommended' ? '#fde68a' : '#bfdbfe',
@@ -2071,9 +2027,7 @@ export default function RoleRoomAgentDialog({
                           ))}
                         </Stack>
                       ) : (
-                        <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.9rem' }}>
-                          Ingen egne avtaleforslag for denne analysen.
-                        </Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.9rem' }}>{t('agentDlg.agreement.none')}</Typography>
                       )}
                     </Stack>
                   </Box>
@@ -2093,21 +2047,19 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Sosiale kontoer funnet</Typography>
-                        <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>
-                          Kontoene er forslag basert på kundens nettside og strukturert data. Bekreft før publisering eller tilgangsforespørsel.
-                        </Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('agentDlg.social.found')}</Typography>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>{t('agentDlg.social.blurb')}</Typography>
                       </Box>
                       <Stack direction="row" spacing={0.8} alignItems="center">
                         <Chip
                           size="small"
-                          label={`${usableSocialProfileCandidates.length}/${socialProfileCandidates.length} klare for bruk`}
+                          label={t('agentDlg.social.readyCount', { shown: usableSocialProfileCandidates.length, total: socialProfileCandidates.length })}
                           sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }}
                         />
                         <Button size="small" variant="outlined" disabled={socialRefreshBusy}
                           onClick={() => void refreshSocialCandidates()}
                           sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem' }}>
-                          {socialRefreshBusy ? 'Skanner…' : 'Oppdater fra nettsiden'}
+                          {socialRefreshBusy ? t('agentDlg.btn.scanning') : t('agentDlg.btn.refreshFromSite')}
                         </Button>
                       </Stack>
                     </Stack>
@@ -2156,9 +2108,7 @@ export default function RoleRoomAgentDialog({
                                 size="small"
                                 variant="outlined"
                                 sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem' }}
-                              >
-                                Åpne konto
-                              </Button>
+                              >{t('agentDlg.btn.openAccount')}</Button>
                               {(() => {
                                 const accessPlatform = toAccessRequestPlatform(profile.platform);
                                 if (!accessPlatform) return null;
@@ -2181,9 +2131,7 @@ export default function RoleRoomAgentDialog({
                                       color: '#93c5fd',
                                       borderColor: 'rgba(59,130,246,0.4)',
                                     }}
-                                  >
-                                    Be kunden om tilgang
-                                  </Button>
+                                  >{t('agentDlg.btn.requestAccess')}</Button>
                                 );
                               })()}
                             </Stack>
@@ -2194,9 +2142,7 @@ export default function RoleRoomAgentDialog({
                   </Stack>
                 </Box>
               ) : result ? (
-                <Alert severity="info">
-                  Ingen offisielle sosiale kontoer ble funnet på kundens nettside. Be kunden bekrefte riktige kanaler før de legges inn i prosjektet.
-                </Alert>
+                <Alert severity="info">{t('agentDlg.social.none')}</Alert>
               ) : null}
 
               {/* Site-audit (doc 14 F1): hva kundens nettsted allerede har av
@@ -2216,19 +2162,14 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Box>
                       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
-                          Nettsted-oppsett — analytics & GEO
-                        </Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('agentDlg.audit.title')}</Typography>
                         {result.siteSetupAudit?.techStack && result.siteSetupAudit.techStack.key !== 'unknown' && (
                           <Chip size="small"
-                            label={`Bygget med: ${result.siteSetupAudit.techStack.label}`}
+                            label={t('agentDlg.audit.builtWith', { v: result.siteSetupAudit.techStack.label })}
                             sx={{ bgcolor: 'rgba(96,165,250,0.16)', color: '#93c5fd', fontWeight: 700, fontSize: '0.7rem' }} />
                         )}
                       </Stack>
-                      <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>
-                        Skannet direkte fra kundens nettside. «Ikke observerbart» kan bety
-                        korrekt samtykke-gating — det er ikke det samme som at det mangler.
-                      </Typography>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem' }}>{t('agentDlg.audit.blurb')}</Typography>
                     </Box>
                     {(() => {
                       const ga4Cap = result.siteSetupAudit?.capabilities.find((c) => c.key === 'ga4');
@@ -2238,11 +2179,9 @@ export default function RoleRoomAgentDialog({
                           <Button size="small" variant="outlined" disabled={ga4SetupBusy}
                             onClick={() => void runGa4ApiSetup(result.siteSetupAudit!.url)}
                             sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#bbf7d0', borderColor: 'rgba(16,185,129,0.4)' }}>
-                            {ga4SetupBusy ? 'Setter opp GA4…' : 'Sett opp GA4 automatisk (via Google-koblingen)'}
+                            {ga4SetupBusy ? t('agentDlg.btn.ga4Busy') : t('agentDlg.btn.ga4Setup')}
                           </Button>
-                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
-                            Oppretter property/målestrøm via API — ingen passord, kun eksisterende Google-tilgang.
-                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>{t('agentDlg.audit.ga4Hint')}</Typography>
                         </Stack>
                       );
                     })()}
@@ -2250,9 +2189,7 @@ export default function RoleRoomAgentDialog({
                       <Alert severity={ga4SetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}
                         action={ga4SetupOutcome.needsAccess && onOpenAccountAccess ? (
                           <Button size="small" color="inherit" onClick={onOpenAccountAccess}
-                            sx={{ textTransform: 'none', fontWeight: 700 }}>
-                            Åpne Kontotilgang
-                          </Button>
+                            sx={{ textTransform: 'none', fontWeight: 700 }}>{t('agentDlg.conn.openAccountAccess')}</Button>
                         ) : undefined}>
                         {ga4SetupOutcome.text}
                       </Alert>
@@ -2265,11 +2202,9 @@ export default function RoleRoomAgentDialog({
                           <Button size="small" variant="outlined" disabled={gscSetupBusy}
                             onClick={() => void runGscApiSetup(result.siteSetupAudit!.url)}
                             sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#bfdbfe', borderColor: 'rgba(59,130,246,0.4)' }}>
-                            {gscSetupBusy ? 'Setter opp GSC…' : 'Verifiser i Search Console + meld inn sitemap (via API)'}
+                            {gscSetupBusy ? t('agentDlg.btn.gscBusy') : t('agentDlg.btn.gscSetup')}
                           </Button>
-                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
-                            To-fase hvis domenet ikke er verifisert: du får metataggen først.
-                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>{t('agentDlg.audit.gscHint')}</Typography>
                         </Stack>
                       );
                     })()}
@@ -2277,9 +2212,7 @@ export default function RoleRoomAgentDialog({
                       <Alert severity={gscSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}
                         action={gscSetupOutcome.needsAccess && onOpenAccountAccess ? (
                           <Button size="small" color="inherit" onClick={onOpenAccountAccess}
-                            sx={{ textTransform: 'none', fontWeight: 700 }}>
-                            Åpne Kontotilgang
-                          </Button>
+                            sx={{ textTransform: 'none', fontWeight: 700 }}>{t('agentDlg.conn.openAccountAccess')}</Button>
                         ) : undefined}>
                         {gscSetupOutcome.text}
                         {gscSetupOutcome.metaTag ? (
@@ -2297,11 +2230,9 @@ export default function RoleRoomAgentDialog({
                           <Button size="small" variant="outlined" disabled={pixelSetupBusy}
                             onClick={() => void runMetaPixelApiSetup(result.siteSetupAudit!.url)}
                             sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#f0abfc', borderColor: 'rgba(168,85,247,0.4)' }}>
-                            {pixelSetupBusy ? 'Setter opp pixel…' : 'Opprett Meta Pixel (via Meta-koblingen)'}
+                            {pixelSetupBusy ? t('agentDlg.btn.pixelBusy') : t('agentDlg.btn.pixelSetup')}
                           </Button>
-                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
-                            Kobles, aktiveres ikke — annonser er en separat beslutning.
-                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>{t('agentDlg.audit.pixelHint')}</Typography>
                         </Stack>
                       );
                     })()}
@@ -2309,9 +2240,7 @@ export default function RoleRoomAgentDialog({
                       <Alert severity={pixelSetupOutcome.ok ? 'success' : 'warning'} sx={{ py: 0.25 }}
                         action={pixelSetupOutcome.needsAccess && onOpenAccountAccess ? (
                           <Button size="small" color="inherit" onClick={onOpenAccountAccess}
-                            sx={{ textTransform: 'none', fontWeight: 700 }}>
-                            Åpne Kontotilgang
-                          </Button>
+                            sx={{ textTransform: 'none', fontWeight: 700 }}>{t('agentDlg.conn.openAccountAccess')}</Button>
                         ) : undefined}>
                         {pixelSetupOutcome.text}
                       </Alert>
@@ -2319,12 +2248,12 @@ export default function RoleRoomAgentDialog({
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.9} flexWrap="wrap" useFlexGap>
                       {result.siteSetupAudit.capabilities.map((cap) => {
                         const capStyle = cap.status === 'implemented'
-                          ? { fg: '#bbf7d0', bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.26)', label: 'På plass' }
+                          ? { fg: '#bbf7d0', bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.26)', label: t('agentDlg.cap.inPlace') }
                           : cap.status === 'partial'
-                            ? { fg: '#fde68a', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)', label: 'Delvis' }
+                            ? { fg: '#fde68a', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)', label: t('agentDlg.cap.partial') }
                             : cap.status === 'missing'
-                              ? { fg: '#fecaca', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)', label: 'Mangler' }
-                              : { fg: 'rgba(226,232,240,0.7)', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.2)', label: 'Ikke observerbart' };
+                              ? { fg: '#fecaca', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)', label: t('agentDlg.cap.missing') }
+                              : { fg: 'rgba(226,232,240,0.7)', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.2)', label: t('agentDlg.cap.notObservable') };
                         return (
                           <Box
                             key={cap.key}
@@ -2373,11 +2302,9 @@ export default function RoleRoomAgentDialog({
                               if (domain) void fetchGscInsights(domain);
                             }}
                             sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#a5f3fc', borderColor: 'rgba(34,211,238,0.4)' }}>
-                            {gscInsightsBusy ? 'Henter søkedata…' : 'Hent ekte søkedata (Search Console, 90 dager)'}
+                            {gscInsightsBusy ? t('agentDlg.btn.gscInsightsBusy') : t('agentDlg.btn.gscInsights')}
                           </Button>
-                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>
-                            Read-only — bruker Google-koblingen, aldri passord.
-                          </Typography>
+                          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem' }}>{t('agentDlg.audit.readonlyHint')}</Typography>
                         </Stack>
                         {gscInsightsError ? (
                           <Alert severity="warning" sx={{ py: 0.25 }}>{gscInsightsError}</Alert>
@@ -2385,12 +2312,10 @@ export default function RoleRoomAgentDialog({
                         {gscInsights ? (
                           <Box sx={{ p: 0.9, borderRadius: 2.2, border: '1px solid rgba(34,211,238,0.2)', bgcolor: 'rgba(15,23,42,0.52)' }}>
                             <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.84rem', mb: 0.4 }}>
-                              {`Topp-søk for ${gscInsights.siteUrl.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')} (${gscInsights.period.from} – ${gscInsights.period.to})`}
+                              {t('agentDlg.gsc.topSearches', { site: gscInsights.siteUrl.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, ''), from: gscInsights.period.from, to: gscInsights.period.to })}
                             </Typography>
                             {gscInsights.rows.length === 0 ? (
-                              <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.78rem' }}>
-                                Ingen søkedata registrert i perioden — siten er i Search Console, men har lite/ingen trafikk ennå.
-                              </Typography>
+                              <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.78rem' }}>{t('agentDlg.gsc.noData')}</Typography>
                             ) : (
                               <>
                                 <Stack spacing={0.25} sx={{ mb: 0.6 }}>
@@ -2400,7 +2325,7 @@ export default function RoleRoomAgentDialog({
                                         {row.query}
                                       </Typography>
                                       <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums' }}>
-                                        {`${row.clicks} klikk · ${row.impressions} visn. · pos. ${row.position.toFixed(1)}`}
+                                        {t('agentDlg.gsc.rowStats', { clicks: row.clicks, impressions: row.impressions, pos: row.position.toFixed(1) })}
                                       </Typography>
                                     </Stack>
                                   ))}
@@ -2412,9 +2337,7 @@ export default function RoleRoomAgentDialog({
                                     const block = `\n\nEkte Search Console-data for ${gscInsights.siteUrl} (${gscInsights.period.from} til ${gscInsights.period.to}) — bygg strategien på disse faktiske søkene:\n${lines.join('\n')}`;
                                     setExtraContext((current) => (current.includes('Ekte Search Console-data for') ? current : current + block));
                                   }}
-                                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.76rem' }}>
-                                  Legg inn i strategigrunnlaget
-                                </Button>
+                                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.76rem' }}>{t('agentDlg.btn.addToStrategy')}</Button>
                               </>
                             )}
                           </Box>
@@ -2446,7 +2369,7 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Hvem konkurrerer kunden mot?</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('agentDlg.comp.title')}</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
                           {competitorAnalysis.marketContext}
                         </Typography>
@@ -2454,7 +2377,7 @@ export default function RoleRoomAgentDialog({
                       <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
-                          label={`${usableCompetitors.length}/${competitorAnalysis.competitors.length} klare for vurdering`}
+                          label={t('agentDlg.comp.readyCount', { shown: usableCompetitors.length, total: competitorAnalysis.competitors.length })}
                           sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
                         />
                         {competitorSummaryLabel ? (
@@ -2490,14 +2413,14 @@ export default function RoleRoomAgentDialog({
                                   // surfaced via the dotted tooltip for users who care.
                                   label={
                                     competitor.status === 'verified'
-                                      ? 'Verifisert'
+                                      ? t('agentDlg.comp.verified')
                                       : competitor.status === 'likely'
-                                        ? 'Sannsynlig'
+                                        ? t('agentDlg.comp.likely')
                                         : competitor.status === 'needs_review'
-                                          ? 'Manuell sjekk'
-                                          : 'Avvist'
+                                          ? t('agentDlg.comp.needsReview')
+                                          : t('agentDlg.comp.rejected')
                                   }
-                                  title={`Konfidens: ${competitor.confidence}%`}
+                                  title={t('agentDlg.comp.confidence', { n: competitor.confidence })}
                                   sx={{
                                     bgcolor: competitor.status === 'verified'
                                       ? 'rgba(16,185,129,0.18)'
@@ -2516,9 +2439,9 @@ export default function RoleRoomAgentDialog({
                               {/* Single combined chip row: source + category + rating + reviews. */}
                               {renderClassificationChips([
                                 (competitor as any).source === 'brreg_nace' && (competitor as any).naceCode
-                                  ? `Brreg NACE ${(competitor as any).naceCode}`
+                                  ? t('agentDlg.comp.naceCode', { code: (competitor as any).naceCode })
                                   : (competitor as any).source === 'brreg_nace'
-                                    ? 'Brreg-bekreftet'
+                                    ? t('agentDlg.comp.brregConfirmed')
                                     : null,
                                 competitor.primaryTypeDisplayName,
                                 typeof competitor.rating === 'number' && typeof competitor.userRatingCount === 'number'
@@ -2558,7 +2481,7 @@ export default function RoleRoomAgentDialog({
                                   </Stack>
                                   <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
                                     {typeof (competitor as any).metaPage.followersCount === 'number' ? (
-                                      <Chip size="small" label={`${((competitor as any).metaPage.followersCount as number).toLocaleString('nb-NO')} følgere`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
+                                      <Chip size="small" label={t('agentDlg.chip.followers', { n: ((competitor as any).metaPage.followersCount as number).toLocaleString('nb-NO') })} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
                                     ) : null}
                                     {typeof (competitor as any).metaPage.fanCount === 'number' ? (
                                       <Chip size="small" label={`${((competitor as any).metaPage.fanCount as number).toLocaleString('nb-NO')} likes`} sx={{ bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe' }} />
@@ -2576,9 +2499,7 @@ export default function RoleRoomAgentDialog({
                               ) : null}
                               <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
                                 {competitor.websiteUrl ? (
-                                  <Button href={competitor.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
-                                    Nettside
-                                  </Button>
+                                  <Button href={competitor.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>{t('agentDlg.btn.website')}</Button>
                                 ) : null}
                                 {competitor.googleMapsUri ? (
                                   <Button href={competitor.googleMapsUri} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
@@ -2603,34 +2524,26 @@ export default function RoleRoomAgentDialog({
                         ))}
                       </Stack>
                     ) : (
-                      <Alert severity="info">
-                        Ingen verifiserbare konkurrenter ble funnet automatisk. Be kunden oppgi konkurrenter manuelt før markedsføringsvinkel låses.
-                      </Alert>
+                      <Alert severity="info">{t('agentDlg.comp.none')}</Alert>
                     )}
 
                     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1}>
                       <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Muligheter
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.comp.opportunities')}</Typography>
                         {renderList(competitorAnalysis.marketingOpportunities)}
                       </Box>
                       <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Posisjonering
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.comp.positioning')}</Typography>
                         {renderList(competitorAnalysis.positioningRecommendations)}
                       </Box>
                       <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Spør kunden
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.comp.askCustomer')}</Typography>
                         {renderList(competitorAnalysis.producerQuestions)}
                       </Box>
                     </Stack>
                     {competitorAnalysis.limitations.length > 0 ? (
                       <Typography sx={{ color: 'rgba(226,232,240,0.56)', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                        Begrensning: {competitorAnalysis.limitations[0]}
+                        {t('agentDlg.comp.limitation', { v: competitorAnalysis.limitations[0] })}
                       </Typography>
                     ) : null}
                   </Stack>
@@ -2652,14 +2565,14 @@ export default function RoleRoomAgentDialog({
                   <Stack spacing={1}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} alignItems={{ md: 'center' }} justifyContent="space-between">
                       <Box>
-                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Lokale muligheter</Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{t('agentDlg.local.title')}</Typography>
                         <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.86rem', lineHeight: 1.5 }}>
                           {localPresencePlan.industryContext} · {localPresencePlan.marketArea}
                         </Typography>
                       </Box>
                       <Chip
                         size="small"
-                        label={`${usableLocalOpportunities.length}/${localPresencePlan.nearbyOpportunities.length} lokale muligheter`}
+                        label={t('agentDlg.local.readyCount', { shown: usableLocalOpportunities.length, total: localPresencePlan.nearbyOpportunities.length })}
                         sx={{ bgcolor: 'rgba(45,212,191,0.16)', color: '#99f6e4' }}
                       />
                     </Stack>
@@ -2701,7 +2614,7 @@ export default function RoleRoomAgentDialog({
                                     {opportunity.name}
                                   </Typography>
                                   <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem' }}>
-                                    {LOCAL_OPPORTUNITY_LABELS[opportunity.type] || opportunity.type} · {opportunity.radiusKm} km radius
+                                    {(LOCAL_OPPORTUNITY_LABELS[opportunity.type] ? translate(getLang(), LOCAL_OPPORTUNITY_LABELS[opportunity.type]) : opportunity.type)} · {opportunity.radiusKm} km radius
                                   </Typography>
                                 </Box>
                                 <Chip
@@ -2717,26 +2630,22 @@ export default function RoleRoomAgentDialog({
                                 {opportunity.eventIdea}
                               </Typography>
                               <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.8rem', lineHeight: 1.45 }}>
-                                Partnerverdi: {opportunity.partnerValue}
+                                {t('agentDlg.local.partnerValue', { v: opportunity.partnerValue })}
                               </Typography>
                               {renderClassificationChips([
-                                opportunity.primaryTypeDisplayName ? `Kategori: ${opportunity.primaryTypeDisplayName}` : null,
-                                typeof opportunity.rating === 'number' ? `${opportunity.rating.toFixed(1)} stjerner` : null,
-                                opportunity.formattedAddress ? `Adresse: ${opportunity.formattedAddress}` : null,
+                                opportunity.primaryTypeDisplayName ? t('agentDlg.cls.category', { v: opportunity.primaryTypeDisplayName }) : null,
+                                typeof opportunity.rating === 'number' ? t('agentDlg.cls.stars', { n: opportunity.rating.toFixed(1) }) : null,
+                                opportunity.formattedAddress ? t('agentDlg.cls.address', { v: opportunity.formattedAddress }) : null,
                               ])}
                               <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.76rem', lineHeight: 1.45 }}>
                                 {opportunity.evidence.slice(0, 2).map((entry) => entry.label).join(' · ')}
                               </Typography>
                               <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
                                 {opportunity.websiteUrl ? (
-                                  <Button href={opportunity.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
-                                    Nettside
-                                  </Button>
+                                  <Button href={opportunity.websiteUrl} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>{t('agentDlg.btn.website')}</Button>
                                 ) : null}
                                 {opportunity.googleMapsUri ? (
-                                  <Button href={opportunity.googleMapsUri} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>
-                                    Kart
-                                  </Button>
+                                  <Button href={opportunity.googleMapsUri} target="_blank" rel="noreferrer" size="small" variant="outlined" sx={{ textTransform: 'none', fontWeight: 700 }}>{t('agentDlg.btn.map')}</Button>
                                 ) : null}
                               </Stack>
                             </Stack>
@@ -2744,22 +2653,16 @@ export default function RoleRoomAgentDialog({
                         ))}
                       </Stack>
                     ) : (
-                      <Alert severity="info">
-                        Agenten har laget eventretninger, men fant ikke verifiserbare lokale steder automatisk. Bekreft adresse eller øk radius i manuell kartgjennomgang.
-                      </Alert>
+                      <Alert severity="info">{t('agentDlg.local.noPlaces')}</Alert>
                     )}
 
                     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1}>
                       <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Eventkonsepter
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.local.eventConcepts')}</Typography>
                         {renderList(localPresencePlan.recommendedEventConcepts.slice(0, 5))}
                       </Box>
                       <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Innholdsplan
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.local.contentPlan')}</Typography>
                         {renderList(localPresencePlan.contentActivationPlan.slice(0, 5))}
                       </Box>
                       <Box sx={{ flex: 1 }}>
@@ -2784,14 +2687,14 @@ export default function RoleRoomAgentDialog({
                 >
                   <Stack spacing={0.9}>
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
-                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Google-signaler og anmeldelser</Typography>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.signals.title')}</Typography>
                       {googleReviewsLabel ? (
                         <Chip label={googleReviewsLabel} size="small" sx={{ bgcolor: 'rgba(250,204,21,0.12)', color: '#fde68a' }} />
                       ) : null}
                     </Stack>
                     {renderClassificationChips([
-                      result.businessSignals.primaryTypeDisplayName ? `Kategori: ${result.businessSignals.primaryTypeDisplayName}` : null,
-                      result.businessSignals.formattedAddress ? `Adresse: ${result.businessSignals.formattedAddress}` : null,
+                      result.businessSignals.primaryTypeDisplayName ? t('agentDlg.cls.category', { v: result.businessSignals.primaryTypeDisplayName }) : null,
+                      result.businessSignals.formattedAddress ? t('agentDlg.cls.address', { v: result.businessSignals.formattedAddress }) : null,
                     ])}
                     {result.businessSignals.reviewSummary ? (
                       <Typography sx={{ color: 'rgba(226,232,240,0.88)', lineHeight: 1.6 }}>
@@ -2801,9 +2704,7 @@ export default function RoleRoomAgentDialog({
                     {result.businessSignals.serviceSignals.length > 0 ? renderClassificationChips(result.businessSignals.serviceSignals) : null}
                     {result.businessSignals.topReviews.length > 0 ? (
                       <Box>
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Det kundene faktisk sier
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.signals.whatCustomersSay')}</Typography>
                         {renderList(result.businessSignals.topReviews.map((review) => {
                           const prefix = review.author ? `${review.author}: ` : '';
                           return `${prefix}${review.text}`;
@@ -2825,34 +2726,34 @@ export default function RoleRoomAgentDialog({
                   }}
                 >
                   <Stack spacing={0.8}>
-                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Story logikk</Typography>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.story.title')}</Typography>
                     <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>
                       {String((result.storyLogicDraft.concept as Record<string, unknown> | undefined)?.corePremise || '')}
                     </Typography>
                     {renderClassificationChips([
                       typeof storyClassification?.industry === 'string'
-                        ? `Bransje: ${storyClassification.industry}`
+                        ? t('agentDlg.cls.industry', { v: storyClassification.industry })
                         : result.planningDraft.contentLogic.industry
-                          ? `Bransje: ${result.planningDraft.contentLogic.industry}`
+                          ? t('agentDlg.cls.industry', { v: result.planningDraft.contentLogic.industry })
                           : null,
                       typeof storyClassification?.subIndustry === 'string'
-                        ? `Underbransje: ${storyClassification.subIndustry}`
+                        ? t('agentDlg.cls.subIndustry', { v: storyClassification.subIndustry })
                         : result.planningDraft.contentLogic.subIndustry
-                          ? `Underbransje: ${result.planningDraft.contentLogic.subIndustry}`
+                          ? t('agentDlg.cls.subIndustry', { v: result.planningDraft.contentLogic.subIndustry })
                           : null,
                       typeof storyClassification?.contentCategory === 'string'
-                        ? `Innhold: ${storyClassification.contentCategory}`
+                        ? t('agentDlg.cls.content', { v: storyClassification.contentCategory })
                         : result.planningDraft.contentLogic.contentCategory
-                          ? `Innhold: ${result.planningDraft.contentLogic.contentCategory}`
+                          ? t('agentDlg.cls.content', { v: result.planningDraft.contentLogic.contentCategory })
                           : null,
                       typeof storyClassification?.productionApproach === 'string'
-                        ? `Grep: ${storyClassification.productionApproach}`
+                        ? t('agentDlg.cls.approach', { v: storyClassification.productionApproach })
                         : result.planningDraft.contentLogic.productionApproach
-                          ? `Grep: ${result.planningDraft.contentLogic.productionApproach}`
+                          ? t('agentDlg.cls.approach', { v: result.planningDraft.contentLogic.productionApproach })
                           : null,
                     ])}
                     <Typography sx={{ color: 'rgba(226,232,240,0.8)', lineHeight: 1.6 }}>
-                      Hovedbudskap: {result.intakeDraft.keyMessage}
+                      {t('agentDlg.story.keyMessage', { v: result.intakeDraft.keyMessage })}
                     </Typography>
                     {contentStoryLogic ? (
                       <Box
@@ -2863,15 +2764,13 @@ export default function RoleRoomAgentDialog({
                           bgcolor: 'rgba(8,47,73,0.14)',
                         }}
                       >
-                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>
-                          Klienten bør fylle ut
-                        </Typography>
+                        <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.12em', mb: 0.8 }}>{t('agentDlg.story.clientShouldFill')}</Typography>
                         {renderList([
-                          typeof contentStoryLogic.businessObjective === 'string' ? `Forretningsmål: ${contentStoryLogic.businessObjective}` : '',
-                          typeof contentStoryLogic.audienceProblem === 'string' ? `Publikumsbehov: ${contentStoryLogic.audienceProblem}` : '',
-                          typeof contentStoryLogic.keyPromise === 'string' ? `Hovedløfte: ${contentStoryLogic.keyPromise}` : '',
-                          typeof contentStoryLogic.desiredAction === 'string' ? `Ønsket handling: ${contentStoryLogic.desiredAction}` : '',
-                          typeof contentStoryLogic.visualFocus === 'string' ? `Visuell prioritet: ${contentStoryLogic.visualFocus}` : '',
+                          typeof contentStoryLogic.businessObjective === 'string' ? t('agentDlg.cls.businessObjective', { v: contentStoryLogic.businessObjective }) : '',
+                          typeof contentStoryLogic.audienceProblem === 'string' ? t('agentDlg.cls.audienceProblem', { v: contentStoryLogic.audienceProblem }) : '',
+                          typeof contentStoryLogic.keyPromise === 'string' ? t('agentDlg.cls.keyPromise', { v: contentStoryLogic.keyPromise }) : '',
+                          typeof contentStoryLogic.desiredAction === 'string' ? t('agentDlg.cls.desiredAction', { v: contentStoryLogic.desiredAction }) : '',
+                          typeof contentStoryLogic.visualFocus === 'string' ? t('agentDlg.cls.visualFocus', { v: contentStoryLogic.visualFocus }) : '',
                         ].filter(Boolean))}
                       </Box>
                     ) : null}
@@ -2888,15 +2787,15 @@ export default function RoleRoomAgentDialog({
                   }}
                 >
                   <Stack spacing={0.8}>
-                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>Det agenten vil fylle ut</Typography>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>{t('agentDlg.story.agentWillFill')}</Typography>
                     {renderList([
-                      `Prosjektmål: ${result.intakeDraft.projectGoal}`,
-                      `Leveranser: ${result.intakeDraft.deliverables}`,
-                      `Målgruppe: ${result.intakeDraft.targetAudience}`,
-                      `Bransje: ${result.planningDraft.contentLogic.industry || result.companyProfile.industry}`,
-                      `Kategori: ${result.planningDraft.contentLogic.contentCategory || result.companyProfile.contentCategory}`,
-                      `Retning: ${String(result.planningDraft.activationPlan.direction || '')}`,
-                      `Idé: ${String(result.planningDraft.activationPlan.idea || '')}`,
+                      t('agentDlg.cls.projectGoal', { v: result.intakeDraft.projectGoal }),
+                      t('agentDlg.cls.deliverables', { v: result.intakeDraft.deliverables }),
+                      t('agentDlg.cls.audience', { v: result.intakeDraft.targetAudience }),
+                      t('agentDlg.cls.industry', { v: result.planningDraft.contentLogic.industry || result.companyProfile.industry }),
+                      t('agentDlg.cls.category', { v: result.planningDraft.contentLogic.contentCategory || result.companyProfile.contentCategory }),
+                      t('agentDlg.cls.direction', { v: String(result.planningDraft.activationPlan.direction || '') }),
+                      t('agentDlg.cls.idea', { v: String(result.planningDraft.activationPlan.idea || '') }),
                     ])}
                   </Stack>
                 </Box>
@@ -2921,9 +2820,7 @@ export default function RoleRoomAgentDialog({
           onClick={handleCloseWithGuard}
           disabled={generating || applying}
           sx={{ textTransform: 'none', alignSelf: { xs: 'center', md: 'flex-start' } }}
-        >
-          Lukk
-        </Button>
+        >{t('agentDlg.btn.close')}</Button>
         <Stack
           direction={{ xs: 'column', md: 'row' }}
           spacing={1}
@@ -2933,7 +2830,7 @@ export default function RoleRoomAgentDialog({
           <IconButton
             onClick={(event) => setMoreActionsAnchor(event.currentTarget)}
             disabled={generating || applying}
-            aria-label="Flere valg"
+            aria-label={t('agentDlg.btn.moreOptions')}
             data-testid="agent-more-actions"
             sx={{
               alignSelf: { xs: 'center', md: 'auto' },
@@ -2956,7 +2853,7 @@ export default function RoleRoomAgentDialog({
                 disabled={projectCreatedFromResult}
                 onClick={() => { setMoreActionsAnchor(null); void handleCreateProjectAndMark(); }}
               >
-                {projectCreatedFromResult ? 'Prosjekt opprettet' : 'Opprett som nytt prosjekt'}
+                {projectCreatedFromResult ? t('agentDlg.btn.projectCreated') : t('agentDlg.btn.createAsNewProject')}
               </MenuItem>
             ) : null}
             <MenuItem
@@ -2965,9 +2862,7 @@ export default function RoleRoomAgentDialog({
                 setMoreActionsAnchor(null);
                 onGenerate({ projectId, projectName, websiteUrl, organizationNumber, companyName, extraContext });
               }}
-            >
-              Analyser på nytt
-            </MenuItem>
+            >{t('agentDlg.btn.reanalyze')}</MenuItem>
           </Menu>
           <Button
             variant="contained"
@@ -2981,7 +2876,7 @@ export default function RoleRoomAgentDialog({
               background: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)',
             }}
           >
-            {applying ? 'Lagrer…' : 'Bruk forslag'}
+            {applying ? t('agentDlg.btn.saving') : t('agentDlg.btn.useSuggestions')}
           </Button>
         </Stack>
       </DialogActions>
@@ -3004,53 +2899,45 @@ export default function RoleRoomAgentDialog({
           <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
             Agent system status
           </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>
-            Hvilke eksterne tjenester agenten er koblet til akkurat nå.
-          </Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.85rem' }}>{t('agentDlg.sys.subtitle')}</Typography>
         </DialogTitle>
         <DialogContent sx={{ p: { xs: 1.4, md: 2 } }}>
           <Stack spacing={1.4}>
             {access && !access.providerConfigured ? (
               <Alert severity="warning">
-                OpenAI er ikke konfigurert i backend ennå. Agenten fungerer fortsatt, men bruker fallback-regler i stedet for ekte <strong>{access.defaultModel || 'OpenAI-modell'}</strong>.
+                {t('agentDlg.sys.openaiMissing1')}<strong>{access.defaultModel || t('agentDlg.sys.openaiModelFallback')}</strong>.
               </Alert>
             ) : null}
             {access?.providerConfigured ? (
               <Alert severity="info">
-                Agenten er satt opp mot <strong>{runtimeLabel}</strong>. Dette er standardmotoren for analyse og forslag i denne admin-testen.
+                {t('agentDlg.sys.providerSetup1')}<strong>{runtimeLabel}</strong>{t('agentDlg.sys.providerSetup2')}
               </Alert>
             ) : null}
             {access && !access.googlePlacesConfigured ? (
               <Alert severity="info">
-                Google Places/review enrichment er ikke konfigurert ennå. Agenten bruker fortsatt nettside og OpenAI, men henter ikke Google-rating, anmeldelser og stedssignaler før <strong>GOOGLE_PLACES_API_KEY</strong> er satt.
+                {t('agentDlg.sys.placesMissing1')}<strong>GOOGLE_PLACES_API_KEY</strong>{t('agentDlg.sys.envSet')}
               </Alert>
             ) : null}
             {access?.googlePlacesConfigured ? (
-              <Alert severity="success">
-                Google Places enrichment er aktiv. Agenten kan bruke rating, anmeldelser, adresse og stedssignaler i brief og story logikk.
-              </Alert>
+              <Alert severity="success">{t('agentDlg.sys.placesActive')}</Alert>
             ) : null}
             {access && !access.cohereConfigured ? (
               <Alert severity="info">
-                Cohere retrieval/rerank er ikke konfigurert ennå. Agenten fungerer fortsatt, men velger ikke automatisk de mest relevante nettsidene og reviews før <strong>COHERE_API_KEY</strong> er satt.
+                {t('agentDlg.sys.cohereMissing1')}<strong>COHERE_API_KEY</strong>{t('agentDlg.sys.envSet')}
               </Alert>
             ) : null}
             {access?.cohereConfigured ? (
               <Alert severity="success">
-                Cohere retrieval/rerank er aktiv med <strong>{access.cohereRerankModel || 'rerank-v3.5'}</strong>. Agenten bruker dette til å velge de mest relevante nettsidene og anmeldelsene før OpenAI genererer forslag.
+                {t('agentDlg.sys.cohereActive1')}<strong>{access.cohereRerankModel || 'rerank-v3.5'}</strong>{t('agentDlg.sys.cohereActive2')}
               </Alert>
             ) : null}
             {access?.brregConfigured ? (
-              <Alert severity="success">
-                Brreg-oppslag er aktivt. Agenten sjekker organisasjonsnummer eller firmanavn mot Enhetsregisteret før den lager prosjektgrunnlag.
-              </Alert>
+              <Alert severity="success">{t('agentDlg.sys.brregActive')}</Alert>
             ) : null}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 1.6 }}>
-          <Button onClick={() => setSystemStatusOpen(false)} sx={{ textTransform: 'none' }}>
-            Lukk
-          </Button>
+          <Button onClick={() => setSystemStatusOpen(false)} sx={{ textTransform: 'none' }}>{t('agentDlg.btn.close')}</Button>
         </DialogActions>
       </Dialog>
       <SocialAccessRequestDialog
@@ -3068,7 +2955,7 @@ export default function RoleRoomAgentDialog({
       <RoleRoomResearchCompleteOverlay
         result={result}
         projectId={projectId}
-        primaryActionLabel="Til Marketing Plan"
+        primaryActionLabel={t('agentDlg.overlay.toMarketingPlan')}
         onPrimaryAction={() => setActiveTab('marketing-plan')}
       />
 
