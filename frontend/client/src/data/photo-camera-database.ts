@@ -72,16 +72,19 @@ const PHOTO_CATEGORY_VALUES = [
   'film',
   'action',
   'phone',
-] as const satisfies readonly PhotoCameraCategory[];
+ ] as const satisfies readonly [PhotoCameraCategory, ...PhotoCameraCategory[]];
 
 const PHOTO_PRICE_RANGE_VALUES = [
   'budget',
   'mid-range',
   'professional',
   'cinema',
-] as const satisfies readonly CameraPriceRange[];
+ ] as const satisfies readonly [CameraPriceRange, ...CameraPriceRange[]];
 
-const CAMERA_SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly CameraSource[];
+const CAMERA_SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly [
+  CameraSource,
+  ...CameraSource[],
+];
 
 const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 const isSupportedReleaseYear = (value: string): boolean => {

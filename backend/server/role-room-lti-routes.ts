@@ -11,7 +11,7 @@
  */
 
 import crypto from "crypto";
-import { Router, type NextFunction, type Request, type Response, type Router as ExpressRouter } from "express";
+import { Router, type NextFunction, type Request, type Response as ExpressResponse, type Router as ExpressRouter } from "express";
 import rateLimit from "express-rate-limit";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession, persistAuthSession } from "./auth-session-store.js";
@@ -297,7 +297,7 @@ export interface CreateLtiRouterDeps { activeSessions?: Map<string, SessionData>
 export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): ExpressRouter {
   const router = Router();
 
-  const requireAdmin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const requireAdmin = async (req: Request, res: ExpressResponse, next: NextFunction): Promise<void> => {
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
     const s = await resolveUser(pool, deps.activeSessions, bearer);
     if (!isSuperAdmin(s)) { res.status(403).json({ error: "forbidden" }); return; }
@@ -467,7 +467,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
   });
 
   // ── LMS-initiert OIDC: login-initiering ──────────────────────────────────
-  const handleLogin = async (req: Request, res: Response): Promise<void> => {
+  const handleLogin = async (req: Request, res: ExpressResponse): Promise<void> => {
     const q = { ...(req.query as Record<string, string>), ...(req.body as Record<string, string> | undefined ?? {}) };
     const iss = q.iss; const clientId = q.client_id;
     if (!iss) { res.status(400).json({ error: "missing_iss" }); return; }
@@ -684,7 +684,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
 
   // Auth = enhver innlogget sesjon (launchId er en ugjettbar UUID-kapabilitet).
   // Brukes av faglærer i en LTI-launchet vurderings-økt.
-  const requireSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const requireSession = async (req: Request, res: ExpressResponse, next: NextFunction): Promise<void> => {
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
     const s = await resolveUser(pool, deps.activeSessions, bearer);
     if (!s) { res.status(401).json({ error: "unauthorized" }); return; }

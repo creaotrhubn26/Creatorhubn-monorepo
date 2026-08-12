@@ -39,10 +39,10 @@ function getUser(
 export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps): void {
   // ─── POST /admin-room/lead-map/projects ──
   // Leadgrid-uavhengighet (Daniel 2026-08-05): prosjekter kunne før KUN
-  // opprettes i The Role Room — Leadgrid oppretter nå sine egne. Samme
-  // tabell (casting_projects) så alt nedstrøms (lead-filter, summary,
-  // RBAC, team) virker uendret; project_type 'b2b_sales' holder dem
-  // utenfor film/casting-flatene.
+  // opprettes i The Role Room — Leadgrid oppretter nå sine egne. Fra og
+  // med Fase 1 (0449_leadgrid_projects.sql) lever Leadgrid-prosjektene i
+  // sin egen tabell leadgrid_projects — isolert fra Role Room-casting.
+  // project_type 'b2b_sales' markerer dem som Leadgrid-prosjekter.
   app.post(
     "/api/admin-room/lead-map/projects",
     async (req: Request, res: Response) => {
@@ -63,7 +63,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
         const orgId = orgR.rows[0]?.organization_id ?? null;
         const projectId = `leadgrid-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
         await pool.query(
-          `INSERT INTO casting_projects
+          `INSERT INTO leadgrid_projects
              (id, organization_id, name, description, status, project_type,
               created_at, created_by, metadata)
            VALUES ($1, $2, $3, $4, 'active', 'b2b_sales', now(), $5, $6::jsonb)`,
@@ -116,7 +116,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
                       LEFT JOIN market_scans ms ON ms.id = mc.market_scan_id
                      WHERE (mc.project_id = p.id OR ms.project_id = p.id)
                   ), 0) AS competitor_count
-             FROM casting_projects p
+             FROM leadgrid_projects p
             WHERE (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
               -- Leadgrid (Lead Map) viser kun B2B/lead-orienterte prosjekttyper.
               -- film/casting-prosjekter (TROLL, feature_film, documentary)
@@ -171,10 +171,10 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
         // Prosjekt-info
         const pr = await pool.query<{
           id: string; name: string; description: string | null;
-          project_type: string | null; genre: string | null; status: string;
+          project_type: string | null; status: string;
         }>(
-          `SELECT id::text, name, description, project_type, genre, status
-             FROM casting_projects WHERE id = $1 LIMIT 1`,
+          `SELECT id::text, name, description, project_type, status
+             FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
           [projectId],
         );
         if (pr.rows.length === 0) return res.status(404).json({ error: "project_not_found" });
@@ -241,7 +241,6 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
             name: project.name,
             description: project.description,
             projectType: project.project_type,
-            genre: project.genre,
             status: project.status,
           },
           brandKit: bk.rows[0]

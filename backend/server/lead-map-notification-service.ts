@@ -218,7 +218,7 @@ export async function notifyLeadAssigned(
   }>(
     `SELECT c.name, c.address, c.city, cp.organization_id::text
        FROM crm_customers c
-       LEFT JOIN casting_projects cp ON cp.id = c.project_id
+       LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
       WHERE c.id = $1 LIMIT 1`,
     [args.leadId],
   );
@@ -256,7 +256,7 @@ export async function notifyStatusChanged(
   }>(
     `SELECT c.name, c.assigned_user_id, cp.organization_id::text
        FROM crm_customers c
-       LEFT JOIN casting_projects cp ON cp.id = c.project_id
+       LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
       WHERE c.id = $1 LIMIT 1`,
     [args.leadId],
   );
@@ -363,7 +363,7 @@ export async function notifyApproachingLead(
     `SELECT c.name, c.address, c.assigned_user_id,
             cp.organization_id::text
        FROM crm_customers c
-       LEFT JOIN casting_projects cp ON cp.id = c.project_id
+       LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
       WHERE c.id = $1 LIMIT 1`,
     [args.leadId],
   );

@@ -80,10 +80,13 @@ const VIDEO_CATEGORY_VALUES = [
   'point-and-shoot',
   'instant',
   'film',
-] as const satisfies readonly VideoCameraCategory[];
+ ] as const satisfies readonly [VideoCameraCategory, ...VideoCameraCategory[]];
 
-const PRICE_RANGE_VALUES = ['budget', 'mid-range', 'professional', 'cinema'] as const satisfies readonly CameraPriceRange[];
-const SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly CameraSource[];
+const PRICE_RANGE_VALUES = ['budget', 'mid-range', 'professional', 'cinema'] as const satisfies readonly [
+  CameraPriceRange,
+  ...CameraPriceRange[],
+];
+const SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly [CameraSource, ...CameraSource[]];
 const isSupportedReleaseYear = (value: string): boolean => {
   const year = Number.parseInt(value.slice(0, 4), 10);
   return Number.isInteger(year) && year >= 2020 && year <= 2026;

@@ -75,7 +75,7 @@ const categoryValues = [
   'on-camera-recorder',
   'camera-attached-digital-mic',
   'desktop-production-console',
-] as const satisfies readonly AudioStorageDeviceCategory[];
+ ] as const satisfies readonly [AudioStorageDeviceCategory, ...AudioStorageDeviceCategory[]];
 
 const storageMediumValues = [
   'internal-flash',
@@ -87,10 +87,16 @@ const storageMediumValues = [
   'SDXC',
   'usb-storage',
   'camera-media',
-] as const satisfies readonly AudioStorageMedium[];
+ ] as const satisfies readonly [AudioStorageMedium, ...AudioStorageMedium[]];
 
-const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly AudioStorageSource[];
-const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly DatePrecision[];
+const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly [
+  AudioStorageSource,
+  ...AudioStorageSource[],
+];
+const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly [
+  DatePrecision,
+  ...DatePrecision[],
+];
 
 const referenceSchema = z.object({
   title: z.string().min(1),

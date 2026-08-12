@@ -126,7 +126,7 @@ export function setupAdminLeadsGrowthRoutes(deps: AdminRoomRoutesDeps): void {
          FROM months
          LEFT JOIN crm_customers c
            ON c.project_id IN (
-             SELECT id FROM casting_projects WHERE organization_id::text = $2
+             SELECT id FROM leadgrid_projects WHERE organization_id::text = $2
            )
          GROUP BY months.m
          ORDER BY months.m`,
