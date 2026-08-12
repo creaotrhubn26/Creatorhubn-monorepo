@@ -271,7 +271,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
         let organizationId: string | null = null;
         if (prev.rows[0].project_id) {
           const orgRes = await pool.query<{ organization_id: string | null }>(
-            `SELECT organization_id::text FROM casting_projects WHERE id = $1`,
+            `SELECT organization_id::text FROM leadgrid_projects WHERE id = $1`,
             [prev.rows[0].project_id],
           );
           organizationId = orgRes.rows[0]?.organization_id ?? null;
@@ -371,7 +371,7 @@ export function registerLeadMapWorkloadRoutes({ app, pool, activeSessions }: Dep
           `SELECT c.id::text, c.city, c.address,
                   c.latitude, c.longitude, c.postal_code, c.municipality_code
              FROM crm_customers c
-             LEFT JOIN casting_projects cp ON cp.id = c.project_id
+             LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
             WHERE c.assigned_user_id IS NULL
               AND (cp.organization_id = $1 OR cp.organization_id IS NULL)
               AND c.lead_status NOT IN ('won', 'lost', 'do_not_contact')

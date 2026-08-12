@@ -126,7 +126,7 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
               COALESCE(sig_pos.count, 0)::int AS signals_positive_count,
               COALESCE(sig_neg.count, 0)::int AS signals_negative_count,
               last_run.started_at::text AS last_scout_at
-           FROM casting_projects cp
+           FROM leadgrid_projects cp
            LEFT JOIN LATERAL (
              SELECT id::text, name, website_url, logo_url, lead_status,
                     lead_category, ai_opportunity_score, claude_ranked_at,
@@ -169,7 +169,7 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
           `SELECT count(DISTINCT cp.id)::text AS total,
                   COALESCE(ROUND(AVG(cc.ai_opportunity_score)), 0)::text AS avg_score,
                   COALESCE(SUM(needs.count), 0)::text AS total_needs
-             FROM casting_projects cp
+             FROM leadgrid_projects cp
              LEFT JOIN LATERAL (
                SELECT ai_opportunity_score FROM crm_customers
                 WHERE project_id = cp.id

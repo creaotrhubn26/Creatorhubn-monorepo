@@ -125,7 +125,7 @@ export function registerLeadAcceptanceRoutes({ app, pool, activeSessions }: Deps
       // 1. Opprett prosjekt (Leadgrid-prosjekt for kunden)
       const projectId = `leadgrid-${lead.id.slice(0, 12)}`;
       await pool.query(
-        `INSERT INTO casting_projects (id, organization_id, name, created_at, created_by, metadata)
+        `INSERT INTO leadgrid_projects (id, organization_id, name, created_at, created_by, metadata)
          VALUES ($1, $2, $3, now(), $4, $5::jsonb)
          ON CONFLICT (id) DO NOTHING`,
         [projectId, orgId, lead.agency_name, s.userId,
