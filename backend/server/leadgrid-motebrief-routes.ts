@@ -294,7 +294,7 @@ const CACHE_TTL_MS = 6 * 3600 * 1000;
 export function registerLeadgridMotebriefRoutes(deps: {
   app: Express;
   pool: Pool;
-  requireUserSession: (req: Request, res: Response) => Promise<{ userId: string } | null>;
+  requireUserSession: (req: Request, res: Response) => { userId: string } | null | Promise<{ userId: string } | null>;
 }): void {
   const { app, pool, requireUserSession } = deps;
 

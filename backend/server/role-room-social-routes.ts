@@ -332,7 +332,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-start] failed", error);
       return res
         .status(500)
-        .json({ success: false, error: "internal_error" || "Kunne ikke starte TikTok OAuth." });
+        .json({ success: false, error: "internal_error" });
     }
   });
 
@@ -369,7 +369,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-start-client] failed", error);
       return res
         .status(500)
-        .json({ success: false, error: "internal_error" || "Kunne ikke starte TikTok OAuth." });
+        .json({ success: false, error: "internal_error" });
     }
   });
 

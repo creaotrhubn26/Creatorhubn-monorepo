@@ -63,7 +63,7 @@ export interface PhotoCamera {
   version?: number;
 }
 
-const PHOTO_CATEGORY_VALUES: PhotoCameraCategory[] = [
+const PHOTO_CATEGORY_VALUES = [
   'dslr',
   'mirrorless',
   'medium-format',
@@ -72,16 +72,16 @@ const PHOTO_CATEGORY_VALUES: PhotoCameraCategory[] = [
   'film',
   'action',
   'phone',
-];
+ ] as const satisfies readonly PhotoCameraCategory[];
 
-const PHOTO_PRICE_RANGE_VALUES: CameraPriceRange[] = [
+const PHOTO_PRICE_RANGE_VALUES = [
   'budget',
   'mid-range',
   'professional',
   'cinema',
-];
+ ] as const satisfies readonly CameraPriceRange[];
 
-const CAMERA_SOURCE_VALUES: CameraSource[] = ['manual', 'api', 'discovery', 'seed'];
+const CAMERA_SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly CameraSource[];
 
 const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 const isSupportedReleaseYear = (value: string): boolean => {

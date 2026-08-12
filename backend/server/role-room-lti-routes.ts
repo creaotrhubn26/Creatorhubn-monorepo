@@ -128,7 +128,7 @@ function assertSafeHttpsUrl(raw: string): string {
 // IKKE (redirect: "manual") — en 3xx gir res.ok=false og behandles som feil —
 // for å hindre redirect-basert SSRF forbi assertSafeHttpsUrl, som kun
 // validerer start-URLen.
-async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): Promise<Response> {
+async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): Promise<globalThis.Response> {
   assertSafeHttpsUrl(url);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);

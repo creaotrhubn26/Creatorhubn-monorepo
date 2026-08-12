@@ -1244,6 +1244,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         if (!sourceKey) { failures.push({ assetId: r.id, reason: "no_source_key" }); continue; }
         try {
           const url = await signAssetReadUrl(sourceKey);
+          if (!url) { failures.push({ assetId: r.id, reason: "read_url_failed" }); continue; }
           const resp = await fetch(url);
           if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
           const buffer = Buffer.from(await resp.arrayBuffer());
@@ -2820,7 +2821,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       const images = await Promise.all(r.rows.map(async (im: any) => ({
         id: im.id, panel: im.panel, label: im.label, category: im.category || null,
-        url: await presignRoleRoomB2Download(im.b2_key, 3600),
+        url: await presignRoleRoomB2Download(im.b2_key, undefined, 3600),
         createdAt: im.created_at,
       })));
       res.json({ images });
@@ -2847,7 +2848,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       res.status(201).json({
         id: ins.rows[0].id, panel, label, category,
-        url: await presignRoleRoomB2Download(key, 3600),
+        url: await presignRoleRoomB2Download(key, undefined, 3600),
         createdAt: ins.rows[0].created_at,
       });
     } catch (e) { console.error("POST images", e); res.status(500).json({ error: "failed" }); }

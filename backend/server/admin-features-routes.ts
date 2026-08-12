@@ -68,7 +68,7 @@ export interface AdminFeaturesRoutesDeps {
   dbCompatAdminFeatureKey: (featureId: string) => string;
   compatResolveUserId: (req: express.Request) => string;
   isRecord: (value: unknown) => value is Record<string, unknown>;
-  requireAdminSession: (req: express.Request, res: express.Response) => boolean;
+  requireAdminSession: (req: express.Request, res: express.Response) => unknown;
 }
 
 export function setupAdminFeaturesRoutes(
