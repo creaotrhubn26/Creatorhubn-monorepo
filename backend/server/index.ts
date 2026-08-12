@@ -90,7 +90,6 @@ import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketi
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
 import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
 import { registerRoleRoomMarketingActivityFeedRoutes } from "./role-room-marketing-activity-feed-routes.js";
-import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
   readAuditionReminderStatus,
@@ -474,6 +473,7 @@ import { setupNextRoleArbeidsplassenRoutes } from "./nextrole-arbeidsplassen";
 import { setupNextRolePublicCvAnalyticsRoutes } from "./nextrole-public-cv-analytics";
 import { setupNextRoleEducationVerificationRoutes } from "./nextrole-education-verification";
 import { setupNextRoleCareerMentorRoutes } from "./nextrole-career-mentor";
+import { setupNextRoleCvRoutes } from "./nextrole-cv-routes";
 import {
   setupMetaCapiRoutes,
   sendCheckoutCapiEvent,
@@ -2444,36 +2444,11 @@ app.use("/api/desktop", createDesktopAuthRouter(pool));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 
 // Role Room member profile (separat fra Creatorhub-profil) — central solution
-// for alle Role Room-medlemmer. Inkluderer onboarding-state + R2-image-upload.
-// Bruker statiske imports av aws-sdk (toppen av filen) — `require()` her
-// før genererte esbuild-bundle som kastet `Dynamic require of @aws-sdk/client-s3`
-// ved boot på Render, så hele backend feilet å starte og alle deploys
-// siden 2026-05-28 18:16 var "update_failed".
-{
-  const r2cfg = buildCmsR2Config();
-  let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
-  if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
-    const client = new S3Client({
-      region: "auto",
-      endpoint: r2cfg.endpoint,
-      credentials: {
-        accessKeyId: r2cfg.accessKeyId,
-        secretAccessKey: r2cfg.secretAccessKey,
-      },
-    });
-    const bucket = r2cfg.bucket;
-    const publicBase = r2cfg.publicUrlBase?.replace(/\/+$/, "");
-    uploadImage = async (buffer, mimeType, key) => {
-      await client.send(new PutObjectCommand({
-        Bucket: bucket, Key: key, Body: buffer,
-        ContentType: mimeType,
-        CacheControl: "public, max-age=31536000, immutable",
-      }));
-      return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
-    };
-  }
-  registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
-}
+// for alle Role Room-medlemmer. Profilbilder lastes opp til The Role Room sin
+// B2-bøtte (the-role-room-prod) via b2-archive-helper.ts — ikke R2. B2-nøklene
+// (B2_ROLE_ROOM_*) er satt på Render; signerte URL-er genereres on-demand ved
+// hver profil-lesing, så bøtta forblir privat.
+registerRoleRoomProfileRoutes(app, { pool, activeSessions, requireAdminSession });
 registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
 registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
 registerRoleRoomSeatManagementRoutes(app, { pool, activeSessions });
@@ -17329,6 +17304,7 @@ setupNextRoleArbeidsplassenRoutes({ app, getActiveSessionFromRequest });
 setupNextRolePublicCvAnalyticsRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleEducationVerificationRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleCareerMentorRoutes({ app, pool, getActiveSessionFromRequest });
+setupNextRoleCvRoutes({ app, pool, getActiveSessionFromRequest });
 setupMetaCapiRoutes({ app, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
