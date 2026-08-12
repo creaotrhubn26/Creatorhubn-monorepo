@@ -930,8 +930,10 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/chat.messages.reactions.create',
   // Publishing requires both direct uploads and full video management.
+  // Merk: Google avviser å kombinere `youtube` og `youtube.upload` i samme
+  // OAuth-request (Error 400 invalid_request). `youtube` er et superset som
+  // dekker opplasting + full videoadministrasjon, så `youtube.upload` droppes.
   'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/youtube.upload',
   // ── KPI-tracking scopes (Datakilder-fanen) ─────────────────────────
   // GA4 Data API — read-only sessions/users/conversions per property.
   'https://www.googleapis.com/auth/analytics.readonly',
