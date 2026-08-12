@@ -6,7 +6,7 @@ export interface CmsRoutesDeps {
   pool: Pool;
   ensureCmsSchema: () => Promise<void>;
   requireUserSession: (req: any, res: any) => any;
-  requireAdminSession: (req: any, res: any) => boolean;
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 export function setupCmsRoutes(deps: CmsRoutesDeps): void {
