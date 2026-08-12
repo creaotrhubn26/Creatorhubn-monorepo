@@ -73,7 +73,7 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
                   c.next_follow_up_at::text,
                   cp.organization_id::text
              FROM crm_customers c
-             LEFT JOIN casting_projects cp ON cp.id = c.project_id
+             LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
             WHERE c.assigned_user_id IS NOT NULL
               AND c.next_follow_up_at IS NOT NULL
               AND c.next_follow_up_at < NOW()

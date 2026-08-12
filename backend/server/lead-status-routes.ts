@@ -61,7 +61,7 @@ interface CustomerSnapshot {
   project_id: string | null;
 }
 
-/** Hent kunde-data + org via casting_projects-join. */
+/** Hent kunde-data + org via leadgrid_projects-join. */
 async function getCustomer(pool: Pool, id: string): Promise<CustomerSnapshot | null> {
   const r = await pool.query<CustomerSnapshot>(
     `SELECT c.id::text, c.name, c.status, c.lead_category,
@@ -69,7 +69,7 @@ async function getCustomer(pool: Pool, id: string): Promise<CustomerSnapshot | n
             c.assigned_team_leader_id, c.assigned_user_id,
             c.project_id
        FROM crm_customers c
-       LEFT JOIN casting_projects p ON p.id = c.project_id
+       LEFT JOIN leadgrid_projects p ON p.id = c.project_id
       WHERE c.id = $1`,
     [id],
   );
@@ -278,7 +278,7 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
       `WITH base AS (
          SELECT c.*
            FROM crm_customers c
-           JOIN casting_projects p ON p.id = c.project_id
+           JOIN leadgrid_projects p ON p.id = c.project_id
           WHERE p.organization_id::text = $1
             AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
                 > now() - ($2::int * INTERVAL '1 day')
@@ -297,7 +297,7 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
     const lostR = await pool.query(
       `SELECT lost_reason, COUNT(*) AS n
          FROM crm_customers c
-         JOIN casting_projects p ON p.id = c.project_id
+         JOIN leadgrid_projects p ON p.id = c.project_id
         WHERE p.organization_id::text = $1
           AND c.status = 'lost'
           AND c.lost_at > now() - ($2::int * INTERVAL '1 day')
@@ -325,7 +325,7 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
          COALESCE(SUM(c.won_recurring_oere) FILTER (WHERE c.status = 'won'
                        AND date_trunc('month', c.won_at) = months.m), 0) AS won_recurring_oere
         FROM months
-        LEFT JOIN casting_projects p ON p.organization_id::text = $1
+        LEFT JOIN leadgrid_projects p ON p.organization_id::text = $1
         LEFT JOIN crm_customers c ON c.project_id = p.id
        GROUP BY months.m
        ORDER BY months.m`,
@@ -338,7 +338,7 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
               COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
               COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
          FROM crm_customers c
-         JOIN casting_projects p ON p.id = c.project_id
+         JOIN leadgrid_projects p ON p.id = c.project_id
          LEFT JOIN users u ON u.id = c.assigned_user_id
         WHERE p.organization_id::text = $1
           AND c.assigned_user_id IS NOT NULL
@@ -361,7 +361,7 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
          COUNT(*) FILTER (WHERE c.status = 'won') AS won,
          COUNT(*) FILTER (WHERE c.status = 'lost') AS lost
         FROM crm_customers c
-        JOIN casting_projects p ON p.id = c.project_id
+        JOIN leadgrid_projects p ON p.id = c.project_id
        WHERE p.organization_id::text = $1
          AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
       [orgId, days],

@@ -504,7 +504,7 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               c.last_action_at::text, c.last_action_type,
               p.name AS project_name
          FROM crm_customers c
-         LEFT JOIN casting_projects p ON p.id = c.project_id
+         LEFT JOIN leadgrid_projects p ON p.id = c.project_id
         WHERE c.assigned_user_id = $1
            OR c.assigned_team_leader_id = $1
         ORDER BY
