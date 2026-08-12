@@ -1,0 +1,15 @@
+schema_version = "1.0.0"
+
+id = "claude_bridge"
+version = "0.1.0"
+name = "Claude Bridge"
+tagline = "Semantisk AI-bro: Claude styrer Blender via kontrollerte verktoy"
+maintainer = "CreatorHub Norge <daniel@creatorhubn.com>"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+network = "Lokal HTTP-bro (kun 127.0.0.1) for Claude-verktoykall"
