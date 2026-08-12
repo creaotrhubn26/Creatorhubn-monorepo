@@ -2319,7 +2319,7 @@ async function resolveActiveSessionFromRequest(
 function requireAdminSession(
   req: express.Request,
   res: express.Response,
-): { userId: string; email: string; name: string; role: string; loginAt: string } | null {
+): any {
   const session = getActiveSessionFromRequest(req);
   if (!session) {
     res.status(401).json({ error: "Admin-innlogging kreves" });
@@ -66770,15 +66770,20 @@ registerLeadgridTripsRoutes({ app, pool, requireUserSession });
 // Kvalitet-avdelingen — verifiseringskø for vunnede salg + samtale-maler
 // (mig 0377). Roller: kvalitet/admin/salgssjef.
 registerLeadgridQualityRoutes({ app, pool, requireUserSession });
-registerLeadgridDoffinRoutes({ app, pool, requireUserSession });
+const requireUserSessionAsync = async (
+  req: express.Request,
+  res: express.Response,
+): Promise<{ userId: string; email: string; name: string; role: string } | null> =>
+  requireUserSession(req, res);
+registerLeadgridDoffinRoutes({ app, pool, requireUserSession: requireUserSessionAsync });
 // Fler-stopp besøksruter — salgssjef tildeler rute til selger (push → Kart).
-registerLeadgridRuteRoutes({ app, pool, requireUserSession });
-registerLeadgridOversiktRoutes({ app, pool, requireUserSession });
-registerLeadgridCanvasRoutes({ app, pool, requireUserSession });
-registerLeadgridCpvRoutes({ app, pool, requireUserSession });
-registerLeadgridParkeringRoutes({ app, requireUserSession });
+registerLeadgridRuteRoutes({ app, pool, requireUserSession: requireUserSessionAsync });
+registerLeadgridOversiktRoutes({ app, pool, requireUserSession: requireUserSessionAsync });
+registerLeadgridCanvasRoutes({ app, pool, requireUserSession: requireUserSessionAsync });
+registerLeadgridCpvRoutes({ app, pool, requireUserSession: requireUserSessionAsync });
+registerLeadgridParkeringRoutes({ app, requireUserSession: requireUserSessionAsync });
 // AI-møtebrief — «aldri uforberedt til møte» (Brreg+regnskap+Doffin+case).
-registerLeadgridMotebriefRoutes({ app, pool, requireUserSession });
+registerLeadgridMotebriefRoutes({ app, pool, requireUserSession: requireUserSessionAsync });
 
 // Leadbook Eksempler — org-egne salgssamtale-caser + leder-tilbakemeldinger
 // m/ dialog og visningstall (mig 0379-0382). Fylles fra Kvalitet-flagget
@@ -75452,7 +75457,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
           activeSessions.set(row.token, {
             userId: row.user_id,
             email: row.email ?? "",
+            name: row.email?.split("@")[0] ?? row.user_id,
             role: row.role ?? "member",
+            loginAt: new Date().toISOString(),
           });
           hydrated++;
         }
