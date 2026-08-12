@@ -141,8 +141,9 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.create',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/chat.messages.reactions.create',
+  // Google avviser å kombinere `youtube` og `youtube.upload` i samme request
+  // (Error 400 invalid_request). `youtube` dekker opplasting + videoadministrasjon.
   'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/youtube.upload',
 ] as const;
 
 // Slice 9X.80 — bump fra 15 → 60 min så brukere som blir avbrutt

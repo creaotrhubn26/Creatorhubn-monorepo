@@ -3,7 +3,8 @@
  *
  * Bygger på eksisterende Google OAuth-stack i contract-google-signing.ts +
  * youtube-routes.ts. Ingen ny scope nødvendig — bruker samme
- * youtube + youtube.upload-scopes som er i Google-tilkoblingens claim.
+ * youtube-scopet (superset som dekker opplasting + videoadministrasjon)
+ * som er i Google-tilkoblingens claim.
  *
  * Shorts vs vanlig video:
  *   YouTube klassifiserer en video som Short hvis den er ≤60 sekunder
@@ -122,9 +123,10 @@ export async function listYouTubeChannels(
   return { channels, scopeMissing: false, noConnection: false };
 }
 
+// `youtube` er et superset av `youtube.upload` (dekker opplasting + admin) og
+// kan ikke kombineres med det i samme OAuth-request.
 const YOUTUBE_REQUIRED_SCOPES = [
   'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/youtube.upload',
 ] as const;
 
 // YouTube Shorts spec: maks 60 sekunder vertikal video. Single-upload-cap
@@ -228,7 +230,7 @@ export function makeYouTubePublisher(pool: Pool): SocialPublisher {
           status: 'failed',
           reason: 'scope_missing',
           error:
-            'Google-tilkoblingen mangler YouTube-scopes (youtube + youtube.upload). Re-connect for å aktivere YouTube-publisering.',
+            'Google-tilkoblingen mangler YouTube-scopet (youtube). Re-connect for å aktivere YouTube-publisering.',
         };
       }
 
