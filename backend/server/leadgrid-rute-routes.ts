@@ -74,7 +74,10 @@ function parseStopp(raw: unknown): RuteStopp[] | null {
 export function registerLeadgridRuteRoutes(deps: {
   app: Express;
   pool: Pool;
-  requireUserSession: (req: Request, res: Response) => Promise<{ userId: string } | null>;
+  requireUserSession: (
+    req: Request,
+    res: Response,
+  ) => { userId: string } | null | Promise<{ userId: string } | null>;
 }): void {
   const { app, pool, requireUserSession } = deps;
 

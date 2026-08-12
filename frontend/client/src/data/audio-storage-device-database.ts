@@ -100,16 +100,16 @@ const referenceSchema = z.object({
 const audioStorageDeviceSchema = z.object({
   id: z.string().min(1),
   externalId: z.string().min(1),
-  source: z.enum(sourceValues),
+  source: z.enum(sourceValues as [AudioStorageSource, ...AudioStorageSource[]]),
   lastSeenAt: z.string().datetime(),
   isDeprecated: z.boolean(),
   brand: z.string().min(1),
   model: z.string().min(1),
-  category: z.enum(categoryValues),
+  category: z.enum(categoryValues as [AudioStorageDeviceCategory, ...AudioStorageDeviceCategory[]]),
   releaseYear: z.number().int().min(2020).max(2026),
   releaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  releaseDatePrecision: z.enum(precisionValues),
-  storageMedia: z.array(z.enum(storageMediumValues)).min(1),
+  releaseDatePrecision: z.enum(precisionValues as [DatePrecision, ...DatePrecision[]]),
+  storageMedia: z.array(z.enum(storageMediumValues as [AudioStorageMedium, ...AudioStorageMedium[]])).min(1),
   maxStorage: z.string().min(1),
   recordingFormats: z.array(z.string().min(1)).min(1),
   maxSampleRateHz: z.number().int().positive(),
@@ -1077,4 +1077,3 @@ export const searchAudioStorageDevices = (params?: {
     return a.model.localeCompare(b.model, 'nb');
   });
 };
-

@@ -75447,7 +75447,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
           activeSessions.set(row.token, {
             userId: row.user_id,
             email: row.email ?? "",
+            name: row.email?.split("@")[0] ?? "ipad-user",
             role: row.role ?? "member",
+            loginAt: new Date().toISOString(),
           });
           hydrated++;
         }
