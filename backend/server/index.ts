@@ -25887,7 +25887,7 @@ setupAdminFeaturesRoutes({
   dbCompatAdminFeatureKey,
   compatResolveUserId,
   isRecord,
-  requireAdminSession: (req, res) => Boolean(requireAdminSession(req, res)),
+  requireAdminSession,
 });
 
 // ── Admin refund-requests — flyttet til ./admin-refund-requests-routes.ts
@@ -66869,7 +66869,7 @@ setupCmsRoutes({
   pool,
   ensureCmsSchema,
   requireUserSession,
-  requireAdminSession: (req, res) => Boolean(requireAdminSession(req, res)),
+  requireAdminSession,
 });
 
 // /api/payments/* + /api/google-pay/process-payment — 10 endpoints
