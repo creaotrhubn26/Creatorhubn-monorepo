@@ -3,8 +3,6 @@
  * Normalized card types + camera compatibility with stable IDs.
  */
 
-import { clientServicePricingService } from '../services/ClientServicePricingService';
-
 export const CURRENCY_RATES = {
   NOK_TO_NOK: 1,
   NOK_TO_SEK: 1.05,
@@ -21,14 +19,13 @@ export const CURRENCY_RATES = {
 
 export type Currency = 'NOK' | 'SEK' | 'DKK' | 'USD';
 
-export const convertCurrency = async (
-  amount: number,
-  from: Currency,
-  to: Currency
-): Promise<number> => {
-  try {
-    return await clientServicePricingService.convertCurrency(amount, from, to);
-  } catch {
+export interface MemoryCardPricingImpl {
+  convertCurrency(amount: number, from: Currency, to: Currency): Promise<number>;
+  formatCurrency(amount: number, currency: Currency): string;
+}
+
+const staticPricingImpl: MemoryCardPricingImpl = {
+  async convertCurrency(amount: number, from: Currency, to: Currency): Promise<number> {
     if (from === to) return amount;
 
     let amountInNOK = amount;
@@ -57,17 +54,53 @@ export const convertCurrency = async (
       default:
         return Math.round(amountInNOK * 100) / 100;
     }
+  },
+  formatCurrency(amount: number, currency: Currency): string {
+    if (currency === 'USD') return `$${amount.toFixed(2)}`;
+    return `${Math.round(amount)} ${currency}`;
+  },
+};
+
+let pricingImpl: MemoryCardPricingImpl = staticPricingImpl;
+
+export const setMemoryCardPricingImpl = (impl: MemoryCardPricingImpl): void => {
+  pricingImpl = impl;
+};
+
+export const convertCurrency = async (
+  amount: number,
+  from: Currency,
+  to: Currency
+): Promise<number> => {
+  try {
+    return await pricingImpl.convertCurrency(amount, from, to);
+  } catch {
+    return staticPricingImpl.convertCurrency(amount, from, to);
   }
 };
 
 export const formatCurrency = (amount: number, currency: Currency = 'NOK'): string => {
   try {
-    return clientServicePricingService.formatCurrency(amount, currency);
+    return pricingImpl.formatCurrency(amount, currency);
   } catch {
-    if (currency === 'USD') return `$${amount.toFixed(2)}`;
-    return `${Math.round(amount)} ${currency}`;
+    return staticPricingImpl.formatCurrency(amount, currency);
   }
 };
+
+if (typeof window !== 'undefined') {
+  import('../services/ClientServicePricingService')
+    .then((mod) => {
+      setMemoryCardPricingImpl({
+        convertCurrency: (amount, from, to) =>
+          mod.clientServicePricingService.convertCurrency(amount, from, to),
+        formatCurrency: (amount, currency) =>
+          mod.clientServicePricingService.formatCurrency(amount, currency),
+      });
+    })
+    .catch(() => {
+      // beholder statisk implementasjon
+    });
+}
 
 export const getScandinavianReferences = async (amountNOK: number) => {
   const [sekAmount, dkkAmount, usdAmount] = await Promise.all([

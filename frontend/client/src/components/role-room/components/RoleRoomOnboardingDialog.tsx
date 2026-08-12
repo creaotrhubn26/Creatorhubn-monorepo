@@ -27,7 +27,11 @@ import {
 } from '@mui/material';
 import {
   ArrowBack, ArrowForward, Check, Close, CloudUpload, Person, Business,
-  Add, DeleteOutline,
+  Add, AddAPhoto, DeleteOutline, ErrorOutline, InfoOutlined,
+  Badge, History, StarOutline, Category, CameraAlt, Verified,
+  PersonOutline, Place, Language, FormatQuote, Public, Share, FolderOpen,
+  Instagram, LinkedIn, YouTube, Facebook, MusicNote, EventAvailable, WorkOutline,
+  CalendarMonth, Lock, FactCheck,
 } from '@mui/icons-material';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type {
@@ -45,6 +49,79 @@ import {
 import { AvatarFocalPointEditor } from './AvatarFocalPointEditor';
 import { focalToObjectPosition } from '../utils/avatarFocalPoint';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
+
+// ── Design-tokens (matcher steg 2 / AvatarFocalPointEditor) ───────────────
+const ACCENT_GRADIENT = 'linear-gradient(135deg,#a030c0,#7c3aed)';
+
+/** Gruppert seksjonskort med ikon + tittel — bryter opp lang scroll i steg 3-7. */
+function StepSection({ icon, title, subtitle, children }: {
+  icon: React.ReactNode; title: string; subtitle?: string; children: React.ReactNode;
+}) {
+  return (
+    <Box sx={{
+      borderRadius: 2.5,
+      border: '1px solid rgba(160,48,192,0.18)',
+      bgcolor: 'rgba(160,48,192,0.05)',
+      p: 1.75,
+    }}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
+        <Box sx={{
+          width: 30, height: 30, borderRadius: 1.5, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          bgcolor: 'rgba(160,48,192,0.16)', color: '#c084fc',
+        }}>
+          {icon}
+        </Box>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>
+          {title}
+        </Typography>
+      </Stack>
+      {subtitle && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25, lineHeight: 1.45 }}>
+          {subtitle}
+        </Typography>
+      )}
+      {children}
+    </Box>
+  );
+}
+
+/** Konsekvent valgbar chip (lilla 999-pille) — matcher steg 2. */
+function OptionChip({ label, selected, onClick, size = 'small' }: {
+  label: string; selected: boolean; onClick: () => void; size?: 'small' | 'medium';
+}) {
+  return (
+    <Chip
+      label={label}
+      size={size}
+      clickable
+      onClick={onClick}
+      sx={{
+        borderRadius: 999,
+        border: selected ? '1px solid rgba(160,48,192,0.65)' : '1px solid rgba(255,255,255,0.14)',
+        bgcolor: selected ? 'rgba(160,48,192,0.9)' : 'rgba(255,255,255,0.045)',
+        color: selected ? '#fff' : 'rgba(255,255,255,0.78)',
+        fontWeight: selected ? 600 : 400,
+        '&:hover': { bgcolor: selected ? 'rgba(160,48,192,0.8)' : 'rgba(255,255,255,0.1)' },
+      }}
+    />
+  );
+}
+
+/** Gradient «legg til»-pille — matcher steg 2 sine 999-piller. */
+function AddPill({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Button startIcon={<Add />} onClick={onClick} size="small"
+      sx={{
+        alignSelf: 'flex-start', borderRadius: 999,
+        background: ACCENT_GRADIENT, color: '#fff',
+        px: 1.75, textTransform: 'none', fontWeight: 600,
+        '&:hover': { opacity: 0.92, background: ACCENT_GRADIENT },
+      }}>
+      {children}
+    </Button>
+  );
+}
 
 export interface RoleRoomOnboardingDialogProps {
   open: boolean;
@@ -483,8 +560,13 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
     <Dialog open={open} fullWidth maxWidth="sm"
             disableEscapeKeyDown={!isEditMode}
             onClose={isEditMode ? onClose : undefined}
-            PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
-      <Box sx={{ position: 'relative' }}>
+            PaperProps={{ sx: {
+              borderRadius: 3, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+              maxHeight: 'min(92vh, 860px)',
+            } }}>
+      <Box sx={{ position: 'relative', display: 'flex', flexDirection: 'column',
+                 minHeight: 0, flex: 1, overflow: 'hidden' }}>
         {(isEditMode ? onClose : onMinimize) && (
           <IconButton onClick={isEditMode ? onClose : onMinimize}
                        sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2, color: 'white' }}
@@ -493,7 +575,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           </IconButton>
         )}
 
-        <Box sx={{ p: 3, pb: 1, background: 'linear-gradient(135deg, #1e1a2e, #2d1b4e)' }}>
+        <Box sx={{ p: 3, pb: 1, flexShrink: 0, background: 'linear-gradient(135deg, #1e1a2e, #2d1b4e)' }}>
           <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>
             Steg {step + 1} av {totalSteps}
           </Typography>
@@ -508,7 +590,7 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           />
         </Box>
 
-        <DialogContent sx={{ p: 3, minHeight: 320 }}>
+        <DialogContent sx={{ p: 3, minHeight: 0, overflowY: 'auto' }}>
           {loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress />
@@ -599,242 +681,317 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
           )}
 
           {!loading && currentKey === 'image' && (
-            <Stack spacing={2} alignItems="center" sx={{ py: 2 }}>
+            <Stack spacing={2.5} alignItems="center" sx={{ py: 0.5 }}>
               {profileImage ? (
-                <AvatarFocalPointEditor
-                  imageUrl={profileImage}
-                  focalX={form.profileImageFocalX}
-                  focalY={form.profileImageFocalY}
-                  onChange={(x, y) => setForm((prev) => ({
-                    ...prev, profileImageFocalX: x, profileImageFocalY: y,
-                  }))}
-                />
+                <>
+                  <AvatarFocalPointEditor
+                    imageUrl={profileImage}
+                    focalX={form.profileImageFocalX}
+                    focalY={form.profileImageFocalY}
+                    onChange={(x, y) => setForm((prev) => ({
+                      ...prev, profileImageFocalX: x, profileImageFocalY: y,
+                    }))}
+                  />
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={uploadingImage}
+                    startIcon={uploadingImage ? <CircularProgress size={16} /> : <CloudUpload />}
+                    sx={{
+                      borderRadius: 999,
+                      px: 3,
+                      py: 0.8,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderColor: 'rgba(160,48,192,0.42)',
+                      color: '#c084fc',
+                      '&:hover': {
+                        borderColor: '#a030c0',
+                        bgcolor: 'rgba(160,48,192,0.08)',
+                      },
+                    }}
+                  >
+                    {uploadingImage ? 'Laster opp…' : 'Endre bilde'}
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleImageUpload(file);
+                      }}
+                    />
+                  </Button>
+                </>
               ) : (
-                <Avatar sx={{ width: 120, height: 120, fontSize: 48,
-                              bgcolor: 'rgba(160, 48, 192, 0.2)' }}>
-                  <Person sx={{ fontSize: 60 }} />
-                </Avatar>
+                <Box
+                  component="label"
+                  sx={{
+                    display: 'block',
+                    width: '100%',
+                    cursor: 'pointer',
+                    borderRadius: 3.5,
+                    border: '1.5px dashed rgba(160,48,192,0.5)',
+                    background: 'linear-gradient(180deg, rgba(160,48,192,0.10) 0%, rgba(160,48,192,0.02) 100%)',
+                    p: { xs: 3, sm: 4 },
+                    textAlign: 'center',
+                    transition: 'border-color 0.15s ease, background 0.15s ease',
+                    '&:hover': {
+                      borderColor: '#a030c0',
+                      background: 'linear-gradient(180deg, rgba(160,48,192,0.16) 0%, rgba(160,48,192,0.05) 100%)',
+                    },
+                  }}
+                >
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleImageUpload(file);
+                    }}
+                  />
+                  <Stack spacing={1.5} alignItems="center">
+                    <Box sx={{
+                      width: 80, height: 80, borderRadius: '50%',
+                      display: 'grid', placeItems: 'center',
+                      bgcolor: 'rgba(160,48,192,0.16)',
+                      border: '1px solid rgba(160,48,192,0.38)',
+                      color: '#c084fc',
+                    }}>
+                      <AddAPhoto sx={{ fontSize: 36 }} />
+                    </Box>
+                    <Box>
+                      <Typography sx={{ fontWeight: 800, fontSize: '1.08rem', color: '#f8fafc', lineHeight: 1.3 }}>
+                        Last opp profilbilde
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        JPG, PNG, WebP eller GIF · maks 4 MB
+                      </Typography>
+                    </Box>
+                    <Button
+                      variant="contained"
+                      component="span"
+                      disabled={uploadingImage}
+                      startIcon={uploadingImage ? <CircularProgress size={18} /> : <CloudUpload />}
+                      sx={{
+                        mt: 0.5,
+                        borderRadius: 999,
+                        px: 3.5,
+                        py: 0.9,
+                        textTransform: 'none',
+                        fontWeight: 800,
+                        color: '#fff',
+                        background: 'linear-gradient(135deg, #a030c0 0%, #7c3aed 100%)',
+                        boxShadow: '0 6px 18px rgba(160,48,192,0.35)',
+                        '&:hover': { background: 'linear-gradient(135deg, #b33dd0 0%, #8b5cf6 100%)' },
+                        '&:disabled': { background: 'rgba(160,48,192,0.4)' },
+                      }}
+                    >
+                      {uploadingImage ? 'Laster opp…' : 'Velg bilde'}
+                    </Button>
+                  </Stack>
+                </Box>
               )}
-              <Button variant="outlined" component="label"
-                       disabled={uploadingImage}
-                       startIcon={uploadingImage ? <CircularProgress size={16} /> : <CloudUpload />}>
-                {profileImage ? 'Endre bilde' : 'Last opp bilde'}
-                <input type="file" hidden accept="image/jpeg,image/png,image/webp,image/gif"
-                        onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImageUpload(file);
-                }} />
-              </Button>
-              <Typography variant="caption" color="text.secondary" align="center">
-                JPG, PNG, WebP eller GIF · maks 4 MB
-              </Typography>
-              {!profileImage && config.requiredFields?.profileImage === true && (
-                <Typography variant="caption" color="error" align="center" sx={{ mt: 2 }}>
-                  Profilbilde er påkrevd for å fullføre profilen.
-                </Typography>
-              )}
-              {!profileImage && config.requiredFields?.profileImage !== true && (
-                <Typography variant="caption" color="text.secondary" align="center" sx={{ mt: 2 }}>
+              {!profileImage && config.requiredFields?.profileImage === true ? (
+                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ mt: -0.5 }}>
+                  <InfoOutlined sx={{ fontSize: 15, color: 'error.main' }} />
+                  <Typography variant="caption" color="error" align="center">
+                    Profilbilde er påkrevd for å fullføre profilen.
+                  </Typography>
+                </Stack>
+              ) : !profileImage ? (
+                <Typography variant="caption" color="text.secondary" align="center" sx={{ mt: -0.5 }}>
                   Du kan hoppe over dette nå og legge til bilde senere.
                 </Typography>
-              )}
+              ) : null}
             </Stack>
           )}
 
           {!loading && currentKey === 'profession' && (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Hva er hovedrollen din i prosjektet? Velg gjerne en
-                tilleggsprofesjon også hvis du har det (f.eks. Regissør).
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {config.professionsOptions.map((p) => (
-                  <Chip key={p} label={p} clickable
-                         color={form.professions.includes(p) ? 'primary' : 'default'}
-                         variant={form.professions.includes(p) ? 'filled' : 'outlined'}
-                         onClick={() => toggleArrayItem('professions', p)} />
-                ))}
-              </Box>
-              <TextField
-                label="År med erfaring (valgfri)"
-                type="number"
-                size="small"
-                value={form.yearsExperience ?? ''}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const n = raw === '' ? null : Math.max(0, Math.min(80, parseInt(raw, 10) || 0));
-                  updateField('yearsExperience', n);
-                }}
-                inputProps={{ min: 0, max: 80 }}
-                sx={{ mt: 1, maxWidth: 220 }}
-                helperText="Hvor lenge har du jobbet i faget?"
-              />
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Ferdigheter (valgfri)
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {config.skillsOptions.map((s) => (
-                  <Chip key={s} label={s} clickable size="small"
-                         color={form.skills.includes(s) ? 'secondary' : 'default'}
-                         variant={form.skills.includes(s) ? 'filled' : 'outlined'}
-                         onClick={() => toggleArrayItem('skills', s)} />
-                ))}
-              </Box>
-
-              {/* Fagområder / spesialiseringer (film/TV + foto/video) */}
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Fagområder — hva spesialiserer du deg på? (valgfri)
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {EXPERTISE_AREA_OPTIONS.map((a) => (
-                  <Chip key={a} label={a} clickable size="small"
-                         color={form.expertiseAreas.includes(a) ? 'primary' : 'default'}
-                         variant={form.expertiseAreas.includes(a) ? 'filled' : 'outlined'}
-                         onClick={() => toggleArrayItem('expertiseAreas', a)} />
-                ))}
-              </Box>
-
-              {/* Utstyr / gear — fra foto/video-katalog, med kategori-ikon */}
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Utstyr / gear (valgfri)
-              </Typography>
-              <Autocomplete<EquipmentCatalogItem, true, false, true>
-                multiple
-                freeSolo
-                size="small"
-                options={EQUIPMENT_CATALOG}
-                value={form.equipment}
-                groupBy={(opt) =>
-                  (typeof opt === 'string'
-                    ? EQUIPMENT_CATEGORY_LABELS[categoryForEquipment(opt)]
-                    : EQUIPMENT_CATEGORY_LABELS[opt.category])}
-                getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.name)}
-                isOptionEqualToValue={(opt, val) =>
-                  (typeof opt === 'string' ? opt : opt.name)
-                    === (typeof val === 'string' ? val : val.name)}
-                onChange={(_e, value) => {
-                  const names = value.map((v) =>
-                    (typeof v === 'string' ? v.trim() : v.name)).filter(Boolean);
-                  updateField('equipment', Array.from(new Set(names)));
-                }}
-                renderOption={(props, opt) => {
-                  const item = opt as EquipmentCatalogItem | string;
-                  const name = typeof item === 'string' ? item : item.name;
-                  const cat = typeof item === 'string' ? categoryForEquipment(item) : item.category;
-                  return (
-                    <li {...props} key={name}>
-                      <EquipmentCategoryIcon category={cat}
-                        sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
-                      {name}
-                    </li>
-                  );
-                }}
-                renderTags={(value, getTagProps) =>
-                  value.map((opt, index) => {
-                    const name = typeof opt === 'string' ? opt : opt.name;
-                    return (
-                      <Chip
-                        {...getTagProps({ index })}
-                        key={name}
-                        size="small"
-                        icon={<EquipmentCategoryIcon category={categoryForEquipment(name)}
-                          sx={{ fontSize: 16 }} />}
-                        label={name}
-                      />
-                    );
-                  })}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Søk kamera, objektiv, drone, lys …"
-                    helperText="Velg fra katalogen eller skriv inn eget utstyr" />
-                )}
-              />
-
-              {/* Sertifiseringer & lisenser */}
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Sertifiseringer & lisenser (valgfri)
-              </Typography>
-              {form.certifications.length > 0 && (
+            <Stack spacing={1.75}>
+              <StepSection icon={<Badge sx={{ fontSize: 17 }} />} title="Hovedrolle"
+                subtitle="Hva er hovedrollen din i prosjektet? Velg gjerne en tilleggsprofesjon også (f.eks. Regissør).">
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {form.certifications.map((c) => (
-                    <Chip key={c} label={c} size="small"
-                           onDelete={() => removeTag('certifications', c)} />
+                  {config.professionsOptions.map((p) => (
+                    <OptionChip key={p} label={p} selected={form.professions.includes(p)}
+                      onClick={() => toggleArrayItem('professions', p)} />
                   ))}
                 </Box>
-              )}
-              <TextField
-                size="small"
-                value={certInput}
-                onChange={(e) => setCertInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addTag('certifications', certInput);
-                    setCertInput('');
-                  }
-                }}
-                placeholder="F.eks. Dronesertifikat A1/A3, HMS-kort — trykk Enter"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton size="small" aria-label="Legg til sertifisering"
-                        onClick={() => { addTag('certifications', certInput); setCertInput(''); }}>
-                        <Add fontSize="small" />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              </StepSection>
 
+              <StepSection icon={<History sx={{ fontSize: 17 }} />} title="Erfaring">
+                <TextField
+                  label="År med erfaring (valgfri)"
+                  type="number"
+                  size="small"
+                  value={form.yearsExperience ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === '' ? null : Math.max(0, Math.min(80, parseInt(raw, 10) || 0));
+                    updateField('yearsExperience', n);
+                  }}
+                  inputProps={{ min: 0, max: 80 }}
+                  sx={{ maxWidth: 220 }}
+                  helperText="Hvor lenge har du jobbet i faget?"
+                />
+              </StepSection>
+
+              <StepSection icon={<StarOutline sx={{ fontSize: 17 }} />} title="Ferdigheter">
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {config.skillsOptions.map((s) => (
+                    <OptionChip key={s} label={s} selected={form.skills.includes(s)}
+                      onClick={() => toggleArrayItem('skills', s)} />
+                  ))}
+                </Box>
+              </StepSection>
+
+              <StepSection icon={<Category sx={{ fontSize: 17 }} />} title="Fagområder"
+                subtitle="Hva spesialiserer du deg på?">
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {EXPERTISE_AREA_OPTIONS.map((a) => (
+                    <OptionChip key={a} label={a} selected={form.expertiseAreas.includes(a)}
+                      onClick={() => toggleArrayItem('expertiseAreas', a)} />
+                  ))}
+                </Box>
+              </StepSection>
+
+              <StepSection icon={<CameraAlt sx={{ fontSize: 17 }} />} title="Utstyr & gear"
+                subtitle="Velg fra katalogen eller skriv inn eget utstyr.">
+                <Autocomplete<EquipmentCatalogItem, true, false, true>
+                  multiple
+                  freeSolo
+                  size="small"
+                  options={EQUIPMENT_CATALOG}
+                  value={form.equipment}
+                  groupBy={(opt) =>
+                    (typeof opt === 'string'
+                      ? EQUIPMENT_CATEGORY_LABELS[categoryForEquipment(opt)]
+                      : EQUIPMENT_CATEGORY_LABELS[opt.category])}
+                  getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.name)}
+                  isOptionEqualToValue={(opt, val) =>
+                    (typeof opt === 'string' ? opt : opt.name)
+                      === (typeof val === 'string' ? val : val.name)}
+                  onChange={(_e, value) => {
+                    const names = value.map((v) =>
+                      (typeof v === 'string' ? v.trim() : v.name)).filter(Boolean);
+                    updateField('equipment', Array.from(new Set(names)));
+                  }}
+                  renderOption={(props, opt) => {
+                    const item = opt as EquipmentCatalogItem | string;
+                    const name = typeof item === 'string' ? item : item.name;
+                    const cat = typeof item === 'string' ? categoryForEquipment(item) : item.category;
+                    return (
+                      <li {...props} key={name}>
+                        <EquipmentCategoryIcon category={cat}
+                          sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
+                        {name}
+                      </li>
+                    );
+                  }}
+                  renderTags={(value, getTagProps) =>
+                    value.map((opt, index) => {
+                      const name = typeof opt === 'string' ? opt : opt.name;
+                      return (
+                        <Chip
+                          {...getTagProps({ index })}
+                          key={name}
+                          size="small"
+                          icon={<EquipmentCategoryIcon category={categoryForEquipment(name)}
+                            sx={{ fontSize: 16 }} />}
+                          label={name}
+                        />
+                      );
+                    })}
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Søk kamera, objektiv, drone, lys …"
+                      helperText="Velg fra katalogen eller skriv inn eget utstyr" />
+                  )}
+                />
+              </StepSection>
+
+              <StepSection icon={<Verified sx={{ fontSize: 17 }} />} title="Sertifiseringer & lisenser">
+                {form.certifications.length > 0 && (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
+                    {form.certifications.map((c) => (
+                      <Chip key={c} label={c} size="small" sx={{ borderRadius: 999 }}
+                             onDelete={() => removeTag('certifications', c)} />
+                    ))}
+                  </Box>
+                )}
+                <TextField
+                  size="small"
+                  value={certInput}
+                  onChange={(e) => setCertInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addTag('certifications', certInput);
+                      setCertInput('');
+                    }
+                  }}
+                  placeholder="F.eks. Dronesertifikat A1/A3, HMS-kort — trykk Enter"
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" aria-label="Legg til sertifisering"
+                          onClick={() => { addTag('certifications', certInput); setCertInput(''); }}>
+                          <Add fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </StepSection>
             </Stack>
           )}
 
           {!loading && currentKey === 'about' && (
-            <Stack spacing={2}>
-              <TextField label="Om meg" multiline rows={4}
-                          value={form.bio}
-                          onChange={(e) => updateField('bio', e.target.value)}
-                          placeholder="Skriv litt om hva du gjør, stil, erfaring …"
-                          helperText="Synlig for andre medlemmer" />
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Trenger du hjelp i gang? Legg til et avsnitt:
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                  {BIO_PROMPTS.map((p) => (
-                    <Chip key={p.label} label={p.label} clickable size="small" variant="outlined"
-                           onClick={() => appendBioPrompt(p.template)} />
-                  ))}
+            <Stack spacing={1.75}>
+              <StepSection icon={<PersonOutline sx={{ fontSize: 17 }} />} title="Om meg"
+                subtitle="Synlig for andre medlemmer.">
+                <TextField label="Om meg" multiline rows={4}
+                            value={form.bio}
+                            onChange={(e) => updateField('bio', e.target.value)}
+                            placeholder="Skriv litt om hva du gjør, stil, erfaring …"
+                            helperText="Synlig for andre medlemmer" />
+                <Box sx={{ mt: 1.25 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                    Trenger du hjelp i gang? Legg til et avsnitt:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                    {BIO_PROMPTS.map((p) => (
+                      <Chip key={p.label} label={p.label} clickable size="small" variant="outlined"
+                             sx={{ borderRadius: 999 }}
+                             onClick={() => appendBioPrompt(p.template)} />
+                    ))}
+                  </Box>
                 </Box>
-              </Box>
-              <Stack direction="row" spacing={1}>
-                <TextField label="By" fullWidth
-                            value={form.locationCity}
-                            onChange={(e) => updateField('locationCity', e.target.value)} />
-                <TextField label="Land" fullWidth
-                            value={form.locationCountry}
-                            onChange={(e) => updateField('locationCountry', e.target.value)} />
-              </Stack>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Språk
-                </Typography>
+              </StepSection>
+
+              <StepSection icon={<Place sx={{ fontSize: 17 }} />} title="Lokasjon">
+                <Stack direction="row" spacing={1}>
+                  <TextField label="By" fullWidth
+                              value={form.locationCity}
+                              onChange={(e) => updateField('locationCity', e.target.value)} />
+                  <TextField label="Land" fullWidth
+                              value={form.locationCountry}
+                              onChange={(e) => updateField('locationCountry', e.target.value)} />
+                </Stack>
+              </StepSection>
+
+              <StepSection icon={<Language sx={{ fontSize: 17 }} />} title="Språk">
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                   {config.languageOptions.map((lang) => (
-                    <Chip key={lang.code} label={lang.name} clickable size="small"
-                           color={form.languages.includes(lang.code) ? 'primary' : 'default'}
-                           variant={form.languages.includes(lang.code) ? 'filled' : 'outlined'}
-                           onClick={() => toggleArrayItem('languages', lang.code)} />
+                    <OptionChip key={lang.code} label={lang.name}
+                      selected={form.languages.includes(lang.code)}
+                      onClick={() => toggleArrayItem('languages', lang.code)} />
                   ))}
                 </Box>
-              </Box>
+              </StepSection>
 
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Tidligere prosjekter (valgfri)
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Vis hva du har jobbet med før — det hjelper andre å se erfaringen din.
-                </Typography>
+              <StepSection icon={<History sx={{ fontSize: 17 }} />} title="Tidligere prosjekter"
+                subtitle="Vis hva du har jobbet med før — det hjelper andre å se erfaringen din.">
                 <Stack spacing={1.5}>
                   {form.earlierProjects.map((proj, i) => (
                     <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
@@ -857,20 +1014,12 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                       </IconButton>
                     </Stack>
                   ))}
-                  <Button startIcon={<Add />} onClick={addEarlierProject} size="small"
-                           variant="outlined" sx={{ alignSelf: 'flex-start' }}>
-                    Legg til prosjekt
-                  </Button>
+                  <AddPill onClick={addEarlierProject}>Legg til prosjekt</AddPill>
                 </Stack>
-              </Box>
+              </StepSection>
 
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Referanser & attester (valgfri)
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Kort attest fra tidligere kunder eller samarbeidspartnere.
-                </Typography>
+              <StepSection icon={<FormatQuote sx={{ fontSize: 17 }} />} title="Referanser & attester"
+                subtitle="Kort attest fra tidligere kunder eller samarbeidspartnere.">
                 <Stack spacing={1.5}>
                   {form.memberReferences.map((ref, i) => (
                     <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
@@ -894,62 +1043,76 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                       </IconButton>
                     </Stack>
                   ))}
-                  <Button startIcon={<Add />} onClick={addReference} size="small"
-                           variant="outlined" sx={{ alignSelf: 'flex-start' }}>
-                    Legg til referanse
-                  </Button>
+                  <AddPill onClick={addReference}>Legg til referanse</AddPill>
                 </Stack>
-              </Box>
+              </StepSection>
             </Stack>
           )}
 
           {!loading && currentKey === 'links' && (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Legg til lenker til portefølje og sosiale medier (alt valgfritt).
-              </Typography>
-              <TextField label="Nettside"
-                          value={form.website}
-                          onChange={(e) => updateField('website', e.target.value)}
-                          placeholder="https://…" />
-              <TextField label="Showreel (Vimeo, YouTube …)"
-                          value={form.showreelUrl}
-                          onChange={(e) => updateField('showreelUrl', e.target.value)}
-                          placeholder="https://vimeo.com/…" />
-              <TextField label="Instagram"
-                          value={form.socialLinks.instagram ?? ''}
-                          onChange={(e) => updateField('socialLinks',
-                            { ...form.socialLinks, instagram: e.target.value })}
-                          placeholder="@brukernavn" />
-              <TextField label="LinkedIn"
-                          value={form.socialLinks.linkedin ?? ''}
-                          onChange={(e) => updateField('socialLinks',
-                            { ...form.socialLinks, linkedin: e.target.value })}
-                          placeholder="https://linkedin.com/in/…" />
-              <TextField label="TikTok"
-                          value={form.socialLinks.tiktok ?? ''}
-                          onChange={(e) => updateField('socialLinks',
-                            { ...form.socialLinks, tiktok: e.target.value })}
-                          placeholder="@brukernavn" />
-              <TextField label="YouTube"
-                          value={form.socialLinks.youtube ?? ''}
-                          onChange={(e) => updateField('socialLinks',
-                            { ...form.socialLinks, youtube: e.target.value })}
-                          placeholder="https://youtube.com/@…" />
-              <TextField label="Facebook"
-                          value={form.socialLinks.facebook ?? ''}
-                          onChange={(e) => updateField('socialLinks',
-                            { ...form.socialLinks, facebook: e.target.value })}
-                          placeholder="https://facebook.com/…" />
+            <Stack spacing={1.75}>
+              <StepSection icon={<Public sx={{ fontSize: 17 }} />} title="Nett & portefølje"
+                subtitle="Legg til nettside og showreel.">
+                <Stack spacing={1.5}>
+                  <TextField label="Nettside"
+                              value={form.website}
+                              onChange={(e) => updateField('website', e.target.value)}
+                              placeholder="https://…" />
+                  <TextField label="Showreel (Vimeo, YouTube …)"
+                              value={form.showreelUrl}
+                              onChange={(e) => updateField('showreelUrl', e.target.value)}
+                              placeholder="https://vimeo.com/…" />
+                </Stack>
+              </StepSection>
 
-              {/* Portfolio / arbeidsprøver — flere lenker, hver med egen tittel */}
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Portfolio / arbeidsprøver (valgfri)
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Legg til så mange arbeidsprøver du vil — hver med tittel og lenke.
-                </Typography>
+              <StepSection icon={<Share sx={{ fontSize: 17 }} />} title="Sosiale medier"
+                subtitle="Alt valgfritt.">
+                <Stack spacing={1.5}>
+                  <TextField label="Instagram"
+                              value={form.socialLinks.instagram ?? ''}
+                              onChange={(e) => updateField('socialLinks',
+                                { ...form.socialLinks, instagram: e.target.value })}
+                              placeholder="@brukernavn"
+                              InputProps={{ startAdornment: (
+                                <InputAdornment position="start"><Instagram sx={{ fontSize: 18, color: '#c084fc' }} /></InputAdornment>
+                              ) }} />
+                  <TextField label="LinkedIn"
+                              value={form.socialLinks.linkedin ?? ''}
+                              onChange={(e) => updateField('socialLinks',
+                                { ...form.socialLinks, linkedin: e.target.value })}
+                              placeholder="https://linkedin.com/in/…"
+                              InputProps={{ startAdornment: (
+                                <InputAdornment position="start"><LinkedIn sx={{ fontSize: 18, color: '#c084fc' }} /></InputAdornment>
+                              ) }} />
+                  <TextField label="TikTok"
+                              value={form.socialLinks.tiktok ?? ''}
+                              onChange={(e) => updateField('socialLinks',
+                                { ...form.socialLinks, tiktok: e.target.value })}
+                              placeholder="@brukernavn"
+                              InputProps={{ startAdornment: (
+                                <InputAdornment position="start"><MusicNote sx={{ fontSize: 18, color: '#c084fc' }} /></InputAdornment>
+                              ) }} />
+                  <TextField label="YouTube"
+                              value={form.socialLinks.youtube ?? ''}
+                              onChange={(e) => updateField('socialLinks',
+                                { ...form.socialLinks, youtube: e.target.value })}
+                              placeholder="https://youtube.com/@…"
+                              InputProps={{ startAdornment: (
+                                <InputAdornment position="start"><YouTube sx={{ fontSize: 18, color: '#c084fc' }} /></InputAdornment>
+                              ) }} />
+                  <TextField label="Facebook"
+                              value={form.socialLinks.facebook ?? ''}
+                              onChange={(e) => updateField('socialLinks',
+                                { ...form.socialLinks, facebook: e.target.value })}
+                              placeholder="https://facebook.com/…"
+                              InputProps={{ startAdornment: (
+                                <InputAdornment position="start"><Facebook sx={{ fontSize: 18, color: '#c084fc' }} /></InputAdornment>
+                              ) }} />
+                </Stack>
+              </StepSection>
+
+              <StepSection icon={<FolderOpen sx={{ fontSize: 17 }} />} title="Portfolio / arbeidsprøver"
+                subtitle="Legg til så mange arbeidsprøver du vil — hver med tittel og lenke.">
                 <Stack spacing={1.5}>
                   {form.portfolioItems.map((item, i) => (
                     <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
@@ -967,79 +1130,68 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                       </IconButton>
                     </Stack>
                   ))}
-                  <Button startIcon={<Add />} onClick={addPortfolioItem} size="small"
-                           variant="outlined" sx={{ alignSelf: 'flex-start' }}>
-                    Legg til arbeidsprøve
-                  </Button>
+                  <AddPill onClick={addPortfolioItem}>Legg til arbeidsprøve</AddPill>
                 </Stack>
-              </Box>
+              </StepSection>
             </Stack>
           )}
 
           {!loading && currentKey === 'availability' && (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Vis når du er ledig for oppdrag. Produsenter ser dette når de
-                setter sammen team — så du slipper unødvendige forespørsler på
-                datoer du er opptatt.
-              </Typography>
+            <Stack spacing={1.75}>
+              <StepSection icon={<EventAvailable sx={{ fontSize: 17 }} />} title="Tilgjengelighet"
+                subtitle="Vis når du er ledig for oppdrag. Produsenter ser dette når de setter sammen team — så du slipper unødvendige forespørsler på datoer du er opptatt.">
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Generell status</InputLabel>
+                  <Select label="Generell status"
+                           value={form.availabilityStatus}
+                           onChange={(e) => updateField('availabilityStatus',
+                             e.target.value as AvailabilityStatus | '')}>
+                    <MenuItem value=""><em>Ikke oppgitt</em></MenuItem>
+                    {AVAILABILITY_OPTIONS.map((o) => (
+                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </StepSection>
 
-              <FormControl size="small" fullWidth>
-                <InputLabel>Generell status</InputLabel>
-                <Select label="Generell status"
-                         value={form.availabilityStatus}
-                         onChange={(e) => updateField('availabilityStatus',
-                           e.target.value as AvailabilityStatus | '')}>
-                  <MenuItem value=""><em>Ikke oppgitt</em></MenuItem>
-                  {AVAILABILITY_OPTIONS.map((o) => (
-                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                  Arbeidspreferanser
-                </Typography>
+              <StepSection icon={<WorkOutline sx={{ fontSize: 17 }} />} title="Arbeidspreferanser">
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                   {WORK_PREFERENCE_OPTIONS.map((w) => (
-                    <Chip key={w} label={w} clickable size="small"
-                           color={form.workPreferences.includes(w) ? 'secondary' : 'default'}
-                           variant={form.workPreferences.includes(w) ? 'filled' : 'outlined'}
-                           onClick={() => toggleArrayItem('workPreferences', w)} />
+                    <OptionChip key={w} label={w} selected={form.workPreferences.includes(w)}
+                      onClick={() => toggleArrayItem('workPreferences', w)} />
                   ))}
                 </Box>
-              </Box>
+              </StepSection>
 
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-                  Kalender — marker konkrete datoer (auto-lagres)
-                </Typography>
+              <StepSection icon={<CalendarMonth sx={{ fontSize: 17 }} />} title="Kalender"
+                subtitle="Marker konkrete datoer (auto-lagres).">
                 <AvailabilityCalendar editable months={2} />
-              </Box>
+              </StepSection>
             </Stack>
           )}
 
           {!loading && currentKey === 'privacy' && (
-            <Stack spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Hvem skal kunne se profilen din?
-              </Typography>
-              <FormControl fullWidth>
-                <InputLabel>Synlighet</InputLabel>
-                <Select label="Synlighet"
-                         value={form.visibility}
-                         onChange={(e) => updateField('visibility', e.target.value as ProfileVisibility)}>
-                  <MenuItem value="public">Offentlig — synlig for alle (også uten konto)</MenuItem>
-                  <MenuItem value="connections">Innloggede medlemmer — anbefalt</MenuItem>
-                  <MenuItem value="private">Privat — bare jeg ser den</MenuItem>
-                </Select>
-              </FormControl>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
-                Du kan endre dette når som helst senere i Innstillinger.
-              </Typography>
-              <Box sx={{ background: 'rgba(160, 48, 192, 0.08)', p: 2, borderRadius: 2, mt: 2 }}>
-                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+            <Stack spacing={1.75}>
+              <StepSection icon={<Lock sx={{ fontSize: 17 }} />} title="Synlighet"
+                subtitle="Hvem skal kunne se profilen din?">
+                <FormControl fullWidth>
+                  <InputLabel>Synlighet</InputLabel>
+                  <Select label="Synlighet"
+                           value={form.visibility}
+                           onChange={(e) => updateField('visibility', e.target.value as ProfileVisibility)}>
+                    <MenuItem value="public">Offentlig — synlig for alle (også uten konto)</MenuItem>
+                    <MenuItem value="connections">Innloggede medlemmer — anbefalt</MenuItem>
+                    <MenuItem value="project_team">Kun produksjonsteamet — bare mitt team ser den</MenuItem>
+                    <MenuItem value="private">Privat — bare jeg ser den</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>
+                  Du kan endre dette når som helst senere i Innstillinger.
+                </Typography>
+              </StepSection>
+
+              <StepSection icon={<FactCheck sx={{ fontSize: 17 }} />} title="Oppsummering">
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.25 }}>
                   <Avatar
                     src={profileImage ?? undefined}
                     imgProps={{ style: { objectPosition: focalToObjectPosition(
@@ -1048,14 +1200,16 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                   >
                     {profileImage ? null : <Person />}
                   </Avatar>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    Oppsummering
-                  </Typography>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {form.displayName || '(uten navn)'}
+                    </Typography>
+                    {form.companyName && (
+                      <Typography variant="caption" color="text.secondary">{form.companyName}</Typography>
+                    )}
+                  </Box>
                 </Stack>
                 <Typography variant="caption" color="text.secondary" component="div">
-                  <strong>{form.displayName || '(uten navn)'}</strong>
-                  {form.companyName && ` · ${form.companyName}`}
-                  <br />
                   {form.professions.length > 0 && (
                     <>Rolle: {form.professions.join(', ')}<br /></>
                   )}
@@ -1066,19 +1220,38 @@ export const RoleRoomOnboardingDialog: React.FC<RoleRoomOnboardingDialogProps> =
                     <>{[form.locationCity, form.locationCountry].filter(Boolean).join(', ')}<br /></>
                   )}
                 </Typography>
-              </Box>
+              </StepSection>
             </Stack>
           )}
 
           {error && (
-            <Box sx={{ mt: 2, background: 'rgba(239, 79, 111, 0.10)',
-                        borderLeft: '3px solid #ef4f6f', p: 1.5, borderRadius: 1 }}>
-              <Typography variant="caption" color="error">{error}</Typography>
+            <Box sx={{
+              mt: 2,
+              display: 'flex',
+              gap: 1.25,
+              alignItems: 'flex-start',
+              p: 1.75,
+              borderRadius: 2.5,
+              bgcolor: 'rgba(239,79,111,0.08)',
+              border: '1px solid rgba(239,79,111,0.28)',
+            }}>
+              <ErrorOutline sx={{ fontSize: 20, color: '#ef4f6f', mt: 0.1, flexShrink: 0 }} />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ color: '#fda4af', fontWeight: 700 }}>
+                  Noe gikk galt
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'rgba(255,255,255,0.66)', display: 'block', mt: 0.25, lineHeight: 1.45, wordBreak: 'break-word' }}
+                >
+                  {error}
+                </Typography>
+              </Box>
             </Box>
           )}
         </DialogContent>
 
-        <Box sx={{ p: 2, pt: 0, display: 'flex', gap: 1, justifyContent: 'space-between' }}>
+        <Box sx={{ p: 2, pt: 0, flexShrink: 0, display: 'flex', gap: 1, justifyContent: 'space-between' }}>
           {step > 0 ? (
             <Button onClick={() => setStep((s) => s - 1)} disabled={saving}
                      startIcon={<ArrowBack />}>

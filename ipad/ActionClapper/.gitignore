@@ -1,0 +1,11 @@
+# Xcode / Swift
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+
+# XcodeGen genererer prosjektet fra project.yml — ikke committ generert artefakt.
+# (Vi beholder likevel ikke .xcodeproj her; kjør `xcodegen generate`.)
+
+.DS_Store

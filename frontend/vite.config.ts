@@ -293,7 +293,7 @@ export default defineConfig({
     port: 5001,
     allowedHosts: true,
     hmr: {
-      overlay: false,
+      overlay: true,
     },
     proxy: {
       '/api': {

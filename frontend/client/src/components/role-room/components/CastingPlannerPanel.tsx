@@ -3036,7 +3036,11 @@ type RoleRoomProjectWorkspaceState = {
   const isFreshProjectCreationFlow = projectCreationModalOpen && !projectToEdit;
   const headerActiveProject = isFreshProjectCreationFlow ? null : currentProject;
   const useFocusedWorkspaceHeader = !useCompactHeaderLayout && (isContentProducerMode || isClientReviewerMode);
-  const showDenseDesktopHeaderUtilities = !useCompactHeaderLayout && useDenseDesktopHeader;
+  // På mobil kollapser vi alle sekundære kontohandlinger (bytt-visning,
+  // start-intro, rediger-opplæring, adminpanel, logg-ut) inn i «Mer»-menyen.
+  // Da står kun Innboks + profil + ⋯ igjen i headeren — mye ryddigere på smal
+  // skjerm. Tablet/desktop beholder dagens oppførsel.
+  const showDenseDesktopHeaderUtilities = isMobile || (!useCompactHeaderLayout && useDenseDesktopHeader);
   const headerBrandSubtitle = isClientReviewerMode
     ? 'Klientrom'
     : isContentProducerMode
@@ -6784,12 +6788,17 @@ type RoleRoomProjectWorkspaceState = {
   }, [currentWorkspaceMode]);
 
   const breadcrumbSegments = useMemo<PlannerBreadcrumbSegment[]>(() => {
-    const segments: PlannerBreadcrumbSegment[] = [
-      {
+    // På mobil slanker vi brødsmulene: roten ("Casting Planner") er
+    // redundant med headerens brand, og aktiv-fane-leddet er redundant med
+    // tab-baren rett under. Kun prosjektnavnet beholder vi — det er den
+    // eneste steds-konteksten som ikke vises andre steder i headeren.
+    const segments: PlannerBreadcrumbSegment[] = [];
+    if (!isMobile) {
+      segments.push({
         label: 'Casting Planner',
         onClick: () => navigateToTab(0),
-      },
-    ];
+      });
+    }
     if (currentProject) {
       segments.push({
         label: currentProject.name || 'Uten navn',
@@ -6797,12 +6806,14 @@ type RoleRoomProjectWorkspaceState = {
         ariaLabel: `Bytt prosjekt (nåværende: ${currentProject.name || 'Uten navn'})`,
       });
     }
-    const tabSpec = COMMAND_PALETTE_TABS.find((tab) => tab.tabIndex === activeTab);
-    if (tabSpec) {
-      segments.push({ label: tabSpec.label });
+    if (!isMobile) {
+      const tabSpec = COMMAND_PALETTE_TABS.find((tab) => tab.tabIndex === activeTab);
+      if (tabSpec) {
+        segments.push({ label: tabSpec.label });
+      }
     }
     return segments;
-  }, [activeTab, currentProject, navigateToTab]);
+  }, [activeTab, currentProject, navigateToTab, isMobile]);
 
   const activeWorkflowStep = useMemo(
     () => deriveActiveWorkflowStep(contentProducerPlannerSurface, producerMediaFocus?.workspace),
@@ -8689,15 +8700,20 @@ type RoleRoomProjectWorkspaceState = {
               alignItems: useFocusedWorkspaceHeader ? 'center' : 'stretch',
               gap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1 },
               rowGap: useDenseDesktopHeader ? 0.75 : { xs: 0.75, sm: 1, md: 1.25 },
-              flex: useCompactHeaderLayout ? '1 1 100%' : 1,
+              // Mobil: prosjekt-svitsjeren er en kompakt knapp som vokser
+              // midt på rad 1 (mellom venstre og høyre handlingsgruppe).
+              // flex-basis 0 => den tvinger ikke egen linje, men vokser i
+              // mellomrommet og lar høyre gruppe bli på samme rad.
+              // Tablet/desktop beholder prosjekt-kortene på egen rad.
+              flex: isMobile ? '1 1 0' : (useCompactHeaderLayout ? '1 1 100%' : 1),
               minWidth: 0,
-              order: useCompactHeaderLayout ? 4 : 1,
+              order: isMobile ? 2 : (useCompactHeaderLayout ? 4 : 1),
               // Narrow viewports keep the horizontal scroll (mobile-first),
               // but md+ wraps cards to multiple rows so a 1920/4K viewport
               // shows 4-6 cards per row instead of clipping at the edge
               // of a single-row strip.
               flexWrap: useCompactHeaderLayout ? 'nowrap' : { xs: 'nowrap', md: 'wrap' },
-              overflowX: useCompactHeaderLayout ? 'auto' : { xs: 'auto', md: 'visible' },
+              overflowX: isMobile ? 'visible' : (useCompactHeaderLayout ? 'auto' : { xs: 'auto', md: 'visible' }),
               overflowY: 'hidden',
               WebkitOverflowScrolling: 'touch',
               scrollbarWidth: useCompactHeaderLayout ? 'thin' : 'none',
@@ -8867,6 +8883,89 @@ type RoleRoomProjectWorkspaceState = {
                   </IconButton>
                 ) : null}
               </>
+            ) : isMobile && headerProjects.length > 0 ? (
+              // Mobil: kompakt prosjekt-svitsjer. Erstattet de brede,
+              // horisontalt scrollbare kortene (252px) som bare viste ~1,5
+              // kort på en 390px-skjerm. Én trykkbar "pille" med aktivt
+              // prosjekt — trykk åpner prosjekt-velgeren (søk + liste + nytt).
+              <Box
+                onClick={openProjectSelectorDialog}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openProjectSelectorDialog();
+                  }
+                }}
+                data-testid="role-room-mobile-project-switcher"
+                aria-label={
+                  headerActiveProject
+                    ? `Aktivt prosjekt: ${headerActiveProject.name}. Trykk for å bytte prosjekt.`
+                    : 'Velg prosjekt'
+                }
+                sx={{
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 1.15,
+                  py: 0.5,
+                  borderRadius: 999,
+                  border: headerActiveProject ? '1px solid rgba(0,212,255,0.3)' : '1px dashed rgba(255,255,255,0.22)',
+                  bgcolor: headerActiveProject ? 'rgba(8,47,73,0.32)' : 'rgba(255,255,255,0.03)',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.2s ease, background-color 0.2s ease',
+                  '&:hover, &:active': {
+                    borderColor: headerActiveProject ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.4)',
+                    bgcolor: headerActiveProject ? 'rgba(8,47,73,0.5)' : 'rgba(255,255,255,0.06)',
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    bgcolor: headerActiveProject ? 'var(--role-cyan, #22d3ee)' : 'rgba(255,255,255,0.25)',
+                    border: headerActiveProject ? '2px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.12)',
+                    boxShadow: headerActiveProject ? '0 0 12px rgba(0,212,255,0.5)' : 'none',
+                  }}
+                />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    sx={{
+                      color: '#f8fafc',
+                      fontSize: '0.84rem',
+                      fontWeight: 700,
+                      lineHeight: 1.15,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {headerActiveProject?.name || 'Velg prosjekt'}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      mt: 0.15,
+                      color: 'rgba(226,232,240,0.62)',
+                      fontSize: '0.62rem',
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {headerActiveProject
+                      ? [headerActiveProject.clientName, headerProjectMetaHint].filter(Boolean).join(' • ')
+                      : `${headerProjects.length} ${headerProjects.length === 1 ? 'prosjekt' : 'prosjekter'} tilgjengelig`}
+                  </Typography>
+                </Box>
+                <SwapHorizIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.6)', flexShrink: 0 }} />
+              </Box>
             ) : (
               <>
                 {visibleHeaderProjects.map((project) => {
@@ -9287,7 +9386,12 @@ type RoleRoomProjectWorkspaceState = {
                 gap: useCompactHeaderLayout ? 0.5 : showDenseDesktopHeaderUtilities ? 0.4 : 1,
                 flexShrink: 0,
                 order: useCompactHeaderLayout ? 3 : 5,
-                flex: useCompactHeaderLayout ? '1 1 100%' : '0 0 auto',
+                // On compact (mobile) layouts the action buttons must sit on the
+                // SAME horizontal row as the left action group — pinned to the
+                // right edge via margin-left:auto. The project chips (order 4,
+                // flex 1 1 100%) wrap to their own scrollable row below.
+                flex: '0 0 auto',
+                ml: useCompactHeaderLayout ? 'auto' : 0,
                 minWidth: useCompactHeaderLayout ? 0 : 'auto',
                 overflowX: useCompactHeaderLayout ? 'auto' : 'visible',
                 overflowY: 'hidden',
@@ -9584,7 +9688,11 @@ type RoleRoomProjectWorkspaceState = {
         </Box>
       )}
 
-      {!isLiveSetImmersive && (
+      {/* Breadcrumb + klient-status-stripe.
+          På mobil er denne overflødig: header-svitsjeren viser allerede
+          prosjektet, og statusen («Godkjent av klient» / «Venter på
+          klient-godkjenning») står ved siden av. Desktop beholder den. */}
+      {!isLiveSetImmersive && !isMobile && (
         <Box
           sx={{
             display: 'flex',
@@ -9654,10 +9762,14 @@ type RoleRoomProjectWorkspaceState = {
               Send til klient
             </Button>
           ) : null}
-          <WorkspaceModeBadge
-            mode={currentWorkspaceMode}
-            tooltip={currentWorkspaceModeTooltip}
-          />
+          {/* På mobil er WorkspaceModeBadge redundant med ProfessionModeChip
+              («Produksjons-modus») øverst — skjules for å rydde i raden. */}
+          {!isMobile && (
+            <WorkspaceModeBadge
+              mode={currentWorkspaceMode}
+              tooltip={currentWorkspaceModeTooltip}
+            />
+          )}
         </Box>
       )}
 

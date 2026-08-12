@@ -3277,6 +3277,23 @@ extension APIClient {
         try await get("/api/admin-room/agent/ads/configs/\(id)/insights")
     }
 
+    // -- Lead Map · auto-populate ---------------------------------
+
+    /// Site Discovery → Claude lookalike-spørsmål → Google Places-import.
+    /// POST /api/role-room/agent/configs/:id/lead-map/auto-populate
+    func runAutoPopulate(
+        configId: String,
+        city: String? = nil,
+        maxQueries: Int? = nil,
+        maxImportsPerQuery: Int? = nil
+    ) async throws -> AutoPopulateResult {
+        var body: [String: Any] = [:]
+        if let city, !city.isEmpty { body["city"] = city }
+        if let maxQueries { body["maxQueries"] = maxQueries }
+        if let maxImportsPerQuery { body["maxImportsPerQuery"] = maxImportsPerQuery }
+        return try await post("/api/role-room/agent/configs/\(configId)/lead-map/auto-populate", body: body)
+    }
+
     // -- Google Search Console ------------------------------------
 
     func verifyGsc(id: String) async throws {

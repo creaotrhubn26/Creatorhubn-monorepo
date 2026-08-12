@@ -5,7 +5,7 @@
 
 import { apiFetch } from '@/lib/queryClient';
 
-export type ProfileVisibility = 'public' | 'connections' | 'private';
+export type ProfileVisibility = 'public' | 'connections' | 'project_team' | 'private';
 
 /** En rad i medlemmets tidligere prosjekt-historikk (CV-stil). */
 export interface EarlierProject {

@@ -2693,8 +2693,38 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const checkPct = c.total > 0 ? c.done / c.total : null;
       const parts = [boardPct, checkPct].filter((x) => x != null);
       const pct = parts.length ? Math.round((parts.reduce((s: number, x: number) => s + x, 0) / parts.length) * 100) : 0;
+      // Per-medlem crew-liste: navn, rolle, status og online (presence siste 90 sek).
+      const memberRows = await pool.query(
+        `SELECT m.name, m.email, m.crew_role, m.status, m.user_id,
+                pr.last_seen_at,
+                (pr.last_seen_at > NOW() - INTERVAL '90 seconds') AS online
+           FROM project_team_members m
+           LEFT JOIN LATERAL (
+             SELECT last_seen_at FROM user_presence p
+             WHERE m.user_id IS NOT NULL AND p.user_id = m.user_id::uuid
+             ORDER BY p.last_seen_at DESC LIMIT 1
+           ) pr ON true
+          WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL
+          ORDER BY m.invited_at ASC`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const ownerRow = await pool.query(
+        `SELECT u.email, u.first_name, u.last_name
+           FROM projects p LEFT JOIN users u ON u.id = p.user_id
+          WHERE p.id = $1 LIMIT 1`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const o = ownerRow.rows[0];
       res.json({
         pct, online: pres.rows[0]?.online || 0, teamSize: (members.rows[0]?.n || 0) + 1,
+        owner: o ? { name: [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email, email: o.email } : null,
+        members: memberRows.rows.map((m: any) => ({
+          name: m.name || m.email,
+          email: m.email,
+          crewRole: m.crew_role || "assistent",
+          online: !!m.online,
+          lastSeen: m.last_seen_at ? new Date(m.last_seen_at).toISOString() : null,
+        })),
         readiness: [
           { label: "Oppgaver fullført", done: b.total > 0 && b.done === b.total, value: `${b.done}/${b.total}` },
           { label: "Sjekkliste klar", done: c.total > 0 && c.done === c.total, value: `${c.done}/${c.total}` },

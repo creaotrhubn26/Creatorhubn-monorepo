@@ -19,11 +19,18 @@ export const WsModal: React.FC<{ open: boolean; onClose: () => void; title: stri
   </Dialog>
 );
 
-export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number }> = ({ children, sx, pad = 2 }) => (
-  <Box sx={{
-    bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px`,
-    p: pad, ...sx,
-  }}>
+export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number; onClick?: () => void; ariaLabel?: string }> = ({ children, sx, pad = 2, onClick, ariaLabel }) => (
+  <Box
+    onClick={onClick}
+    role={onClick ? 'button' : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    aria-label={ariaLabel}
+    onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+    sx={{
+      bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px`,
+      p: pad, ...sx,
+    }}
+  >
     {children}
   </Box>
 );
@@ -92,7 +99,7 @@ export const WsRing: React.FC<{ value: number; size?: number; thickness?: number
 /** Tynn fremdriftslinje */
 export const WsBar: React.FC<{ value: number; color?: string; height?: number }> = ({ value, color = ws.accent, height = 6 }) => (
   <Box sx={{ width: '100%', height, borderRadius: height, bgcolor: 'rgba(255,255,255,0.10)', overflow: 'hidden' }}>
-    <Box sx={{ width: `${Math.max(0, Math.min(100, value))}%`, height: '100%', bgcolor: color, borderRadius: height }} />
+    <Box sx={{ width: `${Math.max(0, Math.min(100, value))}%`, height: '100%', bgcolor: color, borderRadius: height, transition: 'width 0.35s ease' }} />
   </Box>
 );
 
@@ -129,21 +136,47 @@ export const WsStat: React.FC<{ icon?: React.ReactNode; label: string; value: Re
 );
 
 /** Pille-faner (Alle/Forberedelser/Vielse … eller Timeline/Board/Kart) */
-export const WsPills: React.FC<{ items: { key: string; label: string }[]; value: string; onChange: (k: string) => void; sx?: any }> = ({ items, value, onChange, sx }) => (
-  <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, ...sx }}>
-    {items.map((it) => {
-      const active = it.key === value;
-      return (
-        <Box key={it.key} onClick={() => onChange(it.key)} sx={{
-          px: 1.5, py: 0.6, borderRadius: 2, cursor: 'pointer', fontSize: 13, fontWeight: active ? 700 : 500,
-          color: active ? ws.accent : ws.textDim, bgcolor: active ? ws.accentSoft : 'transparent',
-          border: `1px solid ${active ? ws.accentBorder : 'transparent'}`,
-          '&:hover': { color: ws.text, bgcolor: active ? ws.accentSoft : 'rgba(255,255,255,0.04)' },
-        }}>{it.label}</Box>
-      );
-    })}
-  </Stack>
-);
+export const WsPills: React.FC<{ items: { key: string; label: string }[]; value: string; onChange: (k: string) => void; sx?: any }> = ({ items, value, onChange, sx }) => {
+  const activeIdx = Math.max(0, items.findIndex((it) => it.key === value));
+  const select = (e: React.KeyboardEvent, idx: number) => {
+    e.preventDefault();
+    const next = items[idx];
+    onChange(next.key);
+    const nextEl = (e.currentTarget as HTMLElement).parentElement?.querySelector(`[data-ws-pill="${next.key}"]`) as HTMLElement | null;
+    nextEl?.focus();
+  };
+  const onKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') select(e, Math.min(items.length - 1, idx + 1));
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') select(e, Math.max(0, idx - 1));
+    else if (e.key === 'Home') select(e, 0);
+    else if (e.key === 'End') select(e, items.length - 1);
+  };
+  return (
+    <Stack direction="row" spacing={0.5} role="tablist" sx={{ flexWrap: 'wrap', gap: 0.5, ...sx }}>
+      {items.map((it, idx) => {
+        const active = it.key === value;
+        return (
+          <Box
+            key={it.key}
+            data-ws-pill={it.key}
+            role="tab"
+            aria-selected={active}
+            tabIndex={idx === activeIdx ? 0 : -1}
+            onClick={() => onChange(it.key)}
+            onKeyDown={(e) => onKeyDown(e, idx)}
+            sx={{
+              px: 1.5, py: 0.6, borderRadius: 2, cursor: 'pointer', fontSize: 13, fontWeight: active ? 700 : 500,
+              color: active ? ws.accent : ws.textDim, bgcolor: active ? ws.accentSoft : 'transparent',
+              border: `1px solid ${active ? ws.accentBorder : 'transparent'}`,
+              '&:hover': { color: ws.text, bgcolor: active ? ws.accentSoft : 'rgba(255,255,255,0.04)' },
+              '&:focus-visible': { outline: `2px solid ${ws.accent}`, outlineOffset: 2 },
+            }}
+          >{it.label}</Box>
+        );
+      })}
+    </Stack>
+  );
+};
 
 /** Bilde-placeholder (referanser/moodboard/media — vi har ikke ekte bilder i mock) */
 export const WsImg: React.FC<{ ratio?: string; label?: string; sx?: any }> = ({ ratio = '1 / 1', label, sx }) => (
@@ -254,7 +287,7 @@ export const WsTable: React.FC<{ columns: string[]; rows: React.ReactNode[][]; w
       </Box>
       <Box sx={{ display: 'table-row-group' }}>
         {rows.map((r, ri) => (
-          <Box key={ri} onClick={() => onRowClick && onRowClick(ri)} sx={{ display: 'table-row', cursor: onRowClick ? 'pointer' : 'default', '&:hover': { bgcolor: onRowClick ? ws.accentSoft : 'rgba(255,255,255,0.02)' } }}>
+          <Box key={ri} data-ws-table-row={ri} onClick={() => onRowClick && onRowClick(ri)} sx={{ display: 'table-row', cursor: onRowClick ? 'pointer' : 'default', '&:hover': { bgcolor: onRowClick ? ws.accentSoft : 'rgba(255,255,255,0.02)' } }}>
             {r.map((cell, ci) => (
               <Box key={ci} sx={{ display: 'table-cell', px: 1.25, py: 1, fontSize: 13, color: ws.text, borderBottom: `1px solid ${ws.borderSoft}`, verticalAlign: 'middle' }}>{cell}</Box>
             ))}

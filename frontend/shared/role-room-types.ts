@@ -338,6 +338,57 @@ export interface MarketplaceInstallation {
   settings: Record<string, unknown>;
 }
 
+// ── Marketplace (org-scoped, Fase 2: Leadgrid som tjeneste) ──
+
+export type RoleRoomAppInstallState = 'trial' | 'active' | 'paused' | 'cancelled';
+
+/** App fra role_room_apps-katalogen, med installasjonsstate for nåværende org. */
+export interface RoleRoomApp {
+  id: string;
+  name: string;
+  description: string | null;
+  logo_url: string | null;
+  category: string | null;
+  install_state: RoleRoomAppInstallState | null;
+  trial_ends_at: string | null;
+  installed_at: string | null;
+}
+
+export interface RoleRoomAppInstall {
+  id: string;
+  app_id: string;
+  app_name: string;
+  state: RoleRoomAppInstallState;
+  trial_ends_at: string | null;
+  installed_at: string;
+}
+
+export interface RoleRoomAppsResponse {
+  apps: RoleRoomApp[];
+  organizationId: string;
+}
+
+export interface RoleRoomInstalledResponse {
+  installations: RoleRoomAppInstall[];
+  organizationId: string;
+}
+
+export interface RoleRoomInstallResponse {
+  success: boolean;
+  appId: string;
+  state: RoleRoomAppInstallState;
+  trialEndsAt: string;
+  organizationId: string;
+  isNewOrg: boolean;
+}
+
+export interface RoleRoomUninstallResponse {
+  success: boolean;
+  appId: string;
+  state: 'cancelled';
+  organizationId: string;
+}
+
 // ── Onboarding Registration ──────────────────────────────────
 
 export interface OnboardingRoleResult {

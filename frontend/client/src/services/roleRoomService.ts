@@ -17,6 +17,10 @@ import type {
   RoleRoomHealthResponse,
   OnboardingRoleResult,
   MarketplaceInstallation,
+  RoleRoomAppsResponse,
+  RoleRoomInstalledResponse,
+  RoleRoomInstallResponse,
+  RoleRoomUninstallResponse,
   AuditionListFilters,
   AuditionListResponse,
   AuditionScheduleWrite,
@@ -420,4 +424,32 @@ export async function getInstalledApps(): Promise<MarketplaceInstallation[]> {
 
 export async function uninstallApp(appId: string): Promise<{ success: boolean }> {
   return roleRoomFetch(`/marketplace/uninstall/${appId}`, { method: 'DELETE' });
+}
+
+// ── Marketplace (org-scoped) — Fase 2: Leadgrid som tjeneste ──
+
+export async function getRoleRoomApps(): Promise<RoleRoomAppsResponse> {
+  return roleRoomFetch('/marketplace/apps');
+}
+
+export async function getOrgInstalledApps(): Promise<RoleRoomInstalledResponse> {
+  return roleRoomFetch('/marketplace/organizations/installed');
+}
+
+export async function installOrgApp(
+  appId: string
+): Promise<RoleRoomInstallResponse> {
+  return roleRoomFetch('/marketplace/organizations/install', {
+    method: 'POST',
+    body: JSON.stringify({ appId }),
+  });
+}
+
+export async function uninstallOrgApp(
+  appId: string
+): Promise<RoleRoomUninstallResponse> {
+  return roleRoomFetch('/marketplace/organizations/uninstall', {
+    method: 'POST',
+    body: JSON.stringify({ appId }),
+  });
 }

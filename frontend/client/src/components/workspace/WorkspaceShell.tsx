@@ -387,8 +387,10 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           </Box>
 
           {/* Aktivt tab */}
-          <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
-            {children}
+          <Box sx={{ flex: 1, overflowY: 'auto', p: { xs: 2, md: 3 } }}>
+            <Box sx={{ maxWidth: 1720, mx: 'auto' }}>
+              {children}
+            </Box>
           </Box>
         </Box>
       </Box>

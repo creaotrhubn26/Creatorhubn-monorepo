@@ -21,7 +21,11 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import multer from "multer";
-import crypto from "crypto";
+import {
+  archiveToRoleRoomB2,
+  deleteFromRoleRoomB2,
+  presignRoleRoomB2Download,
+} from "./b2-archive-helper.js";
 
 interface SessionData {
   userId: string;
@@ -31,10 +35,43 @@ interface SessionData {
 interface RoleRoomProfileDeps {
   pool: Pool;
   activeSessions: Map<string, SessionData>;
-  /** Optional: Cloudflare R2 / S3 uploader. Hvis undefined, returnerer 503 ved image-upload. */
-  uploadImage?: (buffer: Buffer, mimeType: string, key: string) => Promise<string>;
   /** Sjekker om bruker er admin. Hvis null returneres, ble respons sendt fra middleware. */
   requireAdminSession?: (req: Request, res: Response) => { userId: string } | null;
+}
+
+// ─── Hjelper: deler viewer og target et produksjonsteam? ────────────────
+// "Samme team" = begge er knyttet til minst ett felles casting-prosjekt,
+// enten som eier (casting_projects.created_by) eller via rolle
+// (casting_user_roles.user_id). Brukes for visibility-verdien
+// 'project_team' (kun produksjonsteamet kan se profilen).
+async function sharesProductionTeam(
+  pool: Pool,
+  viewerId: string,
+  targetUserId: string,
+): Promise<boolean> {
+  try {
+    const { rows } = await pool.query(
+      `WITH viewer_projects AS (
+         SELECT id FROM casting_projects WHERE created_by = $1
+         UNION
+         SELECT project_id FROM casting_user_roles WHERE user_id = $1
+       ),
+       target_projects AS (
+         SELECT id AS project_id FROM casting_projects WHERE created_by = $2
+         UNION
+         SELECT project_id FROM casting_user_roles WHERE user_id = $2
+       )
+       SELECT 1 FROM target_projects tp
+        WHERE tp.project_id IN (SELECT id FROM viewer_projects)
+        LIMIT 1`,
+      [viewerId, targetUserId],
+    );
+    return rows.length > 0;
+  } catch (err) {
+    // Schema-drift skal ikke lekke profiler — nekt heller enn å åpne opp.
+    console.warn("[rr-profile] sharesProductionTeam degraded:", (err as any)?.message || err);
+    return false;
+  }
 }
 
 // ─── Default onboarding-config ───────────────────────────────────────────
@@ -183,6 +220,7 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
         skills JSONB NOT NULL DEFAULT '[]'::jsonb,
         languages JSONB NOT NULL DEFAULT '[]'::jsonb,
         profile_image_url VARCHAR(500),
+        profile_image_b2_key VARCHAR(500),
         profile_image_focal_x SMALLINT,
         profile_image_focal_y SMALLINT,
         years_experience SMALLINT,
@@ -226,6 +264,7 @@ async function ensureProfileTable(pool: Pool): Promise<boolean> {
     for (const col of [
       `organization_number VARCHAR(16)`,
       `business_address VARCHAR(500)`,
+      `profile_image_b2_key VARCHAR(500)`,
       `profile_image_focal_x SMALLINT`,
       `profile_image_focal_y SMALLINT`,
       `years_experience SMALLINT`,
@@ -282,7 +321,22 @@ function requireUser(req: Request, res: Response, activeSessions: Map<string, Se
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
+/** TTL for presigned profilbilde-URL-er. Fornyes automatisk ved hver profil-lesing. */
+const PROFILE_IMAGE_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 dager
+
+/**
+ * Konverter DB-rad → API-profil. Hvis profilen har et profilbilde på B2
+ * (profile_image_b2_key), genereres en fersk presignet inline-URL on-demand —
+ * bøtta forblir privat og URL-en utløper aldri i praksis. Faller tilbake på
+ * lagret URL (legacy R2) hvis presigning feiler.
+ */
+async function rowToProfile(row: Record<string, unknown>): Promise<Record<string, unknown>> {
+  let profileImageUrl = row.profile_image_url as string | null | undefined;
+  const b2Key = row.profile_image_b2_key as string | null | undefined;
+  if (b2Key) {
+    const signed = await presignRoleRoomB2Download(b2Key, undefined, PROFILE_IMAGE_URL_TTL_SECONDS);
+    if (signed) profileImageUrl = signed;
+  }
   return {
     userId: row.user_id,
     displayName: row.display_name,
@@ -298,7 +352,7 @@ function rowToProfile(row: Record<string, unknown>): Record<string, unknown> {
     showreelUrl: row.showreel_url,
     skills: row.skills,
     languages: row.languages,
-    profileImageUrl: row.profile_image_url,
+    profileImageUrl: profileImageUrl ?? null,
     profileImageFocalX: row.profile_image_focal_x,
     profileImageFocalY: row.profile_image_focal_y,
     yearsExperience: row.years_experience,
@@ -494,7 +548,7 @@ async function seedFromTesterInvite(
 // ─── Public registration ─────────────────────────────────────────────────
 
 export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfileDeps): void {
-  const { pool, activeSessions, uploadImage } = deps;
+  const { pool, activeSessions } = deps;
 
   // Ensure table på første mount-tidspunkt
   void ensureProfileTable(pool);
@@ -534,10 +588,10 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
           `SELECT * FROM role_room_member_profiles WHERE user_id = $1 LIMIT 1`,
           [userId],
         );
-        res.json({ profile: rowToProfile(fresh.rows[0]) });
+        res.json({ profile: await rowToProfile(fresh.rows[0]) });
         return;
       }
-      res.json({ profile: rowToProfile(rows[0]) });
+      res.json({ profile: await rowToProfile(rows[0]) });
     } catch (err) {
       // Column-drift på role_room_member_profiles skal ikke krasje role-room.
       // Returner tom profile-shape istedet for 500 — bruker ser bare default-state.
@@ -628,7 +682,7 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         RETURNING *`,
         values,
       );
-      res.json({ profile: rowToProfile(rows[0]) });
+      res.json({ profile: await rowToProfile(rows[0]) });
     } catch (err) {
       console.error("[rr-profile] PATCH /me failed:", err);
       res.status(500).json({ error: "intern_feil" });
@@ -642,9 +696,6 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
     async (req: Request, res: Response) => {
       const userId = requireUser(req, res, activeSessions);
       if (!userId) return;
-      if (!uploadImage) {
-        res.status(503).json({ error: "image_upload_ikke_konfigurert" }); return;
-      }
       const file = (req as Request & { file?: Express.Multer.File }).file;
       if (!file) {
         res.status(400).json({ error: "ingen_fil" }); return;
@@ -653,20 +704,38 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
         res.status(503).json({ error: "tabell_ikke_klar" }); return;
       }
 
-      // Object-key: deterministisk per bruker så uploads erstatter forrige
+      // Ryddig per-bruker-struktur i B2: users/{userId}/profile/profile-image.{ext}.
+      // Fast key per bruker + slett gamle objekter → nøyaktig én fil per bruker.
+      // Lastes opp til The Role Room sin B2-bøtte (the-role-room-prod) via
+      // b2-archive-helper — samme B2-oppsett som resten av Role Room (B2_ROLE_ROOM_*).
       const ext = file.mimetype.split("/")[1] || "jpg";
-      const hash = crypto.createHash("sha1").update(file.buffer).digest("hex").slice(0, 10);
-      const key = `role-room/profile-images/${userId}/${Date.now()}-${hash}.${ext}`;
+      const key = `users/${userId}/profile/profile-image.${ext}`;
 
       try {
-        const url = await uploadImage(file.buffer, file.mimetype, key);
+        // Slett forrige profilbilde fra B2 hvis key-en er endret (f.eks. format-byte)
+        const { rows: prevRows } = await pool.query<{ profile_image_b2_key: string | null }>(
+          `SELECT profile_image_b2_key FROM role_room_member_profiles WHERE user_id = $1`,
+          [userId],
+        );
+        const prevKey = prevRows[0]?.profile_image_b2_key ?? null;
+        if (prevKey && prevKey !== key) void deleteFromRoleRoomB2(prevKey);
+
+        const uploaded = await archiveToRoleRoomB2(key, file.buffer, file.mimetype);
+        if (!uploaded) {
+          res.status(503).json({ error: "image_upload_ikke_konfigurert" }); return;
+        }
+        // Presignet inline-URL for umiddelbar forhåndsvisning. Påfølgende
+        // profil-lesinger genererer ferske signerte URL-er (rowToProfile).
+        const signed = await presignRoleRoomB2Download(key, undefined, PROFILE_IMAGE_URL_TTL_SECONDS);
+        const url = signed ?? key;
         await pool.query(
-          `INSERT INTO role_room_member_profiles (user_id, profile_image_url)
-               VALUES ($1, $2)
+          `INSERT INTO role_room_member_profiles (user_id, profile_image_url, profile_image_b2_key)
+               VALUES ($1, $2, $3)
            ON CONFLICT (user_id)
            DO UPDATE SET profile_image_url = EXCLUDED.profile_image_url,
+                         profile_image_b2_key = EXCLUDED.profile_image_b2_key,
                          updated_at = NOW()`,
-          [userId, url],
+          [userId, url, key],
         );
         res.json({ profileImageUrl: url });
       } catch (err) {
@@ -681,13 +750,20 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
     const userId = requireUser(req, res, activeSessions);
     if (!userId) return;
     try {
+      // Slett faktisk objekt fra B2 (best-effort) så per-bruker-mappen holders ryddig
+      const { rows } = await pool.query<{ profile_image_b2_key: string | null }>(
+        `SELECT profile_image_b2_key FROM role_room_member_profiles WHERE user_id = $1`,
+        [userId],
+      );
+      const b2Key = rows[0]?.profile_image_b2_key ?? null;
+      if (b2Key) void deleteFromRoleRoomB2(b2Key);
+
       await pool.query(
         `UPDATE role_room_member_profiles
-            SET profile_image_url = NULL, updated_at = NOW()
+            SET profile_image_url = NULL, profile_image_b2_key = NULL, updated_at = NOW()
           WHERE user_id = $1`,
         [userId],
       );
-      // Merk: vi sletter ikke faktisk objekt fra R2 her — det gjøres av cron
       res.json({ ok: true });
     } catch (err) {
       console.error("[rr-profile] DELETE image failed:", err);
@@ -823,7 +899,7 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
          WHERE cur.project_id IN (${scopeProjectsSql})`;
 
       const where: string[] = [
-        "p.visibility IN ('public','connections')",
+        "p.visibility IN ('public','connections','project_team')",
         "p.onboarding_completed = TRUE",
         `p.user_id != $1`,
         `p.user_id IN (${teamMembersSql})`,
@@ -918,8 +994,17 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       if (visibility === "connections" && !viewerId) {
         res.status(401).json({ error: "krever_innlogging" }); return;
       }
+      if (visibility === "project_team") {
+        if (!viewerId) {
+          res.status(401).json({ error: "krever_innlogging" }); return;
+        }
+        if (viewerId !== targetUserId
+          && !(await sharesProductionTeam(pool, viewerId, targetUserId))) {
+          res.status(403).json({ error: "kun_team_medlem" }); return;
+        }
+      }
 
-      const profile = rowToProfile(row);
+      const profile = await rowToProfile(row);
       // Skjul onboarding-state fra offentlig
       delete (profile as Record<string, unknown>).onboardingCompleted;
       delete (profile as Record<string, unknown>).onboardingCompletedAt;
@@ -1071,6 +1156,15 @@ export function registerRoleRoomProfileRoutes(app: Express, deps: RoleRoomProfil
       }
       if (visibility === "connections" && !viewerId) {
         res.status(401).json({ error: "krever_innlogging" }); return;
+      }
+      if (visibility === "project_team") {
+        if (!viewerId) {
+          res.status(401).json({ error: "krever_innlogging" }); return;
+        }
+        if (viewerId !== targetUserId
+          && !(await sharesProductionTeam(pool, viewerId, targetUserId))) {
+          res.status(403).json({ error: "kun_team_medlem" }); return;
+        }
       }
       const { rows } = await pool.query(
         `SELECT id, start_date, end_date, status, note

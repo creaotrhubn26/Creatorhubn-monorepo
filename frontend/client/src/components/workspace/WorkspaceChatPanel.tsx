@@ -80,6 +80,11 @@ const T: WsDict = {
   clearSearch: { no: 'Tøm søket', en: 'Clear search' },
   you: { no: 'Deg', en: 'You' },
   title: { no: 'Team Chat', en: 'Team Chat' },
+  newChannel: { no: 'Ny kanal', en: 'New channel' },
+  newChannelTitle: { no: 'Opprett team-kanal', en: 'Create team channel' },
+  newChannelDesc: { no: 'Beskrivelse (valgfri)', en: 'Description (optional)' },
+  newChannelParticipants: { no: 'Deltakere — e-post eller ID, kommaskilt', en: 'Participants — email or ID, comma separated' },
+  newChannelCreate: { no: 'Opprett kanal', en: 'Create channel' },
   attachmentFallback: { no: 'vedlegg', en: 'attachment' },
   emojiPrefix: { no: 'Emoji', en: 'Emoji' },
   messagesRegion: { no: 'Meldinger', en: 'Messages' },
@@ -178,7 +183,16 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
   const t = makeT(T, locale);
-  const channelId = `project-${projectId}`;
+  // Aktiv kanal — hovedkanalen `project-<id>` som utgangspunkt, byttbar til
+  // team-kanaler (GET/POST /api/chat/channels).
+  const [channelId, setChannelId] = useState(`project-${projectId}`);
+  const [channels, setChannels] = useState([]); // [{id,name,kind,description,participantCount}]
+  const [channelAnchor, setChannelAnchor] = useState(null);
+  const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [newChannelDesc, setNewChannelDesc] = useState('');
+  const [newChannelParticipants, setNewChannelParticipants] = useState('');
+  const [newChannelBusy, setNewChannelBusy] = useState(false);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -270,10 +284,34 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
 
   useEffect(() => {
     load(true); loadActivity();
-    const iv = setInterval(() => { if (!document.hidden) { load(false); loadActivity(); } }, 15000);
+    const loadChannelsNow = () => apiRequest(`/api/chat/channels?projectId=${encodeURIComponent(projectId)}`)
+      .then((d) => setChannels(Array.isArray(d?.channels) ? d.channels : []))
+      .catch(() => { /* sekundær */ });
+    loadChannelsNow();
+    const iv = setInterval(() => { if (!document.hidden) { load(false); loadActivity(); loadChannelsNow(); } }, 15000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
+
+  // Ny team-kanal → bytt til den (velkomstmeldingen vises i tråden).
+  const createChannel = async () => {
+    const name = newChannelName.trim();
+    if (!name || newChannelBusy) return;
+    setNewChannelBusy(true);
+    try {
+      const participantIds = newChannelParticipants.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+      const r = await apiRequest('/api/chat/channels', {
+        method: 'POST',
+        body: { projectId, name, description: newChannelDesc.trim() || null, participantIds },
+      });
+      setNewChannelOpen(false);
+      setNewChannelName(''); setNewChannelDesc(''); setNewChannelParticipants('');
+      if (r?.channel?.id) {
+        setChannels((prev) => (prev.some((c) => c.id === r.channel.id) ? prev : [r.channel, ...prev]));
+        setChannelId(r.channel.id);
+      }
+    } catch (e) { setToast(String(e?.message || t('sendFailed'))); } finally { setNewChannelBusy(false); }
+  };
 
   // Deltakere utledes fra avsenderne i kanalen (ingen egen tabell nødvendig).
   const participants = useMemo(() => {
@@ -699,7 +737,28 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1.5, borderBottom: `1px solid ${ws.border}` }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ws.green }} />
-          <Typography component="h2" sx={{ fontSize: 14, fontWeight: 700 }}>{t('title')}</Typography>
+          {/* Kanal-velger: hovedkanalen + team-kanaler (POST/GET /api/chat/channels) */}
+          <Button size="small" aria-haspopup="true" aria-label={t('title')} onClick={(e) => setChannelAnchor(e.currentTarget)}
+            sx={{ textTransform: 'none', color: ws.text, fontSize: 14, fontWeight: 800, p: 0, minWidth: 0, '&:hover': { bgcolor: 'transparent', color: ws.accent } }}>
+            {channels.find((c) => c.id === channelId)?.name || t('title')}
+            <KeyboardArrowDown sx={{ fontSize: 16, ml: 0.25, color: ws.textDim }} />
+          </Button>
+          <Menu anchorEl={channelAnchor} open={!!channelAnchor} onClose={() => setChannelAnchor(null)}
+            slotProps={{ paper: { sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}`, width: 260, maxHeight: 340 } } }}>
+            {channels.map((c) => (
+              <MenuItem key={c.id} selected={c.id === channelId} onClick={() => { setChannelId(c.id); setChannelAnchor(null); setQuery(''); setPinnedOnly(false); }}
+                sx={{ fontSize: 13, '&.Mui-selected': { bgcolor: ws.accentSoft, color: ws.accent } }}>
+                <ListItemText primary={c.name} secondary={c.kind === 'main' ? t('channelProduction') : (c.description || `${c.participantCount ?? 0} ${t('members')}`)}
+                  primaryTypographyProps={{ sx: { fontSize: 13, fontWeight: c.id === channelId ? 700 : 500 } }}
+                  secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+              </MenuItem>
+            ))}
+            <Box sx={{ borderTop: `1px solid ${ws.border}`, mt: 0.5 }}>
+              <MenuItem onClick={() => { setChannelAnchor(null); setNewChannelOpen(true); }} sx={{ fontSize: 13, color: ws.accent, fontWeight: 600 }}>
+                <AddCircleOutline sx={{ fontSize: 16, mr: 1 }} /> {t('newChannel')}
+              </MenuItem>
+            </Box>
+          </Menu>
         </Stack>
         <Stack direction="row" spacing={0.25}>
           <Tooltip title={t('search')}><IconButton size="small" aria-label={t('search')} aria-pressed={searchOpen} onClick={() => { setSearchOpen((v) => { if (v) setQuery(''); return !v; }); }} sx={{ color: searchOpen ? ws.accent : ws.textDim }}><Search fontSize="small" /></IconButton></Tooltip>
@@ -993,6 +1052,24 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
               {apprItems.length === 0 && <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>}
             </Stack>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ny team-kanal */}
+      <Dialog open={newChannelOpen} onClose={() => !newChannelBusy && setNewChannelOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('newChannelTitle')}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ pt: 0.5 }}>
+            <TextField autoFocus size="small" label={t('newChannel')} value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) void createChannel(); }}
+              inputProps={{ 'aria-label': t('newChannel') }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13.5 } }} />
+            <TextField size="small" label={t('newChannelDesc')} value={newChannelDesc} onChange={(e) => setNewChannelDesc(e.target.value)}
+              inputProps={{ 'aria-label': t('newChannelDesc') }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13.5 } }} />
+            <TextField size="small" label={t('newChannelParticipants')} value={newChannelParticipants} onChange={(e) => setNewChannelParticipants(e.target.value)}
+              inputProps={{ 'aria-label': t('newChannelParticipants') }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13.5 } }} />
+            <Button variant="contained" disabled={!newChannelName.trim() || newChannelBusy} onClick={() => void createChannel()} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accent } }}>
+              {newChannelBusy ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : t('newChannelCreate')}
+            </Button>
+          </Stack>
         </DialogContent>
       </Dialog>
 
