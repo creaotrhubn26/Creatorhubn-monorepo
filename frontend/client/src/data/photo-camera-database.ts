@@ -72,16 +72,19 @@ const PHOTO_CATEGORY_VALUES = [
   'film',
   'action',
   'phone',
- ] as const satisfies readonly PhotoCameraCategory[];
+ ] as const satisfies readonly [PhotoCameraCategory, ...PhotoCameraCategory[]];
 
 const PHOTO_PRICE_RANGE_VALUES = [
   'budget',
   'mid-range',
   'professional',
   'cinema',
- ] as const satisfies readonly CameraPriceRange[];
+ ] as const satisfies readonly [CameraPriceRange, ...CameraPriceRange[]];
 
-const CAMERA_SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly CameraSource[];
+const CAMERA_SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly [
+  CameraSource,
+  ...CameraSource[],
+];
 
 const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 const isSupportedReleaseYear = (value: string): boolean => {
@@ -92,13 +95,13 @@ const isSupportedReleaseYear = (value: string): boolean => {
 const photoCameraSchema = z.object({
   id: z.string().min(1),
   externalId: z.string().min(1),
-  source: z.enum(CAMERA_SOURCE_VALUES as [CameraSource, ...CameraSource[]]),
+  source: z.enum(CAMERA_SOURCE_VALUES),
   lastSeenAt: z.string().datetime(),
   isDeprecated: z.boolean(),
   brand: z.string().min(1),
   model: z.string().min(1),
-  category: z.enum(PHOTO_CATEGORY_VALUES as [PhotoCameraCategory, ...PhotoCameraCategory[]]),
-  priceRange: z.enum(PHOTO_PRICE_RANGE_VALUES as [CameraPriceRange, ...CameraPriceRange[]]),
+  category: z.enum(PHOTO_CATEGORY_VALUES),
+  priceRange: z.enum(PHOTO_PRICE_RANGE_VALUES),
   description: z.string().min(1),
   features: z.array(z.string().min(1)).min(1),
   isPhotoOptimized: z.boolean(),

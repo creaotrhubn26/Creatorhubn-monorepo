@@ -75,7 +75,7 @@ const categoryValues = [
   'on-camera-recorder',
   'camera-attached-digital-mic',
   'desktop-production-console',
- ] as const satisfies readonly AudioStorageDeviceCategory[];
+ ] as const satisfies readonly [AudioStorageDeviceCategory, ...AudioStorageDeviceCategory[]];
 
 const storageMediumValues = [
   'internal-flash',
@@ -87,10 +87,16 @@ const storageMediumValues = [
   'SDXC',
   'usb-storage',
   'camera-media',
- ] as const satisfies readonly AudioStorageMedium[];
+ ] as const satisfies readonly [AudioStorageMedium, ...AudioStorageMedium[]];
 
-const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly AudioStorageSource[];
-const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly DatePrecision[];
+const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly [
+  AudioStorageSource,
+  ...AudioStorageSource[],
+];
+const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly [
+  DatePrecision,
+  ...DatePrecision[],
+];
 
 const referenceSchema = z.object({
   title: z.string().min(1),
@@ -100,16 +106,16 @@ const referenceSchema = z.object({
 const audioStorageDeviceSchema = z.object({
   id: z.string().min(1),
   externalId: z.string().min(1),
-  source: z.enum(sourceValues as [AudioStorageSource, ...AudioStorageSource[]]),
+  source: z.enum(sourceValues),
   lastSeenAt: z.string().datetime(),
   isDeprecated: z.boolean(),
   brand: z.string().min(1),
   model: z.string().min(1),
-  category: z.enum(categoryValues as [AudioStorageDeviceCategory, ...AudioStorageDeviceCategory[]]),
+  category: z.enum(categoryValues),
   releaseYear: z.number().int().min(2020).max(2026),
   releaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  releaseDatePrecision: z.enum(precisionValues as [DatePrecision, ...DatePrecision[]]),
-  storageMedia: z.array(z.enum(storageMediumValues as [AudioStorageMedium, ...AudioStorageMedium[]])).min(1),
+  releaseDatePrecision: z.enum(precisionValues),
+  storageMedia: z.array(z.enum(storageMediumValues)).min(1),
   maxStorage: z.string().min(1),
   recordingFormats: z.array(z.string().min(1)).min(1),
   maxSampleRateHz: z.number().int().positive(),

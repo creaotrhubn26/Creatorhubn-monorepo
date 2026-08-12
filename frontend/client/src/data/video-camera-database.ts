@@ -80,10 +80,13 @@ const VIDEO_CATEGORY_VALUES = [
   'point-and-shoot',
   'instant',
   'film',
- ] as const satisfies readonly VideoCameraCategory[];
+ ] as const satisfies readonly [VideoCameraCategory, ...VideoCameraCategory[]];
 
-const PRICE_RANGE_VALUES = ['budget', 'mid-range', 'professional', 'cinema'] as const satisfies readonly CameraPriceRange[];
-const SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly CameraSource[];
+const PRICE_RANGE_VALUES = ['budget', 'mid-range', 'professional', 'cinema'] as const satisfies readonly [
+  CameraPriceRange,
+  ...CameraPriceRange[],
+];
+const SOURCE_VALUES = ['manual', 'api', 'discovery', 'seed'] as const satisfies readonly [CameraSource, ...CameraSource[]];
 const isSupportedReleaseYear = (value: string): boolean => {
   const year = Number.parseInt(value.slice(0, 4), 10);
   return Number.isInteger(year) && year >= 2020 && year <= 2026;
@@ -93,17 +96,17 @@ const videoCameraSchema = z.object({
   id: z.string().min(1),
   externalId: z.string().min(1),
   type: z.literal('video'),
-  source: z.enum(SOURCE_VALUES as [CameraSource, ...CameraSource[]]),
+  source: z.enum(SOURCE_VALUES),
   lastSeenAt: z.string().datetime(),
   isDeprecated: z.boolean(),
   brand: z.string().min(1),
   model: z.string().min(1),
-  category: z.enum(VIDEO_CATEGORY_VALUES as [VideoCameraCategory, ...VideoCameraCategory[]]),
+  category: z.enum(VIDEO_CATEGORY_VALUES),
   logFormats: z.array(z.string().min(1)).min(1),
   resolution: z.array(z.string().min(1)).min(1),
   frameRates: z.array(z.string().min(1)).min(1),
   colorSpace: z.array(z.string().min(1)).min(1),
-  priceRange: z.enum(PRICE_RANGE_VALUES as [CameraPriceRange, ...CameraPriceRange[]]),
+  priceRange: z.enum(PRICE_RANGE_VALUES),
   description: z.string().min(1),
   features: z.array(z.string().min(1)).min(1),
   isVideoOptimized: z.boolean(),
