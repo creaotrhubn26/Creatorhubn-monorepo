@@ -184,7 +184,7 @@ export function registerLeadgridChannelOnboardingRoutes({
     try {
       // Hent et hvilket som helst prosjekt for org-en
       const projR = await pool.query<{ id: string }>(
-        `SELECT id FROM casting_projects WHERE organization_id::text = $1 LIMIT 1`,
+        `SELECT id FROM leadgrid_projects WHERE organization_id::text = $1 LIMIT 1`,
         [orgKey],
       );
       if (projR.rows.length === 0) {

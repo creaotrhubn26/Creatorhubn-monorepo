@@ -60,7 +60,7 @@ async function resolveOrgIdSmart(
       const r = await pool.query<{ organization_id: string | null }>(
         `SELECT cp.organization_id::text
            FROM crm_customers c
-           LEFT JOIN casting_projects cp ON cp.id = c.project_id
+           LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
           WHERE c.id = $1::uuid LIMIT 1`,
         [leadId],
       );

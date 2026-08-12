@@ -761,7 +761,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
   async function verifyConfigAccess(configId: string, userId: string): Promise<boolean> {
     try {
       const r = await pool.query(
-        `SELECT 1 FROM client_ads_configs WHERE id = $1::uuid AND producer_user_id = $2`,
+        `SELECT 1 FROM client_ads_configs WHERE id = $1::uuid AND content_producer_user_id = $2`,
         [configId, userId],
       );
       return (r.rowCount ?? 0) > 0;

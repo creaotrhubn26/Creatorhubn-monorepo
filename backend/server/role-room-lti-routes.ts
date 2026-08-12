@@ -11,13 +11,7 @@
  */
 
 import crypto from "crypto";
-import {
-  Router,
-  type NextFunction,
-  type Request,
-  type Response as ExpressResponse,
-  type Router as ExpressRouter,
-} from "express";
+import { Router, type NextFunction, type Request, type Response as ExpressResponse, type Router as ExpressRouter } from "express";
 import rateLimit from "express-rate-limit";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession, persistAuthSession } from "./auth-session-store.js";
@@ -134,7 +128,7 @@ function assertSafeHttpsUrl(raw: string): string {
 // IKKE (redirect: "manual") — en 3xx gir res.ok=false og behandles som feil —
 // for å hindre redirect-basert SSRF forbi assertSafeHttpsUrl, som kun
 // validerer start-URLen.
-async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): Promise<Response> {
+async function fetchPlatform(url: string, opts: RequestInit = {}, ms = 10000): Promise<globalThis.Response> {
   assertSafeHttpsUrl(url);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);

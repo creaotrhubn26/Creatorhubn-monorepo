@@ -161,7 +161,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
                   om.role,
                   (SELECT COUNT(*)::int FROM organization_members
                     WHERE organization_id = o.id) AS member_count,
-                  (SELECT COUNT(*)::int FROM casting_projects
+                  (SELECT COUNT(*)::int FROM leadgrid_projects
                     WHERE organization_id = o.id) AS project_count
              FROM organizations o
              JOIN organization_members om ON om.organization_id = o.id
@@ -531,7 +531,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
                   NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM project_invitations pi
              LEFT JOIN organizations o ON o.id = pi.organization_id
-             LEFT JOIN casting_projects cp ON cp.id = pi.project_id
+             LEFT JOIN leadgrid_projects cp ON cp.id = pi.project_id
              LEFT JOIN users u ON u.id = pi.invited_by
             WHERE pi.token = $1
             LIMIT 1`,

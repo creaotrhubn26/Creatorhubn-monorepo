@@ -280,7 +280,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
 
         // Hent prosjekt-navn + inviter-navn for email-template
         const proj = await pool.query<{ name: string }>(
-          `SELECT name FROM casting_projects WHERE id = $1 LIMIT 1`,
+          `SELECT name FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
           [projectId],
         );
         if (proj.rows.length === 0) {
@@ -446,7 +446,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
                   cp.name AS project_name,
                   NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM project_invitations pi
-             JOIN casting_projects cp ON cp.id = pi.project_id
+             JOIN leadgrid_projects cp ON cp.id = pi.project_id
              LEFT JOIN users u ON u.id = pi.invited_by
             WHERE pi.token = $1
             LIMIT 1`,

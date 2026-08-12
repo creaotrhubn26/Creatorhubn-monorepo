@@ -88,7 +88,7 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
                 c.postal_code AS "postalCode", c.municipality_code AS "municipalityCode",
                 c.follow_up_priority, c.lead_score, c.expected_value
            FROM crm_customers c
-           LEFT JOIN casting_projects cp ON cp.id = c.project_id
+           LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
           WHERE c.assigned_user_id = $1
             AND (c.owner_user_id IN (
                     SELECT user_id::text FROM organization_members WHERE organization_id = $2::uuid
