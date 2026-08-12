@@ -67,47 +67,36 @@ export interface AudioStorageDevice {
   sourceReferences: AudioStorageReference[];
 }
 
-const categoryValues = [
-  'field-recorder',
-  'mixer-recorder',
-  'pocket-recorder',
-  'wireless-recorder',
-  'on-camera-recorder',
-  'camera-attached-digital-mic',
-  'desktop-production-console',
-<<<<<<< HEAD
-] as const satisfies readonly AudioStorageDeviceCategory[];
-=======
+ const categoryValues = [
+   'field-recorder',
+   'mixer-recorder',
+   'pocket-recorder',
+   'wireless-recorder',
+   'on-camera-recorder',
+   'camera-attached-digital-mic',
+   'desktop-production-console',
  ] as const satisfies readonly [AudioStorageDeviceCategory, ...AudioStorageDeviceCategory[]];
->>>>>>> origin/main
 
-const storageMediumValues = [
-  'internal-flash',
-  'microSD',
+ const storageMediumValues = [
+   'internal-flash',
+   'microSD',
   'microSDHC',
   'microSDXC',
   'SD',
-  'SDHC',
-  'SDXC',
-  'usb-storage',
-  'camera-media',
-<<<<<<< HEAD
-] as const satisfies readonly AudioStorageMedium[];
-
-const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly AudioStorageSource[];
-const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly DatePrecision[];
-=======
+   'SDHC',
+   'SDXC',
+   'usb-storage',
+   'camera-media',
  ] as const satisfies readonly [AudioStorageMedium, ...AudioStorageMedium[]];
 
-const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly [
-  AudioStorageSource,
-  ...AudioStorageSource[],
-];
-const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly [
-  DatePrecision,
-  ...DatePrecision[],
-];
->>>>>>> origin/main
+ const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly [
+   AudioStorageSource,
+   ...AudioStorageSource[],
+ ];
+ const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly [
+   DatePrecision,
+   ...DatePrecision[],
+ ];
 
 const referenceSchema = z.object({
   title: z.string().min(1),
