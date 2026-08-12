@@ -32,6 +32,7 @@ import {
 import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
 import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
+import RoleRoomMarketplaceModal from './components/RoleRoomMarketplaceModal';
 import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
 import IgDmInbox from '../crm/IgDmInbox';
 import ProjectMembersDialog from './components/ProjectMembersDialog';
@@ -316,6 +317,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [inboxAnchor, setInboxAnchor] = useState<HTMLElement | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
+  const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [showIgInbox, setShowIgInbox] = useState(false);
   const [leadgridPrefsOpen, setLeadgridPrefsOpen] = useState(false);
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => readRecentProjects());
@@ -754,6 +756,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
 
   const handleCloseProfile = useCallback(() => setProfileOpen(false), []);
 
+  const handleOpenMarketplace = useCallback(() => setMarketplaceOpen(true), []);
+  const handleCloseMarketplace = useCallback(() => setMarketplaceOpen(false), []);
+
   const profileDisplayName = auth.user?.displayName || auth.user?.name || null;
   const profileEmail = auth.user?.email || null;
   const profileInitials = useMemo(() => {
@@ -860,6 +865,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             onOpenProfile={handleOpenProfile}
             profileInitials={profileInitials}
             profileImageUrl={memberProfileImageUrl}
+            onOpenMarketplace={handleOpenMarketplace}
           />
           <RoleRoomProjectSwitcher
             open={switcherOpen}
@@ -879,6 +885,10 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
             loading={inboxLoading}
             error={inboxErrorRaw}
             onItemClick={handleInboxItemClick}
+          />
+          <RoleRoomMarketplaceModal
+            open={marketplaceOpen}
+            onClose={handleCloseMarketplace}
           />
         </>
       ) : null}

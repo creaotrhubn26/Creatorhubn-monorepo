@@ -9,6 +9,7 @@
  *  - 038: sync status as small icon, not full text line
  *  - 046: aria-labels on all icon buttons
  *  - 049: lives above the tab surface so it doesn't re-mount on tab change
+ *  - Fase 2: markedsplass-ikon som åpner org-scoped app-katalog (modal i dashboardet)
  *
  * Presentational only — state is owned by RoleRoomDashboardPanel.
  */
@@ -21,6 +22,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Divider,
   IconButton,
   Stack,
   Tooltip,
@@ -36,6 +38,7 @@ import {
   Person as PersonIcon,
   PlayArrow as PlayArrowIcon,
   Refresh as RefreshIcon,
+  Storefront as StorefrontIcon,
 } from '@mui/icons-material';
 
 export type MobileSyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
@@ -62,6 +65,9 @@ interface RoleRoomMobileTopBarProps {
   onOpenProfile?: (anchor: HTMLElement) => void;
   profileInitials?: string | null;
   profileImageUrl?: string | null;
+
+  /** Fase 2: Markedsplass top action (org-scoped app-katalog). */
+  onOpenMarketplace?: () => void;
 }
 
 const SYNC_ICON: Record<MobileSyncStatus, React.ReactNode> = {
@@ -80,6 +86,62 @@ const SYNC_LABEL: Record<MobileSyncStatus, string> = {
   offline: 'Frakoblet',
 };
 
+/** Konsistent 44px-ikon-knapp — møter touch-target-krav (item 034) og tvinger aria-label (item 046). */
+const TopBarIconButton: React.FC<{
+  label: string;
+  ariaLabel?: string;
+  onClick: (event: React.MouseEvent<HTMLElement>) => void;
+  disabled?: boolean;
+  badge?: number;
+  primary?: boolean;
+  children: React.ReactNode;
+}> = ({ label, ariaLabel, onClick, disabled, badge, primary, children }) => (
+  <Tooltip title={label}>
+    <IconButton
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel ?? label}
+      sx={{
+        width: 'var(--rr-touch-target-min, 44px)',
+        height: 'var(--rr-touch-target-min, 44px)',
+        ...(primary
+          ? {
+              color: '#fff',
+              bgcolor: '#6366f1',
+              '&:hover': { bgcolor: '#4f46e5' },
+            }
+          : {}),
+      }}
+    >
+      {typeof badge === 'number' && badge > 0 ? (
+        <Badge
+          color="error"
+          badgeContent={badge > 99 ? '99+' : badge}
+          overlap="circular"
+        >
+          {children}
+        </Badge>
+      ) : (
+        children
+      )}
+    </IconButton>
+  </Tooltip>
+);
+
+const SYNC_STATUS_SX = (syncStatus: MobileSyncStatus) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 'var(--rr-touch-target-min, 44px)',
+  height: 'var(--rr-touch-target-min, 44px)',
+  color:
+    syncStatus === 'error' || syncStatus === 'offline'
+      ? '#b91c1c'
+      : syncStatus === 'syncing'
+        ? '#6366f1'
+        : '#16a34a',
+});
+
 export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
   projectName,
   projectCount,
@@ -96,6 +158,7 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
   onOpenProfile,
   profileInitials,
   profileImageUrl,
+  onOpenMarketplace,
 }) => {
   const projectLabel = projectName ?? (projectCount === 0 ? 'Ingen prosjekter' : 'Velg prosjekt');
   const switcherDisabled = projectCount === 0;
@@ -170,24 +233,19 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
         ) : null}
       </Stack>
 
-      <Stack direction="row" alignItems="center" spacing={0.5}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={0.5}
+        useFlexGap
+        sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}
+      >
+        {/* Status-indikator (ikke-interaktiv) + oppdatering */}
         <Tooltip title={SYNC_LABEL[syncStatus]}>
           <Box
-            aria-label={SYNC_LABEL[syncStatus]}
             role="status"
-            sx={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 'var(--rr-touch-target-min, 44px)',
-              height: 'var(--rr-touch-target-min, 44px)',
-              color:
-                syncStatus === 'error' || syncStatus === 'offline'
-                  ? '#b91c1c'
-                  : syncStatus === 'syncing'
-                    ? '#6366f1'
-                    : '#16a34a',
-            }}
+            aria-label={SYNC_LABEL[syncStatus]}
+            sx={SYNC_STATUS_SX(syncStatus)}
           >
             {syncStatus === 'syncing' ? (
               <CircularProgress size={18} thickness={5} color="inherit" />
@@ -197,95 +255,77 @@ export const RoleRoomMobileTopBar: React.FC<RoleRoomMobileTopBarProps> = ({
           </Box>
         </Tooltip>
 
-        <Tooltip title="Oppdater">
-          <span>
-            <IconButton
-              onClick={onRefresh}
-              disabled={refreshDisabled}
-              aria-label="Oppdater prosjekter"
-              sx={{
-                width: 'var(--rr-touch-target-min, 44px)',
-                height: 'var(--rr-touch-target-min, 44px)',
-              }}
-            >
-              <RefreshIcon />
-            </IconButton>
-          </span>
-        </Tooltip>
+        <TopBarIconButton
+          label="Oppdater prosjekter"
+          onClick={onRefresh}
+          disabled={refreshDisabled}
+        >
+          <RefreshIcon />
+        </TopBarIconButton>
+
+        <Divider
+          orientation="vertical"
+          flexItem
+          sx={{ mx: 0.5, borderColor: 'rgba(148,163,184,0.25)' }}
+        />
 
         {onOpenInbox ? (
-          <Tooltip title="Innboks">
-            <IconButton
-              onClick={(event) => onOpenInbox(event.currentTarget)}
-              aria-label={
-                inboxUnreadCount > 0
-                  ? `Innboks, ${inboxUnreadCount} uleste varsler`
-                  : 'Innboks'
-              }
-              sx={{
-                width: 'var(--rr-touch-target-min, 44px)',
-                height: 'var(--rr-touch-target-min, 44px)',
-              }}
-            >
-              <Badge
-                color="error"
-                badgeContent={inboxUnreadCount > 99 ? '99+' : inboxUnreadCount}
-                invisible={inboxUnreadCount === 0}
-                overlap="circular"
-              >
-                <InboxIcon />
-              </Badge>
-            </IconButton>
-          </Tooltip>
+          <TopBarIconButton
+            label="Innboks"
+            ariaLabel={
+              inboxUnreadCount > 0
+                ? `Innboks, ${inboxUnreadCount} uleste varsler`
+                : 'Innboks'
+            }
+            badge={inboxUnreadCount}
+            onClick={(event) => onOpenInbox(event.currentTarget)}
+          >
+            <InboxIcon />
+          </TopBarIconButton>
         ) : null}
 
         {onOpenProfile ? (
-          <Tooltip title="Profil">
-            <IconButton
-              onClick={(event) => onOpenProfile(event.currentTarget)}
-              aria-label="Åpne profilmeny"
-              sx={{
-                width: 'var(--rr-touch-target-min, 44px)',
-                height: 'var(--rr-touch-target-min, 44px)',
-                p: 0,
-              }}
-            >
-              {profileImageUrl ? (
-                <Avatar src={profileImageUrl} sx={{ width: 32, height: 32 }} />
-              ) : profileInitials ? (
-                <Avatar
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    fontSize: 14,
-                    fontWeight: 700,
-                    bgcolor: '#6366f1',
-                  }}
-                >
-                  {profileInitials}
-                </Avatar>
-              ) : (
-                <PersonIcon />
-              )}
-            </IconButton>
-          </Tooltip>
+          <TopBarIconButton
+            label="Profil"
+            ariaLabel="Åpne profilmeny"
+            onClick={(event) => onOpenProfile(event.currentTarget)}
+          >
+            {profileImageUrl ? (
+              <Avatar src={profileImageUrl} sx={{ width: 32, height: 32 }} />
+            ) : profileInitials ? (
+              <Avatar
+                sx={{
+                  width: 32,
+                  height: 32,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  bgcolor: '#6366f1',
+                }}
+              >
+                {profileInitials}
+              </Avatar>
+            ) : (
+              <PersonIcon />
+            )}
+          </TopBarIconButton>
         ) : null}
 
-        <Tooltip title="Nytt prosjekt">
-          <IconButton
-            onClick={onCreateProject}
-            aria-label="Opprett nytt prosjekt"
-            sx={{
-              width: 'var(--rr-touch-target-min, 44px)',
-              height: 'var(--rr-touch-target-min, 44px)',
-              color: '#fff',
-              bgcolor: '#6366f1',
-              '&:hover': { bgcolor: '#4f46e5' },
-            }}
+        {onOpenMarketplace ? (
+          <TopBarIconButton
+            label="Markedsplass"
+            onClick={() => onOpenMarketplace()}
           >
-            <AddIcon />
-          </IconButton>
-        </Tooltip>
+            <StorefrontIcon />
+          </TopBarIconButton>
+        ) : null}
+
+        <TopBarIconButton
+          label="Nytt prosjekt"
+          onClick={() => onCreateProject()}
+          primary
+        >
+          <AddIcon />
+        </TopBarIconButton>
       </Stack>
     </Box>
   );
