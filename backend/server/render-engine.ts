@@ -112,13 +112,28 @@ async function shoot(load: (page: Page) => Promise<void>, opts: RenderOpts): Pro
 /** Render en HTML-STRENG → bilde-buffer. (F.eks. assembleHtml(...) fra infographic-engine.) */
 export function renderHtmlToImage(html: string, opts: RenderOpts = {}): Promise<Buffer> {
   return shoot(async (page) => {
-    await page.setContent(html, { waitUntil: opts.waitUntil ?? 'networkidle0', timeout: opts.timeoutMs ?? 20000 });
+    await page.setContent(html, { waitUntil: resolveWaitUntil(opts), timeout: opts.timeoutMs ?? 20000 });
+    await waitForIdle(page, opts);
   }, opts);
 }
 
 /** Render en URL → bilde-buffer. (F.eks. en app-rute som rendrer en EKTE React-komponent.) */
 export function renderUrlToImage(url: string, opts: RenderOpts = {}): Promise<Buffer> {
   return shoot(async (page) => {
-    await page.goto(url, { waitUntil: opts.waitUntil ?? 'networkidle0', timeout: opts.timeoutMs ?? 20000 });
+    await page.goto(url, { waitUntil: resolveWaitUntil(opts), timeout: opts.timeoutMs ?? 20000 });
+    await waitForIdle(page, opts);
   }, opts);
+}
+
+// puppeteer v24.43+ har fjernet networkidle0/networkidle2 fra waitUntil-typene.
+// Oversetter til det moderne ekvivalentet: domcontentloaded + waitForNetworkIdle.
+function resolveWaitUntil(opts: RenderOpts): 'load' | 'domcontentloaded' {
+  const w = opts.waitUntil ?? 'networkidle0';
+  return w === 'load' || w === 'domcontentloaded' ? w : 'domcontentloaded';
+}
+
+async function waitForIdle(page: Page, opts: RenderOpts): Promise<void> {
+  if ((opts.waitUntil ?? 'networkidle0').startsWith('networkidle')) {
+    await page.waitForNetworkIdle({ idleTime: 250, timeout: opts.timeoutMs ?? 20000 }).catch(() => {});
+  }
 }

@@ -25,7 +25,6 @@
 import { randomUUID, createHash } from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
-// @ts-expect-error — adm-zip mangler @types-pakke i node_modules
 import AdmZip from "adm-zip";
 
 export interface NextRoleGdprDeps {

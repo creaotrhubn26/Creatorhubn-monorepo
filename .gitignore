@@ -98,6 +98,7 @@ docs/
 !docs/security/*.md
 !docs/cto-audit/
 !docs/cto-audit/*.md
+!docs/frontend-typecheck-rapport.md
 !docs/integration-audit/
 !docs/integration-audit/*.md
 !docs/integration-audit/geo-baselines/
