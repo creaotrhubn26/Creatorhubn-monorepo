@@ -26,7 +26,7 @@ import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../../project/ProjectCreationWithMemoryCards';
 import ContactFormDesigner from '../ContactFormDesigner';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag } from '../ui';
+import { WsCard, WsTag, WsPageTitle } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). NB: selve
@@ -137,17 +137,16 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
 
   return (
     <Box sx={{ maxWidth: 880, mx: 'auto' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
-        <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
-        </Box>
-        <Stack direction="row" spacing={1} alignItems="center">
+      <WsPageTitle
+        icon={<EmailOutlined sx={{ fontSize: 21, color: '#fff' }} />}
+        title={t('title')}
+        sub={t('subtitle')}
+        actions={<>
           {items.length > 0 && <WsTag label={`${items.length} ${t('newCount')}`} tone="amber" />}
           <Button size="small" variant="outlined" startIcon={<DesignServices sx={{ fontSize: 17 }} />} onClick={() => setDesigner(true)}
             sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>{t('contactForm')}</Button>
-        </Stack>
-      </Stack>
+        </>}
+      />
 
       <WsCard>
         {items.length === 0 ? (

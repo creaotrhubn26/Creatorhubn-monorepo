@@ -109,6 +109,30 @@ async function ensureSchema(pool: any): Promise<void> {
           created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_pci_project ON project_checklist_items (project_id, order_index)`,
+        `ALTER TABLE project_checklist_items ADD COLUMN IF NOT EXISTS critical BOOLEAN NOT NULL DEFAULT FALSE`,
+        `ALTER TABLE project_checklist_items ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(80)`,
+        `ALTER TABLE project_checklist_items ADD COLUMN IF NOT EXISTS color VARCHAR(7)`,
+        `CREATE TABLE IF NOT EXISTS checklist_cat_learn (
+          project_id VARCHAR(64),              -- NULL = global (tvers av prosjekter)
+          word       TEXT NOT NULL,
+          category   VARCHAR(40) NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, word, category)
+        )`,
+        `CREATE TABLE IF NOT EXISTS note_cat_learn (
+          project_id VARCHAR(64),
+          word       TEXT NOT NULL,
+          category   VARCHAR(40) NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, word, category)
+        )`,
+        `CREATE TABLE IF NOT EXISTS moodboard_presence (
+          project_id   VARCHAR(64) NOT NULL,
+          user_id      VARCHAR(64) NOT NULL,
+          display_name VARCHAR(60),
+          last_seen    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (project_id, user_id)
+        )`,
         `CREATE TABLE IF NOT EXISTS project_workspace_deliverables (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
@@ -133,6 +157,10 @@ async function ensureSchema(pool: any): Promise<void> {
           created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`,
         `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS category VARCHAR(40)`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS flag BOOLEAN NOT NULL DEFAULT FALSE`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS fit INTEGER`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS comments JSONB NOT NULL DEFAULT '[]'`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS dominant_colors JSONB`,
         `CREATE INDEX IF NOT EXISTS idx_pi_project ON project_images (project_id, panel, created_at DESC)`,
         `CREATE TABLE IF NOT EXISTS project_split_shares (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -152,6 +180,130 @@ async function ensureSchema(pool: any): Promise<void> {
     })();
   }
   return schemaReady;
+}
+
+/* ---- «Må huskes»-kategoriserer: bayesiansk ordlæring (project + global) ---- */
+
+const CHK_CATS = ["utstyr", "backup", "vær", "transport"] as const;
+const CHK_STOPWORDS = new Set([
+  "og", "i", "til", "med", "for", "på", "av", "en", "et", "den", "det", "som", "fra", "er", "har", "må", "ikke", "min", "mitt", "vår", "alle", "bli", "blir", "skal", "kanskje", "evt", "medbrakt", "medbringe", "ta", "tar"],
+);
+
+function tokenizeChkLabel(label: string): string[] {
+  return (label || "")
+    .toLowerCase()
+    .replace(/[^a-zæøå0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !CHK_STOPWORDS.has(w));
+}
+
+/// Rule-prior (cold start): stikkords-settet til frontend-guesset før læring finnes.
+function ruleChkCat(label: string): "vær" | "backup" | "transport" | null {
+  const t = label.toLowerCase();
+  if (/(regn|cover|paraply|vær|vind|frost|tåke|uv|solkrem|regnbu)/.test(t)) return "vær";
+  if (/(backup|minnekort|ssd|lagring|format|kopier|ekstra kort)/.test(t)) return "backup";
+  if (/(parkering|bil|transport|kjøre|kjøretøy|hente|avreise|frakt|levering|drosje|taxi|samlested)/.test(t)) return "transport";
+  return null;
+}
+
+/// UPSERT læringsvekt (prosjekt-rad ×2 + global-rad ×1). Vekt kan være negativ
+/// (brukeren endret kategori → trekker fra gamle valg).
+async function learnChkWords(pool: any, projectId: string, label: string, category: string, weight = 1): Promise<void> {
+  const tokens = tokenizeChkLabel(label);
+  if (!tokens.length || !category) return; // egendefinerte kategorier læres også
+  for (const word of tokens) {
+    for (const scope of [projectId, null] as const) {
+      await pool
+        .query(
+          `INSERT INTO checklist_cat_learn (project_id, word, category, n) VALUES ($1, $2, $3, GREATEST($4, 0))
+           ON CONFLICT (project_id, word, category)
+           DO UPDATE SET n = GREATEST(checklist_cat_learn.n + EXCLUDED.n, 0)`,
+          [scope, word, category, weight],
+        )
+        .catch((e: any) => console.error("[checklist learn]", e?.message || e));
+    }
+  }
+}
+
+/// Prediker kategori: score(cat) = Σ_word (2·projCount + globalCount), med
+/// regel-prior som tie-break/kaldstart. Returnerer kategori + konfidens (0-100).
+async function guessChkCategory(pool: any, projectId: string, label: string): Promise<{ category: string; confidence: number; critical: boolean }> {
+  const tokens = tokenizeChkLabel(label);
+  const scores: Record<string, number> = { utstyr: 0, backup: 0, vær: 0, transport: 0 };
+  if (tokens.length) {
+    let rows: any[] = [];
+    try {
+      rows = (
+        await pool.query(`SELECT word, category, n FROM checklist_cat_learn WHERE word = ANY($1) AND (project_id = $2 OR project_id IS NULL)`, [tokens, projectId])
+      ).rows;
+    } catch (e: any) {
+      console.error("[checklist guess]", e?.message || e);
+    }
+    for (const r of rows) {
+      const projBoost = r.project_id === projectId ? 2 : 1;
+      if (scores[r.category] != null) scores[r.category] += (Number(r.n) || 0) * projBoost;
+    }
+  }
+  const rule = ruleChkCat(label);
+  if (rule) scores[rule] += 3; // priory-tyngde ved kaldstart / usikre data
+
+  const ranked = (CHK_CATS as readonly string[]).map((c) => [c, scores[c]] as const).sort((a, b) => b[1] - a[1]);
+  const [best, second] = ranked;
+  const known = best[1] + second[1];
+  let confidence = known > 0 ? Math.round((best[1] / known) * 100) : rule ? 85 : 40;
+  // Løft konfidens når det finnes lærte data for beste kategori
+  if (best[1] >= 4) confidence = Math.max(confidence, 88);
+  const critical = /(kritisk|viktig|påkrevd|husk|nødvendig|før )/.test(label.toLowerCase());
+  return { category: best[0], confidence: Math.min(99, confidence), critical };
+}
+
+/* ---- Stilnotat-kategorisering: bayesiansk ordlæring (samme mønster som checklist) ---- */
+
+const NOTE_CATS_BE = ["lys", "komposisjon", "farge", "teknikk", "interaksjon"] as const;
+
+function noteRuleCatBE(label: string): string | null {
+  const t = label.toLowerCase();
+  if (/(lys|motlys|sollys|golden|backlight|skygge|hardt|vinduslys|belysning)/.test(t)) return "lys";
+  if (/(komposisjon|brennvidde|85mm|50mm|vinkel|ramme|utsnitt|close)/.test(t)) return "komposisjon";
+  if (/(farge|tone|gradering|post|svart|hvit|hudtone|mettet|uned)/.test(t)) return "farge";
+  if (/(teknikk|kamera|iso|blender|lukker|gimbal|stativ|skarphet|4k|fps)/.test(t)) return "teknikk";
+  if (/(interaksjon|bevegelse|følelser|nærhet|gjester|naturlig|autentisk)/.test(t)) return "interaksjon";
+  return null;
+}
+
+async function learnNoteWords(pool: any, projectId: string, label: string, category: string, weight = 1): Promise<void> {
+  const tokens = tokenizeChkLabel(label);
+  if (!tokens.length || !category) return;
+  for (const word of tokens) {
+    for (const scope of [projectId, null] as const) {
+      await pool
+        .query(
+          `INSERT INTO note_cat_learn (project_id, word, category, n) VALUES ($1, $2, $3, GREATEST($4, 0))
+           ON CONFLICT (project_id, word, category) DO UPDATE SET n = GREATEST(note_cat_learn.n + EXCLUDED.n, 0)`,
+          [scope, word, category, weight],
+        )
+        .catch(() => undefined);
+    }
+  }
+}
+
+async function guessNoteCategoryBE(pool: any, projectId: string, label: string): Promise<{ category: string; confidence: number }> {
+  const tokens = tokenizeChkLabel(label);
+  const scores: Record<string, number> = { lys: 0, komposisjon: 0, farge: 0, teknikk: 0, interaksjon: 0 };
+  if (tokens.length) {
+    const rows = await pool.query(`SELECT word, category, n FROM note_cat_learn WHERE word = ANY($1) AND (project_id = $2 OR project_id IS NULL)`, [tokens, projectId]).catch(() => ({ rows: [] }));
+    for (const r of (rows as any).rows) {
+      const projBoost = r.project_id === projectId ? 2 : 1;
+      if (scores[r.category] != null) scores[r.category] += (Number(r.n) || 0) * projBoost;
+    }
+  }
+  const rule = noteRuleCatBE(label);
+  if (rule) scores[rule] += 3;
+  const ranked = (NOTE_CATS_BE as readonly string[]).map((c) => [c, scores[c]] as const).sort((a, b) => b[1] - a[1]);
+  const [best, second] = ranked;
+  const known = best[1] + second[1];
+  const confidence = known > 0 ? Math.round((best[1] / known) * 100) : rule ? 85 : 30;
+  return { category: best[0], confidence: Math.min(99, confidence) };
 }
 
 export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): void {
@@ -417,26 +569,102 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST client-activity seen", e); res.json({ ok: false }); }
   });
 
+  // Kontekstuell stilnotat-kategorisering: ML-gjett + læring (overstyringer trener).
+  app.post("/api/projects/:projectId/moodboard-meta/notes/guess", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const label = typeof req.body?.label === "string" ? req.body.label : "";
+      res.json(await guessNoteCategoryBE(pool, req.params.projectId, label));
+    } catch (e) { console.error("POST notes/guess", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/moodboard-meta/notes/learn", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const label = typeof req.body?.label === "string" ? req.body.label : "";
+      const category = typeof req.body?.category === "string" ? req.body.category : "";
+      await learnNoteWords(pool, req.params.projectId, label, category, 1);
+      res.json({ success: true });
+    } catch (e) { console.error("POST notes/learn", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Moodboard-studio: live tilstedeværelse ───────────
+  // Hver åpen moodboard-fane melder seg inn (POST, heartbeat ~20s), og
+  // serveren fyrer `moodboard.presence` til de ANDRE som ser på akkurat
+  // nå (via brukernes egen user-events-WS). Stale rader ryddes ved hvert
+  // hjerteslag, med left-broadcast slik at avatarer forsvinner live.
+  const PRESENCE_TTL_MS = 45000;
+  async function upsertMoodboardPresence(uid: string, projectId: string, name: string | null): Promise<{ others: Array<{ userId: string; name: string | null }>; stale: string[] }> {
+    await ensureSchema(pool);
+    const now = new Date();
+    const staleBefore = new Date(Date.now() - PRESENCE_TTL_MS).toISOString();
+    const stale: string[] = [];
+    const otherRows = await pool.query(`SELECT user_id, display_name FROM moodboard_presence WHERE project_id = $1 AND user_id <> $2`, [projectId, uid]).catch(() => ({ rows: [] }));
+    const others: Array<{ userId: string; name: string | null }> = otherRows.rows.map((r: any) => ({ userId: r.user_id, name: r.display_name }));
+    for (const r of otherRows.rows) {
+      if ((r.last_seen || now) > staleBefore) continue;
+      stale.push(r.user_id);
+      await pool.query(`DELETE FROM moodboard_presence WHERE project_id = $1 AND user_id = $2`, [projectId, r.user_id]).catch(() => undefined);
+    }
+    await pool.query(
+      `INSERT INTO moodboard_presence (project_id, user_id, display_name, last_seen) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET display_name = EXCLUDED.display_name, last_seen = NOW()`,
+      [projectId, uid, name || null, now.toISOString()],
+    ).catch(() => undefined);
+    return { others, stale };
+  }
+  app.post("/api/projects/:projectId/moodboard/presence", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const name = typeof req.body?.name === "string" ? req.body.name.slice(0, 60) || null : null;
+      const { others, stale } = await upsertMoodboardPresence(uid, req.params.projectId, name);
+      const ts = new Date().toISOString();
+      for (const o of others) broadcastUserEvent(o.userId, { kind: "moodboard.presence", projectId: req.params.projectId, actorUserId: uid, actorName: name, joined: true, timestamp: ts });
+      for (const s of stale) broadcastUserEvent(s, { kind: "moodboard.presence", projectId: req.params.projectId, actorUserId: s, actorName: null, joined: false, timestamp: ts });
+      res.json({ success: true, viewers: others.filter((o) => !stale.includes(o.userId)).map((o) => ({ userId: o.userId, name: o.name })) });
+    } catch (e) { console.error("POST moodboard presence", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/moodboard/presence", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await pool.query(`DELETE FROM moodboard_presence WHERE project_id = $1 AND user_id = $2`, [req.params.projectId, uid]).catch(() => undefined);
+      const ts = new Date().toISOString();
+      const otherRows = await pool.query(`SELECT user_id FROM moodboard_presence WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      for (const r of otherRows.rows) broadcastUserEvent(r.user_id, { kind: "moodboard.presence", projectId: req.params.projectId, actorUserId: uid, actorName: null, joined: false, timestamp: ts });
+      res.json({ success: true });
+    } catch (e) { console.error("DELETE moodboard presence", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.get("/api/projects/:projectId/moodboard/presence", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(`SELECT user_id, display_name FROM moodboard_presence WHERE project_id = $1 AND user_id <> $2`, [req.params.projectId, uid]).catch(() => ({ rows: [] }));
+      res.json({ viewers: r.rows.map((x: any) => ({ userId: x.user_id, name: x.display_name })) });
+    } catch (e) { console.error("GET moodboard presence", e); res.json({ viewers: [] }); }
+  });
+
   // ─────────── Moodboard-meta (stil/palett/notater) ───────────
   app.get("/api/projects/:projectId/moodboard-meta", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
-      const r = await pool.query(`SELECT style, palette, notes, must_capture, client_approved FROM project_moodboard_meta WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), note_cats JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(`ALTER TABLE project_moodboard_meta ADD COLUMN IF NOT EXISTS note_cats JSONB`).catch(() => undefined);
+      const r = await pool.query(`SELECT style, palette, notes, must_capture, client_approved, note_cats FROM project_moodboard_meta WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
       const m = r.rows[0];
-      res.json({ meta: m ? { style: m.style, palette: m.palette || [], notes: m.notes || [], mustCapture: m.must_capture || [], clientApproved: m.client_approved } : null });
+      res.json({ meta: m ? { style: m.style, palette: m.palette || [], notes: m.notes || [], mustCapture: m.must_capture || [], clientApproved: m.client_approved, noteCats: m.note_cats || {} } : null });
     } catch (e) { console.error("GET moodboard-meta", e); res.json({ meta: null }); }
   });
   app.put("/api/projects/:projectId/moodboard-meta", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), note_cats JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(`ALTER TABLE project_moodboard_meta ADD COLUMN IF NOT EXISTS note_cats JSONB`).catch(() => undefined);
       const b = req.body ?? {};
       await pool.query(
-        `INSERT INTO project_moodboard_meta (project_id, style, palette, notes, must_capture, client_approved, updated_at)
-         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,NOW())
-         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, palette=EXCLUDED.palette, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, client_approved=EXCLUDED.client_approved, updated_at=NOW()`,
-        [req.params.projectId, b.style || null, JSON.stringify(b.palette || []), JSON.stringify(b.notes || []), JSON.stringify(b.mustCapture || []), b.clientApproved || null],
+        `INSERT INTO project_moodboard_meta (project_id, style, palette, notes, must_capture, client_approved, note_cats, updated_at)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,$7::jsonb,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, palette=EXCLUDED.palette, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, client_approved=EXCLUDED.client_approved, note_cats=EXCLUDED.note_cats, updated_at=NOW()`,
+        [req.params.projectId, b.style || null, JSON.stringify(b.palette || []), JSON.stringify(b.notes || []), JSON.stringify(b.mustCapture || []), b.clientApproved || null, JSON.stringify(b.noteCats || {})],
       );
       res.json({ success: true });
     } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
@@ -497,32 +725,50 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [pid],
       ).catch(() => ({ rows: [] }));
       if (imgs.rows.length === 0) return res.status(400).json({ error: "no_references", message: "Last opp referansebilder først." });
-      const collected: Array<{ hex: string; pop: number }> = [];
+      const collected: Array<{ hex: string; pop: number; src: string }> = [];
+      const perImage: Array<{ key: string; hexes: string[] }> = [];
       for (const im of imgs.rows) {
         const obj = await getFromRoleRoomB2(im.b2_key).catch(() => null);
         if (!obj?.body) continue;
         try {
           const palette: any = await Vibrant.from(obj.body).getPalette();
+          const hexes: string[] = [];
           for (const key of ["Vibrant", "Muted", "DarkVibrant", "DarkMuted", "LightVibrant", "LightMuted"]) {
-            const sw = palette[key]; if (sw?.hex) collected.push({ hex: sw.hex, pop: sw.population || 1 });
+            const sw = palette[key]; if (sw?.hex) { hexes.push(sw.hex); collected.push({ hex: sw.hex, pop: sw.population || 1, src: im.b2_key }); }
           }
+          if (hexes.length) perImage.push({ key: im.b2_key, hexes });
         } catch { /* ikke-dekodbar */ }
       }
       if (collected.length === 0) return res.status(422).json({ error: "extract_failed", message: "Klarte ikke lese farger fra referansene." });
       // Dedupe like farger (RGB-avstand < ~48), behold høyest populasjon.
       collected.sort((a, b) => b.pop - a.pop);
-      const merged: Array<{ hex: string; pop: number }> = [];
+      const merged: Array<{ hex: string; pop: number; srcs: Set<string> }> = [];
       for (const c of collected) {
         const [r, g, b] = hexToRgb(c.hex);
         const dup = merged.find((m) => { const [mr, mg, mb] = hexToRgb(m.hex); return ((r - mr) ** 2 + (g - mg) ** 2 + (b - mb) ** 2) < 48 * 48; });
-        if (!dup) merged.push(c);
+        if (dup) { dup.srcs.add(c.src); continue; }
+        merged.push({ hex: c.hex, pop: c.pop, srcs: new Set([c.src]) });
         if (merged.length >= 6) break;
       }
       const usedNames = new Set<string>();
       const palette = merged.map((c) => {
         let name = nearestName(c.hex); if (usedNames.has(name)) name = `${name} ${[...usedNames].filter((n) => n.startsWith(name)).length + 1}`;
-        usedNames.add(name); return { name, hex: c.hex.toUpperCase() };
+        usedNames.add(name); return { name, hex: c.hex.toUpperCase(), from: [...c.srcs] };
       });
+      // Farge-fit per bilde: % av bildets dominerende farger som matcher paletten,
+      // pluss dominant_colors cachet på raden. Bare kildebildene (vi har allerede bytes).
+      const fits: Record<string, number> = {};
+      for (const pi of perImage) {
+        let hit = 0;
+        for (const h of pi.hexes) {
+          const [r, g, b] = hexToRgb(h);
+          const close = merged.some((m) => { const [mr, mg, mb] = hexToRgb(m.hex); return ((r - mr) ** 2 + (g - mg) ** 2 + (b - mb) ** 2) < 48 * 48; });
+          if (close) hit += 1;
+        }
+        const pct = Math.round((hit / pi.hexes.length) * 100);
+        fits[pi.key] = pct;
+        await pool.query(`UPDATE project_images SET fit = $1, dominant_colors = $2 WHERE b2_key = $3 AND project_id = $4`, [pct, JSON.stringify(pi.hexes), pi.key, pid]).catch(() => undefined);
+      }
       // Lagre på meta (behold style/notes/mustCapture).
       await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
       await pool.query(
@@ -530,7 +776,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          ON CONFLICT (project_id) DO UPDATE SET palette=EXCLUDED.palette, updated_at=NOW()`,
         [pid, JSON.stringify(palette)],
       );
-      res.json({ palette, fromImages: imgs.rows.length });
+      res.json({ palette, fromImages: imgs.rows.length, fits });
     } catch (e) { console.error("POST extract-palette", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -2850,6 +3096,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       const images = await Promise.all(r.rows.map(async (im: any) => ({
         id: im.id, panel: im.panel, label: im.label, category: im.category || null,
+        b2Key: im.b2_key,
+        flag: !!im.flag,
+        fit: im.fit != null ? Math.min(100, Math.max(0, Number(im.fit))) : null,
+        comments: Array.isArray(im.comments) ? im.comments : [],
         url: await presignRoleRoomB2Download(im.b2_key, 3600),
         createdAt: im.created_at,
       })));
@@ -2888,8 +3138,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureSchema(pool);
-      const category = typeof req.body?.category === "string" ? req.body.category.slice(0, 40) || null : null;
-      const upd = await pool.query(`UPDATE project_images SET category = $1 WHERE id = $2 AND project_id = $3 RETURNING id`, [category, req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
+      const hasCat = typeof req.body?.category !== "undefined" && req.body?.category !== null;
+      const category = typeof req.body?.category === "string" ? req.body.category.slice(0, 40) || null : (typeof req.body?.category === "undefined" ? undefined : null);
+      const flag = typeof req.body?.flag === "boolean" ? req.body.flag : undefined;
+      const comments = Array.isArray(req.body?.comments) ? req.body.comments.slice(0, 200) : undefined;
+      const panel = typeof req.body?.panel === "string" && ["references", "moodboard", "moodboard-shared"].includes(req.body.panel) ? req.body.panel : undefined;
+      const upd = await pool.query(
+        `UPDATE project_images SET category = CASE WHEN $1 IS NOT NULL THEN $1 WHEN $6 THEN NULL ELSE category END, flag = COALESCE($2, flag), comments = COALESCE($3, comments), panel = COALESCE($7, panel) WHERE id = $4 AND project_id = $5 RETURNING id`,
+        [category ?? null, flag ?? null, comments ?? null, req.params.id, req.params.projectId, hasCat, panel ?? null],
+      ).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
       res.json({ ok: true });
     } catch (e) { console.error("PATCH images", e); res.status(500).json({ error: "failed" }); }
@@ -2931,12 +3188,22 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   });
 
   // ─────────── Sjekkliste ───────────
+  // ML-gjett: kategoriserer label med lærte ord-tellinger + regel-prior.
+  app.post("/api/projects/:projectId/checklist/guess", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const label = typeof req.body?.label === "string" ? req.body.label : "";
+      res.json(await guessChkCategory(pool, req.params.projectId, label));
+    } catch (e) { console.error("POST checklist/guess", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.get("/api/projects/:projectId/checklist", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureSchema(pool);
       const r = await pool.query(`SELECT * FROM project_checklist_items WHERE project_id = $1 ORDER BY order_index, created_at`, [req.params.projectId]);
-      res.json({ items: r.rows.map((i: any) => ({ id: i.id, label: i.label, checked: i.checked, category: i.category })) });
+      res.json({ items: r.rows.map((i: any) => ({ id: i.id, label: i.label, checked: i.checked, category: i.category, critical: !!i.critical, assignedTo: i.assigned_to ?? null, color: i.color ?? null })) });
     } catch (e) { console.error("GET checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.post("/api/projects/:projectId/checklist", async (req, res) => {
@@ -2947,12 +3214,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const label = typeof b.label === "string" ? b.label.trim() : "";
       if (!label) return res.status(400).json({ error: "label_required" });
       const r = await pool.query(
-        `INSERT INTO project_checklist_items (project_id, label, checked, category, order_index)
-         VALUES ($1, $2, COALESCE($3, FALSE), $4, COALESCE($5, 0)) RETURNING *`,
-        [req.params.projectId, label, b.checked ?? false, b.category || null, b.orderIndex ?? null],
+        `INSERT INTO project_checklist_items (project_id, label, checked, category, order_index, critical, assigned_to, color)
+         VALUES ($1, $2, COALESCE($3, FALSE), $4, COALESCE($5, 0), COALESCE($6, FALSE), $7, COALESCE($8, NULL)) RETURNING *`,
+        [req.params.projectId, label, b.checked ?? false, b.category || null, b.orderIndex ?? null, b.critical ?? false, (b.assignedTo as string | undefined) || null, (b.color as string | undefined) || null],
       );
       const i = r.rows[0];
-      res.status(201).json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
+      void learnChkWords(pool, req.params.projectId, i.label, i.category || "utstyr", 1);
+      res.status(201).json({ id: i.id, label: i.label, checked: i.checked, category: i.category, critical: !!i.critical, assignedTo: i.assigned_to ?? null, color: i.color ?? null });
     } catch (e) { console.error("POST checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.patch("/api/projects/:projectId/checklist/:id", async (req, res) => {
@@ -2960,13 +3228,19 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureSchema(pool);
       const b = req.body ?? {};
+      const old = await pool.query(`SELECT label, category FROM project_checklist_items WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]).then((x: any) => x.rows[0]).catch(() => null);
       const r = await pool.query(
-        `UPDATE project_checklist_items SET checked = COALESCE($1, checked), label = COALESCE($2, label) WHERE id = $3 AND project_id = $4 RETURNING *`,
-        [typeof b.checked === "boolean" ? b.checked : null, b.label ?? null, req.params.id, req.params.projectId],
+        `UPDATE project_checklist_items SET checked = COALESCE($1, checked), label = COALESCE($2, label), category = COALESCE($7, category), critical = COALESCE($5, critical), assigned_to = COALESCE($6, assigned_to), color = COALESCE($8, color) WHERE id = $3 AND project_id = $4 RETURNING *`,
+        [typeof b.checked === "boolean" ? b.checked : null, b.label ?? null, req.params.id, req.params.projectId, typeof b.critical === "boolean" ? b.critical : null, b.assignedTo ?? null, typeof b.category === "string" ? b.category : null, typeof b.color === "string" ? b.color : null],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const i = r.rows[0];
-      res.json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
+      // Kategoriendring = læringsdata: trekker fra gammel, legger til ny.
+      if (typeof b.category === "string" && old && old.category !== b.category) {
+        if (old.category) void learnChkWords(pool, req.params.projectId, i.label, old.category, -1);
+        void learnChkWords(pool, req.params.projectId, i.label, b.category, 1);
+      }
+      res.json({ id: i.id, label: i.label, checked: i.checked, category: i.category, critical: !!i.critical, assignedTo: i.assigned_to ?? null });
     } catch (e) { console.error("PATCH checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.delete("/api/projects/:projectId/checklist/:id", async (req, res) => {
@@ -3072,8 +3346,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureNotesTable();
       const ctx = req.query?.context ? String(req.query.context).slice(0, 40) : null;
       const r = ctx
-        ? await pool.query(`SELECT id, context, body, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 AND context=$2 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId, ctx])
-        : await pool.query(`SELECT id, context, body, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId]);
+        ? await pool.query(`SELECT id, context, body, author_id, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 AND context=$2 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId, ctx])
+        : await pool.query(`SELECT id, context, body, author_id, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId]);
       res.json({ notes: r.rows });
     } catch (e) { console.error("GET notes", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3100,5 +3374,65 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2 AND author_id=$3`, [req.params.id, req.params.projectId, uid]); res.json({ success: true }); }
     catch (e) { console.error("DELETE notes", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Live koordinering — aktivitets-feed (Produksjonskart høyre-panel) ───────────
+  // Puls for produksjonsdagen: hendelser, statusendringer, check-ins, notater og
+  // posisjonsdeling postes her av klienten og polles av alle åpne produksjonskart
+  // (15 s intervall). Prunes til de 500 nyeste per prosjekt.
+  const ensureActivityTable = () => pool.query(`CREATE TABLE IF NOT EXISTS project_coordination_activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(64) NOT NULL,
+    type VARCHAR(24) NOT NULL,
+    message VARCHAR(500) NOT NULL,
+    actor_id VARCHAR(64),
+    actor_name VARCHAR(255),
+    meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`).catch(() => {});
+
+  const activityActorName = async (uid: string) => {
+    const nm = await pool.query(`SELECT COALESCE(NULLIF(TRIM(CONCAT(first_name,' ',last_name)),''), email) AS name FROM users WHERE id::text=$1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
+    return nm.rows[0]?.name || null;
+  };
+
+  app.get("/api/projects/:projectId/coordination-activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureActivityTable();
+      const limit = Math.min(parseInt(String(req.query?.limit), 10) || 50, 200);
+      const r = await pool.query(
+        `SELECT id, type, message, actor_name, meta, created_at
+           FROM project_coordination_activity
+          WHERE project_id = $1
+          ORDER BY created_at DESC LIMIT $2`,
+        [req.params.projectId, limit],
+      );
+      res.json({ activities: r.rows.map((row: any) => ({
+        id: row.id, type: row.type, message: row.message, actorName: row.actor_name,
+        meta: row.meta || {}, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      })) });
+    } catch (e) { console.error("GET coordination-activity", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/coordination-activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureActivityTable();
+      const type = String(req.body?.type || "note").slice(0, 24);
+      const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+      if (!message) return res.status(400).json({ error: "message_required" });
+      const meta = (req.body?.meta && typeof req.body.meta === "object") ? req.body.meta : {};
+      const name = await activityActorName(uid);
+      const r = await pool.query(
+        `INSERT INTO project_coordination_activity (project_id, type, message, actor_id, actor_name, meta)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [req.params.projectId, type, message.slice(0, 500), uid, name, JSON.stringify(meta)],
+      );
+      pool.query(`DELETE FROM project_coordination_activity WHERE id NOT IN (
+        SELECT id FROM project_coordination_activity WHERE project_id = $1 ORDER BY created_at DESC LIMIT 500
+      ) AND project_id = $1`, [req.params.projectId]).catch(() => {});
+      res.status(201).json({ id: r.rows[0]?.id });
+    } catch (e) { console.error("POST coordination-activity", e); res.status(500).json({ error: "failed" }); }
   });
 }

@@ -19,6 +19,25 @@ export const WsModal: React.FC<{ open: boolean; onClose: () => void; title: stri
   </Dialog>
 );
 
+/** Sidetittel i CreatorHub-stil: gradient-ikon + gradient-tekst + underlinje + actions. */
+export const WsPageTitle: React.FC<{ icon?: React.ReactNode; title: string; sub?: string; actions?: React.ReactNode; children?: React.ReactNode }> = ({ icon, title, sub, actions, children }) => (
+  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flex: 1, minWidth: 0 }}>
+      {icon && (
+        <Box sx={{ width: 40, height: 40, borderRadius: 2.5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #6366f1, #22d3ee)', boxShadow: '0 4px 16px rgba(99,102,241,.4)' }}>{icon}</Box>
+      )}
+      <Box sx={{ minWidth: 0 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25}>
+          <Typography sx={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.4, lineHeight: 1.2, background: 'linear-gradient(90deg, #f5f5f8, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</Typography>
+          {children}
+        </Stack>
+        {sub && <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{sub}</Typography>}
+      </Box>
+    </Stack>
+    {actions && <Stack direction="row" spacing={1} alignItems="center">{actions}</Stack>}
+  </Stack>
+);
+
 export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number; onClick?: () => void; ariaLabel?: string }> = ({ children, sx, pad = 2, onClick, ariaLabel }) => (
   <Box
     onClick={onClick}
@@ -196,7 +215,7 @@ export const WsImg: React.FC<{ ratio?: string; label?: string; sx?: any }> = ({ 
  * media / reference-archive). Uten onUpload brukes lokal forhåndsvisning slik at
  * UX-en fungerer allerede nå.
  */
-export interface WsImageItem { id: string; url: string; label?: string; rating?: number; flag?: boolean }
+export interface WsImageItem { id: string; url: string; label?: string; rating?: number; flag?: boolean; category?: string | null; comments?: any[]; fit?: number | null; b2Key?: string | null; createdAt?: string | null }
 export const WsImageGrid: React.FC<{
   images?: WsImageItem[];
   columns?: number;
@@ -207,7 +226,12 @@ export const WsImageGrid: React.FC<{
   onRemove?: (id: string) => void;
   onSelect?: (item: WsImageItem) => void;
   extraLabel?: string; // f.eks. "+12"
-}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel }) => {
+  search?: string; // highlight av treff i label
+  bulk?: { sel: Set<string>; onToggle: (id: string) => void }; // multi-seleksjon
+  showFit?: boolean; // farge-match-prosent nederst på bildene
+  overlay?: '9x16' | '4x5' | '1x1'; // komposisjons-maske
+  actions?: (im: WsImageItem) => React.ReactNode; // egne handlinger øverst (gruppe-delte bilder)
+}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel, search, bulk, showFit, overlay, actions }) => {
   const [items, setItems] = useState<WsImageItem[]>(images);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -240,14 +264,34 @@ export const WsImageGrid: React.FC<{
 
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: 1 }}>
-      {items.map((im, i) => (
-        <Box key={im.id} onClick={() => onSelect && onSelect(im)} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: onSelect ? 'pointer' : 'default',
-          background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))', '&:hover': onSelect ? { outline: `2px solid ${ws.accentBorder}` } : undefined }}>
+      {items.map((im, i) => {
+        const sel = !!bulk?.sel.has(im.id);
+        return (
+        <Box key={im.id} onClick={() => { if (bulk) bulk.onToggle(im.id); else if (onSelect) onSelect(im); }} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: sel ? '2px solid #6366f1' : `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: (bulk || onSelect) ? 'pointer' : 'default',
+          background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))', transition: 'transform .15s ease, border-color .12s', '&:hover': bulk || onSelect ? { outline: `2px solid ${ws.accentBorder}` } : undefined }}>
           {im.flag && <Box sx={{ position: 'absolute', top: 5, left: 5, width: 18, height: 18, borderRadius: '50%', bgcolor: ws.accent, color: ws.accentContrast, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>★</Box>}
           {typeof im.rating === 'number' && im.rating > 0 && (
             <Box sx={{ position: 'absolute', top: 5, right: 5, px: 0.5, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.55)', color: '#ffd24a', fontSize: 10, fontWeight: 700 }}>{'★'.repeat(Math.min(5, im.rating))}</Box>
           )}
-          {im.label && <Typography sx={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10.5, px: 0.75, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.5)', color: '#fff', maxWidth: '85%' }} noWrap>{im.label}</Typography>}
+          {im.label && (
+            <Typography sx={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10.5, px: 0.75, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.5)', color: '#fff', maxWidth: '85%' }} noWrap>
+              {search && im.label.toLowerCase().includes(search.toLowerCase()) ? (
+                (() => {
+                  const q = search.toLowerCase();
+                  const hay = im.label.toLowerCase();
+                  const i = hay.indexOf(q);
+                  if (i === -1) return im.label;
+                  return (
+                    <>
+                      {im.label.slice(0, i)}
+                      <Box component="span" sx={{ color: '#fde047', fontWeight: 800 }}>{im.label.slice(i, i + q.length)}</Box>
+                      {im.label.slice(i + q.length)}
+                    </>
+                  );
+                })()
+              ) : im.label}
+            </Typography>
+          )}
           {onRemove && (
             <IconButton size="small" onClick={() => { setItems((p) => p.filter((x) => x.id !== im.id)); onRemove(im.id); }}
               sx={{ position: 'absolute', top: 2, right: 2, color: '#fff', bgcolor: 'rgba(0,0,0,0.45)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' }, p: 0.25 }}>
@@ -259,8 +303,47 @@ export const WsImageGrid: React.FC<{
               <Typography sx={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{extraLabel}</Typography>
             </Box>
           )}
+          {bulk && sel && (
+            <Box sx={{ position: 'absolute', top: 5, right: 5, width: 18, height: 18, borderRadius: '50%', bgcolor: '#6366f1', color: '#fff', fontSize: 11, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.5)' }}>✓</Box>
+          )}
+          {actions && <Box sx={{ position: 'absolute', top: 5, left: 5, zIndex: 3, display: 'flex', alignItems: 'center', gap: 0.4 }} onClick={(e) => e.stopPropagation()}>{actions(im)}</Box>}
+          {showFit && typeof im.fit === 'number' && (
+            <Box sx={{ position: 'absolute', right: 5, bottom: 5, px: 0.6, py: 0.2, borderRadius: 1, bgcolor: im.fit >= 60 ? 'rgba(52,211,153,0.85)' : 'rgba(251,191,36,0.85)', color: '#0d0d16', fontSize: 10, fontWeight: 800 }} title="Farge-match mot paletten">{im.fit}%</Box>
+          )}
+          {overlay && (
+            <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
+              {(() => {
+                // Riktig aspect-matematikk inni kvadrat-flisen: bredde = høyde × w/h.
+                const ratio = overlay === '9x16' ? 9 / 16 : overlay === '4x5' ? 4 / 5 : 1; // w/h (stående)
+                const inset = overlay === '1x1' ? 0 : ((1 - ratio) / 2) * 100;
+                return (
+                  <>
+                    <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${inset}%`, bgcolor: 'rgba(0,0,0,0.5)', transition: 'width .25s ease' }} />
+                    <Box sx={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: `${inset}%`, bgcolor: 'rgba(0,0,0,0.5)', transition: 'width .25s ease' }} />
+                    <Box sx={{ position: 'absolute', top: '5%', bottom: '5%', left: `${inset}%`, right: `${inset}%`, transition: 'left .25s ease, right .25s ease' }}>
+                      <Box sx={{ position: 'absolute', inset: 0, border: '1px solid rgba(255,255,255,0.35)' }} />
+                      {[
+                        { top: -1, left: -1, borderTop: '2px solid #fff', borderLeft: '2px solid #fff' },
+                        { top: -1, right: -1, borderTop: '2px solid #fff', borderRight: '2px solid #fff' },
+                        { bottom: -1, left: -1, borderBottom: '2px solid #fff', borderLeft: '2px solid #fff' },
+                        { bottom: -1, right: -1, borderBottom: '2px solid #fff', borderRight: '2px solid #fff' },
+                      ].map((sx: any, i: number) => (
+                        <Box key={i} sx={{ position: 'absolute', width: 15, height: 15, ...sx }} />
+                      ))}
+                      <Box sx={{ position: 'absolute', top: '33.333%', left: 0, right: 0, height: 1, bgcolor: 'rgba(255,255,255,0.4)' }} />
+                      <Box sx={{ position: 'absolute', bottom: '33.333%', left: 0, right: 0, height: 1, bgcolor: 'rgba(255,255,255,0.4)' }} />
+                      <Box sx={{ position: 'absolute', left: '33.333%', top: 0, bottom: 0, width: 1, bgcolor: 'rgba(255,255,255,0.4)' }} />
+                      <Box sx={{ position: 'absolute', right: '33.333%', top: 0, bottom: 0, width: 1, bgcolor: 'rgba(255,255,255,0.4)' }} />
+                    </Box>
+                    <Box sx={{ position: 'absolute', top: 6, left: 6, px: 0.6, py: 0.2, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4 }}>{overlay.toUpperCase()}</Box>
+                  </>
+                );
+              })()}
+            </Box>
+          )}
         </Box>
-      ))}
+        );
+      })}
       {allowAdd && (
         <Box onClick={pick} role="button" tabIndex={0}
           sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, border: `1.5px dashed ${ws.border}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

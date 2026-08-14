@@ -137,6 +137,25 @@ export type UserEvent =
       rejected: boolean | null;
       timestamp: string;
     }
+  /// Shot-list full upsert (web shotlist legger til shots, per-shot
+  /// kommentarer, redigering/sletting). Web-tabs + iPad observerer og
+  /// refetcher — i dag en sjelden hendelse, så refetch-per-event er billig.
+  | {
+      kind: "shot.list-updated";
+      projectId: string;
+      timestamp: string;
+    }
+  /// Moodboard-studio tilstedeværelse: en fotograf/editor åpnet eller
+  /// forlot prosjektets moodboard. Broadcastes til de ANDRE som ser på
+  /// akkurat nå, så avatar-raden holder seg synk uten polling.
+  | {
+      kind: "moodboard.presence";
+      projectId: string;
+      actorUserId: string;
+      actorName: string | null;
+      joined: boolean;
+      timestamp: string;
+    }
   /// Slice 9X.82 — videograf-leveranse: klient legger inn timecode-
   /// kommentar (Frame.io-stil) på en CinematicVideoPlayer/Audio.
   /// Brukt for både video-, audio- og chapter-comments.

@@ -21,7 +21,7 @@ import Payments from '@mui/icons-material/Payments';
 import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsPills, WsErrorState } from '../ui';
+import { WsCard, WsTag, WsStat, WsPills, WsErrorState, WsPageTitle } from '../ui';
 import { useWsLocale } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som editingMarketplaceStrings).
@@ -165,13 +165,12 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   return (
     <Box sx={{ maxWidth: 1080, mx: 'auto' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
-        <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
-        </Box>
-        <Button variant="outlined" onClick={() => navigate('/workspace')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>
-      </Stack>
+      <WsPageTitle
+        icon={<WorkOutline sx={{ fontSize: 21, color: '#fff' }} />}
+        title={t('title')}
+        sub={t('subtitle')}
+        actions={<Button variant="outlined" onClick={() => navigate('/workspace')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>}
+      />
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
         <WsStat icon={<WorkOutline sx={{ fontSize: 20 }} />} label={t('statNew')} value={count('requested')} sub={t('statNewSub')} tone={ws.amberSoft} />

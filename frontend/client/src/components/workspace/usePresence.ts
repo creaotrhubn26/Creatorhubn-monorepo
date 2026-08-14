@@ -17,8 +17,11 @@ export function usePresence(projectId: string, route?: string) {
   const [members, setMembers] = useState<PresenceMember[]>([]);
   const timers = useRef<any>({});
 
+  // Sample-prosjekter har ingen ekte presence-backend (krever auth/team-medlemskap)
+  const isReal = projectId && projectId !== 'sample';
+
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !isReal) return;
     let cancelled = false;
 
     const beat = () => {

@@ -237,7 +237,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
         }}>
           {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
           <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
-            <Box component="img" data-edit-id="ws-logo" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
+            <img data-edit-id="ws-logo" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" style={{ width: '100%', display: 'block' }} />
           </Box>
 
           {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
