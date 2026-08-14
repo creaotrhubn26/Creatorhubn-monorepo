@@ -166,7 +166,7 @@ export default defineConfig({
   ],
   root: './client',
   resolve: {
-    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled'],
+    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', 'three'],
     alias: {
       // @/* is handled by customPathResolver plugin
       '@shared': path.resolve(__dirname, 'shared'),

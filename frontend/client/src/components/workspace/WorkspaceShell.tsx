@@ -155,6 +155,18 @@ function NavItem({ item, active, onClick }: any) {
  * CreatorHub Design (Nivå 1): avled aksent-familien fra ÉN accent-hex → CSS-variabler.
  * Ugyldig/manglende hex → tomt objekt (literal-fallbackene i workspaceTheme gjelder → identisk).
  */
+/// Normaliser children før render: noen postMessage/navigasjons-veier har i edge-tilfeller
+/// levert ikke-ReactNode-innhold hit (f.eks. rå-objekt), noe MUI prop-types roper på i dev.
+/// Ugyldig innhold renderes aldri — tom flate i stedet for advarsel/krasj.
+function normalizeChildren(children: React.ReactNode): React.ReactNode {
+  const c = children;
+  if (c == null || typeof c === 'string' || typeof c === 'number' || typeof c === 'boolean') return c;
+  if (Array.isArray(c)) {
+    return c.filter((x) => x == null || typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean' || (typeof x === 'object' && React.isValidElement(x)));
+  }
+  return React.isValidElement(c) ? c : null;
+}
+
 function wsAccentVars(hex?: string | null): React.CSSProperties {
   if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return {};
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
@@ -389,7 +401,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           {/* Aktivt tab */}
           <Box sx={{ flex: 1, overflowY: 'auto', p: { xs: 2, md: 3 } }}>
             <Box sx={{ maxWidth: 1720, mx: 'auto' }}>
-              {children}
+              {normalizeChildren(children)}
             </Box>
           </Box>
         </Box>

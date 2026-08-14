@@ -995,7 +995,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 1.5 }}>{notes.slice(0, 3).map((n) => `· ${n}`).join('\n')}</Typography>
               <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('responsible')}</Typography>
               <Stack direction="row" spacing={0.5} alignItems="center">
-                <Avatar sx={{ width: 22, height: 22, fontSize: 10, bgcolor: ws.accentSoft, color: ws.accent, fontWeight: 800 }}>{ini(myName)}</Avatar>
+                <Avatar sx={{ width: 22, height: 22, fontSize: 10, bgcolor: ws.accentSoft, color: ws.accent, fontWeight: 800 }}>{ini(user?.firstName || user?.name || user?.email || 'Jeg')}</Avatar>
                 {(isReal ? viewers : []).map((v) => <Avatar key={v.userId} sx={{ width: 22, height: 22, fontSize: 10, bgcolor: ws.panelAlt, color: ws.accent }}>{ini(v.name || '?')}</Avatar>)}
                 <Typography sx={{ fontSize: 11, color: ws.textFaint, ml: 0.5 }}>{1 + (isReal ? viewers.length : 0)}</Typography>
               </Stack>

@@ -253,6 +253,7 @@ export async function getAnomalyView(pool: Pool): Promise<AnomalyView> {
     unresolvedTotal: null,
     newErrors: [],
     lastScanAt: null,
+    generatedAt,
   };
 
   try {

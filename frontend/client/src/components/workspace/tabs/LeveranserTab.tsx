@@ -775,6 +775,18 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       >
         <MenuItem onClick={() => { setViewFile(fileCtx?.i ?? 0); setFileCtx(null); }} sx={{ fontSize: 13 }}>{t('previewLarge')}</MenuItem>
         <MenuItem onClick={() => { setViewFile(fileCtx?.i ?? 0); setLbZoom(true); setFileCtx(null); }} sx={{ fontSize: 13 }}>{t('zoomOneToOne')}</MenuItem>
+        {fileCtx && dlFiles[fileCtx.i]?.refId && (
+          <MenuItem
+            onClick={() => {
+              const refId = dlFiles[fileCtx.i].refId;
+              setFileCtx(null);
+              window.location.hash = `/workspace/${projectId}/media?asset=${encodeURIComponent(refId)}`;
+            }}
+            sx={{ fontSize: 13, color: ws.accent }}
+          >
+            Åpne i Media-bibliotek ↗
+          </MenuItem>
+        )}
         {fileCtx && dlFiles[fileCtx.i]?.url && (
           <MenuItem onClick={() => { navigator.clipboard?.writeText(dlFiles[fileCtx.i].url); setFileCtx(null); }} sx={{ fontSize: 13 }}>{t('copyLink')}</MenuItem>
         )}

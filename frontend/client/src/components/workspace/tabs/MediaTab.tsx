@@ -3,14 +3,19 @@
  * MediaTab — design #6 (Media library), dark CreatorHub.
  * Bibliotek-sidebar (typer/mapper) + opplastbart asset-rutenett + asset-detaljer.
  */
-import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, TextField, IconButton, Menu, MenuItem } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Box, Stack, Typography, Button, TextField, IconButton, Menu, MenuItem, LinearProgress } from '@mui/material';
 import CloudUpload from '@mui/icons-material/CloudUpload';
 import Search from '@mui/icons-material/Search';
 import Star from '@mui/icons-material/Star';
 import CreateNewFolder from '@mui/icons-material/CreateNewFolder';
 import AutoAwesomeMotion from '@mui/icons-material/AutoAwesomeMotion';
 import Close from '@mui/icons-material/Close';
+import PlayArrow from '@mui/icons-material/PlayArrow';
+import Pause from '@mui/icons-material/Pause';
+import VolumeUp from '@mui/icons-material/VolumeUp';
+import VolumeOff from '@mui/icons-material/VolumeOff';
+import ContentCopy from '@mui/icons-material/ContentCopy';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
@@ -178,6 +183,138 @@ const blobCache = new Map<string, string>();
 const COLOR_HEX: Record<string, string> = { green: '#34d399', amber: '#fbbf24', red: '#f87171', blue: '#60a5fa', purple: '#a78bfa', pink: '#f472b6', gray: '#94a3b8' };
 const FOLDERS = [['01_Brief', 12], ['02_Shotlists', 8], ['03_Photo_RAW', 1732], ['04_Video_A_Cam', 214], ['05_Video_B_Cam', 186], ['06_Drone', 67], ['07_Audio', 98], ['08_Selects', 156], ['09_Client_Review', 23], ['10_Final_Delivery', 0]];
 const QUICK = [['Unrated', 1205], ['Favoritter', 156], ['For Edit', 312], ['Client Review', 23], ['Highlights', 48], ['Forkastet', 12]];
+
+/** Lydspiller med interaktiv bølgeform, søk og hastighetskontroll for detalj-visning. */
+const InspectorAudioPlayer: React.FC<{ url: string; label?: string }> = ({ url, label }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [rate, setRate] = useState(1);
+  const [muted, setMuted] = useState(false);
+
+  useEffect(() => {
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+      audioRef.current.currentTime = 0;
+    }
+  }, [url]);
+
+  const toggle = () => {
+    if (!audioRef.current) return;
+    if (playing) {
+      audioRef.current.pause();
+      setPlaying(false);
+    } else {
+      audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
+    }
+  };
+
+  const fmt = (s: number) => {
+    if (Number.isNaN(s) || s <= 0) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const cycleRate = () => {
+    const rates = [1, 1.25, 1.5, 2];
+    const next = rates[(rates.indexOf(rate) + 1) % rates.length];
+    setRate(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  };
+
+  const onSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setCurrentTime(val);
+    if (audioRef.current) audioRef.current.currentTime = val;
+  };
+
+  const bars = [40, 65, 80, 45, 90, 70, 85, 30, 60, 95, 75, 50, 85, 65, 40, 90, 55, 70, 80, 45, 60, 75, 90, 50];
+
+  return (
+    <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onTimeUpdate={() => audioRef.current && setCurrentTime(audioRef.current.currentTime)}
+        onLoadedMetadata={() => audioRef.current && setDuration(audioRef.current.duration)}
+        onEnded={() => setPlaying(false)}
+        muted={muted}
+      />
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <GraphicEq sx={{ fontSize: 18, color: ws.accent }} />
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.text }}>Lydfil</Typography>
+        </Stack>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Box
+            onClick={cycleRate}
+            title="Klikk for å endre avspillingshastighet"
+            sx={{ px: 0.65, py: 0.15, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', fontSize: 10, fontWeight: 800, color: ws.textDim, cursor: 'pointer', '&:hover': { color: ws.accent } }}
+          >
+            {rate}x
+          </Box>
+          <IconButton size="small" onClick={() => setMuted((m) => !m)} sx={{ color: ws.textDim, p: 0.35 }}>
+            {muted ? <VolumeOff sx={{ fontSize: 14 }} /> : <VolumeUp sx={{ fontSize: 14 }} />}
+          </IconButton>
+        </Stack>
+      </Stack>
+
+      {/* Visuell bølgeform */}
+      <Stack direction="row" alignItems="center" spacing={0.35} sx={{ height: 30, mb: 1, px: 0.5, bgcolor: 'rgba(0,0,0,0.25)', borderRadius: 1 }}>
+        {bars.map((h, idx) => {
+          const progress = duration > 0 ? (currentTime / duration) : 0;
+          const isPassed = (idx / bars.length) <= progress;
+          return (
+            <Box
+              key={idx}
+              sx={{
+                flex: 1,
+                height: `${h}%`,
+                borderRadius: '1px',
+                bgcolor: isPassed ? ws.accent : 'rgba(255,255,255,0.2)',
+                transition: 'height 0.2s, background-color 0.1s',
+              }}
+            />
+          );
+        })}
+      </Stack>
+
+      {/* Seekbar */}
+      <input
+        type="range"
+        min={0}
+        max={duration || 100}
+        value={currentTime}
+        onChange={onSeek}
+        style={{ width: '100%', height: 4, accentColor: ws.accent, cursor: 'pointer', display: 'block', marginBottom: 8 }}
+      />
+
+      {/* Kontroller */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography sx={{ fontSize: 11, color: ws.textDim, fontFamily: 'monospace' }}>
+          {fmt(currentTime)} / {fmt(duration)}
+        </Typography>
+        <IconButton
+          onClick={toggle}
+          sx={{
+            width: 32, height: 32,
+            bgcolor: ws.accent, color: ws.accentContrast,
+            '&:hover': { bgcolor: ws.accentHover, transform: 'scale(1.08)' },
+            transition: 'all .12s'
+          }}
+        >
+          {playing ? <Pause sx={{ fontSize: 18 }} /> : <PlayArrow sx={{ fontSize: 18 }} />}
+        </IconButton>
+      </Stack>
+    </Box>
+  );
+};
 
 const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   // Utenlandske partner-vendors får engelsk — locale fra WsLocaleProvider.
@@ -425,8 +562,38 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   // Ett-klikks-forslag fra mal (mappenavn som ikke finnes ennå, sortert på nummer).
   const tplSuggest = templates.flatMap((x: any) => (Array.isArray(x.names) ? x.names : [])).filter((n: string) => !folderNames().includes(n)).sort();
-  // Opplasting (flere typer) med «opplastet ✓»-feedback.
+  // Opplasting (flere typer) med «opplastet ✓»-feedback og flerfilsstøtte.
   const doUpload = (f: File) => web.onUpload(f).then((s: any) => { if (s?.id) { setLastUp(s.id); window.setTimeout(() => setLastUp((v) => (v === s.id ? null : v)), 2500); } return s; });
+  const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null);
+  const doUploadBatch = async (files: File[]) => {
+    if (!files.length) return;
+    setUploadProgress({ total: files.length, done: 0 });
+    for (let i = 0; i < files.length; i++) {
+      await doUpload(files[i]);
+      setUploadProgress({ total: files.length, done: i + 1 });
+    }
+    setUploadProgress(null);
+  };
+  const [activeTileAudioId, setActiveTileAudioId] = useState<string | null>(null);
+  const tileAudioRef = useRef<HTMLAudioElement | null>(null);
+  const toggleTileAudio = (im: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeTileAudioId === im.id) {
+      tileAudioRef.current?.pause();
+      setActiveTileAudioId(null);
+    } else {
+      if (tileAudioRef.current) {
+        tileAudioRef.current.pause();
+      }
+      if (im.url) {
+        const a = new Audio(im.url);
+        tileAudioRef.current = a;
+        a.play().catch(() => {});
+        a.onended = () => setActiveTileAudioId(null);
+        setActiveTileAudioId(im.id);
+      }
+    }
+  };
   const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
   const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || t('error')); } };
   useEffect(() => {
@@ -554,6 +721,21 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selAsset?.id, isReal, projectId]);
+
+  // Toveis dyp-lenking: hvis URL har ?asset=id eller #...asset=id, åpne i inspektør
+  useEffect(() => {
+    const hash = window.location.hash || window.location.search;
+    const match = hash.match(/[?&]asset=([^&]+)/);
+    if (match && match[1]) {
+      const assetId = decodeURIComponent(match[1]);
+      const idx = gridImages.findIndex((im: any) => im.id === assetId);
+      if (idx !== -1) {
+        openAssetAt(idx);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gridImages.length]);
+
   // ML-mappe-gjett ved bytte av valgt asset.
   useEffect(() => {
     setFolderGuess(null);
@@ -787,10 +969,20 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <TextField size="small" placeholder={t('searchMedia')} value={q} onChange={(e) => setQ(e.target.value)} InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 190, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
             <Button component="label" size="small" variant="contained" startIcon={<CloudUpload sx={{ fontSize: 16 }} />} disabled={!isReal} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
               {t('upload')}
-              <input type="file" accept="image/*,video/*,audio/*,.pdf,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) doUpload(f); e.target.value = ''; }} />
+              <input type="file" accept="image/*,video/*,audio/*,.pdf,.zip" multiple hidden onChange={(e) => { const fs = Array.from(e.target.files || []); if (fs.length) doUploadBatch(fs); e.target.value = ''; }} />
             </Button>
           </>}
         />
+
+        {uploadProgress && (
+          <Box sx={{ mb: 1.5, p: 1.25, borderRadius: 1.5, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.accent }}>Laster opp {uploadProgress.done} av {uploadProgress.total} filer…</Typography>
+              <Typography sx={{ fontSize: 11, color: ws.textDim }}>{Math.round((uploadProgress.done / uploadProgress.total) * 100)}%</Typography>
+            </Stack>
+            <LinearProgress variant="determinate" value={(uploadProgress.done / uploadProgress.total) * 100} sx={{ height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: ws.accent } }} />
+          </Box>
+        )}
 
         <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.75 }} alignItems="center">
           {isReal
@@ -847,6 +1039,9 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}`, py: 0.5, minWidth: 190 } }}
         >
           <MenuItem onClick={() => { const i = gridImages.findIndex((x: any) => x.id === tileCtx?.im.id); setTileCtx(null); openAssetAt(i === -1 ? 0 : i); }} sx={{ fontSize: 13 }}>{t('openOriginal')}</MenuItem>
+          {tileCtx?.im.url && (
+            <MenuItem onClick={() => { navigator.clipboard?.writeText(window.location.origin + tileCtx.im.url); setTileCtx(null); }} sx={{ fontSize: 13 }}>Kopier direkte lenke</MenuItem>
+          )}
           <MenuItem onClick={() => { openAttachDeliverable({ id: tileCtx?.im.id, filename: tileCtx?.im.label, previewUrl: tileCtx?.im.url }); setTileCtx(null); }} sx={{ fontSize: 13 }}>{t('attachDeliverable')}</MenuItem>
           <MenuItem onClick={() => { const id = tileCtx?.im.id; setTileCtx(null); deleteAsset(id); }} sx={{ fontSize: 13, color: '#f87171' }}>{t('deleteAsset')}</MenuItem>
         </Menu>
@@ -867,7 +1062,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Box sx={{ position: 'relative' }}
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
-              onDrop={(e) => { e.preventDefault(); setDragging(false); const fs = Array.from(e.dataTransfer?.files || []); if (fs.length && isReal) fs.forEach((f: File) => doUpload(f)); }}>
+              onDrop={(e) => { e.preventDefault(); setDragging(false); const fs = Array.from(e.dataTransfer?.files || []); if (fs.length && isReal) doUploadBatch(fs); }}>
               {dragging && (
                 <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, borderRadius: 2, border: '2px dashed #6366f1', bgcolor: 'rgba(99,102,241,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                   <Box sx={{ px: 1.5, py: 0.75, borderRadius: 2, bgcolor: 'rgba(13,13,22,.9)' }}><Typography sx={{ fontSize: 14, fontWeight: 800, color: ws.accent }}>Slipp for å laste opp media</Typography></Box>
@@ -890,12 +1085,27 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                           actions={(im: any) => (
                             <>
                               {lastUp === im.id && <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(34,197,94,.95)', color: '#fff', fontSize: 10, fontWeight: 900 }}>✓</Box>}
-                              {im.type && im.type !== 'image' && (
+                              {im.type === 'audio' && im.url ? (
+                                <Box
+                                  onClick={(e) => toggleTileAudio(im, e)}
+                                  title={activeTileAudioId === im.id ? "Pause lyd" : "Spill av lyd"}
+                                  sx={{
+                                    width: 22, height: 22, borderRadius: '50%',
+                                    bgcolor: activeTileAudioId === im.id ? ws.accent : 'rgba(0,0,0,0.7)',
+                                    color: activeTileAudioId === im.id ? ws.accentContrast : '#fff',
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', transition: 'all .15s',
+                                    '&:hover': { transform: 'scale(1.15)', bgcolor: ws.accent, color: ws.accentContrast }
+                                  }}
+                                >
+                                  {activeTileAudioId === im.id ? <Pause sx={{ fontSize: 13 }} /> : <PlayArrow sx={{ fontSize: 13 }} />}
+                                </Box>
+                              ) : im.type && im.type !== 'image' ? (
                                 <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 0.35 }}>
-                                  {im.type === 'video' ? <Videocam sx={{ fontSize: 11 }} /> : im.type === 'audio' ? <GraphicEq sx={{ fontSize: 11 }} /> : <Description sx={{ fontSize: 11 }} />}
+                                  {im.type === 'video' ? <Videocam sx={{ fontSize: 11 }} /> : <Description sx={{ fontSize: 11 }} />}
                                   {im.type}
                                 </Box>
-                              )}
+                              ) : null}
                               {im.createdAt && Date.now() - new Date(im.createdAt).getTime() < 86400000 && <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(34,197,94,.9)', color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>NY</Box>}
                             </>
                           )}
@@ -913,12 +1123,27 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   actions={(im: any) => (
                     <>
                       {lastUp === im.id && <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(34,197,94,.95)', color: '#fff', fontSize: 10, fontWeight: 900 }}>✓</Box>}
-                      {im.type && im.type !== 'image' && (
+                      {im.type === 'audio' && im.url ? (
+                        <Box
+                          onClick={(e) => toggleTileAudio(im, e)}
+                          title={activeTileAudioId === im.id ? "Pause lyd" : "Spill av lyd"}
+                          sx={{
+                            width: 22, height: 22, borderRadius: '50%',
+                            bgcolor: activeTileAudioId === im.id ? ws.accent : 'rgba(0,0,0,0.7)',
+                            color: activeTileAudioId === im.id ? ws.accentContrast : '#fff',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', transition: 'all .15s',
+                            '&:hover': { transform: 'scale(1.15)', bgcolor: ws.accent, color: ws.accentContrast }
+                          }}
+                        >
+                          {activeTileAudioId === im.id ? <Pause sx={{ fontSize: 13 }} /> : <PlayArrow sx={{ fontSize: 13 }} />}
+                        </Box>
+                      ) : im.type && im.type !== 'image' ? (
                         <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 0.35 }}>
-                          {im.type === 'video' ? <Videocam sx={{ fontSize: 11 }} /> : im.type === 'audio' ? <GraphicEq sx={{ fontSize: 11 }} /> : <Description sx={{ fontSize: 11 }} />}
+                          {im.type === 'video' ? <Videocam sx={{ fontSize: 11 }} /> : <Description sx={{ fontSize: 11 }} />}
                           {im.type}
                         </Box>
-                      )}
+                      ) : null}
                       {im.createdAt && Date.now() - new Date(im.createdAt).getTime() < 86400000 && <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(34,197,94,.9)', color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>NY</Box>}
                     </>
                   )}
@@ -956,13 +1181,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {det.previewUrl && detType === 'video' ? (
                 <video controls preload="metadata" src={det.previewUrl} style={{ width: '100%', aspectRatio: '16/9', borderRadius: ws.radiusSm, background: '#000', display: 'block', border: `1px solid ${ws.borderSoft}` }} />
               ) : det.previewUrl && detType === 'audio' ? (
-                <Box sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                    <GraphicEq sx={{ fontSize: 20, color: ws.accent }} />
-                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textDim }}>{t('audioFile')}</Typography>
-                  </Stack>
-                  <audio controls preload="none" src={det.previewUrl} style={{ width: '100%', height: 36 }} />
-                </Box>
+                <InspectorAudioPlayer url={det.previewUrl} label={det.filename} />
               ) : det.previewUrl ? (
                 <Box sx={{ position: 'relative' }}>
                   <Box sx={{ aspectRatio: '4 / 3', borderRadius: `${ws.radiusSm}px`, background: `center/cover no-repeat url(${det.previewUrl})`, border: det.rejected ? '1.5px solid #f87171' : `1px solid ${ws.borderSoft}` }} />

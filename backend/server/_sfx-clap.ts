@@ -129,11 +129,12 @@ export async function loadSfxLibraryFromDisk(filePath: string): Promise<LoadedLi
   if (!validation.ok) {
     throw new Error(`SFX-library ${absolute} er ugyldig: ${validation.errors.join('; ')}`);
   }
+  const data = parsed as { embeddingModel: string; embeddingDim: number; builtAt: string; samples: any[] };
   return {
-    embeddingModel: parsed.embeddingModel,
-    embeddingDim: parsed.embeddingDim,
-    builtAt: parsed.builtAt,
-    samples: parsed.samples.map((s: any) => ({
+    embeddingModel: data.embeddingModel,
+    embeddingDim: data.embeddingDim,
+    builtAt: data.builtAt,
+    samples: data.samples.map((s: any) => ({
       id: s.id,
       title: s.title,
       url: s.url,

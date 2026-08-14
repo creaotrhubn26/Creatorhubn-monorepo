@@ -233,7 +233,8 @@ export const WsImageGrid: React.FC<{
   actions?: (im: WsImageItem) => React.ReactNode; // egne handlinger øverst (gruppe-delte bilder)
   accept?: string; // filtyper i opplasting (default image/*)
   colorStrip?: (im: WsImageItem) => string | null; // fargestripe nederst (fargekode fra culling)
-}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel, search, bulk, showFit, overlay, actions, accept = 'image/*', colorStrip }) => {
+  onContextMenu?: (im: WsImageItem, e: React.MouseEvent) => void; // høyreklikk på tile
+}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel, search, bulk, showFit, overlay, actions, accept = 'image/*', colorStrip, onContextMenu }) => {
   const [items, setItems] = useState<WsImageItem[]>(images);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -269,7 +270,7 @@ export const WsImageGrid: React.FC<{
       {items.map((im, i) => {
         const sel = !!bulk?.sel.has(im.id);
         return (
-        <Box key={im.id} onClick={(e) => { if (bulk) bulk.onToggle(im.id, e); else if (onSelect) onSelect(im); }} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: sel ? '2px solid #6366f1' : `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: (bulk || onSelect) ? 'pointer' : 'default',
+        <Box key={im.id} data-im-id={im.id} onClick={(e) => { if (bulk) bulk.onToggle(im.id, e); else if (onSelect) onSelect(im); }} onContextMenu={(e) => { e.preventDefault(); if (onContextMenu) onContextMenu(im, e); }} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: sel ? '2px solid #6366f1' : `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: (bulk || onSelect) ? 'pointer' : 'default',
           background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))', transition: 'transform .15s ease, border-color .12s', '&:hover': bulk || onSelect ? { outline: `2px solid ${ws.accentBorder}` } : undefined }}>
           {im.flag && <Box sx={{ position: 'absolute', top: 5, left: 5, width: 18, height: 18, borderRadius: '50%', bgcolor: ws.accent, color: ws.accentContrast, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>★</Box>}
           {typeof im.rating === 'number' && im.rating > 0 && (

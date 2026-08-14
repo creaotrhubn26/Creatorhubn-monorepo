@@ -20,6 +20,8 @@
 
 import type express from "express";
 import crypto from "crypto";
+import fs from "node:fs";
+import path from "node:path";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
@@ -27,6 +29,7 @@ import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
+import { broadcastUserEvent } from "./realtime-user-events";
 import { Vibrant } from "node-vibrant/node";
 import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
@@ -419,6 +422,29 @@ async function guessNoteCategoryBE(pool: any, projectId: string, label: string):
 
 export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
+
+  // Lokal lagrings-fallback (for dev / testing uten B2-credentials)
+  app.get("/api/local-storage/:key(*)", (req, res) => {
+    try {
+      const rawKey = req.params.key;
+      const rootDir = path.resolve(process.cwd(), "uploads", "b2_fallback");
+      const fullPath = path.resolve(rootDir, rawKey);
+      if (!fullPath.startsWith(rootDir)) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      const downloadName = typeof req.query.download === "string" ? req.query.download : undefined;
+      if (downloadName) {
+        res.download(fullPath, downloadName);
+      } else {
+        res.sendFile(fullPath);
+      }
+    } catch (e) {
+      res.status(500).json({ error: "failed" });
+    }
+  });
 
   // Felles gate: innlogget + canAccessProject. Returnerer userId, eller null
   // (og har allerede sendt respons).
@@ -1917,7 +1943,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         const sourceKey = r.full_key || r.preview_key;
         if (!sourceKey) { failures.push({ assetId: r.id, reason: "no_source_key" }); continue; }
         try {
-          const url = await signAssetReadUrl(sourceKey);
+          const url = await signAssetReadUrl(sourceKey as string);
           const resp = await fetch(url);
           if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
           const buffer = Buffer.from(await resp.arrayBuffer());
