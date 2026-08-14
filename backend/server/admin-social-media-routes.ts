@@ -255,7 +255,7 @@ export function setupAdminSocialMediaRoutes(
   // ─── Create post ──────────────────────────────────────────
   // POST /api/social-media/posts
   app.post("/api/social-media/posts", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       if (!(await socialPostsTableExists(pool))) {

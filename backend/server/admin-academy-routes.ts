@@ -647,7 +647,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
   // 400 hvis status ikke er 'pending' (invalid_status_transition).
   // 404 hvis payout-rad ikke finnes.
   app.post("/api/admin/academy/payouts/:id/approve", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = readString(req.params.id);
     if (!id) {
@@ -715,7 +715,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
   // Body: { reason: string } — påkrevd.
   // Sett pending → rejected.
   app.post("/api/admin/academy/payouts/:id/reject", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = readString(req.params.id);
     if (!id) return res.status(400).json({ error: "missing_payout_id" });
@@ -779,7 +779,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
   //
   // Returnerer 502 hvis Stripe-API feiler, 503 hvis Stripe ikke konfigurert.
   app.post("/api/admin/academy/payouts/:id/mark-paid", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = readString(req.params.id);
     if (!id) return res.status(400).json({ error: "missing_payout_id" });
@@ -986,7 +986,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
   app.post(
     "/api/admin/academy/instructors/:id/onboarding-link",
     async (req, res) => {
-      const session = requireAdminSession(req, res);
+      const session = req.adminSession;
       if (!session) return;
       const id = readString(req.params.id);
       if (!id) return res.status(400).json({ error: "missing_instructor_id" });

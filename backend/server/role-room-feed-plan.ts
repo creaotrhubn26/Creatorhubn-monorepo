@@ -377,8 +377,8 @@ export function mergeFeedPostsPreservingApproval(
     if (!prev) return post;
     const merged: RoleRoomFeedPostInput = { ...post };
     for (const key of PRESERVED_APPROVAL_KEYS) {
-      (merged as Record<string, unknown>)[key] =
-        (prev as Record<string, unknown>)[key] ?? null;
+      (merged as unknown as Record<string, unknown>)[key] =
+        (prev as unknown as Record<string, unknown>)[key] ?? null;
     }
     return merged;
   });

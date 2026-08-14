@@ -112,7 +112,7 @@ export function setupAdminRefundRequestsRoutes(
 
   app.post("/api/admin/refund-requests/:id/approve", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }
@@ -280,7 +280,7 @@ export function setupAdminRefundRequestsRoutes(
 
   app.post("/api/admin/refund-requests/:id/reject", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }

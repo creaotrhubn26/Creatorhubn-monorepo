@@ -102,7 +102,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const { projectId, platform } = req.params;
     if (!projectId || !isSupportedFeedPlatform(platform)) {
@@ -126,7 +126,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const { projectId, platform } = req.params;
     if (!projectId || !isSupportedFeedPlatform(platform)) {
@@ -164,7 +164,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const { templateId } = req.params;
     if (!templateId) {
@@ -179,7 +179,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body =
@@ -214,7 +214,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
 
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body =
@@ -348,7 +348,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
 
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     let authorized;
@@ -425,7 +425,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
 
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body =
@@ -587,7 +587,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       });
     }
 
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) {
       return;
     }
@@ -629,7 +629,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       });
     }
 
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) {
       return;
     }
@@ -698,7 +698,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const { projectId, platform } = req.params;
@@ -797,7 +797,7 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const { projectId, platform } = req.params;

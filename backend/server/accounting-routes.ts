@@ -88,7 +88,7 @@ export function setupAccountingRoutes(deps: AccountingRoutesDeps): void {
 
   app.put("/api/admin/users/:id/accounting-integration", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }

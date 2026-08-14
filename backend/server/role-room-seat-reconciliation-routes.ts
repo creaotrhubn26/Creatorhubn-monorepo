@@ -42,7 +42,7 @@ export function registerRoleRoomSeatReconciliationRoutes(app: Express, deps: Dep
   async function authorize(req: Request, res: Response): Promise<string | null> {
     // 1. Admin-session via cookie
     if (requireAdminSession) {
-      const admin = requireAdminSession(req, res);
+      const admin = req.adminSession;
       if (admin) return admin.userId;
     }
     // 2. Cron-token via header (for Render cron-job)

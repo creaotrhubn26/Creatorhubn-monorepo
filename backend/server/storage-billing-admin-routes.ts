@@ -29,7 +29,7 @@ export function setupStorageBillingAdminRoutes(
   app.get(
     "/api/admin/storage-billing/users/:userId",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const { userId } = req.params;
 
@@ -73,7 +73,7 @@ export function setupStorageBillingAdminRoutes(
   app.put(
     "/api/admin/storage-billing/subscriptions/:subscriptionId/meter-item",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const { subscriptionId } = req.params;
       const { stripeStorageMeterItemId } = req.body || {};
@@ -176,7 +176,7 @@ export function setupStorageBillingAdminRoutes(
   // finnes uten å åpne Stripe-dashboard. Spesielt viktig for å finne
   // riktig metered-price-ID for STRIPE_PRICE_ID_STORAGE_OVERAGE_NOK.
   app.get("/api/admin/storage-billing/stripe-catalog", async (req, res) => {
-    const adminSession = requireAdminSession(req, res);
+    const adminSession = req.adminSession;
     if (!adminSession) return;
 
     const stripeKey =
@@ -294,7 +294,7 @@ export function setupStorageBillingAdminRoutes(
   app.post(
     "/api/admin/storage-billing/backfill-meter-items",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
 
       const overagePriceId =
@@ -385,7 +385,7 @@ export function setupStorageBillingAdminRoutes(
   app.post(
     "/api/admin/storage-billing/users/:userId/recompute",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const { userId } = req.params;
 

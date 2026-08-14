@@ -12,7 +12,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+type RequireAdminSession = (req: Request, res: Response) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 
 const mapRow = (row: any) => ({
   accentColor: row.accent_color || undefined,

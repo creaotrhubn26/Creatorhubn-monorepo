@@ -2,6 +2,26 @@ import "dotenv/config";
 import { config } from "dotenv";
 config({ override: true });
 
+// Extend Express Request with adminSession property
+declare global {
+  namespace Express {
+    interface Request {
+      adminSession?: {
+        userId: string;
+        email: string;
+        name: string;
+        role: string;
+        loginAt: string;
+        impersonatedByAdmin?: boolean;
+        impersonatorId?: string;
+        impersonatorEmail?: string;
+        impersonatorSnapshot?: any;
+        impersonationExpiresAt?: number;
+      };
+    }
+  }
+}
+
 // Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
 import { initBackendSentry, buildSentryErrorMiddleware } from "./sentry-init.js";
 initBackendSentry();
@@ -2336,6 +2356,7 @@ function requireAdminSession(
     return null;
   }
 
+  (req as any).adminSession = session;
   return session;
 }
 
@@ -15046,7 +15067,7 @@ app.get("/api/profession/config/:profession", async (req, res) => {
 });
 
 app.post("/api/profession/config/:profession", async (req, res) => {
-  const session = requireAdminSession(req, res);
+  const session = req.adminSession;
   if (!session) return;
 
   const profession =
@@ -27948,7 +27969,7 @@ async function syncCreatorHubStripeCheckoutSession(
 // webhook-hooken ble lagt til. Ikke-destruktiv (rører aldri en org som allerede
 // har en kunde-id) og skriver ALDRI til Stripe. Kun super_admin.
 app.post("/api/superadmin/creatorhub/backfill-org-stripe-links", async (req, res) => {
-  const session = requireAdminSession(req, res);
+  const session = req.adminSession;
   if (!session) return;
   if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
     return res.status(403).json({ error: "Krever super-admin" });
@@ -43389,7 +43410,7 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
   try {
     // Staff-only: denne lista er applikanters PII (navn/e-post/firma/enhet).
     // Manglet auth tidligere → hvem som helst kunne dumpe alle søknader.
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const tableCheck = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prototype_tester_requests')`,
@@ -43447,7 +43468,7 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
   try {
     // Staff-only: prosessering (godkjenn/avslå) er en admin-handling.
     // Manglet auth → hvem som helst kunne endre status på vilkårlig søknad.
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const { id } = req.params;
     const { status, notes } = req.body;
@@ -43489,7 +43510,7 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
     // Staff-only: slår opp en vilkårlig e-post og returnerer sammenslått PII
     // (firmanavn/orgnr/adresse/telefon m.m.). Kun admin-invite-konsollen kaller
     // dette. Manglet auth → åpen e-post→PII-oppslag for hvem som helst.
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const { email } = req.params;
     // Aggregate profile from invite_requests + vendors + creatorhub_users
@@ -75427,9 +75448,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   void (async () => {
     try {
       const r = await pool.query<{
-        token: string; user_id: string; email: string | null; role: string | null;
+        token: string; user_id: string; email: string | null; name: string | null; role: string | null;
       }>(
-        `SELECT t.token, t.user_id, u.email, u.role
+        `SELECT t.token, t.user_id, u.email, u.name, u.role
            FROM ipad_tokens t
            JOIN users u ON u.id::text = t.user_id
           WHERE t.revoked_at IS NULL`,
@@ -75440,7 +75461,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
           activeSessions.set(row.token, {
             userId: row.user_id,
             email: row.email ?? "",
+            name: row.name ?? "",
             role: row.role ?? "member",
+            loginAt: new Date().toISOString(),
           });
           hydrated++;
         }

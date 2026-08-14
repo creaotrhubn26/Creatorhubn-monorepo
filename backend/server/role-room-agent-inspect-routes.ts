@@ -59,7 +59,7 @@ export function setupRoleRoomAgentInspectRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -169,7 +169,7 @@ export function setupRoleRoomAgentInspectRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
@@ -222,7 +222,7 @@ export function setupRoleRoomAgentInspectRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -389,7 +389,7 @@ export function setupRoleRoomAgentInspectRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -537,7 +537,7 @@ export function setupRoleRoomAgentInspectRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -660,7 +660,7 @@ export function setupRoleRoomAgentInspectRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};

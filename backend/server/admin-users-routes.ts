@@ -326,7 +326,7 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
 
   app.post("/api/admin/users/:id/approve", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }
@@ -618,7 +618,7 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
   // FK-trygt: NULL-er nullbare NO ACTION-referanser (bevarer raden), sletter
   // ikke-nullbare; CASCADE + SET NULL håndteres av DB-en. Alt i én transaksjon.
   app.delete("/api/admin/users/:id", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
       return res.status(403).json({ error: "Kun super_admin kan slette brukere." });

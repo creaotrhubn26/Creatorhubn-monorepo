@@ -25,7 +25,7 @@ export function setupAdminFileAuditRoutes(
 
   // GET /api/admin/file-access-audit?userId=...&fileId=...&outcome=...&sinceHours=24&limit=100
   app.get("/api/admin/file-access-audit", async (req, res) => {
-    const adminSession = requireAdminSession(req, res);
+    const adminSession = req.adminSession;
     if (!adminSession) return;
 
     try {
@@ -80,7 +80,7 @@ export function setupAdminFileAuditRoutes(
   app.get(
     "/api/admin/file-access-audit/suspicious",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const sinceHours = Math.min(
         720,

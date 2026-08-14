@@ -25,7 +25,7 @@ export function registerRoleRoomBillingAlertsRoutes(app: Express, deps: Deps): v
   app.get(
     "/api/admin-room/role-room/billing-alerts",
     async (req: Request, res: Response) => {
-      const admin = requireAdminSession(req, res);
+      const admin = req.adminSession;
       if (!admin) return;
 
       const status = String(req.query.status ?? "unresolved").toLowerCase();
@@ -97,7 +97,7 @@ export function registerRoleRoomBillingAlertsRoutes(app: Express, deps: Deps): v
   app.post(
     "/api/admin-room/role-room/billing-alerts/:id/retry-sync",
     async (req: Request, res: Response) => {
-      const admin = requireAdminSession(req, res);
+      const admin = req.adminSession;
       if (!admin) return;
       const id = parseInt(String(req.params.id ?? ""), 10);
       if (!Number.isFinite(id)) {
@@ -165,7 +165,7 @@ export function registerRoleRoomBillingAlertsRoutes(app: Express, deps: Deps): v
   app.post(
     "/api/admin-room/role-room/billing-alerts/:id/resolve",
     async (req: Request, res: Response) => {
-      const admin = requireAdminSession(req, res);
+      const admin = req.adminSession;
       if (!admin) return;
 
       const id = parseInt(String(req.params.id ?? ""), 10);

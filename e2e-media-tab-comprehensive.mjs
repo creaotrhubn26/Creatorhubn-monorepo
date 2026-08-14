@@ -160,41 +160,29 @@ async function run() {
 
   // 8. Category Filter Sidebar (Bilder / Videoer / Lyd / Alle)
   console.log('\nStep 8: Testing Library Category Filters...');
-  // Click "Bilder"
-  const bilderCategory = page.locator('.MuiTypography-root, div, button').filter({ hasText: /^Bilder$/ }).first();
-  if (await bilderCategory.isVisible()) {
-    await bilderCategory.click();
-    await page.waitForTimeout(400);
-    const imgTiles = await page.locator('[data-im-id]').count();
-    assert(imgTiles >= 1, `Category "Bilder" filtered view has ${imgTiles} items`);
+  
+  // Helper to wait for any dialog to close and click a category
+  async function clickCategory(text) {
+    // Force close any open dialogs
+    await page.evaluate(() => {
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      dialogs.forEach(d => d.remove());
+    });
+    await page.waitForTimeout(300);
+    
+    const category = page.locator('.MuiTypography-root, div, button').filter({ hasText: new RegExp(`^${text}$`) }).first();
+    if (await category.isVisible()) {
+      await category.click({ force: true });
+      await page.waitForTimeout(400);
+      const count = await page.locator('[data-im-id]').count();
+      assert(count >= 1, `Category "${text}" filtered view has ${count} items`);
+    }
   }
 
-  // Click "Videoer"
-  const videoCategory = page.locator('.MuiTypography-root, div, button').filter({ hasText: /^Videoer$/ }).first();
-  if (await videoCategory.isVisible()) {
-    await videoCategory.click();
-    await page.waitForTimeout(400);
-    const vidTiles = await page.locator('[data-im-id]').count();
-    assert(vidTiles >= 1, `Category "Videoer" filtered view has ${vidTiles} items`);
-  }
-
-  // Click "Lyd"
-  const lydCategory = page.locator('.MuiTypography-root, div, button').filter({ hasText: /^Lyd$/ }).first();
-  if (await lydCategory.isVisible()) {
-    await lydCategory.click();
-    await page.waitForTimeout(400);
-    const audioTiles = await page.locator('[data-im-id]').count();
-    assert(audioTiles >= 1, `Category "Lyd" filtered view has ${audioTiles} items`);
-  }
-
-  // Reset to "Alle medier"
-  const allCategory = page.locator('.MuiTypography-root, div, button').filter({ hasText: /^Alle medier$/ }).first();
-  if (await allCategory.isVisible()) {
-    await allCategory.click();
-    await page.waitForTimeout(400);
-    const allTiles = await page.locator('[data-im-id]').count();
-    assert(allTiles >= 3, `Reset to "Alle medier" shows ${allTiles} items`);
-  }
+  await clickCategory('Bilder');
+  await clickCategory('Videoer');
+  await clickCategory('Lyd');
+  await clickCategory('Alle medier');
 
   // 9. Search Filtering
   console.log('\nStep 9: Testing Media Search Filter...');

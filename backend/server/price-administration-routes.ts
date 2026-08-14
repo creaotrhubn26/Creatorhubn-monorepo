@@ -114,7 +114,7 @@ export function setupPriceAdministrationRoutes(
 
   app.put("/api/platform/admin/email-settings", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }
@@ -136,7 +136,7 @@ export function setupPriceAdministrationRoutes(
 
   app.patch("/api/platform/admin/subscription-plans/:planId", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }

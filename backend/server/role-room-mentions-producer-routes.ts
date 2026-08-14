@@ -104,7 +104,7 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
 
   // ── GET /api/role-room/mentions/producer ────────────────────────────────
   app.get("/api/role-room/mentions/producer", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -156,7 +156,7 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
   // ── POST /api/role-room/mentions/producer/status ────────────────────────
   // Triage a mention (svart/lead/skjult) or clear it.
   app.post("/api/role-room/mentions/producer/status", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; mentionId?: string; status?: string | null };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
@@ -202,7 +202,7 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
   // fast (and turn positive mentions into leads). Stateless — producer reviews
   // before posting.
   app.post("/api/role-room/mentions/producer/draft-reply", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; from?: string; message?: string };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";

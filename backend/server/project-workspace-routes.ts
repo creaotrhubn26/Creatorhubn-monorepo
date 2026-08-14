@@ -1944,6 +1944,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         if (!sourceKey) { failures.push({ assetId: r.id, reason: "no_source_key" }); continue; }
         try {
           const url = await signAssetReadUrl(sourceKey as string);
+          if (!url) { failures.push({ assetId: r.id, reason: "no_signed_url" }); continue; }
           const resp = await fetch(url);
           if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
           const buffer = Buffer.from(await resp.arrayBuffer());

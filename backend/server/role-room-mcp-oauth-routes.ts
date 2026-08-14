@@ -123,7 +123,7 @@ export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
     if (!("ok" in v)) { res.status(400).send(`Ugyldig forespørsel: ${v.error}`); return; }
     if (q.decision !== "approve") { deny(); return; }
     // Autentiser brukeren via Role Room-sesjon.
-    const session = await loadPersistedAuthSession<{ userId?: string }>(pool, q.rr_session);
+    const session = await loadPersistedAuthSession<{ userId: string; email: string; name: string; role: string; loginAt: string }>(pool, q.rr_session);
     if (!session?.userId) { res.status(401).send("Ugyldig Role Room-økt. Prøv igjen."); return; }
     const scope = oauthScopesToV1(q.scope);
     const code = await createAuthCode(pool, {
@@ -158,7 +158,7 @@ export function createRoleRoomMcpOAuthRouter(pool: Pool): ExpressRouter {
   const requireSession = async (req: Request): Promise<string | null> => {
     const authz = req.headers.authorization;
     const token = typeof authz === "string" ? authz.replace(/^Bearer\s+/i, "").trim() : "";
-    const session = await loadPersistedAuthSession<{ userId?: string }>(pool, token);
+    const session = await loadPersistedAuthSession<{ userId: string; email: string; name: string; role: string; loginAt: string }>(pool, token);
     return session?.userId ?? null;
   };
 

@@ -56,7 +56,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
 
   // List connected IG accounts (the inbox account-picker).
   app.get(`${BASE}/connections`, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       await ensureIgMessagingSchema(pool);
@@ -79,7 +79,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
 
   // List conversations for a connection (DB-first; best-effort Graph sync).
   app.get(`${BASE}/conversations`, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -116,7 +116,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
 
   // Messages of one conversation (DB-first; best-effort Graph sync; marks read).
   app.get(`${BASE}/conversations/:conversationId/messages`, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     const { conversationId } = req.params;
@@ -154,7 +154,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
 
   // Send a reply (hits Graph; obeys Meta's 24h window + reply-only rules).
   app.post(`${BASE}/conversations/:conversationId/reply`, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; text?: string };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
@@ -195,7 +195,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
 
   // Link a conversation to a CRM customer (bridge via crm_conversation_links).
   app.post(`${BASE}/conversations/:conversationId/link-customer`, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; customerId?: string };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";

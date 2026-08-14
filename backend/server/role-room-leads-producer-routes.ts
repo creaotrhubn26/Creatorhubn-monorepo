@@ -369,7 +369,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
   // ── GET /api/role-room/leads/producer/forms ─────────────────────────────
   app.get("/api/role-room/leads/producer/forms", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -416,7 +416,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
   // ── GET /api/role-room/leads/producer/leads ─────────────────────────────
   app.get("/api/role-room/leads/producer/leads", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     const formId = typeof req.query.formId === "string" ? req.query.formId : "";
@@ -486,7 +486,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // ── POST /api/role-room/leads/producer/segment ──────────────────────────
   // Tag a lead into a retargeting segment (varm/lunken/kald/tapt) or clear it.
   app.post("/api/role-room/leads/producer/segment", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; leadId?: string; segment?: string | null };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
@@ -534,7 +534,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // not-yet-segmented lead, based on its form answers. Only fills blanks — a
   // producer's manual choice is never overwritten.
   app.post("/api/role-room/leads/producer/auto-segment", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string;
@@ -616,7 +616,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // AI writes ready-to-use retargeting ad copy for a segment (varm/lunken/kald),
   // tailored to what those leads asked about. Stateless.
   app.post("/api/role-room/leads/producer/retargeting-copy", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string; segment?: string;
@@ -669,7 +669,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // AI reads all the leads and returns what people ask about + content ideas
   // the producer can feed into the marketing plan / feed planner. Stateless.
   app.post("/api/role-room/leads/producer/insights", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string;
@@ -727,7 +727,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // Set a lead's conversion stage (svart/booket/kunde/tapt) + value (kr), or
   // clear it. Drives the ROI funnel the producer shows the client.
   app.post("/api/role-room/leads/producer/outcome", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string; formId?: string; leadId?: string;
@@ -777,7 +777,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // ── POST /api/role-room/leads/producer/spend ────────────────────────────
   // Store the ad spend (kr) for a form so cost-per-lead / ROI can be computed.
   app.post("/api/role-room/leads/producer/spend", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; formId?: string; spendKr?: number };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
@@ -812,7 +812,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // customers → revenue → ROI. Counts come from stored outcomes (independent of
   // pagination); totalLeads from the form's leads_count.
   app.get("/api/role-room/leads/producer/summary", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     const formId = typeof req.query.formId === "string" ? req.query.formId : "";
@@ -888,7 +888,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
   // ── GET /api/role-room/leads/producer/followup-config ───────────────────
   app.get("/api/role-room/leads/producer/followup-config", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -917,7 +917,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
   // ── POST /api/role-room/leads/producer/followup-config ──────────────────
   app.post("/api/role-room/leads/producer/followup-config", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string } & Partial<FollowupConfig>;
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
@@ -964,7 +964,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // Send the follow-up to ONE lead: auto-SMS + auto-email to the lead, plus a
   // notification to the seller/client. Idempotent — logged so we never re-send.
   app.post("/api/role-room/leads/producer/followup", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string; formId?: string; leadId?: string;
@@ -1148,7 +1148,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // ── GET /api/role-room/leads/producer/email-domain ──────────────────────
   // Current white-label domain for a connection + live status/DNS from Resend.
   app.get("/api/role-room/leads/producer/email-domain", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -1198,7 +1198,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
   // Register the client's own domain in Resend → returns the DNS records the
   // client must add. body { connectionId, domain, fromAddress }
   app.post("/api/role-room/leads/producer/email-domain", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; domain?: string; fromAddress?: string };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
@@ -1260,7 +1260,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
   // ── POST /api/role-room/leads/producer/email-domain/verify ──────────────
   app.post("/api/role-room/leads/producer/email-domain/verify", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";

@@ -241,7 +241,7 @@ export function setupAdminGdprLegalRoutes(
 
     app.put(`/api/admin/legal-documents/${slug}`, async (req, res) => {
       try {
-        const session = requireAdminSession(req, res);
+        const session = req.adminSession;
         if (!session) return;
         const body = (req.body ?? {}) as { content?: string; notes?: string };
         if (typeof body.content !== "string") {

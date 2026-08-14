@@ -73,7 +73,7 @@ export function setupRoleRoomEventsProducerRoutes(deps: RoleRoomEventsProducerRo
 
   // ── GET /api/role-room/events/producer ──────────────────────────────────
   app.get("/api/role-room/events/producer", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -119,7 +119,7 @@ export function setupRoleRoomEventsProducerRoutes(deps: RoleRoomEventsProducerRo
 
   // ── POST /api/role-room/events/producer ─────────────────────────────────
   app.post("/api/role-room/events/producer", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as {
       connectionId?: string; name?: string; startTime?: string;
@@ -163,7 +163,7 @@ export function setupRoleRoomEventsProducerRoutes(deps: RoleRoomEventsProducerRo
 
   // ── DELETE /api/role-room/events/producer/:eventId ──────────────────────
   app.delete("/api/role-room/events/producer/:eventId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const eventId = req.params.eventId;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
