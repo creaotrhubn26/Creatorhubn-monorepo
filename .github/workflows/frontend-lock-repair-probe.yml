@@ -1,0 +1,84 @@
+name: Frontend Lock Repair Probe
+
+on:
+  push:
+    branches:
+      - ci/baseline-dependency-consistency-20260814-170909
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Regenerate and validate frontend standalone lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.20.2'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Apply candidate manifest repair in runner only
+        working-directory: frontend
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.dependencies ??= {};
+          pkg.devDependencies ??= {};
+          pkg.dependencies.quill = '^1.3.7';
+          pkg.dependencies['jspdf-autotable'] = '^5.0.8';
+          pkg.devDependencies['@types/three'] = '^0.182.0';
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+          git diff -- package.json
+
+      - name: Regenerate standalone frontend lock
+        working-directory: frontend
+        run: |
+          rm -rf node_modules
+          npm install --package-lock-only --workspaces=false --ignore-scripts
+          cp package-lock.json /tmp/frontend-package-lock.first.json
+          npm install --package-lock-only --workspaces=false --ignore-scripts
+          cmp /tmp/frontend-package-lock.first.json package-lock.json
+
+      - name: Install standalone frontend dependencies
+        working-directory: frontend
+        run: npm ci --workspaces=false
+
+      - name: Inspect critical dependency graph
+        working-directory: frontend
+        run: |
+          npm ls --workspaces=false loupe quill react-quill three @types/three jspdf jspdf-autotable vitest @vitest/utils @mui/material @mui/system @mui/icons-material @mui/x-date-pickers || true
+
+      - name: Full frontend typecheck
+        working-directory: frontend
+        run: NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck
+
+      - name: Story Arc unit tests
+        working-directory: frontend
+        run: npm run test:unit
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload candidate manifest and lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-lock-repair-candidate
+          path: |
+            frontend/package.json
+            frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 2
