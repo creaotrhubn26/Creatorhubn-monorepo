@@ -1,4 +1,5 @@
 // @ts-nocheck
+import React from "react";
 /**
  * CreatorHub Norge - Project Creation with Memory Card Planning
  * Integrerer minneskortet planlegging direkte i prosjektopprettelsen
