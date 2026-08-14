@@ -6017,6 +6017,7 @@ export type CompatGearNewsItem = {
   isNorwegian?: boolean;
   publishedAt?: string;
   source?: string;
+  imageUrl?: string;
 };
 
 type GearNewsSourceDefinition = {
@@ -6302,6 +6303,13 @@ const parseFeedItems = (
       const brand = guessBrand(title);
       const idSeed = `${source.id}|${link}|${title}|${index}`;
 
+      // Thumbnail fra RSS: media:thumbnail/media:content url-attributt, ellers enclosure.
+      const thumbSrc =
+        (entry.match(/<media:thumbnail[^>]*url="([^"]+)"/i) || [])[1] ||
+        (entry.match(/<media:content[^>]*url="([^"]+)"/i) || [])[1] ||
+        (entry.match(/<enclosure[^>]*url="([^"]+)"/i) || [])[1] ||
+        undefined;
+
       return {
         id: `live-${source.id}-${crypto.createHash("sha1").update(idSeed).digest("hex").slice(0, 12)}`,
         title,
@@ -6322,6 +6330,7 @@ const parseFeedItems = (
         isNorwegian: Boolean(source.isNorwegian),
         publishedAt,
         source: source.name,
+        imageUrl: thumbSrc && thumbSrc.startsWith("http") ? thumbSrc : undefined,
       } as CompatGearNewsItem;
     })
     .filter((item): item is CompatGearNewsItem => Boolean(item));

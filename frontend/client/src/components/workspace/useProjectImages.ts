@@ -10,7 +10,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 
-export interface WsImageItem { id: string; url: string; label?: string; category?: string | null; b2Key?: string | null }
+export interface WsImageItem { id: string; url: string; label?: string; category?: string | null; b2Key?: string | null; uploadedBy?: { id: string; name: string } | null }
 
 export function useProjectImages(projectId: string, panel: string) {
   const [images, setImages] = useState<WsImageItem[]>([]);
@@ -19,7 +19,7 @@ export function useProjectImages(projectId: string, panel: string) {
   const reload = useCallback(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/images?panel=${encodeURIComponent(panel)}`)
-      .then((r: any) => { setImages(Array.isArray(r?.images) ? r.images.map((im: any) => ({ id: im.id, url: im.url, label: im.label, category: im.category, b2Key: im.b2Key, flag: !!im.flag, fit: im.fit ?? null, comments: im.comments || [], createdAt: im.createdAt || null })) : []); })
+      .then((r: any) => { setImages(Array.isArray(r?.images) ? r.images.map((im: any) => ({ id: im.id, url: im.url, label: im.label, category: im.category, b2Key: im.b2Key, contentType: im.contentType || null, flag: !!im.flag, fit: im.fit ?? null, comments: im.comments || [], createdAt: im.createdAt || null, uploadedBy: im.uploadedBy || null })) : []); })
       .catch(() => {});
   }, [projectId, panel, isReal]);
 
@@ -44,8 +44,8 @@ export function useProjectImages(projectId: string, panel: string) {
     });
     if (!res.ok) throw new Error('Opplasting til B2 feilet');
     const saved = await res.json();
-    setImages((p) => [{ id: saved.id, url: saved.url, label: saved.label, category: saved.category }, ...p]);
-    return { id: saved.id, url: saved.url, label: saved.label, category: saved.category };
+    setImages((p) => [{ id: saved.id, url: saved.url, label: saved.label, category: saved.category, contentType: saved.contentType || null }, ...p]);
+    return { id: saved.id, url: saved.url, label: saved.label, category: saved.category, contentType: saved.contentType || null };
   }, [projectId, panel, isReal]);
 
   const setCategory = useCallback(async (id: string, category: string | null) => {

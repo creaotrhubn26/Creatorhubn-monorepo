@@ -287,7 +287,7 @@ const TeamWorkspacePage: React.FC = () => {
       case 'moodboard':       return <MoodboardTab projectId={projectId} />;
       case 'media':           return <MediaTab projectId={projectId} />;
       case 'utstyr':          return <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />;
-      case 'leveranser':      return <LeveranserTab projectId={projectId} />;
+            case 'leveranser':      return <LeveranserTab projectId={projectId} />;
       case 'oppgaver':        return <OppgaverTab projectId={projectId} />;
       case 'avtaler':         return <AvtalerTab projectId={projectId} />;
       case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;

@@ -227,11 +227,13 @@ export const WsImageGrid: React.FC<{
   onSelect?: (item: WsImageItem) => void;
   extraLabel?: string; // f.eks. "+12"
   search?: string; // highlight av treff i label
-  bulk?: { sel: Set<string>; onToggle: (id: string) => void }; // multi-seleksjon
+  bulk?: { sel: Set<string>; onToggle: (id: string, e: React.MouseEvent) => void }; // multi-seleksjon
   showFit?: boolean; // farge-match-prosent nederst på bildene
   overlay?: '9x16' | '4x5' | '1x1'; // komposisjons-maske
   actions?: (im: WsImageItem) => React.ReactNode; // egne handlinger øverst (gruppe-delte bilder)
-}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel, search, bulk, showFit, overlay, actions }) => {
+  accept?: string; // filtyper i opplasting (default image/*)
+  colorStrip?: (im: WsImageItem) => string | null; // fargestripe nederst (fargekode fra culling)
+}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel, search, bulk, showFit, overlay, actions, accept = 'image/*', colorStrip }) => {
   const [items, setItems] = useState<WsImageItem[]>(images);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -267,7 +269,7 @@ export const WsImageGrid: React.FC<{
       {items.map((im, i) => {
         const sel = !!bulk?.sel.has(im.id);
         return (
-        <Box key={im.id} onClick={() => { if (bulk) bulk.onToggle(im.id); else if (onSelect) onSelect(im); }} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: sel ? '2px solid #6366f1' : `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: (bulk || onSelect) ? 'pointer' : 'default',
+        <Box key={im.id} onClick={(e) => { if (bulk) bulk.onToggle(im.id, e); else if (onSelect) onSelect(im); }} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: sel ? '2px solid #6366f1' : `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: (bulk || onSelect) ? 'pointer' : 'default',
           background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))', transition: 'transform .15s ease, border-color .12s', '&:hover': bulk || onSelect ? { outline: `2px solid ${ws.accentBorder}` } : undefined }}>
           {im.flag && <Box sx={{ position: 'absolute', top: 5, left: 5, width: 18, height: 18, borderRadius: '50%', bgcolor: ws.accent, color: ws.accentContrast, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>★</Box>}
           {typeof im.rating === 'number' && im.rating > 0 && (
@@ -310,6 +312,7 @@ export const WsImageGrid: React.FC<{
           {showFit && typeof im.fit === 'number' && (
             <Box sx={{ position: 'absolute', right: 5, bottom: 5, px: 0.6, py: 0.2, borderRadius: 1, bgcolor: im.fit >= 60 ? 'rgba(52,211,153,0.85)' : 'rgba(251,191,36,0.85)', color: '#0d0d16', fontSize: 10, fontWeight: 800 }} title="Farge-match mot paletten">{im.fit}%</Box>
           )}
+          {colorStrip && (() => { const col = colorStrip(im); return col ? <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, bgcolor: col }} /> : null; })()}
           {overlay && (
             <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2 }}>
               {(() => {
@@ -352,7 +355,7 @@ export const WsImageGrid: React.FC<{
           <Typography sx={{ fontSize: 10.5, fontWeight: 600, textAlign: 'center', px: 0.5 }}>{busy ? 'Laster opp…' : addLabel}</Typography>
         </Box>
       )}
-      <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={(e) => handleFiles(e.target.files)} />
+      <input ref={inputRef} type="file" accept={accept} multiple hidden onChange={(e) => handleFiles(e.target.files)} />
     </Box>
   );
 };
