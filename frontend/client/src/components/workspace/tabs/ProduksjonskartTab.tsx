@@ -5,7 +5,7 @@
  * + Live koordinering (høyre) + Kritiske øyeblikk / Referanser.
  */
 import React, { useState } from 'react';
-import { Box, Stack, Typography, Avatar, AvatarGroup, IconButton, Button, TextField, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, Checkbox, FormControlLabel, FormGroup } from '@mui/material';
+import { Box, Stack, Typography, Avatar, IconButton, Button, TextField, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, Checkbox, FormControlLabel, FormGroup } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
@@ -135,6 +135,7 @@ interface ForecastDay {
   temperature?: number;
   precipitation?: number;
   symbol?: string;
+  windSpeed?: number;
 }
 
 interface CrewMember {
@@ -509,7 +510,7 @@ const addMin = (hhmm: string, m: number) => {
   const t = (h * 60 + mm + (m || 0)) % 1440;
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 };
-const toneHex = (tone: string) => (ws as Record<string, string>)[tone] || ws.accent;
+const toneHex = (tone: string) => (ws as unknown as Record<string, string>)[tone] || ws.accent;
 
 const BOARD_COLS: { key: PlanStatus; tone: string }[] = [
   { key: 'Kritisk', tone: 'red' },
@@ -1402,7 +1403,7 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
     if (!locEdit || locSaving) return;
     setLocSaving(true);
     try {
-      await apiRequest(`/api/wedding/${encodeURIComponent(locEdit.weddingId || weddingId)}/locations/${encodeURIComponent(locEdit.id || '')}`, {
+      await apiRequest(`/api/wedding/${encodeURIComponent(locEdit.weddingId || weddingId || '')}/locations/${encodeURIComponent(locEdit.id || '')}`, {
         method: 'PUT',
         body: {
           label: locForm.label.trim(),
@@ -2224,7 +2225,7 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Box>
                 <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{loading ? 'Laster…' : fokus ? fokus.title : (isReal ? 'Ingen hendelse i dag' : 'Vielse')}</Typography>
-                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{loading ? '' : fokus ? (fokus.time + (fokus.durationMinutes ? ' – ' + addMin(fokus.time, fokus.durationMinutes) : '')) : (isReal ? '' : '12:15 – 13:00')}</Typography>
+                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{loading ? '' : fokus ? (fokus.time ? fokus.time + (fokus.durationMinutes ? ' – ' + addMin(fokus.time, fokus.durationMinutes) : '') : '') : (isReal ? '' : '12:15 – 13:00')}</Typography>
                 {(fokus?.location || !isReal) && <Box sx={{ mt: 0.5 }}><WsTag label={fokus?.location || 'Kritisk moment'} tone="accent" /></Box>}
               </Box>
               <Box sx={{ width: 64, ml: 'auto' }}><WsImageGrid columns={1} ratio="4 / 3" addLabel="Bilde" allowAdd={false} /></Box>
@@ -2238,9 +2239,9 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
             <Typography sx={{ fontSize: 22, fontWeight: 800 }}>{crewOnline} <Typography component="span" sx={{ fontSize: 14, color: ws.textDim }}>/ {crewTotal}</Typography></Typography>
             <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: 1 }}>teammedlemmer</Typography>
             {!isReal && (
-              <AvatarGroup max={5} sx={{ justifyContent: 'flex-start', '& .MuiAvatar-root': { width: 24, height: 24, fontSize: 10, border: `2px solid ${ws.panelSolid}` } }}>
-                {['M', 'D', 'E', 'L', 'N'].map((x, i) => <Avatar key={i}>{x}</Avatar>)}
-              </AvatarGroup>
+              <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
+                {['M', 'D', 'E', 'L', 'N'].map((x, i) => <Avatar key={i} sx={{ width: 24, height: 24, fontSize: 10 }}>{x}</Avatar>)}
+              </Stack>
             )}
           </WsCard>
           <WsCard pad={1.75} onClick={openWeather} ariaLabel="Åpne vær- og logistikkdetaljer" sx={{ cursor: 'pointer', transition: 'border-color .12s', '&:hover': { borderColor: ws.accentBorder } }}>
@@ -2347,11 +2348,11 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
                 ) : (
                   <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 1.5, textAlign: 'center' }}>Ingen kritiske øyeblikk merket ennå.</Typography>
                 )
-              ) : [
+              ) : ([
                 { t: '12:15', m: 'Vielse', loc: 'Kapell', note: 'Ringveksling + første kyss — ikke gå glipp!', lvl: 'Kritisk', tone: 'red' },
                 { t: '16:30', m: 'Golden hour', loc: 'Bryllupsløkka', note: 'Parportretter i solnedgang', lvl: 'Høy', tone: 'amber' },
                 { t: '20:15', m: 'Første dans', loc: 'Storeteltet', note: 'Slow-mo + vidvinkel fra podium', lvl: 'Høy', tone: 'amber' },
-              ].map((s) => (
+              ] as const).map((s) => (
                 <Stack key={s.m} direction="row" spacing={1} alignItems="center" sx={{ borderRadius: 1, px: 0.5, mx: -0.5, py: 0.25 }}>
                   <Typography sx={{ fontSize: 12, color: ws.textDim, width: 44 }}>{s.t}</Typography>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -2436,15 +2437,15 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
                       p: 1,
                       borderRadius: 1.5,
                       bgcolor: ws.panelAlt,
-                      border: `1px solid ${ws[a.tone]}40`,
+                      border: `1px solid ${toneHex(a.tone)}40`,
                       transition: 'background-color .15s',
                       cursor: a.navigate ? 'pointer' : 'default',
                     }}
                     onClick={a.navigate}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = ws[a.tone] + '10'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = toneHex(a.tone) + '10'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                   >
-                    <Box sx={{ width: 6, borderRadius: 3, bgcolor: ws[a.tone], flexShrink: 0, mt: 0.5 }} />
+                    <Box sx={{ width: 6, borderRadius: 3, bgcolor: toneHex(a.tone), flexShrink: 0, mt: 0.5 }} />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Stack direction="row" spacing={1} alignItems="flex-start">
                         <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>{a.title}</Typography>
@@ -2619,8 +2620,8 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
               onInputChange={(_e, v) => setForm((f) => ({ ...f, location: v }))}
               onChange={(_e, v) => setForm((f) => ({ ...f, location: typeof v === 'string' ? v : (v || '') }))}
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 }, '& .MuiInputLabel-root': { color: ws.textFaint } }}
-              slotProps={{ paper: { sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }, popper: { sx: { zIndex: 1400 } }, input: { 'aria-label': 'Sted' } }}
-              renderInput={(params) => <TextField {...params} label="Sted" />}
+              slotProps={{ paper: { sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }, popper: { sx: { zIndex: 1400 } } }}
+              renderInput={(params) => <TextField {...params} label="Sted" inputProps={{ ...params.inputProps, 'aria-label': 'Sted' }} />}
             />
             {formLocMatch && (
               <Box sx={{ px: 1.25, py: 1, borderRadius: 1.5, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
@@ -2674,7 +2675,7 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
               select label="Status" size="small" value={form.status}
               onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as PlanStatus }))}
               inputProps={{ 'aria-label': 'Status' }}
-              SlotProps={{ select: { MenuProps: { PaperProps: { sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } } } } }}
+              slotProps={{ select: { MenuProps: { PaperProps: { sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } } } } }}
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 }, '& .MuiInputLabel-root': { color: ws.textFaint }, '& .MuiSelect-select': { color: ws.text } }}
             >
               {(['Pågår', 'Planlagt', 'Ferdig', 'Kritisk'] as PlanStatus[]).map((s) => (
@@ -2839,12 +2840,16 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
                       </Stack>
                       {locCrew.length > 0 && (
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.85, ml: 0 }}>
-                          <AvatarGroup max={4} sx={{ justifyContent: 'flex-start', '& .MuiAvatar-root': { width: 24, height: 24, fontSize: 10, fontWeight: 800 } }}>
-                            {locCrew.map((c: any) => (
+                          <Stack direction="row" alignItems="center" sx={{ gap: 0.25, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                            {locCrew.slice(0, 4).map((c: any) => (
                               <Avatar
                                 key={c.id || c.name}
                                 src={c.avatarUrl || roleAvatarSrc(c.name, c.crewRole, 56)}
                                 sx={{
+                                  width: 24,
+                                  height: 24,
+                                  fontSize: 10,
+                                  fontWeight: 800,
                                   bgcolor: CREW_ROLE_COLOR[c.crewRole] || '#a78bfa',
                                   color: '#0d0d16',
                                   border: `2px solid ${ws.panelAlt}`,
@@ -2853,7 +2858,10 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
                                 {roleInitials(c.name)}
                               </Avatar>
                             ))}
-                          </AvatarGroup>
+                            {locCrew.length > 4 && (
+                              <Avatar sx={{ width: 24, height: 24, fontSize: 10, fontWeight: 800, bgcolor: ws.panelAlt, color: ws.text }}>+{locCrew.length - 4}</Avatar>
+                            )}
+                          </Stack>
                           <Typography sx={{ fontSize: 11, color: ws.textFaint, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                             {locCrew.slice(0, 2).map((c: any) => `${c.name} · ${CREW_ROLE_LABEL[c.crewRole] || c.crewRole}`).join('  ·  ')}
                             {locCrew.length > 2 ? `  ·  +${locCrew.length - 2} til` : ''}
@@ -2887,7 +2895,7 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
         </DialogTitle>
         <DialogContent>
           <Stack spacing={1.75}>
-            {(isReal ? locations : SAMPLE_LOCATIONS).map((l) => (
+            {(isReal ? (locations ?? []) : SAMPLE_LOCATIONS).map((l) => (
               <Box key={l.label} sx={{ p: 1.25, borderRadius: 1.5, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
                   <Place sx={{ fontSize: 14, color: ws.accent }} />

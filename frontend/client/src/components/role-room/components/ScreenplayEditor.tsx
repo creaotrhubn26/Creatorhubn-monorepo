@@ -743,9 +743,10 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   }, [characters]);
 
   useEffect(() => {
+    const timers = pendingCharacterAddsRef.current;
     return () => {
-      pendingCharacterAddsRef.current.forEach((timerId) => clearTimeout(timerId));
-      pendingCharacterAddsRef.current.clear();
+      timers.forEach((timerId) => clearTimeout(timerId));
+      timers.clear();
     };
   }, []);
 
@@ -806,9 +807,10 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   }, [locations]);
 
   useEffect(() => {
+    const timers = pendingLocationAddsRef.current;
     return () => {
-      pendingLocationAddsRef.current.forEach((timerId) => clearTimeout(timerId));
-      pendingLocationAddsRef.current.clear();
+      timers.forEach((timerId) => clearTimeout(timerId));
+      timers.clear();
     };
   }, []);
 

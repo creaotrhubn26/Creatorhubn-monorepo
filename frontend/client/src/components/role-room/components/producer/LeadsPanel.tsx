@@ -105,7 +105,7 @@ export default function LeadsPanel() {
     queryKey: ['leads-connections'],
     queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
-  const connections = connData?.connections || [];
+  const connections = useMemo(() => connData?.connections || [], [connData]);
   useEffect(() => {
     if (!connectionId && connections.length > 0) setConnectionId(connections[0].id);
   }, [connectionId, connections]);
@@ -117,7 +117,7 @@ export default function LeadsPanel() {
     enabled: !!connectionId,
     queryFn: () => apiRequest(`/api/role-room/leads/producer/forms?connectionId=${encodeURIComponent(connectionId)}`),
   });
-  const forms = formsData?.forms || [];
+  const forms = useMemo(() => formsData?.forms || [], [formsData]);
 
   const { data: leadsData, isLoading: leadsLoading } = useQuery<{
     leads: Lead[]; success: boolean; error: string | null;
@@ -126,7 +126,7 @@ export default function LeadsPanel() {
     enabled: !!connectionId && !!formId,
     queryFn: () => apiRequest(`/api/role-room/leads/producer/leads?connectionId=${encodeURIComponent(connectionId)}&formId=${encodeURIComponent(formId)}`),
   });
-  const leads = leadsData?.leads || [];
+  const leads = useMemo(() => leadsData?.leads || [], [leadsData]);
 
   const queryClient = useQueryClient();
   const [segmentFilter, setSegmentFilter] = useState<Segment | 'alle'>('alle');

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 type EventCallback = (data: unknown) => void;
 
@@ -8,31 +8,31 @@ const DEV = typeof import.meta !== 'undefined' && (import.meta as { env?: { DEV?
 export function useRealTime() {
   const [isConnected, setIsConnected] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const eventListeners = new Map<string, EventCallback[]>();
+  const eventListenersRef = useRef(new Map<string, EventCallback[]>());
 
   const emitEvent = useCallback((event: string, data: unknown) => {
     if (DEV) console.log(`[RealTime] Emit: ${event}`, data);
-    const listeners = eventListeners.get(event);
+    const listeners = eventListenersRef.current.get(event);
     if (listeners) {
       listeners.forEach(callback => callback(data));
     }
   }, []);
 
   const onEvent = useCallback((event: string, callback: EventCallback) => {
-    if (!eventListeners.has(event)) {
-      eventListeners.set(event, []);
+    if (!eventListenersRef.current.has(event)) {
+      eventListenersRef.current.set(event, []);
     }
-    eventListeners.get(event)!.push(callback);
+    eventListenersRef.current.get(event)!.push(callback);
   }, []);
 
   const offEvent = useCallback((event: string, callback?: EventCallback) => {
     if (callback) {
-      const listeners = eventListeners.get(event);
+      const listeners = eventListenersRef.current.get(event);
       if (listeners) {
-        eventListeners.set(event, listeners.filter(cb => cb !== callback));
+        eventListenersRef.current.set(event, listeners.filter(cb => cb !== callback));
       }
     } else {
-      eventListeners.delete(event);
+      eventListenersRef.current.delete(event);
     }
   }, []);
 

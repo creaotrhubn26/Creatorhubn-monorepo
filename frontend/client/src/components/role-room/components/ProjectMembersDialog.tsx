@@ -9,7 +9,7 @@
  * ikke bruker-data uten å vite at det er trygt.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, Divider, IconButton, Stack, Tab, Tabs,
@@ -49,7 +49,7 @@ export function ProjectMembersDialog({
   // Management) — så lederen ser hvem som er ledig mens teamet settes sammen.
   const { availabilityByUser } = useProjectMemberAvailability(open ? projectId : undefined);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const [a, r] = await Promise.all([
@@ -63,12 +63,12 @@ export function ProjectMembersDialog({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
     if (open) void load();
 
-  }, [open, projectId]);
+  }, [open, projectId, load]);
 
   const handleDeactivate = async () => {
     if (!confirmRemove) return;

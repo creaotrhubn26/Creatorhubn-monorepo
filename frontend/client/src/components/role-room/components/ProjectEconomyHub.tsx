@@ -1494,7 +1494,7 @@ export default function ProjectEconomyHub({
     await producerWorkflowService.createTimelineItem(project.id, timelinePayload);
   }, [project.id]);
 
-  const handleSaveProjectBudget = async () => {
+  const handleSaveProjectBudget = useCallback(async () => {
     const nextBudget = toNumber(projectBudgetInput);
     setIsSavingBudget(true);
     try {
@@ -1526,9 +1526,9 @@ export default function ProjectEconomyHub({
     } finally {
       setIsSavingBudget(false);
     }
-  };
+  }, [enqueueSnackbar, onProjectUpdated, project, projectBudgetInput, syncEconomyActivityTimelineItem, currency]);
 
-  const handleSyncCrewCosts = async () => {
+  const handleSyncCrewCosts = useCallback(async () => {
     if (billableCrewMembers.length === 0) {
       enqueueSnackbar('Legg inn dagsatser på teamet før du synkroniserer bemanning til budsjett.', {
         variant: 'warning',
@@ -1625,9 +1625,9 @@ export default function ProjectEconomyHub({
     } finally {
       setIsSyncingCrew(false);
     }
-  };
+  }, [billableCrewMembers, createItem, currency, enqueueSnackbar, items, plannedShootDays, projectedCrewTotal, project, reload, removeItem, setBudgetPanelVersion, syncEconomyActivityTimelineItem, updateItem]);
 
-  const handleSyncTravelCosts = async () => {
+  const handleSyncTravelCosts = useCallback(async () => {
     if (normalizedTravelCosts.length === 0) {
       enqueueSnackbar('Registrer reisekostnader på produksjonsdagene før du synkroniserer dem til økonomi.', {
         variant: 'warning',
@@ -1721,7 +1721,7 @@ export default function ProjectEconomyHub({
     } finally {
       setIsSyncingTravel(false);
     }
-  };
+  }, [createItem, currency, enqueueSnackbar, items, normalizedTravelCosts, project, reload, removeItem, setBudgetPanelVersion, syncEconomyActivityTimelineItem, totalTravelCosts, travelDayCount, updateItem]);
 
   const handleCandidateStatusChange = async (candidateId: string, status: string) => {
     // `project.candidates` kan mangle på prosjekter hentet fra API-et (feltet

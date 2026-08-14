@@ -845,6 +845,77 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     setEditingCoverFocalPoint(x, y);
   }, [editingManuscript?.coverImage, setEditingCoverFocalPoint]);
 
+  const loadCastingData = useCallback(async () => {
+    if (!projectId) {
+      if (isMountedRef.current) {
+        setCastingRoles([]);
+        setCastingLocations([]);
+        setCastingCandidates([]);
+      }
+      return;
+    }
+    try {
+      const [roles, locations, candidates] = await Promise.all([
+        castingService.getRoles(projectId),
+        castingService.getLocations(projectId),
+        castingService.getCandidates(projectId),
+      ]);
+      if (isMountedRef.current) {
+        setCastingRoles(roles);
+        setCastingLocations(locations);
+        setCastingCandidates(candidates);
+        if (DEV_LOG) console.log(`Loaded ${roles.length} casting roles, ${locations.length} locations and ${candidates.length} candidates for autocomplete`);
+      }
+    } catch (error) {
+      console.error('Could not load casting data for autocomplete:', error);
+      // Non-critical error, don't show toast
+    }
+  }, [projectId]);
+
+  // Debounced wrapper for loadCastingData to batch multiple rapid calls
+  const scheduleLoadCastingData = useCallback(() => {
+    pendingCastingDataLoadRef.current = true;
+    
+    // Clear existing timer
+    if (castingDataLoadTimerRef.current) {
+      clearTimeout(castingDataLoadTimerRef.current);
+    }
+    
+    // Debounce: wait 1000ms for all role/location creations to complete
+    castingDataLoadTimerRef.current = setTimeout(() => {
+      if (!isMountedRef.current || !pendingCastingDataLoadRef.current) return;
+      pendingCastingDataLoadRef.current = false;
+      loadCastingData();
+    }, 1000);
+  }, [loadCastingData]);
+
+  const loadManuscripts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await manuscriptService.getManuscripts(activeProjectId);
+      const manuscriptsForProject = response.filter((manuscript) => manuscriptBelongsToProject(manuscript, activeProjectId));
+      setManuscripts(manuscriptsForProject);
+      setSelectedManuscript((currentSelection) => {
+        if (currentSelection) {
+          const matchingSelection = manuscriptsForProject.find((manuscript) => manuscript.id === currentSelection.id);
+          if (matchingSelection) {
+            return matchingSelection;
+          }
+        }
+        return manuscriptsForProject[0] ?? null;
+      });
+      showToast({
+        severity: 'info',
+        message: `Manuskripter lastet (${manuscriptsForProject.length})`,
+        duration: 2800,
+      });
+    } catch (error) {
+      showError('Feil ved lasting av manuskripter');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeProjectId, showError, showToast]);
   // Load manuscripts on mount
   useEffect(() => {
     if (!projectId) {
@@ -873,82 +944,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     isInitialLoadRef.current = true;
     void loadManuscripts();
     void loadCastingData();
-  }, [projectId]);
+  }, [projectId, loadCastingData, loadManuscripts]);
 
   // Load casting roles and locations for autocomplete
-  const loadCastingData = async () => {
-    if (!projectId) {
-      if (isMountedRef.current) {
-        setCastingRoles([]);
-        setCastingLocations([]);
-        setCastingCandidates([]);
-      }
-      return;
-    }
-    try {
-      const [roles, locations, candidates] = await Promise.all([
-        castingService.getRoles(projectId),
-        castingService.getLocations(projectId),
-        castingService.getCandidates(projectId),
-      ]);
-      if (isMountedRef.current) {
-        setCastingRoles(roles);
-        setCastingLocations(locations);
-        setCastingCandidates(candidates);
-        if (DEV_LOG) console.log(`Loaded ${roles.length} casting roles, ${locations.length} locations and ${candidates.length} candidates for autocomplete`);
-      }
-    } catch (error) {
-      console.error('Could not load casting data for autocomplete:', error);
-      // Non-critical error, don't show toast
-    }
-  };
 
-  // Debounced wrapper for loadCastingData to batch multiple rapid calls
-  const scheduleLoadCastingData = useCallback(() => {
-    pendingCastingDataLoadRef.current = true;
-    
-    // Clear existing timer
-    if (castingDataLoadTimerRef.current) {
-      clearTimeout(castingDataLoadTimerRef.current);
-    }
-    
-    // Debounce: wait 1000ms for all role/location creations to complete
-    castingDataLoadTimerRef.current = setTimeout(() => {
-      if (!isMountedRef.current || !pendingCastingDataLoadRef.current) return;
-      pendingCastingDataLoadRef.current = false;
-      loadCastingData();
-    }, 1000);
-  }, []);
-
-  const loadManuscripts = async () => {
-    setIsLoading(true);
-    try {
-      const response = await manuscriptService.getManuscripts(activeProjectId);
-      const manuscriptsForProject = response.filter((manuscript) => manuscriptBelongsToProject(manuscript, activeProjectId));
-      setManuscripts(manuscriptsForProject);
-      setSelectedManuscript((currentSelection) => {
-        if (currentSelection) {
-          const matchingSelection = manuscriptsForProject.find((manuscript) => manuscript.id === currentSelection.id);
-          if (matchingSelection) {
-            return matchingSelection;
-          }
-        }
-        return manuscriptsForProject[0] ?? null;
-      });
-      showToast({
-        severity: 'info',
-        message: `Manuskripter lastet (${manuscriptsForProject.length})`,
-        duration: 2800,
-      });
-    } catch (error) {
-      showError('Feil ved lasting av manuskripter');
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadScenes = async (manuscriptId: string) => {
+  const loadScenes = useCallback(async (manuscriptId: string) => {
     try {
       const response = await manuscriptService.getScenes(manuscriptId);
       setScenes(response);
@@ -956,9 +956,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showError('Feil ved lasting av scener');
       console.error(error);
     }
-  };
+  }, [showError]);
 
-  const loadActs = async (manuscriptId: string) => {
+  const loadActs = useCallback(async (manuscriptId: string) => {
     try {
       const response = await manuscriptService.getActs(manuscriptId);
       setActs(response);
@@ -966,9 +966,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showError('Feil ved lasting av akter');
       console.error(error);
     }
-  };
+  }, [showError]);
 
-  const loadDialogue = async (manuscriptId: string) => {
+  const loadDialogue = useCallback(async (manuscriptId: string) => {
     try {
       const response = await manuscriptService.getDialogue(manuscriptId);
       setDialogueLines(response);
@@ -976,9 +976,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showError('Feil ved lasting av dialog');
       console.error(error);
     }
-  };
+  }, [showError]);
 
-  const loadRevisions = async (manuscriptId: string) => {
+  const loadRevisions = useCallback(async (manuscriptId: string) => {
     try {
       const response = await manuscriptService.getRevisions(manuscriptId);
       setRevisions(response);
@@ -986,7 +986,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showError('Feil ved lasting av revisjoner');
       console.error(error);
     }
-  };
+  }, [showError]);
 
   // Når et AI-forslag godtas utløser serveren automatisk apply (AD-003 i
   // ai-suggestion-service.ts), så vi refetcher de berørte dataene slik at den
@@ -1095,7 +1095,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [selectedManuscript?.id]);
+  }, [selectedManuscript?.id, selectedManuscript, loadScenes, loadActs, loadDialogue, loadRevisions]);
 
   // Manus-lås mens et utkast er åpent: hindrer at to i produksjonsteamet
   // overskriver hverandre stille. Serveren håndhever låsen (PUT → 409 hvis en
@@ -1757,7 +1757,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     } catch (error) {
       console.warn('Failed to auto-create role from screenplay:', error);
     }
-  }, [projectId, castingRoles, scheduleAutoCreatedEntitiesToast]);
+  }, [projectId, castingRoles, scheduleAutoCreatedEntitiesToast, scheduleLoadCastingData]);
 
   const handleLocationAdd = useCallback(async (name: string) => {
     // Auto-create a location in casting when new location is detected
@@ -1790,7 +1790,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     } catch (error) {
       console.warn('Failed to auto-create location from screenplay:', error);
     }
-  }, [projectId, castingLocations, scheduleAutoCreatedEntitiesToast]);
+  }, [projectId, castingLocations, scheduleAutoCreatedEntitiesToast, scheduleLoadCastingData]);
 
   const handleSceneUpdateFromStoryboard = useCallback((updatedScene: SceneBreakdown) => {
     setScenes((current) =>
@@ -1875,7 +1875,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         setManuscriptSaveStatus('error');
       }
     }, 2000);
-  }, [selectedManuscript?.id]);
+  }, [showWarning]);
 
   const handleScriptChangeFromSplitView = useCallback((content: string) => {
     setSelectedManuscript((previous) => {
@@ -1995,7 +1995,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     if (!selectedManuscript) return 0;
     // Industry standard: 1 page ≈ 1 minute
     return selectedManuscript.pageCount;
-  }, [selectedManuscript?.pageCount]);
+  }, [selectedManuscript]);
 
   const characterList = useMemo(() => {
     // Karakterer «hentes fra dialog OG scenedata» (jf. UI-teksten). Tidligere
@@ -4637,14 +4637,14 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     // Merge and deduplicate, prioritizing casting roles
     const combined = [...new Set([...roleNames, ...sceneCharacters])];
     return combined.sort();
-  }, [JSON.stringify(characters), JSON.stringify(castingRoles.map(r => r.name))]);
+  }, [castingRoles, characters]);
   
   // Combine locations from scenes with casting locations - STABLE via stringified deps
   const allLocations = useMemo(() => {
     const castingLocs = castingLocations.map(l => l.name);
     const sceneLocs = locations;
     return [...new Set([...castingLocs, ...sceneLocs])].sort();
-  }, [JSON.stringify(locations), JSON.stringify(castingLocations.map(l => l.name))]);
+  }, [castingLocations, locations]);
 
   const handleSceneSelect = useCallback((_scene: any) => {}, []);
 
@@ -5665,7 +5665,7 @@ const CharactersTab: React.FC<{
     
     loadProfiles();
     return () => { mounted = false; };
-  }, [manuscriptId]);
+  }, [manuscriptId, showError]);
 
   // Save character profiles to database whenever they change (debounced)
   useEffect(() => {
@@ -5687,7 +5687,7 @@ const CharactersTab: React.FC<{
     // Debounce saves
     const timer = setTimeout(saveProfiles, 500);
     return () => clearTimeout(timer);
-  }, [characterProfiles, manuscriptId, isLoading]);
+  }, [characterProfiles, manuscriptId, isLoading, showError]);
 
   // Build character profiles from dialogue and scenes
   const characterData = useMemo(() => {

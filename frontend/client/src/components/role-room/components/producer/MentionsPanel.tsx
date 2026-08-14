@@ -49,7 +49,7 @@ export default function MentionsPanel() {
     queryKey: ['mentions-connections'],
     queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
-  const connections = connData?.connections || [];
+  const connections = useMemo(() => connData?.connections || [], [connData]);
   useEffect(() => {
     if (!connectionId && connections.length > 0) setConnectionId(connections[0].id);
   }, [connectionId, connections]);
@@ -61,7 +61,7 @@ export default function MentionsPanel() {
     enabled: !!connectionId,
     queryFn: () => apiRequest(`/api/role-room/mentions/producer?connectionId=${encodeURIComponent(connectionId)}`),
   });
-  const mentions = mentionsData?.mentions || [];
+  const mentions = useMemo(() => mentionsData?.mentions || [], [mentionsData]);
 
   const setStatus = useMutation({
     mutationFn: async (vars: { mentionId: string; status: Status | null }) =>

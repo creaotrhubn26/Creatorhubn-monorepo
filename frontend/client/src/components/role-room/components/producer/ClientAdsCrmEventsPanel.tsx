@@ -15,7 +15,7 @@
  * tabell over siste leveranser med farget status-chip.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
@@ -137,7 +137,7 @@ export default function ClientAdsCrmEventsPanel({
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
@@ -157,9 +157,9 @@ export default function ClientAdsCrmEventsPanel({
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [configId, platform]);
 
-  useEffect(() => { refresh(); }, [configId, platform]);
+  useEffect(() => { refresh(); }, [configId, platform, refresh]);
 
   const handleSendTest = async () => {
     if (!eventName) return;

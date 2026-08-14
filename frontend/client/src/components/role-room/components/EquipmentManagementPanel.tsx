@@ -1829,7 +1829,7 @@ export function EquipmentManagementPanel({
     showSuccess(`Kategori "${category}" fjernet`);
   };
 
-  const loadActiveCheckouts = async () => {
+  const loadActiveCheckouts = useCallback(async () => {
     if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
       setActiveCheckouts([]);
       return;
@@ -1844,7 +1844,91 @@ export function EquipmentManagementPanel({
       }
       setActiveCheckouts([]);
     }
-  };
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable]);
+  const loadEquipment = useCallback(async () => {
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setEquipment([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await equipmentApi.getAll(projectId);
+      setEquipment(Array.isArray(data) ? data : []);
+    } catch (error) {
+      if (isRecoverableEndpointError(error)) {
+        const status = getErrorStatusCode(error);
+        if (status === 401 || status === 403 || status === 404) {
+          setRoleRoomApiUnavailable(true);
+        }
+        setEquipment([]);
+      } else if (isNetworkTransportError(error)) {
+        setEquipment([]);
+        setEquipmentPollPauseUntil(Date.now() + 60_000);
+        const now = Date.now();
+        if (now - lastTransportErrorToastAtRef.current > 45_000) {
+          lastTransportErrorToastAtRef.current = now;
+          showError('Server utilgjengelig. Prøver igjen automatisk.');
+        }
+      } else {
+        console.error('Error loading equipment:', error);
+        showError('Kunne ikke laste utstyr');
+        setEquipment([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable, showError]);
+
+  useEffect(() => {
+    refreshWarehouseSummary();
+  }, [refreshWarehouseSummary]);
+
+  const loadCrewAndLocations = useCallback(async () => {
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setCrewMembers([]);
+      setLocations([]);
+      return;
+    }
+
+    const [crewResult, locationResult] = await Promise.allSettled([
+        crewApi.getAll(projectId),
+        locationsApi.getAll(projectId),
+      ]);
+
+    if (crewResult.status === 'fulfilled') {
+      setCrewMembers(Array.isArray(crewResult.value) ? crewResult.value : []);
+    } else if (!isRecoverableEndpointError(crewResult.reason) && !isNetworkTransportError(crewResult.reason)) {
+      console.error('Error loading crew:', crewResult.reason);
+    } else {
+      setCrewMembers([]);
+    }
+
+    if (locationResult.status === 'fulfilled') {
+      setLocations(Array.isArray(locationResult.value) ? locationResult.value : []);
+    } else if (!isRecoverableEndpointError(locationResult.reason) && !isNetworkTransportError(locationResult.reason)) {
+      console.error('Error loading locations:', locationResult.reason);
+    } else {
+      setLocations([]);
+    }
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable]);
+
+  const loadTemplates = useCallback(async () => {
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setTemplates([]);
+      return;
+    }
+    try {
+      const data = await equipmentTemplatesApi.getAll(projectId);
+      setTemplates(Array.isArray(data) ? data : []);
+    } catch (error) {
+      if (isRecoverableEndpointError(error) || isNetworkTransportError(error)) {
+        setTemplates([]);
+      } else {
+        console.error('Error loading templates:', error);
+      }
+    }
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable]);
 
   useEffect(() => {
     setRoleRoomApiUnavailable(false);
@@ -1871,7 +1955,7 @@ export function EquipmentManagementPanel({
     loadCrewAndLocations();
     loadTemplates();
     loadActiveCheckouts();
-  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable]);
+  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable, loadEquipment, loadCrewAndLocations, loadTemplates, loadActiveCheckouts]);
 
   // Multi-user realtime: poll every 30 s while online
   useEffect(() => {
@@ -1918,92 +2002,8 @@ export function EquipmentManagementPanel({
     }
   }, [projectId]);
 
-  const loadEquipment = async () => {
-    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
-      setEquipment([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await equipmentApi.getAll(projectId);
-      setEquipment(Array.isArray(data) ? data : []);
-    } catch (error) {
-      if (isRecoverableEndpointError(error)) {
-        const status = getErrorStatusCode(error);
-        if (status === 401 || status === 403 || status === 404) {
-          setRoleRoomApiUnavailable(true);
-        }
-        setEquipment([]);
-      } else if (isNetworkTransportError(error)) {
-        setEquipment([]);
-        setEquipmentPollPauseUntil(Date.now() + 60_000);
-        const now = Date.now();
-        if (now - lastTransportErrorToastAtRef.current > 45_000) {
-          lastTransportErrorToastAtRef.current = now;
-          showError('Server utilgjengelig. Prøver igjen automatisk.');
-        }
-      } else {
-        console.error('Error loading equipment:', error);
-        showError('Kunne ikke laste utstyr');
-        setEquipment([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    refreshWarehouseSummary();
-  }, [refreshWarehouseSummary]);
-
-  const loadCrewAndLocations = async () => {
-    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
-      setCrewMembers([]);
-      setLocations([]);
-      return;
-    }
-
-    const [crewResult, locationResult] = await Promise.allSettled([
-        crewApi.getAll(projectId),
-        locationsApi.getAll(projectId),
-      ]);
-
-    if (crewResult.status === 'fulfilled') {
-      setCrewMembers(Array.isArray(crewResult.value) ? crewResult.value : []);
-    } else if (!isRecoverableEndpointError(crewResult.reason) && !isNetworkTransportError(crewResult.reason)) {
-      console.error('Error loading crew:', crewResult.reason);
-    } else {
-      setCrewMembers([]);
-    }
-
-    if (locationResult.status === 'fulfilled') {
-      setLocations(Array.isArray(locationResult.value) ? locationResult.value : []);
-    } else if (!isRecoverableEndpointError(locationResult.reason) && !isNetworkTransportError(locationResult.reason)) {
-      console.error('Error loading locations:', locationResult.reason);
-    } else {
-      setLocations([]);
-    }
-  };
-
-  const loadTemplates = async () => {
-    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
-      setTemplates([]);
-      return;
-    }
-    try {
-      const data = await equipmentTemplatesApi.getAll(projectId);
-      setTemplates(Array.isArray(data) ? data : []);
-    } catch (error) {
-      if (isRecoverableEndpointError(error) || isNetworkTransportError(error)) {
-        setTemplates([]);
-      } else {
-        console.error('Error loading templates:', error);
-      }
-    }
-  };
-
-  const loadVendorLinks = async () => {
+  const loadVendorLinks = useCallback(async () => {
     if (!shopDialogOpen || vendorLinksUnavailable) return;
     try {
       const [links, categories] = await Promise.all([
@@ -2026,13 +2026,13 @@ export function EquipmentManagementPanel({
         console.error('Error loading vendor links:', error);
       }
     }
-  };
+  }, [shopDialogOpen, vendorLinksUnavailable, selectedVendorCategory]);
 
   // Re-fetch vendor links whenever the category filter changes
   useEffect(() => {
     if (!shopDialogOpen || vendorLinksUnavailable) return;
     loadVendorLinks();
-  }, [selectedVendorCategory, shopDialogOpen, vendorLinksUnavailable]);
+  }, [loadVendorLinks, selectedVendorCategory, shopDialogOpen, vendorLinksUnavailable]);
 
   // Image search functions - Multi-source search via backend proxies (no keys in client)
   const searchImages = useCallback(async (query: string) => {
@@ -3398,13 +3398,12 @@ export function EquipmentManagementPanel({
   };
 
   // ── Check-out / Check-in ─────────────────────────────────
-  const OUTBOX_KEY = `equipment_outbox_${projectId}`;
-
-  const persistOfflineQueue = (q: OfflineEntry[]) => {
-    localStorage.setItem(OUTBOX_KEY, JSON.stringify(q));
+  const persistOfflineQueue = useCallback((q: OfflineEntry[]) => {
+    const key = `equipment_outbox_${projectId}`;
+    localStorage.setItem(key, JSON.stringify(q));
     setOfflineQueue(q);
     setOfflineQueueCount(q.length);
-  };
+  }, [projectId]);
 
   const handleOpenCheckout = (eq: Equipment) => {
     setCheckoutEquipment(eq);
@@ -3501,7 +3500,7 @@ export function EquipmentManagementPanel({
   };
 
   /** Replay offline outbox when user is back online */
-  const handleSyncOfflineQueue = async () => {
+  const handleSyncOfflineQueue = useCallback(async () => {
     if (!isOnline || offlineQueue.length === 0) return;
     let ok = 0;
     const failed: OfflineEntry[] = [];
@@ -3535,7 +3534,7 @@ export function EquipmentManagementPanel({
       loadActiveCheckouts();
     }
     showSuccess(`Synkronisert ${ok} operasjon(er).${failed.length > 0 ? ` ${failed.length} feilet.` : ''}`);
-  };
+  }, [isOnline, offlineQueue, activeCheckouts, persistOfflineQueue, loadEquipment, loadActiveCheckouts, showSuccess]);
 
   // ── Reports ──────────────────────────────────────────────
   const downloadCSV = (rows: string[][], filename: string) => {
