@@ -2,7 +2,7 @@
 import { useTheming } from '../../utils/theming-helper';
 import * as React from 'react';
 import { useCallback } from 'react';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 
 // Profession-specific toast configurations
 export interface ProfessionToastConfig {
@@ -132,7 +132,8 @@ const PROFESSION_CONFIGS: Record<string, ProfessionToastConfig> = {
 
 // Custom hook for profession-specific toasts
 export function useProfessionToasts(profession: string) {
-  const { addToast } = useVisualEditor();
+  const visualEditorContext = useVisualEditorOptional();
+  const { addToast } = visualEditorContext || {};
   
   // Theming system
   const theming = useTheming('photographer');
