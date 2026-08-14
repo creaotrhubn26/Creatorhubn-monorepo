@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi, beforeAll } from 'vitest';
 import { planClippingPasses, renderLayersWithClipping } from '../clippingMaskRenderer';
 
@@ -127,7 +126,7 @@ describe('Sprint A.7 — Clipping mask rendering', () => {
 
     it('source-atop brukes på shade-laget inni gruppen', () => {
       const target = document.createElement('canvas');
-      const ctx = target.getContext('2d') as any;
+      target.getContext('2d');
 
       // Vi inspecter offscreen-ctx-en gjennom å spy på getContext-resultatet.
       // Capturer ops for ALLE oppretede canvas-contexts.

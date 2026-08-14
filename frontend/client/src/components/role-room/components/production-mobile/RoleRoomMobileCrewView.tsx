@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileCrewView — compact crew list for mobile + iPad.
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   addMoodBoardImage,
@@ -64,7 +63,7 @@ describe('Sprint A.7 — moodBoardStore CRUD', () => {
   });
 
   it('remove fjerner et bilde og re-pakker order', () => {
-    const r1 = addMoodBoardImage('scene-1', { dataUrl: TINY_DATA_URL, caption: 'a' });
+    addMoodBoardImage('scene-1', { dataUrl: TINY_DATA_URL, caption: 'a' });
     const r2 = addMoodBoardImage('scene-1', { dataUrl: TINY_DATA_URL, caption: 'b' });
     addMoodBoardImage('scene-1', { dataUrl: TINY_DATA_URL, caption: 'c' });
 

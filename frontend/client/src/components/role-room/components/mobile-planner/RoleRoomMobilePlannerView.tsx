@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobilePlannerView — mobile + iPad Planner feed.
  *

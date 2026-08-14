@@ -74,9 +74,9 @@ export default function GoogleDriveImagePicker({
     setNotConnected(false);
     setSelectedIds([]);
     void loadFiles('');
-  }, [open, kind]);
+  }, [open, kind, loadFiles]);
 
-  const loadFiles = async (searchQuery: string) => {
+  const loadFiles = useCallback(async (searchQuery: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -93,7 +93,7 @@ export default function GoogleDriveImagePicker({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
   const debouncedQuery = useDebounced(query, 400);
   useEffect(() => {

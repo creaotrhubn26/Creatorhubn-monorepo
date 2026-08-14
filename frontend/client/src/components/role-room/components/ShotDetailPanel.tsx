@@ -1,40 +1,6 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Tabs,
-  Tab,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Stack,
-  Button,
-  IconButton,
-  Card,
-  CardContent,
-  Slider,
-  Chip,
-  Divider,
-  Paper,
-  Grid,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-} from '@mui/material';
-import {
-  Videocam as VideocamIcon,
-  Lightbulb as LightbulbIcon,
-  Mic as MicIcon,
-  Note as NoteIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Image as ImageIcon,
-  ExpandMore as ExpandMoreIcon,
-  CameraAlt as CameraAltIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Tabs, Tab, TextField, Select, MenuItem, FormControl, InputLabel, Stack, Button, IconButton, Card, CardContent, Slider, Chip, Paper, Grid, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import { Videocam as VideocamIcon, Lightbulb as LightbulbIcon, Mic as MicIcon, Note as NoteIcon, Add as AddIcon, Delete as DeleteIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import type { SceneBreakdown } from '../models/casting';
 import { useToast } from './ToastStack';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
@@ -186,7 +152,7 @@ export const ShotDetailPanel: React.FC<ShotDetailPanelProps> = ({ scene, onUpdat
     };
 
     onUpdate(updatedScene);
-  }, [shots, cameraData, lightingData, audioData, notesData]);
+  }, [shots, cameraData, lightingData, audioData, notesData, scene, onUpdate]);
 
   // Load shot data from scene metadata on mount
   useEffect(() => {
@@ -216,7 +182,7 @@ export const ShotDetailPanel: React.FC<ShotDetailPanelProps> = ({ scene, onUpdat
         setNotesData(new Map(Object.entries(shotDetails.notes)));
       }
     }
-  }, [scene.id]); // Only reload when scene changes
+  }, [scene.id, scene.metadata?.shotDetails]); // Only reload when scene changes
 
   const currentCamera = cameraData.get(selectedShot);
   const currentLighting = lightingData.get(selectedShot);

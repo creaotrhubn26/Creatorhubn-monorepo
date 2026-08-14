@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  Box,
-  Typography,
-  LinearProgress,
-  Chip,
-  Stack,
-} from '@mui/material';
+import { Box, Typography, LinearProgress, Chip, Stack } from '@mui/material';
 import { CheckCircle, Warning, Error as ErrorIcon } from '@mui/icons-material';
 
 interface HealthCheckItem {
@@ -21,7 +15,7 @@ interface ProjectHealthCheckProps {
 }
 
 const ProjectHealthCheck: React.FC<ProjectHealthCheckProps> = ({
-  projectId,
+  _projectId,
   items = [],
 }) => {
   const defaultItems: HealthCheckItem[] = [

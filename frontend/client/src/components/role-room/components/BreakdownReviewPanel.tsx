@@ -1,52 +1,6 @@
 import { useState, useEffect, type FC } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Card,
-  CardContent,
-  Stack,
-  Chip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Divider,
-  Alert,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Checkbox,
-  FormControlLabel,
-  Tooltip,
-  Badge,
-} from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Edit as EditIcon,
-  ExpandMore as ExpandMoreIcon,
-  Link as LinkIcon,
-  Warning as WarningIcon,
-  PersonAdd as PersonAddIcon,
-  Category as CategoryIcon,
-  Comment as CommentIcon,
-  PlaylistAddCheck as PlaylistAddCheckIcon,
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Button, Card, CardContent, Stack, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, FormControl, InputLabel, Select, MenuItem, Accordion, AccordionSummary, AccordionDetails, Tooltip } from '@mui/material';
+import { CheckCircle as CheckCircleIcon, Cancel as CancelIcon, Edit as EditIcon, ExpandMore as ExpandMoreIcon, Link as LinkIcon, Warning as WarningIcon, PersonAdd as PersonAddIcon, Category as CategoryIcon, PlaylistAddCheck as PlaylistAddCheckIcon } from '@mui/icons-material';
 import { LocationsIcon as LocationOnIcon } from './icons/CastingIcons';
 import type { SceneBreakdown, DialogueLine } from '../models/casting';
 import { useToast } from './ToastStack';
@@ -64,14 +18,14 @@ interface BreakdownReviewPanelProps {
 
 export const BreakdownReviewPanel: FC<BreakdownReviewPanelProps> = ({
   projectId,
-  manuscriptId,
+  _manuscriptId,
   scenes,
   dialogue,
   characters,
   onApprove,
   onReject,
 }) => {
-  const { showSuccess, showError, showInfo } = useToast();
+  const { showSuccess, showError, showInfo: _showInfo } = useToast();
   const [reviewedScenes, setReviewedScenes] = useState<SceneBreakdown[]>(scenes);
   const [reviewedDialogue, setReviewedDialogue] = useState<DialogueLine[]>(dialogue);
   const [sceneApprovals, setSceneApprovals] = useState<Map<string, boolean>>(new Map());

@@ -64,7 +64,7 @@ export default function ClientTiktokCreativesPanel({
       .catch(() => {});
   }, [configId, advertiserId, isOwnAccount]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!advertiserId) return;
     setLoading(true);
     setError(null);
@@ -78,9 +78,9 @@ export default function ClientTiktokCreativesPanel({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
-  useEffect(() => { if (advertiserId) load(); /* eslint-disable-next-line */ }, [advertiserId]);
+  useEffect(() => { if (advertiserId) load();   }, [advertiserId, load]);
 
   const videos = assets.filter((a) => a.assetType === 'video');
   const images = assets.filter((a) => a.assetType === 'image');

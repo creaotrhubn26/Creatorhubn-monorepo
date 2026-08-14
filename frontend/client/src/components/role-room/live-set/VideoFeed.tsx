@@ -25,7 +25,7 @@
  */
 
 import React from 'react';
-import { Alert, Box, Chip, Stack, Typography } from '@mui/material';
+import { Alert, Box, Chip, Typography } from '@mui/material';
 import VideocamOffIcon from '@mui/icons-material/VideocamOff';
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt';
 

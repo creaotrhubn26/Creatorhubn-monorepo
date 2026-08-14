@@ -360,7 +360,7 @@ ${marketerName}`,
     estimatedMinutes: 4,
   }),
 
-  linkedin: ({ marketerName, companyName, marketerEmail }) => ({
+  linkedin: ({ marketerName, companyName, marketerEmail: _marketerEmail }) => ({
     platformLabel: 'LinkedIn Company Page',
     emailSubject: `Admin-tilgang til LinkedIn for ${companyName}`,
     emailBody: `Hei!

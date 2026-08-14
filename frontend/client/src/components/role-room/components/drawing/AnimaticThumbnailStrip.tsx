@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticThumbnailStrip — Final Cut-style miniatyrer langs tidslinjen.
  * Hver thumbnail er proporsjonal med frame.duration, så de stiller seg

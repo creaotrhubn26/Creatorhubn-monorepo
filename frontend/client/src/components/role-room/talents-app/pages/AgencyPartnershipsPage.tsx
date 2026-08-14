@@ -16,23 +16,7 @@
  */
 
 import ErrorBoundary from '@/components/common/ErrorBoundary';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
@@ -48,29 +32,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 const ProposeTalentsDialog = lazy(() => import('../components/ProposeTalentsDialog'));
 
 import { palette, radius } from '../theme';
-import {
-  acceptTerms,
-  agencyDashboard,
-  closeAvailability,
-  CURRENT_PARTNERSHIP_TERMS_VERSION,
-  enableAvailability,
-  getAvailability,
-  incomingInvitations,
-  listMine,
-  pauseAvailability,
-  pausePartnership,
-  respondToPartnership,
-  respondToProjectInvitation,
-  revokePartnership,
-  unpauseAvailability,
-  unpausePartnership,
-  type AgencyDashboard,
-  type AvailabilityState,
-  type AvailabilityStatus,
-  type ConsequenceWarning,
-  type Partnership,
-  type ProjectInvitation,
-} from '../../services/roleRoomPartnershipsService';
+import { acceptTerms, agencyDashboard, closeAvailability, CURRENT_PARTNERSHIP_TERMS_VERSION, enableAvailability, getAvailability, incomingInvitations, listMine, pauseAvailability, pausePartnership, respondToPartnership, respondToProjectInvitation, revokePartnership, unpauseAvailability, unpausePartnership, type AgencyDashboard, type AvailabilityState, type AvailabilityStatus, type ConsequenceWarning, type Partnership, type ProjectInvitation } from '../../services/roleRoomPartnershipsService';
 
 const cardSx = {
   bgcolor: palette.bgCard,

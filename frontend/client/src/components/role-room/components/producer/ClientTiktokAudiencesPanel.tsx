@@ -64,7 +64,7 @@ export default function ClientTiktokAudiencesPanel({
   const [createdAudience, setCreatedAudience] = useState<{ audienceId: string; uploadCount: number } | null>(null);
 
   const effectiveConfigId = isOwnAccount ? 'self' : configId;
-  const ownerLabel = isOwnAccount ? 'The Role Room' : 'klienten';
+  const _ownerLabel = isOwnAccount ? 'The Role Room' : 'klienten';
 
   useEffect(() => {
     if (advertiserId || isOwnAccount) return;

@@ -12,19 +12,8 @@
  */
 
 import React from 'react';
-import { Box, Chip, Stack, Typography } from '@mui/material';
-import {
-  Instagram as InstagramIcon,
-  MusicNote as TikTokIcon,
-  LinkedIn as LinkedInIcon,
-  YouTube as YouTubeIcon,
-  Facebook as FacebookIcon,
-  Favorite as LikeIcon,
-  ChatBubbleOutline as CommentIcon,
-  Share as ShareIcon,
-  BookmarkBorder as SaveIcon,
-  PlayArrow as PlayIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography } from '@mui/material';
+import { Instagram as InstagramIcon, MusicNote as TikTokIcon, LinkedIn as LinkedInIcon, YouTube as YouTubeIcon, Facebook as FacebookIcon, Favorite as LikeIcon, ChatBubbleOutline as CommentIcon, Share as ShareIcon, BookmarkBorder as SaveIcon, PlayArrow as PlayIcon } from '@mui/icons-material';
 import type { MarketingPlanPost } from '../../services/roleRoomAgentService';
 
 interface MarketingPlanPostPreviewProps {

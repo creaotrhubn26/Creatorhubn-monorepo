@@ -58,33 +58,33 @@ const BMD_INCOMING_CONTROL_CHAR = "b864e140-76a0-416a-bf30-5876504537d9";
 const BMD_CAMERA_STATUS_CHAR = "7fe8691d-95dc-4fc5-8abd-ca74339b51b9";
 const BMD_TIMECODE_CHAR = "6d8f2110-86f1-41bf-9afb-451d87e976c8";
 const BMD_CAMERA_NAME_CHAR = "ffac0c52-c9fb-41a0-b063-cc76282eb89c";
-const BMD_MODEL_CHAR = "7fe8691d-95dc-4fc5-8abd-ca74339b51b9";
+const _BMD_MODEL_CHAR = "7fe8691d-95dc-4fc5-8abd-ca74339b51b9";
 
 // Camera Control protocol commands (group, parameter)
 const CMD_LENS_FOCUS = [0x00, 0x00];
 const CMD_LENS_IRIS_F = [0x00, 0x03]; // f-stop normalisert
 const CMD_VIDEO_FPS = [0x01, 0x00];
 const CMD_VIDEO_SHUTTER_ANGLE = [0x01, 0x04];
-const CMD_VIDEO_GAIN = [0x01, 0x07];
+const _CMD_VIDEO_GAIN = [0x01, 0x07];
 const CMD_VIDEO_ISO = [0x01, 0x0e];
 const CMD_VIDEO_WB = [0x01, 0x02];
 const CMD_TRANSPORT_MODE = [0x0a, 0x01];
 
 // Data types in protocol
-const DATA_TYPE_BOOL = 0x00;
+const _DATA_TYPE_BOOL = 0x00;
 const DATA_TYPE_INT8 = 0x01;
 const DATA_TYPE_INT16 = 0x02;
 const DATA_TYPE_INT32 = 0x03;
-const DATA_TYPE_INT64 = 0x04;
+const _DATA_TYPE_INT64 = 0x04;
 const DATA_TYPE_FIXED16 = 0x80;
 
 // Operation types
 const OP_ASSIGN = 0x00;
-const OP_OFFSET = 0x01;
+const _OP_OFFSET = 0x01;
 
 // Transport modes
 const TRANSPORT_PREVIEW = 0;
-const TRANSPORT_PLAY = 1;
+const _TRANSPORT_PLAY = 1;
 const TRANSPORT_RECORD = 2;
 
 // ─────────────────────────────────────────────────────────────────────

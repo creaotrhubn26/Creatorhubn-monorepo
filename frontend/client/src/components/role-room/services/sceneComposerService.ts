@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { SceneComposition, EnvironmentState, WallState, FloorState, AtmosphereSettings, GoboState } from '../models/sceneComposer';
 import { sceneApi } from './virtualStudioApiService';
 import settingsService, { getCurrentUserId } from './settingsService';
@@ -320,9 +319,9 @@ export const sceneComposerService = {
         case 'updatedAt':
           return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
         case 'size':
-          const sizeA = a.size || this.calculateSceneSize(a);
+          { const sizeA = a.size || this.calculateSceneSize(a);
           const sizeB = b.size || this.calculateSceneSize(b);
-          return sizeB - sizeA;
+          return sizeB - sizeA; }
         default:
           return 0;
       }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MobilePlannerCreateSheet — two-step "Opprett" sheet.
  *

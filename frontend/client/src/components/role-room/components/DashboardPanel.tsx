@@ -1,46 +1,9 @@
-// @ts-nocheck
 import { useId, useMemo, useState, useEffect, memo, lazy, Suspense } from 'react';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
-import {
-  Box,
-  Typography,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Grid,
-  Tooltip,
-  LinearProgress as _LinearProgress,
-  CircularProgress,
-  useTheme,
-  useMediaQuery,
-  TextField,
-  IconButton,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Share as ShareIcon,
-  ViewKanban as _ViewKanbanIcon,
-  Edit as EditIcon,
-  Save as SaveIcon,
-  Cancel as CancelIcon,
-  CheckCircle as _CheckCircleIcon,
-  HelpOutline as HelpIcon,
-  Bolt as BoltIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Button, Card, CardContent, Chip, Grid, Tooltip, LinearProgress as _LinearProgress, CircularProgress, useTheme, useMediaQuery, TextField, IconButton } from '@mui/material';
+import { Add as AddIcon, Share as ShareIcon, ViewKanban as _ViewKanbanIcon, Edit as EditIcon, Save as SaveIcon, Cancel as CancelIcon, CheckCircle as _CheckCircleIcon, HelpOutline as HelpIcon, Bolt as BoltIcon } from '@mui/icons-material';
 import DashboardGuide from './DashboardGuide';
-import { 
-  DashboardCustomIcon as DashboardIcon, 
-  CalendarCustomIcon as CalendarIcon, 
-  LocationsIcon as LocationIcon,
-  TrendingIcon as TrendingUpIcon,
-  RolesIcon,
-  CandidatesIcon,
-  TeamIcon,
-  PropsIcon,
-  ShotListIcon,
-  AuditionsIcon,
-} from './icons/CastingIcons';
+import { DashboardCustomIcon as DashboardIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, RolesIcon, CandidatesIcon, TeamIcon, PropsIcon, ShotListIcon, AuditionsIcon } from './icons/CastingIcons';
 import type { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
@@ -65,9 +28,7 @@ interface DashboardPanelProps {
   candidates: Candidate[];
   schedules: Schedule[];
   onNavigateToTab: (tabIndex: number) => void;
-  onCreateRole: () => void;
   onCreateCandidate: () => void;
-  onCreateSchedule: () => void;
   onOpenSharing: () => void;
   onUpdate?: () => void;
   onEditCandidate?: (candidate: Candidate) => void;
@@ -81,9 +42,7 @@ function DashboardPanelInner({
   candidates,
   schedules,
   onNavigateToTab,
-  onCreateRole,
   onCreateCandidate,
-  onCreateSchedule,
   onOpenSharing,
   onUpdate,
   onEditCandidate,

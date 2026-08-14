@@ -10,21 +10,8 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Stack,
-  Tooltip,
-  Divider,
-} from '@mui/material';
-import {
-  Colorize,
-  ContentCopy,
-  History,
-  Check,
-} from '@mui/icons-material';
+import { Box, Paper, Typography, IconButton, Stack, Tooltip } from '@mui/material';
+import { Colorize, ContentCopy, History, Check } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // =============================================================================
@@ -165,7 +152,7 @@ function getLuminance(r: number, g: number, b: number): number {
 // Styled Components
 // =============================================================================
 
-const EyedropperContainer = styled(Paper)(({ theme }) => ({
+const EyedropperContainer = styled(Paper)(({ _theme }) => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,

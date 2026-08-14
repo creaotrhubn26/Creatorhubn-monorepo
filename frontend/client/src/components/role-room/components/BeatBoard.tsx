@@ -17,69 +17,8 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef, type FC } from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Chip,
-  IconButton,
-  TextField,
-  Stack,
-  Tooltip,
-  Paper,
-  Badge,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Fade,
-  Zoom,
-  useTheme,
-  useMediaQuery,
-  LinearProgress,
-  Collapse,
-  Alert,
-} from '@mui/material';
-import {
-  DragIndicator as DragIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Keyboard as KeyboardIcon,
-  Movie as SceneIcon,
-  Person as CharacterIcon,
-  SentimentSatisfied as PositiveIcon,
-  SentimentDissatisfied as NegativeIcon,
-  SentimentNeutral as NeutralIcon,
-  Notes as NotesIcon,
-  ColorLens as ColorIcon,
-  NavigateBefore as PrevIcon,
-  NavigateNext as NextIcon,
-  GridView as GridViewIcon,
-  ViewList as ListViewIcon,
-  ZoomIn as ZoomInIcon,
-  ZoomOut as ZoomOutIcon,
-  Fullscreen as FullscreenIcon,
-  FullscreenExit as FullscreenExitIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
-  ContentCopy as DuplicateIcon,
-  Warning as WarningIcon,
-  Assessment as AnalysisIcon,
-  FilterAlt as FilterIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Bolt as BoltIcon,
-  PushPin as MidpointIcon,
-  LocalFireDepartment as ClimaxIcon,
-  NightlightRound as LowPointIcon,
-  Autorenew as ReversalIcon,
-  TrendingUp as EscalationIcon,
-  CheckBoxOutlineBlank as UncheckedIcon,
-  CheckBox as CheckedIcon,
-} from '@mui/icons-material';
+import { Box, Card, CardContent, Typography, Chip, IconButton, TextField, Stack, Tooltip, Paper, Badge, Menu, MenuItem, ListItemIcon, ListItemText, Divider, Fade, Zoom, useTheme, useMediaQuery, LinearProgress, Collapse, Alert } from '@mui/material';
+import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon, Keyboard as KeyboardIcon, Movie as SceneIcon, Person as CharacterIcon, SentimentSatisfied as PositiveIcon, SentimentDissatisfied as NegativeIcon, SentimentNeutral as NeutralIcon, Notes as NotesIcon, ColorLens as ColorIcon, NavigateBefore as PrevIcon, NavigateNext as NextIcon, GridView as GridViewIcon, ViewList as ListViewIcon, Fullscreen as FullscreenIcon, FullscreenExit as FullscreenExitIcon, Lock as LockIcon, LockOpen as LockOpenIcon, ContentCopy as DuplicateIcon, Warning as WarningIcon, Assessment as AnalysisIcon, FilterAlt as FilterIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Bolt as BoltIcon, PushPin as MidpointIcon, LocalFireDepartment as ClimaxIcon, NightlightRound as LowPointIcon, Autorenew as ReversalIcon, TrendingUp as EscalationIcon, CheckBoxOutlineBlank as UncheckedIcon, CheckBox as CheckedIcon } from '@mui/icons-material';
 import type { BeatCard } from '../services/scriptAnalysisService';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
@@ -128,7 +67,7 @@ const useScreenTier = (): {
   is4K: boolean;
 } => {
   const theme = useTheme();
-  const isXs  = useMediaQuery(theme.breakpoints.down('sm'));
+  const _isXs  = useMediaQuery(theme.breakpoints.down('sm'));
   const isSm  = useMediaQuery(theme.breakpoints.between('sm', 'md'));
   const isMd  = useMediaQuery(theme.breakpoints.between('md', 'lg'));
   const isLg  = useMediaQuery(theme.breakpoints.between('lg', 'xl'));
@@ -339,7 +278,7 @@ const BeatCardItem: FC<BeatCardItemProps> = ({
   const btConfig = BEAT_TYPE_CONFIG[beat.beatType ?? 'general'];
   const isClimax     = btConfig.weight === 'climax';
   const isStrong     = btConfig.weight === 'strong';
-  const isEmphasis   = btConfig.weight === 'emphasis';
+  const _isEmphasis   = btConfig.weight === 'emphasis';
 
   const accentColor  = beat.color ?? btConfig.color;
   const cardBorder   = isSelected
@@ -728,12 +667,12 @@ function runDramaturgicalAnalysis(beats: ExtendedBeatCard[]): DiagnosticWarning[
     const firstSeen = beats.findIndex(b => b.characters.includes(char));
     if (lastSeen !== -1 && firstSeen !== -1) {
       let maxGap = 0;
-      let gapStart = firstSeen;
+      let _gapStart = firstSeen;
       for (let i = firstSeen + 1; i <= lastSeen; i++) {
         if (!beats[i].characters.includes(char)) {
           maxGap++;
         } else {
-          gapStart = i;
+          _gapStart = i;
           maxGap = 0;
         }
       }
@@ -999,7 +938,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
 
-      const { selectedBeatId: sid, beats: bs, multiSelected: ms } = kbRef.current;
+      const { selectedBeatId: sid, beats: bs, multiSelected: _ms } = kbRef.current;
       const idx = bs.findIndex(b => b.id === sid);
 
       // Enter → add beat

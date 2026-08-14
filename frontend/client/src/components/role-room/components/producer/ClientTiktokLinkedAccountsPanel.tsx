@@ -76,7 +76,7 @@ export default function ClientTiktokLinkedAccountsPanel({
       .catch(() => {});
   }, [configId, advertiserId, isOwnAccount]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!advertiserId) return;
     setLoading(true);
     setError(null);
@@ -90,9 +90,9 @@ export default function ClientTiktokLinkedAccountsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
-  useEffect(() => { if (advertiserId) load(); /* eslint-disable-next-line */ }, [advertiserId]);
+  useEffect(() => { if (advertiserId) load();   }, [advertiserId, load]);
 
   return (
     <Card sx={{ bgcolor: palette.bg, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>

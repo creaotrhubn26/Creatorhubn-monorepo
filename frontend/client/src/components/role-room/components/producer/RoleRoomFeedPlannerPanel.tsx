@@ -1,45 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  AutoAwesome as AutoAwesomeIcon,
-  PictureAsPdf as PictureAsPdfIcon,
-  RestartAlt as RestartAltIcon,
-} from '@mui/icons-material';
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-  arrayMove,
-} from '@dnd-kit/sortable';
-import type {
-  RoleRoomAgentBrandColor,
-  RoleRoomAgentProducerBootstrapResult,
-  RoleRoomFeedBrandSnapshot,
-  RoleRoomFeedPlatform,
-  RoleRoomFeedPost,
-} from '../../services/roleRoomAgentService';
-import {
-  FEED_POST_CONCEPT_ORDER,
-  buildDefaultSchedule,
-  deriveBrandSnapshot,
-  generateFeedPostsFromBootstrap,
-} from '../../utils/feedPlanner';
+import { AutoAwesome as AutoAwesomeIcon, PictureAsPdf as PictureAsPdfIcon, RestartAlt as RestartAltIcon } from '@mui/icons-material';
+import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
+import type { RoleRoomAgentBrandColor, RoleRoomAgentProducerBootstrapResult, RoleRoomFeedBrandSnapshot, RoleRoomFeedPlatform, RoleRoomFeedPost } from '../../services/roleRoomAgentService';
+import { FEED_POST_CONCEPT_ORDER, buildDefaultSchedule, deriveBrandSnapshot, generateFeedPostsFromBootstrap } from '../../utils/feedPlanner';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
 import { downloadFeedPlanPdf, generateFeedPlanPdf } from '../../utils/feedPlannerPdf';
-import {
-  fetchAgentEntitlement,
-  type EntitlementBundle,
-} from '../../services/roleRoomAgentEntitlementApi';
+import { fetchAgentEntitlement, type EntitlementBundle } from '../../services/roleRoomAgentEntitlementApi';
 import AgentPaywallDialog from '../ai/AgentPaywallDialog';
 import RoleRoomTierIcon, { ROLE_ROOM_TIERS, tierForEntitlementSource, type RoleRoomTierSlug } from './RoleRoomTierIcon';
 import InstagramConnectionCard from './InstagramConnectionCard';
@@ -191,7 +160,7 @@ export default function RoleRoomFeedPlannerPanel({
         }
         setSelectedPostId(null);
         setDirty(false);
-      } catch (error) {
+      } catch (_error) {
         if (!cancelled) {
           setPosts(generateFeedPostsFromBootstrap(bootstrap, platform));
           setSelectedPostId(null);

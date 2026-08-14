@@ -13,92 +13,11 @@
  */
 
 import { useState, useMemo, useCallback, type FC, type ReactNode } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  Tabs,
-  Tab,
-  Stack,
-  Chip,
-  IconButton,
-  Tooltip,
-  LinearProgress,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Switch,
-  FormControlLabel,
-  Divider,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Alert,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Badge,
-  Avatar,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Slider,
-} from '@mui/material';
-import {
-  ExpandMore as ExpandIcon,
-  Movie as SceneIcon,
-  Person as CharacterIcon,
-  Timeline as TimelineIcon,
-  Speed as PacingIcon,
-  Share as ShareIcon,
-  ContentCopy as CopyIcon,
-  Numbers as NumberIcon,
-  Flag as BeatIcon,
-  Label as TagIcon,
-  TrendingUp as ArcIcon,
-  BarChart as BalanceIcon,
-  Timer as RuntimeIcon,
-  Lock as LockIcon,
-  Link as LinkIcon,
-  Warning as WarningIcon,
-  Check as CheckIcon,
-  Info as InfoIcon,
-  NavigateBefore as GotoIcon,
-  Visibility as ViewIcon,
-  Download as DownloadIcon,
-  MenuBook as ExpositionIcon,
-  Whatshot as ConflictIcon,
-  TrendingUp as RisingActionIcon,
-  GpsFixed as ClimaxIcon,
-  TrendingDown as FallingActionIcon,
-  CheckCircle as ResolutionIcon,
-  ArrowForward as TransitionIcon,
-  AccountCircle as CharacterDevIcon,
-  CallSplit as SubplotIcon,
-} from '@mui/icons-material';
+import { Box, Paper, Typography, Tabs, Tab, Stack, Chip, IconButton, Tooltip, LinearProgress, List, ListItem, ListItemText, ListItemIcon, Switch, FormControlLabel, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Alert, Accordion, AccordionSummary, AccordionDetails, Avatar } from '@mui/material';
+import { ExpandMore as ExpandIcon, Movie as SceneIcon, Person as CharacterIcon, Timeline as TimelineIcon, Speed as PacingIcon, Share as ShareIcon, ContentCopy as CopyIcon, Flag as BeatIcon, Label as TagIcon, TrendingUp as ArcIcon, BarChart as BalanceIcon, Timer as RuntimeIcon, Link as LinkIcon, Warning as WarningIcon, Check as CheckIcon, Info as InfoIcon, Visibility as ViewIcon, MenuBook as ExpositionIcon, Whatshot as ConflictIcon, TrendingUp as RisingActionIcon, GpsFixed as ClimaxIcon, TrendingDown as FallingActionIcon, CheckCircle as ResolutionIcon, ArrowForward as TransitionIcon, AccountCircle as CharacterDevIcon, CallSplit as SubplotIcon } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
-import {
-  analyzeScriptExtended,
-  createShareConfig,
-  type ExtendedScriptAnalysis,
-  type NumberedScene,
-  type ScenePurpose,
-  type CharacterArc,
-  type DialogueBalance,
-  type PacingAnalysis,
-  type ScriptShareConfig,
-} from '../services/scriptAnalysisService';
+import { analyzeScriptExtended, createShareConfig, type ExtendedScriptAnalysis, type NumberedScene, type ScenePurpose, type CharacterArc, type DialogueBalance, type PacingAnalysis, type ScriptShareConfig } from '../services/scriptAnalysisService';
 
 interface StoryStructurePanelProps {
   content: string;
@@ -768,7 +687,7 @@ interface PacingPanelProps {
 
 const PacingPanel: FC<PacingPanelProps> = ({
   pacing,
-  scenes,
+  _scenes,
   onGotoLine,
 }) => {
   return (

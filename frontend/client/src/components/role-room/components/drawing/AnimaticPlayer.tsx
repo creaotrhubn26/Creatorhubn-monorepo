@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticPlayer — spiller storyboard-frames i sekvens basert på
  * `frame.duration`. Lar artisten teste pacing uten å produsere video.
@@ -14,76 +13,18 @@
  */
 
 import React from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  IconButton,
-  Slider,
-  ToggleButton,
-  Tooltip,
-  Select,
-  MenuItem,
-} from '@mui/material';
-import {
-  PlayArrow,
-  Pause,
-  Replay,
-  Loop,
-  Movie,
-  MicNone,
-  Close as CloseIcon,
-  FiberManualRecord,
-  Stop as StopIcon,
-  Download as DownloadIcon,
-  Fullscreen,
-  FullscreenExit,
-  GraphicEq,
-  UploadFile,
-  VolumeUp,
-  VolumeOff,
-  AutoAwesome,
-  PlayCircleOutline,
-  Psychology,
-  HelpOutline,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, IconButton, Slider, Tooltip } from '@mui/material';
+import { Movie, MicNone, Close as CloseIcon, FiberManualRecord, HelpOutline } from '@mui/icons-material';
 import { useAnimaticPlayback } from './useAnimaticPlayback';
 import { useAnimaticAudio } from './useAnimaticAudio';
 import { useAnimaticRecorder } from './useAnimaticRecorder';
-import {
-  saveScratchTrack,
-  loadScratchTrack,
-  deleteScratchTrack,
-  saveFrameVoiceover,
-  loadFrameVoiceovers,
-  deleteFrameVoiceover,
-  saveSfxClipBlob,
-  saveSfxClipReference,
-  loadSfxClips,
-  deleteSfxClip,
-  updateSfxClipOffset,
-} from './animaticAudioStore';
-import {
-  createRecordingAudioGraph,
-  fadeInRecording,
-  fadeOutRecording,
-  type RecordingAudioGraph,
-} from './recordingAudioGraph';
+import { saveScratchTrack, loadScratchTrack, deleteScratchTrack, saveFrameVoiceover, loadFrameVoiceovers, deleteFrameVoiceover, saveSfxClipBlob, saveSfxClipReference, loadSfxClips, deleteSfxClip, updateSfxClipOffset } from './animaticAudioStore';
+import { createRecordingAudioGraph, fadeInRecording, fadeOutRecording, type RecordingAudioGraph } from './recordingAudioGraph';
 import { detectSequenceSfx, groupEventsByFrame, type SfxEvent } from './sfxDetector';
 import { scheduleSfx } from './sfxScheduler';
 import { useSfxPlayback } from './useSfxPlayback';
-import {
-  matchSfx,
-  generateSfx,
-  detectVisualSfx,
-  type SfxMatchHit,
-  type VisualSfxEvent,
-} from '../../services/sfxMatchClient';
-import {
-  AnimaticStageCanvas,
-  STAGE_CANVAS_WIDTH as STAGE_W,
-  STAGE_CANVAS_HEIGHT as STAGE_H,
-} from './AnimaticStageCanvas';
+import { matchSfx, generateSfx, detectVisualSfx, type SfxMatchHit, type VisualSfxEvent } from '../../services/sfxMatchClient';
+import { AnimaticStageCanvas } from './AnimaticStageCanvas';
 import { AnimaticVoiceoverStrip } from './AnimaticVoiceoverStrip';
 import { AnimaticSfxPanel } from './AnimaticSfxPanel';
 import { AnimaticTransportBar } from './AnimaticTransportBar';
@@ -138,9 +79,6 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
-
-const STAGE_CANVAS_WIDTH = STAGE_W;
-const STAGE_CANVAS_HEIGHT = STAGE_H;
 
 export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   frames: framesProp,
@@ -610,7 +548,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       setVoiceoverUrls((prev) => {
         // Revoke alle eksisterende blob-URLs for å unngå lekkasje.
         Object.values(prev).forEach((url) => {
-          try { URL.revokeObjectURL(url); } catch {}
+          try { URL.revokeObjectURL(url); } catch { /* empty */ }
         });
         const next: Record<string, string> = {};
         for (const [frameId, record] of Object.entries(stored)) {
@@ -635,7 +573,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       setSfxClipUrls((prev) => {
         Object.values(prev).forEach((url) => {
           if (url.startsWith('blob:')) {
-            try { URL.revokeObjectURL(url); } catch {}
+            try { URL.revokeObjectURL(url); } catch { /* empty */ }
           }
         });
         const next: Record<string, string> = {};
@@ -708,7 +646,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   // Cleanup ALLE per-frame voiceover-URLs ved unmount.
   React.useEffect(() => () => {
     Object.values(voiceoverUrls).forEach((url) => {
-      try { URL.revokeObjectURL(url); } catch {}
+      try { URL.revokeObjectURL(url); } catch { /* empty */ }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -788,7 +726,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   // Cleanup preview-audio ved unmount.
   React.useEffect(() => () => {
     if (previewAudioRef.current) {
-      try { previewAudioRef.current.pause(); } catch {}
+      try { previewAudioRef.current.pause(); } catch { /* empty */ }
     }
   }, []);
 
@@ -882,7 +820,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   // Cleanup ALLE SFX-URLs ved unmount.
   React.useEffect(() => () => {
     Object.values(sfxClipUrls).forEach((url) => {
-      try { URL.revokeObjectURL(url); } catch {}
+      try { URL.revokeObjectURL(url); } catch { /* empty */ }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -936,9 +874,9 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     const el = stageContainerRef.current;
     if (!el) return;
     if (document.fullscreenElement) {
-      try { await document.exitFullscreen(); } catch {}
+      try { await document.exitFullscreen(); } catch { /* empty */ }
     } else {
-      try { await el.requestFullscreen(); } catch {}
+      try { await el.requestFullscreen(); } catch { /* empty */ }
     }
   }, []);
 

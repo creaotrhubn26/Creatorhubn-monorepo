@@ -5453,15 +5453,7 @@ export default function ProducerMediaPanel({
       value: foundationBlockingItems.length > 0 ? `Låst — ${foundationBlockingItems.length} mangler i grunnlaget` : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
       tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (pendingReviewCount > 0 || openMeetingFollowUpCount > 0 ? '#fcd34d' : '#86efac'),
     },
-  ]), [
-    foundationBlockingItems.length,
-    briefReadyCount,
-    materials.length,
-    openMeetingFollowUpCount,
-    pendingReviewCount,
-    shotCount,
-    storyboardCount,
-  ]);
+  ]), [briefReadyCount, materials.length, briefMissingItems.length, foundationBlockingItems.length, storyboardCount, shotCount, pendingReviewCount, openMeetingFollowUpCount]);
   const briefBlocksForwardFlow = foundationBlockingItems.length > 0;
 
   const openSurfaceWorkspace = useCallback((
@@ -6216,35 +6208,7 @@ export default function ProducerMediaPanel({
       { label: 'Leveranse', value: readFirstNonEmptyString(intakeDraft.deliverables, planningDraft.activationPlan.activation, 'Ikke satt') },
       { label: 'Målgruppe', value: readFirstNonEmptyString(intakeDraft.targetAudience, planningDraft.activationPlan.targetAudience, 'Ikke satt') },
     ];
-  }, [
-    activeWorkspace,
-    brandColorsDraft,
-    intakeDraft.deliverables,
-    intakeDraft.projectGoal,
-    intakeDraft.targetAudience,
-    linkedCalendarMaterialCount,
-    manuscriptSuggestions.length,
-    materials,
-    openMeetingFollowUpCount,
-    planningDraft.activationPlan.activation,
-    planningDraft.activationPlan.businessGoal,
-    planningDraft.activationPlan.targetAudience,
-    planningDraft.brandGuide.toneOfVoice,
-    planningDraft.brandGuide.visualStyle,
-    planningDraft.deliveryWorkflow.fileNamingConvention,
-    planningDraft.deliveryWorkflow.folderStructure,
-    planningDraft.deliveryWorkflow.versioningRule,
-    planningDraft.meetingWorkspace.sessionLabel,
-    planningDraft.meetingWorkspace.status,
-    primaryManuscript,
-    shotListRows.length,
-    shotLists.length,
-    storyboardFrameCount,
-    storyboardInspirations.length,
-    storyboardScenes.length,
-    totalShotCount,
-    uncoveredStoryboardSceneCount,
-  ]);
+  }, [activeWorkspace, brandColorsDraft, intakeDraft.deliverables, intakeDraft.projectGoal, intakeDraft.targetAudience, linkedCalendarMaterialCount, manuscriptSuggestions.length, materials, openMeetingFollowUpCount, planningDraft.activationPlan.activation, planningDraft.activationPlan.businessGoal, planningDraft.activationPlan.targetAudience, planningDraft.brandGuide.toneOfVoice, planningDraft.brandGuide.visualStyle, planningDraft.deliveryWorkflow.fileNamingConvention, planningDraft.deliveryWorkflow.folderStructure, planningDraft.deliveryWorkflow.versioningRule, planningDraft.meetingWorkspace.sessionLabel, planningDraft.meetingWorkspace.status, primaryManuscript, shotLists.length, storyboardFrameCount, storyboardInspirations.length, storyboardScenes.length, totalShotCount, uncoveredStoryboardSceneCount]);
   const nextSignalList = useMemo(
     () => clientContributionTasks.slice(0, 3),
     [clientContributionTasks],
@@ -6272,11 +6236,7 @@ export default function ProducerMediaPanel({
   );
   const logoTimingPreview = useMemo(
     () => getLogoTimingPreview(planningDraft.brandGuide),
-    [
-      planningDraft.brandGuide.logoEndSecond,
-      planningDraft.brandGuide.logoStartSecond,
-      planningDraft.brandGuide.logoTiming,
-    ],
+    [planningDraft.brandGuide],
   );
   const availableBrandPreviewFormats = useMemo<BrandPreviewFormat[]>(() => {
     const formats = Array.from(
@@ -7156,50 +7116,7 @@ export default function ProducerMediaPanel({
         },
       ],
     };
-  }, [
-    activeWorkspace,
-    applyContributionTask,
-    brandGuideReadyCount,
-    brandPackTemplate,
-    briefBlocksForwardFlow,
-    connectedRequiredAccountCount,
-    foundationBlockingItems,
-    briefMissingItems,
-    canEditClientInput,
-    clientGroundingRequests,
-    clientContributionTasks.length,
-    deliveryWorkspaceAssets.googleArtifacts,
-    deliveryWorkspaceAssets.latestPackage,
-    deliveryWorkspaceAssets.legalAgreements,
-    deliveryWorkspaceAssets.workspaceFiles.length,
-    isClientReviewerMode,
-    legalAgreementPendingCount,
-    linkedCalendarMaterialCount,
-    linkedShotListMaterialCount,
-    nextSignalList,
-    onOpenManuscript,
-    onOpenShotList,
-    onOpenStoryboard,
-    onPrepareShotListReview,
-    onPrepareStoryboardReview,
-    primaryStoryboardFocus,
-    openSurfaceWorkspace,
-    parsedBrandColors,
-    parsedBrandDos,
-    parsedBrandDonts,
-    parsedBrandFonts,
-    planningDraft.accountAccess.revokePlan,
-    pendingReviewCount,
-    pendingRequiredAccountCount,
-    primaryLegalAgreement,
-    primaryLegalAgreementUrl,
-    referenceMaterialCount,
-    requiredAccountEntries,
-    storyboardPreviewTiles,
-    workflowOpenLabels.manuscript,
-    workflowOpenLabels.shotList,
-    workflowOpenLabels.storyboard,
-  ]);
+  }, [briefBlocksForwardFlow, activeWorkspace, deliveryWorkspaceAssets.latestPackage, deliveryWorkspaceAssets.workspaceFiles.length, deliveryWorkspaceAssets.legalAgreements, legalAgreementPendingCount, primaryLegalAgreement, primaryLegalAgreementUrl, foundationBlockingItems, clientGroundingRequests, recommendedBriefStep, openSurfaceWorkspace, canEditClientInput, pendingReviewCount, storyboardPreviewTiles, workflowOpenLabels.storyboard, workflowOpenLabels.shotList, workflowOpenLabels.manuscript, isClientReviewerMode, nextSignalList, onPrepareStoryboardReview, onPrepareShotListReview, onOpenStoryboard, primaryStoryboardFocus, onOpenShotList, onOpenManuscript, applyContributionTask, brandGuideReadyCount, parsedBrandColors, parsedBrandFonts, parsedBrandDos, parsedBrandDonts, materials, brandPackTemplate, applyMaterialTemplate, requiredAccountEntries, connectedRequiredAccountCount, pendingRequiredAccountCount, planningDraft.accountAccess.revokePlan, clientContributionTasks.length, linkedCalendarMaterialCount, linkedShotListMaterialCount, referenceMaterialCount]);
   const canManageWorkspaceShell = canEditClientInput && !isClientReviewerMode;
   const showClientDashboard = isClientPortalView || isClientReviewerMode;
   const pendingClientReviews = useMemo(

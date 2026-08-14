@@ -1,53 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Divider,
-  IconButton,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  CalendarMonthOutlined as CalendarMonthOutlinedIcon,
-  CloudDoneOutlined as CloudDoneOutlinedIcon,
-  CloudSyncOutlined as CloudSyncOutlinedIcon,
-  HubOutlined as HubOutlinedIcon,
-  LaunchOutlined as LaunchOutlinedIcon,
-  LinkOffOutlined as LinkOffOutlinedIcon,
-  PersonAddAlt1Outlined as PersonAddAlt1OutlinedIcon,
-  PersonSearchOutlined as PersonSearchOutlinedIcon,
-  VideoCallOutlined as VideoCallOutlinedIcon,
-} from '@mui/icons-material';
+import { Alert, Box, Button, Chip, Divider, IconButton, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { CalendarMonthOutlined as CalendarMonthOutlinedIcon, CloudSyncOutlined as CloudSyncOutlinedIcon, HubOutlined as HubOutlinedIcon, LaunchOutlined as LaunchOutlinedIcon, PersonAddAlt1Outlined as PersonAddAlt1OutlinedIcon, PersonSearchOutlined as PersonSearchOutlinedIcon, VideoCallOutlined as VideoCallOutlinedIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
-import type {
-  CastingProject,
-  ProducerClientIntake,
-  ProducerClientMaterial,
-  ProducerProjectPlanning,
-  ProducerWorkspaceSurfaceKey,
-  RoleRoomGoogleArtifactRef,
-  RoleRoomGoogleConnection,
-  RoleRoomGooglePersonContact,
-  RoleRoomGoogleProjectBinding,
-  ShotList,
-} from '../../models/casting';
-import {
-  googleWorkspaceApi,
-  type RoleRoomGoogleStatusResponse,
-} from '../../services/castingApiService';
+import type { CastingProject, ProducerClientIntake, ProducerClientMaterial, ProducerProjectPlanning, ProducerWorkspaceSurfaceKey, RoleRoomGoogleArtifactRef, RoleRoomGoogleConnection, RoleRoomGooglePersonContact, RoleRoomGoogleProjectBinding, ShotList } from '../../models/casting';
+import { googleWorkspaceApi, type RoleRoomGoogleStatusResponse } from '../../services/castingApiService';
 import { useProjectProductionEstimate } from '../../hooks/useProjectProductionEstimate';
 import { useProducerReviews } from '../../hooks/useProducerReviews';
-import {
-  buildProducerGoogleCalendarEvents,
-  buildProducerGoogleGeneratedArtifacts,
-  buildProducerGoogleMeetSession,
-  collectRoleRoomGoogleProjectFileIds,
-  getProducerWorkspaceSurfaceForGoogleFolder,
-} from '../../utils/producerGoogleWorkspace';
+import { buildProducerGoogleCalendarEvents, buildProducerGoogleGeneratedArtifacts, buildProducerGoogleMeetSession, collectRoleRoomGoogleProjectFileIds, getProducerWorkspaceSurfaceForGoogleFolder } from '../../utils/producerGoogleWorkspace';
 import type { ProjectFileRecord } from '../../utils/projectFiles';
 import { getRoleRoomReturnPath } from '../../utils/runtime';
 import { describeProducerError, isTransientProducerError } from '../../utils/producerErrorMessage';
@@ -68,7 +27,7 @@ interface ProducerGoogleWorkspacePanelProps {
   onGoogleContactImported?: (contact: RoleRoomGooglePersonContact) => Promise<void>;
 }
 
-const CONNECTION_STATE_LABELS: Record<string, string> = {
+const _CONNECTION_STATE_LABELS: Record<string, string> = {
   disconnected: 'Ikke koblet',
   connected: 'Koblet',
   expired: 'Utløpt',
@@ -135,10 +94,10 @@ export default function ProducerGoogleWorkspacePanel({
 }: ProducerGoogleWorkspacePanelProps) {
   const { enqueueSnackbar } = useSnackbar();
   const [googleStatus, setGoogleStatus] = useState<RoleRoomGoogleStatusResponse | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [, setLoadingStatus] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [autoBootstrapFailed, setAutoBootstrapFailed] = useState(false);
+  const [, setAutoBootstrapFailed] = useState(false);
   const [peopleQuery, setPeopleQuery] = useState('');
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleResults, setPeopleResults] = useState<RoleRoomGooglePersonContact[]>([]);
@@ -333,7 +292,7 @@ export default function ProducerGoogleWorkspacePanel({
     }
   }, [enqueueSnackbar, loadGoogleStatus]);
 
-  const handleStartGoogleLink = useCallback(async () => {
+  const _handleStartGoogleLink = useCallback(async () => {
     try {
       setActionKey('connect');
       const response = await googleWorkspaceApi.startOauth({
@@ -355,7 +314,7 @@ export default function ProducerGoogleWorkspacePanel({
     }
   }, [enqueueSnackbar, intake.contactEmail, project.clientEmail, projectId]);
 
-  const handleCreateBinding = useCallback(async () => {
+  const _handleCreateBinding = useCallback(async () => {
     await runAction(
       'binding',
         async () => {
@@ -365,7 +324,7 @@ export default function ProducerGoogleWorkspacePanel({
     );
   }, [binding, projectId, runAction]);
 
-  const handleDisconnect = useCallback(async () => {
+  const _handleDisconnect = useCallback(async () => {
     await runAction(
       'disconnect',
       async () => {

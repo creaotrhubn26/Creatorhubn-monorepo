@@ -21,10 +21,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Divider, IconButton, MenuItem, Select, Stack, TextField, Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, IconButton, MenuItem, Select, Stack, Typography } from '@mui/material';
 import AnalyticsOutlinedIcon from '@mui/icons-material/AnalyticsOutlined';
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
@@ -35,7 +32,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+
 import HealthAndSafetyOutlinedIcon from '@mui/icons-material/HealthAndSafetyOutlined';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 

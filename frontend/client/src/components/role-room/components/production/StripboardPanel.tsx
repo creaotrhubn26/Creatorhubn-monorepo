@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StripboardPanel.tsx  (refactored)
  * Visual shooting schedule with drag-and-drop scene organisation.
@@ -18,55 +17,9 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, Fragment, type FC, type DragEvent, type MouseEvent } from 'react';
-import {
-  Box, Paper, Typography, Button, IconButton, Chip,
-  Grid, Divider, Tooltip, Alert,
-  Tabs, Tab, Menu, MenuItem,
-  Collapse, LinearProgress, useTheme, alpha,
-  Stack, Badge,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  HelpOutline as HelpIcon,
-  Event as EventIcon,
-  Place as PlaceIcon,
-  Person as PersonIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Celebration as CelebrationIcon,
-  CalendarMonth as CalendarIcon,
-  SwapVert as SwapVertIcon,
-  Download as DownloadIcon,
-  Upload as UploadIcon,
-  Movie as MovieIcon,
-  WbSunny as DayIcon,
-  NightsStay as NightIcon,
-  Home as IntIcon,
-  Landscape as ExtIcon,
-  Print as PrintIcon,
-  ViewList as ListViewIcon,
-  ViewModule as BoardViewIcon,
-  MoreVert as MoreIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
-  CompareArrows as CompareArrowsIcon,
-  Speed as SpeedIcon,
-  Groups as GroupsIcon,
-  Category as CategoryIcon,
-  Timeline as TimelineIcon,
-  TrendingUp as TrendingUpIcon,
-  ZoomOutMap as ZoomOutMapIcon,
-  ZoomInMap as ZoomInMapIcon,
-  Autorenew as AutorenewIcon,
-  PlaylistAddCheck as PlaylistAddCheckIcon,
-  Theaters as TheatersIcon,
-  Description as DescriptionIcon,
-} from '@mui/icons-material';
-import {
-  productionWorkflowService,
-  type StripboardStrip,
-} from '../../services/productionWorkflowService';
+import { Box, Paper, Typography, Button, IconButton, Chip, Grid, Divider, Tooltip, Tabs, Tab, Menu, MenuItem, Collapse, LinearProgress, useTheme, alpha, Stack, Badge } from '@mui/material';
+import { Add as AddIcon, Delete as DeleteIcon, HelpOutline as HelpIcon, Event as EventIcon, Place as PlaceIcon, Person as PersonIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Celebration as CelebrationIcon, CalendarMonth as CalendarIcon, SwapVert as SwapVertIcon, Download as DownloadIcon, Upload as UploadIcon, Movie as MovieIcon, WbSunny as DayIcon, NightsStay as NightIcon, Home as IntIcon, Landscape as ExtIcon, Print as PrintIcon, ViewList as ListViewIcon, ViewModule as BoardViewIcon, MoreVert as MoreIcon, Visibility as VisibilityIcon, VisibilityOff as VisibilityOffIcon, CompareArrows as CompareArrowsIcon, Speed as SpeedIcon, Groups as GroupsIcon, Category as CategoryIcon, Timeline as TimelineIcon, TrendingUp as TrendingUpIcon, ZoomOutMap as ZoomOutMapIcon, ZoomInMap as ZoomInMapIcon, Autorenew as AutorenewIcon, PlaylistAddCheck as PlaylistAddCheckIcon, Theaters as TheatersIcon, Description as DescriptionIcon } from '@mui/icons-material';
+import { productionWorkflowService, type StripboardStrip } from '../../services/productionWorkflowService';
 
 import type { ViewMode, GroupBy, StripsByDay, LocationGroup } from './stripboard.types';
 import { STRIP_COLORS } from './stripboard.constants';

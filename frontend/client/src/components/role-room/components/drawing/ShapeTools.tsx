@@ -9,31 +9,9 @@
  * - Shape manipulation after creation
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import {
-  Box,
-  IconButton,
-  Stack,
-  Tooltip,
-  Popover,
-  Typography,
-  Slider,
-  ToggleButtonGroup,
-  ToggleButton,
-  Divider,
-} from '@mui/material';
-import {
-  CropSquare,
-  RadioButtonUnchecked,
-  Remove,
-  ArrowRightAlt,
-  ChangeHistory,
-  StarBorder,
-  Hexagon,
-  FormatColorFill,
-  BorderColor,
-  LineWeight,
-} from '@mui/icons-material';
+import React, { useState } from 'react';
+import { Box, IconButton, Tooltip, Popover, Typography, Slider, Divider } from '@mui/material';
+import { CropSquare, RadioButtonUnchecked, Remove, ArrowRightAlt, ChangeHistory, StarBorder, Hexagon, FormatColorFill, BorderColor } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // =============================================================================

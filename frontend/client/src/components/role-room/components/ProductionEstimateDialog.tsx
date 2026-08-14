@@ -1,33 +1,6 @@
-// @ts-nocheck
 import React, { useMemo } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Box,
-  Typography,
-  Paper,
-  Stack,
-  Chip,
-  LinearProgress,
-  Divider,
-  Alert,
-  Card,
-  CardContent,
-  Grid,
-} from '@mui/material';
-import {
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  People as PeopleIcon,
-  Schedule as ScheduleIcon,
-  Videocam as VideocamIcon,
-  Lightbulb as LightbulbIcon,
-  Mic as MicIcon,
-} from '@mui/icons-material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Paper, Stack, Chip, LinearProgress, Divider, Alert, Card, CardContent, Grid } from '@mui/material';
+import { Warning as WarningIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon, People as PeopleIcon, Schedule as ScheduleIcon, Videocam as VideocamIcon } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon, TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
 import type { SceneBreakdown, ShotList } from '../models/casting';
 

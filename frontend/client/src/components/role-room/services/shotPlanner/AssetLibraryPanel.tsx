@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Asset Library Panel
  * 
@@ -7,43 +6,10 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  TextField,
-  InputAdornment,
-  Tabs,
-  Tab,
-  Grid,
-  Card,
-  CardContent,
-  CardActionArea,
-  Tooltip,
-  Chip,
-  IconButton,
-  Collapse,
-} from '@mui/material';
-import {
-  Search as SearchIcon,
-  Chair as FurnitureIcon,
-  Person as ActorIcon,
-  Videocam as CameraIcon,
-  DirectionsCar as VehicleIcon,
-  Park as NatureIcon,
-  Lightbulb as PropIcon,
-  Build as EquipmentIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-} from '@mui/icons-material';
-import {
-  ASSET_LIBRARY,
-  ALL_ASSETS,
-  searchAssets,
-  getAssetCategories,
-  ASSET_ICONS,
-} from './assetLibrary';
-import { generateThumbnail, getCachedThumbnail, preGenerateAllThumbnails } from './pixiThumbnailer';
+import { Box, Typography, Paper, TextField, InputAdornment, Tabs, Tab, Grid, Card, CardContent, CardActionArea, Collapse } from '@mui/material';
+import { Search as SearchIcon, Chair as FurnitureIcon, Person as ActorIcon, Videocam as CameraIcon, DirectionsCar as VehicleIcon, Park as NatureIcon, Lightbulb as PropIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon } from '@mui/icons-material';
+import { ASSET_LIBRARY, ALL_ASSETS } from './assetLibrary';
+import { getCachedThumbnail, preGenerateAllThumbnails } from './pixiThumbnailer';
 import type { Asset2DDefinition, AssetType } from './types';
 import { useShotPlannerStore } from './store';
 
@@ -207,7 +173,7 @@ interface AssetLibraryPanelProps {
 export const AssetLibraryPanel: React.FC<AssetLibraryPanelProps> = ({ onAssetAdd }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<AssetType | 'all'>('all');
-  const [thumbsLoading, setThumbsLoading] = useState(true);
+  const [, setThumbsLoading] = useState(true);
   
   const { addCamera, addActor, addProp, scene } = useShotPlannerStore();
   

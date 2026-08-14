@@ -14,40 +14,10 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  IconButton,
-  Stack,
-  Stepper,
-  Step,
-  StepLabel,
-  TextField,
-  Typography,
-} from '@mui/material';
-import {
-  Business as BusinessIcon,
-  CheckCircle as CheckIcon,
-  Close as CloseIcon,
-  Edit as EditIcon,
-  Language as WebIcon,
-  Place as PlaceIcon,
-} from '@mui/icons-material';
-import {
-  findCustomerLegalEntities,
-  type CustomerLegalEntityCandidate,
-} from '../../services/roleRoomAgentClaudeApi';
-import type {
-  RoleRoomAgentProducerBootstrapResult,
-} from '../../services/roleRoomAgentService';
+import { Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, Stepper, Step, StepLabel, TextField, Typography } from '@mui/material';
+import { Business as BusinessIcon, CheckCircle as CheckIcon, Close as CloseIcon, Edit as EditIcon, Language as WebIcon, Place as PlaceIcon } from '@mui/icons-material';
+import { findCustomerLegalEntities, type CustomerLegalEntityCandidate } from '../../services/roleRoomAgentClaudeApi';
+import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 
 interface CustomerEntityConfirmationDialogProps {
   open: boolean;
@@ -461,7 +431,7 @@ const CustomerEntityConfirmationDialog: React.FC<CustomerEntityConfirmationDialo
       </DialogTitle>
       <DialogContent dividers>
         <Stepper activeStep={stepIdx} alternativeLabel sx={{ mb: 2 }}>
-          {STEPS.map((s, i) => (
+          {STEPS.map((s, _i) => (
             <Step key={s.id}>
               <StepLabel
                 StepIconProps={{

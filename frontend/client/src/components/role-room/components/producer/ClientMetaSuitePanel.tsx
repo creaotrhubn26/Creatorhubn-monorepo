@@ -13,10 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
-  MenuItem, Select, Stack, TextField, Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, MenuItem, Select, Stack, TextField, Typography } from '@mui/material';
 import FacebookOutlinedIcon from '@mui/icons-material/FacebookOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -100,7 +97,7 @@ export default function ClientMetaSuitePanel({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setPixels(data.pixels ?? []);
-    } catch (err) {
+    } catch (_err) {
       // Stille — Meta returnerer 403 hvis app review ikke godkjent for ads_read
       setPixels([]);
     } finally {
@@ -174,7 +171,7 @@ export default function ClientMetaSuitePanel({
 
   useEffect(() => {
     loadAccounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   useEffect(() => {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileShootingDayView — on-set shooting day surface for
  * mobile + iPad. The hero use case for the production-team role:

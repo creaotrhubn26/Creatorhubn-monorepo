@@ -796,8 +796,8 @@ export function AdminSettingsPanel(): React.ReactElement {
     }
   };
 
-  const newSettingKey = React.useRef('');
-  const newSettingValue = React.useRef('{}');
+  const _newSettingKey = React.useRef('');
+  const _newSettingValue = React.useRef('{}');
   const [newKeyText, setNewKeyText] = React.useState('');
   const [newValueText, setNewValueText] = React.useState('{}');
   const [newDescText, setNewDescText] = React.useState('');

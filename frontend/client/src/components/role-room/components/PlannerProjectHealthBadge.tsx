@@ -8,13 +8,8 @@
  * «om N dager», muted ≥0.78.
  */
 import { useMemo } from 'react';
-import { Box, Stack, Typography } from '@mui/material';
-import {
-  CheckCircleOutline as OnTrackIcon,
-  WarningAmberOutlined as AttentionIcon,
-  HourglassEmptyOutlined as WaitingIcon,
-  ErrorOutline as AtRiskIcon,
-} from '@mui/icons-material';
+import { Stack, Typography } from '@mui/material';
+import { CheckCircleOutline as OnTrackIcon, WarningAmberOutlined as AttentionIcon, HourglassEmptyOutlined as WaitingIcon, ErrorOutline as AtRiskIcon } from '@mui/icons-material';
 import type { CastingProject, ProducerPlanningPhase } from '../models/casting';
 
 type Health = 'on_track' | 'needs_attention' | 'waiting' | 'at_risk';
@@ -67,7 +62,7 @@ export default function PlannerProjectHealthBadge({ project }: { project: Castin
       .filter((p) => p.status !== 'completed' && p.endDate)
       .sort((a, b) => new Date(a.endDate!).getTime() - new Date(b.endDate!).getTime())[0] ?? null;
     return { health, phase: activePhase?.phase ?? null, next };
-  }, [project, now]);
+  }, [project]);
 
   // Ingen produsent-planleggingsdata → ikke vis støy.
   if (!project.producerPlanning?.phasePlan?.length && !project.producerWorkflowMeta && !project.producerWorkflowStatus) {

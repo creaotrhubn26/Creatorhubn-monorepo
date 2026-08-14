@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * DemoAnimaticPage — selvstendig demo-side for animatic + SFX-systemet.
  * 6 placeholder-frames med tekst som trigger SFX-detector (smell, regn,

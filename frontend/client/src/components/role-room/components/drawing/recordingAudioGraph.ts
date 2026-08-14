@@ -76,17 +76,17 @@ export function createRecordingAudioGraph(
   }
 
   if (sources.length === 0) {
-    try { context.close(); } catch {}
+    try { context.close(); } catch { /* empty */ }
     return null;
   }
 
   const cleanup = () => {
     for (const s of sources) {
-      try { s.disconnect(); } catch {}
+      try { s.disconnect(); } catch { /* empty */ }
     }
-    try { audibleGain.disconnect(); } catch {}
-    try { recordGain.disconnect(); } catch {}
-    try { context.close(); } catch {}
+    try { audibleGain.disconnect(); } catch { /* empty */ }
+    try { recordGain.disconnect(); } catch { /* empty */ }
+    try { context.close(); } catch { /* empty */ }
   };
 
   return {

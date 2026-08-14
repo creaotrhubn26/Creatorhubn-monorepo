@@ -12,37 +12,9 @@
  * - Double tap to zoom to fit
  */
 
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Stack,
-  Switch,
-  Divider,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemSecondaryAction,
-  Chip,
-} from '@mui/material';
-import {
-  Undo,
-  Redo,
-  ZoomIn,
-  ZoomOut,
-  Rotate90DegreesCw,
-  PanTool,
-  ContentCopy,
-  ContentPaste,
-  ContentCut,
-  TouchApp,
-  Gesture,
-  FitScreen,
-  Settings,
-} from '@mui/icons-material';
+import React, { useCallback, useEffect, useRef, useMemo } from 'react';
+import { Box, Paper, Typography, Stack, Switch, List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction, Chip } from '@mui/material';
+import { Undo, Redo, ZoomIn, Rotate90DegreesCw, PanTool, ContentCopy, ContentPaste, TouchApp, Gesture, FitScreen } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // =============================================================================
@@ -217,7 +189,7 @@ export const DEFAULT_GESTURE_SETTINGS: GestureSettings = {
 // Styled Components
 // =============================================================================
 
-const GestureContainer = styled(Paper)(({ theme }) => ({
+const GestureContainer = styled(Paper)(({ _theme }) => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
@@ -226,7 +198,7 @@ const GestureContainer = styled(Paper)(({ theme }) => ({
   minWidth: 280,
 }));
 
-const GestureIcon = styled(Box, {
+const _GestureIcon = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'fingers',
 })<{ fingers: number }>(({ fingers }) => ({
   position: 'relative',
@@ -268,7 +240,7 @@ export function useGestureHandler({
   const initialCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef<number>(0);
-  const lastTapCountRef = useRef<number>(0);
+  const _lastTapCountRef = useRef<number>(0);
   
   const getBinding = useCallback((gesture: GestureType): GestureBinding | undefined => {
     return settings.bindings.find(b => b.gesture === gesture && b.enabled);
@@ -412,7 +384,7 @@ export function useGestureHandler({
       if (remainingTouches === 0 && wasMultiTouch) {
         const fingerCount = touchesRef.current.length;
         const now = Date.now();
-        const timeSinceLastTap = now - lastTapTimeRef.current;
+        const _timeSinceLastTap = now - lastTapTimeRef.current;
 
         // Check if it was a quick tap (not a drag)
         const endTouch = e.changedTouches[0];
@@ -477,7 +449,7 @@ export function useGestureHandler({
 export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
   settings,
   onSettingsChange,
-  onGestureAction,
+  _onGestureAction,
 }) => {
   const updateSettings = useCallback((updates: Partial<GestureSettings>) => {
     onSettingsChange({ ...settings, ...updates });

@@ -23,56 +23,11 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React, { useState, useCallback, useMemo } from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  Card,
-  CardContent,
-  Chip,
-  TextField,
-  IconButton,
-  Tooltip,
-  Button,
-  MenuItem,
-  Divider,
-  LinearProgress,
-} from '@mui/material';
-import {
-  CalendarMonth as CalendarIcon,
-  LocationOn as LocationIcon,
-  Group as GroupIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  PlayCircle as PlayIcon,
-  CheckCircle as CheckIcon,
-  Replay as ReplayIcon,
-  RadioButtonUnchecked as PendingIcon,
-  Movie as VideoIcon,
-  ChevronRight as ChevronRightIcon,
-  Edit as EditIcon,
-  PersonOutline as ProfileIcon,
-} from '@mui/icons-material';
-import {
-  buildDemoRehearsal,
-  type Rehearsal,
-  type RehearsalFocusArea,
-  type RehearsalOutcome,
-  type RehearsalStatus,
-} from './rehearsalTypes';
-import {
-  buildDemoChoreography,
-  formatTime,
-  getSegmentMeta,
-  type Choreography,
-  type Segment,
-} from './choreographyTypes';
-import {
-  DEMO_DANCERS,
-  DEMO_FORMATIONS,
-  type Dancer,
-  type Formation,
-} from './formationTypes';
+import { Box, Stack, Typography, Card, CardContent, Chip, TextField, IconButton, Tooltip, Button, MenuItem, Divider, LinearProgress } from '@mui/material';
+import { CalendarMonth as CalendarIcon, LocationOn as LocationIcon, Group as GroupIcon, Add as AddIcon, Delete as DeleteIcon, CheckCircle as CheckIcon, Replay as ReplayIcon, RadioButtonUnchecked as PendingIcon, Movie as VideoIcon, Edit as EditIcon, PersonOutline as ProfileIcon } from '@mui/icons-material';
+import { buildDemoRehearsal, type Rehearsal, type RehearsalFocusArea, type RehearsalOutcome, type RehearsalStatus } from './rehearsalTypes';
+import { buildDemoChoreography, formatTime, getSegmentMeta, type Choreography, type Segment } from './choreographyTypes';
+import { DEMO_DANCERS, DEMO_FORMATIONS, type Dancer, type Formation } from './formationTypes';
 
 // ─── Props ──────────────────────────────────────────────────────────────
 

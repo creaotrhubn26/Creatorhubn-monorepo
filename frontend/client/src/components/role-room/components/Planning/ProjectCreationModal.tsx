@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 /**
  * CreatorHub Norge - Project Creation Modal
  * The modal is used in The Role Room for creating new projects and adapting the flow across professions.
@@ -1054,10 +1054,10 @@ export default function ProjectCreationWithMemoryCards({
   const { user, isLoading: authLoading } = useAuth();
 
   // Create auth headers for API requests
-  const auth = {
+  const auth = useMemo(() => ({
     ...authSessionService.getAuthHeadersSync(),
     'X-User-Email': user?.email || 'anonymous@example.com'
-  };
+  }), [user]);
   const { getCurrentUserProfession, professionConfigs, isLoading: professionsLoading, getProfessionDisplayName, getProfessionIcon } = useDynamicProfessions();
   const userProfession = user?.profession || profession || getCurrentUserProfession();
   const professionConfig = professionConfigs?.[userProfession];
@@ -1168,9 +1168,12 @@ export default function ProjectCreationWithMemoryCards({
   
   // Toast notification system
   const visualEditorContext = useVisualEditor() as ReturnType<typeof useVisualEditor> & { addNotification?: (notification: { title: string; message: string; type: string; read: boolean; duration: number }) => void };
-  const addNotification = visualEditorContext?.addNotification || ((notification: any) => {
-    console.log('Visual Editor context not available, ', notification);
-  });
+  const addNotification = useMemo(
+    () => visualEditorContext?.addNotification || ((notification: any) => {
+      console.log('Visual Editor context not available, ', notification);
+    }),
+    [visualEditorContext]
+  );
 
   // Toast helper functions
     const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info', _duration: number = 4000) => {
@@ -1442,7 +1445,7 @@ useEffect(() => {
       showInfoToast('User authenticated successfully', 2000);
       log.info('User authenticated', user.email || user.id);
   }
-}, [user, authLoading, log, showWarningToast, showInfoToast]);
+}, [user, authLoading, showWarningToast, showInfoToast]);
 
   // Feature system integration - component registration and usage tracking
   useEffect(() => {
@@ -1469,7 +1472,7 @@ useEffect(() => {
     if (!davinciIntegrationAccess.hasAccess) {
       log.warn('DaVinci Resolve integration feature not enabled', davinciIntegrationAccess.reason);
   }
-}, [features, userProfession, user, log]);
+}, [features, userProfession, user]);
 
   // Load profession-specific settings on mount
   useEffect(() => {
@@ -1520,7 +1523,7 @@ useEffect(() => {
         offEvent('user_joined', handleUserJoined);
       }
     };
-}, [isConnected, onEvent, offEvent, currentProject]);
+}, [isConnected, onEvent, offEvent, currentProject, showInfoToast]);
   
   const [memoryCardLabeling, setMemoryCardLabeling] = useState<LabelingKey>('ABCD');
   const [showScriptManager, setShowScriptManager] = useState<boolean>(false);
@@ -1994,7 +1997,7 @@ useEffect(() => {
       }
     };
     createSplitSheet();
-  }, [currentProject?.id, projectData.enableSplitSheet, projectData.projectName, projectData.description, projectData.collaborators, projectData.splitSheetData, mapCollaboratorsToContributors, showSuccessToast, showErrorToast]);
+  }, [currentProject.id, projectData.enableSplitSheet, projectData.projectName, projectData.description, projectData.collaborators, projectData.splitSheetData, mapCollaboratorsToContributors, showSuccessToast, showErrorToast, auth]);
   
   // Lead import modal states
   const [showLeadImport, setShowLeadImport] = useState(false);
@@ -2078,7 +2081,7 @@ useEffect(() => {
     if (initialData) {
       showInfoToast(`Project pre-filled from submission: ${initialData.clientName}`, 3000);
     }
-  }, [initialData]);
+  }, [initialData, showInfoToast]);
 
   const buildEventPayload = useCallback(() => {
     const start = projectData?.eventDate || (projectData?.eventDates ? Object.values(projectData.eventDates)[0] : '');

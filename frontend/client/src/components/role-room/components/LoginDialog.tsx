@@ -1783,7 +1783,7 @@ interface ProfessionPickerMeta {
   beta?: boolean;
 }
 
-const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
+const _PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
   production:       { label: 'Film/video',       glyph: '🎬', accent: '#60a5fa' },
   photographer:     { label: 'Fotograf',         glyph: '📷', accent: 'var(--role-cyan, #22d3ee)' },
   content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#a855f7' },
@@ -1798,7 +1798,7 @@ const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
 // persona-velgeren (production_team / content_producer / education_institution).
 // Det forhindrer dobbel-presentasjon av "produksjonsteam" og "innholds-
 // produsent" som allerede er kjernen av onboarding-flyten over.
-const LANDING_PROFESSION_PICKER_MODES: readonly ProfessionMode[] = [
+const _LANDING_PROFESSION_PICKER_MODES: readonly ProfessionMode[] = [
   'photographer',
   'content_creator',
   'dance_studio',
@@ -2297,7 +2297,7 @@ export default function LoginDialog({
       setTimeout(() => { setTestimonialIdx(idx); setTestimonialVisible(true); }, 300);
     }
     setBadgeKey(k => k + 1);
-  }, [selectedRole]);
+  }, [activeTestimonials, selectedRole]);
 
   /* ── cycle testimonials every 6 s when no role selected ── */
   useEffect(() => {
@@ -2310,7 +2310,7 @@ export default function LoginDialog({
       }, 300);
     }, 6000);
     return () => clearInterval(timer);
-  }, [isLandingPage, selectedRole]);
+  }, [activeTestimonials.length, isLandingPage, selectedRole]);
 
   /* ── CTA button label ── */
   const ctaButtonLabel = ROLE_ROOM_LANDING_CONFIG.login.ctaButtonLabel;
@@ -2339,7 +2339,7 @@ export default function LoginDialog({
       }, 350);
     }, 3500);
     return () => clearInterval(timer);
-  }, [isLandingPage]);
+  }, [activeUseCases.length, isLandingPage]);
 
   /* reset on close */
   useEffect(() => {
@@ -3013,25 +3013,7 @@ export default function LoginDialog({
     } finally {
       setCommercialPaymentPending(false);
     }
-  }, [
-    buildCommercialSetupPayload,
-    commercialPaymentPending,
-    commercialSetupSignature,
-    contentProducerStep,
-    effectiveLoginPersona,
-    email,
-    loading,
-    markCommercialPaymentComplete,
-    organizationCompanyName,
-    organizationNumber,
-    organizationValidatedNumber,
-    paidCommercialSetupSignature,
-    persistCommercialSetup,
-    productionTeamMembers,
-    productionTeamStep,
-    selectedRole,
-    validateCommercialSetup,
-  ]);
+  }, [buildCommercialSetupPayload, commercialPaymentPending, commercialSetupSignature, contentProducerStep, effectiveLoginPersona, email, loading, loginPersona, markCommercialPaymentComplete, organizationCompanyName, organizationNumber, organizationValidatedNumber, paidCommercialSetupSignature, persistCommercialSetup, productionTeamMembers, productionTeamStep, selectedRole, validateCommercialSetup]);
 
   const handleEducationInquirySubmit = useCallback(async () => {
     if (loading) return;
@@ -3507,7 +3489,7 @@ export default function LoginDialog({
     if (index === 0 && field === 'email') {
       setEmail(value);
     }
-  }, []);
+  }, [selectedRole]);
 
   const addProductionTeamSeat = useCallback(() => {
     setProductionTeamMembers((current) => [...current, createBlankTeamMember()]);

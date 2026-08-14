@@ -109,7 +109,7 @@ export default function SelfTapePreviewModal({
       setLocalDeadline(meta?.deadline_at ?? null);
       setDeadlineDraft('');
     }
-  }, [selftape?.submission_id]);
+  }, [selftape, selftape.submission_id]);
 
   if (!selftape) return null;
 

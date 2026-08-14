@@ -15,24 +15,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Collapse,
-  Container,
-  IconButton,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, Collapse, Container, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
@@ -40,20 +23,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DOMPurify from 'dompurify';
 import { motion } from 'framer-motion';
 import { applyLocale, DEFAULT_LOCALE, type Locale } from './blockSchema';
-import type {
-  Block,
-  ComparisonBlock,
-  ComparisonSupport,
-  CtaBlock,
-  FaqBlock,
-  FeatureListBlock,
-  HeroBlock,
-  ImageBlock,
-  InfographicBlock,
-  RelatedStudiesBlock,
-  RichTextBlock,
-  UsageExamplesBlock,
-} from './blockSchema';
+import type { Block, ComparisonBlock, ComparisonSupport, CtaBlock, FaqBlock, FeatureListBlock, HeroBlock, ImageBlock, InfographicBlock, RelatedStudiesBlock, RichTextBlock, UsageExamplesBlock } from './blockSchema';
 
 interface BlockRendererProps {
   blocks: Block[];

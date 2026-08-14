@@ -1,34 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stack,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  Checkbox,
-  FormControlLabel,
-  Divider,
-  CircularProgress,
-  Alert,
-  Chip,
-} from '@mui/material';
-import {
-  Download as DownloadIcon,
-  PictureAsPdf as PdfIcon,
-  Print as PrintIcon,
-  Settings as SettingsIcon,
-  Preview as PreviewIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, Button, Dialog, DialogTitle, DialogContent, DialogActions, Stack, FormControl, InputLabel, Select, MenuItem, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, Chip } from '@mui/material';
+import { Download as DownloadIcon, PictureAsPdf as PdfIcon, Print as PrintIcon, Preview as PreviewIcon } from '@mui/icons-material';
 
 // Fountain element types
 type FountainElement = 
@@ -76,8 +48,8 @@ interface PDFSettings {
 }
 
 // Fountain parsing (simplified version)
-const SCENE_HEADING_PATTERN = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[\.\s]/i;
-const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/;
+const SCENE_HEADING_PATTERN = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i;
+const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/;
 const TRANSITION_PATTERN = /^[A-Z\s]+:$/;
 const CENTERED_PATTERN = /^>.*<$/;
 const PARENTHETICAL_PATTERN = /^\(.*\)$/;

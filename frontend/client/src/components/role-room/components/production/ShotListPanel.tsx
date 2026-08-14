@@ -318,7 +318,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
       refresh();
       onUpdate?.();
     },
-    [activeSceneStoryboardScene, onUpdate, projectId, refresh, storyboardLibraryItems],
+    [onUpdate, projectId, refresh, storyboardLibraryItems],
   );
 
   // ── Handler: Person drop → assign to shot list ────────────────────────────

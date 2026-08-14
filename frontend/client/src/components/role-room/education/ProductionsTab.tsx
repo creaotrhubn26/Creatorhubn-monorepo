@@ -139,7 +139,7 @@ export function ProductionsTab({ onNavigate, onAddAssignment }: { onNavigate?: (
       for (const a of selectedTmpl.assignments) {
         const dueAt = new Date(Date.now() + a.dueInDays * 86_400_000).toISOString();
         try {
-          // eslint-disable-next-line no-await-in-loop -- sekvensiell så-ing holder rekkefølgen
+           
           await educationAssignmentsService.createAssignment({
             title: a.title, productionId: prod.id, cohortId: tmplCohortId || null,
             brief: a.brief, learningGoals: a.learningGoals, dueAt, status: 'published',

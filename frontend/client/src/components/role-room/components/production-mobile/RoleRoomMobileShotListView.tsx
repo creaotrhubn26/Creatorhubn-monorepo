@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 /**
  * RoleRoomMobileShotListView — compact shot list for mobile + iPad.
  *
@@ -80,7 +80,7 @@ export const RoleRoomMobileShotListView: React.FC<RoleRoomMobileShotListViewProp
     closeShotList();
   };
 
-  const shots = openShotList?.shots ?? [];
+  const shots = useMemo(() => openShotList?.shots ?? [], [openShotList]);
   const sceneIds = useMemo(
     () => Array.from(new Set(shots.map((s: any) => s.sceneId).filter(Boolean))),
     [shots],

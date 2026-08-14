@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Typography, Paper, Select, MenuItem, FormControl, InputLabel, Slider, Button, IconButton, Tooltip, Divider, Chip, Stack } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
-import { Videocam as CameraIcon, Delete as DeleteIcon, Save as SaveIcon, CheckCircle as CheckIcon, Warning as WarningIcon, Visibility as VisibilityIcon, VisibilityOff as VisibilityOffIcon, Lock as LockIcon, LockOpen as UnlockIcon, ContentCopy as DuplicateIcon } from "@mui/icons-material";
+import { Videocam as CameraIcon, Delete as DeleteIcon, Save as SaveIcon, CheckCircle as CheckIcon, Warning as WarningIcon, Visibility as VisibilityIcon, VisibilityOff as VisibilityOffIcon, Lock as LockIcon, LockOpen as UnlockIcon } from "@mui/icons-material";
 import { useShotPlannerStore, useSelectedCamera } from "./store";
 import { SHOT_TYPE_INFO, CAMERA_COLORS, LENS_FOV_MAP, type Camera2D, type ShotType, type LensType, type CameraHeight, type CameraAngleType, type CameraMovement } from "./types";
 
@@ -43,7 +43,7 @@ interface CameraSettingsPanelProps {
 }
 
 export const CameraSettingsPanel: React.FC<CameraSettingsPanelProps> = ({
-  onSave,
+  _onSave,
   onDelete,
 }) => {
   const selectedCamera = useSelectedCamera();

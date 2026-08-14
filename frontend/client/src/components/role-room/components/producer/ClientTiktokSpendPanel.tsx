@@ -63,7 +63,7 @@ export default function ClientTiktokSpendPanel({
       .catch(() => {});
   }, [configId, advertiserId]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -97,9 +97,9 @@ export default function ClientTiktokSpendPanel({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
-  useEffect(() => { if (configId) load(); /* eslint-disable-next-line */ }, [configId]);
+  useEffect(() => { if (configId) load();   }, [configId, load]);
 
   // 7-dagers tendens
   const trendDiff = data ? (data.spendLast7d - (data.spendLast28d - data.spendLast7d) / 3) : 0;

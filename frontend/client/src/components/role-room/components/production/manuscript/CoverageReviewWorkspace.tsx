@@ -1,24 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import {
-  Box,
-  Button,
-  Chip,
-  Divider,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  CompareArrows as CompareIcon,
-  FactCheck as CoverageIcon,
-  Movie as MovieIcon,
-  PlayArrow as PlayIcon,
-  Send as SendIcon,
-  Theaters as ScriptIcon,
-  Visibility as VideoVillageIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
+import { Box, Button, Chip, Divider, Stack, TextField, Typography } from '@mui/material';
+import { CheckCircle as CheckCircleIcon, CompareArrows as CompareIcon, FactCheck as CoverageIcon, PlayArrow as PlayIcon, Send as SendIcon, Theaters as ScriptIcon, Visibility as VideoVillageIcon, Warning as WarningIcon } from '@mui/icons-material';
 
 import type { CastingShot, DialogueLine, SceneBreakdown } from '../../../models/casting';
 import type { LiveSetStatus, Take } from '..';

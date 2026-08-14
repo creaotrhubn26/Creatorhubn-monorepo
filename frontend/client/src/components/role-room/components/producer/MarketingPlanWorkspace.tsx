@@ -15,28 +15,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Box, Stack, Typography, Button, CircularProgress, Chip,
-  Table, TableBody, TableCell, TableHead, TableRow, TableContainer,
-  TextField, MenuItem, Tooltip,
-} from '@mui/material';
-import {
-  AutoAwesome as AutoAwesomeIcon,
-  TrendingUp as TrendingUpIcon,
-  CalendarMonth as CalendarMonthIcon,
-  RocketLaunch as RocketLaunchIcon,
-  Edit as EditIcon,
-  CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
-  Lightbulb as LightbulbIcon,
-  Block as BlockIcon,
-} from '@mui/icons-material';
-import roleRoomAgentService, {
-  type MarketingPlan,
-  type MarketingPlanPost,
-  type MarketingPlanPillar,
-  type PlanVersion,
-} from '../../services/roleRoomAgentService';
+import { Box, Stack, Typography, Button, CircularProgress, Chip, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, TextField, MenuItem, Tooltip } from '@mui/material';
+import { AutoAwesome as AutoAwesomeIcon, CalendarMonth as CalendarMonthIcon, RocketLaunch as RocketLaunchIcon, Edit as EditIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Lightbulb as LightbulbIcon, Block as BlockIcon } from '@mui/icons-material';
+import roleRoomAgentService, { type MarketingPlan, type MarketingPlanPost, type MarketingPlanPillar, type PlanVersion } from '../../services/roleRoomAgentService';
 import VersionPicker, { type VersionItem } from './VersionPicker';
 import PostEditDialog from './PostEditDialog';
 import MarketingPlanActivityFeed from './MarketingPlanActivityFeed';

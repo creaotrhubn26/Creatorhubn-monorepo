@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomDashboardPanel — main panel rendered inside UniversalDashboard
  *
@@ -18,19 +17,16 @@ import { useRoleRoomViewportMode } from './hooks/useRoleRoomViewportMode';
 import { useProducerNotifications } from './hooks/useProducerNotifications';
 import { useProducerReviews } from './hooks/useProducerReviews';
 import { useProducerTimeline } from './hooks/useProducerTimeline';
-import RoleRoomMobileTopBar, { MobileSyncStatus } from './components/RoleRoomMobileTopBar';
+import type { MobileSyncStatus } from './components/RoleRoomMobileTopBar';
+import RoleRoomMobileTopBar from './components/RoleRoomMobileTopBar';
 import { LeadgridNotificationBell } from '@/components/leadgrid/LeadgridNotificationBell';
 import { LeadgridNotificationPrefsDialog } from '@/components/leadgrid/LeadgridNotificationPrefsDialog';
-import RoleRoomTabRail, { type TabRailItem } from './components/ipad/RoleRoomTabRail';
-import RoleRoomBottomNav, {
-  type BottomNavItem,
-} from './components/mobile/RoleRoomBottomNav';
-import {
-  useEffectiveTabsForRole,
-  type SubTabValue,
-} from './hooks/useRoleNavConfig';
+import RoleRoomTabRail, {  } from './components/ipad/RoleRoomTabRail';
+import RoleRoomBottomNav, { type BottomNavItem } from './components/mobile/RoleRoomBottomNav';
+import { useEffectiveTabsForRole, type SubTabValue } from './hooks/useRoleNavConfig';
 import RoleRoomProjectSwitcher from './components/RoleRoomProjectSwitcher';
-import RoleRoomMobileInboxSheet, { InboxItem } from './components/RoleRoomMobileInboxSheet';
+import type { InboxItem } from './components/RoleRoomMobileInboxSheet';
+import RoleRoomMobileInboxSheet from './components/RoleRoomMobileInboxSheet';
 import RoleRoomMobileProfileSheet from './components/RoleRoomMobileProfileSheet';
 import RoleRoomMarketplaceModal from './components/RoleRoomMarketplaceModal';
 import ProjectTabAccessDialog from './components/ProjectTabAccessDialog';
@@ -57,68 +53,9 @@ import { executeSetupAgentTool } from './services/roleRoomSetupToolExecutor';
 import { validateAgentToolInput } from './services/roleRoomAgentToolSchemas';
 import { logAgentToolResult } from './services/roleRoomAgentClaudeApi';
 import { roleRoomAnalytics } from './services/roleRoomAnalytics';
-import {
-  readLastWorkspace,
-  saveLastWorkspace,
-  readRecentProjects,
-  pushRecentProject,
-} from './state/roleRoomWorkspacePersistence';
-import {
-  Box,
-  Card,
-  CardContent,
-  CardHeader,
-  Typography,
-  Button,
-  IconButton,
-  Chip,
-  Divider,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Tabs,
-  Tab,
-  Avatar,
-  AvatarGroup,
-  LinearProgress,
-  Alert,
-  Skeleton,
-  Tooltip,
-  Grid,
-  Badge,
-  Stack,
-  Paper,
-  Checkbox,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Sync as SyncIcon,
-  Person as PersonIcon,
-  Group as GroupIcon,
-  Tune as TuneIcon,
-  Movie as MovieIcon,
-  CalendarMonth as CalendarIcon,
-  TheaterComedy as TheaterIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
-  FolderOpen as FolderIcon,
-  Refresh as RefreshIcon,
-  LinkOff as LinkOffIcon,
-  Link as LinkIcon,
-  YouTube as YouTubeIcon,
-  AutoFixHigh as AutoFixHighIcon,
-  AccountCircle as AccountCircleIcon,
-  Paid as PaidIcon,
-  Instagram as InstagramIcon,
-} from '@mui/icons-material';
+import { readLastWorkspace, saveLastWorkspace, readRecentProjects, pushRecentProject } from './state/roleRoomWorkspacePersistence';
+import { Box, Card, CardContent, CardHeader, Typography, Button, IconButton, Chip, Divider, TextField, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, ListItemSecondaryAction, Tabs, Tab, Avatar, LinearProgress, Alert, Skeleton, Tooltip, Grid, Stack, Paper, Checkbox } from '@mui/material';
+import { Add as AddIcon, Sync as SyncIcon, Person as PersonIcon, Group as GroupIcon, Tune as TuneIcon, Movie as MovieIcon, CalendarMonth as CalendarIcon, TheaterComedy as TheaterIcon, Delete as DeleteIcon, Edit as EditIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, FolderOpen as FolderIcon, Refresh as RefreshIcon, Link as LinkIcon, YouTube as YouTubeIcon, AutoFixHigh as AutoFixHighIcon, AccountCircle as AccountCircleIcon, Paid as PaidIcon, Instagram as InstagramIcon } from '@mui/icons-material';
 import { getActiveProfessionMode, isDanceMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
@@ -127,40 +64,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { DanceWorkspace } from './dance';
 
-import {
-  useRoleRoomProjects,
-  useRoleRoomProject,
-  useCreateProject,
-  useDeleteProject,
-  useCastingRoles,
-  useCandidates,
-  useCrew,
-  useSchedules,
-  useProjectUserRoles,
-  useSyncProject,
-  useCreateCastingRole,
-  useAddCandidate,
-  useAddCrewMember,
-  useRoleRoomBootstrap,
-} from '../../hooks/useRoleRoom';
+import { useRoleRoomProjects, useRoleRoomProject, useCreateProject, useDeleteProject, useCastingRoles, useCandidates, useCrew, useSchedules, useProjectUserRoles, useSyncProject, useCreateCastingRole, useAddCandidate, useAddCrewMember, useRoleRoomBootstrap } from '../../hooks/useRoleRoom';
 import RoleRoomBrandMark from './components/shared/RoleRoomBrandMark';
 import { YouTubeIntegration, type YouTubePublishingSuggestion } from '../youtube/YouTubeIntegration';
 import GoogleWorkspaceSessionBadge from '../universal/GoogleWorkspaceSessionBadge';
 import { OrgSwitcher } from '../leadgrid/OrgSwitcher';
 import { PlanUsageBar } from '../leadgrid/PlanUsageBar';
-import {
-  roleRoomAgentService,
-  type RoleRoomAgentAccess,
-  type RoleRoomAgentProducerBootstrapResult,
-} from './services/roleRoomAgentService';
+import { roleRoomAgentService, type RoleRoomAgentAccess, type RoleRoomAgentProducerBootstrapResult } from './services/roleRoomAgentService';
 
-import type {
-  CastingProject,
-  CastingRole,
-  Candidate,
-  CrewMember,
-  UserRole,
-} from '../../../../shared/role-room-types';
+import type { CastingProject, CastingRole, Candidate, CrewMember, UserRole } from '../../../../shared/role-room-types';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -314,7 +226,7 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherAnchor, setSwitcherAnchor] = useState<HTMLElement | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
-  const [inboxAnchor, setInboxAnchor] = useState<HTMLElement | null>(null);
+  const [_inboxAnchor, setInboxAnchor] = useState<HTMLElement | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);

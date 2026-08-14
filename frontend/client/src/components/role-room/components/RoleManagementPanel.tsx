@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 import React, { useState, useId, useMemo, useEffect, memo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, Typography, Button, IconButton, Card, CardContent, Chip, TextField, Select, MenuItem, FormControl, Dialog, DialogTitle, DialogContent, DialogActions, Divider, LinearProgress, Tabs, Tab, Avatar, Tooltip, Checkbox, Collapse, Alert, Snackbar, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Stack, useTheme, useMediaQuery } from "@mui/material";
@@ -171,7 +171,7 @@ function RoleManagementPanelInner({
     });
   }, [onRolesChange, projectId, queryClient]);
 
-  const handleSaveToPool = async (role: Role) => {
+  const handleSaveToPool = useCallback(async (role: Role) => {
     try {
       const poolId = await rolePoolService.saveRoleToPool(role.id);
       if (poolId) {
@@ -185,7 +185,7 @@ function RoleManagementPanelInner({
       console.error('Error saving role to pool:', error);
       showError('Feil ved lagring til pool');
     }
-  };
+  }, [queryClient, showError, showSuccess]);
 
   const handleImportFromPool = async (poolRole: PoolRole) => {
     if (!projectId) {
@@ -370,16 +370,16 @@ function RoleManagementPanelInner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onCreateRole]);
+  }, [handleExportCSV, onCreateRole]);
 
   // Helper functions
   const getStatusColor = (status: Role['status']): string => {
     return getRoleWorkflowMeta(status).color;
   };
 
-  const getStatusLabel = (status: Role['status']): string => {
+  const getStatusLabel = useCallback((status: Role['status']): string => {
     return getRoleWorkflowMeta(status).label;
-  };
+  }, []);
 
   // Filtering and sorting
   const filteredAndSortedRoles = useMemo(() => {
@@ -451,12 +451,6 @@ function RoleManagementPanelInner({
     });
   }, [filteredAndSortedRoles]);
 
-  const selectedRole = useMemo(() => {
-    if (filteredAndSortedRoles.length === 0) return null;
-    if (!selectedRoleId) return filteredAndSortedRoles[0];
-    return filteredAndSortedRoles.find((role) => role.id === selectedRoleId) ?? filteredAndSortedRoles[0];
-  }, [filteredAndSortedRoles, selectedRoleId]);
-
   const getRoleRequirements = (role: Role) => (
     ((role as any).requirements || {}) as {
       age?: { min?: number; max?: number };
@@ -495,7 +489,7 @@ function RoleManagementPanelInner({
     return Number.isFinite(ts) ? ts : null;
   };
 
-  const getRoleRiskProfile = (role: Role): RoleRiskProfile => {
+  const getRoleRiskProfile = useCallback((role: Role): RoleRiskProfile => {
     const status = String((role.status || 'draft')).toLowerCase();
     const candidates = getRoleCandidateCount(role);
     const scenes = getRoleSceneCount(role);
@@ -550,7 +544,7 @@ function RoleManagementPanelInner({
     score = Math.max(0, Math.min(100, Math.round(score)));
     const level: RiskLevel = score >= 70 ? 'hoy' : score >= 40 ? 'medium' : 'lav';
     return { score, level, deadlineDays, staleDays, flags };
-  };
+  }, []);
 
   const roleRiskMap = useMemo(() => {
     const map = new Map<string, RoleRiskProfile>();
@@ -558,7 +552,7 @@ function RoleManagementPanelInner({
       map.set(role.id, getRoleRiskProfile(role));
     });
     return map;
-  }, [roles]);
+  }, [getRoleRiskProfile, roles]);
 
   const pipelineCounts = useMemo(() => {
     return ROLE_WORKFLOW_ORDER.map((status) => ({
@@ -698,7 +692,7 @@ function RoleManagementPanelInner({
     const sessionEvents = sessionTimeline[selectedProRole.id] || [];
     timeline.push(...sessionEvents);
     return timeline.sort((a, b) => b.date - a.date);
-  }, [selectedProRole, sessionTimeline]);
+  }, [getStatusLabel, selectedProRole, sessionTimeline]);
 
   const applyProPreset = (preset: ProPreset) => {
     setProPreset(preset);
@@ -806,7 +800,7 @@ function RoleManagementPanelInner({
 
     window.addEventListener('keydown', handleProKeyDown);
     return () => window.removeEventListener('keydown', handleProKeyDown);
-  }, [onEditRole, proRoles, selectedProRole, selectedRoleId, workspaceView]);
+  }, [handleTransitionStatus, onEditRole, proRoles, selectedProRole, selectedRoleId, workspaceView]);
 
   useEffect(() => {
     if (workspaceView !== 'pro') return;
@@ -980,7 +974,7 @@ function RoleManagementPanelInner({
     }
   };
 
-  const pushSessionTimelineEvent = (roleId: string, label: string, description: string) => {
+  const pushSessionTimelineEvent = useCallback((roleId: string, label: string, description: string) => {
     setSessionTimeline((prev) => {
       const previousEvents = prev[roleId] || [];
       const nextEvents = [
@@ -994,9 +988,9 @@ function RoleManagementPanelInner({
       ].slice(0, 20);
       return { ...prev, [roleId]: nextEvents };
     });
-  };
+  }, []);
 
-  const applyRoleStatusTransition = async (
+  const applyRoleStatusTransition = useCallback(async (
     role: Role,
     nextStatus: RoleWorkflowStatus,
     options: { trackHistory?: boolean; toast?: boolean } = {},
@@ -1045,13 +1039,13 @@ function RoleManagementPanelInner({
       showError('Kunne ikke oppdatere rollestatus');
       return false;
     }
-  };
+  }, [getStatusLabel, onRolesChange, projectId, pushSessionTimelineEvent, showError, showSuccess]);
 
-  const handleTransitionStatus = async (role: Role, nextStatus: RoleWorkflowStatus) => {
+  const handleTransitionStatus = useCallback(async (role: Role, nextStatus: RoleWorkflowStatus) => {
     await applyRoleStatusTransition(role, nextStatus);
-  };
+  }, [applyRoleStatusTransition]);
 
-  const handleUndoStatusTransition = async () => {
+  const handleUndoStatusTransition = useCallback(async () => {
     const [lastTransition, ...remaining] = transitionUndoStack;
     if (!lastTransition) return;
     const role = roles.find((item) => item.id === lastTransition.roleId);
@@ -1064,9 +1058,9 @@ function RoleManagementPanelInner({
     setTransitionUndoStack(remaining);
     setTransitionRedoStack((prev) => [lastTransition, ...prev].slice(0, 30));
     showSuccess(`Angret: ${getStatusLabel(lastTransition.to)} → ${getStatusLabel(lastTransition.from)}`);
-  };
+  }, [applyRoleStatusTransition, getStatusLabel, roles, showSuccess, transitionUndoStack]);
 
-  const handleRedoStatusTransition = async () => {
+  const handleRedoStatusTransition = useCallback(async () => {
     const [lastTransition, ...remaining] = transitionRedoStack;
     if (!lastTransition) return;
     const role = roles.find((item) => item.id === lastTransition.roleId);
@@ -1079,9 +1073,9 @@ function RoleManagementPanelInner({
     setTransitionRedoStack(remaining);
     setTransitionUndoStack((prev) => [lastTransition, ...prev].slice(0, 30));
     showSuccess(`Gjentok: ${getStatusLabel(lastTransition.from)} → ${getStatusLabel(lastTransition.to)}`);
-  };
+  }, [applyRoleStatusTransition, getStatusLabel, roles, showSuccess, transitionRedoStack]);
 
-  const handleExportCSV = async () => {
+  const handleExportCSV = useCallback(async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
@@ -1109,10 +1103,10 @@ function RoleManagementPanelInner({
       console.error('Error exporting roles:', error);
       alert('Kunne ikke eksportere roller');
     }
-  };
+  }, [filteredAndSortedRoles, generateRolesHTML, projectId]);
 
   type ProjectExportInfo = { name: string };
-  const generateRolesHTML = (project: ProjectExportInfo, roles: Role[]): string => {
+  const generateRolesHTML = useCallback((project: ProjectExportInfo, roles: Role[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -1499,7 +1493,7 @@ function RoleManagementPanelInner({
   </div>
 </body>
 </html>`;
-  };
+  }, [getStatusLabel]);
 
   const toggleCardExpanded = (id: string) => {
     setExpandedCards((prev) => {
@@ -1619,14 +1613,7 @@ function RoleManagementPanelInner({
       });
     }
     return actions;
-  }, [
-    onCreateRole,
-    onEditRole,
-    proCompareMode,
-    selectedProRole,
-    transitionRedoStack.length,
-    transitionUndoStack.length,
-  ]);
+  }, [getStatusLabel, handleRedoStatusTransition, handleSaveToPool, handleTransitionStatus, handleUndoStatusTransition, onCreateRole, onEditRole, proCompareMode, selectedProRole, transitionRedoStack.length, transitionUndoStack.length]);
 
   return (
     <Box

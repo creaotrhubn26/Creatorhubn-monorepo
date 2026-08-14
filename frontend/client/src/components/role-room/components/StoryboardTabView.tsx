@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import type { CastingProject, SceneBreakdown } from '../models/casting';
@@ -75,7 +74,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
       } catch (error) {
         if (!cancelled) {
           showError('Kunne ikke laste scener for storyboard');
-          // eslint-disable-next-line no-console
+           
           console.error('[StoryboardTabView] failed to load scenes', error);
         }
       } finally {
@@ -97,7 +96,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
     // StoryboardIntegrationView via storyboard-routes; vi trenger ikke
     // å duplisere save-kall her.
     void manuscriptService.saveScene(updated).catch((error) => {
-      // eslint-disable-next-line no-console
+       
       console.error('[StoryboardTabView] saveScene failed', error);
     });
   }, []);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 // Mocker apiRequest så vi kan kontrollere svaret uten faktisk HTTP.

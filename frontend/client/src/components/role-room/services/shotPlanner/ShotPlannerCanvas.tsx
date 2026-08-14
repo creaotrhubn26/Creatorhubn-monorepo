@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import * as PIXI from "pixi.js";
 import { Box } from "@mui/material";
-import { Scene2D, PlannerTool, LENS_FOV_MAP, type Camera2D, type Actor2D, type Prop2D, type Point2D } from "./types";
-import { useShotPlannerStore, useActiveShot } from "./store";
+import { type Camera2D, type Actor2D, type Prop2D, type Point2D } from "./types";
+import { useShotPlannerStore } from "./store";
 import * as VectorGfx from "./vectorGraphics";
 import * as visualizations from "./visualizations";
 
@@ -13,7 +13,7 @@ import * as visualizations from "./visualizations";
 const GRID_COLOR = 0x3A4A5A;
 const GRID_OPACITY = 0.3;
 const SELECTION_COLOR = 0xFF69B4;
-const MEASUREMENT_LINE_COLOR = 0xFFD700;
+const _MEASUREMENT_LINE_COLOR = 0xFFD700;
 
 // Z-Index layers
 const Z_INDEX = {
@@ -34,7 +34,7 @@ const Z_INDEX = {
 // =============================================================================
 
 const degToRad = (deg: number) => (deg * Math.PI) / 180;
-const radToDeg = (rad: number) => (rad * 180) / Math.PI;
+const _radToDeg = (rad: number) => (rad * 180) / Math.PI;
 
 const hexToPixiColor = (hex: string): number => {
   return parseInt(hex.replace('#', ''), 16);
@@ -368,7 +368,7 @@ export const ShotPlannerCanvas: React.FC<ShotPlannerCanvasProps> = ({
         appRef.current = null;
       }
     };
-  }, []);
+  }, [height, onCanvasReady, width]);
   
   // Handle resize
   useEffect(() => {
@@ -600,7 +600,7 @@ export const ShotPlannerCanvas: React.FC<ShotPlannerCanvasProps> = ({
     
     mainContainer.sortChildren();
     
-  }, [scene, selection, activeTool, width, height]);
+  }, [scene, selection, activeTool, width, height, setSelection]);
   
   // Handle canvas interactions
   const handlePointerDown = useCallback((e: React.PointerEvent) => {

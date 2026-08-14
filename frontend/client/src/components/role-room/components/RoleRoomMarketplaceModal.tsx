@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMarketplaceModal — org-scoped app-katalog for The Role Room
  * (Fase 2: Leadgrid som tjeneste).

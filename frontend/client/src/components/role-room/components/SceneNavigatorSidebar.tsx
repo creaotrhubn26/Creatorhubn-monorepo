@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SceneNavigatorSidebar - Scene Navigator for ScreenplayEditor
  * 
@@ -15,49 +14,8 @@
  */
 
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  ListItemIcon,
-  IconButton,
-  Tooltip,
-  Chip,
-  Stack,
-  Collapse,
-  Divider,
-  Badge,
-  alpha,
-  TextField,
-  InputAdornment,
-} from '@mui/material';
-import {
-  Movie as SceneIcon,
-  ChevronLeft,
-  ChevronRight,
-  ExpandMore,
-  ExpandLess,
-  Search as SearchIcon,
-  Landscape as ExtIcon,
-  Home as IntIcon,
-  WbTwilight as DayIcon,
-  NightsStay as NightIcon,
-  FilterList as FilterIcon,
-  ViewList as ListIcon,
-  Close as CloseIcon,
-  NavigateBefore as PrevIcon,
-  NavigateNext as NextIcon,
-  PushPin as PushPinIcon,
-  PushPinOutlined as PushPinOutlinedIcon,
-  BarChart as StatsIcon,
-  Person as PersonIcon,
-  KeyboardArrowUp as MoveUpIcon,
-  KeyboardArrowDown as MoveDownIcon,
-} from '@mui/icons-material';
+import { Box, Paper, Typography, List, ListItemButton, ListItemText, IconButton, Tooltip, Chip, Stack, Collapse, Divider, alpha, TextField, InputAdornment } from '@mui/material';
+import { Movie as SceneIcon, ChevronLeft, ChevronRight, ExpandMore, ExpandLess, Search as SearchIcon, Landscape as ExtIcon, Home as IntIcon, WbTwilight as DayIcon, NightsStay as NightIcon, FilterList as FilterIcon, Close as CloseIcon, NavigateBefore as PrevIcon, NavigateNext as NextIcon, PushPin as PushPinIcon, PushPinOutlined as PushPinOutlinedIcon, BarChart as StatsIcon, Person as PersonIcon, KeyboardArrowUp as MoveUpIcon, KeyboardArrowDown as MoveDownIcon } from '@mui/icons-material';
 import type { SceneBreakdown } from '../models/casting';
 
 // Scene parsed from Fountain content
@@ -663,7 +621,7 @@ export const SceneNavigatorSidebar: React.FC<SceneNavigatorSidebarProps> = ({
     
     if (dbScenes && dbScenes.length > 0) {
       // Group by actual actId from database
-      dbScenes.forEach((dbScene, index) => {
+      dbScenes.forEach((dbScene, _index) => {
         const actId = dbScene.actId || '1';
         const actNum = actId.includes('act-1') ? '1' : 
                        actId.includes('act-2') ? '2' : 

@@ -1,14 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Typography,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
-  Stack,
-} from '@mui/material';
+import { Box, Typography, Select, MenuItem, FormControl, InputLabel, Chip, Stack } from '@mui/material';
 import { MEMORY_CARD_DATABASE, formatCurrency } from '@/data/memory-card-database';
 
 interface EnhancedMemoryCardSelectorProps {
@@ -21,8 +12,8 @@ interface EnhancedMemoryCardSelectorProps {
 const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   value = '',
   onChange,
-  cameraId,
-  resolution,
+  _cameraId,
+  _resolution,
 }) => {
   const [selectedCard, setSelectedCard] = useState(value);
 

@@ -1,10 +1,9 @@
-// @ts-nocheck
 import { useState, useEffect, useMemo, useCallback, useRef, type FC } from "react";
-import { Box, Typography, IconButton, Button, Chip, LinearProgress, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Collapse, ToggleButtonGroup, ToggleButton, alpha, Fade, Slide, useMediaQuery, useTheme } from "@mui/material";
-import { PlayArrow, Pause, SkipNext, SkipPrevious, Check, Schedule, CameraAlt, Videocam, Close, Timer, FilterList, GridView, ViewList, Settings, Download, Notes, TouchApp, Fullscreen, FullscreenExit, Speed, Warning, Star, Home, ShoppingBag, Person, Event, Tune, Nature, Movie, Visibility, Edit, CheckCircle } from "@mui/icons-material";
-import { LocationsIcon as LocationOn } from "./icons/CastingIcons";
+import { Box, Typography, IconButton, Button, Chip, LinearProgress, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Collapse, ToggleButtonGroup, ToggleButton, useMediaQuery, useTheme } from "@mui/material";
+import { PlayArrow, Pause, SkipNext, SkipPrevious, Check, Videocam, Close, Timer, FilterList, Notes, TouchApp, Fullscreen, FullscreenExit, Warning, Home, ShoppingBag, Person, Event, Tune, Nature, Movie, Visibility, Edit, CheckCircle } from "@mui/icons-material";
+import {  } from "./icons/CastingIcons";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
-import jsPDF from "jspdf";
+
 import { PRODUCTION_PRESETS, type CastingShot, type ShotList, type ShotStatus, type Location, type ShotPriority, type MediaType, type ProductionPhase, type ProductionContext } from "../models/casting";
 import { InteractiveShotCard } from "./InteractiveShotCard";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
@@ -32,7 +31,6 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
   shots,
   locations,
   onUpdateShot,
-  onAddShot,
   onReorderShots,
   onClose,
   getRoleName,
@@ -52,7 +50,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
   const [filterMediaType, setFilterMediaType] = useState<MediaType | 'all'>('all');
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  const [_sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [activeShot, setActiveShot] = useState<CastingShot | null>(null);
@@ -99,7 +97,7 @@ export const InteractiveShotListView: FC<InteractiveShotListViewProps> = ({
       .filter(s => newShotsMap.has(s.id))
       .map(s => newShotsMap.get(s.id)!);
     setOrderedShots([...updatedOrdered, ...newShotsToAdd]);
-  }, [shots]);
+  }, [orderedShots, shots]);
 
   const filteredShots = useMemo(() => {
     let result = orderedShots;

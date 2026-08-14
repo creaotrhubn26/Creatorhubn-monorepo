@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
@@ -67,6 +66,7 @@ import { AnimaticPlayer } from './drawing/AnimaticPlayer';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import type { PencilStroke } from '../hooks/useApplePencil';
 import type { FrameDrawingData } from '../state/storyboardStore';
+import type { DialogueLine } from '../models/casting';
 import {
   getPrimaryStoryboardDocumentReferenceImage,
   getPrimaryStoryboardDocumentStrokes,
@@ -96,7 +96,7 @@ interface StoryboardIntegrationViewProps {
   /** Alle scener — for cross-scene coverage-sammenligning i Creative Studio. */
   allScenes?: SceneBreakdown[];
   /** Dialog-linjer — for shot-suggestions (2-shot, OTS, reaction). */
-  sceneDialogue?: import('../models/casting').DialogueLine[];
+  sceneDialogue?: DialogueLine[];
   /** Vis Creative Studio-panelet ved siden av storyboard. Default true. */
   showCreativeStudio?: boolean;
   // Script integration
@@ -975,7 +975,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
         current === propActiveFrameIndex ? current : propActiveFrameIndex
       ));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [propActiveFrameIndex]);
 
   // Lock view mode when production tab should only expose storyboard.
@@ -1408,7 +1408,7 @@ const StoryboardView: React.FC<{
   onSelectFrame: (index: number) => void;
   scene: SceneBreakdown;
   allScenes?: SceneBreakdown[];
-  sceneDialogue?: import('../models/casting').DialogueLine[];
+  sceneDialogue?: DialogueLine[];
   projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   showCreativeStudio?: boolean;
 }> = ({

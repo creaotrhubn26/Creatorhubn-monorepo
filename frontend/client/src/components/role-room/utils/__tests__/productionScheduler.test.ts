@@ -3,7 +3,7 @@ import {
   balancedChunks, adjustToWorkingDay, nextWorkingDayMs, planProductionDays,
 } from '../productionScheduler';
 
-const DAY = 86_400_000;
+const _DAY = 86_400_000;
 // Mandag 2026-06-01 00:00 UTC
 const MON = Date.UTC(2026, 5, 1);
 

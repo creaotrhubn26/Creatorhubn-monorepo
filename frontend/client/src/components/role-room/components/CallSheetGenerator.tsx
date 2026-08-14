@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useRef, useEffect, useMemo, type FC, type ReactNode } from 'react';
 import {
   Box,
@@ -6,27 +5,9 @@ import {
   Paper,
   Button,
   TextField,
-  Card,
-  CardContent,
   Chip,
   Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
   Stack,
-  Avatar,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Tooltip,
   CircularProgress,
   Alert,
@@ -40,30 +21,17 @@ import {
   Download as DownloadIcon,
   Edit as EditIcon,
   Person as PersonIcon,
-  Schedule as ScheduleIcon,
-  Videocam as VideocamIcon,
   Movie as MovieIcon,
   WbSunny as SunnyIcon,
   NightsStay as MoonIcon,
-  Phone as PhoneIcon,
   Email as EmailIcon,
   Warning as WarningIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Sync as SyncIcon,
   Place as PlaceIcon,
   Theaters as TheatersIcon,
   Groups as GroupsIcon,
-  LocalDining as MealIcon,
   Emergency as EmergencyIcon,
-  Description as DescriptionIcon,
-  Today as TodayIcon,
-  AccessTime as TimeIcon,
   DirectionsCar as ParkingIcon,
-  ContactPhone as ContactIcon,
-  Info as InfoIcon,
 } from '@mui/icons-material';
-import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
@@ -260,14 +228,25 @@ const useResponsiveConfig = (): ResponsiveConfig => {
       showFullLabels: true,
       compactMode: false,
     };
-    // 4K
-    return {
+    if (is4k) return {
       tier: '4k',
       spacing: 3,
       fontSize: { title: '3rem', subtitle: '1.4rem', sectionTitle: '1.1rem', body: '1.1rem', caption: '1rem', tiny: '0.9rem' },
       iconSize: 28,
       cardPadding: { x: 3, y: 2 },
       gridColumns: { meta: 3, crew: 2, emergency: 3 },
+      tableSize: 'medium',
+      showFullLabels: true,
+      compactMode: false,
+    };
+    // Fallback til XL hvis media queries ikke matcher eksplisitt.
+    return {
+      tier: 'xl',
+      spacing: 2,
+      fontSize: { title: '2.25rem', subtitle: '1.1rem', sectionTitle: '0.9rem', body: '0.9rem', caption: '0.8rem', tiny: '0.75rem' },
+      iconSize: 22,
+      cardPadding: { x: 2, y: 1.25 },
+      gridColumns: { meta: 3, crew: 3, emergency: 3 },
       tableSize: 'medium',
       showFullLabels: true,
       compactMode: false,
@@ -431,12 +410,10 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   locations = [],
   onGenerate,
 }) => {
-  const theme = useTheme();
   const responsive = useResponsiveConfig();
   const printRef = useRef<HTMLDivElement>(null);
   
   const [editMode, setEditMode] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const [isLoading, setIsLoading] = useState(false); // Start with demo data visible
   const [isSynced, setIsSynced] = useState(false);
   const [sendingCallSheet, setSendingCallSheet] = useState(false);
@@ -660,6 +637,13 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       loadCastingData();
     }
   }, [projectId, productionDay, scenes, crew, locations]);
+
+  // Hold parent in sync whenever call sheet data changes.
+  useEffect(() => {
+    if (onGenerate) {
+      onGenerate(callSheet);
+    }
+  }, [callSheet, onGenerate]);
 
   const handleSendToCrew = async () => {
     const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -950,6 +934,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
           }}
         >
           Synkronisert: {castingCandidates.length} skuespillere, {castingCrew.length} crew, {castingLocations.length} lokasjoner
+          , {castingRoles.length} roller
         </Alert>
       )}
       

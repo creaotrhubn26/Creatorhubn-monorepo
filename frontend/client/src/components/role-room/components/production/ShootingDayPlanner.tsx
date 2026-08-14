@@ -1,11 +1,10 @@
-// @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Box, Paper, Typography, Button, IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Alert, Tabs, Tab, Divider, Avatar, Badge, Card, CardContent, CardHeader, LinearProgress } from "@mui/material";
+import { Box, Paper, Typography, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Alert, Tabs, Tab, Divider, Avatar, Badge, Card, CardContent, CardHeader, LinearProgress } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { nb } from "date-fns/locale";
-import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Event as EventIcon, Place as PlaceIcon, Person as PersonIcon, Schedule as ScheduleIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Cancel as CancelIcon, CalendarMonth as CalendarIcon, AccessTime as TimeIcon, Restaurant as MealIcon, LocalHospital as HospitalIcon, LocalParking as ParkingIcon, Visibility as ViewIcon, Print as PrintIcon, Save as SaveIcon, WbSunny as SunnyIcon, Cloud as CloudyIcon, AcUnit as SnowIcon, Water as RainIcon, Refresh as RefreshIcon } from "@mui/icons-material";
+import { Add as AddIcon, Event as EventIcon, Place as PlaceIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Cancel as CancelIcon, AccessTime as TimeIcon, Print as PrintIcon, WbSunny as SunnyIcon, Cloud as CloudyIcon, AcUnit as SnowIcon, Water as RainIcon } from "@mui/icons-material";
 import { productionWorkflowService, type ShootingDay, type CastMember, type CrewMember, type StripboardStrip } from "../../services/productionWorkflowService";
 import GlobalMentionHelper from "../shared/GlobalMentionHelper";
 
@@ -28,16 +27,9 @@ interface DayFormData {
   scenes: string[];
 }
 
-interface AvailabilityStatus {
-  castId: string;
-  available: boolean;
-  reason?: string;
-}
-
 // ============================================
 // CONSTANTS
 // ============================================
-
 const WEATHER_ICONS: Record<string, React.ReactNode> = {
   sunny: <SunnyIcon sx={{ color: '#f9a825' }} />,
   cloudy: <CloudyIcon sx={{ color: '#90a4ae' }} />,
@@ -68,7 +60,6 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
 
 const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
   projectId,
-  onDaySelect,
   onGenerateCallSheet,
 }) => {
   // State

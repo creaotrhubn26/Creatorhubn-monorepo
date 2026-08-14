@@ -13,38 +13,8 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  Button,
-  IconButton,
-  Chip,
-  TextField,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Switch,
-  FormControlLabel,
-  Tooltip,
-  CircularProgress,
-  Alert,
-  Divider,
-  Menu,
-} from '@mui/material';
-import {
-  PersonAddAlt1Outlined as AddMemberIcon,
-  AddOutlined as AddIcon,
-  EditOutlined as EditIcon,
-  DeleteOutlineOutlined as DeleteIcon,
-  MoreVertOutlined as MoreIcon,
-  ContentCopyOutlined as CopyIcon,
-  CheckCircleOutlined as ActiveIcon,
-  ScheduleOutlined as PendingIcon,
-  BlockOutlined as DeactivatedIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, Button, IconButton, Chip, TextField, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Switch, FormControlLabel, Tooltip, CircularProgress, Alert, Divider, Menu } from '@mui/material';
+import { PersonAddAlt1Outlined as AddMemberIcon, AddOutlined as AddIcon, EditOutlined as EditIcon, DeleteOutlineOutlined as DeleteIcon, MoreVertOutlined as MoreIcon, ContentCopyOutlined as CopyIcon, CheckCircleOutlined as ActiveIcon, ScheduleOutlined as PendingIcon, BlockOutlined as DeactivatedIcon } from '@mui/icons-material';
 import * as svc from './danceTeamService';
 import type { DanceTeamRole, DanceTeamMember, DanceTeamInvite, DanceTeamSummary, MyMembership } from './danceTeamService';
 
@@ -96,7 +66,7 @@ export const TeamAdminPanel: React.FC = () => {
         try {
           await svc.ensureMyTeam();
           m = await svc.getMyMembership();
-        } catch (err) {
+        } catch (_err) {
           // ignore — kan være Frilansdanser uten team-tilgang
         }
       }
@@ -486,7 +456,7 @@ const InvitesList: React.FC<{
               data-testid={`team-invite-copy-${i.token}`}
               onClick={async () => {
                 const link = `${window.location.origin}/dance/invite/${i.token}`;
-                try { await navigator.clipboard.writeText(link); } catch {}
+                try { await navigator.clipboard.writeText(link); } catch { /* empty */ }
               }}
             >
               <CopyIcon sx={{ color: TEXT_DIM, fontSize: 18 }} />

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MobileReviewCard — compact review card for the mobile Godkjenning feed.
  *

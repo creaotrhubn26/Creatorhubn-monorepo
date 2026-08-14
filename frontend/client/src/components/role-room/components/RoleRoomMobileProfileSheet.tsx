@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileProfileSheet — profile + workspace info for mobile + iPad + desktop.
  *

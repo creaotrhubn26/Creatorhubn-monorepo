@@ -15,47 +15,14 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  IconButton,
-  Tooltip,
-  Chip,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  MenuItem,
-  Checkbox,
-  Drawer,
-  CircularProgress,
-} from '@mui/material';
-import {
-  CalendarMonth as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  Today as TodayIcon,
-  Warning as WarningIcon,
-  Download as DownloadIcon,
-  Print as PrintIcon,
-  Add as AddIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, IconButton, Tooltip, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Checkbox, Drawer, CircularProgress } from '@mui/material';
+import { CalendarMonth as CalendarIcon, ChevronLeft, ChevronRight, Today as TodayIcon, Warning as WarningIcon, Download as DownloadIcon, Print as PrintIcon, Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
 import type { ProfessionMode } from '../config/professionMode';
 import { listDancerProfiles } from './dancerProfileService';
 import { listRehearsals, createRehearsal } from './danceRehearsalService';
 import { listPerformances, createPerformance } from './danceAdminOpsService';
 import { listClasses, createClass } from './danceStudioOpsService';
-import {
-  KIND_META,
-  findCollisions,
-  eventsToIcs,
-  type CalendarEvent,
-  type CalendarEventKind,
-} from './calendarTypes';
+import { KIND_META, findCollisions, eventsToIcs, type CalendarEvent, type CalendarEventKind } from './calendarTypes';
 
 const PURPLE = danceFlowColors.lavenderDark;
 const PURPLE_LIGHT = danceFlowColors.lavender;
@@ -123,7 +90,7 @@ export function DanceProductionCalendar({
   const [createLocation, setCreateLocation] = React.useState('');
   const [createRecurring, setCreateRecurring] = React.useState<'weekly' | 'monthly' | 'none'>('none');
   const [detailEvent, setDetailEvent] = React.useState<CalendarEvent | null>(null);
-  const dragRef = React.useRef<{ event: CalendarEvent; dropDay: Date | null } | null>(null);
+  const _dragRef = React.useRef<{ event: CalendarEvent; dropDay: Date | null } | null>(null);
 
   // ─── Fetch all sources ──────────────────────────────────────────────
   const refresh = React.useCallback(async (): Promise<void> => {

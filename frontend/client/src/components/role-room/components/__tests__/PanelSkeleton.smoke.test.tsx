@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PanelSkeleton } from '../PanelSkeleton';

@@ -86,29 +86,29 @@ export function useProjectProductionEstimate({
   initialShotLists,
   initialProductionDays,
 }: UseProjectProductionEstimateOptions): UseProjectProductionEstimateResult {
-  const initialProjectSignature = useMemo(
+  const _initialProjectSignature = useMemo(
     () => `${initialProject?.id ?? 'null'}:${initialProject?.updatedAt ?? initialProject?.createdAt ?? ''}`,
     [initialProject?.createdAt, initialProject?.id, initialProject?.updatedAt],
   );
-  const initialShotListsSignature = useMemo(
+  const _initialShotListsSignature = useMemo(
     () => buildRecordSignature(initialShotLists),
     [initialShotLists],
   );
-  const initialProductionDaysSignature = useMemo(
+  const _initialProductionDaysSignature = useMemo(
     () => buildRecordSignature(initialProductionDays),
     [initialProductionDays],
   );
   const resolvedInitialProject = useMemo(
     () => initialProject,
-    [initialProjectSignature],
+    [initialProject],
   );
   const resolvedInitialShotLists = useMemo(
     () => (Array.isArray(initialShotLists) ? initialShotLists : undefined),
-    [initialShotListsSignature],
+    [initialShotLists],
   );
   const resolvedInitialProductionDays = useMemo(
     () => (Array.isArray(initialProductionDays) ? initialProductionDays : undefined),
-    [initialProductionDaysSignature],
+    [initialProductionDays],
   );
   const [project, setProject] = useState<CastingProject | null>(initialProject);
   const [shotLists, setShotLists] = useState<ShotList[]>(initialShotLists ?? []);

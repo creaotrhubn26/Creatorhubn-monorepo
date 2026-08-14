@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from 'vitest';
 import { scheduleSfx, getActiveSfxAt } from '../sfxScheduler';
 import { buildAnimaticTimeline } from '../animaticTimeline';

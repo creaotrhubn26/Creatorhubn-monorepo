@@ -9,15 +9,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
-  LinearProgress, Stack, Table, TableBody, TableCell, TableHead, TableRow,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, LinearProgress, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import TrendingDownIcon from '@mui/icons-material/TrendingDown';
-import AnalyticsOutlinedIcon from '@mui/icons-material/AnalyticsOutlined';
+
 import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
 import AdsClickOutlinedIcon from '@mui/icons-material/AdsClickOutlined';
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';

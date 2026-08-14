@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { castingService } from '../services/castingService';
-import type {
-  CastingShot,
-  ShotList,
-  ShotNote,
-  ShotStatus,
-  TakeStatus,
-} from '../models/casting';
+import type { CastingShot, ShotNote, ShotStatus, TakeStatus } from '../models/casting';
 import type { CaptureTakePayload, LiveSetCameraMetadata, LiveSetTake } from './useLiveSet';
 import type { ShotOption } from './useLiveSetContext';
 

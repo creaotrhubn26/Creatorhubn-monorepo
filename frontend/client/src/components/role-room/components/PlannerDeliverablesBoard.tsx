@@ -103,7 +103,7 @@ export default function PlannerDeliverablesBoard({ projectId }: PlannerDeliverab
     }).length;
     const awaitingClient = byStatus.client_review.length;
     return { total: items.length, overdue, awaitingClient, delivered: byStatus.delivered.length };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [items, byStatus, now]);
 
   const moveStatus = useCallback(async (item: RoleRoomDeliverable, dir: -1 | 1) => {

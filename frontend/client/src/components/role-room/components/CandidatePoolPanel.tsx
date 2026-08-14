@@ -1,6 +1,6 @@
 import { useState, useEffect, type FC } from "react";
 import { Box, Typography, Button, IconButton, Card, CardContent, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Avatar, InputAdornment, Select, MenuItem, FormControl, InputLabel, useMediaQuery, useTheme } from "@mui/material";
-import { Add as AddIcon, Delete as DeleteIcon, Search as SearchIcon, Person as PersonIcon, Download as DownloadIcon, Upload as UploadIcon, Close as CloseIcon, Email as EmailIcon, Phone as PhoneIcon } from "@mui/icons-material";
+import { Delete as DeleteIcon, Search as SearchIcon, Person as PersonIcon, Download as DownloadIcon, Email as EmailIcon, Phone as PhoneIcon } from "@mui/icons-material";
 import { candidatePoolService, type PoolCandidate } from "../services/candidatePoolService";
 import type { CastingProject } from "../models/casting";
 import { getCandidatePhotoObjectPosition } from "../utils/candidatePhotoFocalPoint";
@@ -17,8 +17,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
   onImport,
 }) => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const _isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const _isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
   
   const [poolCandidates, setPoolCandidates] = useState<PoolCandidate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');

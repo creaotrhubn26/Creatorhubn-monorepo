@@ -1578,7 +1578,7 @@ class ScriptWordBankService {
             ? lowerText[position + wordLower.length] 
             : ' ';
           
-          const isWordBoundary = (c: string) => /[\s.,!?;:'"()\-\[\]{}]/.test(c);
+          const isWordBoundary = (c: string) => /[\s.,!?;:'"()\-[\]{}]/.test(c);
           
           if (isWordBoundary(beforeChar) && isWordBoundary(afterChar)) {
             matches.push({
@@ -1816,7 +1816,7 @@ class ScriptWordBankService {
 
     // Extract words from the scene
     const words = sceneText.toLowerCase()
-      .split(/[\s.,!?;:'"()\-\[\]{}«»""''–—…]+/)
+      .split(/[\s.,!?;:'"()\-[\]{}«»""''–—…]+/)
       .filter(w => w.length > 3 && !stopWords.has(w));
 
     // Count word occurrences

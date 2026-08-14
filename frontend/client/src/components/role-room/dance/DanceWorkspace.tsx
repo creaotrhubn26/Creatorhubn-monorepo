@@ -645,7 +645,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     };
     window.addEventListener('dance:set-tab', onSetTab as EventListener);
     return () => window.removeEventListener('dance:set-tab', onSetTab as EventListener);
-  }, []);
+  }, [selectTab]);
 
   // GA4 dataLayer event ved tab-bytte. Kun client-side.
   React.useEffect(() => {
@@ -714,7 +714,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
   const isAdminUser = (profileEmail ?? '').trim().toLowerCase() === 'daniel@creatorhubn.com';
   React.useEffect(() => {
     if (upgradeOfferTarget) setUpgradeDialogOpen(true);
-  }, [upgradeOfferTarget?.member.memberRowId]);
+  }, [upgradeOfferTarget, upgradeOfferTarget.member.memberRowId]);
 
   if (!isDanceMode(mode) || tabs.length === 0) return null;
 

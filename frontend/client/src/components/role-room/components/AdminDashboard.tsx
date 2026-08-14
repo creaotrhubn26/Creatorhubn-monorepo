@@ -1,77 +1,10 @@
 import { useState, useEffect, useMemo, type ReactNode, type SyntheticEvent } from 'react';
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  Snackbar,
-  Chip,
-  CircularProgress,
-  Tabs,
-  Tab,
-  useTheme,
-  useMediaQuery,
-  Tooltip,
-} from '@mui/material';
-import { EmailDesigner, EmailTemplate as DesignerEmailTemplate } from './EmailDesigner';
-import {
-  PersonAdd as PersonAddIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  ContentCopy as CopyIcon,
-  Close as CloseIcon,
-  VpnKey as VpnKeyIcon,
-  People as PeopleIcon,
-  Email as EmailIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon,
-  Send as SendIcon,
-  Save as SaveIcon,
-  Preview as PreviewIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  Person as PersonIcon,
-  CalendarToday as CalendarIcon,
-  AccessTime as TimeIcon,
-  Movie as MovieIcon,
-  Business as BusinessIcon,
-  Phone as PhoneIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Schedule as ScheduleIcon,
-  Palette as PaletteIcon,
-  MenuBook as GuideBookIcon,
-  Shield as ShieldIcon,
-  RocketLaunch as RocketLaunchIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
+import { Box, Typography, TextField, Button, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar, Chip, CircularProgress, Tabs, Tab, useTheme, useMediaQuery, Tooltip } from '@mui/material';
+import type { EmailTemplate as DesignerEmailTemplate } from './EmailDesigner';
+import { EmailDesigner } from './EmailDesigner';
+import { PersonAdd as PersonAddIcon, Delete as DeleteIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Close as CloseIcon, VpnKey as VpnKeyIcon, People as PeopleIcon, Email as EmailIcon, AdminPanelSettings as AdminPanelSettingsIcon, Save as SaveIcon, Edit as EditIcon, Person as PersonIcon, CalendarToday as CalendarIcon, AccessTime as TimeIcon, Movie as MovieIcon, Business as BusinessIcon, Phone as PhoneIcon, CheckCircle as CheckCircleIcon, Cancel as CancelIcon, Schedule as ScheduleIcon, Palette as PaletteIcon, MenuBook as GuideBookIcon, Shield as ShieldIcon, RocketLaunch as RocketLaunchIcon, Warning as WarningIcon } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import {
-  type BrandingSettings,
-  DEFAULT_BRANDING_SETTINGS,
-  ROLE_ROOM_BRAND_ASSETS,
-  fetchBrandingSettings,
-  getBrandingSettings,
-  saveBrandingSettings,
-  type RoleRoomEmailTemplateId,
-  updateBrandingSettings,
-} from '../config/branding';
+import { type BrandingSettings, DEFAULT_BRANDING_SETTINGS, ROLE_ROOM_BRAND_ASSETS, fetchBrandingSettings, getBrandingSettings, saveBrandingSettings, type RoleRoomEmailTemplateId, updateBrandingSettings } from '../config/branding';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { GuideEditorPanel } from './admin/visual-editor/GuideEditorPanel';
 import RoleRoomAiGovernancePanel from './ai/RoleRoomAiGovernancePanel';
@@ -329,7 +262,7 @@ ${appName} Sikkerhetsteam`,
   },
 ];
 
-const templateTypeConfig: Record<string, { label: string; color: string; icon: ReactNode }> = {
+const _templateTypeConfig: Record<string, { label: string; color: string; icon: ReactNode }> = {
   invitation: { label: 'Invitasjon', color: 'var(--role-cyan, #00d4ff)', icon: <EmailIcon /> },
   callback: { label: 'Callback', color: 'var(--role-violet, #8b5cf6)', icon: <ScheduleIcon /> },
   confirmation: { label: 'Bekreftelse', color: '#10b981', icon: <CheckCircleIcon /> },
@@ -341,7 +274,7 @@ const templateTypeConfig: Record<string, { label: string; color: string; icon: R
   owner_transfer: { label: 'Eieroverføring', color: '#ef4444', icon: <VpnKeyIcon /> },
 };
 
-const variableConfig: Record<string, { label: string; icon: ReactNode; example: string }> = {
+const _variableConfig: Record<string, { label: string; icon: ReactNode; example: string }> = {
   candidateName: { label: 'Kandidatnavn', icon: <PersonIcon />, example: 'Ola Nordmann' },
   projectName: { label: 'Prosjektnavn', icon: <MovieIcon />, example: 'Sommerfilmen 2026' },
   roleName: { label: 'Rollenavn', icon: <PersonIcon />, example: 'Hovedrolle' },
@@ -403,13 +336,13 @@ const ROLE_ROOM_EMAIL_VARIABLES = [
 ];
 
 export default function AdminDashboard({ open, onClose, projectName = 'Mitt Prosjekt' }: AdminDashboardProps) {
-  const theme = useTheme();
+  const _theme = useTheme();
   const isMobile = useMediaQuery('(max-width:599px)');
   const isTablet = useMediaQuery('(min-width:600px) and (max-width:959px)');
   const is720p = useMediaQuery('(min-width:960px) and (max-width:1279px)');
   const is1080p = useMediaQuery('(min-width:1280px) and (max-width:1919px)');
   const is2K = useMediaQuery('(min-width:1920px) and (max-width:2559px)');
-  const is4K = useMediaQuery('(min-width:2560px)');
+  const _is4K = useMediaQuery('(min-width:2560px)');
 
   const getResponsiveValue = <T,>(mobile: T, tablet: T, hd720: T, hd1080: T, qhd2k: T, uhd4k: T): T => {
     if (isMobile) return mobile;
@@ -454,13 +387,13 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     severity: 'success',
   });
 
-  const [templates, setTemplates] = useState<EmailTemplate[]>(defaultTemplates);
+  const [_templates, setTemplates] = useState<EmailTemplate[]>(defaultTemplates);
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(defaultTemplates[0] ?? null);
-  const [emailTabValue, setEmailTabValue] = useState(0);
+  const [_emailTabValue, _setEmailTabValue] = useState(0);
   const [editSubject, setEditSubject] = useState('');
   const [editBody, setEditBody] = useState('');
   const [editName, setEditName] = useState('');
-  const [variableValues, setVariableValues] = useState<Record<string, string>>({
+  const [variableValues, _setVariableValues] = useState<Record<string, string>>({
     candidateName: 'Kandidatnavn',
     projectName: projectName,
     roleName: 'Hovedrolle',
@@ -840,7 +773,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     return result;
   };
 
-  const handleSaveTemplate = () => {
+  const _handleSaveTemplate = () => {
     if (!selectedTemplate) return;
     
     const updatedTemplate: EmailTemplate = {
@@ -855,7 +788,7 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     setSnackbar({ open: true, message: 'Mal lagret', severity: 'success' });
   };
 
-  const handleCreateTemplate = () => {
+  const _handleCreateTemplate = () => {
     const newTemplate: EmailTemplate = {
       id: `custom-${Date.now()}`,
       name: 'Ny mal',
@@ -868,11 +801,11 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
     setSelectedTemplate(newTemplate);
   };
 
-  const insertVariable = (variable: string) => {
+  const _insertVariable = (variable: string) => {
     setEditBody(prev => prev + `{{${variable}}}`);
   };
 
-  const handleCopyEmail = () => {
+  const _handleCopyEmail = () => {
     const processedBody = replaceVariables(selectedTemplate?.body || '');
     const plainText = processedBody.replace(/<[^>]*>/g, '');
     navigator.clipboard.writeText(plainText);

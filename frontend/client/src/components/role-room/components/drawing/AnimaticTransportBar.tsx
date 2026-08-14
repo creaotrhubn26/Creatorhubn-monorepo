@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticTransportBar — bunn-raden i AnimaticPlayer: play/pause,
  * restart, loop-toggle, scene-track-upload, record/stop, download,

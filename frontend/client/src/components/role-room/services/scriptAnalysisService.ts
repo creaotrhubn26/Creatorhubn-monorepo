@@ -236,7 +236,7 @@ function extractCharacters(content: string): Map<string, CharacterMention[]> {
   const characters = new Map<string, CharacterMention[]>();
   const lines = content.split('\n');
   
-  const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/;
+  const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/;
   const FORCED_CHARACTER = /^@(.+)$/;
   
   for (let i = 0; i < lines.length; i++) {
@@ -391,7 +391,7 @@ function extractBeatCards(content: string): BeatCard[] {
       };
     } else if (currentScene) {
       // Check for character cue
-      if (/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/.test(line) && line.length > 0) {
+      if (/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/.test(line) && line.length > 0) {
         const charName = line.replace(/\s*\(.*\)$/, '').trim();
         if (charName && (i === 0 || lines[i - 1].trim() === '')) {
           currentScene.characters.add(charName);
@@ -613,7 +613,7 @@ export function parseNumberedScenes(content: string): NumberedScene[] {
       currentCharacter = null;
     } else if (currentScene) {
       // Check for character cue
-      if (/^@?[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/.test(line) && line.length > 0) {
+      if (/^@?[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/.test(line) && line.length > 0) {
         const charName = line.replace(/^@/, '').replace(/\s*\(.*\)$/, '').trim();
         if (charName && (i === 0 || lines[i - 1].trim() === '')) {
           currentCharacter = charName;
@@ -715,7 +715,7 @@ export function detectScenePurpose(scene: NumberedScene, sceneIndex: number, tot
         return analysis.purpose as ScenePurpose;
       }
     }
-  } catch (e) {
+  } catch (_e) {
     // Fall back to simple detection if word bank not available
     console.warn('Word bank not available, using fallback detection');
   }
@@ -774,7 +774,7 @@ export function analyzeCharacterArcs(content: string, scenes: NumberedScene[]): 
       const trimmed = line.trim();
       
       // Check for character cue
-      if (/^@?[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/.test(trimmed) && trimmed.length > 0) {
+      if (/^@?[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/.test(trimmed) && trimmed.length > 0) {
         const charName = trimmed.replace(/^@/, '').replace(/\s*\(.*\)$/, '').trim();
         if (charName && (lineIdx === 0 || sceneLines[lineIdx - 1]?.trim() === '')) {
           // Save previous character's dialogue count
@@ -870,7 +870,7 @@ export function analyzeDialogueBalance(content: string, scenes: NumberedScene[])
       const globalLineNum = scene.lineNumber + idx;
       
       // Check for character cue
-      if (/^@?[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/.test(trimmed) && trimmed.length > 0) {
+      if (/^@?[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/.test(trimmed) && trimmed.length > 0) {
         const charName = trimmed.replace(/^@/, '').replace(/\s*\(.*\)$/, '').trim();
         if (charName && (idx === 0 || sceneLines[idx - 1]?.trim() === '')) {
           // Save previous character's speech

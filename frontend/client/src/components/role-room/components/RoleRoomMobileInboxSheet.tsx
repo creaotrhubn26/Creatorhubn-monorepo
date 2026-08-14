@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileInboxSheet — minimal Innboks surface for mobile + iPad.
  *

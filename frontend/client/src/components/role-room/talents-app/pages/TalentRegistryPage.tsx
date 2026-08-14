@@ -14,35 +14,11 @@
  *   7. Save new search-knapp
  */
 
-import {
-  Alert,
-  Avatar,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  IconButton,
-  InputBase,
-  MenuItem,
-  Select,
-  Stack,
-  Switch,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Alert, Avatar, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem, Select, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FilterListIcon from '@mui/icons-material/FilterListOutlined';
 import GridViewIcon from '@mui/icons-material/GridView';
@@ -54,13 +30,7 @@ import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import roleRoomTalentsService, {
-  type RegistryOverview,
-  type SavedSearch,
-  type TalentProposal,
-  type TalentSearchFilters,
-  type TalentSearchHit,
-} from '../../services/roleRoomTalentsService';
+import roleRoomTalentsService, { type RegistryOverview, type SavedSearch, type TalentProposal, type TalentSearchFilters, type TalentSearchHit } from '../../services/roleRoomTalentsService';
 import ProposeNewTalentDialog from '../components/ProposeNewTalentDialog';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import { palette, radius } from '../theme';

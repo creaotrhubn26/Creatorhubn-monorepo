@@ -11,16 +11,7 @@
  */
 
 import React from 'react';
-import {
-  Box,
-  Button,
-  Chip,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Box, Chip, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import type { CameraId, CameraSlot, CameraSettings, CameraPreset } from './types';
 
@@ -156,7 +147,7 @@ function MockScope({ mode }: { mode: 'waveform' | 'vectorscope' }) {
   }
 
   // Waveform — RGB-trace
-  const points = (offset: number, color: string) => {
+  const points = (offset: number, _color: string) => {
     const pts: string[] = [];
     for (let x = 0; x <= 200; x += 2) {
       const y = 50 + Math.sin((x / 20) + phase + offset) * 15 + Math.sin((x / 7) + phase * 2 + offset) * 8;

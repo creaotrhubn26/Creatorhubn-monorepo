@@ -17,13 +17,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Divider, MenuItem, Select, Stack, Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, MenuItem, Select, Stack, Typography } from '@mui/material';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
-import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
+
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 const palette = {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * PencilCanvas - Apple Pencil optimized drawing canvas
  * 
@@ -329,12 +328,7 @@ export const PencilCanvas = React.forwardRef<PencilCanvasHandle, PencilCanvasPro
   useEffect(() => {
     if (!initialBrushSettings) return;
     setBrushSettings((prev) => ({ ...prev, ...initialBrushSettings }));
-  }, [
-    initialBrushSettings?.type,
-    initialBrushSettings?.size,
-    initialBrushSettings?.color,
-    initialBrushSettings?.opacity,
-  ]);
+  }, [initialBrushSettings.type, initialBrushSettings.size, initialBrushSettings.color, initialBrushSettings.opacity, initialBrushSettings]);
   
   // Draw stroke to canvas
   const drawStrokeToCanvas = useCallback((

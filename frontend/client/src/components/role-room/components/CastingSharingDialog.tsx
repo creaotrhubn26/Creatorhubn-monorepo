@@ -1,47 +1,7 @@
 import { useState, useEffect, Fragment, type ChangeEvent, type ReactElement } from 'react';
 import { useToast } from './ToastStack';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
-  Stack,
-  Box,
-  Typography,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Checkbox,
-  FormControlLabel,
-  FormGroup,
-  Grow,
-} from '@mui/material';
-import {
-  Close as CloseIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Person as PersonIcon,
-  Email as EmailIcon,
-  Share as ShareIcon,
-  Movie as MovieIcon,
-  Business as BusinessIcon,
-  People as PeopleIcon,
-  SupervisorAccount as SupervisorAccountIcon,
-  Videocam as VideocamIcon,
-  FactCheck as FactCheckIcon,
-  Cancel as CancelIcon,
-  FileDownload as FileDownloadIcon,
-} from '@mui/icons-material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Select, MenuItem, FormControl, InputLabel, Chip, Stack, Box, Typography, IconButton, List, ListItem, ListItemSecondaryAction, Divider, Checkbox, FormControlLabel, FormGroup, Grow } from '@mui/material';
+import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, Person as PersonIcon, Email as EmailIcon, Share as ShareIcon, Movie as MovieIcon, Business as BusinessIcon, People as PeopleIcon, SupervisorAccount as SupervisorAccountIcon, Videocam as VideocamIcon, FactCheck as FactCheckIcon, Cancel as CancelIcon, FileDownload as FileDownloadIcon } from '@mui/icons-material';
 import type { UserRole, UserRoleType, CastingProject } from '../models/casting';
 import { sharingService } from '../services/sharingService';
 import { castingAuthService } from '../services/castingAuthService';

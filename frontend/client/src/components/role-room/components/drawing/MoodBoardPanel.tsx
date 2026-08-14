@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MoodBoardPanel — referansebilder pinnet per scene.
  *

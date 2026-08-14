@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { DEFAULT_SCENE, DEFAULT_CAMERA, DEFAULT_ACTOR, DEFAULT_PROP, LENS_FOV_MAP, ShotType, CameraHeight, CameraAngleType, CameraMovement, calculateFocusFromFocalLength, getFocalLengthFromLensType, type Scene2D, type Camera2D, type Actor2D, type Prop2D, type Shot2D, type Point2D, type PlannerTool, type SelectionState, type SceneViewport, type LensType, type HistoryEntry } from "./types";
+import { DEFAULT_SCENE, DEFAULT_CAMERA, DEFAULT_ACTOR, DEFAULT_PROP, LENS_FOV_MAP, calculateFocusFromFocalLength, getFocalLengthFromLensType, type Scene2D, type Camera2D, type Actor2D, type Prop2D, type Shot2D, type Point2D, type PlannerTool, type SelectionState, type SceneViewport, type LensType, type HistoryEntry } from "./types";
 import { shotPlannerApi } from "./api";
 
 // =============================================================================
@@ -478,7 +478,7 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
       },
 
       selectCamera: (cameraId) => {
-        set(state => ({
+        set(_state => ({
           selection: {
             selectedIds: [cameraId],
             selectionType: 'camera',
@@ -859,7 +859,7 @@ export const useShotPlannerStore = create<ShotPlannerStore>()(
 
           // Shot list table
           const shots = state.scene.shots.slice(0, 10); // Limit to 10 per PDF
-          const camera = state.scene.cameras[0];
+          const _camera = state.scene.cameras[0];
           
           shots.forEach((shot) => {
             if (yPos > pageHeight - 30) {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AiTransparencyBanner — shown above every Role Room Agent response to
  * satisfy GDPR Art. 13.2f (automated decision-making / meaningful info

@@ -1,36 +1,6 @@
-// @ts-nocheck
 import React, { useState } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Stack,
-  Divider,
-  Tabs,
-  Tab,
-  Card,
-  CardContent,
-  Chip,
-  IconButton,
-  TextField,
-  Button,
-  Grid,
-  Avatar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
-} from '@mui/material';
-import {
-  Videocam as VideocamIcon,
-  Lightbulb as LightbulbIcon,
-  Mic as MicIcon,
-  Image as ImageIcon,
-  Close as CloseIcon,
-  Add as AddIcon,
-  PersonOutline as PersonIcon,
-  Schedule as ScheduleIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, Stack, Divider, Tabs, Tab, Card, CardContent, Chip, IconButton, TextField, Button, Grid, List, ListItem, ListItemText } from '@mui/material';
+import { Videocam as VideocamIcon, Lightbulb as LightbulbIcon, Mic as MicIcon, Image as ImageIcon, Close as CloseIcon, Add as AddIcon, PersonOutline as PersonIcon, Schedule as ScheduleIcon } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
@@ -327,7 +297,7 @@ const AudioControlPanel: React.FC = () => {
 };
 
 const ReferencesPanel: React.FC = () => {
-  const [images, setImages] = useState<string[]>([]);
+  const [images] = useState<string[]>([]);
   const [visualNotes, setVisualNotes] = useState('');
 
   return (

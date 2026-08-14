@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 /**
  * ScreenplayEditorWithNavigator - Full-featured screenplay editor with scene navigation
  * 
@@ -454,7 +454,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   }, []);
 
   // Go to a specific line in the editor
-  function gotoLine(lineNumber: number) {
+  const gotoLine = useCallback((lineNumber: number) => {
     const textarea = resolveEditorTextarea();
     if (textarea) {
       const lines = value.split('\n');
@@ -464,13 +464,13 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
       }
       textarea.focus();
       textarea.setSelectionRange(charIndex, charIndex);
-      
+
       const lineHeight = 24;
       textarea.scrollTop = (lineNumber - 5) * lineHeight;
     }
     setHighlightedLine(lineNumber);
     setTimeout(() => setHighlightedLine(null), 2000);
-  }
+  }, [resolveEditorTextarea, value]);
 
   // Handle scene selection from sidebar
   const handleSceneSelect = useCallback((scene: ParsedScene | SceneBreakdown, lineNumber: number) => {

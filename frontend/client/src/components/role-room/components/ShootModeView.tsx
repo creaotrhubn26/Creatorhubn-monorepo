@@ -1,11 +1,11 @@
-// @ts-nocheck
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Box, Typography, Paper, IconButton, Button, Chip, LinearProgress, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Card, CardMedia, CardContent, Badge, Collapse, ToggleButtonGroup, ToggleButton, Divider, Menu, ListItemIcon, ListItemText, alpha } from "@mui/material";
-import { PlayArrow, Pause, SkipNext, SkipPrevious, Check, Schedule, CameraAlt, Videocam, Add, Close, PhotoCamera, Lightbulb, Timer, ExpandMore, ExpandLess, FilterList, GridView, ViewList, FlashOn, WbSunny, Brightness7, Settings, MoreVert, Download, PictureAsPdf, TableChart, Notes, Edit, DragIndicator, Save } from "@mui/icons-material";
+import { Box, Typography, Paper, IconButton, Button, Chip, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Card, CardContent, Collapse, ToggleButtonGroup, ToggleButton, Divider, Menu, ListItemIcon, ListItemText, alpha } from "@mui/material";
+import { PlayArrow, Pause, SkipNext, SkipPrevious, Check, Schedule, CameraAlt, Add, Close, PhotoCamera, Lightbulb, Timer, ExpandMore, ExpandLess, GridView, ViewList, FlashOn, Download, PictureAsPdf, TableChart, Notes, Save } from "@mui/icons-material";
 import { LocationsIcon as LocationOn } from "./icons/CastingIcons";
-import { motion, AnimatePresence, Reorder } from "framer-motion";
+import { AnimatePresence, Reorder } from "framer-motion";
 import jsPDF from "jspdf";
-import { CameraMovement, type CastingShot, type ShotList, type ShotType, type CameraAngle, type ShotStatus, type Location } from "../models/casting";
+import { type CastingShot, type ShotList, type ShotType, type CameraAngle, type ShotStatus, type Location } from "../models/casting";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 interface ShootModeViewProps {
@@ -69,7 +69,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
   const [currentShotIndex, setCurrentShotIndex] = useState(0);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'timeline'>('grid');
-  const [filterLocation, setFilterLocation] = useState<string>('all');
+  const [filterLocation, _setFilterLocation] = useState<string>('all');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['all']));
   const [quickShotData, setQuickShotData] = useState({
     description: '',
@@ -89,7 +89,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
     const filteredOrdered = orderedShots.filter(s => removedIds.has(s.id));
     const updatedOrdered = filteredOrdered.map(s => shots.find(shot => shot.id === s.id) || s);
     setOrderedShots([...updatedOrdered, ...newShots]);
-  }, [shots]);
+  }, [orderedShots, shots]);
 
   const filteredShots = useMemo(() => {
     if (filterLocation === 'all') return orderedShots;
@@ -280,8 +280,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
 
   const exportToPDF = () => {
     const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    
+
     doc.setFontSize(18);
     doc.text(`Shoot Mode Rapport`, 14, 20);
     doc.setFontSize(12);
@@ -923,8 +922,6 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
   onOpenNotes,
   getLocationName,
   getEquipmentRecommendation,
-  getRoleName,
-  lightingTip,
 }) => {
   const status = shot.status || 'not_started';
   const config = statusConfig[status];
@@ -1126,7 +1123,6 @@ const TimelineShotRow: React.FC<TimelineShotRowProps> = ({
   shot,
   index,
   onCycleStatus,
-  getRoleName,
 }) => {
   const status = shot.status || 'not_started';
   const config = statusConfig[status];

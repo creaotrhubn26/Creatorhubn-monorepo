@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { CastingProject, CrewMember, SceneBreakdown, ShotList, UserRole } from '../models/casting';
 import {
   normalizeProducerProjectPlanning,

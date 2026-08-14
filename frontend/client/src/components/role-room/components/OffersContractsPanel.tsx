@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useCallback, useMemo, type FC, type ReactNode, type ReactElement } from 'react';
 import {
   Box,

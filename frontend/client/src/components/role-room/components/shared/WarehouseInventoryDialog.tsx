@@ -1,58 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  Tab,
-  Tabs,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Close as CloseIcon,
-  Delete as DeleteIcon,
-  Inventory2 as Inventory2Icon,
-  SyncAlt as MoveIcon,
-  PlaylistAddCheck as ReserveIcon,
-  PlaylistRemove as ReleaseIcon,
-  TaskAlt as PickIcon,
-  Rule as RuleIcon,
-  History as HistoryIcon,
-  AccountTree as StructureIcon,
-  QrCode as QrCodeIcon,
-  QrCodeScanner as QrCodeScannerIcon,
-  ContentCopy as CopyIcon,
-  Print as PrintIcon,
-} from '@mui/icons-material';
-import {
-  type InventoryItemType,
-  type InventoryReservation,
-  type InventoryStockRecord,
-  type InventoryTransactionAction,
-  type WarehouseLocationSeed,
-  type WarehouseNodeType,
-  type WarehouseSnapshot,
-  type WarehouseItemSeed,
-  warehouseInventoryService,
-} from '../../services/warehouseInventoryService';
+import { Alert, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Divider, FormControl, IconButton, InputLabel, MenuItem, Select, Stack, Tab, Tabs, Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography } from '@mui/material';
+import { Add as AddIcon, Close as CloseIcon, Delete as DeleteIcon, Inventory2 as Inventory2Icon, SyncAlt as MoveIcon, PlaylistAddCheck as ReserveIcon, PlaylistRemove as ReleaseIcon, TaskAlt as PickIcon, Rule as RuleIcon, History as HistoryIcon, AccountTree as StructureIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, ContentCopy as CopyIcon, Print as PrintIcon } from '@mui/icons-material';
+import { type InventoryItemType, type InventoryReservation, type InventoryTransactionAction, type WarehouseLocationSeed, type WarehouseNodeType, type WarehouseSnapshot, type WarehouseItemSeed, warehouseInventoryService } from '../../services/warehouseInventoryService';
 import QrCameraScanner from './QrCameraScanner';
 import globalTagService from '../../services/globalTagService';
 import GlobalMentionHelper from './GlobalMentionHelper';
@@ -213,7 +162,7 @@ export function WarehouseInventoryDialog({
       }))
     );
     return issues.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-  }, [items, projectId, snapshot.stock, snapshot.reservations]);
+  }, [items, projectId]);
 
   const activeReservations = useMemo(
     () => snapshot.reservations.filter((reservation) => reservation.status === 'reserved'),
@@ -249,7 +198,7 @@ export function WarehouseInventoryDialog({
     };
   }, [consistencyIssues.length, snapshot.nodes.length, stockRows]);
 
-  const reloadSnapshot = () => {
+  const reloadSnapshot = useCallback(() => {
     const seeded = warehouseInventoryService.bootstrapProject(projectId, {
       locations: locationSeeds,
       items: items.map<WarehouseItemSeed>((item) => ({
@@ -263,7 +212,7 @@ export function WarehouseInventoryDialog({
       })),
     });
     setSnapshot(seeded);
-  };
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -272,7 +221,7 @@ export function WarehouseInventoryDialog({
       const initial = items[0];
       setSelectedItemKey(`${initial.itemType}:${initial.id}`);
     }
-  }, [open, projectId, items, locationSeeds]);
+  }, [open, projectId, items, locationSeeds, reloadSnapshot, selectedItemKey]);
 
   const handleCreateNode = () => {
     if (!newNodeName.trim()) {

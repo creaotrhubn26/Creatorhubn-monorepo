@@ -1,120 +1,25 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Divider,
-  FormControl,
-  IconButton,
-  InputLabel,
-  ListSubheader,
-  MenuItem,
-  Select,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
-  Typography,
-  useMediaQuery,
-} from '@mui/material';
+import { Alert, Box, Button, Chip, Divider, FormControl, IconButton, InputLabel, ListSubheader, MenuItem, Select, Stack, Tab, Tabs, TextField, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import {
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  RateReview as RateReviewIcon,
-  Send as SendIcon,
-  CheckCircle as CheckCircleIcon,
-  Download as DownloadIcon,
-  Block as BlockIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
-} from '@mui/icons-material';
+import { ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, RateReview as RateReviewIcon, Send as SendIcon, CheckCircle as CheckCircleIcon, Download as DownloadIcon, Block as BlockIcon, Visibility as VisibilityIcon, VisibilityOff as VisibilityOffIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
-import type {
-  CastingProject,
-  ProducerAccountAccessPlatform,
-  ProducerBrandLogoVariantSelection,
-  ProducerClientIntake,
-  ProducerClientMaterial,
-  ProducerClientMaterialType,
-  ProducerProjectPlanning,
-  RoleRoomGoogleAgreementSignatureStatus,
-  ProducerWorkflowProjectMeta,
-  ProducerWorkflowProjectStatus,
-} from '../../models/casting';
+import type { CastingProject, ProducerAccountAccessPlatform, ProducerBrandLogoVariantSelection, ProducerClientIntake, ProducerClientMaterial, ProducerClientMaterialType, ProducerProjectPlanning, RoleRoomGoogleAgreementSignatureStatus, ProducerWorkflowProjectMeta, ProducerWorkflowProjectStatus } from '../../models/casting';
 import { useProducerReviews } from '../../hooks/useProducerReviews';
 import { useClientPresence } from '../../hooks/useClientPresence';
-import {
-  getProducerOperationalReviews,
-  isClientGroundingManagedReview,
-  producerWorkflowService,
-  type ProducerClientReview,
-  type ProducerClientConsent,
-  type ProducerReviewDecision,
-} from '../../services/producerWorkflowService';
-import {
-  projectAgreementsApi,
-  type ProjectAgreement,
-} from '../../services/castingApiService';
+import { getProducerOperationalReviews, isClientGroundingManagedReview, producerWorkflowService, type ProducerClientReview, type ProducerClientConsent, type ProducerReviewDecision } from '../../services/producerWorkflowService';
+import { projectAgreementsApi, type ProjectAgreement } from '../../services/castingApiService';
 import { castingService } from '../../services/castingService';
-import {
-  emitProjectAgreementEvent,
-  onProjectAgreementEvent,
-} from '../../services/projectAgreementEvents';
+import { emitProjectAgreementEvent, onProjectAgreementEvent } from '../../services/projectAgreementEvents';
 import { onProducerWorkflowEvent } from '../../services/producerWorkflowEvents';
-import {
-  onProducerWorkflowFocusEvent,
-  type ProducerWorkflowApprovalTemplate,
-  type ProducerWorkflowFocusPayload,
-} from '../../services/producerWorkflowFocusEvents';
+import { onProducerWorkflowFocusEvent, type ProducerWorkflowApprovalTemplate, type ProducerWorkflowFocusPayload } from '../../services/producerWorkflowFocusEvents';
 import settingsService from '../../services/settingsService';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
-import {
-  buildAgreementTimelinePayload,
-  getAgreementStatusFromReviewDecision,
-  isAgreementTimelineItem,
-} from '../../utils/projectAgreementWorkflow';
-import {
-  formatProducerTimestamp,
-  getProducerEntityTypeLabel,
-  getProducerReviewStatusLabel,
-  getProducerReviewTypeLabel,
-  makeProducerPackageEntityId,
-  PRODUCER_REVIEW_TYPE_OPTIONS,
-  type ProducerWorkflowEntityOption,
-} from '../../utils/producerWorkflow';
-import {
-  getAgreementSignatureLabel,
-  getAgreementSignatureTone,
-  getAgreementTypeLabel,
-  getAgreementWorkspaceArtifactId,
-  PROJECT_AGREEMENT_COUNTERPARTY_LABELS,
-  PROJECT_AGREEMENT_STATUS_LABELS,
-} from '../../utils/projectAgreements';
-import {
-  getProducerAccountAccessPlatformFromMomentId,
-  getProducerContentLogicMomentKind,
-  getProducerClientContributionTasks,
-  PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS,
-  PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS,
-  PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS,
-  PRODUCER_BRAND_LOGO_VARIANT_LABELS,
-  getProducerWorkspaceLocationForSurface,
-  getProducerWorkspaceSurfaceForContributionSource,
-  resolveProducerBrandLogoVariant,
-  getProducerStrategySnapshot,
-  mergeProducerPlanningClientMomentsWithReviews,
-  PRODUCER_CONTENT_LOGIC_MOMENT_LABELS,
-  PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS,
-  PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS,
-  PRODUCER_PLANNING_CLIENT_MOMENT_LABELS,
-  normalizeProducerProjectPlanning,
-} from '../../utils/producerProjectPlanning';
+import { buildAgreementTimelinePayload, getAgreementStatusFromReviewDecision, isAgreementTimelineItem } from '../../utils/projectAgreementWorkflow';
+import { formatProducerTimestamp, getProducerEntityTypeLabel, getProducerReviewStatusLabel, getProducerReviewTypeLabel, makeProducerPackageEntityId, PRODUCER_REVIEW_TYPE_OPTIONS, type ProducerWorkflowEntityOption } from '../../utils/producerWorkflow';
+import { getAgreementSignatureLabel, getAgreementSignatureTone, getAgreementTypeLabel, getAgreementWorkspaceArtifactId, PROJECT_AGREEMENT_COUNTERPARTY_LABELS, PROJECT_AGREEMENT_STATUS_LABELS } from '../../utils/projectAgreements';
+import { getProducerAccountAccessPlatformFromMomentId, getProducerContentLogicMomentKind, getProducerClientContributionTasks, PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS, PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS, PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS, PRODUCER_BRAND_LOGO_VARIANT_LABELS, getProducerWorkspaceLocationForSurface, getProducerWorkspaceSurfaceForContributionSource, resolveProducerBrandLogoVariant, getProducerStrategySnapshot, mergeProducerPlanningClientMomentsWithReviews, PRODUCER_CONTENT_LOGIC_MOMENT_LABELS, PRODUCER_CLIENT_CONTRIBUTION_SOURCE_LABELS, PRODUCER_CLIENT_CONTRIBUTION_STATUS_LABELS, PRODUCER_PLANNING_CLIENT_MOMENT_LABELS, normalizeProducerProjectPlanning } from '../../utils/producerProjectPlanning';
 import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 import { CollapsibleSection } from '../CollapsibleSection';
 
@@ -471,21 +376,6 @@ function getReviewClientInviteActionLabel(
     return 'Ta stilling til bevis og argumentasjon';
   }
   return 'Gå gjennom saken';
-}
-
-function buildReviewClientInviteEmailSubject(
-  projectName: string,
-  review: ProducerClientReview,
-): string {
-  const accountAccessPlatforms = getAccountAccessPlatformsForReview(review);
-  if (accountAccessPlatforms.length > 0) {
-    return `${projectName} · Kontotilgang · ${accountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' / ')}`;
-  }
-  const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
-  if (contentLogicMomentKind) {
-    return `${projectName} · Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
-  }
-  return `${projectName} · Klientreview · ${review.title}`;
 }
 
 export default function ProducerClientReviewPanel({

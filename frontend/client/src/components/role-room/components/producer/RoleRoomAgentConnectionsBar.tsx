@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Avatar, Box, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
-import {
-  AddCircleOutline as ConnectIcon,
-  CheckCircle as CheckIcon,
-} from '@mui/icons-material';
-import { InstagramBrandLogo } from './SocialBrandLogo';
-import roleRoomAgentService, {
-  type RoleRoomInstagramConnection,
-} from '../../services/roleRoomAgentService';
+import { Avatar, Box, Chip, Stack, Tooltip, Typography } from '@mui/material';
+import { AddCircleOutline as ConnectIcon, CheckCircle as CheckIcon } from '@mui/icons-material';
+import {  } from './SocialBrandLogo';
+import roleRoomAgentService, { type RoleRoomInstagramConnection } from '../../services/roleRoomAgentService';
 
 interface PlatformSlot {
   id: 'instagram' | 'facebook_page' | 'tiktok' | 'linkedin' | 'youtube' | 'x' | 'threads';
@@ -81,7 +76,7 @@ export default function RoleRoomAgentConnectionsBar({
           username: ttData.username,
           avatarUrl: ttData.avatarUrl,
         });
-      } catch (err) {
+      } catch (_err) {
         // Previously a rejection here left `loading` stuck true forever and
         // swallowed the error — the bar just showed a permanent spinner.
         if (!cancelled) {

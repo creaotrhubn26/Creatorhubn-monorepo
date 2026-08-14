@@ -27,7 +27,7 @@ export function useSettings() {
     return settings[key];
   }, [settings]);
 
-  const getProfessionDefaults = useCallback((profession: string): Partial<Settings> => {
+  const getProfessionDefaults = useCallback((_profession: string): Partial<Settings> => {
     return defaultSettings;
   }, []);
 

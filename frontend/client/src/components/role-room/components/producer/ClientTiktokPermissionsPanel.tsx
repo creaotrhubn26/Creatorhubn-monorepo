@@ -75,7 +75,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -91,7 +91,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
     } finally {
       setLoading(false);
     }
-  };
+  });
 
   const save = async () => {
     setSaving(true);
@@ -138,7 +138,7 @@ export default function ClientTiktokPermissionsPanel({ configId }: { configId: s
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [configId]);
+  useEffect(() => { load();   }, [configId, load]);
 
   const accepted = !!state?.acceptedAt && !state?.revokedAt && !state?.needsReaccept;
   const activeCount = Object.values(perms).filter(Boolean).length;

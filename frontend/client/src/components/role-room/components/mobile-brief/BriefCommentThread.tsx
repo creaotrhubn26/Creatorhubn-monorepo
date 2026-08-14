@@ -8,18 +8,8 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Box, Stack, Typography, Chip, IconButton, TextField, Button,
-  Avatar, Collapse, Divider, CircularProgress, Tooltip,
-} from '@mui/material';
-import {
-  ChatBubbleOutline as ChatIcon,
-  Send as SendIcon,
-  CheckCircleOutline as ResolveIcon,
-  DeleteOutline as DeleteIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, Chip, IconButton, TextField, Avatar, Collapse, Divider, CircularProgress, Tooltip } from '@mui/material';
+import { ChatBubbleOutline as ChatIcon, Send as SendIcon, CheckCircleOutline as ResolveIcon, DeleteOutline as DeleteIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon } from '@mui/icons-material';
 import { useBriefComments } from './useBriefCollaboration';
 import type { BriefComment } from '../../services/briefCollaborationService';
 

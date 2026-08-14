@@ -1,6 +1,6 @@
 import type React from "react";
 import { useRef, useEffect } from "react";
-import { Box } from "@mui/material";
+import {  } from "@mui/material";
 import * as PIXI from "pixi.js";
 import type { FramingGuide } from "./types";
 
@@ -60,7 +60,7 @@ export const FramingGuideRenderer: React.FC<FramingGuideRendererProps> = ({
       switch (guide.type) {
         case 'rule-of-thirds':
           // Vertical lines
-          const vSpacing = width / 3;
+          { const vSpacing = width / 3;
           for (let i = 1; i < 3; i++) {
             graphics.moveTo(vSpacing * i, 0);
             graphics.lineTo(vSpacing * i, height);
@@ -71,11 +71,11 @@ export const FramingGuideRenderer: React.FC<FramingGuideRendererProps> = ({
             graphics.moveTo(0, hSpacing * i);
             graphics.lineTo(width, hSpacing * i);
           }
-          break;
+          break; }
 
         case 'golden-ratio':
           // Golden ratio spiral approximation
-          const phi = 1.618;
+          { const phi = 1.618;
           let x = 0;
           let y = 0;
           let w = width;
@@ -97,11 +97,11 @@ export const FramingGuideRenderer: React.FC<FramingGuideRendererProps> = ({
               h -= fh;
             }
           }
-          break;
+          break; }
 
         case 'center':
           // Center crosshairs
-          graphics.lineStyle(1, 0xFFD54F, guide.opacity);
+          { graphics.lineStyle(1, 0xFFD54F, guide.opacity);
           const centerX = width / 2;
           const centerY = height / 2;
           const crossSize = 50;
@@ -114,7 +114,7 @@ export const FramingGuideRenderer: React.FC<FramingGuideRendererProps> = ({
           // Center circle
           graphics.lineStyle(1, 0xFFD54F, guide.opacity * 0.5);
           graphics.drawCircle(centerX, centerY, 80);
-          break;
+          break; }
 
         case 'diagonal':
           // Diagonal lines

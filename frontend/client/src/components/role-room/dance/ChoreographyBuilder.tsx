@@ -1059,7 +1059,7 @@ const SegmentInspector: React.FC<SegmentInspectorProps> = ({
 }) => {
   const meta = getSegmentMeta(segment.kind);
   const energyMeta = getEnergyMeta(segment.energy);
-  const approvalMeta = getApprovalMeta(segment.approval);
+  const _approvalMeta = getApprovalMeta(segment.approval);
 
   return (
     <Stack spacing={1.5}>

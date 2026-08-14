@@ -59,7 +59,7 @@ const GOPRO_QUERY_RX = "b5f90077-aa8d-11e3-9046-0002a5d5c51b";
 
 // Commands
 const CMD_SHUTTER = 0x01;
-const CMD_AP_MODE = 0x05;
+const _CMD_AP_MODE = 0x05;
 const CMD_GET_HARDWARE_INFO = 0x3c;
 
 // Status-IDs
@@ -68,17 +68,17 @@ const STATUS_RECORDING = 8;
 const STATUS_SD_SPACE_BYTES = 54;
 
 // Settings-IDs (Open GoPro v2.0)
-const SETTING_RESOLUTION = 2;
+const _SETTING_RESOLUTION = 2;
 const SETTING_FPS = 3;
 const SETTING_WB = 115;
 const SETTING_ISO_MIN = 75;
-const SETTING_SHUTTER = 145;
+const _SETTING_SHUTTER = 145;
 
 // Query types
 const QUERY_REGISTER_STATUS_UPDATES = 0x53;
-const QUERY_REGISTER_SETTING_UPDATES = 0x52;
-const QUERY_GET_STATUS_VALUES = 0x13;
-const QUERY_GET_SETTING_VALUES = 0x12;
+const _QUERY_REGISTER_SETTING_UPDATES = 0x52;
+const _QUERY_GET_STATUS_VALUES = 0x13;
+const _QUERY_GET_SETTING_VALUES = 0x12;
 
 // ─────────────────────────────────────────────────────────────────────
 // Web Bluetooth-types (kopiert fra blackmagic-adapter for konsistens)

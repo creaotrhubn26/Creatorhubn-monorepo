@@ -10,29 +10,8 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Stack,
-  Tooltip,
-  Slider,
-  Switch,
-  FormControlLabel,
-  Divider,
-} from '@mui/material';
-import {
-  Layers,
-  ChevronLeft,
-  ChevronRight,
-  Remove,
-  Add,
-  Opacity,
-  ColorLens,
-  Visibility,
-  VisibilityOff,
-} from '@mui/icons-material';
+import { Box, Paper, Typography, IconButton, Stack, Tooltip, Slider, Switch, FormControlLabel, Divider } from '@mui/material';
+import { Layers, ChevronLeft, ChevronRight, Remove, Add } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // =============================================================================
@@ -89,7 +68,7 @@ export const DEFAULT_ONION_SKIN_SETTINGS: OnionSkinSettings = {
 // Styled Components
 // =============================================================================
 
-const OnionContainer = styled(Paper)(({ theme }) => ({
+const OnionContainer = styled(Paper)(({ _theme }) => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
@@ -239,9 +218,9 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
   onSettingsChange,
   currentFrameIndex,
   totalFrames,
-  getFrameImage,
+  _getFrameImage,
 }) => {
-  const [colorPickerOpen, setColorPickerOpen] = useState<'before' | 'after' | null>(null);
+  const [_colorPickerOpen, setColorPickerOpen] = useState<'before' | 'after' | null>(null);
 
   const updateSettings = useCallback((updates: Partial<OnionSkinSettings>) => {
     onSettingsChange({ ...settings, ...updates });

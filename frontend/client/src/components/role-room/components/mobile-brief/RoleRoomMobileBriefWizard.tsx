@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileBriefWizard — five-step client brief wizard for mobile + iPad.
  *
@@ -17,37 +16,14 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Skeleton,
-  Stack,
-  Step,
-  StepLabel,
-  Stepper,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Skeleton, Stack, Step, StepLabel, Stepper, TextField, Typography } from '@mui/material';
 import { ArrowForward as ArrowForwardIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 
 import { useClientIntake } from '../../hooks/useClientIntake';
 import type { ProducerClientIntake } from '../../models/casting';
-import {
-  BRIEF_STEPS,
-  BriefFieldDescriptor,
-  BriefStepKey,
-  getMissingFields,
-  stepCompletion,
-  stepFor,
-} from './briefStepDefinitions';
-import {
-  clearBriefDraft,
-  readBriefDraft,
-  writeBriefDraft,
-} from './briefDraftPersistence';
+import type { BriefFieldDescriptor } from './briefStepDefinitions';
+import { BRIEF_STEPS, getMissingFields, stepCompletion, stepFor } from './briefStepDefinitions';
+import { clearBriefDraft, readBriefDraft, writeBriefDraft } from './briefDraftPersistence';
 import BriefCommentThread from './BriefCommentThread';
 import BriefActivityFeed from './BriefActivityFeed';
 import BriefReferenceMoodboard from './BriefReferenceMoodboard';

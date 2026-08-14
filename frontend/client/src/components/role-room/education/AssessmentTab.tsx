@@ -23,7 +23,7 @@ import {
   TrendingUp as AvgIcon, School as LmsIcon,
 } from '@mui/icons-material';
 import { educationAssessmentService, type AssessmentItem } from './educationAssessmentService';
-import educationLtiService from './educationLtiService';
+import educationLtiService, { type ExamReadiness } from './educationLtiService';
 import { LmsRosterPanel } from './LmsRosterPanel';
 import { educationRubricService, RUBRIC_LEVELS, RUBRIC_MAX, type RubricCriterion } from './educationRubricService';
 import { educationAssignmentsService } from './educationAssignmentsService';
@@ -49,7 +49,7 @@ export function AssessmentTab() {
   const [pushedIds, setPushedIds] = useState<Set<string>>(new Set());
 
   // Eksamensklar-status lest FRA Canvas (AGS Results).
-  const [readiness, setReadiness] = useState<import('./educationLtiService').ExamReadiness | null>(null);
+  const [readiness, setReadiness] = useState<ExamReadiness | null>(null);
   const [readinessBusy, setReadinessBusy] = useState(false);
   const loadReadiness = async () => {
     if (!launchId) return;
@@ -139,7 +139,7 @@ export function AssessmentTab() {
     const targets = items.filter((it) => it.status === 'reviewed' && ((drafts[it.submissionId]?.grade || it.grade || '').trim()) && !pushedIds.has(it.submissionId));
     if (targets.length === 0) { setError('Ingen vurderte innleveringer med karakter å sende ennå.'); return; }
     for (const it of targets) {
-      // eslint-disable-next-line no-await-in-loop -- sekvensiell AGS-passback unngår rate-limit
+       
       await pushToLms(it);
     }
   };

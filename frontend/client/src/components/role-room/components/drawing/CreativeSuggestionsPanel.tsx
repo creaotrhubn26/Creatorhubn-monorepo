@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CreativeSuggestionsPanel — sidebar som hjelper storyboard-artisten
  * å vite hva han/hun burde tegne. Tre seksjoner:

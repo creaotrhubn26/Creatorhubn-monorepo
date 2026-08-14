@@ -230,7 +230,7 @@ export function buildDefaultSchedule(posts: RoleRoomFeedPost[], startDate: Date 
   baseline.setDate(baseline.getDate() + daysUntilMonday);
 
   const schedule: Date[] = [];
-  let weekCursor = new Date(baseline);
+  const weekCursor = new Date(baseline);
   while (schedule.length < posts.length) {
     for (const offset of cadenceDays) {
       const monday = new Date(weekCursor);

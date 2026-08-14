@@ -72,7 +72,7 @@ function pickMimeType(): string | null {
 }
 
 /** Hent filending som matcher mime — viktig for download-filnavn. */
-function extensionForMime(mime: string): string {
+function _extensionForMime(mime: string): string {
   if (mime.startsWith('video/mp4')) return 'mp4';
   return 'webm';
 }
@@ -101,7 +101,7 @@ export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): Animat
 
   const cleanup = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      try { recorderRef.current.stop(); } catch {}
+      try { recorderRef.current.stop(); } catch { /* empty */ }
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -198,7 +198,7 @@ export function useAnimaticRecorder(options: UseAnimaticRecorderOptions): Animat
     const recorder = recorderRef.current;
     if (!recorder) return;
     if (recorder.state === 'recording' || recorder.state === 'paused') {
-      try { recorder.stop(); } catch {}
+      try { recorder.stop(); } catch { /* empty */ }
     }
   }, []);
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   ROLE_ROOM_TALENT_PORTAL_PATH,
   getRoleRoomCanonicalPath,

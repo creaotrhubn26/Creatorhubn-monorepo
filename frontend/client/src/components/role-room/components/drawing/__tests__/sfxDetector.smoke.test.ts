@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, it } from 'vitest';
 import { detectFrameSfx, detectSequenceSfx, groupEventsByFrame } from '../sfxDetector';
 import { SFX_CATEGORIES } from '../sfxCategories';

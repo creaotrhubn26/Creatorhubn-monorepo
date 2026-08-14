@@ -23,27 +23,15 @@
  * JS-rendering henger.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Container,
-  Divider,
-  Stack,
-  Typography,
-} from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import { Alert, Box, Button, Card, CardContent, Chip, Container, Divider, Stack, Typography } from '@mui/material';
 import SchoolIcon from '@mui/icons-material/School';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { clarityTag, clarityEvent } from '@/lib/clarity';
 import BlockRenderer from '../cms/BlockRenderer';
 import { isBlockArray, type Block, type Locale, DEFAULT_LOCALE } from '../cms/blockSchema';
 import MovieFilterIcon from '@mui/icons-material/MovieFilter';
-import GroupsIcon from '@mui/icons-material/Groups';
-import VideoCameraFrontIcon from '@mui/icons-material/VideoCameraFront';
+
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import EmojiObjectsIcon from '@mui/icons-material/EmojiObjects';
@@ -758,7 +746,7 @@ function useCmsContent(pageKey: StudentPageKey): CmsRenderState {
     return () => {
       cancelled = true;
     };
-  }, [pageKey]);
+  }, [defaults, pageKey]);
 
   // Live preview: hør på postMessage fra AdminRoom CMS-editor.
   // Lar editoren oppdatere innholdet sanntid uten API-roundtrip.

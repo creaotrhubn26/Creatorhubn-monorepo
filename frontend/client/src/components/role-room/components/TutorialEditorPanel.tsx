@@ -52,7 +52,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
   const is1080p = useMediaQuery('(min-width:1280px) and (max-width:1919px)');
   const is2K = useMediaQuery('(min-width:1920px) and (max-width:2559px)');
   const isHiDPI = useMediaQuery('(min-width:2560px) and (max-width:3599px)');
-  const is4K = useMediaQuery('(min-width:3600px)');
+  const _is4K = useMediaQuery('(min-width:3600px)');
   const showMobileMenu = useMediaQuery('(max-width:959px)');
 
   const getResponsiveValue = useCallback(<T,>(mobile: T, tablet: T, hd720: T, hd1080: T, qhd2k: T, hiDPI: T, uhd4k: T): T => {
@@ -63,7 +63,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
     if (is2K) return qhd2k;
     if (isHiDPI) return hiDPI;
     return uhd4k;
-  }, [isMobile, isTablet, is720p, is1080p, is2K, isHiDPI, is4K]);
+  }, [isMobile, isTablet, is720p, is1080p, is2K, isHiDPI]);
 
   const responsiveTokens = useMemo(() => ({
     buttonMinHeight: getResponsiveValue(44, 44, 40, 42, 48, 52, 58),
@@ -115,7 +115,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
     if (open) {
       loadTutorials();
     }
-  }, [open]);
+  }, [loadTutorials, open]);
 
   const loadTutorials = useCallback(() => {
     setTutorials(tutorialService.getAllTutorials());

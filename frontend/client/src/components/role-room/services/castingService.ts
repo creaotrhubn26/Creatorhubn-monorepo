@@ -1,44 +1,6 @@
-// @ts-nocheck
-import type {
-  CastingProject,
-  Role,
-  Candidate,
-  ContactInfo,
-  Schedule,
-  CrewMember,
-  CrewAssignment,
-  Location,
-  Prop,
-  ProductionDay,
-  ShotList,
-  CastingShot,
-  SceneBreakdown,
-  UserRole,
-  Consent,
-} from '../models/casting';
-import type {
-  LiveSetSession,
-  LiveSetBatchIngestRequest,
-  LiveSetBatchIngestResponse,
-  LiveSetEventsSinceResponse,
-  LiveSetAckResponse,
-  LiveSetHealthResponse,
-  WeatherAlertNormalized,
-} from '../types/liveSetContracts';
-import {
-  CONTENT_PRODUCER_DEMO_PROJECT_ID,
-  PRODUCER_DEMO_CLIENT_ADDRESS,
-  PRODUCER_DEMO_CLIENT_COMPANY,
-  PRODUCER_DEMO_CLIENT_EMAIL,
-  PRODUCER_DEMO_CLIENT_NAME,
-  PRODUCER_DEMO_CLIENT_ORGANIZATION_NUMBER,
-  PRODUCER_DEMO_PRIMARY_LOCATION,
-  PRODUCER_DEMO_PROJECT_DESCRIPTION,
-  PRODUCER_DEMO_PROJECT_NAME,
-  TROLL_DEMO_PROJECT_ID,
-  containsLegacyProducerDemoMarker,
-  isRoleRoomDemoSeedAllowed,
-} from '../constants/producerDemo';
+import type { CastingProject, Role, Candidate, ContactInfo, Schedule, CrewMember, CrewAssignment, Location, Prop, ProductionDay, ShotList, CastingShot, SceneBreakdown, UserRole, Consent } from '../models/casting';
+import type { LiveSetSession, LiveSetBatchIngestRequest, LiveSetBatchIngestResponse, LiveSetEventsSinceResponse, LiveSetAckResponse, LiveSetHealthResponse, WeatherAlertNormalized } from '../types/liveSetContracts';
+import { CONTENT_PRODUCER_DEMO_PROJECT_ID, PRODUCER_DEMO_CLIENT_ADDRESS, PRODUCER_DEMO_CLIENT_COMPANY, PRODUCER_DEMO_CLIENT_EMAIL, PRODUCER_DEMO_CLIENT_NAME, PRODUCER_DEMO_CLIENT_ORGANIZATION_NUMBER, PRODUCER_DEMO_PRIMARY_LOCATION, PRODUCER_DEMO_PROJECT_DESCRIPTION, PRODUCER_DEMO_PROJECT_NAME, TROLL_DEMO_PROJECT_ID, containsLegacyProducerDemoMarker, isRoleRoomDemoSeedAllowed } from '../constants/producerDemo';
 import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
@@ -315,7 +277,6 @@ const normalizeRequiredProjectId = (projectId: string | null | undefined, operat
 const assertDemoProjectCanMutate = (
   project: CastingProject | string | null | undefined,
   mutation: 'save' | 'delete',
-  options?: ProjectMutationOptions,
 ): void => {
   if (!isProtectedDemoProject(project)) {
     return;

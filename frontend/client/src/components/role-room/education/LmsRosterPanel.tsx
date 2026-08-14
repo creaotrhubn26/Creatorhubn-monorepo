@@ -18,7 +18,7 @@ import {
 } from '@mui/icons-material';
 import educationLtiService, { type LtiRosterMember } from './educationLtiService';
 
-const ACCENT = '#8B5CF6';
+const _ACCENT = '#8B5CF6';
 
 function roleLabel(roles: string[]): { label: string; color: string } {
   const joined = roles.join(' ');

@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from "react";
-import { Box, IconButton, Stack, Tooltip, Paper, Popover, Slider, Typography, ToggleButton, Divider } from "@mui/material";
+import React, { useState } from "react";
+import { Box, IconButton, Stack, Tooltip, Paper, Popover, Slider, Typography, Divider } from "@mui/material";
 import { Create, Brush, BorderColor, Highlight, Edit, FormatPaint, AutoFixHigh, TextFields, CameraAlt, Undo, Redo, BlurOn, Gesture, EditOutlined } from "@mui/icons-material";
 import { styled } from "@mui/material/styles";
-import { BRUSH_PRESETS, type AdvancedBrushType, type BrushConfig } from "./AdvancedBrushEngine";
+import { type AdvancedBrushType, type BrushConfig } from "./AdvancedBrushEngine";
 import ColorWheelPicker from "../ColorWheelPicker";
 
 // =============================================================================
@@ -273,7 +273,7 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
 }) => {
   const [colorPickerAnchor, setColorPickerAnchor] = useState<HTMLElement | null>(null);
   const [sizeAnchor, setSizeAnchor] = useState<HTMLElement | null>(null);
-  const [selectedBrushForSize, setSelectedBrushForSize] = useState<AdvancedBrushType | null>(null);
+  const [_selectedBrushForSize, setSelectedBrushForSize] = useState<AdvancedBrushType | null>(null);
 
   // Get size dots (3 dots showing relative size)
   const getSizeDots = (size: number): boolean[] => {

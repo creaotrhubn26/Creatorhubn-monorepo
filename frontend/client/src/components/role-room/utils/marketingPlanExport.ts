@@ -21,7 +21,7 @@ function sanitizeFilename(name: string | null | undefined, fallback = 'marketing
   if (!name) return fallback;
   return name
     .normalize('NFKD')
-    .replace(/[^\w\-]+/g, '_')
+    .replace(/[^\w-]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
     .toLowerCase()

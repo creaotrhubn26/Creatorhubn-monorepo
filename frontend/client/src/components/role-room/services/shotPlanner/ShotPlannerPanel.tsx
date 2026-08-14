@@ -17,26 +17,16 @@ import {
   IconButton,
   Tooltip,
   Divider,
-  ToggleButton,
-  ToggleButtonGroup,
   Button,
   Menu,
   MenuItem,
-  Slider,
   Chip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
-  Select,
-  FormControl,
-  InputLabel,
   Stack,
-  useTheme,
-  useMediaQuery,
-  Fade,
-  Zoom,
 } from '@mui/material';
 import {
   PanTool as PanIcon,
@@ -51,45 +41,21 @@ import {
   Straighten as RulerIcon,
   Undo as UndoIcon,
   Redo as RedoIcon,
-  Save as SaveIcon,
   FileDownload as ExportIcon,
-  FileUpload as ImportIcon,
   Add as AddIcon,
-  Delete as DeleteIcon,
-  Lock as LockIcon,
-  LockOpen as UnlockIcon,
-  Visibility as ShowIcon,
-  VisibilityOff as HideIcon,
-  Settings as SettingsIcon,
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
-  Timeline as TimelineIcon,
   ViewSidebar as SidebarIcon,
   MoreVert as MoreIcon,
-  ContentCopy as CopyIcon,
-  ContentPaste as PasteIcon,
-  SelectAll as SelectAllIcon,
-  CenterFocusStrong as CenterIcon,
-  PhotoCamera as SnapshotIcon,
-  HelpOutline as HelpIcon,
   Keyboard as KeyboardIcon,
   Map as MapIcon,
-  Layers as LayersIcon,
-  Speed as SpeedIcon,
   MyLocation as MyLocationIcon,
-  GridView as GridViewIcon,
-  PlayArrow as PlayIcon,
-  Pause as PauseIcon,
-  SkipNext as NextShotIcon,
-  SkipPrevious as PrevShotIcon,
   AutoAwesome as MagicIcon,
   Close as CloseIcon,
   Dashboard as TemplateIcon,
-  CameraRoll as PresetIcon,
-  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useShotPlannerStore, useCurrentScene, useActiveTool, useSelection } from './store';
+import { useShotPlannerStore, useCurrentScene, useActiveTool } from './store';
 import { ShotPlannerCanvas } from './ShotPlannerCanvas';
 import { ShotListSidebar } from './ShotListSidebar';
 import { CameraSettingsPanel } from './CameraSettingsPanel';
@@ -231,14 +197,11 @@ interface ShotPlannerPanelProps {
   onClose?: () => void;
 }
 
-export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ projectId, onClose }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ projectId, onClose: _onClose }) => {
   
   // Store
   const scene = useCurrentScene();
   const activeTool = useActiveTool();
-  const selection = useSelection();
   const {
     createScene,
     loadDemoScene,
@@ -250,10 +213,6 @@ export const ShotPlannerPanel: React.FC<ShotPlannerPanelProps> = ({ projectId, o
     updateScene,
     undo,
     redo,
-    copy,
-    paste,
-    selectAll,
-    deleteSelected,
     exportScene,
     exportAsPDF,
     exportShotCallsheet,

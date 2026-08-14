@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomAiGovernancePanel — admin-only DPO-facing overview.
  *

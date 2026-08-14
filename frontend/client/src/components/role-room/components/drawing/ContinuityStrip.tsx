@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ContinuityStrip — horisontal stripe med ±2 nabo-frames + aktiv frame.
  *

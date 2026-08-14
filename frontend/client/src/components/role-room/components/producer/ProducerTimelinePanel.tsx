@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -660,7 +659,7 @@ export default function ProducerTimelinePanel({
     });
 
     return summaries.sort((left, right) => right.priorityScore - left.priorityScore);
-  }, [allTimelineItems, latestShotListReview, onOpenReviews, onOpenShotList, productionEstimate, shotListProductionDays, shotLists, timelineStatusByPhase]);
+  }, [latestShotListReview, onOpenReviews, onOpenShotList, productionEstimate, shotListProductionDays, shotLists, timelineStatusByPhase]);
 
   const phaseReadinessByPhase = useMemo(() => (
     shotListReadiness.reduce<Record<ProducerPhase, ShotListReadinessSummary>>((acc, summary) => {

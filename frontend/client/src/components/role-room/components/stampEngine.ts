@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * stampEngine — Procreate-paritet stamp-rendering for brush preview.
  *

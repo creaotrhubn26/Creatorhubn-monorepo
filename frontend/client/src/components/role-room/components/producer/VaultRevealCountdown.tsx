@@ -23,7 +23,7 @@ export default function VaultRevealCountdown({
   const startMs = useMemo(() => {
     const t = revealedAt ? Date.parse(revealedAt) : Number.NaN;
     return Number.isFinite(t) ? t : Date.now();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [revealedAt]);
   const [now, setNow] = useState(() => Date.now());
 

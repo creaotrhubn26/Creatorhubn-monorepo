@@ -10,13 +10,11 @@
  * and competitor analysis data.
  */
 import { useState } from 'react';
-import {
-  Alert, Box, Button, Chip, CircularProgress, Container, Divider, Grid, Stack, TextField, Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Container, Divider, Grid, Stack, TextField, Typography } from '@mui/material';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import LaunchIcon from '@mui/icons-material/Launch';
 import { useAuth } from '@/hooks/useAuth';
-import { authSessionService } from '../../services/authSessionService';
+import {  } from '../../services/authSessionService';
 
 interface AttributionResult {
   insights: {

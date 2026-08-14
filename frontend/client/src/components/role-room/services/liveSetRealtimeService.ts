@@ -283,7 +283,7 @@ export function useLiveSetRealtime(opts: UseLiveSetRealtimeOptions): UseLiveSetR
       svc.disconnect();
       svcRef.current = null;
     };
-  }, [opts.projectId, opts.shootingDayId, opts.userId, opts.role, opts.enabled]);
+  }, [opts.projectId, opts.shootingDayId, opts.userId, opts.role, opts.enabled, opts]);
 
   return {
     connected,

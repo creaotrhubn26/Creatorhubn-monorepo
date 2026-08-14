@@ -33,7 +33,7 @@ const VURDERINGSFORM_OPTIONS: { key: string; label: string }[] = [
 const vurderingsformLabel = (k: string | null) => VURDERINGSFORM_OPTIONS.find((o) => o.key === k)?.label ?? null;
 const linesToList = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
 const listToLines = (a: string[]) => a.join('\n');
-const emptyOutcomes = (): LearningOutcomes => ({ knowledge: [], skills: [], generalCompetence: [] });
+const _emptyOutcomes = (): LearningOutcomes => ({ knowledge: [], skills: [], generalCompetence: [] });
 
 type FormState = { code: string; title: string; credits: string; term: string; cohortId: string; vurderingsform: string; knowledge: string; skills: string; generalCompetence: string };
 const blankForm = (): FormState => ({ code: '', title: '', credits: '', term: '', cohortId: '', vurderingsform: '', knowledge: '', skills: '', generalCompetence: '' });
@@ -61,7 +61,7 @@ export function CoursesTab() {
     try {
       let courseN = 0; let assignN = 0;
       for (const pc of selectedPack.courses) {
-        // eslint-disable-next-line no-await-in-loop -- sekvensiell for rekkefølge + FK
+         
         const course = await educationCoursesService.createCourse({
           code: pc.code, title: pc.title, credits: pc.credits, term: pc.term,
           cohortId: packCohortId || null, vurderingsform: pc.vurderingsform, learningOutcomes: pc.learningOutcomes,
@@ -69,7 +69,7 @@ export function CoursesTab() {
         courseN++;
         for (const a of pc.assignments) {
           try {
-            // eslint-disable-next-line no-await-in-loop -- sekvensiell så-ing
+             
             await educationAssignmentsService.createAssignment({
               title: a.title, brief: a.brief, learningGoals: a.learningGoals,
               cohortId: packCohortId || null, courseId: course.id,

@@ -95,7 +95,7 @@ const WheelCanvas = styled('canvas')({
   borderRadius: '50%',
 });
 
-const TriangleCanvas = styled('canvas')({
+const _TriangleCanvas = styled('canvas')({
   position: 'absolute',
   top: '50%',
   left: '50%',

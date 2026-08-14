@@ -1,27 +1,6 @@
-// @ts-nocheck
 import React, { useState, useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Stack,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Paper,
-  Chip,
-  IconButton,
-  Tooltip,
-  ToggleButtonGroup,
-  ToggleButton,
-  Divider,
-} from '@mui/material';
-import {
-  CompareArrows as CompareArrowsIcon,
-  ViewColumn as ViewColumnIcon,
-  ViewDay as ViewDayIcon,
-  GetApp as GetAppIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Stack, Select, MenuItem, FormControl, InputLabel, Paper, Chip, Tooltip, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { ViewColumn as ViewColumnIcon, ViewDay as ViewDayIcon } from '@mui/icons-material';
 import type { ScriptRevision } from '../models/casting';
 
 interface ScriptDiffViewerProps {

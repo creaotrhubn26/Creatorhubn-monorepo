@@ -766,7 +766,7 @@ function MccInviteSection() {
       void fetchLinks();
     }, 30000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [expanded, hasPendingLink]);
 
   const sendInvite = async () => {

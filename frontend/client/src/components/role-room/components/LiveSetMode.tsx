@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LiveSetMode – On-set operational tool
  *
@@ -13,85 +12,8 @@
  */
 
 import { memo, useState, useEffect, useRef, useMemo, useCallback, type FC, type ElementType } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  ButtonBase,
-  IconButton,
-  Chip,
-  Paper,
-  Tooltip,
-  Tabs,
-  Tab,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Divider,
-  Stack,
-  Badge,
-  Avatar,
-  Collapse,
-  Slide,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Checkbox,
-  useTheme,
-  useMediaQuery,
-  keyframes,
-} from '@mui/material';
-import {
-  FiberManualRecord as RecordIcon,
-  Stop as CutIcon,
-  Timer as TimerIcon,
-  CheckCircle as GoodTakeIcon,
-  MyLocation as PickupIcon,
-  WarningAmber as ActionSafeIcon,
-  CameraAlt as CheckFocusIcon,
-  DoneAll as SetupCompleteIcon,
-  Notes as NoteIcon,
-  LocalOffer as TagIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Star as CircleIcon,
-  Print as PrintIcon,
-  Close as CloseIcon,
-  WifiOff as OfflineIcon,
-  Sync as SyncIcon,
-  CheckCircleOutline as SyncedIcon,
-  ArrowForward as AdvanceIcon,
-  Videocam as VideocamIcon,
-  Settings as SettingsIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-  PhotoCamera as StillIcon,
-  KeyboardReturn as EnterIcon,
-  Flag as PhaseIcon,
-  Groups as CrewIcon,
-  Inventory2 as EquipmentIcon,
-  Thunderstorm as ThunderIcon,
-  WbSunny as SunnyIcon,
-  Cloud as CloudIcon,
-  AcUnit as SnowIcon,
-  AutoStories as ScriptIcon,
-  ViewCarousel as StoryboardIcon,
-  PlaylistAddCheck as CaptureIcon,
-  Add as PlusIcon,
-  Remove as MinusIcon,
-  Thermostat as TempIcon,
-  Air as WindIcon,
-  WaterDrop as RainIcon,
-  AccessTime as TimeIcon,
-  NavigateBefore as PrevIcon,
-  NavigateNext as NextIcon,
-  ZoomIn as ZoomIcon,
-  OpenInNew as ExternalLinkIcon,
-  SwapHoriz as LayoutSwapIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Button, ButtonBase, IconButton, Chip, Paper, Tooltip, Tabs, Tab, TextField, Select, MenuItem, FormControl, InputLabel, Divider, Stack, Badge, Avatar, Collapse, Slide, Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, useTheme, useMediaQuery, keyframes } from '@mui/material';
+import { FiberManualRecord as RecordIcon, Stop as CutIcon, Timer as TimerIcon, CheckCircle as GoodTakeIcon, MyLocation as PickupIcon, WarningAmber as ActionSafeIcon, CameraAlt as CheckFocusIcon, DoneAll as SetupCompleteIcon, Notes as NoteIcon, LocalOffer as TagIcon, Delete as DeleteIcon, Edit as EditIcon, Star as CircleIcon, Print as PrintIcon, Close as CloseIcon, WifiOff as OfflineIcon, Sync as SyncIcon, CheckCircleOutline as SyncedIcon, ArrowForward as AdvanceIcon, Videocam as VideocamIcon, Settings as SettingsIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, PhotoCamera as StillIcon, KeyboardReturn as EnterIcon, Groups as CrewIcon, Inventory2 as EquipmentIcon, Thunderstorm as ThunderIcon, WbSunny as SunnyIcon, Cloud as CloudIcon, AcUnit as SnowIcon, AutoStories as ScriptIcon, ViewCarousel as StoryboardIcon, PlaylistAddCheck as CaptureIcon, Add as PlusIcon, Remove as MinusIcon, Thermostat as TempIcon, Air as WindIcon, WaterDrop as RainIcon, AccessTime as TimeIcon, NavigateBefore as PrevIcon, NavigateNext as NextIcon, ZoomIn as ZoomIcon, OpenInNew as ExternalLinkIcon, SwapHoriz as LayoutSwapIcon } from '@mui/icons-material';
 import authSessionService from '../services/authSessionService';
 import { useLiveSet, type LiveSetCameraMetadata, type LiveSetNote, type LiveSetTake } from '../hooks/useLiveSet';
 import { useLiveSetContext, type ShotOption, type StoryboardTile } from '../hooks/useLiveSetContext';
@@ -101,12 +23,7 @@ import LiveSetSlateOverlay, { buildSlateFromLiveSet } from './LiveSetSlateOverla
 import { useShotListSync, type ShotListSyncState, type TakeCaptureForm } from '../hooks/useShotListSync';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
-import type {
-  LiveSetScene,
-  TakeStatus,
-  QuickActionType,
-  NoteTag,
-} from '../models/casting';
+import type { LiveSetScene, TakeStatus, QuickActionType, NoteTag } from '../models/casting';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -192,8 +109,8 @@ const SET_PHASE_OPTIONS = [
   'Wrap',
 ] as const;
 
-const WEATHER_RISK_OPTIONS = ['Lav', 'Moderat', 'Høy'] as const;
-const WEATHER_RISK_RANK: Record<(typeof WEATHER_RISK_OPTIONS)[number], number> = {
+const _WEATHER_RISK_OPTIONS = ['Lav', 'Moderat', 'Høy'] as const;
+const WEATHER_RISK_RANK: Record<(typeof _WEATHER_RISK_OPTIONS)[number], number> = {
   Lav: 0,
   Moderat: 1,
   Høy: 2,
@@ -216,7 +133,7 @@ interface SetStatusState {
   equipmentReady: number;
   equipmentTotal: number;
   equipmentReadyIds?: string[];
-  weatherRisk: (typeof WEATHER_RISK_OPTIONS)[number];
+  weatherRisk: (typeof _WEATHER_RISK_OPTIONS)[number];
   backupOriginal: boolean;
   backupPrimary: boolean;
   backupSecondary: boolean;
@@ -237,9 +154,6 @@ interface WeatherVisualState {
 
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-
-const asNumber = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const compactText = (...values: Array<unknown>): string | undefined => {
   for (const value of values) {

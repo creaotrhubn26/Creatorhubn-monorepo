@@ -311,16 +311,7 @@ export default function RoleRoomGoogleContextBar({
     } finally {
       setActionKey(null);
     }
-  }, [
-    binding?.auditSignatureStorageEnabled,
-    binding?.calendarId,
-    binding?.contactsContext,
-    binding?.driveRootFolderId,
-    binding?.meetCreationEnabled,
-    enqueueSnackbar,
-    projectId,
-    refreshAll,
-  ]);
+  }, [binding?.contactsContext, enqueueSnackbar, projectId, refreshAll]);
 
   const handleDriveSync = useCallback(async () => {
     if (projectFileIds.length === 0 && generatedArtifacts.length === 0) {
@@ -572,7 +563,7 @@ export default function RoleRoomGoogleContextBar({
     return `${generatedArtifacts.length} genererte artefakter og ${projectFileIds.length} prosjektfiler kan synkes til Drive.`;
   }, [calendarEvents.length, generatedArtifacts.length, primaryAction, projectFileIds.length, reviewItems]);
 
-  const connectionTone = useMemo(() => {
+  const _connectionTone = useMemo(() => {
     if (!status) {
       return {
         background: 'rgba(148,163,184,0.12)',
@@ -615,7 +606,7 @@ export default function RoleRoomGoogleContextBar({
       color: '#bbf7d0',
       label: 'Koblet',
     };
-  }, [autoBootstrapFailed, connectionState, projectIsBound, status?.configured]);
+  }, [autoBootstrapFailed, connectionState, projectIsBound, status]);
 
   const summaryTokens = useMemo(() => [
     `${artifacts.length} artefakter`,
@@ -623,7 +614,7 @@ export default function RoleRoomGoogleContextBar({
     `${reviewItems.length} reviews`,
   ], [artifacts.length, materials.length, reviewItems.length]);
 
-  const workspaceStateTokens = useMemo(() => [
+  const _workspaceStateTokens = useMemo(() => [
     `Drive ${hasText(binding?.driveRootFolderId) ? 'klar' : connectionState === 'connected' ? (actionKey === 'binding' ? 'settes opp' : 'mangler') : 'ikke koblet'}`,
     `Kalender ${hasText(binding?.calendarId) ? 'klar' : connectionState === 'connected' ? (actionKey === 'binding' ? 'settes opp' : 'mangler') : 'ikke koblet'}`,
     `Meet ${recentMeetUrl ? 'klar' : connectionState === 'connected' ? 'klar ved behov' : 'ikke koblet'}`,
@@ -638,7 +629,7 @@ export default function RoleRoomGoogleContextBar({
       : `${projectName} bruker samme Google-lag på tvers av fanene. Denne flaten peker inn i riktig workspace-side og samme Drive-/kalendergrunnlag.`;
   }, [connectionState, isMobile, projectIsBound, projectName, status?.configured]);
 
-  const statusStripText = useMemo(() => {
+  const _statusStripText = useMemo(() => {
     if (!status) {
       return '';
     }

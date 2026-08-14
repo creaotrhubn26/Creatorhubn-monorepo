@@ -1,85 +1,9 @@
-// @ts-nocheck
 import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent, type MouseEvent, type ReactNode } from 'react';
-import { useEditor, EditorContent, Extension } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Tooltip,
-  Divider,
-  Paper,
-  Chip,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Menu,
-  ListItemIcon,
-  ListItemText,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemButton,
-  Badge,
-  Fade,
-  Collapse,
-  useTheme,
-  useMediaQuery,
-  alpha,
-  CircularProgress,
-} from '@mui/material';
-import {
-  FormatBold as BoldIcon,
-  FormatItalic as ItalicIcon,
-  FormatListBulleted as BulletListIcon,
-  FormatListNumbered as NumberListIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
-  FormatStrikethrough as StrikeIcon,
-  Code as CodeIcon,
-  DesktopWindows as DesktopIcon,
-  PhoneIphone as MobileIcon,
-  History as HistoryIcon,
-  Save as SaveIcon,
-  Send as SendIcon,
-  Person as PersonIcon,
-  Group as GroupIcon,
-  Close as CloseIcon,
-  Check as CheckIcon,
-  ContentCopy as CopyIcon,
-  Restore as RestoreIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Email as EmailIcon,
-  Visibility as PreviewIcon,
-  DataObject as VariableIcon,
-  Palette as PaletteIcon,
-  FormatColorFill as ColorFillIcon,
-  OpenInNew as OpenInNewIcon,
-  MailOutline as MailOutlineIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  Schedule as ScheduleIcon,
-  Celebration as CelebrationIcon,
-  ThumbDown as ThumbDownIcon,
-  NotificationsActive as NotificationsActiveIcon,
-  PersonAdd as PersonAddIcon,
-  Handshake as HandshakeIcon,
-  SwapHoriz as SwapHorizIcon,
-  Folder as FolderIcon,
-  CloudUpload as UploadIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Button, IconButton, TextField, Select, MenuItem, FormControl, InputLabel, Tooltip, Divider, Paper, Chip, Stack, ToggleButton, ToggleButtonGroup, Menu, ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemButton, Badge, Collapse, useMediaQuery, CircularProgress } from '@mui/material';
+import { FormatBold as BoldIcon, FormatItalic as ItalicIcon, FormatListBulleted as BulletListIcon, FormatListNumbered as NumberListIcon, Undo as UndoIcon, Redo as RedoIcon, FormatStrikethrough as StrikeIcon, Code as CodeIcon, DesktopWindows as DesktopIcon, PhoneIphone as MobileIcon, History as HistoryIcon, Save as SaveIcon, Send as SendIcon, Person as PersonIcon, Group as GroupIcon, Close as CloseIcon, Check as CheckIcon, ContentCopy as CopyIcon, Restore as RestoreIcon, Add as AddIcon, Edit as EditIcon, Email as EmailIcon, Visibility as PreviewIcon, DataObject as VariableIcon, Palette as PaletteIcon, OpenInNew as OpenInNewIcon, MailOutline as MailOutlineIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon, Schedule as ScheduleIcon, NotificationsActive as NotificationsActiveIcon, PersonAdd as PersonAddIcon, Handshake as HandshakeIcon, SwapHoriz as SwapHorizIcon, Folder as FolderIcon, CloudUpload as UploadIcon } from '@mui/icons-material';
 import { useToast } from './ToastStack';
 
 interface EmailTemplate {
@@ -509,13 +433,6 @@ const replaceVariablesWithHighlight = (text: string): string => {
   return text.replace(/\{\{([^}]+)\}\}/g, '<span class="variable-highlight">{{$1}}</span>');
 };
 
-const replaceVariablesWithValues = (text: string, values: Record<string, string>): string => {
-  return text.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
-    const value = values[key.trim()];
-    return value !== undefined ? value : match;
-  });
-};
-
 export function EmailDesigner({
   template,
   recipients = [],
@@ -529,7 +446,6 @@ export function EmailDesigner({
   showHeaderSettings = true,
   previewConfig,
 }: EmailDesignerProps) {
-  const theme = useTheme();
   const isMobile = useMediaQuery('(max-width:599px)');
   const isTablet = useMediaQuery('(min-width:600px) and (max-width:959px)');
   const is720p = useMediaQuery('(min-width:960px) and (max-width:1279px)');
@@ -606,14 +522,7 @@ export function EmailDesigner({
     if (editor && editor.getHTML() !== (template.body || '')) {
       editor.commands.setContent(template.body || '');
     }
-  }, [
-    template?.id,
-    template?.name,
-    template?.type,
-    template?.subject,
-    template?.body,
-    editor,
-  ]);
+  }, [template.id, template.name, template.type, template.subject, template.body, editor, template]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -625,7 +534,7 @@ export function EmailDesigner({
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [hasUnsavedChanges, subject, body]);
+  }, [hasUnsavedChanges, subject, body, saveVersion]);
 
   // Validate project variables and show toast for missing data
   // Track last validated state using missing keys signature
@@ -779,7 +688,7 @@ export function EmailDesigner({
     } catch {
       toast.showError('Kunne ikke kopiere til utklippstavlen');
     }
-  }, [subject, body, toast, previewConfig]);
+  }, [subject, body, previewConfig?.brandName, previewConfig?.title, previewConfig?.footerText, previewConfig?.noteText, previewConfig?.ctaLabel, previewConfig?.ctaUrl, previewConfig?.logoUrl, previewConfig?.tagline, previewConfig?.theme, headerLogoUrl, headerTagline, toast]);
 
   const loadTemplate = useCallback((templateData: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>) => {
     setTemplateName(templateData.name);

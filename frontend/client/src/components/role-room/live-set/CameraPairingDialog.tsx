@@ -71,7 +71,7 @@ const ALL_TAB_LABELS: Record<TabKey, string> = {
 
 // SupportedVendor brukes ikke direkte etter at vi byttet til TabKey, men
 // holdes som type-alias for konsistens i kommende kode.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 type _SupportedVendor = keyof typeof VENDOR_LABELS;
 
 // ─────────────────────────────────────────────────────────────────────

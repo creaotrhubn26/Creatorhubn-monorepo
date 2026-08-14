@@ -1,4 +1,3 @@
-// @ts-nocheck
 // ============================================
 // useEquipmentInventory — fetch + cache per projectId
 // ============================================

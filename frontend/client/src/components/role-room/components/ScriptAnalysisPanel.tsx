@@ -8,44 +8,9 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Chip,
-  Stack,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  IconButton,
-  Tooltip,
-  LinearProgress,
-  Divider,
-  Alert,
-  Badge,
-} from '@mui/material';
-import {
-  ExpandMore as ExpandIcon,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
-  Person as CharacterIcon,
-  Timeline as TimelineIcon,
-  Movie as SceneIcon,
-  Chat as DialogueIcon,
-  Refresh as RefreshIcon,
-  CheckCircle as CheckIcon,
-  Build as FixIcon,
-  NavigateBefore as GotoIcon,
-} from '@mui/icons-material';
-import {
-  analyzeScript,
-  type ScriptAnalysisResult,
-} from '../services/scriptAnalysisService';
+import { Box, Paper, Typography, Accordion, AccordionSummary, AccordionDetails, Chip, Stack, List, ListItem, ListItemIcon, ListItemText, IconButton, Tooltip, Divider, Alert, Badge } from '@mui/material';
+import { ExpandMore as ExpandIcon, Error as ErrorIcon, Warning as WarningIcon, Info as InfoIcon, Person as CharacterIcon, Timeline as TimelineIcon, Movie as SceneIcon, Refresh as RefreshIcon, CheckCircle as CheckIcon, Build as FixIcon, NavigateBefore as GotoIcon } from '@mui/icons-material';
+import { analyzeScript, type ScriptAnalysisResult } from '../services/scriptAnalysisService';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 
 interface ScriptAnalysisPanelProps {

@@ -18,7 +18,7 @@ import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Dancer, DancerTransitionPath, Formation } from './formationTypes';
 
-const HANDLE_RADIUS = 6;
+const _HANDLE_RADIUS = 6;
 
 export interface CurveOverlayProps {
   /** Formasjonen vi er "fra". */

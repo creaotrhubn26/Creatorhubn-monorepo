@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 /**
  * CrewCalendarPanel - Modern crew scheduling calendar
  * 
@@ -13,113 +13,13 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Avatar,
-  AvatarGroup,
-  Checkbox,
-  FormControlLabel,
-  Button,
-  ButtonGroup,
-  Chip,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Tab,
-  Tabs,
-  Badge,
-  Collapse,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemAvatar,
-  Divider,
-  alpha,
-  useTheme,
-  useMediaQuery,
-  Drawer,
-  SwipeableDrawer,
-} from '@mui/material';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Add,
-  ExpandMore,
-  ExpandLess,
-  AccessTime,
-  Person,
-  Group,
-  CalendarMonth,
-  Close,
-  Warning,
-  Star,
-  StarBorder,
-  Edit,
-  Delete,
-  Videocam,
-  Lightbulb,
-  CameraAlt,
-  Mic,
-  Brush,
-  Face,
-  TheaterComedy,
-  Movie,
-  Today,
-  TrendingUp,
-  Schedule,
-  EventAvailable,
-  FilterList,
-  Search,
-  MoreHoriz,
-  Notifications,
-  Settings,
-  ViewWeek,
-  ViewDay,
-  ViewModule,
-  PlayArrow,
-  Assignment,
-  LocationOn,
-  Menu as MenuIcon,
-} from '@mui/icons-material';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Box, Typography, IconButton, Avatar, AvatarGroup, Checkbox, FormControlLabel, Button, ButtonGroup, Chip, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Tab, Tabs, Badge, Collapse, List, ListItem, ListItemIcon, ListItemText, ListItemAvatar, Divider, alpha, useTheme, useMediaQuery, SwipeableDrawer } from '@mui/material';
+import { ChevronLeft, ChevronRight, Add, ExpandMore, ExpandLess, AccessTime, Person, Group, CalendarMonth, Close, Warning, Star, Edit, Delete, Videocam, Lightbulb, CameraAlt, Mic, Brush, Face, TheaterComedy, Movie, Today, EventAvailable, FilterList, Search, Notifications, Settings, ViewWeek, ViewDay, ViewModule, LocationOn, Menu as MenuIcon } from '@mui/icons-material';
+import { motion } from 'framer-motion';
 import { LocalizationProvider, DateCalendar } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { nb } from 'date-fns/locale';
-import {
-  format,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
-  eachDayOfInterval,
-  addWeeks,
-  subWeeks,
-  addMonths,
-  subMonths,
-  addDays,
-  subDays,
-  isSameDay,
-  isSameMonth,
-  isToday,
-  isWeekend,
-  setHours,
-  setMinutes,
-  getHours,
-  getMinutes,
-  getDay,
-  parseISO,
-} from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, addWeeks, subWeeks, addMonths, subMonths, addDays, subDays, isSameDay, isSameMonth, isToday, isWeekend } from 'date-fns';
 import { useProjectMemberAvailability } from '../../hooks/useProjectMemberAvailability';
 import type { CrewDayAvailability } from '../calendar/CrewCalendarView';
 
@@ -231,7 +131,6 @@ const glassLightStyles = {
   border: '1px solid rgba(148,163,184,0.18)',
   boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
 };
-
 
 // ============================================================================
 // HELPER COMPONENTS
@@ -1020,7 +919,6 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
   const [enabledDepartments, setEnabledDepartments] = useState<Set<Department>>(
     new Set(Object.keys(DEPARTMENT_CONFIG) as Department[])
   );
-  const [favoriteCrew, setFavoriteCrew] = useState<Set<string>>(new Set(['c1', 'c2', 'c3']));
   const [expandedSections, setExpandedSections] = useState({
     calendars: true,
     favorites: true,
@@ -1084,18 +982,6 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
     });
   };
   
-  const toggleFavorite = (crewId: string) => {
-    setFavoriteCrew(prev => {
-      const next = new Set(prev);
-      if (next.has(crewId)) {
-        next.delete(crewId);
-      } else {
-        next.add(crewId);
-      }
-      return next;
-    });
-  };
-  
   const handleEventClick = (event: CrewCalendarEvent) => {
     setSelectedEvent(event);
     setDetailDialogOpen(true);
@@ -1144,31 +1030,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
     setEditingEvent(null);
     setCreateDialogOpen(true);
   };
-  
-  const handleAddCrewMember = () => {
-    // TODO: Open crew selection dialog or navigate to crew management
-    console.log('Add crew member clicked');
-  };
-  
-  const filteredBySearch = useMemo(() => {
-    if (!searchQuery.trim()) return filteredEvents;
-    const query = searchQuery.toLowerCase();
-    return filteredEvents.filter(e => 
-      e.title.toLowerCase().includes(query) ||
-      e.description?.toLowerCase().includes(query) ||
-      e.projectName?.toLowerCase().includes(query)
-    );
-  }, [filteredEvents, searchQuery]);
-  
-  // Gradient background
-  const gradientBg = `linear-gradient(135deg, 
-    ${alpha('#E8F5E9', 0.5)} 0%, 
-    ${alpha('#E3F2FD', 0.5)} 25%, 
-    ${alpha('#FFF3E0', 0.5)} 50%, 
-    ${alpha('#FCE4EC', 0.5)} 75%, 
-    ${alpha('#F3E5F5', 0.5)} 100%
-  )`;
-  
+
   // Stats calculation
   const todayEvents = events.filter(e => isToday(e.date)).length;
   const weekEvents = filteredEvents.length;

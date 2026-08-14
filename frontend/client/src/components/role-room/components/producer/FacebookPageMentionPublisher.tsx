@@ -100,7 +100,7 @@ export function FacebookPageMentionPublisher() {
     }
   };
 
-  useEffect(() => { void loadPages(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { void loadPages();   }, [loadPages]);
 
   const handlePublish = async () => {
     if (!selectedPageId || !message.trim() || !mentionedPageId.trim()) return;

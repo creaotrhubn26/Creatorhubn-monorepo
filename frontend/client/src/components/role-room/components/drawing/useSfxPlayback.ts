@@ -67,7 +67,7 @@ export function useSfxPlayback(options: UseSfxPlaybackOptions): UseSfxPlaybackRe
     // Fjern de som ikke lenger har URL
     for (const [eventId, el] of current.entries()) {
       if (!(eventId in clipUrls)) {
-        try { el.pause(); } catch {}
+        try { el.pause(); } catch { /* empty */ }
         current.delete(eventId);
       }
     }
@@ -98,7 +98,7 @@ export function useSfxPlayback(options: UseSfxPlaybackOptions): UseSfxPlaybackRe
       if (!activeIds.has(id)) {
         const el = elementsRef.current.get(id);
         if (el) {
-          try { el.pause(); el.currentTime = 0; } catch {}
+          try { el.pause(); el.currentTime = 0; } catch { /* empty */ }
         }
       }
     }
@@ -116,7 +116,7 @@ export function useSfxPlayback(options: UseSfxPlaybackOptions): UseSfxPlaybackRe
             el.loop = layer !== 'event';
             const p = el.play();
             if (p && typeof p.then === 'function') p.catch(() => {});
-          } catch {}
+          } catch { /* empty */ }
         }
       }
     } else {
@@ -124,7 +124,7 @@ export function useSfxPlayback(options: UseSfxPlaybackOptions): UseSfxPlaybackRe
       for (const id of prev) {
         const el = elementsRef.current.get(id);
         if (el) {
-          try { el.pause(); } catch {}
+          try { el.pause(); } catch { /* empty */ }
         }
       }
     }
@@ -135,7 +135,7 @@ export function useSfxPlayback(options: UseSfxPlaybackOptions): UseSfxPlaybackRe
   // Cleanup ved unmount: pause alle.
   useEffect(() => () => {
     for (const el of elementsRef.current.values()) {
-      try { el.pause(); } catch {}
+      try { el.pause(); } catch { /* empty */ }
     }
     elementsRef.current.clear();
   }, []);

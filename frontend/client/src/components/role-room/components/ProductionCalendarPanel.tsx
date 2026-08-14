@@ -1,31 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Button,
-  Chip,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  Tooltip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Checkbox,
-  ListItemText,
-  OutlinedInput,
-  Alert,
-  CircularProgress,
-  FormControlLabel,
-  Switch,
-  LinearProgress,
-} from '@mui/material';
+import { Box, Typography, Card, CardContent, Button, Chip, TextField, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip, FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText, OutlinedInput, Alert, CircularProgress, FormControlLabel, Switch, LinearProgress } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -36,28 +10,11 @@ import MovieIcon from '@mui/icons-material/Movie';
 import EventIcon from '@mui/icons-material/Event';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
-import { 
-  CalendarCustomIcon as CalendarMonthIcon, 
-  TeamIcon as GroupsIcon, 
-  LocationsIcon as LocationOnIcon 
-} from './icons/CastingIcons';
+import { CalendarCustomIcon as CalendarMonthIcon, TeamIcon as GroupsIcon, LocationsIcon as LocationOnIcon } from './icons/CastingIcons';
 import { useSnackbar } from 'notistack';
-import {
-  calendarEventsApi,
-  crewNotificationsApi,
-  candidatesApi,
-  crewApi,
-  locationsApi,
-  equipmentApi,
-  equipmentBookingsApi,
-  equipmentConflictsApi,
-  type CalendarEvent,
-  type CrewConflict,
-  type Equipment,
-  type EquipmentConflict,
-} from '../services/castingApiService';
+import { calendarEventsApi, crewNotificationsApi, candidatesApi, crewApi, locationsApi, equipmentApi, equipmentBookingsApi, equipmentConflictsApi, type CalendarEvent, type CrewConflict, type Equipment, type EquipmentConflict } from '../services/castingApiService';
 import WarningIcon from '@mui/icons-material/Warning';
-import NotificationsIcon from '@mui/icons-material/Notifications';
+
 import globalTagService from '../services/globalTagService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { getRoleLabel } from './shared/technicalCrew';
@@ -240,7 +197,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   candidates: propCandidates,
   crew: propCrew,
   locations: propLocations,
-  onEventCreate,
+  _onEventCreate,
   onRequestLocationCreate,
   onRequestCandidateCreate,
   onRequestCrewCreate,
@@ -371,18 +328,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       gaps.push({ id: 'equipment-conflicts', severity: 'warning', text: `Utstyrskonflikter oppdaget (${equipmentConflicts.size}).` });
     }
     return gaps;
-  }, [
-    crewConflicts.size,
-    equipmentConflicts.size,
-    eventType,
-    hasInvalidTimeRange,
-    isCastingWorkflow,
-    isShootingWorkflow,
-    selectedCandidates.length,
-    selectedCrew.length,
-    selectedEquipment.length,
-    selectedLocation,
-  ]);
+  }, [crew, crewConflicts.size, equipmentConflicts.size, eventType, hasInvalidTimeRange, isCastingWorkflow, isShootingWorkflow, selectedCandidates.length, selectedCrew, selectedEquipment.length, selectedLocation]);
 
   const readinessScore = useMemo(() => {
     const checks = [
@@ -415,23 +361,23 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   useEffect(() => {
     loadEvents();
     loadProjectData();
-  }, [projectId]);
+  }, [loadEvents, loadProjectData, projectId]);
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     setLoading(true);
     try {
       const eventsData = await calendarEventsApi.getAll(projectId);
       setEvents(eventsData.sort((a, b) => 
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       ));
-    } catch (error) {
+    } catch (_error) {
       enqueueSnackbar('Kunne ikke laste kalenderhendelser', { variant: 'error' });
     } finally {
       setLoading(false);
     }
-  };
+  });
 
-  const refreshModalSources = async () => {
+  const refreshModalSources = useCallback(async () => {
     const [candidateResult, crewResult, locationResult, equipmentResult] = await Promise.allSettled([
       candidatesApi.getAll(projectId),
       crewApi.getAll(projectId),
@@ -462,7 +408,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     setCrew((previous) => mergeCrewLists(previous, propCrew, apiCrew));
     setLocations((previous) => mergeNamedLists(previous, propLocations, apiLocations));
     setEquipment((previous) => mergeEquipmentLists(previous, apiEquipment));
-  };
+  });
 
   const loadProjectData = async () => {
     try {
@@ -502,7 +448,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   useEffect(() => {
     if (!dialogOpen) return;
     void refreshModalSources();
-  }, [dialogOpen, projectId]);
+  }, [dialogOpen, projectId, refreshModalSources]);
 
   const fetchEquipmentConflicts = async (equipmentIds: string[], start: string, end: string): Promise<{ conflicts: Map<string, EquipmentConflict[]>; conflictingIds: string[] }> => {
     const conflicts = new Map<string, EquipmentConflict[]>();
@@ -521,7 +467,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return { conflicts, conflictingIds };
   };
 
-  const fetchCrewConflicts = (crewIds: string[], start: string, end: string): Map<string, CrewConflict[]> => {
+  const fetchCrewConflicts = useCallback((crewIds: string[], start: string, end: string): Map<string, CrewConflict[]> => {
     // Konflikter beregnes fra ALLEREDE-lastet medlems-tilgjengelighet
     // (useProjectMemberAvailability) i stedet for det aldri-bygde
     // `/crew/:id/conflicts`-endepunktet (som ga 404 → konflikt-varsler viste
@@ -534,7 +480,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       availabilityByUser,
       emailToUser,
     });
-  };
+  });
 
   useEffect(() => {
     if (!dialogOpen || !startTime) {
@@ -559,7 +505,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return () => {
       isCurrent = false;
     };
-  }, [dialogOpen, endTime, selectedCrew, selectedEquipment, startTime]);
+  }, [dialogOpen, endTime, fetchCrewConflicts, selectedCrew, selectedEquipment, startTime]);
 
   const sendCrewNotifications = async (crewIds: string[], eventTitle: string, eventId: string) => {
     for (const crewId of crewIds) {
@@ -671,7 +617,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     };
 
     void applyPrefill();
-  }, [preselectedFromCreate, reopenDialogSignal]);
+  }, [preselectedFromCreate, refreshModalSources, reopenDialogSignal]);
 
   const handleSave = async () => {
     if (!title || !startTime) {
@@ -817,7 +763,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       setDialogOpen(false);
       resetForm();
       loadEvents();
-    } catch (error) {
+    } catch (_error) {
       enqueueSnackbar('Kunne ikke lagre hendelse', { variant: 'error' });
     } finally {
       setSubmitting(false);
@@ -829,7 +775,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       await calendarEventsApi.delete(eventId);
       enqueueSnackbar('Hendelse slettet', { variant: 'success' });
       loadEvents();
-    } catch (error) {
+    } catch (_error) {
       enqueueSnackbar('Kunne ikke slette hendelse', { variant: 'error' });
     }
   };
@@ -838,7 +784,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return EVENT_TYPES.find(t => t.value === type) || EVENT_TYPES[EVENT_TYPES.length - 1];
   };
 
-  const formatDateTime = (dateStr: string, showTime = true) => {
+  const _formatDateTime = (dateStr: string, showTime = true) => {
     const date = new Date(dateStr);
     const dateFormatted = date.toLocaleDateString('nb-NO', { 
       weekday: 'short', 

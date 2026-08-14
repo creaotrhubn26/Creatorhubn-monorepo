@@ -104,7 +104,7 @@ export function FacebookVideoPublisher() {
     }
   };
 
-  useEffect(() => { void loadPages(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { void loadPages();   }, [loadPages]);
 
   const handleVideoSelect = async (file: File | null) => {
     if (!file) return;

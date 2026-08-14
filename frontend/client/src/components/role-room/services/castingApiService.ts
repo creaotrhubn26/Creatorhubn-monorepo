@@ -1,29 +1,5 @@
 import authSessionService from './authSessionService';
-import type {
-  ProducerAccountAccessPlatform,
-  RoleRoomClientInvite,
-  RoleRoomClientInviteCreateInput,
-  RoleRoomClientInviteSessionResult,
-  RoleRoomAccessVaultRevealResult,
-  RoleRoomAccessVaultState,
-  RoleRoomAccessVaultSecretSummary,
-  RoleRoomAccessVaultRevealRequest,
-  RoleRoomGoogleAgreementSignature,
-  RoleRoomGoogleAgreementSignatureStatus,
-  RoleRoomGoogleCalendarSyncInput,
-  RoleRoomGoogleArtifactRef,
-  RoleRoomGoogleConnection,
-  RoleRoomGoogleDriveSyncInput,
-  RoleRoomGoogleLoginResult,
-  RoleRoomGoogleMeetSessionInput,
-  RoleRoomGoogleOauthStartInput,
-  RoleRoomGooglePersonContact,
-  RoleRoomGoogleProjectBinding,
-  RoleRoomGoogleProjectBindingUpdateInput,
-  RoleRoomLinkedInConnection,
-  RoleRoomLinkedInLinkResult,
-  RoleRoomLinkedInOauthStartInput,
-} from '../models/casting';
+import type { ProducerAccountAccessPlatform, RoleRoomClientInvite, RoleRoomClientInviteCreateInput, RoleRoomClientInviteSessionResult, RoleRoomAccessVaultRevealResult, RoleRoomAccessVaultState, RoleRoomAccessVaultSecretSummary, RoleRoomAccessVaultRevealRequest, RoleRoomGoogleAgreementSignature, RoleRoomGoogleAgreementSignatureStatus, RoleRoomGoogleCalendarSyncInput, RoleRoomGoogleArtifactRef, RoleRoomGoogleConnection, RoleRoomGoogleDriveSyncInput, RoleRoomGoogleLoginResult, RoleRoomGoogleMeetSessionInput, RoleRoomGoogleOauthStartInput, RoleRoomGooglePersonContact, RoleRoomGoogleProjectBinding, RoleRoomGoogleProjectBindingUpdateInput, RoleRoomLinkedInConnection, RoleRoomLinkedInLinkResult, RoleRoomLinkedInOauthStartInput } from '../models/casting';
 
 const API_BASE = '/api/role-room';
 
@@ -591,7 +567,7 @@ const buildGoogleStatusFallback = (error: unknown): RoleRoomGoogleStatusResponse
   artifacts: [],
 });
 
-const buildLinkedInStatusFallback = (error: unknown): RoleRoomLinkedInStatusResponse => ({
+const buildLinkedInStatusFallback = (_error: unknown): RoleRoomLinkedInStatusResponse => ({
   configured: false,
   missing: ['network'],
   state: 'error',

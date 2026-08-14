@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 /**
  * FrameDrawingEditor - Storyboard frame drawing interface
  * 
@@ -3765,26 +3765,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setShapeIntentParkedPrimitive(null);
     setSelectedLayerIds([]);
     setCollapsedInspectorLayerIds([]);
-  }, [
-    initialActiveSheetId,
-    initialBoardPolishState?.lineBoost,
-    initialBoardPolishState?.mode,
-    initialBoardPolishState?.finish,
-    initialBoardPolishState?.weather,
-    initialBoardPolishState?.atmosphere,
-    initialBoardPolishState?.effectLayers,
-    initialBoardPolishState?.effectRegions,
-    initialBoardPolishState?.tone,
-    initialBoardPolishState?.vignette,
-    initialBrushSettingsForEditor,
-    initialDocument,
-    initialReferenceStudyState,
-    initialSelectedReferenceId,
-    initialSelectedShapeScaffoldAssemblyId,
-    initialSelectedShapeScaffoldId,
-    initialLoadSignature,
-    resolvedInitialStrokes,
-  ]);
+  }, [initialActiveSheetId, initialBoardPolishState?.lineBoost, initialBoardPolishState?.mode, initialBoardPolishState?.finish, initialBoardPolishState?.weather, initialBoardPolishState?.atmosphere, initialBoardPolishState?.effectLayers, initialBoardPolishState?.effectRegions, initialBoardPolishState?.tone, initialBoardPolishState?.vignette, initialBrushSettingsForEditor, initialDocument, initialReferenceStudyState, initialSelectedReferenceId, initialSelectedShapeScaffoldAssemblyId, initialSelectedShapeScaffoldId, initialLoadSignature, resolvedInitialStrokes, setEditorStrokesFromDocument]);
 
   useEffect(() => {
     let rafId: number | null = null;
@@ -4335,8 +4316,14 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       || getPrimaryStoryboardDocumentReferenceImage(drawingDocument),
     [drawingDocument, selectedReferenceId]
   );
-  const shapeScaffolds = drawingDocument.metadata.shapeScaffolds || [];
-  const shapeScaffoldAssemblies = drawingDocument.metadata.shapeScaffoldAssemblies || [];
+  const shapeScaffolds = useMemo(
+    () => drawingDocument.metadata.shapeScaffolds || [],
+    [drawingDocument.metadata.shapeScaffolds]
+  );
+  const shapeScaffoldAssemblies = useMemo(
+    () => drawingDocument.metadata.shapeScaffoldAssemblies || [],
+    [drawingDocument.metadata.shapeScaffoldAssemblies]
+  );
   const shapeScaffoldLibraryEntries = useMemo(
     () => [...(drawingDocument.metadata.shapeScaffoldLibrary || [])].sort(compareShapeScaffoldLibraryEntries),
     [drawingDocument.metadata.shapeScaffoldLibrary]
@@ -4806,17 +4793,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     const availableWidth = Math.max(320, measuredWidth - (isCompactUi ? 12 : 20));
     const availableHeight = Math.max(220, measuredHeight - chromeHeight);
     return getCanvasDimensions(aspectRatio, availableWidth, availableHeight);
-  }, [
-    aspectRatio,
-    editorContainerSize.width,
-    editorContainerSize.height,
-    editorWidth,
-    editorHeight,
-    isCompactUi,
-    showEmbeddedCanvasToolbar,
-    device.isIPad,
-    device.hasPencilSupport,
-  ]);
+  }, [aspectRatio, editorContainerSize.width, editorContainerSize.height, editorWidth, editorHeight, isCompactUi, device.isIPad, device.hasPencilSupport]);
   const exportCanvasWidth = activeSpatialCanvas?.width || canvasDimensions.width;
   const exportCanvasHeight = activeSpatialCanvas?.height || canvasDimensions.height;
   const currentReferenceStudyAttemptMetrics = useMemo(
@@ -5518,7 +5495,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setEditorStrokesFromDocument(activeLayerStrokes);
     setTimeLapsePlaying(false);
     setTimeLapseProgressMs(0);
-  }, [activeLayerStrokes, activeSheetId]);
+  }, [activeLayerStrokes, activeSheetId, setEditorStrokesFromDocument]);
 
   useEffect(() => {
     const localSignature = buildStrokeSignature(strokes);
@@ -5610,7 +5587,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       lastResolvedStrokeSignatureRef.current = localSignature;
       return next;
     });
-  }, [activeLayerId, activeLayerStrokes, activeSheetId, strokes, workflowLevel]);
+  }, [activeLayerId, activeLayerStrokes, activeSheetId, setEditorStrokesFromDocument, strokes, workflowLevel]);
 
   useEffect(() => {
     if (!transportPlaying || timelineFrames.length <= 1) {
@@ -6522,17 +6499,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     }
     handleBeginReferenceStudySession(nextReferenceId, baseline.baselineStrokeCount, { allowPendingReference: true });
     handleRecordShapeScaffoldLibraryEntryUsage(entryId);
-  }, [
-    addShapeIntentReferenceAsset,
-    canvasDimensions.height,
-    canvasDimensions.width,
-    drawingDocument,
-    getShapeIntentStudyBaseline,
-    handleBeginReferenceStudySession,
-    handleRecordShapeScaffoldLibraryEntryUsage,
-    shapeIntentAnalysis,
-    strokes,
-  ]);
+  }, [addShapeIntentReferenceAsset, canvasDimensions.height, canvasDimensions.width, drawingDocument, getShapeIntentStudyBaseline, handleBeginReferenceStudySession, handleRecordShapeScaffoldLibraryEntryUsage, setEditorStrokesFromLocal, shapeIntentAnalysis, strokes]);
 
   const handleShapeIntentShuffle = useCallback(() => {
     if (!shapeIntentAnalysis || shapeIntentAnalysis.suggestions.length <= 1) {
@@ -6580,7 +6547,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setEditorStrokesFromLocal(nextStrokes);
     setHasUnsavedChanges(true);
     setShapeIntentSuppressedStrokeCount(nextStrokes.length);
-  }, [strokes]);
+  }, [setEditorStrokesFromLocal, strokes]);
 
   const handleApplyShapeIntentNormalizedGuide = useCallback(() => {
     if (!shapeIntentAnalysis) {
@@ -6734,17 +6701,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setSelectedReferenceId(undefined);
     setShapeIntentParkedPrimitive(shapeIntentAnalysis.displayLabel);
     setShapeIntentSuppressedStrokeCount(nextStrokes.length);
-  }, [
-    commitDocumentUpdate,
-    exportCanvasHeight,
-    exportCanvasWidth,
-    selectedShapeIntentSuggestion,
-    shapeIntentAnalysis,
-    shapeIntentApplyMode,
-    shapeIntentSourceStrokeIndexSet,
-    activeShapeIntentSelections,
-    strokes,
-  ]);
+  }, [shapeIntentAnalysis, selectedShapeIntentSuggestion, exportCanvasWidth, exportCanvasHeight, activeShapeIntentSelections, strokes, commitDocumentUpdate, setEditorStrokesFromLocal, shapeIntentSourceStrokeIndexSet, shapeIntentApplyMode]);
 
   const handleSelectShapeScaffold = useCallback((scaffoldId: string) => {
     setSelectedShapeScaffoldId(scaffoldId);
@@ -6859,7 +6816,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       containerHeight: rect.height,
       originFrame: selectedShapeScaffold.frame,
     });
-  }, [selectedShapeScaffold]);
+  }, [applyShapeScaffoldOverlayPreviewFrame, selectedShapeScaffold]);
 
   useEffect(() => {
     if (!shapeScaffoldInteractionState) {
@@ -7306,12 +7263,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setSelectedLayerIds(promotionResult.promotedLayerIds);
     setInspectorMode('layers');
     setEditorStrokesFromLocal(promotionResult.activePromotedLayerStrokes);
-  }, [
-    activeSheetId,
-    commitDocumentUpdate,
-    promoteShapeScaffoldsToLayerStackOnDocument,
-    selectedShapeScaffold,
-  ]);
+  }, [activeSheetId, commitDocumentUpdate, promoteShapeScaffoldsToLayerStackOnDocument, selectedShapeScaffold, setEditorStrokesFromLocal]);
 
   const handleConvertSelectedShapeScaffoldToEditableStrokes = useCallback(() => {
     if (!selectedShapeScaffold) {
@@ -7334,12 +7286,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setSelectedStudioLayerId(conversionResult.targetLayerId);
     setSelectedLayerIds([conversionResult.targetLayerId]);
     setEditorStrokesFromLocal(conversionResult.nextStrokes);
-  }, [
-    activeSheetId,
-    appendShapeScaffoldStrokesToEditableLayerOnDocument,
-    commitDocumentUpdate,
-    selectedShapeScaffold,
-  ]);
+  }, [activeSheetId, appendShapeScaffoldStrokesToEditableLayerOnDocument, commitDocumentUpdate, selectedShapeScaffold, setEditorStrokesFromLocal]);
 
   const handlePromoteSelectedShapeScaffoldBatchToLayerGroup = useCallback(() => {
     if (activeShapeScaffoldPromotionBatch.length < 2) {
@@ -7365,13 +7312,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setSelectedLayerIds(promotionResult.promotedLayerIds);
     setSelectedStudioLayerId(promotionResult.groupedLayerId || promotionResult.activePromotedLayerId);
     setEditorStrokesFromLocal(promotionResult.activePromotedLayerStrokes);
-  }, [
-    activeSheetId,
-    activeShapeScaffoldPromotionBatch,
-    activeShapeScaffoldPromotionBatchName,
-    promoteShapeScaffoldsToLayerStackOnDocument,
-    commitDocumentUpdate,
-  ]);
+  }, [activeShapeScaffoldPromotionBatch, commitDocumentUpdate, setEditorStrokesFromLocal, promoteShapeScaffoldsToLayerStackOnDocument, activeSheetId, activeShapeScaffoldPromotionBatchName]);
 
   const handleConvertSelectedShapeScaffoldBatchToEditableStrokes = useCallback(() => {
     if (activeShapeScaffoldPromotionBatch.length === 0) {
@@ -7394,12 +7335,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setSelectedStudioLayerId(conversionResult.targetLayerId);
     setSelectedLayerIds([conversionResult.targetLayerId]);
     setEditorStrokesFromLocal(conversionResult.nextStrokes);
-  }, [
-    activeSheetId,
-    activeShapeScaffoldPromotionBatch,
-    appendShapeScaffoldStrokesToEditableLayerOnDocument,
-    commitDocumentUpdate,
-  ]);
+  }, [activeShapeScaffoldPromotionBatch, commitDocumentUpdate, setEditorStrokesFromLocal, appendShapeScaffoldStrokesToEditableLayerOnDocument, activeSheetId]);
 
   const handleDuplicateSelectedShapeScaffoldToVariant = useCallback(() => {
     if (!selectedShapeScaffold) {
@@ -7837,18 +7773,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setShapeIntentParkedPrimitive(shapeIntentAnalysis.displayLabel);
     setShapeIntentSuppressedStrokeCount(nextStrokes.length);
     handleBeginReferenceStudySession(nextReferenceId, baselineStrokeCount, { allowPendingReference: true });
-  }, [
-    addShapeIntentReferenceAsset,
-    canvasDimensions.height,
-    canvasDimensions.width,
-    getShapeIntentStudyBaseline,
-    handleBeginReferenceStudySession,
-    selectedShapeIntentSuggestion,
-    shapeIntentAnalysis,
-    shapeIntentParameterSummary,
-    shapeIntentPreviewStrokes,
-    activeShapeIntentSelections,
-  ]);
+  }, [shapeIntentAnalysis, selectedShapeIntentSuggestion, activeShapeIntentSelections, canvasDimensions.width, canvasDimensions.height, shapeIntentPreviewStrokes, shapeIntentParameterSummary, addShapeIntentReferenceAsset, getShapeIntentStudyBaseline, setEditorStrokesFromLocal, handleBeginReferenceStudySession]);
 
   const handleStartShapeIntentVariantStudy = useCallback(() => {
     if (!shapeIntentAnalysis || shapeIntentVariantCards.length === 0) {
@@ -7893,16 +7818,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setShapeIntentParkedPrimitive(shapeIntentAnalysis.displayLabel);
     setShapeIntentSuppressedStrokeCount(nextStrokes.length);
     handleBeginReferenceStudySession(selectedStudyReferenceId, baselineStrokeCount, { allowPendingReference: true });
-  }, [
-    canvasDimensions.height,
-    canvasDimensions.width,
-    commitDocumentUpdate,
-    getShapeIntentStudyBaseline,
-    handleBeginReferenceStudySession,
-    selectedShapeIntentSuggestion?.id,
-    shapeIntentAnalysis,
-    shapeIntentVariantCards,
-  ]);
+  }, [canvasDimensions.height, canvasDimensions.width, commitDocumentUpdate, getShapeIntentStudyBaseline, handleBeginReferenceStudySession, selectedShapeIntentSuggestion?.id, setEditorStrokesFromLocal, shapeIntentAnalysis, shapeIntentVariantCards]);
 
   const handleDismissShapeIntent = useCallback(() => {
     setShapeIntentParkedPrimitive(shapeIntentAnalysis?.displayLabel || null);
@@ -8023,19 +7939,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     setReferenceStudyReveal(false);
     setEditorStrokesFromLocal((prev) => prev.slice(0, referenceStudyBaselineStrokeCount));
     setReferenceStudyBaselineStrokeCount(referenceStudyBaselineStrokeCount);
-  }, [
-    exportCanvasHeight,
-    exportCanvasWidth,
-    referenceStudyActive,
-    referenceStudyAttemptPointCount,
-    referenceStudyAttemptSignature,
-    referenceStudyAttemptStrokes,
-    referenceStudyAttempts,
-    referenceStudyBaselineStrokeCount,
-    currentReferenceStudyAttemptMetrics,
-    referenceStudyActiveDrillId,
-    selectedReferenceStudyAttempt,
-  ]);
+  }, [referenceStudyActive, referenceStudyBaselineStrokeCount, referenceStudyAttemptStrokes, referenceStudyAttempts, setEditorStrokesFromLocal, referenceStudyAttemptSignature, exportCanvasWidth, exportCanvasHeight, referenceStudyAttemptPointCount, currentReferenceStudyAttemptMetrics, selectedReferenceStudyAttempt, referenceStudyActiveDrillId]);
 
   const handleRevealReferenceStudy = useCallback(() => {
     if (!referenceStudyActive) {
@@ -8565,7 +8469,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
   const handleStrokesChange = useCallback((newStrokes: PencilStroke[]) => {
     setEditorStrokesFromLocal(newStrokes);
     setHasUnsavedChanges(true);
-  }, []);
+  }, [setEditorStrokesFromLocal]);
 
   // Handle save
   const handleSave = useCallback((imageData: string) => {
@@ -8643,27 +8547,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
 
     setLastSavedImage(imageData);
     setHasUnsavedChanges(false);
-  }, [
-    aspectRatio,
-    brushSettings,
-    device,
-    frameId,
-    initialDrawingData?.createdAt,
-    initialImage,
-    onSave,
-    activeSheetId,
-    activeLayerId,
-    proMode,
-    proBrushType,
-    activeReferenceImage,
-    activeBaseImage,
-    boardPolishDocumentSnapshot,
-    referenceStudyDocumentSnapshot,
-    storyboardId,
-    strokes,
-    updateFrame,
-    workflowLevel,
-  ]);
+  }, [aspectRatio, brushSettings, device, frameId, initialDrawingData?.createdAt, onSave, activeSheetId, activeLayerId, proMode, proBrushType, activeReferenceImage, activeBaseImage, boardPolishDocumentSnapshot, referenceStudyDocumentSnapshot, storyboardId, strokes, updateFrame, workflowLevel]);
 
   // Handle cancel with unsaved changes check
   const handleCancel = useCallback(() => {

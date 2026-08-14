@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * PencilCanvasPro - Professional-grade Apple Pencil drawing canvas
  * 
@@ -1566,14 +1565,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   );
   const incomingOnionSkinSignature = useMemo(
     () => getOnionSkinSignature(controlledOnionSkinSettings),
-    [
-      controlledOnionSkinSettings?.enabled,
-      controlledOnionSkinSettings?.framesBefore,
-      controlledOnionSkinSettings?.framesAfter,
-      controlledOnionSkinSettings?.previousColor,
-      controlledOnionSkinSettings?.nextColor,
-      controlledOnionSkinSettings?.opacity,
-    ]
+    [controlledOnionSkinSettings]
   );
   const lastSyncedReferenceImageSignatureRef = useRef(incomingReferenceImageSignature);
   const lastSyncedInitialStrokeSignatureRef = useRef(incomingInitialStrokeSignature);
@@ -2734,19 +2726,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   useEffect(() => {
     if (!initialBrushSettings) return;
     applyBrushSettings(initialBrushSettings);
-  }, [
-    applyBrushSettings,
-    initialBrushSettings?.type,
-    initialBrushSettings?.size,
-    initialBrushSettings?.color,
-    initialBrushSettings?.opacity,
-    initialBrushSettings?.hardness,
-    initialBrushSettings?.flow,
-    initialBrushSettings?.wetness,
-    initialBrushSettings?.grain,
-    initialBrushSettings?.tiltSensitivity,
-    initialBrushSettings?.pressureSensitivity,
-  ]);
+  }, [applyBrushSettings, initialBrushSettings.type, initialBrushSettings.size, initialBrushSettings.color, initialBrushSettings.opacity, initialBrushSettings.hardness, initialBrushSettings.flow, initialBrushSettings.wetness, initialBrushSettings.grain, initialBrushSettings.tiltSensitivity, initialBrushSettings.pressureSensitivity, initialBrushSettings]);
 
   useEffect(() => {
     // Keep small layouts compact by default, but never fight manual user choice.
@@ -3364,7 +3344,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         translatePivot: { dx: snappedMove.dx, dy: snappedMove.dy },
       },
     );
-  }, [applySelectionDisplayTransform, drawingState.selectionSnapEnabled, getCanvasPointFromPointerEvent, height, width]);
+  }, [applySelectionDisplayTransform, drawingState.selectionSnapEnabled, getCanvasPointFromPointerEvent, height, updateDrawingState, width]);
 
   const handleSelectionTransformEnd = useCallback((event: PointerEvent) => {
     const transformState = selectionTransformRef.current;
@@ -3650,7 +3630,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     const canvas = mainCanvasRef.current;
     if (!canvas) return [];
     return [{ index: currentFrameIndex, canvas }];
-  }, [currentFrameIndex, strokes.length, width, height]);
+  }, [currentFrameIndex]);
   const hasSelection = selectedStrokeIndexes.length > 0 && Boolean(drawingState.selectionBounds);
   
   return (

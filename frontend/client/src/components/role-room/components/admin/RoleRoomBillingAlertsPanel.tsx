@@ -65,7 +65,7 @@ export function RoleRoomBillingAlertsPanel() {
   const [reconciling, setReconciling] = useState<'dry' | 'apply' | null>(null);
   const [reconcileSummary, setReconcileSummary] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const data = await jsonRequest<{ alerts: BillingAlert[] }>(
@@ -77,9 +77,9 @@ export function RoleRoomBillingAlertsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  });
 
-  useEffect(() => { void load(); }, [showResolved]);
+  useEffect(() => { void load(); }, [load, showResolved]);
 
   const handleReconcile = async (mode: 'dry' | 'apply') => {
     if (mode === 'apply' && !confirm('Kjør reconciliation med apply=true — dette vil oppdatere Stripe-quantity for ALLE drift som finnes. Sikker?')) return;

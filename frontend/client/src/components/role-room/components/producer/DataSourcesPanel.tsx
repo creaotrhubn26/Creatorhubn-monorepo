@@ -13,37 +13,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  MenuItem,
-  Select,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  CheckCircle as VerifiedIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Refresh as RefreshIcon,
-  Edit as EditIcon,
-  Link as LinkIcon,
-  Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
-  Settings as SettingsIcon,
-  MailOutline as MailIcon,
-} from '@mui/icons-material';
+import { Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { CheckCircle as VerifiedIcon, Warning as WarningIcon, Error as ErrorIcon, Refresh as RefreshIcon, Edit as EditIcon, Link as LinkIcon, ExpandMore as ExpandMoreIcon, MailOutline as MailIcon } from '@mui/icons-material';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
 import ClientRequestModal from './ClientRequestModal';
 import ClientRequestsThread from './ClientRequestsThread';

@@ -332,7 +332,7 @@ export function ChoreographyBuilderConnected({
       saveStoredActiveId(projectId, fresh.id);
       setState({ phase: 'ready', choreography: fresh });
     } catch (err) {
-      // eslint-disable-next-line no-alert
+       
       window.alert(err instanceof Error ? err.message : 'Kunne ikke duplisere');
     } finally {
       setDuplicateBusy(false);
@@ -343,7 +343,7 @@ export function ChoreographyBuilderConnected({
     if (state.phase !== 'ready') return;
     const id = state.choreography.id;
     const title = state.choreography.title;
-    // eslint-disable-next-line no-alert
+     
     if (!window.confirm(`Slette "${title}"? Dette kan ikke angres.`)) return;
     setDeleteBusy(true);
     try {
@@ -358,7 +358,7 @@ export function ChoreographyBuilderConnected({
         await loadActive(remaining[0].id);
       }
     } catch (err) {
-      // eslint-disable-next-line no-alert
+       
       window.alert(err instanceof Error ? err.message : 'Kunne ikke slette');
     } finally {
       setDeleteBusy(false);

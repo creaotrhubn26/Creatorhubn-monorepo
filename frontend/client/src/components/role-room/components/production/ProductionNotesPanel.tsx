@@ -90,7 +90,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
         }
       });
     };
-  }, []);
+  }, [drafts, onSaveNote, sceneId]);
 
   const getValue = useCallback((type: NoteType): string => {
     return drafts[type] ?? savedNotes[type] ?? '';

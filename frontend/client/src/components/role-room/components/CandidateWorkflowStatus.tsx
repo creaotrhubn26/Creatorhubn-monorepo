@@ -1,25 +1,5 @@
 import { useState, cloneElement, type FC, type ReactNode, type ReactElement, type MouseEvent } from 'react';
-import {
-  Box,
-  Typography,
-  Chip,
-  Stepper,
-  Step,
-  StepLabel,
-  StepConnector,
-  stepConnectorClasses,
-  IconButton,
-  Tooltip,
-  Menu,
-  MenuItem,
-  Rating,
-  TextField,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-} from '@mui/material';
+import { Box, Typography, Chip, Stepper, Step, StepLabel, StepConnector, stepConnectorClasses, IconButton, Tooltip, Menu, MenuItem, Rating, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import TheatersIcon from '@mui/icons-material/Theaters';
@@ -45,7 +25,7 @@ const WORKFLOW_STEPS: { status: WorkflowStatus; label: string; icon: ReactNode; 
   { status: 'production', label: 'Produksjon', icon: <MovieIcon />, color: '#ec4899' },
 ];
 
-const ColorlibConnector = styled(StepConnector)(({ theme }) => ({
+const ColorlibConnector = styled(StepConnector)(({ _theme }) => ({
   [`&.${stepConnectorClasses.alternativeLabel}`]: {
     top: 16,
   },

@@ -10,9 +10,9 @@ import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Stack, Typography, Chip, IconButton, Tooltip, TextField, Button, MenuItem } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon, Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
-import type { VideoAnnotation, AnnotationStatus } from './danceVideoService';
+import type { VideoAnnotation } from './danceVideoService';
 import { categoryById, DANCE_MOVEMENT_CATEGORIES } from './danceMovementCategories';
-import { formatTimecode, parseTimecode } from './timecode';
+import { formatTimecode } from './timecode';
 
 const PURPLE_LIGHT = danceFlowColors.lavender;
 const TEXT_DIM = 'rgba(229,231,235,0.55)';

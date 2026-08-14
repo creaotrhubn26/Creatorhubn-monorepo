@@ -29,7 +29,7 @@ interface SuggestionRow {
   status: string;
 }
 
-interface FeedbackRow {
+interface _FeedbackRow {
   detected_purpose: string;
   correct_purpose: string;
 }

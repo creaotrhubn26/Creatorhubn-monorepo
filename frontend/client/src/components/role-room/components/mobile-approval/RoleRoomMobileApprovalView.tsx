@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileApprovalView — mobile + iPad Godkjenning surface.
  *
@@ -21,11 +20,13 @@ import {
 
 import { useProducerReviews } from '../../hooks/useProducerReviews';
 import type { RoleRoomViewportMode } from '../../hooks/useRoleRoomViewportMode';
-import MobileReviewCard, { MobileReviewCardItem } from './MobileReviewCard';
-import MobileReviewDetailSheet, {
+import type { MobileReviewCardItem } from './MobileReviewCard';
+import MobileReviewCard from './MobileReviewCard';
+import type {
   ReviewDecision,
   ReviewDetailData,
 } from './MobileReviewDetailSheet';
+import MobileReviewDetailSheet from './MobileReviewDetailSheet';
 import { bucketFor } from './reviewStatusVocabulary';
 import IPadMasterDetailLayout from '../ipad/IPadMasterDetailLayout';
 import { Button } from '@mui/material';

@@ -127,13 +127,7 @@ export const useApplePencil = (
 
   useLayoutEffect(() => {
     configRef.current = config;
-  }, [
-    config.palmRejection,
-    config.minPressure,
-    config.pressureSmoothing,
-    config.enableHover,
-    config.enableDoubleTap,
-  ]);
+  }, [config.palmRejection, config.minPressure, config.pressureSmoothing, config.enableHover, config.enableDoubleTap, config]);
 
   useEffect(() => {
     const element = ref.current;

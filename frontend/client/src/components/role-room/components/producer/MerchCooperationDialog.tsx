@@ -10,52 +10,10 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  IconButton,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
-import {
-  AutoAwesome as MagicIcon,
-  CheckCircle as CheckIcon,
-  ContentCopy as CopyIcon,
-  Email as EmailIcon,
-  Close as CloseIcon,
-  Handshake as HandshakeIcon,
-  WarningAmber as WarningIcon,
-  PlaylistAddCheck as ChecklistIcon,
-  Refresh as RefreshIcon,
-  Place as PlaceIcon,
-  Search as SearchIcon,
-} from '@mui/icons-material';
-import {
-  discoverPartners,
-  enrichPartnerCandidate,
-  generateMerchCooperationDraft,
-  MerchCooperationApiError,
-  sendMerchPartnerEmail,
-  type MerchCooperationDraft,
-  type MerchDealType,
-  type MerchPartnerCandidate,
-  type MerchPartnerEnrichment,
-  type MerchPartnerType,
-} from '../../services/roleRoomAgentClaudeApi';
-import type {
-  RoleRoomAgentMerchSupplier,
-  RoleRoomAgentProducerBootstrapResult,
-} from '../../services/roleRoomAgentService';
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { AutoAwesome as MagicIcon, CheckCircle as CheckIcon, ContentCopy as CopyIcon, Email as EmailIcon, Close as CloseIcon, Handshake as HandshakeIcon, WarningAmber as WarningIcon, PlaylistAddCheck as ChecklistIcon, Refresh as RefreshIcon, Place as PlaceIcon, Search as SearchIcon } from '@mui/icons-material';
+import { discoverPartners, enrichPartnerCandidate, generateMerchCooperationDraft, MerchCooperationApiError, sendMerchPartnerEmail, type MerchCooperationDraft, type MerchDealType, type MerchPartnerCandidate, type MerchPartnerType } from '../../services/roleRoomAgentClaudeApi';
+import type { RoleRoomAgentMerchSupplier, RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 import type { ConfirmedCustomerEntity } from './CustomerEntityConfirmationDialog';
 
 interface MerchCooperationDialogProps {

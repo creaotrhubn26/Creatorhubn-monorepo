@@ -180,11 +180,11 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
   );
 
   const modalPadding = getResponsiveValue(1.5, 2, 2.5, 3, 4, 5);
-  const titleFontSize = getResponsiveValue('1rem', '1.125rem', '1.25rem', '1.375rem', '1.5rem', '1.75rem');
+  const _titleFontSize = getResponsiveValue('1rem', '1.125rem', '1.25rem', '1.375rem', '1.5rem', '1.75rem');
   const bodyFontSize = getResponsiveValue('0.813rem', '0.875rem', '0.938rem', '1rem', '1.125rem', '1.25rem');
   const captionFontSize = getResponsiveValue('0.688rem', '0.75rem', '0.813rem', '0.875rem', '0.938rem', '1rem');
   const smallTextSize = getResponsiveValue('0.625rem', '0.688rem', '0.75rem', '0.813rem', '0.875rem', '0.938rem');
-  const avatarSize = getResponsiveValue(40, 44, 48, 52, 56, 64);
+  const _avatarSize = getResponsiveValue(40, 44, 48, 52, 56, 64);
   const iconSize = getResponsiveValue(20, 22, 24, 26, 28, 32);
   const buttonMinHeight = getResponsiveValue(TOUCH_TARGET_MIN, TOUCH_TARGET_MIN, 48, 52, 56, 64);
   const stepIconSize = getResponsiveValue(18, 20, 22, 24, 28, 32);

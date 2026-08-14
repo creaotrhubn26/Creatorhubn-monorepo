@@ -11,19 +11,8 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  Box, Stack, Typography, Card, CardActionArea, Button, IconButton, Chip,
-  CircularProgress, Alert, Collapse, TextField, Tooltip, InputBase, Avatar,
-  Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar,
-  type TypographyProps,
-} from '@mui/material';
-import {
-  Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon,
-  CheckCircle as CheckIcon, PersonAdd as InviteIcon, UploadFile as CsvIcon,
-  ChevronRight as ChevronIcon, Search as SearchIcon,
-  Sync as SyncIcon, CloudUpload as ImportIcon, Delete as DeleteIcon,
-  KeyboardArrowDown as CaretIcon, Inventory2 as ArchiveIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, Card, CardActionArea, Button, IconButton, Chip, CircularProgress, Alert, Collapse, TextField, Tooltip, InputBase, Avatar, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, type TypographyProps } from '@mui/material';
+import { Groups as CohortIcon, Add as AddIcon, Close as CloseIcon, School as CanvasIcon, CheckCircle as CheckIcon, PersonAdd as InviteIcon, UploadFile as CsvIcon, ChevronRight as ChevronIcon, Search as SearchIcon, Sync as SyncIcon, CloudUpload as ImportIcon, Delete as DeleteIcon, Inventory2 as ArchiveIcon } from '@mui/icons-material';
 import { educationCohortsService, type Cohort, type Student } from './educationCohortsService';
 import { educationGroupsService, type EducationGroup } from './educationGroupsService';
 import { educationAssignmentsService } from './educationAssignmentsService';

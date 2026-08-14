@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Drawing Components Index
  * 

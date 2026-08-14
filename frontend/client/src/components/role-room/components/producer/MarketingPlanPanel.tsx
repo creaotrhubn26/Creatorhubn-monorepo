@@ -10,75 +10,17 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Divider,
-  Fade,
-  LinearProgress,
-  Stack,
-  Tab,
-  Tabs,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  AutoAwesome as AutoAwesomeIcon,
-  CheckCircle as CheckCircleIcon,
-  ArrowForward as ArrowForwardIcon,
-  PlayArrow as PlayArrowIcon,
-  Refresh as RefreshIcon,
-  Lock as LockIcon,
-} from '@mui/icons-material';
-import roleRoomAgentService, {
-  type ClientPortalInvite,
-  type MarketingPlan,
-  type MarketingPlanPost,
-  type MarketingPlanReadiness,
-  MarketingPlanReadinessError,
-  RoleRoomFeedEntitlementError,
-} from '../../services/roleRoomAgentService';
-import {
-  exportMarketingPlanAsPdf,
-  exportMarketingPlanAsIcs,
-} from '../../utils/marketingPlanExport';
-import {
-  validateMarketingPlanPosts,
-  groupFlagsByPost,
-  type PostFlag,
-} from '../../utils/marketingPlanPostValidators';
-import {
-  suggestPublishTime,
-  resolveCrosspostSchedule,
-  suggestHashtags,
-  suggestCtaTemplate,
-} from '../../utils/marketingPlanPostHints';
-import {
-  scoreAllPosts,
-  buildDistribution,
-  emojiForLabel,
-  colorForLabel,
-  type PostSentiment,
-} from '../../utils/marketingPlanPostSentiment';
+import { Alert, Box, Button, Chip, CircularProgress, Divider, Fade, LinearProgress, Stack, Tab, Tabs, Tooltip, Typography } from '@mui/material';
+import { AutoAwesome as AutoAwesomeIcon, CheckCircle as CheckCircleIcon, ArrowForward as ArrowForwardIcon, PlayArrow as PlayArrowIcon, Refresh as RefreshIcon, Lock as LockIcon } from '@mui/icons-material';
+import roleRoomAgentService, { type ClientPortalInvite, type MarketingPlan, type MarketingPlanPost, type MarketingPlanReadiness, MarketingPlanReadinessError, RoleRoomFeedEntitlementError } from '../../services/roleRoomAgentService';
+import { exportMarketingPlanAsPdf, exportMarketingPlanAsIcs } from '../../utils/marketingPlanExport';
+import { validateMarketingPlanPosts, groupFlagsByPost, type PostFlag } from '../../utils/marketingPlanPostValidators';
+import { suggestPublishTime, resolveCrosspostSchedule, suggestHashtags, suggestCtaTemplate } from '../../utils/marketingPlanPostHints';
+import { scoreAllPosts, buildDistribution, emojiForLabel, colorForLabel, type PostSentiment } from '../../utils/marketingPlanPostSentiment';
 import MarketingPlanPostPreview from './MarketingPlanPostPreview';
 import { Visibility as VisibilityIcon, OpenInNew as OpenInNewIcon } from '@mui/icons-material';
-import {
-  buildStockSearchLinks,
-} from '../../utils/marketingPlanPostExternal';
-import {
-  Download as DownloadIcon,
-  CalendarMonth as CalendarIcon,
-  Share as ShareIcon,
-  ContentCopy as ContentCopyIcon,
-  Edit as EditIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  ToggleOn as ToggleOnIcon,
-  ToggleOff as ToggleOffIcon,
-} from '@mui/icons-material';
+import { buildStockSearchLinks } from '../../utils/marketingPlanPostExternal';
+import { Download as DownloadIcon, CalendarMonth as CalendarIcon, Share as ShareIcon, ContentCopy as ContentCopyIcon, Edit as EditIcon, Add as AddIcon, Delete as DeleteIcon, ToggleOn as ToggleOnIcon, ToggleOff as ToggleOffIcon } from '@mui/icons-material';
 import TextField from '@mui/material/TextField';
 import Snackbar from '@mui/material/Snackbar';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
@@ -1564,7 +1506,7 @@ function PostsSection({
 function PostCard({
   post,
   projectId,
-  planId,
+  _planId,
   industry = null,
   companyName = null,
   logoUrl = null,
@@ -1716,7 +1658,7 @@ function PostCard({
       setGeneratingReplies(false);
     }
   }, [post.id, onError]);
-  const handleAccept = useCallback(async () => {
+  const _handleAccept = useCallback(async () => {
     setAccepting(true);
     try {
       const result = await roleRoomAgentService.acceptMarketingPlanPost({

@@ -6,61 +6,10 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Button,
-  Slider,
-  Stack,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
-  LinearProgress,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Tooltip,
-  Divider,
-  Switch,
-  FormControlLabel,
-  Avatar,
-} from '@mui/material';
-import {
-  PlayArrow as PlayIcon,
-  Pause as PauseIcon,
-  Stop as StopIcon,
-  SkipNext as NextIcon,
-  SkipPrevious as PrevIcon,
-  VolumeUp as VolumeIcon,
-  Speed as SpeedIcon,
-  RecordVoiceOver as VoiceIcon,
-  Person as CharacterIcon,
-  GraphicEq as WaveformIcon,
-  Mic as MicIcon,
-  Settings as SettingsIcon,
-} from '@mui/icons-material';
-import {
-  getCharacterVoice,
-  speakText,
-  stopSpeaking,
-} from '../services/scriptAnalysisService';
-import {
-  speak as ttsSpeak,
-  stopTTS,
-  pauseTTS,
-  resumeTTS,
-  assignCharacterVoices,
-  preloadTTS,
-  TTS_VOICES,
-  TTS_LANGUAGES,
-  type TTSVoice,
-  type TTSLanguage,
-} from '../services/ttsService';
+import { Box, Paper, Typography, IconButton, Slider, Stack, Select, MenuItem, FormControl, Chip, LinearProgress, List, ListItem, ListItemText, ListItemIcon, Tooltip, Divider, Switch, FormControlLabel, Avatar } from '@mui/material';
+import { PlayArrow as PlayIcon, Pause as PauseIcon, Stop as StopIcon, SkipNext as NextIcon, SkipPrevious as PrevIcon, VolumeUp as VolumeIcon, Speed as SpeedIcon, RecordVoiceOver as VoiceIcon, Person as CharacterIcon, GraphicEq as WaveformIcon, Mic as MicIcon, Settings as SettingsIcon } from '@mui/icons-material';
+import { getCharacterVoice, speakText, stopSpeaking } from '../services/scriptAnalysisService';
+import { speak as ttsSpeak, stopTTS, pauseTTS, resumeTTS, assignCharacterVoices, preloadTTS, TTS_VOICES, TTS_LANGUAGES, type TTSVoice, type TTSLanguage } from '../services/ttsService';
 
 interface DialogueLine {
   character: string;
@@ -82,9 +31,9 @@ function parseDialogue(content: string): DialogueLine[] {
   
   let currentCharacter: string | null = null;
   let currentParenthetical: string | null = null;
-  let lineStart = 0;
+  let _lineStart = 0;
   
-  const CHARACTER_PATTERN = /^@?([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*?)(\s*\(.*\))?$/;
+  const CHARACTER_PATTERN = /^@?([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*?)(\s*\(.*\))?$/;
   const PARENTHETICAL_PATTERN = /^\((.+)\)$/;
   
   for (let i = 0; i < lines.length; i++) {
@@ -95,7 +44,7 @@ function parseDialogue(content: string): DialogueLine[] {
     if (charMatch && (i === 0 || lines[i - 1].trim() === '')) {
       currentCharacter = charMatch[1].trim();
       currentParenthetical = charMatch[2] ? charMatch[2].replace(/[()]/g, '').trim() : null;
-      lineStart = i + 1;
+      _lineStart = i + 1;
       continue;
     }
     
@@ -160,7 +109,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
   
   // AI TTS state
   const [useAiTts, setUseAiTts] = useState(true);
-  const [aiVoice, setAiVoice] = useState<TTSVoice>('nova');
+  const [aiVoice, _setAiVoice] = useState<TTSVoice>('nova');
   const [aiLanguage, setAiLanguage] = useState<TTSLanguage | ''>('');
   const [aiCharacterVoices, setAiCharacterVoices] = useState<Record<string, TTSVoice>>({});
   
@@ -198,7 +147,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
     if (characters.length > 0 && Object.keys(aiCharacterVoices).length === 0) {
       setAiCharacterVoices(assignCharacterVoices(characters));
     }
-  }, [characters]);
+  }, [aiCharacterVoices, characters]);
 
   // Preload first few lines with AI TTS for instant playback
   useEffect(() => {
@@ -210,7 +159,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
       }));
       preloadTTS(firstLines).catch(() => {});
     }
-  }, [useAiTts, dialogueLines.length > 0, aiVoice]);
+  }, [useAiTts, aiVoice, dialogueLines, aiCharacterVoices, aiLanguage]);
 
   // Update refs when state changes
   useEffect(() => {

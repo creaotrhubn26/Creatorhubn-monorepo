@@ -13,28 +13,9 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React, { useMemo, useState, useCallback } from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  TextField,
-  IconButton,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-  Chip,
-} from '@mui/material';
-import {
-  Movie as VideoIcon,
-  RestartAlt as ResetIcon,
-} from '@mui/icons-material';
-import {
-  ENERGY_LEVELS,
-  formatTime,
-  getEnergyMeta,
-  type EnergyLevel,
-  type Segment,
-} from './choreographyTypes';
+import { Box, Stack, Typography, TextField, IconButton, Tooltip, Switch, FormControlLabel, Chip } from '@mui/material';
+import { Movie as VideoIcon, RestartAlt as ResetIcon } from '@mui/icons-material';
+import { ENERGY_LEVELS, formatTime, type EnergyLevel, type Segment } from './choreographyTypes';
 import useBrandingSettings from '../hooks/useBrandingSettings';
 
 // ─── Datamodell ─────────────────────────────────────────────────────────

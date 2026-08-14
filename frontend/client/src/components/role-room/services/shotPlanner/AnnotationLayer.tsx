@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
-import { Box, Paper, Button, IconButton, Tooltip, Stack, ToggleButton, ToggleButtonGroup, Slider, Typography, Divider, Menu, MenuItem } from "@mui/material";
-import { Edit as DrawIcon, Undo as UndoIcon, Redo as RedoIcon, Delete as ClearIcon, Close as CloseIcon, Palette as BrushIcon, Settings as SettingsIcon } from "@mui/icons-material";
+import { Box, Paper, Button, IconButton, Tooltip, Stack, ToggleButton, ToggleButtonGroup, Slider, Typography, Divider } from "@mui/material";
+import { Edit as DrawIcon, Undo as UndoIcon, Delete as ClearIcon, Close as CloseIcon } from "@mui/icons-material";
 import { useApplePencil, type PencilPoint } from "../../hooks/useApplePencil";
 
 // Brush configuration
@@ -63,11 +63,11 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [annotations, setAnnotations] = useState<AnnotationData[]>([]);
   const [currentStroke, setCurrentStroke] = useState<AnnotationStroke | null>(null);
-  const [brushMenuAnchor, setBrushMenuAnchor] = useState<null | HTMLElement>(null);
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [_brushMenuAnchor, _setBrushMenuAnchor] = useState<null | HTMLElement>(null);
+  const [_colorPickerOpen, _setColorPickerOpen] = useState(false);
 
   // Initialize Apple Pencil support
-  const pencilState = useApplePencil({
+  const _pencilState = useApplePencil({
     onStrokeStart: () => setIsDrawing(true),
     onStrokeMove: (point: PencilPoint) => {
       if (!currentStroke) {
@@ -123,7 +123,7 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
 
     // Draw all annotations
     drawAnnotations();
-  }, [visible, canvasWidth, canvasHeight, brushConfig.opacity]);
+  }, [visible, canvasWidth, canvasHeight, brushConfig.opacity, drawAnnotations]);
 
   // Draw on canvas
   const drawAnnotations = useCallback(() => {
@@ -192,7 +192,7 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const pressure = e.pressure || 0.5;
-    const pointerType = e.pointerType;
+    const _pointerType = e.pointerType;
 
     setIsDrawing(true);
     setCurrentStroke({

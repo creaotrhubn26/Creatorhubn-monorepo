@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from "react";
 import { Box, Alert, Autocomplete, Typography, Button, IconButton, Card, CardContent, CardMedia, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Stack, Grid, Tooltip, Collapse, FormControl, FormControlLabel, InputLabel, Select, MenuItem, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, useTheme, useMediaQuery, Grow, InputAdornment, LinearProgress, CircularProgress, Tabs, Tab, ImageList, ImageListItem, ImageListItemBar, Divider, Rating } from "@mui/material";
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, StarBorder as StarBorderIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, SelectAll as SelectAllIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Update as UpdateIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon, Build as MaintenanceIcon, Warehouse as WarehouseIcon } from "@mui/icons-material";
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, FilterList as FilterIcon, ViewModule as GridViewIcon, ViewList as TableViewIcon, Close as CloseIcon, Cancel as CancelIcon, Save as SaveIcon, Image as ImageIcon, Person as PersonIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Block as BlockIcon, Refresh as RefreshIcon, ContentCopy as CopyIcon, Bookmark as BookmarkIcon, ShoppingCart as ShoppingCartIcon, OpenInNew as OpenInNewIcon, PlaylistAdd as PlaylistAddIcon, Star as StarIcon, StarBorder as StarBorderIcon, CloudUpload as CloudUploadIcon, Link as LinkIcon, PhotoLibrary as PhotoLibraryIcon, Movie as MovieIcon, History as HistoryIcon, CalendarToday as CalendarTodayIcon, QrCode as QrCodeIcon, QrCodeScanner as QrCodeScannerIcon, Inventory2 as Inventory2Icon, FileDownload as DownloadIcon, FileUpload as UploadIcon, FileCopy as DuplicateIcon, CheckBox as CheckboxIcon, CheckBoxOutlineBlank as CheckboxOutlineIcon, Public as PublicIcon, Lock as LockIcon, Assignment as CheckOutIcon, AssignmentReturn as CheckInIcon, Summarize as ReportIcon, WifiOff as OfflineIcon, Sync as SyncIcon, AssignmentLate as MissingItemIcon, TrendingUp as TrendingUpIcon, Newspaper as NewspaperIcon, AttachMoney as AttachMoneyIcon, Build as MaintenanceIcon, Warehouse as WarehouseIcon } from "@mui/icons-material";
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from "./icons/CastingIcons";
 import netflixWordmark from "../../../assets/brands/netflix-wordmark.svg";
 import { useQuery } from "@tanstack/react-query";
@@ -45,7 +45,7 @@ const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
 
 type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity' | 'created_at' | 'updated_at';
 
-const SORT_FIELD_LABELS: Record<SortField, string> = {
+const _SORT_FIELD_LABELS: Record<SortField, string> = {
   name: 'Navn',
   category: 'Kategori',
   status: 'Status',
@@ -535,8 +535,6 @@ const isVendorPriceFresh = (link: VendorLink): boolean => {
   return ageMs >= 0 && ageMs <= TRUSTED_VENDOR_PRICE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 };
 
-
-
 const SHOP_VENDOR_FALLBACK_LINKS: VendorLink[] = [
   {
     id: 'fallback-foto-sony-fx6',
@@ -648,8 +646,8 @@ const sanitizeVendorLinks = (links: VendorLink[]): VendorLink[] =>
       const category = String(link.category ?? '').trim() || 'Diverse';
       const hasPlaceholderProductUrl = productUrl.length === 0 || /example\.com/i.test(productUrl);
       const hasPlaceholderAffiliateUrl = affiliateUrl.length === 0 || /example\.com/i.test(affiliateUrl);
-      const hasFotoProductUrl = /(^https?:\/\/)?([^\/]+\.)?foto\.no(\/|$)/i.test(productUrl);
-      const hasFotoAffiliateUrl = /(^https?:\/\/)?([^\/]+\.)?foto\.no(\/|$)/i.test(affiliateUrl);
+      const hasFotoProductUrl = /(^https?:\/\/)?([^/]+\.)?foto\.no(\/|$)/i.test(productUrl);
+      const hasFotoAffiliateUrl = /(^https?:\/\/)?([^/]+\.)?foto\.no(\/|$)/i.test(affiliateUrl);
       const sanitizedProductUrl = hasPlaceholderProductUrl
         ? (productName.length > 0 ? getVendorSearchUrl(vendorName, productName) : getVendorHomepage(vendorName))
         : (hasFotoProductUrl
@@ -931,7 +929,6 @@ export function EquipmentManagementPanel({
     setCameraSpecsExpanded(false);
     setModelShouldSuggest(false);
   }, [dialogOpen, formData.brand, formData.model]);
-
 
   // === NEW WORKFLOW FEATURES ===
   
@@ -1829,7 +1826,7 @@ export function EquipmentManagementPanel({
     showSuccess(`Kategori "${category}" fjernet`);
   };
 
-  const loadActiveCheckouts = async () => {
+  const loadActiveCheckouts = useCallback(async () => {
     if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
       setActiveCheckouts([]);
       return;
@@ -1844,7 +1841,7 @@ export function EquipmentManagementPanel({
       }
       setActiveCheckouts([]);
     }
-  };
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable]);
 
   useEffect(() => {
     setRoleRoomApiUnavailable(false);
@@ -1871,7 +1868,7 @@ export function EquipmentManagementPanel({
     loadCrewAndLocations();
     loadTemplates();
     loadActiveCheckouts();
-  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable]);
+  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable, loadEquipment, loadCrewAndLocations, loadTemplates, loadActiveCheckouts]);
 
   // Multi-user realtime: poll every 30 s while online
   useEffect(() => {
@@ -1918,7 +1915,7 @@ export function EquipmentManagementPanel({
     }
   }, [projectId]);
 
-  const loadEquipment = async () => {
+  const loadEquipment = useCallback(async () => {
     if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
       setEquipment([]);
       setLoading(false);
@@ -1951,13 +1948,13 @@ export function EquipmentManagementPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable, showError]);
 
   useEffect(() => {
     refreshWarehouseSummary();
   }, [refreshWarehouseSummary]);
 
-  const loadCrewAndLocations = async () => {
+  const loadCrewAndLocations = useCallback(async () => {
     if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
       setCrewMembers([]);
       setLocations([]);
@@ -1984,9 +1981,9 @@ export function EquipmentManagementPanel({
     } else {
       setLocations([]);
     }
-  };
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable]);
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
       setTemplates([]);
       return;
@@ -2001,9 +1998,9 @@ export function EquipmentManagementPanel({
         console.error('Error loading templates:', error);
       }
     }
-  };
+  }, [projectId, hasProtectedRoleRoomAccess, roleRoomApiUnavailable]);
 
-  const loadVendorLinks = async () => {
+  const loadVendorLinks = useCallback(async () => {
     if (!shopDialogOpen || vendorLinksUnavailable) return;
     try {
       const [links, categories] = await Promise.all([
@@ -2026,13 +2023,13 @@ export function EquipmentManagementPanel({
         console.error('Error loading vendor links:', error);
       }
     }
-  };
+  }, [shopDialogOpen, vendorLinksUnavailable, selectedVendorCategory]);
 
   // Re-fetch vendor links whenever the category filter changes
   useEffect(() => {
     if (!shopDialogOpen || vendorLinksUnavailable) return;
     loadVendorLinks();
-  }, [selectedVendorCategory, shopDialogOpen, vendorLinksUnavailable]);
+  }, [loadVendorLinks, selectedVendorCategory, shopDialogOpen, vendorLinksUnavailable]);
 
   // Image search functions - Multi-source search via backend proxies (no keys in client)
   const searchImages = useCallback(async (query: string) => {
@@ -3398,13 +3395,12 @@ export function EquipmentManagementPanel({
   };
 
   // ── Check-out / Check-in ─────────────────────────────────
-  const OUTBOX_KEY = `equipment_outbox_${projectId}`;
-
-  const persistOfflineQueue = (q: OfflineEntry[]) => {
-    localStorage.setItem(OUTBOX_KEY, JSON.stringify(q));
+  const persistOfflineQueue = useCallback((q: OfflineEntry[]) => {
+    const key = `equipment_outbox_${projectId}`;
+    localStorage.setItem(key, JSON.stringify(q));
     setOfflineQueue(q);
     setOfflineQueueCount(q.length);
-  };
+  }, [projectId]);
 
   const handleOpenCheckout = (eq: Equipment) => {
     setCheckoutEquipment(eq);
@@ -3501,7 +3497,7 @@ export function EquipmentManagementPanel({
   };
 
   /** Replay offline outbox when user is back online */
-  const handleSyncOfflineQueue = async () => {
+  const handleSyncOfflineQueue = useCallback(async () => {
     if (!isOnline || offlineQueue.length === 0) return;
     let ok = 0;
     const failed: OfflineEntry[] = [];
@@ -3534,8 +3530,8 @@ export function EquipmentManagementPanel({
       loadEquipment();
       loadActiveCheckouts();
     }
-    showSuccess(`Synkronisert ${ok} operasjon(er).${failed.length > 0 ? ` ${failed.length} feilet.` : ''}`);
-  };
+      showSuccess(`Synkronisert ${ok} operasjon(er).${failed.length > 0 ? ` ${failed.length} feilet.` : ''}`);
+  }, [isOnline, offlineQueue, activeCheckouts, persistOfflineQueue, loadEquipment, loadActiveCheckouts, showSuccess]);
 
   // ── Reports ──────────────────────────────────────────────
   const downloadCSV = (rows: string[][], filename: string) => {
@@ -3896,7 +3892,7 @@ export function EquipmentManagementPanel({
   );
 
   const getCrewName = (crewId: string) => crewById.get(crewId)?.name ?? 'Ukjent';
-  const getLocationName = (locationId: string) => locationById.get(locationId)?.name ?? '';
+  const _getLocationName = (locationId: string) => locationById.get(locationId)?.name ?? '';
 
   // Category icon colors for visual enhancement
   const getCategoryColor = (category: string | undefined): string => {
@@ -5313,7 +5309,9 @@ export function EquipmentManagementPanel({
                       label={CONDITION_LABELS[eq.condition] || eq.condition}
                       size="small"
                       sx={{
-                        bgcolor: `${CONDITION_COLORS[eq.condition]}20` || 'rgba(100,100,100,0.2)',
+                        bgcolor: CONDITION_COLORS[eq.condition]
+                          ? `${CONDITION_COLORS[eq.condition]}20`
+                          : 'rgba(100,100,100,0.2)',
                         color: CONDITION_COLORS[eq.condition] || '#999',
                         fontSize: '0.7rem',
                         fontWeight: 600,

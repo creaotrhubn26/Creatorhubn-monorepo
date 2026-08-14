@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomTabRail — vertical icon-only navigation rail for iPad landscape.
  *

@@ -6,36 +6,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Button,
-  Stack,
-  Chip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Alert,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Tooltip,
-} from '@mui/material';
-import {
-  Link as LinkIcon,
-  LinkOff as UnlinkIcon,
-  Add as AddIcon,
-  MusicNote as MusicIcon,
-  AccountBalance as SplitSheetIcon,
-} from '@mui/icons-material';
-import type { SplitSheet, SplitSheetSongFlowLink } from './types';
+import { Box, Typography, Card, CardContent, Button, Stack, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert, List, ListItem, ListItemText, ListItemSecondaryAction, Divider, Tooltip } from '@mui/material';
+import { Link as LinkIcon, LinkOff as UnlinkIcon, MusicNote as MusicIcon } from '@mui/icons-material';
+import type { SplitSheetSongFlowLink } from './types';
 
 interface SplitSheetSongFlowIntegrationProps {
   splitSheetId: string;
@@ -261,26 +234,4 @@ export default function SplitSheetSongFlowIntegration({
     </Box>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

@@ -28,7 +28,7 @@ import { useShotPlannerStore, useCurrentScene } from './store';
 
 export const GuidesPanel: React.FC = () => {
   const scene = useCurrentScene();
-  const { toggleVisualization, updateScene } = useShotPlannerStore();
+  const { toggleVisualization } = useShotPlannerStore();
 
   if (!scene) return null;
 

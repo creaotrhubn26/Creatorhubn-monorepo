@@ -13,67 +13,10 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Button,
-  Chip,
-  Stack,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  CircularProgress,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-  Slider,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Badge,
-  Tab,
-  Tabs,
-  TextField,
-  alpha,
-} from '@mui/material';
-import {
-  Spellcheck as SpellcheckIcon,
-  AutoFixHigh as AutoFixIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
-  Refresh as RefreshIcon,
-  Settings as SettingsIcon,
-  Psychology as LearnIcon,
-  Download as ExportIcon,
-  ExpandMore as ExpandMoreIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Info as InfoIcon,
-  Lightbulb as SuggestionIcon,
-  NavigateNext as NextIcon,
-  NavigateBefore as PrevIcon,
-  ContentCopy as CopyIcon,
-  School as TrainIcon,
-  Rule as RuleIcon,
-} from '@mui/icons-material';
-import { StatsIcon } from '../icons/CastingIcons';
-import {
-  grammarMLService,
-  type GrammarError,
-  type GrammarSuggestion,
-  type GrammarCheckResult,
-  type UserPreferences,
-} from '../../services/grammarMLService';
+import { Box, Paper, Typography, List, ListItemButton, ListItemText, IconButton, Button, Chip, Stack, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Alert, CircularProgress, Switch, FormControlLabel, Slider, Accordion, AccordionSummary, AccordionDetails, Badge, Tab, Tabs, TextField, alpha } from '@mui/material';
+import { AutoFixHigh as AutoFixIcon, Check as CheckIcon, Close as CloseIcon, Refresh as RefreshIcon, Psychology as LearnIcon, Download as ExportIcon, ExpandMore as ExpandMoreIcon, Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, Lightbulb as SuggestionIcon, NavigateNext as NextIcon, NavigateBefore as PrevIcon, School as TrainIcon } from '@mui/icons-material';
+import {  } from '../icons/CastingIcons';
+import { grammarMLService, type GrammarError, type GrammarSuggestion, type GrammarCheckResult, type UserPreferences } from '../../services/grammarMLService';
 import { AggressivenessSlider, GrammarStatsWidget } from './GrammarSuggestionsOverlay';
 
 // ============================================================================

@@ -6,7 +6,7 @@ type EventCallback = (data: unknown) => void;
 const DEV = typeof import.meta !== 'undefined' && (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 
 export function useRealTime() {
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected, _setIsConnected] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const eventListeners = new Map<string, EventCallback[]>();
 
@@ -16,14 +16,14 @@ export function useRealTime() {
     if (listeners) {
       listeners.forEach(callback => callback(data));
     }
-  }, []);
+  }, [eventListeners]);
 
   const onEvent = useCallback((event: string, callback: EventCallback) => {
     if (!eventListeners.has(event)) {
       eventListeners.set(event, []);
     }
     eventListeners.get(event)!.push(callback);
-  }, []);
+  }, [eventListeners]);
 
   const offEvent = useCallback((event: string, callback?: EventCallback) => {
     if (callback) {
@@ -34,9 +34,9 @@ export function useRealTime() {
     } else {
       eventListeners.delete(event);
     }
-  }, []);
+  }, [eventListeners]);
 
-  const createSession = useCallback(async (sessionName: string) => {
+  const createSession = useCallback(async (_sessionName: string) => {
     const id = `session-${Date.now()}`;
     setSessionId(id);
     if (DEV) console.log(`[RealTime] Session created: ${id}`);

@@ -137,7 +137,7 @@ export function exportMockupVideo(
       source.removeEventListener('ended', onEnded);
       if (signal) signal.removeEventListener('abort', onAbort);
       if (stream) stream.getTracks().forEach((t) => t.stop());
-      try { source.pause(); } catch {}
+      try { source.pause(); } catch { /* empty */ }
     };
 
     const fail = (err: Error) => {
@@ -153,7 +153,7 @@ export function exportMockupVideo(
 
     const stopRecording = () => {
       if (recorder && recorder.state !== 'inactive') {
-        try { recorder.stop(); } catch {}
+        try { recorder.stop(); } catch { /* empty */ }
       }
     };
 

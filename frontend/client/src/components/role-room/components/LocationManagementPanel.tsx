@@ -1579,7 +1579,7 @@ export function LocationManagementPanel({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen, locationGuideOpen]);
+  }, [dialogOpen, handleCloseDialog, handleExportCSV, locationGuideOpen]);
 
   // Handlers
   const handleOpenDialog = (location?: Location) => {
@@ -1611,14 +1611,14 @@ export function LocationManagementPanel({
     handleOpenDialog();
   }, [externalCreateSignal]);
 
-  const handleCloseDialog = () => {
+  const handleCloseDialog = useCallback(() => {
     if (externalCreatePendingRef.current) {
       externalCreatePendingRef.current = false;
       onExternalCreateCancelled?.();
     }
     setDialogOpen(false);
     setEditingLocation(null);
-  };
+  });
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
@@ -1856,7 +1856,7 @@ export function LocationManagementPanel({
     }
   };
 
-  const handleExportCSV = async () => {
+  const handleExportCSV = useCallback(async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
@@ -1882,7 +1882,7 @@ export function LocationManagementPanel({
       console.error('Error exporting locations:', error);
       alert('Kunne ikke eksportere lokasjoner');
     }
-  };
+  });
 
   const applySavedProView = (view: SavedLocationProView) => {
     setSelectedProViewId(view.id);

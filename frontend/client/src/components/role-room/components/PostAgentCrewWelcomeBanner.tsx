@@ -50,7 +50,7 @@ function useMySeats() {
 
 export const PostAgentCrewWelcomeBanner: React.FC = () => {
   const { data } = useMySeats();
-  const seats = data?.seats ?? [];
+  const seats = useMemo(() => data?.seats ?? [], [data?.seats]);
 
   // Key includes the sorted seat IDs so a *new* grant re-triggers the banner
   // even after the user dismissed an earlier version.

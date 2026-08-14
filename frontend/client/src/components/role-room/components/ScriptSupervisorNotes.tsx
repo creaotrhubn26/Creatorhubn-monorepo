@@ -1,8 +1,7 @@
-// @ts-nocheck
 import React, { useState, useEffect, useMemo } from "react";
-import { Box, Typography, Paper, Button, IconButton, Chip, Stack, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Divider, List, ListItem, ListItemText, ListItemIcon, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Badge, Rating } from "@mui/material";
-import { Assignment as ScriptIcon, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Schedule as TimeIcon, Videocam as CameraIcon, PlayArrow as PlayIcon, Stop as StopIcon, Flag as FlagIcon, Warning as WarningIcon, CheckCircle as CheckIcon, Error as ErrorIcon, Note as NoteIcon, Timer as TimerIcon, Speed as SpeedIcon, Replay as RetakeIcon, Star as StarIcon } from "@mui/icons-material";
-import { CastingShot, type SceneBreakdown } from "../models/casting";
+import { Box, Typography, Paper, Button, IconButton, Chip, Stack, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Badge, Rating } from "@mui/material";
+import { Assignment as ScriptIcon, Add as AddIcon, Delete as DeleteIcon, PlayArrow as PlayIcon, Stop as StopIcon, Flag as FlagIcon, CheckCircle as CheckIcon, Error as ErrorIcon, Star as StarIcon } from "@mui/icons-material";
+import { type SceneBreakdown } from "../models/casting";
 import GlobalMentionHelper from "./shared/GlobalMentionHelper";
 
 interface TakeLog {
@@ -25,17 +24,6 @@ interface TakeLog {
   soundNotes: string;
   directorComment?: string;
   timestamp: string;
-}
-
-interface SceneTiming {
-  sceneId: string;
-  sceneNumber: string;
-  plannedTime: string;
-  actualStartTime?: string;
-  actualEndTime?: string;
-  totalTakes: number;
-  printTakes: number;
-  status: 'not_started' | 'in_progress' | 'completed' | 'skipped';
 }
 
 interface ScriptSupervisorNotesProps {
@@ -119,7 +107,6 @@ export const ScriptSupervisorNotes: React.FC<ScriptSupervisorNotesProps> = ({
     },
   ]);
 
-  const [sceneTimings, setSceneTimings] = useState<Map<string, SceneTiming>>(new Map());
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedScene, setSelectedScene] = useState<string>('all');
   const [activeRecording, setActiveRecording] = useState<{ sceneId: string; shotId?: string } | null>(null);

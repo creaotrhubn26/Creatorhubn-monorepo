@@ -364,7 +364,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
         loadData(true);
         break;
     }
-  }, [userId]);
+  }, [loadData, userId]);
 
   const { connected: rtConnected, activeUsers } = useLiveSetRealtime({
     projectId,
@@ -399,7 +399,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
       }
       // TODO [Studio]: POST to /api/liveset/:projectId/* based on entry.type
     }).catch(() => {});
-  }, [rtConnected]);
+  }, [projectId, rtConnected, shootingDayId]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Data fetching + polling (fix #6 + #10)
@@ -435,7 +435,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
   useEffect(() => {
     loadData();
     return () => { if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current); };
-  }, []);
+  }, [loadData]);
 
   useEffect(() => {
     pollIntervalRef.current = setInterval(() => loadData(true), POLL_INTERVAL_MS);

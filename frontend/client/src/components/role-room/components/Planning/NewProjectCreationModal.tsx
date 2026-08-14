@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * New Project Creation Modal
  * Clean, simplified project creation with The Role Room production setup flow
@@ -763,7 +762,7 @@ export default function NewProjectCreationModal({
       setDraftStatus('idle');
       setLastSavedAt(null);
     }
-  }, []);
+  }, [userId]);
 
   const [showProjectResponsibleInfo, setShowProjectResponsibleInfo] = useState(false);
   const [addCollaboratorDialogOpen, setAddCollaboratorDialogOpen] = useState(false);

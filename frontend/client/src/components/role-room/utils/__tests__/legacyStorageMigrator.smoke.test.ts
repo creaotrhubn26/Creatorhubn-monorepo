@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { runLegacyStorageMigration } from "../legacyStorageMigrator";
 

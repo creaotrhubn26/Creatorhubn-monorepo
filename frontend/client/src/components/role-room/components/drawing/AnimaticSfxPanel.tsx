@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticSfxPanel — UI for auto-detekterte SFX-events for aktivt
  * frame. Tre interaksjons-knapper per event: ✨ foreslå fra CLAP-

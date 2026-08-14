@@ -12,35 +12,15 @@
  * - For BARN under 18: ekstra varsel om at foresatte må samtykke (Phase 8 BankID-flyt)
  */
 
-import {
-  Alert,
-  Box,
-  Button,
-  Checkbox,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  IconButton,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Stack, TextField, Tooltip, Typography } from '@mui/material';
+
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import { useState } from 'react';
 
-import roleRoomTalentsService, {
-  type RoleRoomTalentConsentScope,
-  type TalentProposal,
-} from '../../services/roleRoomTalentsService';
+import roleRoomTalentsService, { type RoleRoomTalentConsentScope, type TalentProposal } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
 
 interface ProposalResult extends TalentProposal {

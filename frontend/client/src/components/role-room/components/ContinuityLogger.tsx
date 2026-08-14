@@ -1,51 +1,6 @@
-// @ts-nocheck
 import { useState, cloneElement, type FC, type ChangeEvent, type ReactElement } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Chip,
-  Stack,
-  Card,
-  CardContent,
-  CardMedia,
-  Grid,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Tabs,
-  Tab,
-  Divider,
-  ImageList,
-  ImageListItem,
-  ImageListItemBar,
-  Tooltip,
-  Badge,
-} from '@mui/material';
-import {
-  CameraAlt as CameraIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-  Face as FaceIcon,
-  Checkroom as CostumeIcon,
-  Brush as MakeupIcon,
-  Category as PropsIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckIcon,
-  Compare as CompareIcon,
-  Schedule as TimeIcon,
-  Image as ImageIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, Button, IconButton, Chip, Stack, Card, CardContent, Grid, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Divider, ImageList, ImageListItem, Tooltip, Badge } from '@mui/material';
+import { CameraAlt as CameraIcon, Add as AddIcon, Delete as DeleteIcon, Face as FaceIcon, Checkroom as CostumeIcon, Brush as MakeupIcon, Category as PropsIcon, CheckCircle as CheckIcon, Compare as CompareIcon, Schedule as TimeIcon, Image as ImageIcon, Close as CloseIcon } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
@@ -123,7 +78,6 @@ export const ContinuityLogger: FC<ContinuityLoggerProps> = ({
     },
   ]);
   
-  const [activeTab, setActiveTab] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ContinuityEntry | null>(null);
   const [showCompareDialog, setShowCompareDialog] = useState(false);

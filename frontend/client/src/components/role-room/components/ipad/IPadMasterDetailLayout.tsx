@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * IPadMasterDetailLayout — reusable split-view shell for Role Room iPad
  * surfaces. Used by Godkjenning (fase 6) and intended for Planner and

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SHOT_LIST_EVENT, buildAuditEntry, makeEvent, type ShotListEvent, type ShotListEventType, type ShotAssignedPayload, type ShotStatusChangedPayload, type ShotListCreatedPayload, type ShotReorderedPayload, type EditLockAcquiredPayload, type AuditLogEntry, type EventMeta } from "../services/shotListEvents";
 

@@ -20,7 +20,7 @@ const DEFAULT_PROJECT_TYPES: ProjectType[] = [
 
 export function useProjectTypes() {
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>(DEFAULT_PROJECT_TYPES);
-  const [loading, setLoading] = useState(false);
+  const [loading, _setLoading] = useState(false);
   const [isLoading] = useState(false);
 
   const allTypes = projectTypes;

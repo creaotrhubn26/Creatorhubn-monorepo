@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { CameraId, CameraSlot, SyncStatus } from './types';
+import type { CameraSlot, SyncStatus } from './types';
 
 interface LiveSetHardwareState {
   cameras: CameraSlot[];

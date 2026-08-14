@@ -9,9 +9,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Box, Card, CardContent, CircularProgress, Stack, Typography, Chip,
-} from '@mui/material';
+import { Box, Card, CardContent, Stack, Typography, Chip } from '@mui/material';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';

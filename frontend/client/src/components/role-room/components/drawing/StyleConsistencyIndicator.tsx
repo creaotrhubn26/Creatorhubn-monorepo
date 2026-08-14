@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StyleConsistencyIndicator — viser sekvens-palett + flagger frames som
  * driver bort fra etablert stil.

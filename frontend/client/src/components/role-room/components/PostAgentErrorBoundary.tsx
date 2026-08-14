@@ -22,7 +22,7 @@ export class PostAgentErrorBoundary extends React.Component<{ children: React.Re
 
   componentDidCatch(err: unknown): void {
     // Best-effort log — visible in browser console for debugging.
-    // eslint-disable-next-line no-console
+     
     console.warn('[post-agent] component crashed', this.props.label || '', err);
   }
 

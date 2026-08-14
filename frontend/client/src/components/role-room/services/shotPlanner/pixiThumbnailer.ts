@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as PIXI from 'pixi.js';
 import type { Asset2DDefinition } from './types';
 
@@ -13,7 +12,7 @@ export async function generateThumbnail(asset: Asset2DDefinition, size = 128): P
     try {
       await PIXI.Assets.init();
       pixiInitialized = true;
-    } catch (e) {
+    } catch (_e) {
       // Already initialized or not needed
     }
   }
@@ -64,12 +63,12 @@ export async function generateThumbnail(asset: Asset2DDefinition, size = 128): P
   let base64 = '';
   try {
     base64 = app.renderer.extract.base64(app.stage);
-  } catch (e) {
+  } catch (_e) {
     // Fallback: try canvas extract
     try {
       const canvas = app.renderer.extract.canvas(app.stage);
       base64 = canvas.toDataURL();
-    } catch (err) {
+    } catch (_err) {
       base64 = '';
     }
   }

@@ -11,56 +11,10 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Stack,
-  Tooltip,
-  Divider,
-  Chip,
-  Button,
-  Switch,
-  FormControlLabel,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Badge,
-  Fade,
-  Collapse,
-  Alert,
-} from '@mui/material';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Sync,
-  SyncDisabled,
-  VerticalSplit,
-  ViewColumn,
-  Article,
-  Image,
-  Link,
-  LinkOff,
-  ZoomIn,
-  ZoomOut,
-  FullscreenExit,
-  Fullscreen,
-  Settings,
-  Movie,
-  Edit,
-  Visibility,
-  NavigateBefore,
-  NavigateNext,
-  FirstPage,
-  LastPage,
-  Add,
-  PhotoCamera,
-  Brush,
-} from '@mui/icons-material';
+import { Box, Paper, Typography, IconButton, Stack, Tooltip, Divider, Chip, Switch, Menu, MenuItem, ListItemIcon, ListItemText, Collapse, Alert } from '@mui/material';
+import { ChevronLeft, ChevronRight, Sync, SyncDisabled, VerticalSplit, Article, Image, Link, Settings, Movie, NavigateBefore, NavigateNext, Add, PhotoCamera, Brush } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { useScriptStoryboardOptional, SceneContext, type FountainElement } from '../contexts/ScriptStoryboardContext';
+import { useScriptStoryboardOptional, type FountainElement } from '../contexts/ScriptStoryboardContext';
 import type { SceneBreakdown } from '../models/casting';
 
 // =============================================================================

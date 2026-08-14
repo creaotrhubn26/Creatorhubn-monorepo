@@ -499,7 +499,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     });
 
     return Array.from(categories);
-  }, [itemTypeFilter, props]);
+  }, [getItemType, getItemCategory, itemTypeFilter, props]);
 
   const formItemType: PropItemType = formData.itemType === 'equipment' ? 'equipment' : 'prop';
 
@@ -521,7 +521,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           category: getItemCategory(prop, itemType),
         };
       }),
-    [props]
+    [getItemType, getItemCategory, props]
   );
 
   const warehouseLocationSeeds = useMemo(() => {
@@ -593,7 +593,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     return CATEGORY_BY_KEY.get(normalized)?.color || '#9333ea';
   };
 
-  function getItemType(prop: Prop): PropItemType {
+  const getItemType = useCallback((prop: Prop): PropItemType => {
     const inferredType = inferItemTypeFromName(prop.name);
     if (inferredType) return inferredType;
 
@@ -601,9 +601,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     if (explicitType === 'equipment') return 'equipment';
     if (explicitType === 'prop') return 'prop';
     return resolveItemTypeFromCategory(prop.category);
-  }
+  }, []);
 
-  function getItemCategory(prop: Prop, itemTypeOverride?: PropItemType): string {
+  const getItemCategory = useCallback((prop: Prop, itemTypeOverride?: PropItemType): string => {
     const itemType = itemTypeOverride || getItemType(prop);
     const normalizedCategory = normalizeCategoryKey(prop.category);
     const mappedCategory = normalizedCategory ? CATEGORY_BY_KEY.get(normalizedCategory) : undefined;
@@ -621,7 +621,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
     if (mappedCategory?.itemType === 'prop') return normalizedCategory;
     return 'prop';
-  }
+  }, [getItemType]);
 
   const getItemTypeLabel = (itemType: PropItemType): string =>
     itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt';
@@ -648,7 +648,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen]);
+  }, [dialogOpen, handleExportCSV, handleOpenDialog]);
 
   useEffect(() => {
     if (filterCategory === 'all') return;
@@ -713,7 +713,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     });
 
     return result;
-  }, [props, searchQuery, itemTypeFilter, filterCategory, sortField, sortDirection, favorites]);
+  }, [props, itemTypeFilter, searchQuery, filterCategory, getItemType, getItemCategory, favorites, sortField, sortDirection]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -736,7 +736,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       itemTypeCount,
       favorites: favorites.size,
     };
-  }, [props, favorites]);
+  }, [props, favorites.size, getItemType, getItemCategory]);
 
   const proMetrics = useMemo(() => {
     const safeProps = filteredAndSortedProps;
@@ -758,7 +758,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   }, [filteredAndSortedProps]);
 
   // Handlers
-  const openCreateDialogForType = (type: PropItemType) => {
+  const openCreateDialogForType = useCallback((type: PropItemType) => {
     setEditingProp(null);
     setFormData({
       name: '',
@@ -773,9 +773,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       notes: '',
     });
     setDialogOpen(true);
-  };
+  }, []);
 
-  const handleOpenDialog = (prop?: Prop) => {
+  const handleOpenDialog = useCallback((prop?: Prop) => {
     blurFocusedElement();
     if (prop) {
       const effectiveType = getItemType(prop);
@@ -787,7 +787,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       return;
     }
     setDialogOpen(true);
-  };
+  }, [getItemType, getItemCategory, itemTypeFilter, openCreateDialogForType]);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -805,7 +805,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
     window.addEventListener(OPEN_PROP_CREATE_MODAL_EVENT, handleExternalCreateOpen as EventListener);
     return () => window.removeEventListener(OPEN_PROP_CREATE_MODAL_EVENT, handleExternalCreateOpen as EventListener);
-  }, []);
+  }, [openCreateDialogForType]);
 
   const convertFileToDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -1051,7 +1051,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     }
   };
 
-  const handleExportCSV = async () => {
+  const handleExportCSV = useCallback(async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
@@ -1077,9 +1077,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       console.error('Error exporting props:', error);
       alert('Kunne ikke eksportere rekvisitter');
     }
-  };
+  }, [projectId, props, generatePropsHTML]);
 
-  const generatePropsHTML = (project: any, props: any[]): string => {
+  const generatePropsHTML = useCallback((project: any, props: any[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -1231,7 +1231,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   </div>
 </body>
 </html>`;
-  };
+  }, []);
 
   const toggleCardExpanded = (id: string) => {
     const newExpanded = new Set(expandedCards);

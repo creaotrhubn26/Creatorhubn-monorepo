@@ -34,7 +34,7 @@ const PROFESSION_CONFIGS: Record<string, ProfessionConfig> = {
 
 export function useDynamicProfessions() {
   const [professions, setProfessions] = useState<DynamicProfession[]>(DEFAULT_PROFESSIONS);
-  const [loading, setLoading] = useState(false);
+  const [loading, _setLoading] = useState(false);
   const [isLoading] = useState(false);
 
   const professionConfigs = useMemo(() => PROFESSION_CONFIGS, []);

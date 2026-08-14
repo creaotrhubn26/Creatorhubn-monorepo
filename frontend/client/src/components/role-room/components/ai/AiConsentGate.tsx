@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AiConsentGate — wraps any Role Room Agent entry point behind an explicit
  * GDPR consent dialog. If consent is absent or revoked, the surface shows
@@ -30,8 +29,9 @@ import {
   Typography,
 } from '@mui/material';
 
+import type {
+  AiConsentScope} from '../../services/aiConsentService';
 import {
-  AiConsentScope,
   getProjectConsent,
   grantProjectConsent,
   hydrateProjectConsent,

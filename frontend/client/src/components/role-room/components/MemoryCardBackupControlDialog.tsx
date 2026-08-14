@@ -1,80 +1,13 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-} from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControl,
-  FormControlLabel,
-  IconButton,
-  InputLabel,
-  LinearProgress,
-  ListSubheader,
-  MenuItem,
-  Paper,
-  Select,
-  Stack,
-  Switch,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, IconButton, InputLabel, LinearProgress, ListSubheader, MenuItem, Paper, Select, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import {
-  Add as AddIcon,
-  CheckCircle as CheckCircleIcon,
-  CloudQueue as CloudQueueIcon,
-  CloudDone as CloudDoneIcon,
-  DataArray as DataArrayIcon,
-  Delete as DeleteIcon,
-  DiscFull as DiscFullIcon,
-  Dns as DnsIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
-  GraphicEq as GraphicEqIcon,
-  Inventory2 as Inventory2Icon,
-  Memory as MemoryIcon,
-  PhotoCamera as PhotoCameraIcon,
-  QrCode as QrCodeIcon,
-  Save as SaveIcon,
-  SdCard as SdCardIcon,
-  Smartphone as SmartphoneIcon,
-  Storage as StorageIcon,
-  Sync as SyncIcon,
-  FlightTakeoff as FlightTakeoffIcon,
-  Videocam as VideocamIcon,
-  WarningAmber as WarningAmberIcon,
-} from '@mui/icons-material';
+import { Add as AddIcon, CheckCircle as CheckCircleIcon, CloudQueue as CloudQueueIcon, CloudDone as CloudDoneIcon, DataArray as DataArrayIcon, Delete as DeleteIcon, DiscFull as DiscFullIcon, Dns as DnsIcon, ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon, GraphicEq as GraphicEqIcon, Inventory2 as Inventory2Icon, Memory as MemoryIcon, PhotoCamera as PhotoCameraIcon, QrCode as QrCodeIcon, Save as SaveIcon, SdCard as SdCardIcon, Smartphone as SmartphoneIcon, Storage as StorageIcon, Sync as SyncIcon, FlightTakeoff as FlightTakeoffIcon, Videocam as VideocamIcon, WarningAmber as WarningAmberIcon } from '@mui/icons-material';
 import { apiRequest } from '../../../lib/queryClient';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import netflixWordmark from '../../../assets/brands/netflix-wordmark.svg';
 import globalTagService from '../services/globalTagService';
 import settingsService from '../services/settingsService';
-import {
-  memoryCardControlApi,
-  type MemoryCardControlEntry,
-  type MemoryCardControlReport,
-  type MemoryCardControlState,
-  type MemoryCardBackupTargets,
-  type MemoryCardLifecycleStage,
-} from '../services/castingApiService';
+import { memoryCardControlApi, type MemoryCardControlEntry, type MemoryCardControlReport, type MemoryCardControlState, type MemoryCardBackupTargets, type MemoryCardLifecycleStage } from '../services/castingApiService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 
 type BackupStage = keyof MemoryCardBackupTargets;
@@ -400,7 +333,7 @@ const ADDITIONAL_STORAGE_TYPES: MemoryCardTypeRecord[] = [
   },
 ];
 
-const mergeCardTypesWithStorage = (cards: MemoryCardTypeRecord[]): MemoryCardTypeRecord[] => {
+const _mergeCardTypesWithStorage = (cards: MemoryCardTypeRecord[]): MemoryCardTypeRecord[] => {
   const merged = new Map<string, MemoryCardTypeRecord>();
   for (const card of cards) merged.set(card.id, card);
   for (const storage of ADDITIONAL_STORAGE_TYPES) {

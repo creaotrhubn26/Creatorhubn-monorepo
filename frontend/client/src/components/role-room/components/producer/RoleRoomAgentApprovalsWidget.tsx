@@ -1,22 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  IconButton,
-  Stack,
-  Typography,
-} from '@mui/material';
-import {
-  CheckCircleOutline as CheckIcon,
-  TaskAlt as DoneIcon,
-  Refresh as RefreshIcon,
-  Edit as NeedsChangesIcon,
-} from '@mui/icons-material';
-import roleRoomAgentService, {
-  type RoleRoomPendingApproval,
-} from '../../services/roleRoomAgentService';
+import { Box, Button, Chip, CircularProgress, IconButton, Stack, Typography } from '@mui/material';
+import { CheckCircleOutline as CheckIcon, TaskAlt as DoneIcon, Refresh as RefreshIcon, Edit as NeedsChangesIcon } from '@mui/icons-material';
+import roleRoomAgentService, { type RoleRoomPendingApproval } from '../../services/roleRoomAgentService';
 
 interface ProjectGroup {
   projectId: string;
@@ -38,7 +23,7 @@ function groupByProject(pending: RoleRoomPendingApproval[]): ProjectGroup[] {
   return Array.from(map.values());
 }
 
-function formatRelative(iso: string | null): string {
+function _formatRelative(iso: string | null): string {
   if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
   if (Number.isNaN(ms) || ms < 0) return '';
@@ -104,7 +89,7 @@ export default function RoleRoomAgentApprovalsWidget(): React.ReactElement | nul
     }
   };
 
-  const approveOne = async (item: RoleRoomPendingApproval) => {
+  const _approveOne = async (item: RoleRoomPendingApproval) => {
     const result = await roleRoomAgentService.setFeedPostApproval({
       projectId: item.projectId,
       platform: item.platform,

@@ -17,21 +17,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Box,
-  Button,
-  Divider,
-  FormControlLabel,
-  LinearProgress,
-  MenuItem,
-  Select,
-  Slider,
-  Stack,
-  Switch,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@mui/material';
+import { Box, Button, Divider, FormControlLabel, LinearProgress, MenuItem, Select, Stack, Switch, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import LaptopMacIcon from '@mui/icons-material/LaptopMac';
 import TabletMacIcon from '@mui/icons-material/TabletMac';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
@@ -44,12 +30,7 @@ import FitScreenIcon from '@mui/icons-material/FitScreen';
 import { renderMockupFrame } from './renderMockupFrame';
 import { getDeviceGeometry } from './deviceGeometry';
 import { useMockupVideoExporter } from './useMockupVideoExporter';
-import {
-  DEFAULT_MOCKUP_CONFIG,
-  BACKGROUND_PRESETS,
-  toRenderOptions,
-  type MockupConfig,
-} from './mockupConfig';
+import { DEFAULT_MOCKUP_CONFIG, BACKGROUND_PRESETS, toRenderOptions, type MockupConfig } from './mockupConfig';
 import { isTauri, renderNative } from './tauriBridge';
 
 export default function MockupVideoStudio() {

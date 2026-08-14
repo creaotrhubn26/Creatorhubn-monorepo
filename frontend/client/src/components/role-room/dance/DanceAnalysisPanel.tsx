@@ -15,17 +15,12 @@
 import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
 import { Box, Stack, Typography, Card, CardContent, Chip, CircularProgress, LinearProgress } from '@mui/material';
-import {
-  Insights as InsightsIcon,
-  Tag as TagIcon,
-  PeopleAlt as PeopleIcon,
-  CheckCircle as CheckIcon,
-} from '@mui/icons-material';
+import { Insights as InsightsIcon, Tag as TagIcon, PeopleAlt as PeopleIcon, CheckCircle as CheckIcon } from '@mui/icons-material';
 import { listClips, listAnnotations } from './danceVideoService';
 import { listFormations } from './danceFormationService';
 import { listRehearsals } from './danceRehearsalService';
 import { listDancerProfiles } from './dancerProfileService';
-import { DANCE_MOVEMENT_CATEGORIES, categoryById } from './danceMovementCategories';
+import { DANCE_MOVEMENT_CATEGORIES } from './danceMovementCategories';
 
 export interface DanceAnalysisPanelProps {
   projectId: string | null;

@@ -15,26 +15,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Divider,
-  LinearProgress,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  Refresh as RefreshIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckIcon,
-  AutoGraph as GraphIcon,
-} from '@mui/icons-material';
+import { Alert, Box, Button, Chip, CircularProgress, Divider, Stack, Tooltip, Typography } from '@mui/material';
+import { Refresh as RefreshIcon, TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, Warning as WarningIcon, CheckCircle as CheckIcon, AutoGraph as GraphIcon } from '@mui/icons-material';
 import roleRoomAgentService from '../../services/roleRoomAgentService';
 
 interface MarketingPlanKpiPanelProps {

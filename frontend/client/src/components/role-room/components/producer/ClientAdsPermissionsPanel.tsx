@@ -132,7 +132,7 @@ export default function ClientAdsPermissionsPanel({
 
   const visibleActions = ACTIONS.filter((a) => platforms[a.platform] !== false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -155,7 +155,7 @@ export default function ClientAdsPermissionsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
   const save = async () => {
     setSaving(true);
@@ -202,7 +202,7 @@ export default function ClientAdsPermissionsPanel({
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [configId]);
+  useEffect(() => { load();   }, [configId, load]);
 
   const accepted = !!state?.acceptedAt && !state?.revokedAt && !state?.needsReaccept;
   const activeCount = Object.values(perms).filter(Boolean).length;

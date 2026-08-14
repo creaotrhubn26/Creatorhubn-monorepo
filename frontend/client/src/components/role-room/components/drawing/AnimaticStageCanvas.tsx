@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticStageCanvas — canvas-rendering av aktivt frame med valgfri
  * cross-fade mellom segmenter. Eksternalisert fra AnimaticPlayer for

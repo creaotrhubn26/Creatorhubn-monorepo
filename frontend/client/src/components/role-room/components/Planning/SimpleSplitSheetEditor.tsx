@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from "react";
-import { Box, Typography, TextField, Button, Stack, Card, CardContent, IconButton, Alert, FormControl, InputLabel, Select, MenuItem, Chip, Divider } from "@mui/material";
+import React, { useMemo, useCallback } from "react";
+import { Box, Typography, TextField, Button, Stack, Card, CardContent, IconButton, Alert, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import { Add as AddIcon, Delete as DeleteIcon, Person as PersonIcon } from "@mui/icons-material";
 import { ROLE_DISPLAY_NAMES, type SplitSheetContributor, type ContributorRole } from "../split-sheets/types";
 

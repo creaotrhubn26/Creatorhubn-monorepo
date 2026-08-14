@@ -371,7 +371,7 @@ const ProjectAgreementsPanel: FC<ProjectAgreementsPanelProps> = ({
     () => normalizeProducerProjectPlanning(project),
     [project],
   );
-  const collaborationTerms = producerPlanning.collaborationTerms ?? null;
+  const _collaborationTerms = producerPlanning.collaborationTerms ?? null;
   const canEditCollaborationTerms = !readOnly && typeof onProjectUpdated === 'function';
 
   const updateCollaborationTerms = useCallback(async (

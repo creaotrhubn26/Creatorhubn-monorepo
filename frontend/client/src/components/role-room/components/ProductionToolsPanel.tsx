@@ -1,29 +1,6 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Stack,
-  Tabs,
-  Tab,
-  IconButton,
-  Tooltip,
-  Chip,
-  Badge,
-  Collapse,
-} from '@mui/material';
-import {
-  Description as CallSheetIcon,
-  Videocam as ShotIcon,
-  Style as ContinuityIcon,
-  AutoFixHigh as VfxIcon,
-  Create as ScriptIcon,
-  Assessment as WrapIcon,
-  Close as CloseIcon,
-  ExpandLess,
-  ExpandMore,
-  Movie as MovieIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, Stack, Tabs, Tab, IconButton, Chip, Badge, Collapse } from '@mui/material';
+import { Description as CallSheetIcon, Videocam as ShotIcon, Style as ContinuityIcon, AutoFixHigh as VfxIcon, Create as ScriptIcon, Assessment as WrapIcon, Close as CloseIcon, ExpandLess, ExpandMore, Movie as MovieIcon } from '@mui/icons-material';
 import { CallSheetGenerator } from './CallSheetGenerator';
 import { ShotProgressTracker } from './ShotProgressTracker';
 import { ContinuityLogger } from './ContinuityLogger';

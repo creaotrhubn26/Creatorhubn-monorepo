@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomBottomNav — telefon-eksklusiv bunn-nav for Role Room.
  *

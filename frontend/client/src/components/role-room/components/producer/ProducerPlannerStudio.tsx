@@ -232,7 +232,7 @@ const CALENDAR_TYPE_LABELS: Record<PlannerCalendarEntry['type'], string> = {
   review: 'Godkjenning',
 };
 const MEETING_STEPS = ['Velg type', 'Foreslå deltakere', 'Tid og kontekst', 'Inviter'];
-const ROLE_FILTER_OPTIONS = ['all', 'client', 'producer', 'director', 'dop', 'editor', 'crew'] as const;
+const _ROLE_FILTER_OPTIONS = ['all', 'client', 'producer', 'director', 'dop', 'editor', 'crew'] as const;
 const PRODUCER_INBOX_FILTER_LABELS: Record<ProducerInboxFilter, string> = {
   all: 'Alt',
   follow_up: 'Til oppfølging',
@@ -657,7 +657,7 @@ export default function ProducerPlannerStudio({
   const [viewMode, setViewMode] = useState<PlannerViewMode>('timeline');
   const [selectedPhase, setSelectedPhase] = useState<ProducerPlanningPhase | 'all'>('all');
   const [calendarTypeFilter, setCalendarTypeFilter] = useState<PlannerCalendarEntry['type'] | 'all'>('all');
-  const [calendarRoleFilter, setCalendarRoleFilter] = useState<(typeof ROLE_FILTER_OPTIONS)[number]>('all');
+  const [calendarRoleFilter, setCalendarRoleFilter] = useState<(typeof _ROLE_FILTER_OPTIONS)[number]>('all');
   const [coordinationMeetingType, setCoordinationMeetingType] = useState<ProducerPlannerMeetingType>('production');
   const [inboxFilter, setInboxFilter] = useState<ProducerInboxFilter>('all');
   const [inboxClientFilter, setInboxClientFilter] = useState('all');
@@ -710,7 +710,7 @@ export default function ProducerPlannerStudio({
   } = useProducerNotifications(project.id);
   const {
     project: estimatedProject,
-    shotLists,
+    _shotLists,
     productionDays,
     productionEstimate,
     loading: estimateLoading,
@@ -1526,7 +1526,7 @@ export default function ProducerPlannerStudio({
     [buildSuggestedAssets, coordinationMeetingType, phaseInView],
   );
 
-  const suggestedAgenda = useMemo(
+  const _suggestedAgenda = useMemo(
     () => getMeetingTypeDefaults(coordinationMeetingType).agenda,
     [coordinationMeetingType],
   );

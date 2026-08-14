@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AgentPaywallDialog — shown when the agent returns HTTP 402. Three CTAs
  * match the hybrid monetization model:

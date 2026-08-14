@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticHelpDialog — onboarding/help-overlay for animatic-spilleren.
  * Viser shortcuts, touch-gestures og kort flyt-oversikt. Auto-åpnes
@@ -61,7 +60,7 @@ export const AnimaticHelpDialog: React.FC<AnimaticHelpDialogProps> = ({
 }) => {
   const handleDismiss = () => {
     if (enableDismissPersistence && typeof localStorage !== 'undefined') {
-      try { localStorage.setItem(SEEN_KEY, '1'); } catch {}
+      try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* empty */ }
     }
     onClose();
   };

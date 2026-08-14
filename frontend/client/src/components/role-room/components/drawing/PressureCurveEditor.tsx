@@ -10,24 +10,8 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Stack,
-  Tooltip,
-  Slider,
-  ToggleButton,
-  ToggleButtonGroup,
-  Button,
-} from '@mui/material';
-import {
-  Refresh,
-  SaveAlt,
-  Timeline,
-  ShowChart,
-} from '@mui/icons-material';
+import { Box, Paper, Typography, IconButton, Stack, Tooltip, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Refresh, Timeline } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // =============================================================================
@@ -196,7 +180,7 @@ function generateCurvePath(points: CurvePoint[], width: number, height: number):
 // Styled Components
 // =============================================================================
 
-const EditorContainer = styled(Paper)(({ theme }) => ({
+const EditorContainer = styled(Paper)(({ _theme }) => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,

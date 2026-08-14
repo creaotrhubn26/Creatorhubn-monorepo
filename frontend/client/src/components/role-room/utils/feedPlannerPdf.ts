@@ -14,12 +14,7 @@
  */
 
 import jsPDF from 'jspdf';
-import type {
-  RoleRoomFeedBrandSnapshot,
-  RoleRoomFeedPlatform,
-  RoleRoomFeedPost,
-  RoleRoomFeedPostConcept,
-} from '../services/roleRoomAgentService';
+import type { RoleRoomFeedBrandSnapshot, RoleRoomFeedPlatform, RoleRoomFeedPost, RoleRoomFeedPostConcept } from '../services/roleRoomAgentService';
 import { CONCEPT_LABELS } from './feedPlanner';
 import type { RoleRoomTierSlug } from '../components/producer/RoleRoomTierIcon';
 
@@ -92,7 +87,7 @@ function setFill(doc: jsPDF, hex: string | null | undefined, fallback: [number, 
   doc.setFillColor(r, g, b);
 }
 
-function setStroke(doc: jsPDF, hex: string | null | undefined, fallback: [number, number, number]) {
+function _setStroke(doc: jsPDF, hex: string | null | undefined, fallback: [number, number, number]) {
   const [r, g, b] = rgbFromHex(hex, fallback);
   doc.setDrawColor(r, g, b);
 }
@@ -265,7 +260,7 @@ function drawBrandPage(doc: jsPDF, input: GenerateFeedPlanPdfInput) {
 
   // Logo (if available)
   let logoX = MARGIN;
-  let nextY = 38;
+  const nextY = 38;
   if (input.brand?.logoUrl) {
     try {
       // Logo can be PNG or other — guess from prefix; safe fallback to PNG.

@@ -10,27 +10,8 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import {
-  Box,
-  IconButton,
-  Stack,
-  Tooltip,
-  Popover,
-  Typography,
-  Slider,
-  ToggleButtonGroup,
-  ToggleButton,
-  Divider,
-  Switch,
-  FormControlLabel,
-} from '@mui/material';
-import {
-  FlipCameraAndroid,
-  Flip,
-  AutoAwesome,
-  RotateRight,
-  CenterFocusStrong,
-} from '@mui/icons-material';
+import { Box, IconButton, Stack, Tooltip, Popover, Typography, Slider, Divider, Switch, FormControlLabel } from '@mui/material';
+import { FlipCameraAndroid, Flip, AutoAwesome, RotateRight, CenterFocusStrong } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import type { PencilPoint } from '../../hooks/useApplePencil';
 
@@ -151,7 +132,7 @@ export function getMirroredPoints(
       break;
 
     case 'radial':
-      const segments = settings.radialSegments;
+      { const segments = settings.radialSegments;
       const angleStep = (Math.PI * 2) / segments;
       
       for (let i = 1; i < segments; i++) {
@@ -169,7 +150,7 @@ export function getMirroredPoints(
           };
         }));
       }
-      break;
+      break; }
   }
 
   return mirroredSets;
@@ -223,7 +204,7 @@ export function drawSymmetryGuides(
       break;
 
     case 'radial':
-      const segments = settings.radialSegments;
+      { const segments = settings.radialSegments;
       const angleStep = (Math.PI * 2) / segments;
       const radius = Math.max(canvasWidth, canvasHeight);
       
@@ -242,7 +223,7 @@ export function drawSymmetryGuides(
       ctx.beginPath();
       ctx.arc(axisX, axisY, 8, 0, Math.PI * 2);
       ctx.stroke();
-      break;
+      break; }
   }
 
   ctx.restore();
@@ -255,8 +236,8 @@ export function drawSymmetryGuides(
 export const SymmetryMode: React.FC<SymmetryModeProps> = ({
   settings,
   onSettingsChange,
-  canvasWidth,
-  canvasHeight,
+  _canvasWidth,
+  _canvasHeight,
 }) => {
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null);
 

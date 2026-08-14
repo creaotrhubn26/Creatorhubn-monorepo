@@ -10,40 +10,9 @@
  * - Edit on double-click
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import {
-  Box,
-  IconButton,
-  Stack,
-  Tooltip,
-  Popover,
-  Typography,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Slider,
-  ToggleButtonGroup,
-  ToggleButton,
-  Divider,
-  Switch,
-  FormControlLabel,
-} from '@mui/material';
-import {
-  TextFields,
-  FormatBold,
-  FormatItalic,
-  FormatUnderlined,
-  FormatAlignLeft,
-  FormatAlignCenter,
-  FormatAlignRight,
-  FormatColorText,
-  BorderColor,
-  Delete,
-  ContentCopy,
-  Edit,
-} from '@mui/icons-material';
+import React, { useState, useCallback } from 'react';
+import { Box, IconButton, Tooltip, Popover, Typography, TextField, Select, MenuItem, FormControl, Slider, ToggleButtonGroup, ToggleButton, Divider, Switch, FormControlLabel } from '@mui/material';
+import { TextFields, FormatBold, FormatItalic, FormatUnderlined, FormatAlignLeft, FormatAlignCenter, FormatAlignRight, FormatColorText, BorderColor, Delete, ContentCopy } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // =============================================================================

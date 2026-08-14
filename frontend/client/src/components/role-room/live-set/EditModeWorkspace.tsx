@@ -22,15 +22,14 @@
  */
 
 import React from 'react';
-import { Box, Button, Chip, Divider, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Chip, Divider, IconButton, Stack, Typography } from '@mui/material';
 import PanToolIcon from '@mui/icons-material/PanTool';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import GestureIcon from '@mui/icons-material/Gesture';
 import VerticalAlignCenterIcon from '@mui/icons-material/VerticalAlignCenter';
-import HomeIcon from '@mui/icons-material/Home';
-import FlagIcon from '@mui/icons-material/Flag';
+
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
 import SkipNextIcon from '@mui/icons-material/SkipNext';

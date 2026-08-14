@@ -1,50 +1,6 @@
-// @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Chip,
-  Stack,
-  Card,
-  CardContent,
-  Grid,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  LinearProgress,
-  Rating,
-  FormControlLabel,
-  Checkbox,
-} from '@mui/material';
-import {
-  Assessment as ReportIcon,
-  Print as PrintIcon,
-  Download as DownloadIcon,
-  Schedule as TimeIcon,
-  Videocam as CameraIcon,
-  Movie as MovieIcon,
-  People as PeopleIcon,
-  CheckCircle as CheckIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  TrendingDown as TrendingDownIcon,
-  AttachMoney as BudgetIcon,
-  WbSunny as WeatherIcon,
-  Note as NoteIcon,
-  Star as StarIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, Button, Stack, Grid, Divider, Table, TableBody, TableCell, TableContainer, TableRow, LinearProgress } from '@mui/material';
+import { Assessment as ReportIcon, Print as PrintIcon, Download as DownloadIcon, TrendingDown as TrendingDownIcon } from '@mui/icons-material';
 import { TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
 import type { ProductionDay, SceneBreakdown } from '../models/casting';
 
@@ -117,13 +73,12 @@ interface WrapReportProps {
 
 export const WrapReport: React.FC<WrapReportProps> = ({
   productionDay,
-  scenes = [],
   projectName = 'TROLL',
   onReportGenerate,
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
 
-  const [report, setReport] = useState<WrapReportData>({
+  const [report] = useState<WrapReportData>({
     id: `wrap-${Date.now()}`,
     date: productionDay?.date || new Date().toISOString().split('T')[0],
     dayNumber: 1,

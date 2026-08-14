@@ -15,115 +15,18 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 // DEV-only debug-logging — løp ikke prod-konsolen med per-project /
 // per-autosave-info (kjører hver 1.2s ved unsaved changes).
 const DEV_LOG = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true;
-import {
-  Box,
-  Typography,
-  Paper,
-  TextField,
-  Button,
-  Chip,
-  Badge,
-  LinearProgress,
-  Alert,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Rating,
-  Tooltip,
-  IconButton,
-  Divider,
-  Card,
-  CardContent,
-  Fade,
-  Collapse,
-} from '@mui/material';
-import {
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Lightbulb as LightbulbIcon,
-  Create as CreateIcon,
-  Psychology as PsychologyIcon,
-  Check as CheckIcon,
-  Save as SaveIcon,
-  Refresh as RefreshIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  TipsAndUpdates as TipsIcon,
-  Star as StarIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
-  Download as DownloadIcon,
-  History as HistoryIcon,
-  School as SchoolIcon,
-  ArrowForward as ArrowForwardIcon,
-  GpsFixed as GpsFixedIcon,
-  ReportProblem as ContradictionIcon,
-  TheaterComedy as TheaterComedyIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, TextField, Button, Chip, Badge, LinearProgress, Alert, Accordion, AccordionSummary, AccordionDetails, FormControl, InputLabel, Select, MenuItem, Rating, Tooltip, IconButton, Divider, Card, CardContent, Fade, Collapse } from '@mui/material';
+import { ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Lightbulb as LightbulbIcon, Create as CreateIcon, Psychology as PsychologyIcon, Check as CheckIcon, Save as SaveIcon, Refresh as RefreshIcon, AutoAwesome as AutoAwesomeIcon, Star as StarIcon, Download as DownloadIcon, History as HistoryIcon, ArrowForward as ArrowForwardIcon, ReportProblem as ContradictionIcon, TheaterComedy as TheaterComedyIcon } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 import jsPDF from 'jspdf';
 import { useBrandingSettings } from '../../hooks/useBrandingSettings';
 import { storyLogicService, type StoryLogicSyncMeta } from '../../services/storyLogicService';
-import {
-  CONTENT_PRODUCER_DEMO_PROJECT_ID,
-  TROLL_DEMO_PROJECT_ID,
-  containsLegacyProducerDemoMarker,
-  isRoleRoomDemoSeedAllowed,
-} from '../../constants/producerDemo';
-import type {
-  ConceptData,
-  LoglineData,
-  ThemeData,
-  PhaseLocks,
-  StoryVersion,
-  StoryLogicState,
-  ValidationWarning,
-  CoachingTip,
-  ValidationResult,
-} from './storyLogic/types';
-import {
-  REALITY_CHECK_PROMPTS,
-  PHASE_META,
-  GENRES,
-  SUB_GENRES,
-  TONE_GROUPS,
-  AUDIENCE_AGES,
-  GENRE_LABELS_NB,
-  SUB_GENRE_LABELS_NB,
-  TONE_LABELS_NB,
-  AUDIENCE_AGE_LABELS_NB,
-  EMOTION_LABELS_NB,
-  LEGACY_SUBGENRE_MAP,
-  LEGACY_AUDIENCE_AGE_MAP,
-  EMOTION_GROUPS,
-  FIELD_EXAMPLES,
-  GENRE_TONE_PRESETS,
-  GENRE_EMOTION_PRESETS,
-  nbLabel,
-  getFieldLabelNb,
-  STATUS_LABELS,
-  getConfidenceTier,
-  getEnergyColor,
-} from './storyLogic/constants';
-import {
-  TROLL_DEMO_STATE,
-  DEFAULT_STATE,
-  CONTENT_PRODUCER_DEMO_STATE,
-} from './storyLogic/demoStates';
-import {
-  detectContradictions,
-  validateConcept,
-  validateLogline,
-  validateTheme,
-} from './storyLogic/storyValidation';
-import {
-  normalizeConceptSelections,
-  normalizeStoryLogicState,
-  translateLegacyTextToNb,
-} from './storyLogic/legacyText';
+import { CONTENT_PRODUCER_DEMO_PROJECT_ID, TROLL_DEMO_PROJECT_ID, containsLegacyProducerDemoMarker, isRoleRoomDemoSeedAllowed } from '../../constants/producerDemo';
+import type { ConceptData, LoglineData, ThemeData, PhaseLocks, StoryVersion, StoryLogicState } from './storyLogic/types';
+import { REALITY_CHECK_PROMPTS, PHASE_META, GENRES, SUB_GENRES, TONE_GROUPS, AUDIENCE_AGES, GENRE_LABELS_NB, SUB_GENRE_LABELS_NB, TONE_LABELS_NB, AUDIENCE_AGE_LABELS_NB, EMOTION_LABELS_NB, EMOTION_GROUPS, FIELD_EXAMPLES, GENRE_TONE_PRESETS, GENRE_EMOTION_PRESETS, nbLabel, STATUS_LABELS, getConfidenceTier, getEnergyColor } from './storyLogic/constants';
+import { TROLL_DEMO_STATE, DEFAULT_STATE, CONTENT_PRODUCER_DEMO_STATE } from './storyLogic/demoStates';
+import { detectContradictions, validateConcept, validateLogline, validateTheme } from './storyLogic/storyValidation';
+import { normalizeStoryLogicState } from './storyLogic/legacyText';
 import { PhaseHeader } from './storyLogic/components/PhaseHeader';
 import { ValidationDisplay } from './storyLogic/components/ValidationDisplay';
 import { WritingFlowBadge } from './storyLogic/components/WritingFlowBadge';

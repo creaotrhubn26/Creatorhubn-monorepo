@@ -82,7 +82,7 @@ export default function PlannerMinDag({ projects, onOpenProject }: PlannerMinDag
     const map: Record<Bucket, CrossProjectInboxItem[]> = { urgent: [], today: [], soon: [], attention: [] };
     for (const item of items) map[bucketFor(item, now)].push(item);
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [items, now]);
 
   const totalActionable = buckets.urgent.length + buckets.today.length;

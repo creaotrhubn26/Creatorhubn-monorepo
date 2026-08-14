@@ -12,33 +12,8 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Chip,
-  Collapse,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  Stack,
-  Step,
-  StepContent,
-  StepLabel,
-  Stepper,
-  Typography,
-} from '@mui/material';
-import {
-  Close as CloseIcon,
-  Shield as ShieldIcon,
-  Lock as LockIcon,
-  Key as KeyIcon,
-  Visibility as VisibilityIcon,
-  History as HistoryIcon,
-  AdminPanelSettings as RoleIcon,
-  ExpandMore as ExpandMoreIcon,
-  CheckCircle as CheckIcon,
-} from '@mui/icons-material';
+import { Box, Button, Collapse, Dialog, DialogContent, DialogTitle, IconButton, Stack, Step, StepContent, StepLabel, Stepper, Typography } from '@mui/material';
+import { Close as CloseIcon, Shield as ShieldIcon, Lock as LockIcon, Key as KeyIcon, Visibility as VisibilityIcon, History as HistoryIcon, AdminPanelSettings as RoleIcon, ExpandMore as ExpandMoreIcon, CheckCircle as CheckIcon } from '@mui/icons-material';
 
 export interface VaultSecurityGuideProps {
   open: boolean;

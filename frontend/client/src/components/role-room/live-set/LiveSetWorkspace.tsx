@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Box, Dialog, Typography } from '@mui/material';
+import { Box, Dialog } from '@mui/material';
 import LiveSetTopBar from './LiveSetTopBar';
 import TakesColumn from './TakesColumn';
 import ProgramAndMulticam from './ProgramAndMulticam';
@@ -22,13 +22,7 @@ import CameraPairingDialog from './CameraPairingDialog';
 import CameraDetailDrawer from './CameraDetailDrawer';
 import { useLiveSetHardware } from './useLiveSetHardware';
 import { useMultiVendorCameras } from './cameras/useMultiVendorCameras';
-import type {
-  CameraId,
-  CameraPreset,
-  CameraSettings,
-  CameraSlot,
-  LiveSetMode,
-} from './types';
+import type { CameraId, CameraPreset, CameraSettings, CameraSlot, LiveSetMode } from './types';
 import type { SceneBreakdown } from '../models/casting';
 
 const DEFAULT_PRESETS: CameraPreset[] = [

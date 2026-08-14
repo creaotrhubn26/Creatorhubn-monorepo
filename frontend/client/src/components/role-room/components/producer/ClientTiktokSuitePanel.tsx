@@ -168,7 +168,7 @@ export default function ClientTiktokSuitePanel({
 
   useEffect(() => {
     loadAdvertisers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   useEffect(() => {

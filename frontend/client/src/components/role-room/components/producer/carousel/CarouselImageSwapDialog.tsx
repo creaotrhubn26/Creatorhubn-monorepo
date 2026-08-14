@@ -72,13 +72,13 @@ export default function CarouselImageSwapDialog({
     }
     setAiResult(null);
     setError(null);
-  }, [slide?.id]);
+  }, [slide, slide.id]);
 
   // Auto-load gallery matches when tab becomes active
   useEffect(() => {
     if (!slide || !open || tab !== 'gallery') return;
     void runGallerySearch(prompt || (slide.text_blocks[0]?.content ?? ''));
-  }, [slide?.id, open, tab]);
+  }, [slide.id, open, tab, slide, runGallerySearch, prompt]);
 
   async function runGallerySearch(searchPrompt: string) {
     if (!slide) return;

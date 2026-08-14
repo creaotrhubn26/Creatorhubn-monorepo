@@ -13,10 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
-  IconButton, MenuItem, Select, Stack, TextField, Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, MenuItem, Select, Stack, TextField, Typography } from '@mui/material';
 import BusinessCenterOutlinedIcon from '@mui/icons-material/BusinessCenterOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -150,7 +147,7 @@ export default function ClientLinkedinSuitePanel({
 
   useEffect(() => {
     loadAccounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   return (

@@ -1,4 +1,4 @@
-import { Camera2D, Actor2D, Prop2D, type Scene2D } from "./types";
+import { type Scene2D } from "./types";
 
 export const createSafehouseScene = (): Scene2D => {
   const sceneWidth = 900;

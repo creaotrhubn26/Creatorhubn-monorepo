@@ -1,9 +1,8 @@
-// @ts-nocheck
 import { useState, useCallback, type FC, type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { Box, Typography, IconButton, Chip, Tooltip, LinearProgress, alpha } from "@mui/material";
-import { PhotoCamera, Videocam, CameraRoll, Check, PlayArrow, Schedule, Star, StarBorder, Notes, Lightbulb, CameraAlt, Wallpaper, Timer, Add, Remove } from "@mui/icons-material";
+import { PhotoCamera, Videocam, CameraRoll, Check, PlayArrow, Schedule, Star, Notes, Lightbulb, CameraAlt, Wallpaper, Timer } from "@mui/icons-material";
 import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
-import type { CastingShot, ShotStatus, MediaType, ShotPriority } from "../models/casting";
+import type { CastingShot, ShotStatus, MediaType } from "../models/casting";
 
 interface InteractiveShotCardProps {
   shot: CastingShot;
@@ -41,12 +40,6 @@ const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: 
   },
 };
 
-const priorityConfig: Record<ShotPriority, { label: string; color: string; weight: number }> = {
-  critical: { label: 'Kritisk', color: '#f44336', weight: 3 },
-  important: { label: 'Viktig', color: '#9333ea', weight: 2 },
-  nice_to_have: { label: 'Bonus', color: '#9e9e9e', weight: 1 },
-};
-
 const mediaTypeConfig: Record<MediaType, { label: string; icon: ReactNode; color: string }> = {
   photo: { label: 'Foto', icon: <PhotoCamera sx={{ fontSize: 16 }} />, color: '#2196f3' },
   video: { label: 'Video', icon: <Videocam sx={{ fontSize: 16 }} />, color: '#e91e63' },
@@ -63,7 +56,6 @@ export const InteractiveShotCard: FC<InteractiveShotCardProps> = ({
   onHold,
   onSwipe,
   onNotesClick,
-  getRoleName,
   showRecommendations = true,
   compactMode = false,
 }) => {
@@ -85,7 +77,6 @@ export const InteractiveShotCard: FC<InteractiveShotCardProps> = ({
   const priority = shot.priority || 'important';
   const mediaType = shot.mediaType || 'photo';
   const statusInfo = statusConfig[status];
-  const priorityInfo = priorityConfig[priority];
   const mediaInfo = mediaTypeConfig[mediaType];
   
   const handleTapStart = useCallback(() => {

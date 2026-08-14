@@ -12,13 +12,8 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import {
-  Box, Stack, Typography, Button, Chip, CircularProgress, Divider,
-} from '@mui/material';
-import {
-  TheaterComedy as TalentIcon, Verified as VerifiedIcon, Movie as ShowreelIcon,
-  CheckCircle as AcceptIcon, Block as DeclineIcon, Shield as ShieldIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, Button, Divider } from '@mui/material';
+import { TheaterComedy as TalentIcon, Verified as VerifiedIcon, Movie as ShowreelIcon, CheckCircle as AcceptIcon, Block as DeclineIcon, Shield as ShieldIcon } from '@mui/icons-material';
 import { educationTalentPipelineService, type PendingInvite, type TalentsInfo } from './educationTalentPipelineService';
 
 const ACCENT = '#8B5CF6';

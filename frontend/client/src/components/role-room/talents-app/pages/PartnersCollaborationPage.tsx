@@ -15,29 +15,7 @@
  * + "Inviter første partner"-prompt.
  */
 
-import {
-  Alert,
-  Avatar,
-  Box,
-  Button,
-  Checkbox,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  InputBase,
-  MenuItem,
-  Snackbar,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import { Alert, Avatar, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputBase, MenuItem, Snackbar, Stack, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import GroupIcon from '@mui/icons-material/Group';
@@ -48,12 +26,12 @@ import TuneIcon from '@mui/icons-material/Tune';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
-import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined';
+
 import PublicIcon from '@mui/icons-material/Public';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import PersonAddAltOutlinedIcon from '@mui/icons-material/PersonAddAltOutlined';
-import PeopleOutlineOutlinedIcon from '@mui/icons-material/PeopleOutlineOutlined';
+
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
@@ -65,14 +43,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import roleRoomTalentsService, {
-  type PartnerOverviewRow,
-  type PartnersOverview,
-  type FeedEvent,
-  type RoleRoomPartnerInvite,
-  type RoleRoomTalentConsentScope,
-  type RoleRoomTalentPartnerType,
-} from '../../services/roleRoomTalentsService';
+import roleRoomTalentsService, { type PartnerOverviewRow, type PartnersOverview, type FeedEvent, type RoleRoomPartnerInvite, type RoleRoomTalentConsentScope, type RoleRoomTalentPartnerType } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
 
 // ──────────────────────────────────────────────────────────────────
@@ -1204,7 +1175,7 @@ function InvitePartnerDialog({ open, onClose, onCreated }: { open: boolean; onCl
 import { Autocomplete } from '@mui/material';
 import type { RoleRoomAgencyOrg } from '../../services/roleRoomTalentsService';
 
-function AgencySearchPicker({ currentEmail, onPick }: {
+function AgencySearchPicker({ currentEmail: _currentEmail, onPick }: {
   currentEmail: string;
   onPick: (agency: RoleRoomAgencyOrg) => void;
 }) {

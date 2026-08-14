@@ -35,21 +35,10 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
+
 import Avatar from '@mui/material/Avatar';
 import Tooltip from '@mui/material/Tooltip';
-import {
-  Dashboard as DashboardIcon,
-  Edit as AnnotateIcon,
-  Comment as AnnotationsIcon,
-  BarChart as StatisticsIcon,
-  Group as DancersIcon,
-  Settings as SettingsIcon,
-  HelpOutline as HelpIcon,
-  KeyboardArrowDown as ChevronDownIcon,
-  Save as SaveIcon,
-  FileDownload as ExportIcon,
-} from '@mui/icons-material';
+import { Dashboard as DashboardIcon, Comment as AnnotationsIcon, BarChart as StatisticsIcon, Group as DancersIcon, Settings as SettingsIcon, HelpOutline as HelpIcon, KeyboardArrowDown as ChevronDownIcon, Save as SaveIcon, FileDownload as ExportIcon } from '@mui/icons-material';
 
 import ClipsSidebar from './ClipsSidebar';
 import { danceFlowColors } from './danceFlowTheme';

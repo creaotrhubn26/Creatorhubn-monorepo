@@ -18,57 +18,10 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  TextField,
-  IconButton,
-  Tooltip,
-  Chip,
-  CircularProgress,
-  Alert,
-  Avatar,
-  Button,
-  Divider,
-  ToggleButton,
-  Menu,
-  MenuItem,
-  Checkbox,
-  ListItemText,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-} from '@mui/material';
-import {
-  Send as SendIcon,
-  PushPin as PinIcon,
-  PushPinOutlined as PinOutlinedIcon,
-  Check as CheckIcon,
-  CheckCircle as CheckCircleIcon,
-  Reply as ReplyIcon,
-  Delete as DeleteIcon,
-  AlternateEmail as MentionIcon,
-  Mic as MicIcon,
-  Stop as StopIcon,
-  Brush as DrawIcon,
-} from '@mui/icons-material';
-import {
-  listAnnotations,
-  createAnnotation,
-  patchAnnotation,
-  deleteAnnotation,
-  subscribeToClipEvents,
-  uploadVoiceNote,
-  type VideoAnnotation,
-  type VideoClip,
-  type AnnotationStatus,
-} from './danceVideoService';
-import {
-  listDancerProfiles,
-  type DancerProfile,
-} from './dancerProfileService';
+import { Box, Stack, Typography, TextField, IconButton, Tooltip, Chip, CircularProgress, Alert, Avatar, Button, ToggleButton, Menu, MenuItem, Checkbox, ListItemText, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Send as SendIcon, PushPin as PinIcon, PushPinOutlined as PinOutlinedIcon, Check as CheckIcon, CheckCircle as CheckCircleIcon, Reply as ReplyIcon, Delete as DeleteIcon, AlternateEmail as MentionIcon, Mic as MicIcon, Stop as StopIcon, Brush as DrawIcon } from '@mui/icons-material';
+import { listAnnotations, createAnnotation, patchAnnotation, deleteAnnotation, subscribeToClipEvents, uploadVoiceNote, type VideoAnnotation, type VideoClip, type AnnotationStatus } from './danceVideoService';
+import { listDancerProfiles, type DancerProfile } from './dancerProfileService';
 import { DrawingOverlay, type DrawingPath } from './DrawingOverlay';
 import { SideBySidePlayer } from './SideBySidePlayer';
 import { useDancePlanGate } from './useDancePlanGate';

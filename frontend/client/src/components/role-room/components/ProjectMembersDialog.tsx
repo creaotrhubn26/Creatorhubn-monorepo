@@ -49,7 +49,7 @@ export function ProjectMembersDialog({
   // Management) — så lederen ser hvem som er ledig mens teamet settes sammen.
   const { availabilityByUser } = useProjectMemberAvailability(open ? projectId : undefined);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const [a, r] = await Promise.all([
@@ -63,12 +63,12 @@ export function ProjectMembersDialog({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
   useEffect(() => {
     if (open) void load();
 
-  }, [open, projectId]);
+  }, [load, open, projectId]);
 
   const handleDeactivate = async () => {
     if (!confirmRemove) return;

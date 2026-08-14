@@ -16,20 +16,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import {
-  Badge, Box, IconButton, Popover, List, ListItemButton, ListItemIcon, ListItemText,
-  Divider, Typography, Stack, Chip, Dialog, DialogTitle, DialogContent,
-  DialogActions, Button,
-} from '@mui/material';
-import {
-  HelpOutline as HelpIcon,
-  PlayCircleOutline as TourIcon,
-  ChatBubbleOutline as ChatIcon,
-  Email as EmailIcon,
-  AutoAwesome as WhatsNewIcon,
-  KeyboardOutlined as KeyboardIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { Badge, Box, IconButton, Popover, List, ListItemButton, ListItemIcon, ListItemText, Divider, Typography, Stack, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import { HelpOutline as HelpIcon, PlayCircleOutline as TourIcon, Email as EmailIcon, AutoAwesome as WhatsNewIcon, KeyboardOutlined as KeyboardIcon, Close as CloseIcon } from '@mui/icons-material';
 
 export type WhatsNewKind = 'feature' | 'fix' | 'improvement';
 

@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ReactNode, type ReactElement } from 'react';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useShotListRealTime } from '../hooks/useShotListRealTime';
@@ -721,7 +721,7 @@ export function CastingShotListPanel({
         }).catch(console.error);
       }
     });
-  }, [rt.onRemoteEvent, projectId]);
+  }, [rt.onRemoteEvent, projectId, rt]);
   const storyboards = useStoryboards();
   const currentStoryboard = useCurrentStoryboard();
   const { loadStoryboard } = useStoryboardStore();
@@ -809,14 +809,14 @@ export function CastingShotListPanel({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen, shotDialogOpen]);
+  }, [dialogOpen, handleCloseShotDialog, shotDialogOpen]);
 
   // Helper functions
-  const getSceneName = (sceneId: string, sceneName?: string): string => {
+  const getSceneName = useCallback((sceneId: string, sceneName?: string): string => {
     if (sceneName) return sceneName;
     if (!sceneId) return 'Uspesifisert scene';
     return sceneById.get(sceneId)?.name || sceneId;
-  };
+  }, [sceneById]);
 
   const getRoleName = (roleId?: string): string => {
     if (!roleId) return '';
@@ -1007,7 +1007,7 @@ export function CastingShotListPanel({
       sb.name === expectedName2 ||
       sb.name.includes(sceneName)
     );
-  }, [storyboards, availableScenes]);
+  }, [getSceneName, storyboards]);
 
   // Resolve a cover image for storyboard pack cards and slot previews.
   const getStoryboardPackPreviewImage = (
@@ -1192,7 +1192,7 @@ export function CastingShotListPanel({
     });
 
     return result;
-  }, [shotLists, searchQuery, sortField, sortDirection, favorites, availableScenes, mediaTypeFilter, assigneeFilter, priorityFilter, statusFilter, user?.id]);
+  }, [shotLists, searchQuery, mediaTypeFilter, assigneeFilter, priorityFilter, statusFilter, getSceneName, user?.id, favorites, sortField, sortDirection]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -1337,7 +1337,7 @@ export function CastingShotListPanel({
     setShotDialogOpen(true);
   };
 
-  const handleCloseShotDialog = () => {
+  const handleCloseShotDialog = useCallback(() => {
     // Release soft-lock before closing
     if (editingShot && currentShotListId) {
       rt.releaseLock(currentShotListId, editingShot.id);
@@ -1351,7 +1351,7 @@ export function CastingShotListPanel({
     setEditingCommentId(null);
     setEditingCommentDraft('');
     setShowAdvancedCamera(false);
-  };
+  }, [currentShotListId, editingShot, rt]);
 
   const handleAddComment = () => {
     if (!commentDraft.trim()) return;

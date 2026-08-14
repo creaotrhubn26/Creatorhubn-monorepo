@@ -9,136 +9,12 @@ import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
 import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
-import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Tabs,
-  Tab,
-  Grid,
-  Card,
-  CardContent,
-  Chip,
-  TextField,
-  Select,
-  MenuItem,
-  Menu,
-  FormControl,
-  FormControlLabel,
-  Checkbox,
-  InputLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Divider,
-  useTheme,
-  useMediaQuery,
-  InputAdornment,
-  Grow,
-  Stack,
-  CircularProgress,
-  Tooltip,
-  Alert,
-  Badge,
-  Snackbar,
-} from '@mui/material';
-import {
-  Close as CloseIcon,
-  Add as AddIcon,
-  People as PeopleIcon,
-  Person as PersonIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Refresh as RefreshIcon,
-  CheckCircle as CheckCircleIcon,
-  Send as KlientSendIcon,
-  Cancel as CancelIcon,
-  Schedule as ScheduleIcon,
-  PhotoCamera as PhotoCameraIcon,
-  ViewList as ViewListIcon,
-  Group as GroupIcon,
-  Inventory as InventoryIcon,
-  Movie as MovieIcon,
-  Assignment as AssignmentIcon,
-  Work as WorkIcon,
-  CheckCircleOutline as CheckCircleOutlineIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon,
-  Home as HomeIcon,
-  AccessTime as AccessTimeIcon,
-  Image as ImageIcon,
-  Save as SaveIcon,
-  CloudUpload as CloudUploadIcon,
-  Transgender as TransgenderIcon,
-  PlayArrow as PlayArrowIcon,
-  Business as BusinessIcon,
-  SupervisorAccount as SupervisorAccountIcon,
-  Videocam as VideocamIcon,
-  CameraAlt as CameraAltIcon,
-  Lightbulb as LightbulbIcon,
-  GraphicEq as GraphicEqIcon,
-  Face as FaceIcon,
-  Checkroom as CheckroomIcon,
-  Build as BuildIcon,
-  Note as NoteIcon,
-  ContactEmergency as ContactEmergencyIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon,
-  Login as LoginIcon,
-  Logout as LogoutIcon,
-  SwapHoriz as SwapHorizIcon,
-  School as TutorialIcon,
-  Folder,
-  Timeline as TimelineIcon,
-  AccountTree as StoryLogicIcon,
-  Create as StoryWriterIcon,
-  CalendarMonth as CalendarMonthIcon,
-  Keyboard as KeyboardIcon,
-  HowToVote as SelectionTabIcon,
-  Casino as CasinoIcon,
-  NavigateBefore as NavigateBeforeIcon,
-  NavigateNext as NavigateNextIcon,
-  ViewCarousel as ViewCarouselIcon,
-  Search as SearchIcon,
-  AttachMoney as AttachMoneyIcon,
-  FactCheck as FactCheckIcon,
-  ImportExport as ImportExportIcon,
-  PermMedia as PermMediaIcon,
-  MoreHoriz as MoreHorizIcon,
-  PushPin as PushPinIcon,
-  DragIndicator as DragIndicatorIcon,
-  FolderOpen as FolderOpenIcon,
-  ContentCopy as ContentCopyIcon,
-  Publish as PublishIcon,
-  Archive as ArchiveIcon,
-  Unarchive as UnarchiveIcon,
-  Inbox as InboxIcon,
-  Brush as BrushIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Button, IconButton, Tabs, Tab, Grid, Card, CardContent, Chip, TextField, Select, MenuItem, Menu, FormControl, FormControlLabel, Checkbox, InputLabel, Dialog, DialogTitle, DialogContent, DialogActions, Divider, useTheme, useMediaQuery, InputAdornment, Grow, Stack, CircularProgress, Tooltip, Alert, Badge, Snackbar } from '@mui/material';
+import { Close as CloseIcon, Add as AddIcon, People as PeopleIcon, Person as PersonIcon, Edit as EditIcon, Delete as DeleteIcon, Refresh as RefreshIcon, CheckCircle as CheckCircleIcon, Send as KlientSendIcon, Cancel as CancelIcon, Schedule as ScheduleIcon, PhotoCamera as PhotoCameraIcon, ViewList as ViewListIcon, Group as GroupIcon, Inventory as InventoryIcon, Movie as MovieIcon, Assignment as AssignmentIcon, Work as WorkIcon, CheckCircleOutline as CheckCircleOutlineIcon, Email as EmailIcon, Phone as PhoneIcon, Home as HomeIcon, AccessTime as AccessTimeIcon, Image as ImageIcon, Save as SaveIcon, CloudUpload as CloudUploadIcon, Transgender as TransgenderIcon, PlayArrow as PlayArrowIcon, Business as BusinessIcon, SupervisorAccount as SupervisorAccountIcon, Videocam as VideocamIcon, CameraAlt as CameraAltIcon, Lightbulb as LightbulbIcon, GraphicEq as GraphicEqIcon, Face as FaceIcon, Checkroom as CheckroomIcon, Build as BuildIcon, Note as NoteIcon, ContactEmergency as ContactEmergencyIcon, AdminPanelSettings as AdminPanelSettingsIcon, Login as LoginIcon, Logout as LogoutIcon, SwapHoriz as SwapHorizIcon, School as TutorialIcon, Folder, Timeline as TimelineIcon, AccountTree as StoryLogicIcon, Create as StoryWriterIcon, CalendarMonth as CalendarMonthIcon, Keyboard as KeyboardIcon, HowToVote as SelectionTabIcon, Casino as CasinoIcon, NavigateBefore as NavigateBeforeIcon, NavigateNext as NavigateNextIcon, ViewCarousel as ViewCarouselIcon, Search as SearchIcon, AttachMoney as AttachMoneyIcon, FactCheck as FactCheckIcon, ImportExport as ImportExportIcon, PermMedia as PermMediaIcon, MoreHoriz as MoreHorizIcon, PushPin as PushPinIcon, DragIndicator as DragIndicatorIcon, FolderOpen as FolderOpenIcon, ContentCopy as ContentCopyIcon, Publish as PublishIcon, Archive as ArchiveIcon, Unarchive as UnarchiveIcon, Inbox as InboxIcon, Brush as BrushIcon } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 
 // Custom SVG icons for consistent visual language
-import {
-  DashboardCustomIcon as _DashboardIcon,
-  RolesIcon as TheaterComedyIcon,
-  CandidatesIcon as RecentActorsIcon,
-  AuditionsIcon as _InterpreterModeIcon,
-  TeamIcon as GroupsIcon,
-  LocationsIcon as LocationIcon,
-  EquipmentIcon as _PropIcon,
-  EquipmentIcon,
-  CalendarCustomIcon as CalendarIcon,
-  ShotListIcon,
-  StoryArcIcon,
-  ShareCustomIcon as _ShareIcon,
-  PersonNameIcon,
-  NotesIcon,
-  EmailIcon as CustomEmailIcon,
-  PhoneIcon as CustomPhoneIcon,
-  AddressIcon,
-  ConsentsIcon,
-} from './icons/CastingIcons';
+import { DashboardCustomIcon as _DashboardIcon, RolesIcon as TheaterComedyIcon, CandidatesIcon as RecentActorsIcon, AuditionsIcon as _InterpreterModeIcon, TeamIcon as GroupsIcon, LocationsIcon as LocationIcon, EquipmentIcon as _PropIcon, EquipmentIcon, CalendarCustomIcon as CalendarIcon, ShotListIcon, StoryArcIcon, ShareCustomIcon as _ShareIcon, PersonNameIcon, NotesIcon, EmailIcon as CustomEmailIcon, PhoneIcon as CustomPhoneIcon, AddressIcon, ConsentsIcon } from './icons/CastingIcons';
 
 import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRole, UserRoleType } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
@@ -149,43 +25,20 @@ import { storyLogicService, type StoryLogicState } from '../services/storyLogicS
 
 // Custom icon: Person holding camera with list/clipboard
 import { castingService, type RoleRoomProjectCopyOptions, type RoleRoomProjectSyncMeta } from '../services/castingService';
-import {
-  googleWorkspaceApi,
-  linkedInWorkspaceApi,
-  roleRoomBillingApi,
-  type RoleRoomCommercialBillingAccount,
-  type RoleRoomGoogleStatusResponse,
-} from '../services/castingApiService';
+import { googleWorkspaceApi, linkedInWorkspaceApi, roleRoomBillingApi, type RoleRoomCommercialBillingAccount, type RoleRoomGoogleStatusResponse } from '../services/castingApiService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
 import { roleRoomProjectTabConfigService } from '../services/roleRoomProjectTabConfigService';
 import { ProjectTabAccessDialog } from './ProjectTabAccessDialog';
-import {
-  presetForRole,
-  hasRolePreset,
-  visibleTabKeys as accessVisibleTabKeys,
-  manageableTabKeys as accessManageableTabKeys,
-  TAB_INDEX_TO_KEY,
-} from '../models/studioAccessModel';
+import { presetForRole, hasRolePreset, visibleTabKeys as accessVisibleTabKeys, manageableTabKeys as accessManageableTabKeys, TAB_INDEX_TO_KEY } from '../models/studioAccessModel';
 import type { TabAccessMap } from '../models/studioAccessModel';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
-import {
-  emitProducerWorkflowFocusEvent,
-  type ProducerWorkflowFocusPayload,
-} from '../services/producerWorkflowFocusEvents';
+import { emitProducerWorkflowFocusEvent, type ProducerWorkflowFocusPayload } from '../services/producerWorkflowFocusEvents';
 import { onProducerWorkflowEvent } from '../services/producerWorkflowEvents';
 import { useProducerNotifications } from '../hooks/useProducerNotifications';
-import {
-  buildProducerWorkflowEntityOptions,
-  buildProducerWorkflowOwnerOptions,
-  makeProducerPackageEntityId,
-} from '../utils/producerWorkflow';
-import {
-  buildClientPortalUrl,
-  parseClientPortalIntentFromWindow,
-  type ClientPortalWorkspaceFocus,
-} from '../utils/clientPortal';
+import { buildProducerWorkflowEntityOptions, buildProducerWorkflowOwnerOptions, makeProducerPackageEntityId } from '../utils/producerWorkflow';
+import { buildClientPortalUrl, parseClientPortalIntentFromWindow, type ClientPortalWorkspaceFocus } from '../utils/clientPortal';
 import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
@@ -193,30 +46,18 @@ import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
 import PlannerMinDag from './PlannerMinDag';
 import PlannerDeliverablesBoard from './PlannerDeliverablesBoard';
 import PlannerProjectHealthBadge from './PlannerProjectHealthBadge';
-import {
-  ContentProducerWorkflowStepper,
-  type WorkflowStepKey,
-} from './ContentProducerWorkflowStepper';
+import { ContentProducerWorkflowStepper, type WorkflowStepKey } from './ContentProducerWorkflowStepper';
 import { KlientStatusBadge } from './KlientStatusBadge';
 import { PanelSkeleton } from './PanelSkeleton';
 import { EmptyProjectsHero } from './EmptyProjectsHero';
 import { useBeforeUnloadIfDirty } from '../hooks/useBeforeUnloadIfDirty';
-import { useAIRecommendation } from '../hooks/useAIRecommendation';
+import {  } from '../hooks/useAIRecommendation';
 import { usePlannerOnboardingTour } from '../hooks/usePlannerOnboardingTour';
 import { RoleRoomFeedbackFab } from './RoleRoomFeedbackFab';
 import { PreprodSubTabStrip, type PreprodSubTabItem } from './PreprodSubTabStrip';
-import {
-  deriveActiveWorkflowStep,
-  deriveCompletedWorkflowSteps,
-} from '../utils/contentProducerWorkflow';
-import {
-  normalizeStoryArcNavigationFocus,
-  type StoryArcNavigationFocus,
-} from '../utils/storyArcFocus';
-import {
-  flattenProducerWorkspacePages,
-  getClientVisibleProducerWorkspaceNavigation,
-} from '../utils/producerProjectPlanning';
+import { deriveActiveWorkflowStep, deriveCompletedWorkflowSteps } from '../utils/contentProducerWorkflow';
+import { normalizeStoryArcNavigationFocus, type StoryArcNavigationFocus } from '../utils/storyArcFocus';
+import { flattenProducerWorkspacePages, getClientVisibleProducerWorkspaceNavigation } from '../utils/producerProjectPlanning';
 import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
@@ -266,11 +107,7 @@ const ProducerMediaPanel = lazy(() => import('./producer/ProducerMediaPanel'));
 const ProducerExtrasPanel = lazy(() => import('./producer/ProducerExtrasPanel'));
 const ProducerExportHandoffPanel = lazy(() => import('./producer/ProducerExportHandoffPanel'));
 import RoleRoomDiagnosticsProbe from './shared/RoleRoomDiagnosticsProbe';
-import {
-  clearRoleRoomDiagnostics,
-  isRoleRoomDiagnosticsEnabled,
-  logRoleRoomDiagnostic,
-} from '../utils/roleRoomDiagnostics';
+import { clearRoleRoomDiagnostics, isRoleRoomDiagnosticsEnabled, logRoleRoomDiagnostic } from '../utils/roleRoomDiagnostics';
 
 const retryDynamicImport = async <T,>(
   loadModule: () => Promise<T>,
@@ -296,6 +133,20 @@ const retryDynamicImport = async <T,>(
   throw lastError;
 };
 
+const contentProducerWorkspaceLabels: Record<string, string> = {
+  brief: 'Brief',
+  materials: 'Materialer',
+  storyboard: 'Storyboard',
+  manuscript: 'Manus',
+  shotlist: 'Shotlist',
+  brand: 'Merkevare',
+  accounts: 'Kontotilgang',
+  delivery: 'Levering',
+  meetings: 'Møter',
+};
+
+const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
+
 // Lazy load dialogs and modals for better initial load
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const LoginDialog = lazy(() => import('./LoginDialog'));
@@ -318,12 +169,7 @@ import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
 import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
 import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
-import {
-  availabilityChipStyle,
-  listCastingRoleSelftapes,
-  selftapeAvailability,
-  type CastingRoleSelftape,
-} from '../services/roleRoomSelfTapesService';
+import { availabilityChipStyle, listCastingRoleSelftapes, selftapeAvailability, type CastingRoleSelftape } from '../services/roleRoomSelfTapesService';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
@@ -989,7 +835,7 @@ export function CastingPlannerPanel({
         },
       },
     },
-  }), [TOUCH_TARGET_SIZE]);
+  }), []);
   
   // Profession configuration - memoized
   const PROFESSION_CONFIG = useMemo(() => ({
@@ -1348,14 +1194,14 @@ type RoleRoomProjectWorkspaceState = {
     loginAs?: string;
     requestedRole?: string | null;
   };
-  const normalizeAdminUser = (user?: RoleRoomAdminUser | null) => {
+  const normalizeAdminUser = useCallback((user?: RoleRoomAdminUser | null) => {
     if (!user) return null;
     return {
       ...user,
       id: user.id,
       display_name: user.display_name || user.name || user.email.split('@')[0],
     };
-  };
+  }, []);
   const [adminUser, setAdminUser] = useState<RoleRoomAdminUser | null>(
     () => normalizeAdminUser(authSessionService.getSessionSync().adminUser)
   );
@@ -1776,7 +1622,7 @@ type RoleRoomProjectWorkspaceState = {
     if (projectWorkspaceState.storyArcFocus) {
       setStoryArcFocus(projectWorkspaceState.storyArcFocus);
     }
-  }, [currentProject?.id]);
+  }, [currentProject, currentProject.id]);
 
   useEffect(() => {
     if (!isRoleRoomDiagnosticsEnabled()) {
@@ -1787,7 +1633,7 @@ type RoleRoomProjectWorkspaceState = {
       currentProjectId: currentProject?.id ?? null,
       note: 'Inspect window.__roleRoomDiagnostics or filter console on [RoleRoomDiag].',
     });
-  }, []);
+  }, [currentProject?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2341,7 +2187,7 @@ type RoleRoomProjectWorkspaceState = {
 
   const canMutateProtectedDemoData = useMemo(
     () => castingService.canCurrentSessionMutateProtectedDemo(),
-    [adminUser?.role],
+    [],
   );
 
   const templateAudienceForSession = useMemo<'content_producer' | 'production_team'>(
@@ -2493,8 +2339,6 @@ type RoleRoomProjectWorkspaceState = {
     return activeProject ? [activeProject] : headerProjects.slice(0, 1);
   }, [currentProject, headerProjects, useCompactHeaderLayout]);
 
-  const hiddenProjectsCount = Math.max(0, orderedProjects.length - headerProjects.length);
-  const hasMoreProjects = hiddenProjectsCount > 0;
   const loadProjectSyncMeta = useCallback(async (projectIds: string[]) => {
     const uniqueProjectIds = Array.from(new Set(
       projectIds
@@ -2678,7 +2522,7 @@ type RoleRoomProjectWorkspaceState = {
 
   const { user } = useAuth();
 
-  const getHeaderRoleLabel = (role?: string | null): string => {
+  const getHeaderRoleLabel = useCallback((role?: string | null): string => {
     if (!role) return branding.tokens.labels.unknownRoleLabel;
     const labels: Record<string, string> = {
       owner: branding.tokens.labels.roleOwnerLabel,
@@ -2695,7 +2539,7 @@ type RoleRoomProjectWorkspaceState = {
       film_photographer: 'Innholdsprodusent',
     };
     return labels[role] || role;
-  };
+  }, [branding]);
 
   const mapAccountRoleToProjectRole = (
     role?: string | null,
@@ -3051,8 +2895,6 @@ type RoleRoomProjectWorkspaceState = {
     : isContentProducerMode
       ? 'Innhold'
       : 'Produksjon';
-  const headerOpenProjectsButtonLabel = useDenseDesktopHeader ? 'Prosjekter' : 'Åpne prosjekter';
-  const headerWorkspaceActionLabel = useFocusedWorkspaceHeader ? 'Prosjekter' : headerOpenProjectsButtonLabel;
   const headerProjectMetaHint = useDenseDesktopHeader
     ? 'Klikk for å bytte prosjekt'
     : 'Klikk for å bytte eller åpne eksisterende prosjekt';
@@ -3897,17 +3739,7 @@ type RoleRoomProjectWorkspaceState = {
         projectSwitchInFlightRef.current = null;
       }
     }
-  }, [
-    activeTab,
-    confirmProjectSwitchIfNeeded,
-    ensureScopedSessionProjectRole,
-    isClientReviewerMode,
-    isClientReviewerSession,
-    isProducerWorkspaceSession,
-    isProtectedDemoProject,
-    isTrollProject,
-    toast,
-  ]);
+  }, [activeTab, confirmProjectSwitchIfNeeded, ensureScopedSessionProjectRole, isClientReviewerMode, isClientReviewerSession, isProtectedDemoProject, isTrollProject, plannerAudience, toast]);
 
   const applyProjectSyncResult = useCallback((project: CastingProject) => {
     setProjects((previous) => {
@@ -4321,18 +4153,6 @@ type RoleRoomProjectWorkspaceState = {
     }));
   }, [contentProducerPlannerSurface, isContentProducerMode, producerMediaFocus]);
 
-  const contentProducerWorkspaceLabels: Record<string, string> = {
-    brief: 'Brief',
-    materials: 'Materialer',
-    storyboard: 'Storyboard',
-    manuscript: 'Manus',
-    shotlist: 'Shotlist',
-    brand: 'Merkevare',
-    accounts: 'Kontotilgang',
-    delivery: 'Levering',
-    meetings: 'Møter',
-  };
-
   const contentProducerResumeCard = useMemo(() => {
     if (!isContentProducerMode || !contentProducerResumeTarget || contentProducerResumeTarget.surface === 'overview') {
       return null;
@@ -4366,7 +4186,7 @@ type RoleRoomProjectWorkspaceState = {
       detail: surfaceDetails[contentProducerResumeTarget.surface as Exclude<ContentProducerPlannerSurface, 'overview' | 'project_room'>],
       actionLabel: `Fortsett i ${surfaceLabel.toLowerCase()}`,
     };
-  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, contentProducerResumeTarget, contentProducerWorkspaceLabels, isContentProducerMode]);
+  }, [CONTENT_PRODUCER_PLANNER_SURFACE_ITEMS, contentProducerResumeTarget, isContentProducerMode]);
 
   const handleResumeContentProducerWorkspace = useCallback(() => {
     const resumeTarget = contentProducerResumeTarget;
@@ -4916,7 +4736,6 @@ type RoleRoomProjectWorkspaceState = {
   const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
   const legacyRoleRoomProfessionNamespace = 'virtualStudio_castingProfession';
   const pinnedProjectsNamespace = 'roleRoom_pinnedProjects';
-  const PINNED_PROJECT_ACCENT_COLORS = ['#f59e0b', '#34d399', '#60a5fa'] as const;
 
   // Load profession from API or settings cache
   const loadProfession = useCallback(async (): Promise<'photographer' | 'videographer' | null> => {
@@ -5009,7 +4828,7 @@ type RoleRoomProjectWorkspaceState = {
     } finally {
       setPermissionsLoading(false);
     }
-  }, [currentProject, ensureScopedSessionProjectRole]);
+  }, [currentProject.id, ensureScopedSessionProjectRole, normalizeAdminUser]);
 
   const clearClientPortalIntentUrl = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -5224,7 +5043,7 @@ type RoleRoomProjectWorkspaceState = {
       setAdminUser(normalizeAdminUser(session.adminUser));
       setAuthLoaded(true);
     });
-  }, []);
+  }, [normalizeAdminUser]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -5321,15 +5140,7 @@ type RoleRoomProjectWorkspaceState = {
     return () => {
       cancelled = true;
     };
-  }, [
-    adminUser,
-    authLoaded,
-    roleRoomGoogleIntent.message,
-    roleRoomGoogleIntent.mode,
-    roleRoomGoogleIntent.status,
-    roleRoomGoogleIntent.transferId,
-    toast,
-  ]);
+  }, [adminUser, authLoaded, normalizeAdminUser, roleRoomGoogleIntent.message, roleRoomGoogleIntent.mode, roleRoomGoogleIntent.status, roleRoomGoogleIntent.transferId, toast]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -5413,7 +5224,7 @@ type RoleRoomProjectWorkspaceState = {
     return () => {
       window.removeEventListener('auth-session-updated', handleAuthSessionUpdated);
     };
-  }, []);
+  }, [normalizeAdminUser]);
 
   useEffect(() => {
     if (!authLoaded) return;
@@ -5524,7 +5335,7 @@ type RoleRoomProjectWorkspaceState = {
     } finally {
       setBillingActionPending(false);
     }
-  }, [billingAccount?.canRetryPayment, loadBillingAccount, toast]);
+  }, [adminUser, loadBillingAccount, toast]);
 
   useEffect(() => {
     if (!adminUser || !isRoleRoomCommercialSession) {
@@ -5633,13 +5444,7 @@ type RoleRoomProjectWorkspaceState = {
     };
 
     void initializeData();
-  }, [
-    adminUser,
-    filterProjectsForSession,
-    isContentProducerDemoProject,
-    isProducerWorkspaceSession,
-    isTrollProject,
-  ]);
+  }, [adminUser, filterProjectsForSession, isContentProducerDemoProject, isProducerWorkspaceSession, isTrollProject, loadAvailableScenes, loadProjects, loadUserRole]);
 
   const loadUserRole = useCallback(async () => {
     const activeProject = currentProjectRef.current;
@@ -6186,15 +5991,7 @@ type RoleRoomProjectWorkspaceState = {
         setCurrentProject(null);
       }
     }
-  }, [
-    filterProjectsForSession,
-    isContentProducerDemoProject,
-    isProducerWorkspaceSession,
-    isRestorableWorkspaceProject,
-    isTrollProject,
-    loadPersistedWorkspaceState,
-    profession,
-  ]);
+  }, [filterProjectsForSession, isContentProducerDemoProject, isProducerWorkspaceSession, isRestorableWorkspaceProject, isTrollProject, loadPersistedWorkspaceState]);
 
   const handleQuickContactsChange = useCallback((ids: string[]) => {
     startTransition(() => {
@@ -6216,7 +6013,7 @@ type RoleRoomProjectWorkspaceState = {
     };
     setSelectedRole(newRole);
     openRoleDialog();
-  }, [currentProject, toast]);
+  }, [branding.tokens.labels.mustCreateProject, currentProject, openRoleDialog, toast]);
 
   const toRichTextContent = useCallback((value: string) => {
     if (!value) return '';
@@ -6340,7 +6137,7 @@ type RoleRoomProjectWorkspaceState = {
       console.error('Error saving role:', error);
       toast.showError(branding.tokens.labels.roleSaveError);
     }
-  }, [currentProject, selectedRole, toast, loadProjects, toPlainTextDescription]);
+  }, [currentProject, selectedRole, toast, branding.tokens.labels.roleNameRequired, branding.tokens.labels.roleSaveError, toPlainTextDescription, loadProjects]);
 
   const handleDeleteRole = useCallback(async (roleId: string) => {
     if (!currentProject) return;
@@ -6408,7 +6205,7 @@ type RoleRoomProjectWorkspaceState = {
     };
     setSelectedCandidate(newCandidate);
     openCandidateDialog();
-  }, [currentProject, toast]);
+  }, [branding.tokens.labels.mustCreateProject, currentProject, openCandidateDialog, toast]);
 
   const handleCalendarRequestLocationCreate = useCallback(() => {
     if (!currentProject) return;
@@ -6604,7 +6401,7 @@ type RoleRoomProjectWorkspaceState = {
     };
     setSelectedSchedule(newSchedule);
     openScheduleDialog();
-  }, [currentProject, toast]);
+  }, [branding.tokens.labels.mustCreateProject, branding.tokens.labels.needCandidateAndRole, currentProject, openScheduleDialog, toast]);
 
   const handleSaveSchedule = useCallback(async () => {
     if (!currentProject || !selectedSchedule) return;
@@ -6618,7 +6415,7 @@ type RoleRoomProjectWorkspaceState = {
       console.error('Error saving schedule:', error);
       toast.showError(branding.tokens.labels.scheduleSaveError);
     }
-  }, [currentProject, selectedSchedule, toast, loadProjects]);
+  }, [currentProject, selectedSchedule, loadProjects, toast, branding.tokens.labels.scheduleSaveError]);
 
   const handleDeleteSchedule = useCallback(async (scheduleId: string) => {
     if (!currentProject) return;
@@ -6930,7 +6727,7 @@ type RoleRoomProjectWorkspaceState = {
       .catch((error) => {
         console.warn('Kunne ikke oppdatere global tag-register fra utvelgelse:', error);
       });
-  }, [globalTagRegistryLoaded, globalTagSeedKey]);
+  }, [globalTagRegistryLoaded, globalTagSeedKey, globalTagSeedList]);
   
   // Memoized filtered candidates (using debounced search for performance)
   const candidates = useMemo(() => allCandidates.filter(c => {
@@ -7917,23 +7714,7 @@ type RoleRoomProjectWorkspaceState = {
         } : undefined}
       />
     );
-  }, [
-    adminUser,
-    canManageSelectionMeet,
-    currentProject?.id,
-    handleCopySelectionMeet,
-    handleCreateSelectionMeet,
-    handleOpenSelectionMeet,
-    selectedSelectionCandidate,
-    selectedSelectionCandidateContactInfo.email,
-    selectedSelectionMeetArtifact?.createdAt,
-    selectedSelectionMeetArtifact?.meetUrl,
-    selectedSelectionMeetArtifact?.updatedAt,
-    selectionMeetConnectionState,
-    selectionMeetDraft,
-    selectionMeetBusy,
-    selectionMeetScheduleHint,
-  ]);
+  }, [canManageSelectionMeet, handleCopySelectionMeet, handleCreateSelectionMeet, handleOpenSelectionMeet, selectedSelectionCandidate, selectedSelectionCandidateContactInfo.email, selectedSelectionMeetArtifact?.createdAt, selectedSelectionMeetArtifact?.meetUrl, selectedSelectionMeetArtifact?.updatedAt, selectionMeetConnectionState, selectionMeetDraft, selectionMeetBusy, selectionMeetScheduleHint]);
 
   const formatOptionalNoteTimestamp = useCallback((value: unknown): string => {
     if (typeof value !== 'string' || value.trim().length === 0) return '';
@@ -14099,7 +13880,6 @@ type RoleRoomProjectWorkspaceState = {
           </ErrorBoundary>
         </Box>
       )}
-
 
       {/* Role Dialog - Optimized */}
       <Dialog

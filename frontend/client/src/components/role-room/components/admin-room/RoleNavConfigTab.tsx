@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleNavConfigTab — Admin Room-seksjon for å konfigurere hvilke faner
  * hver brukerrolle ser i Role Room. Endringene gjelder ALLE viewports:
@@ -17,51 +16,11 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Divider,
-  IconButton,
-  MenuItem,
-  Select,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
-  ArrowDownward as ArrowDownIcon,
-  ArrowUpward as ArrowUpIcon,
-  Close as RemoveIcon,
-  RestartAlt as ResetIcon,
-  Save as SaveIcon,
-  TheaterComedy as TheaterIcon,
-  Person as PersonIcon,
-  Group as GroupIcon,
-  CalendarMonth as CalendarIcon,
-  YouTube as YouTubeIcon,
-  Edit as EditIcon,
-  CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
-  Movie as MovieIcon,
-  AutoFixHigh as AutoFixHighIcon,
-  MoreHoriz as MoreIcon,
-} from '@mui/icons-material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, IconButton, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material';
+import { ArrowDownward as ArrowDownIcon, ArrowUpward as ArrowUpIcon, Close as RemoveIcon, RestartAlt as ResetIcon, Save as SaveIcon, TheaterComedy as TheaterIcon, Person as PersonIcon, Group as GroupIcon, CalendarMonth as CalendarIcon, YouTube as YouTubeIcon, Edit as EditIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Movie as MovieIcon, AutoFixHigh as AutoFixHighIcon, MoreHoriz as MoreIcon } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
 
-import {
-  ALL_USER_ROLES,
-  DEFAULT_TABS_BY_ROLE,
-  USER_ROLE_LABELS,
-  useDeleteRoleNavConfig,
-  useRoleNavConfigs,
-  useUpdateRoleNavConfig,
-  type SubTabValue,
-} from '../../hooks/useRoleNavConfig';
+import { ALL_USER_ROLES, DEFAULT_TABS_BY_ROLE, USER_ROLE_LABELS, useDeleteRoleNavConfig, useRoleNavConfigs, useUpdateRoleNavConfig, type SubTabValue } from '../../hooks/useRoleNavConfig';
 import type { UserRoleType } from '../../models/casting';
 
 interface TabSpec {

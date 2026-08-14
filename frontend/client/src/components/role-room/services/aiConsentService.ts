@@ -103,7 +103,7 @@ export async function hydrateProjectConsent(
   } catch (error) {
     // Network error: preserve existing cache entry if any. Log so the
     // transparency UI can warn the user.
-    // eslint-disable-next-line no-console
+     
     console.warn('[aiConsentService] hydrate failed — using cached state', error);
     return readStore()[projectId] ?? null;
   }

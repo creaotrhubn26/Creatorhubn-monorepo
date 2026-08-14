@@ -263,7 +263,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       }
     };
     loadData();
-  }, [projectId]);
+  }, [normalizeProductionDay, projectId]);
 
   // Generer produksjonsdager fra lokasjoner (bransjestandard: skyt alt på én
   // location samlet). Ikke-destruktiv — hopper over lokasjoner som allerede har
@@ -408,7 +408,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDay, setEditingDay] = useState<NormalizedProductionDay | null>(null);
   // Profession-specific default timing templates
-  const getDefaultTiming = () => {
+  const getDefaultTiming = useCallback(() => {
     if (profession === 'photographer') {
       // Photographer: Focus on lighting conditions, time-of-day
       return {
@@ -426,7 +426,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       callTime: '09:00',
       wrapTime: '17:00',
     };
-  };
+  }, [profession]);
 
   const [formData, setFormData] = useState<Partial<NormalizedProductionDay>>({
     date: new Date().toISOString().split('T')[0],
@@ -865,7 +865,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [isOnline, offlineQueue, productionDays, projectId]);
+  }, [isOnline, normalizeProductionDay, offlineQueue, productionDays, projectId]);
 
   // Load weather forecasts for production days that don't have them
   useEffect(() => {
@@ -905,7 +905,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     };
 
     loadMissingWeatherForecasts();
-  }, [projectId, locations]);
+  }, [projectId, locations, productionDays, normalizeProductionDay]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -924,14 +924,14 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen, locations.length]);
+  }, [dialogOpen, handleExportCSV, handleOpenDialog, locations.length]);
 
   // Helper functions
-  const getLocationName = (locationId?: string): string => {
+  const getLocationName = useCallback((locationId?: string): string => {
     if (!locationId) return 'Ingen lokasjon';
     const location = locations.find((entry) => entry.id === locationId);
     return location?.name ?? locationId;
-  };
+  }, [locations]);
 
   const getStatusColor = (status?: ProductionDayStatus): string => {
     switch (status) {
@@ -1002,7 +1002,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     });
 
     return result;
-  }, [productionDays, searchQuery, statusFilter, sortField, sortDirection, favorites, locations]);
+  }, [productionDays, searchQuery, statusFilter, getLocationName, favorites, sortField, sortDirection]);
 
   useEffect(() => {
     if (!proSelectedDayId && filteredAndSortedDays.length > 0) {
@@ -1067,20 +1067,20 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     [crew, globalTagRegistry]
   );
 
-  const parseClockMinutes = (clock?: string): number | null => {
+  const parseClockMinutes = useCallback((clock?: string): number | null => {
     if (!clock || !clock.includes(':')) return null;
     const [h, m] = clock.split(':').map(Number);
     if (Number.isNaN(h) || Number.isNaN(m)) return null;
     return h * 60 + m;
-  };
+  }, []);
 
-  const plannedMinutesForDay = (day: ProductionDay | NormalizedProductionDay): number => {
+  const plannedMinutesForDay = useCallback((day: ProductionDay | NormalizedProductionDay): number => {
     const start = parseClockMinutes(day.callTime);
     const endRaw = parseClockMinutes(day.wrapTime);
     if (start === null || endRaw === null) return 0;
     const end = endRaw < start ? endRaw + 24 * 60 : endRaw;
     return Math.max(0, end - start);
-  };
+  }, [parseClockMinutes]);
 
   const rangesOverlap = (aStart: number | null, aEnd: number | null, bStart: number | null, bEnd: number | null): boolean => {
     if (aStart === null || aEnd === null || bStart === null || bEnd === null) return false;
@@ -1142,9 +1142,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     });
 
     return map;
-  }, [productionDays]);
+  }, [productionDays, parseClockMinutes]);
 
-  const getReadiness = (day: NormalizedProductionDay): ReadinessResult => {
+  const getReadiness = useCallback((day: NormalizedProductionDay): ReadinessResult => {
     const dayCache = dayDataCache[day.id];
     const meta = proMetaByDay[day.id] || {};
     const reasons: string[] = [];
@@ -1201,7 +1201,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       score: safeScore,
       reasons: reasons.length > 0 ? reasons : ['Sjekklisten er grønn'],
     };
-  };
+  }, [dayDataCache, proMetaByDay, conflictMap]);
 
   const readinessByDay = useMemo<Record<string, ReadinessResult>>(() => {
     const result: Record<string, ReadinessResult> = {};
@@ -1209,7 +1209,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       result[day.id] = getReadiness(day);
     });
     return result;
-  }, [productionDays, dayDataCache, proMetaByDay, conflictMap]);
+  }, [productionDays, getReadiness]);
 
   const getReadinessColor = (level: ReadinessLevel): string => {
     if (level === 'klar') return '#10b981';
@@ -1313,15 +1313,15 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       delayedCount,
       avgReadiness,
     };
-  }, [productionDays, readinessByDay, proMetaByDay]);
+  }, [productionDays, plannedMinutesForDay, proMetaByDay, readinessByDay]);
 
-  const extractMentions = (text: string): string[] => {
+  const extractMentions = useCallback((text: string): string[] => {
     const explicit = globalTagService.parseExplicitMentions(text);
     const implicit = mentionDirectory.filter((name) => text.toLowerCase().includes(name.toLowerCase()));
     return Array.from(new Set([...explicit, ...implicit]));
-  };
+  }, [mentionDirectory]);
 
-  const levenshtein = (a: string, b: string): number => {
+  const levenshtein = useCallback((a: string, b: string): number => {
     const matrix = Array.from({ length: b.length + 1 }, (_, i) => [i]);
     for (let j = 0; j <= a.length; j += 1) {
       matrix[0][j] = j;
@@ -1333,16 +1333,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
         } else {
           matrix[i][j] = Math.min(
             matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
+            matrix[i - 1][j] + 1,
+            matrix[i][j - 1] + 1
           );
         }
       }
     }
     return matrix[b.length][a.length];
-  };
+  }, []);
 
-  const getDidYouMeanMention = (rawTag: string): string | null => {
+  const getDidYouMeanMention = useCallback((rawTag: string): string | null => {
     if (!rawTag) return null;
     const normalized = rawTag.toLowerCase();
     const exact = mentionDirectory.find((name) => name.toLowerCase() === normalized);
@@ -1352,21 +1352,21 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       .sort((a, b) => a.distance - b.distance);
     if (scored[0] && scored[0].distance <= 2) return scored[0].name;
     return null;
-  };
+  }, [mentionDirectory, levenshtein]);
 
   const selectedDraft = selectedProDay ? teamFlowDraftByDay[selectedProDay.id] || '' : '';
 
   const selectedDraftMentions = useMemo(() => {
     if (!selectedProDay) return [];
     return extractMentions(selectedDraft);
-  }, [selectedDraft, selectedProDay, mentionDirectory]);
+  }, [selectedProDay, extractMentions, selectedDraft]);
 
   const selectedDidYouMean = useMemo(() => {
     const rawTag = (selectedDraft.match(/@([A-Za-z0-9_.\-ÆØÅæøå]+)/g) || [])
       .map((tag) => tag.replace(/^@/, ''))
       .find(Boolean);
     return rawTag ? { rawTag, suggestion: getDidYouMeanMention(rawTag) } : null;
-  }, [selectedDraft, mentionDirectory]);
+  }, [selectedDraft, getDidYouMeanMention]);
 
   const updateDayMeta = (dayId: string, updater: (previous: ProductionDayProMeta) => ProductionDayProMeta) => {
     setProMetaByDay((prev) => {
@@ -1627,7 +1627,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           .slice(0, 6);
 
   // Handlers
-  const handleOpenDialog = (day?: NormalizedProductionDay) => {
+  const handleOpenDialog = useCallback((day?: NormalizedProductionDay) => {
     if (day) {
       setEditingDay(day);
       setFormData(day);
@@ -1647,7 +1647,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       });
     }
     setDialogOpen(true);
-  };
+  }, [locations, getDefaultTiming]);
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
@@ -1937,7 +1937,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
     if (onUpdate) onUpdate();
   };
 
-  const handleExportCSV = async () => {
+  const handleExportCSV = useCallback(async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
@@ -1963,9 +1963,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
       console.error('Error exporting production days:', error);
       alert('Kunne ikke eksportere produksjonsdager');
     }
-  };
+  }, [projectId, productionDays, locations, generateProductionDaysHTML, showError]);
 
-  const generateProductionDaysHTML = (
+  const generateProductionDaysHTML = useCallback((
     project: { id: string; name: string },
     productionDays: NormalizedProductionDay[],
     locations: Location[]
@@ -2145,7 +2145,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   </div>
 </body>
 </html>`;
-  };
+  }, []);
 
   const toggleCardExpanded = (id: string) => {
     const newExpanded = new Set(expandedCards);

@@ -11,24 +11,12 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem,
-  Select, OutlinedInput, Chip, CircularProgress, Alert, Avatar, Snackbar,
-  Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox, Tooltip,
-} from '@mui/material';
-import {
-  SupervisorAccount as FacultyIcon, Add as AddIcon, Delete as DeleteIcon,
-  PersonAddAlt as InviteTeacherIcon, HowToReg as InviteCensorIcon,
-  Groups as CohortIcon, EventSeat as SeatIcon, Gavel as CensorIcon,
-  Tune as LicenseIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, Button, IconButton, Collapse, TextField, MenuItem, Select, OutlinedInput, Chip, CircularProgress, Alert, Avatar, Snackbar, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox, Tooltip } from '@mui/material';
+import { SupervisorAccount as FacultyIcon, Delete as DeleteIcon, PersonAddAlt as InviteTeacherIcon, HowToReg as InviteCensorIcon, Groups as CohortIcon, EventSeat as SeatIcon, Gavel as CensorIcon, Tune as LicenseIcon } from '@mui/icons-material';
 import { educationCohortsService, type Cohort } from './educationCohortsService';
 import { educationCensorService } from './educationCensorService';
 import { educationLicenseService, type License } from './educationLicenseService';
-import {
-  educationFacultyService, FACULTY_ROLE_LABELS, FACULTY_ROLE_ORDER,
-  type Faculty, type FacultyRole,
-} from './educationFacultyService';
+import { educationFacultyService, FACULTY_ROLE_LABELS, FACULTY_ROLE_ORDER, type Faculty, type FacultyRole } from './educationFacultyService';
 import { ACCENT, Panel, T } from './_eduUi';
 
 const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -57,7 +45,7 @@ export function FacultyTab() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<FacultyRole>('teacher');
   const [busy, setBusy] = useState(false);
-  const [censorCohort, setCensorCohort] = useState('');
+  const [censorCohort, _setCensorCohort] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);

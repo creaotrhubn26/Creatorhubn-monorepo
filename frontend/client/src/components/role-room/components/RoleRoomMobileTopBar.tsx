@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomMobileTopBar — compact sticky topbar for mobile + iPad.
  *

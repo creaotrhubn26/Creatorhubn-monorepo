@@ -49,7 +49,7 @@ export default function ClientTiktokPluginsPanel({
 }) {
   const [advertiserId, setAdvertiserId] = useState<string>(providedAdvertiserId ?? '');
   const [plugins, setPlugins] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [pluginType, setPluginType] = useState('WEBSITE');
@@ -71,7 +71,7 @@ export default function ClientTiktokPluginsPanel({
       .catch(() => {});
   }, [configId, advertiserId, isOwnAccount, domain, pluginName]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!advertiserId) return;
     setLoading(true);
     setError(null);
@@ -85,7 +85,7 @@ export default function ClientTiktokPluginsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
   const install = async () => {
     if (!advertiserId || !pluginName || !domain) return;
@@ -109,7 +109,7 @@ export default function ClientTiktokPluginsPanel({
     }
   };
 
-  useEffect(() => { if (advertiserId) load(); /* eslint-disable-next-line */ }, [advertiserId]);
+  useEffect(() => { if (advertiserId) load();   }, [advertiserId, load]);
 
   return (
     <Card sx={{ bgcolor: palette.bg, border: `1px solid ${palette.borderStrong}`, color: palette.textPrimary }}>

@@ -11,17 +11,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Accordion, AccordionDetails, AccordionSummary,
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  IconButton, MenuItem, Select, Stack, Typography,
-} from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 const palette = {
   bgCard: '#150b2e',

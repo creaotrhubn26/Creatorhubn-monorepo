@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
 export interface SlateData {
   scene: string;

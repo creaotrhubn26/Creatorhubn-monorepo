@@ -14,40 +14,14 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  CircularProgress,
-  Alert,
-  Chip,
-} from '@mui/material';
-import {
-  CloudDone as SavedIcon,
-  CloudOff as ErrorIcon,
-  CloudSync as SavingIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, CircularProgress, Alert, Chip } from '@mui/material';
+import { CloudDone as SavedIcon, CloudOff as ErrorIcon, CloudSync as SavingIcon } from '@mui/icons-material';
 import { FormationView, type FormationViewHandle } from './FormationView';
-import {
-  listFormations,
-  replaceFormations,
-  recordToFormation,
-  FormationVersionConflictError,
-  type FormationRecord,
-} from './danceFormationService';
-import {
-  listDancerProfiles,
-  type DancerProfile,
-} from './dancerProfileService';
+import { listFormations, replaceFormations, recordToFormation, FormationVersionConflictError } from './danceFormationService';
+import { listDancerProfiles, type DancerProfile } from './dancerProfileService';
 import type { Dancer, Formation } from './formationTypes';
 import { getInitials } from './dancerProfile';
-import {
-  listTimelineItems,
-  createTimelineItem,
-  patchTimelineItem,
-  deleteTimelineItem,
-  type TimelineItemRecord,
-} from './danceTimelineItemService';
+import { listTimelineItems, createTimelineItem, patchTimelineItem, deleteTimelineItem, type TimelineItemRecord } from './danceTimelineItemService';
 import TimelineItemModal from './TimelineItemModal';
 
 const PURPLE = danceFlowColors.lavenderDark;

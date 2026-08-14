@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AgentThreadList — lightweight popover that lists the user's recent
  * agent threads for a project and lets them resume or archive.

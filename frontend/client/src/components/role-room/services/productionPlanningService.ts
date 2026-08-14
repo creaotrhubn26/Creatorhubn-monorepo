@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { ProductionDay, CastingShot } from '../models/casting';
 import { castingService } from './castingService';
 

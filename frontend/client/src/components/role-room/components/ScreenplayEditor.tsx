@@ -1,49 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  IconButton,
-  Tooltip,
-  Divider,
-  Stack,
-  Chip,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  TextField,
-  Autocomplete,
-  Badge,
-  Popper,
-  ClickAwayListener,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
-import {
-  FormatBold as BoldIcon,
-  FormatItalic as ItalicIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
-  Person as CharacterIcon,
-  Chat as DialogueIcon,
-  Movie as SceneIcon,
-  Landscape as LocationIcon,
-  Notes as ActionIcon,
-  ArrowForward as TransitionIcon,
-  FormatQuote as ParentheticalIcon,
-  CenterFocusStrong as CenterIcon,
-  Title as TitleIcon,
-  Code as CodeIcon,
-  Visibility as PreviewIcon,
-  Download as ExportIcon,
-  Numbers as PageIcon,
-  FormatAlignCenter,
-  FormatAlignLeft,
-  TextFields,
-  Fullscreen as FullscreenIcon,
-  FullscreenExit as FullscreenExitIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, IconButton, Tooltip, Divider, Stack, Chip, Menu, MenuItem, ListItemIcon, ListItemText, Badge, ClickAwayListener, useMediaQuery, useTheme } from '@mui/material';
+import { Undo as UndoIcon, Redo as RedoIcon, Person as CharacterIcon, Chat as DialogueIcon, Movie as SceneIcon, Landscape as LocationIcon, Notes as ActionIcon, ArrowForward as TransitionIcon, CenterFocusStrong as CenterIcon, Title as TitleIcon, Code as CodeIcon, Numbers as PageIcon, FormatAlignCenter, TextFields, Fullscreen as FullscreenIcon, FullscreenExit as FullscreenExitIcon } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import type { Candidate, Role } from '../models/casting';
@@ -53,8 +10,8 @@ import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
 
 const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean } => {
-  const theme = useTheme();
-  const isXs = useMediaQuery('(max-width:599px)');
+  const _theme = useTheme();
+  const _isXs = useMediaQuery('(max-width:599px)');
   const isSm = useMediaQuery('(min-width:600px) and (max-width:899px)');
   const isMd = useMediaQuery('(min-width:900px) and (max-width:1199px)');
   const isLg = useMediaQuery('(min-width:1200px) and (max-width:1535px)');
@@ -158,9 +115,9 @@ interface ScreenplayEditorProps {
 }
 
 // Fountain syntax patterns
-const SCENE_HEADING_PATTERN = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[\.\s]/i;
+const SCENE_HEADING_PATTERN = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i;
 const FORCED_SCENE_HEADING_PATTERN = /^\./;
-const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/;
+const CHARACTER_PATTERN = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/;
 const FORCED_CHARACTER_PATTERN = /^@/;
 const TRANSITION_PATTERN = /^[A-Z\s]+:$/;
 const FORCED_TRANSITION_PATTERN = /^>/;
@@ -169,8 +126,8 @@ const PARENTHETICAL_PATTERN = /^\(.*\)$/;
 const SECTION_PATTERN = /^#+\s/;
 const SYNOPSIS_PATTERN = /^=(?!=)/;
 const PAGE_BREAK_PATTERN = /^={3,}$/;
-const NOTE_PATTERN = /\[\[.*?\]\]/g;
-const BONEYARD_PATTERN = /\/\*[\s\S]*?\*\//g;
+const _NOTE_PATTERN = /\[\[.*?\]\]/g;
+const _BONEYARD_PATTERN = /\/\*[\s\S]*?\*\//g;
 
 // ── Autocomplete data ─────────────────────────────────────────────────────────
 /** INT./EXT. prefix options shown when the user starts a new scene heading line. */
@@ -415,7 +372,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   commentLines,
   onCommentLineClick,
 }) => {
-  const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
+  const { tier, isMobile, isTablet, _isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
   
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -427,7 +384,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const onChangeRef = useRef(onChange);
   
   // Refs for isolated auto-save - NO state updates from auto-save
-  const savePendingRef = useRef(false);
+  const _savePendingRef = useRef(false);
   const lastSavedContentRef = useRef('');
   const isMountedRef = useRef(true);
   
@@ -462,8 +419,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
   const [insertMenuAnchor, setInsertMenuAnchor] = useState<HTMLElement | null>(null);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saveStatus, _setSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
+  const [lastSaved, _setLastSaved] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -477,7 +434,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     const result: ParsedLine[] = [];
 
     // FSM state
-    let lastNonEmptyType: FountainElement = 'action';
+    let _lastNonEmptyType: FountainElement = 'action';
     let inDialogueBlock = false; // true after character / parenthetical / dialogue
 
     for (let i = 0; i < lines.length; i++) {
@@ -552,7 +509,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
         inDialogueBlock = false;
       }
 
-      if (trimmed) lastNonEmptyType = type;
+      if (trimmed) _lastNonEmptyType = type;
 
       result.push({ type, content: raw, lineNumber: i + 1, raw });
     }

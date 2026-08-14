@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * PoseLibraryPanel — quick-select av stick-figure-poser for å starte
  * et frame med god proporsjon. Artisten tegner over den lette grå-
@@ -6,35 +5,9 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  Paper,
-  TextField,
-  Chip,
-  Tooltip,
-  IconButton,
-  ButtonBase,
-  Button,
-  ToggleButton,
-  ToggleButtonGroup,
-  Slider,
-} from '@mui/material';
-import {
-  Search,
-  Accessibility,
-  FlipOutlined,
-  Add as AddIcon,
-} from '@mui/icons-material';
-import {
-  POSE_LIBRARY,
-  searchPoses,
-  getPosesByCategory,
-  buildStrokesFromPose,
-  type Pose,
-  type PoseStroke,
-} from './poseLibrary';
+import { Box, Stack, Typography, Paper, TextField, Chip, Tooltip, ButtonBase, Button, ToggleButton, Slider } from '@mui/material';
+import { Search, Accessibility, FlipOutlined, Add as AddIcon } from '@mui/icons-material';
+import { POSE_LIBRARY, searchPoses, buildStrokesFromPose, type Pose, type PoseStroke } from './poseLibrary';
 
 export interface PoseLibraryPanelProps {
   canvasWidth: number;

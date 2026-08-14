@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Box, Typography, Paper, List, ListItem, ListItemText, ListItemIcon, IconButton, Button, Chip, Collapse, Tooltip, Menu, MenuItem, Divider, TextField, Select, FormControl, InputLabel, Stack } from "@mui/material";
-import type { SelectChangeEvent } from "@mui/material/Select";
-import { Add as AddIcon, Delete as DeleteIcon, DragIndicator as DragIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, Edit as EditIcon, Videocam as CameraIcon, FilterList as FilterIcon, Movie as MovieIcon, PhotoCamera as PhotoIcon, MoreVert as MoreIcon, CheckCircle as CompletedIcon, Schedule as PlannedIcon, PlayCircle as InProgressIcon, ArrowDropDown as DropdownIcon } from "@mui/icons-material";
+import { Box, Typography, Paper, List, ListItem, ListItemText, IconButton, Button, Chip, Menu, MenuItem, Divider, Stack } from "@mui/material";
+import { Add as AddIcon, Delete as DeleteIcon, DragIndicator as DragIcon, Edit as EditIcon, FilterList as FilterIcon, Movie as MovieIcon, MoreVert as MoreIcon, CheckCircle as CompletedIcon, Schedule as PlannedIcon, PlayCircle as InProgressIcon, ArrowDropDown as DropdownIcon } from "@mui/icons-material";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -39,7 +38,6 @@ interface SortableShotItemProps {
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  cameraName?: string;
 }
 
 const SortableShotItem: React.FC<SortableShotItemProps> = ({
@@ -47,7 +45,6 @@ const SortableShotItem: React.FC<SortableShotItemProps> = ({
   isActive,
   onSelect,
   onDelete,
-  cameraName,
 }) => {
   const {
     attributes,
@@ -228,7 +225,6 @@ export const ShotListSidebar: React.FC<ShotListSidebarProps> = ({ onAddShot }) =
     selectShot,
     deleteShot,
     reorderShots,
-    updateScene,
     addCamera,
     addShot,
   } = useShotPlannerStore();
@@ -262,10 +258,6 @@ export const ShotListSidebar: React.FC<ShotListSidebarProps> = ({ onAddShot }) =
       ...prev,
       [categoryId]: !prev[categoryId],
     }));
-  };
-  
-  const getCameraName = (cameraId: string) => {
-    return scene?.cameras.find(c => c.id === cameraId)?.name || 'Unknown';
   };
   
   const getShotsByCategory = (category: string) => {
@@ -409,7 +401,6 @@ export const ShotListSidebar: React.FC<ShotListSidebarProps> = ({ onAddShot }) =
                   isActive={scene.activeShotId === shot.id}
                   onSelect={() => selectShot(shot.id)}
                   onDelete={() => deleteShot(shot.id)}
-                  cameraName={getCameraName(shot.cameraId)}
                 />
               ))}
             </List>
@@ -454,7 +445,7 @@ export const ShotListSidebar: React.FC<ShotListSidebarProps> = ({ onAddShot }) =
           return (
             <Chip
               key={category.id}
-              label={`${category.icon} ${category.label}`}
+              label={`${category.icon} ${category.label} (${categoryShots.length})`}
               size="small"
               onClick={() => toggleCategory(category.id)}
               sx={{

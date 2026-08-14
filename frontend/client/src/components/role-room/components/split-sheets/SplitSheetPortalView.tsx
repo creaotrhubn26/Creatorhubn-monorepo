@@ -6,50 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  Chip,
-  Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Alert,
-  CircularProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControlLabel,
-  Checkbox,
-  Stack,
-  useTheme,
-} from '@mui/material';
-import {
-  AccountBalance as SplitSheetIcon,
-  CheckCircle,
-  Schedule,
-  AttachMoney,
-  Edit as EditIcon,
-  Key as KeyIcon,
-  Lock as LockIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
-  Email as EmailIcon,
-  Download as DownloadIcon,
-  Person as PersonIcon,
-  Folder,
-  Event,
-  Phone,
-} from '@mui/icons-material';
+import { Box, Card, CardContent, Typography, Button, Chip, Divider, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Alert, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, TextField, FormControlLabel, Checkbox, Stack, useTheme } from '@mui/material';
+import { AccountBalance as SplitSheetIcon, CheckCircle, Schedule, Edit as EditIcon, Key as KeyIcon, Lock as LockIcon, Email as EmailIcon, Download as DownloadIcon, Person as PersonIcon, Folder, Event, Phone } from '@mui/icons-material';
 import { LocationsIcon as LocationOn, TeamIcon as Groups } from '../icons/CastingIcons';
 import settingsService from '../../services/settingsService';
 
@@ -98,7 +56,7 @@ export default function SplitSheetPortalView({
   const [acceptedProjectDetails, setAcceptedProjectDetails] = useState(false);
 
   // Validate access code and credentials
-  const validateAccess = async () => {
+  const validateAccess = useCallback(async () => {
     if (!accessCode.trim()) {
       return;
     }
@@ -132,7 +90,7 @@ export default function SplitSheetPortalView({
         // Show error
       }
     }
-  };
+  });
 
   // If access code is provided via URL or props, validate it
   React.useEffect(() => {
@@ -147,7 +105,7 @@ export default function SplitSheetPortalView({
         validateAccess();
       }, 100);
     }
-  }, [propAccessCode]);
+  }, [accessCode, propAccessCode, validateAccess]);
 
   // Fetch split sheets for contributor (only after authentication)
   const { data: splitSheetsData, isLoading } = useQuery({
@@ -269,7 +227,7 @@ export default function SplitSheetPortalView({
     };
 
     fetchProjectData();
-  }, [selectedSplitSheet?.project_id, showSignDialog]);
+  }, [selectedSplitSheet.id, selectedSplitSheet.project_id, showSignDialog]);
 
   // Sign split sheet mutation
   const signMutation = useMutation({
@@ -1144,25 +1102,4 @@ export default function SplitSheetPortalView({
     </Box>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

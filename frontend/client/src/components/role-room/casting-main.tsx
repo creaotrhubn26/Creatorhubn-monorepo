@@ -5,7 +5,7 @@ import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
-import { CastingLandingPage } from './components/CastingLandingPage';
+import {  } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
 import LeadgridLanding from '@/pages/leadgrid-landing';
@@ -13,7 +13,7 @@ import LeadgridPricingPage from '@/pages/leadgrid-pricing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
-import LeadgridPartnerApplicationPage from '@/pages/leadgrid-partner-application';
+
 import LeadgridDevelopersPage from '@/pages/leadgrid-developers';
 import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-application';
 import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
@@ -37,11 +37,7 @@ import PitchDeckPage from '@/pages/pitch-deck';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
-import TalentsApp, {
-  parseTalentsAppPage,
-  isPartnerInviteAcceptPath, PartnerInviteAcceptPage,
-  isTalentProposalAcceptPath, TalentProposalAcceptPage,
-} from './talents-app/TalentsApp';
+import TalentsApp, { parseTalentsAppPage, isPartnerInviteAcceptPath, PartnerInviteAcceptPage, isTalentProposalAcceptPath, TalentProposalAcceptPage } from './talents-app/TalentsApp';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
 import PressKitPage, { parsePressKitFromPath } from './components/PressKitPage';
@@ -85,19 +81,13 @@ import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
 import { Route } from 'wouter';
-import {
-  Search as SearchTourIcon,
-  HelpOutline as HelpTourIcon,
-  EmojiPeople as WelcomeIcon,
-} from '@mui/icons-material';
+import { Search as SearchTourIcon, HelpOutline as HelpTourIcon, EmojiPeople as WelcomeIcon } from '@mui/icons-material';
 // Super Admin: alltid-tilgjengelig kontrollflate for daniel@creatorhubn.com.
 // Mountes på toppen av Role Room-shellen så det er synlig SELV når et
 // prosjekt er åpent. /admin-room-ruten åpner AdminRoom direkte uten å
 // gå via dashboard-subtab (som var begravd bak email-gate + project-state).
 import SuperAdminOverlay from './components/admin/SuperAdminOverlay';
-import SuperAdminAdminRoomShell, {
-  isSuperAdminAdminRoomPath,
-} from './components/admin/SuperAdminAdminRoomShell';
+import SuperAdminAdminRoomShell, { isSuperAdminAdminRoomPath } from './components/admin/SuperAdminAdminRoomShell';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -201,7 +191,7 @@ function CastingStandaloneAppContent() {
   // her — ikke i RoleRoomDashboardPanel — for å bypasse email-gate-bug og
   // project-room-auto-restore. Bare daniel@creatorhubn.com slipper gjennom
   // (verifisert i SuperAdminAdminRoomShell selv).
-  const isAdminRoomPath = useMemo(() => isSuperAdminAdminRoomPath(), [localeCtx.pathname]);
+  const isAdminRoomPath = useMemo(() => isSuperAdminAdminRoomPath(), []);
 
   // Public SEO-landingssider — detekteres før auth-gate slik at
   // Googlebot kan indeksere innholdet uten login.

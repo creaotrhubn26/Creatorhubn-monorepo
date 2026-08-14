@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MobileReviewDetailSheet — fullscreen review detail on phone, right drawer
  * on iPad. Renders the full review with history and a sticky decision bar.

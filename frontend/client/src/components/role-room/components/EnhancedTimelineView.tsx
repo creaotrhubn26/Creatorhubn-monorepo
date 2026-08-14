@@ -1,21 +1,6 @@
-import { useState, useRef, useEffect, useMemo, type FC } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Stack,
-  Chip,
-  Tooltip,
-  IconButton,
-  Slider,
-  alpha,
-} from '@mui/material';
-import {
-  ZoomIn as ZoomInIcon,
-  ZoomOut as ZoomOutIcon,
-  Mic as MicIcon,
-  Videocam as VideocamIcon,
-} from '@mui/icons-material';
+import { useState, useRef, useMemo, type FC } from 'react';
+import { Box, Typography, Stack, Tooltip, IconButton } from '@mui/material';
+import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, Mic as MicIcon, Videocam as VideocamIcon } from '@mui/icons-material';
 import type { SceneBreakdown, CastingShot, ShotList } from '../models/casting';
 
 interface EnhancedTimelineViewProps {
@@ -56,7 +41,7 @@ export const EnhancedTimelineView: FC<EnhancedTimelineViewProps> = ({
 }) => {
   const [zoom, setZoom] = useState(1);
   const timelineRef = useRef<HTMLDivElement>(null);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, _setCurrentTime] = useState(0);
 
   // Build shot blocks from shot lists
   const shotBlocks = useMemo(() => {
@@ -188,7 +173,7 @@ export const EnhancedTimelineView: FC<EnhancedTimelineViewProps> = ({
           alignItems: 'center',
         }}
       >
-        {sceneMarkers.map((marker, idx) => {
+        {sceneMarkers.map((marker, _idx) => {
           const width = ((marker.endTime - marker.startTime) / Math.max(totalDuration, 1)) * 100;
           const left = (marker.startTime / Math.max(totalDuration, 1)) * 100;
           const isSelected = selectedScene?.id === marker.scene.id;

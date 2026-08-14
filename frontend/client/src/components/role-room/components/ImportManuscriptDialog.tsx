@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { useState, type ChangeEvent, type FC } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Alert, LinearProgress, Stack, Paper, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip } from "@mui/material";
-import { FileUpload as FileUploadIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon, Info as InfoIcon } from "@mui/icons-material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Alert, LinearProgress, Stack, Paper, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableRow, Chip } from "@mui/material";
+import { FileUpload as FileUploadIcon, CheckCircle as CheckCircleIcon, Info as InfoIcon } from "@mui/icons-material";
 import type { ManuscriptExport } from "../models/casting";
 import { manuscriptService } from "../services/manuscriptService";
 import { useToast } from "./ToastStack";
@@ -19,9 +18,9 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
   onClose,
   onImportComplete,
 }) => {
-  const { showSuccess, showError, showWarning } = useToast();
+  const { showSuccess, showError } = useToast();
   const [step, setStep] = useState<ImportStep>('upload');
-  const [file, setFile] = useState<File | null>(null);
+  const [_file, setFile] = useState<File | null>(null);
   const [importData, setImportData] = useState<ManuscriptExport | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);

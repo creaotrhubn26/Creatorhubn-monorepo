@@ -40,7 +40,7 @@ export default function SelfTapeVideoPlayer({
   take, onRecordClick, onUploadFile, onGuidesClick, onAddExternalClick,
 }: Props) {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const _isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);

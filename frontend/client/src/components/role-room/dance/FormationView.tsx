@@ -23,44 +23,11 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import {
-  Box,
-  Stack,
-  Typography,
-  Button,
-  IconButton,
-  Tooltip,
-  TextField,
-  Avatar,
-  Chip,
-  Checkbox,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  PlayArrow as PlayIcon,
-  Save as SaveIcon,
-  Delete as DeleteIcon,
-  PhotoCamera as CameraIcon,
-  Star as StarIcon,
-  GridOn as GridIcon,
-  GridOff as GridOffIcon,
-  Sync as SymmetryIcon,
-  ViewColumn as DistributeXIcon,
-  ViewStream as DistributeYIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
-} from '@mui/icons-material';
+import { Box, Stack, Typography, IconButton, Tooltip, TextField, Avatar, Chip, Checkbox } from '@mui/material';
+import { Add as AddIcon, PlayArrow as PlayIcon, Save as SaveIcon, Delete as DeleteIcon, GridOn as GridIcon, GridOff as GridOffIcon, Sync as SymmetryIcon, ViewColumn as DistributeXIcon, ViewStream as DistributeYIcon, Visibility as VisibilityIcon, VisibilityOff as VisibilityOffIcon, Undo as UndoIcon, Redo as RedoIcon } from '@mui/icons-material';
 import { ToggleButton, ToggleButtonGroup, MenuItem, Autocomplete } from '@mui/material';
 import { Canvas, Circle, Rect, Textbox, Line, Group, FabricImage } from 'fabric';
-import {
-  DEMO_DANCERS,
-  DEMO_FORMATIONS,
-  type Dancer,
-  type DancerPosition,
-  type Formation,
-} from './formationTypes';
+import { DEMO_DANCERS, DEMO_FORMATIONS, type Dancer, type Formation } from './formationTypes';
 import { FormationTimeline } from './FormationTimeline';
 import { DancerPathsView } from './DancerPathsView';
 import { formatTimecode, parseTimecode } from './timecode';
@@ -405,7 +372,6 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
   const [showIds, setShowIds] = useState<boolean>(false);
   const [stageOpacity, setStageOpacity] = useState<number>(1);
   const [stageMode, setStageMode] = useState<'2d' | '3d'>('2d');
-  const [zoomPct, setZoomPct] = useState<number>(100);
   const [curveMode, setCurveMode] = useState<boolean>(false);
 
   const dancersById = useMemo(
@@ -525,7 +491,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
     setAriaAnnounce(
       `${name} flyttet til posisjon ${(x * 100).toFixed(0)}% horisontalt, ${(y * 100).toFixed(0)}% vertikalt`,
     );
-  }, [activeFormationId, dancersById]);
+  }, [activeFormationId, dancersById, setFormations]);
 
   // ─── Tegn aktiv formasjon når den endres ──────────
   // onDancerClick lagres i en ref slik at vi ikke trenger å re-tegne
@@ -640,7 +606,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
           : f,
       ),
     );
-  }, [activeFormationId, isDancerInFormation]);
+  }, [activeFormationId, isDancerInFormation, setFormations]);
 
   const removeDancerFromFormation = useCallback((dancerId: string) => {
     if (!activeFormationId) return;
@@ -651,7 +617,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
           : f,
       ),
     );
-  }, [activeFormationId]);
+  }, [activeFormationId, setFormations]);
 
   // ─── Lagre ny formasjon — snapshot av nåværende ────
 
@@ -667,7 +633,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
     setFormations((prev) => [...prev, snapshot]);
     setActiveFormationId(snapshot.id);
     setNewFormationName('');
-  }, [activeFormation, newFormationName]);
+  }, [activeFormation, newFormationName, setFormations]);
 
   const updateActiveFormation = useCallback(
     (patch: Partial<Formation>): void => {
@@ -676,7 +642,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         prev.map((f) => (f.id === activeFormationId ? { ...f, ...patch } : f)),
       );
     },
-    [activeFormationId],
+    [activeFormationId, setFormations],
   );
 
   const deleteFormation = useCallback((id: string) => {
@@ -713,7 +679,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
       }
       return next;
     });
-  }, [activeFormationId]);
+  }, [activeFormationId, setFormations]);
 
   // ─── Animer overgang fra aktiv formasjon til en annen ───
 
@@ -758,7 +724,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
         }),
       );
     },
-    [activeFormationId, snapStep],
+    [activeFormationId, setFormations, snapStep],
   );
 
   // ─── Render ────────────────────────────────────────

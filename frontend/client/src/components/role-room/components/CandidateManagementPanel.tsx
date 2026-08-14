@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 import React, { useState, useId, useMemo, useEffect, memo, useRef } from 'react';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
@@ -387,7 +387,7 @@ function CandidateManagementPanelInner({
   const FAVORITES_NAMESPACE = 'virtualStudio_candidateFavorites';
   const proViewNamespace = `${PRO_VIEW_NAMESPACE}:${projectId}`;
 
-  const getCandidateDate = (candidate: Candidate, field: 'createdAt' | 'updatedAt') => {
+  const getCandidateDate = useCallback((candidate: Candidate, field: 'createdAt' | 'updatedAt') => {
     const camelCaseValue = candidate[field];
     const snakeCaseValue = candidate[`${field}_at`];
     const raw = typeof camelCaseValue === 'string'
@@ -397,7 +397,7 @@ function CandidateManagementPanelInner({
         : undefined;
     const value = raw ? new Date(raw).getTime() : 0;
     return Number.isFinite(value) ? value : 0;
-  };
+  }, []);
 
   const getCandidateContactInfo = (candidate?: Candidate | null): ContactInfo => {
     if (!candidate) {
@@ -415,7 +415,7 @@ function CandidateManagementPanelInner({
     return { email, phone };
   };
 
-  const getCandidateAssignedRoles = (candidate: Candidate): string[] => {
+  const getCandidateAssignedRoles = useCallback((candidate: Candidate): string[] => {
     const directRoles = candidate.assignedRoles;
     if (Array.isArray(directRoles)) {
       return directRoles.filter((roleId): roleId is string => typeof roleId === 'string' && roleId.length > 0);
@@ -430,7 +430,7 @@ function CandidateManagementPanelInner({
         ? candidate.role_id
         : undefined;
     return fallbackRoleId ? [fallbackRoleId] : [];
-  };
+  }, []);
 
   const getCandidateAuditionNotes = (candidate: Candidate): string => {
     if (typeof candidate.auditionNotes === 'string' && candidate.auditionNotes.trim().length > 0) {
@@ -452,7 +452,7 @@ function CandidateManagementPanelInner({
     return Array.isArray(raw) ? (raw as CandidateConsent[]) : [];
   };
 
-  const getConsentCompletionScore = (candidate: Candidate) => {
+  const getConsentCompletionScore = useCallback((candidate: Candidate) => {
     const consents = getCandidateConsents(candidate);
     if (consents.length === 0) return 0;
     const signedCount = consents.filter((consent) => {
@@ -460,18 +460,18 @@ function CandidateManagementPanelInner({
       return status === 'signed' || status === 'approved' || status === 'accepted';
     }).length;
     return Math.round((signedCount / consents.length) * 100);
-  };
+  }, []);
 
-  const getContactCoverageScore = (candidate: Candidate) => {
+  const getContactCoverageScore = useCallback((candidate: Candidate) => {
     const contactInfo = getCandidateContactInfo(candidate);
     const email = contactInfo.email;
     const phone = contactInfo.phone;
     if (email && phone) return 100;
     if (email || phone) return 50;
     return 0;
-  };
+  }, []);
 
-  const getCandidateFitScore = (candidate: Candidate) => {
+  const getCandidateFitScore = useCallback((candidate: Candidate) => {
     const status = String(candidate.status || 'pending');
     const statusScoreMap: Record<string, number> = {
       confirmed: 30,
@@ -498,7 +498,7 @@ function CandidateManagementPanelInner({
       0,
       Math.min(100, statusScore + roleScore + mediaScore + consentScore + contactScore + favoriteScore + quickContactScore + recencyScore),
     );
-  };
+  }, [favorites, getCandidateAssignedRoles, getCandidateDate, getConsentCompletionScore, getContactCoverageScore, quickContacts]);
 
   // Load favorites from database (with settings cache fallback)
   useEffect(() => {
@@ -595,7 +595,7 @@ function CandidateManagementPanelInner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleExportCSV, onCreateCandidate]);
 
   // Helper functions
   const getStatusColor = (status: string) => {
@@ -669,7 +669,7 @@ function CandidateManagementPanelInner({
     });
     
     return result;
-  }, [validCandidates, searchQuery, statusFilter, sortField, sortDirection, favorites, quickContacts]);
+  }, [validCandidates, searchQuery, statusFilter, sortField, sortDirection, favorites, quickContacts, getCandidateAssignedRoles]);
 
   // Statistics
   const statistics = useMemo(() => ({
@@ -701,7 +701,7 @@ function CandidateManagementPanelInner({
       scores.set(candidate.id, getCandidateFitScore(candidate));
     });
     return scores;
-  }, [validCandidates, favorites, quickContacts]);
+  }, [validCandidates, getCandidateFitScore]);
 
   const proCandidates = useMemo(() => {
     let result = [...filteredAndSortedCandidates];
@@ -732,7 +732,7 @@ function CandidateManagementPanelInner({
     });
 
     return result;
-  }, [candidateFitScores, filteredAndSortedCandidates, proPreset, proSortDirection, proSortField]);
+  }, [candidateFitScores, filteredAndSortedCandidates, getConsentCompletionScore, getContactCoverageScore, getCandidateDate, proPreset, proSortDirection, proSortField]);
 
   const proListItems = useMemo<ProListItem[]>(() => {
     if (proGroupBy === 'none') {
@@ -778,7 +778,7 @@ function CandidateManagementPanelInner({
 
   const selectedCandidateAssignedRoles = useMemo(
     () => (selectedCandidate ? getCandidateAssignedRoles(selectedCandidate) : []),
-    [selectedCandidate],
+    [selectedCandidate, getCandidateAssignedRoles],
   );
 
   const selectedCandidateNotes = useMemo(
@@ -846,7 +846,7 @@ function CandidateManagementPanelInner({
 
     window.addEventListener('keydown', handleProKeyboard);
     return () => window.removeEventListener('keydown', handleProKeyboard);
-  }, [onEditCandidate, proCandidates, selectedCandidate, selectedCandidateId, workspaceView]);
+  }, [handleStatusUpdate, onEditCandidate, proCandidates, selectedCandidate, selectedCandidateId, workspaceView]);
 
   useEffect(() => {
     if (activeCandidates.length === 0) {
@@ -915,7 +915,7 @@ function CandidateManagementPanelInner({
     });
 
     return events.sort((a, b) => b.date - a.date);
-  }, [selectedCandidate]);
+  }, [selectedCandidate, getCandidateDate]);
 
   useEffect(() => {
     if (!selectedCandidate || !Array.isArray(selectedCandidate.photos)) return;
@@ -987,7 +987,7 @@ function CandidateManagementPanelInner({
     });
   };
 
-  const saveCandidatePatch = async (candidate: Candidate, patch: Partial<Candidate>, successMessage?: string) => {
+  const saveCandidatePatch = useCallback(async (candidate: Candidate, patch: Partial<Candidate>, successMessage?: string) => {
     try {
       const updatedCandidate: Candidate = {
         ...candidate,
@@ -1003,9 +1003,9 @@ function CandidateManagementPanelInner({
       showError('Kunne ikke oppdatere kandidat', 3000);
       return false;
     }
-  };
+  }, [projectId, onCandidatesChange, showError, showSuccess]);
 
-  const handleStatusUpdate = async (candidate: Candidate, status: StatusFilter) => {
+  const handleStatusUpdate = useCallback(async (candidate: Candidate, status: StatusFilter) => {
     await saveCandidatePatch(candidate, { status }, `${candidate.name} satt til ${getStatusLabel(status)}`);
     // Phase 9.6 — hvis kandidat er fra partnership-talent-forslag,
     // PATCH casting_candidates direkte + trigger e-post-callback til byrå.
@@ -1026,7 +1026,7 @@ function CandidateManagementPanelInner({
         console.warn('Partnership candidate-status PATCH feilet:', err);
       }
     }
-  };
+  }, [saveCandidatePatch]);
 
   const handleBulkStatusUpdate = async (status: StatusFilter) => {
     const selectedCandidates = validCandidates.filter((candidate) => selectedIds.has(candidate.id));
@@ -1342,7 +1342,7 @@ function CandidateManagementPanelInner({
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = useCallback(() => {
     try {
       const project = castingService.getProject(projectId);
       if (!project) {
@@ -1372,9 +1372,9 @@ function CandidateManagementPanelInner({
       console.error('Error exporting candidates:', error);
       showError('❌ Kunne ikke eksportere kandidater');
     }
-  };
+  }, [filteredAndSortedCandidates, generateCandidatesHTML, projectId, safeRoles, showError, showSuccess]);
 
-  const generateCandidatesHTML = (project: any, candidates: Candidate[], roles: Role[]): string => {
+  const generateCandidatesHTML = useCallback((project: any, candidates: Candidate[], roles: Role[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -1772,7 +1772,7 @@ function CandidateManagementPanelInner({
   </div>
 </body>
 </html>`;
-  };
+  }, [getCandidateAssignedRoles]);
 
   const toggleCardExpanded = (id: string) => {
     setExpandedCards(prev => {

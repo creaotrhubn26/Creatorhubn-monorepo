@@ -1,5 +1,5 @@
 import React, { useState, useReducer, useId, useMemo, useEffect, useCallback, useRef, memo } from "react";
-import { Box, Typography, Button, Card, CardContent, TextField, IconButton, Chip, Grid, Tooltip, Collapse, Snackbar, FormControl, Select, MenuItem, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Checkbox, Stack, useTheme, useMediaQuery, LinearProgress, Slide, Menu, Divider, Avatar, AvatarGroup, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Skeleton, Alert } from "@mui/material";
+import { Box, Typography, Button, Card, CardContent, TextField, IconButton, Chip, Grid, Tooltip, Collapse, Snackbar, FormControl, Select, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Paper, Checkbox, Stack, useTheme, useMediaQuery, LinearProgress, Slide, Menu, Divider, Avatar, AvatarGroup, Dialog, DialogTitle, DialogContent, DialogActions, Skeleton, Alert } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Search as SearchIcon, Star as StarIcon, StarBorder as StarBorderIcon, ExpandMore as ExpandIcon, ExpandLess as CollapseIcon, FileDownload as ExportIcon, ContentCopy as DuplicateIcon, GridView as GridViewIcon, TableRows as TableViewIcon, ViewList as CompactViewIcon, Schedule as ScheduleIcon, Person as PersonIcon, Movie as MovieIcon, Clear as ClearIcon, InterpreterMode as InterpreterModeIcon, Note as NoteIcon, Inventory as InventoryIcon, Sort as SortIcon, Today as TodayIcon, SwapVert as BulkStatusIcon, AccessTime as TimeIcon, MoreVert as MoreVertIcon, BookmarkBorder as PoolIcon, HelpOutline as HelpIcon, ViewTimeline as TimelineViewIcon, ViewKanban as PipelineViewIcon, Keyboard as KeyboardIcon, WarningAmber as WarningIcon, Share as ShareIcon, CompareArrows as CompareIcon, Save as SaveIcon, PlaylistAdd as PlaylistAddIcon, ContentPaste as PasteIcon, Groups as GroupsIcon } from "@mui/icons-material";
 import { RolesIcon as TheaterComedyIcon, AuditionsIcon, CandidatesIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, StatsIcon } from "./icons/CastingIcons";
@@ -407,7 +407,7 @@ function AuditionSchedulePanelInner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onCreateSchedule, openGuideDialog, openShortcutsDialog, selectedIds.size]);
+  }, [onCreateSchedule, openDrawer, openGuideDialog, openShortcutsDialog, selectedIds.size]);
 
   // ── O(1) lookup maps — rebuilt only when the source arrays change ──────────
   const candidateById = useMemo(
@@ -995,12 +995,12 @@ function AuditionSchedulePanelInner({
     }
   };
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = useCallback((id: string) => {
     if (userId) {
       toggleFavoriteViaApi(id);
     }
     // When no userId (unauthenticated), silently skip (favorites require login)
-  };
+  });
 
   const handleSelectAll = () => {
     if (selectedIds.size === filteredAndSortedSchedules.length) {
@@ -1484,7 +1484,7 @@ function AuditionSchedulePanelInner({
       console.error('Error exporting auditions:', error);
       alert('Kunne ikke eksportere auditions');
     }
-  }, [projectId, filteredAndSortedSchedules]);
+  }, [projectId, generateAuditionsHTML, filteredAndSortedSchedules]);
 
   // Keep the stable ref in sync so the keyboard effect always calls the latest version
   useEffect(() => { handleExportCSVRef.current = handleExportCSV; }, [handleExportCSV]);

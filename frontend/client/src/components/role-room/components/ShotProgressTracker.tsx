@@ -1,53 +1,6 @@
-// @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Chip,
-  Stack,
-  LinearProgress,
-  Card,
-  CardContent,
-  Grid,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Divider,
-  Badge,
-  Avatar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Collapse,
-} from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Replay as RetakeIcon,
-  PlayCircle as PlayIcon,
-  PauseCircle as PauseIcon,
-  Schedule as ScheduleIcon,
-  Videocam as VideocamIcon,
-  Movie as MovieIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Flag as FlagIcon,
-  Star as StarIcon,
-  Comment as CommentIcon,
-  Timer as TimerIcon,
-  Add as AddIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Paper, Button, IconButton, Chip, Stack, LinearProgress, Card, CardContent, Grid, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem, FormControl, InputLabel, Divider, Collapse } from '@mui/material';
+import { CheckCircle as CheckCircleIcon, Replay as RetakeIcon, PlayCircle as PlayIcon, Videocam as VideocamIcon, ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon, Star as StarIcon, Timer as TimerIcon } from '@mui/icons-material';
 import { TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
 import type { SceneBreakdown } from '../models/casting';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
@@ -379,11 +332,9 @@ export const ShotProgressTracker: React.FC<ShotProgressTrackerProps> = ({
           
           // Calculate scene progress
           let sceneCompleted = 0;
-          let sceneApproved = 0;
           shots.forEach((shot: TrackedShot) => {
             const sp = getShotProgress(scene.id, shot.id);
             if (sp.status === 'completed' || sp.status === 'approved') sceneCompleted++;
-            if (sp.status === 'approved') sceneApproved++;
           });
           const sceneProgress = shots.length > 0 ? (sceneCompleted / shots.length) * 100 : 0;
 

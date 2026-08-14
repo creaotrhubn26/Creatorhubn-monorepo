@@ -70,7 +70,7 @@ export function GlobalMentionHelper({
   );
 
   // Keep a stable candidate array when logical content is unchanged.
-  const seededCandidates = useMemo(() => rawSeededCandidates, [seedKey]);
+  const seededCandidates = useMemo(() => rawSeededCandidates, [rawSeededCandidates]);
 
   useEffect(() => {
     let isMounted = true;

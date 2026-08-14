@@ -10,39 +10,9 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import {
-  Box,
-  Paper,
-  Typography,
-  Chip,
-  IconButton,
-  Tooltip,
-  Fade,
-  Popper,
-  ClickAwayListener,
-  Divider,
-  LinearProgress,
-  Stack,
-  alpha,
-} from '@mui/material';
-import {
-  Check as AcceptIcon,
-  Close as DismissIcon,
-  AutoFixHigh as AutoFixIcon,
-  Psychology as LearnIcon,
-  Lightbulb as SuggestionIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Info as InfoIcon,
-  KeyboardArrowDown as ArrowDownIcon,
-  Settings as SettingsIcon,
-} from '@mui/icons-material';
-import {
-  grammarMLService,
-  useGrammarCheck,
-  type GrammarError,
-  type GrammarSuggestion,
-} from '../../services/grammarMLService';
+import { Box, Paper, Typography, Chip, IconButton, Tooltip, Fade, Popper, Divider, LinearProgress, Stack, alpha } from '@mui/material';
+import { Check as AcceptIcon, Close as DismissIcon, Psychology as LearnIcon, Lightbulb as SuggestionIcon, Warning as WarningIcon, Error as ErrorIcon, Info as InfoIcon, KeyboardArrowDown as ArrowDownIcon } from '@mui/icons-material';
+import { grammarMLService, useGrammarCheck, type GrammarError, type GrammarSuggestion } from '../../services/grammarMLService';
 
 // ============================================================================
 // Types
@@ -64,7 +34,7 @@ interface GrammarSuggestionsOverlayProps {
   darkMode?: boolean;
 }
 
-interface InlineErrorMarker {
+interface _InlineErrorMarker {
   error: GrammarError;
   element: HTMLElement | null;
 }

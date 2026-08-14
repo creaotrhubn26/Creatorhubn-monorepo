@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useId, useMemo, useEffect, useCallback, type DragEvent, memo } from 'react';
 import {
   Box,
@@ -342,7 +341,7 @@ function AssignEventDialog({
       setRoleId(roles[0]?.id ?? '');
       setNotes('');
     }
-  }, [open]);
+  }, [open, roles]);
 
   const handleSubmit = async () => {
     if (!date || !time) return;

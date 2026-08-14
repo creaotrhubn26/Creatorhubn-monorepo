@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomProjectSwitcher — project switcher with viewport-adaptive presentation.
  *

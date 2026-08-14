@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AnimaticVoiceoverStrip — horisontal rad med mic-knapper per frame
  * for opplastning av per-frame voiceover. Aktivt frame fremheves,

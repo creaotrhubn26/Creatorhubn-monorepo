@@ -1,34 +1,6 @@
 import React, { useId, useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Card,
-  CardContent,
-  Tooltip,
-  Chip,
-  Avatar,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  useTheme,
-  useMediaQuery,
-} from '@mui/material';
-import {
-  Person as PersonIcon,
-  Group as GroupIcon,
-  Lock as LockIcon,
-  Public as PublicIcon,
-  Link as LinkIcon,
-  ContentCopy as CopyIcon,
-  Edit as EditIcon,
-  Visibility as ViewIcon,
-  AdminPanelSettings as AdminIcon,
-  Email as EmailIcon,
-} from '@mui/icons-material';
+import { Box, Typography, Button, Card, CardContent, Tooltip, Chip, Avatar, List, ListItem, ListItemAvatar, ListItemText, ListItemSecondaryAction, useTheme, useMediaQuery } from '@mui/material';
+import { Person as PersonIcon, Group as GroupIcon, Lock as LockIcon, Public as PublicIcon, Link as LinkIcon, ContentCopy as CopyIcon, Edit as EditIcon, Visibility as ViewIcon, AdminPanelSettings as AdminIcon, Email as EmailIcon } from '@mui/icons-material';
 import { ShareCustomIcon as ShareIcon } from './icons/CastingIcons';
 import type { CastingProject, UserRole, UserRoleType } from '../models/casting';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';

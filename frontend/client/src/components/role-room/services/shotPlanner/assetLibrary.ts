@@ -1,4 +1,4 @@
-import { Point2D, type Asset2DDefinition, type AssetType } from "./types";
+import { type Asset2DDefinition, type AssetType } from "./types";
 
 // =============================================================================
 // SVG Icon Paths for Assets

@@ -2409,7 +2409,7 @@ export function CrewManagementPanel({
   };
 
   // Export to HTML (was CSV)
-  const exportToCSV = async () => {
+  const exportToCSV = useCallback(async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
@@ -2436,7 +2436,7 @@ export function CrewManagementPanel({
       console.error('Error exporting crew:', error);
       alert('Kunne ikke eksportere crewliste');
     }
-  };
+  });
 
   type ProjectExportInfo = { id: string; name: string };
   const generateCrewHTML = (project: ProjectExportInfo, crew: CrewMember[]): string => {
