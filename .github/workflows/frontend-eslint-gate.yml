@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --workspaces=false
 
       - name: ESLint (errors only)
         # `--quiet` suppresses warnings and exits non-zero ONLY on errors. The
