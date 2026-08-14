@@ -28,6 +28,7 @@ import GridView from '@mui/icons-material/GridView';
 import Edit from '@mui/icons-material/Edit';
 import Collections from '@mui/icons-material/Collections';
 import Cached from '@mui/icons-material/Cached';
+import AttachFile from '@mui/icons-material/AttachFile';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
@@ -130,6 +131,14 @@ const T: WsDict = {
   save: { no: 'Lagre', en: 'Save' },
   rejectAll: { no: 'Forkast foreslåtte', en: 'Reject suggested' },
   showAll: { no: 'Vis alle', en: 'Show all' },
+  attachDeliverable: { no: 'Vedlegg til leveranse', en: 'Attach to deliverable' },
+  noAttachDeliverables: { no: 'Ingen leveranser ennå — opprett dem i Leveranser-fanen.', en: 'No deliverables yet — create them in the Deliverables tab.' },
+  alreadyAttached: { no: 'Allerede vedlagt på denne leveransen.', en: 'Already attached here.' },
+  attachedOk: { no: 'Vedlagt ✓', en: 'Attached ✓' },
+  deleteAsset: { no: 'Slett asset', en: 'Delete asset' },
+  deleteAssetFailed: { no: 'Kunne ikke slette asset', en: 'Could not delete asset' },
+  deleteAssetConfirm: { no: 'Slett denne filen permanent? Bilder, samlingsreferanser og vedlegg i leveranser fjernes. Kan ikke angres.', en: 'Delete this file permanently? Media, collection references and deliverable attachments are removed. Cannot be undone.' },
+  deleteBulkConfirm: { no: 'Slett {n} filer permanent? Samlingsreferanser og vedlegg i leveranser fjernes. Kan ikke angres.', en: 'Delete {n} files permanently? Collection references and deliverable attachments are removed. Cannot be undone.' },
 };
 
 const LIB = [['Alle medier', 2487], ['Bilder', 1732], ['Videoer', 624], ['Lyd', 98], ['Dokumenter', 33]];
@@ -346,6 +355,42 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media/assets/${encodeURIComponent(id)}/tags`, { method: 'PATCH', body: { tags } }); reloadMedia(); }
     catch (e: any) { window.alert(e?.message || t('error')); }
   };
+  // Høyreklikk-meny på tiles (åpne / vedlegg / slett).
+  const [tileCtx, setTileCtx] = useState<{ x: number; y: number; im: any } | null>(null);
+  // Vedlegg asset til en leveranse (samme kontrakt som LeveranserTab: deliverables.files).
+  const [attachDlg, setAttachDlg] = useState<any | null>(null);
+  const [attachDelivs, setAttachDelivs] = useState<any[]>([]);
+  const [attachMsg, setAttachMsg] = useState<string | null>(null);
+  const openAttachDeliverable = (ass: any) => {
+    setAttachDlg(ass); setAttachMsg(null); setAttachDelivs([]);
+    if (!isReal || !ass?.id) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
+      .then((r: any) => setAttachDelivs(Array.isArray(r?.deliverables) ? r.deliverables : []))
+      .catch(() => setAttachDelivs([]));
+  };
+  // Fysisk sletting av asset (B2/R2-objekt + referanser + vedlegg) — permanent.
+  const deleteAsset = async (id: string) => {
+    if (!isReal || !id) return;
+    if (!window.confirm(t('deleteAssetConfirm'))) return;
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media/assets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setSelAsset(null); reloadMedia();
+    } catch (e: any) {
+      // 404 = allerede borte — bare rydd UI-et.
+      if (e?.status === 404) { setSelAsset(null); reloadMedia(); return; }
+      window.alert(`${t('deleteAssetFailed')}${e?.message ? ` (${e.message})` : ''}`);
+    }
+  };
+  const doAttachDeliverable = async (d: any) => {
+    if (!attachDlg?.id) return;
+    const cur = Array.isArray(d.files) ? d.files : [];
+    if (cur.some((f: any) => String(f.refId) === String(attachDlg.id))) { setAttachMsg(t('alreadyAttached')); return; }
+    const next = [...cur, { kind: 'media', refId: attachDlg.id, name: attachDlg.filename || 'Fil', url: attachDlg.previewUrl || null, at: new Date().toISOString() }];
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables/${encodeURIComponent(d.id)}`, { method: 'PATCH', body: { files: next } });
+      setAttachMsg(t('attachedOk')); setAttachDlg(null); reloadMedia();
+    } catch (e: any) { window.alert(e?.message || t('error')); }
+  };
   const applyBulkKeywords = async () => {
     const words = kwBulkText.split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
     if (!words.length) return;
@@ -425,6 +470,17 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const bulkRate = (r: number | null) => { for (const id of selIds) patchAsset(id, { rating: r }); endBulk(); };
   const bulkFlag = (f: boolean) => { for (const id of selIds) patchAsset(id, { flaggedForClient: f }); endBulk(); };
   const bulkEnhance = () => { const ids = [...selIds]; endBulk(); if (ids.length) triggerEnhance(ids); };
+  const bulkDelete = async () => {
+    const ids = [...selIds];
+    if (!ids.length) return;
+    if (!window.confirm(t('deleteBulkConfirm').replace('{n}', String(ids.length)))) return;
+    endBulk();
+    for (const id of ids) {
+      try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+      catch (e: any) { if (e?.status === 404) continue; window.alert(`${t('deleteAssetFailed')}: ${String(ids.length)}`); break; }
+    }
+    reloadMedia();
+  };
 
   // Sanntid: refetch media INSTANT når iPad skyter/culler (WS).
   // Live-culling: WS-event fra iPad (labels/nye assets) → refetch + synlig flash-ticker.
@@ -477,7 +533,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     if (!gridImages[i]) return;
     setSelIdx(i);
     const im = gridImages[i];
-    setSelAsset(assets.find((a) => a.id === im.id) || { id: im.id, filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag, createdAt: im.createdAt });
+    setSelAsset(assets.find((a) => a.id === im.id) || { id: im.id, filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag, createdAt: im.createdAt, type: im.type, mime: im.type === 'audio' ? 'audio/mpeg' : im.type === 'video' ? 'video/mp4' : undefined });
   };
   useEffect(() => {
     if (selIdx == null || gridImages.length === 0) return;
@@ -489,7 +545,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selIdx, gridImages.length]);
-  useEffect(() => { if (selIdx != null && gridImages[selIdx]) { const im = gridImages[selIdx]; setSelAsset(assets.find((a) => a.id === im.id) || { id: im.id, filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag, createdAt: im.createdAt }); } }, [selIdx, assets, gridImages.length]);
+  useEffect(() => { if (selIdx != null && gridImages[selIdx]) { const im = gridImages[selIdx]; setSelAsset(assets.find((a) => a.id === im.id) || { id: im.id, filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag, createdAt: im.createdAt, type: im.type, mime: im.type === 'audio' ? 'audio/mpeg' : im.type === 'video' ? 'video/mp4' : undefined }); } }, [selIdx, assets, gridImages.length]);
   // EXIF-logg per asset (capture_assets.exif), cachet.
   useEffect(() => {
     if (!isReal || !selAsset?.id || exifCache[selAsset.id]) return;
@@ -770,6 +826,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Button size="small" disabled={dlBusy != null} onClick={downloadSelected} sx={{ color: ws.text, textTransform: 'none', fontWeight: 700 }}>{dlBusy === 'bulk' ? t('downloading') : `${t('download')} (${selIds.size})`}</Button>
             <Button size="small" onClick={() => setKwBulkOpen(true)} sx={{ color: ws.text, textTransform: 'none', fontWeight: 700 }}>{t('keywords')}</Button>
             <Button size="small" onClick={(e) => setBulkFolderMenu(e.currentTarget)} sx={{ color: ws.text, textTransform: 'none', fontWeight: 700 }}>Mappe ▾</Button>
+            <Button size="small" onClick={bulkDelete} sx={{ color: '#f87171', textTransform: 'none', fontWeight: 700 }}>{t('deleteAsset')} ({selIds.size})</Button>
             <Button size="small" onClick={endBulk} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700, ml: 'auto' }}>{t('cancel2')}</Button>
             <Menu anchorEl={bulkFolderMenu || null} open={!!bulkFolderMenu} onClose={() => setBulkFolderMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}`, py: 0.5 } }}>
               {folders.map((f: any) => <MenuItem key={f.id} onClick={() => { setBulkFolderMenu(null); moveBulkFolder(f.id); }} sx={{ fontSize: 13 }}>{f.name}</MenuItem>)}
@@ -781,6 +838,18 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </Menu>
           </Stack>
         )}
+        {/* Høyreklikk-meny: tile-handlinger (alltid tilgjengelig, også uten bulkMode) */}
+        <Menu
+          anchorReference="anchorPosition"
+          anchorPosition={tileCtx ? { top: tileCtx.y, left: tileCtx.x } : undefined}
+          open={!!tileCtx}
+          onClose={() => setTileCtx(null)}
+          PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}`, py: 0.5, minWidth: 190 } }}
+        >
+          <MenuItem onClick={() => { const i = gridImages.findIndex((x: any) => x.id === tileCtx?.im.id); setTileCtx(null); openAssetAt(i === -1 ? 0 : i); }} sx={{ fontSize: 13 }}>{t('openOriginal')}</MenuItem>
+          <MenuItem onClick={() => { openAttachDeliverable({ id: tileCtx?.im.id, filename: tileCtx?.im.label, previewUrl: tileCtx?.im.url }); setTileCtx(null); }} sx={{ fontSize: 13 }}>{t('attachDeliverable')}</MenuItem>
+          <MenuItem onClick={() => { const id = tileCtx?.im.id; setTileCtx(null); deleteAsset(id); }} sx={{ fontSize: 13, color: '#f87171' }}>{t('deleteAsset')}</MenuItem>
+        </Menu>
 
         {isReal && loadErr && assets.length === 0 ? (
           <WsErrorState message={t('loadError')} onRetry={reloadMedia} />
@@ -830,7 +899,8 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                               {im.createdAt && Date.now() - new Date(im.createdAt).getTime() < 86400000 && <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(34,197,94,.9)', color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>NY</Box>}
                             </>
                           )}
-                          onSelect={(im) => { const i = gridImages.findIndex((x: any) => x.id === im.id); openAssetAt(i === -1 ? 0 : i); }} />
+                          onSelect={(im) => { const i = gridImages.findIndex((x: any) => x.id === im.id); openAssetAt(i === -1 ? 0 : i); }}
+                          onContextMenu={(im, e) => setTileCtx({ x: e.clientX, y: e.clientY, im })} />
                       </Box>
                     ));
                   })()}
@@ -852,7 +922,8 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                       {im.createdAt && Date.now() - new Date(im.createdAt).getTime() < 86400000 && <Box sx={{ px: 0.6, py: 0.15, borderRadius: 1, bgcolor: 'rgba(34,197,94,.9)', color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>NY</Box>}
                     </>
                   )}
-                  onSelect={(im) => { const i = gridImages.findIndex((x: any) => x.id === im.id); openAssetAt(i === -1 ? 0 : i); }} />
+                  onSelect={(im) => { const i = gridImages.findIndex((x: any) => x.id === im.id); openAssetAt(i === -1 ? 0 : i); }}
+                  onContextMenu={(im, e) => setTileCtx({ x: e.clientX, y: e.clientY, im })} />
               )}
             </Box>
           </>
@@ -866,7 +937,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           if (!det) return (
             <WsCard><Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 3, textAlign: 'center' }}>{t('clickDetails')}</Typography></WsCard>
           );
-          const detType = assetType(det.mime);
+          const detType = assetType(det.mime || det.type);
           const meta = isReal
             ? [
                 [t('fileType'), det.mime || '—'],
@@ -1000,6 +1071,12 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {isReal && det.id && <Button fullWidth size="small" variant="outlined" disabled={enhancing} onClick={() => triggerEnhance([det.id])} startIcon={wsIcon('AutoAwesome', { fontSize: 15 })} sx={{ mt: 1, color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, '&:hover': { borderColor: ws.accent, bgcolor: ws.accentSoft } }}>{enhancing ? t('sending') : t('sendToEnhance')}</Button>}
               {isReal && det.id && (
                 <Button fullWidth size="small" onClick={() => patchAsset(det.id, { rejected: !det.rejected })} sx={{ mt: 0.75, color: det.rejected ? ws.textDim : '#f87171', textTransform: 'none', fontWeight: 600, border: `1px solid ${det.rejected ? ws.border : 'rgba(248,113,113,.4)'}` }}>{det.rejected ? t('undoReject') : `${t('rejectAction')} ${t('rejectedWord').toLowerCase()}`}</Button>
+              )}
+              {isReal && det.id && (
+                <Button fullWidth size="small" startIcon={<AttachFile sx={{ fontSize: 15 }} />} onClick={() => openAttachDeliverable(det)} sx={{ mt: 0.75, color: ws.accent, textTransform: 'none', fontWeight: 600, border: `1px solid ${ws.accentBorder}` }}>{t('attachDeliverable')}</Button>
+              )}
+              {isReal && det.id && (
+                <Button fullWidth size="small" onClick={() => deleteAsset(det.id)} sx={{ mt: 0.75, color: '#fff', bgcolor: 'rgba(248,113,113,.85)', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#ef4444' } }}>{t('deleteAsset')}</Button>
               )}
             </WsCard>
           );
@@ -1206,6 +1283,26 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Før/Etter — interaktiv AI-forbedring-sammenligning */}
+      {/* Vedlegg asset til leveranse */}
+      <WsModal open={!!attachDlg} onClose={() => setAttachDlg(null)} title={`${t('attachDeliverable')} — ${attachDlg?.filename || ''}`} maxWidth="sm">
+        <Stack spacing={1}>
+          {attachMsg && <Typography sx={{ fontSize: 12, fontWeight: 800, color: ws.green }}>{attachMsg}</Typography>}
+          {attachDelivs.length === 0 ? (
+            <Typography sx={{ fontSize: 13, color: ws.textDim }}>{t('noAttachDeliverables')}</Typography>
+          ) : (
+            attachDelivs.map((d) => (
+              <Box key={d.id} onClick={() => doAttachDeliverable(d)} sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}`, cursor: 'pointer', '&:hover': { borderColor: ws.accentBorder, bgcolor: ws.accentSoft } }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{d.title}</Typography>
+                  <WsTag label={d.status || ''} tone="neutral" />
+                </Stack>
+                {d.type && <Typography sx={{ fontSize: 11, color: ws.textDim, mt: 0.25 }}>{d.type}</Typography>}
+              </Box>
+            ))
+          )}
+        </Stack>
+      </WsModal>
+
       <WsModal open={!!beforeAfter} onClose={() => setBeforeAfter(null)} title={`${t('beforeAfterTitle')} — ${beforeAfter?.photoId || t('aiEnhanceTitle')}`} maxWidth="md">
         {beforeAfter && (
           <Box>

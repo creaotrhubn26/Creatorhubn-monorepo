@@ -25,7 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
-import { signAssetReadUrl } from "./capture-upload-service";
+import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
 import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
@@ -166,6 +166,7 @@ async function ensureSchema(pool: any): Promise<void> {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_pwd_project ON project_workspace_deliverables (project_id, order_index)`,
         `ALTER TABLE project_workspace_deliverables ADD COLUMN IF NOT EXISTS checklist JSONB NOT NULL DEFAULT '[]'`,
+        `ALTER TABLE project_workspace_deliverables ADD COLUMN IF NOT EXISTS files JSONB NOT NULL DEFAULT '[]'`,
         `CREATE TABLE IF NOT EXISTS deliverable_type_learn (
           project_id VARCHAR(64) NOT NULL,
           word       TEXT NOT NULL,
@@ -302,6 +303,24 @@ const DL_TYPE_RULES: Array<[string, string[]]> = [
   ["Digital", ["download", "sosiale", "reels", "story", "leveranse"]],
   ["Fysisk", ["usb", "minne", "print", "kort", "albumkopi"]],
 ];
+
+/// Sanitize deliverables.files: kun kjente felt, kun objekter med kind, max 100 rader.
+/// Hindrer pølsevev i JSONB og blåser opp radstørrelsen (payload-sikkerhet).
+function sanitizeDeliverableFiles(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  const out: any[] = [];
+  for (const f of raw.slice(0, 100)) {
+    if (!f || typeof f !== "object" || Array.isArray(f)) continue;
+    const kind = typeof f.kind === "string" ? f.kind.slice(0, 40) : null;
+    if (!kind) continue;
+    const row: Record<string, string | null> = { kind };
+    for (const k of ["refId", "name", "url", "at"] as const) {
+      row[k] = typeof f[k] === "string" ? f[k].slice(0, 500) : null;
+    }
+    out.push(row);
+  }
+  return out;
+}
 
 async function learnDeliverableType(pool: any, pid: string, title: string, type: string | null): Promise<void> {
   if (!type) return;
@@ -1578,6 +1597,65 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try { await pool.query(`DELETE FROM asset_refs WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
     catch (e) { console.error("DELETE media refs", e); res.status(500).json({ error: "failed" }); }
+  });
+  // Fysisk sletting av en capture-asset (medier, referanser og vedlegg).
+  // R2/B2-objekt-sletting er best-effort — DB-raden er autoritativ.
+  app.delete("/api/projects/:projectId/media/assets/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const assetId = req.params.id;
+      // Scope asset til dette prosjektet (via sesjonens project_id).
+      const row = await pool.query(
+        `SELECT a.preview_key, a.full_key, a.raw_key, a.auto_cleaned_key, a.original_filename FROM capture_assets a
+           JOIN capture_sessions s ON s.id = a.session_id
+          WHERE a.id = $1 AND s.project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!row.rows.length) return res.status(404).json({ error: "not_found" });
+      const a = row.rows[0];
+
+      // Samle R2/B2-nøkler FØR radene slettes (reviews-voice er under egen kolonne).
+      const keys: string[] = [];
+      for (const k of [a.preview_key, a.full_key, a.raw_key, a.auto_cleaned_key]) {
+        if (typeof k === "string" && k) keys.push(k);
+      }
+      const revRows = await pool.query(`SELECT audio_key FROM capture_reviews WHERE asset_id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      for (const r of revRows.rows ?? []) {
+        if (typeof r.audio_key === "string" && r.audio_key) keys.push(r.audio_key);
+      }
+
+      // Fysisk sletting (best-effort, per-nøkkel-feiltoleranse).
+      void deleteCaptureObjects(keys).catch(() => undefined);
+
+      // DB: rader som peker på asset. capture_reviews/capture_events kaskaderer via FK.
+      // Alle oppryddinger er best-effort: én ukjent/fraværende tabell skal ALDRI
+      // blokkere selve asset-slettingen (prod-DB kan mangle migrerte skjemaer).
+      await pool.query(`DELETE FROM asset_refs WHERE master_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`UPDATE capture_revision_requests SET asset_id = NULL WHERE asset_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`DELETE FROM project_photo_review WHERE asset_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`DELETE FROM project_photo_comments WHERE asset_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`UPDATE generative_ai_jobs SET source_asset_id = NULL WHERE source_asset_id = $1`, [assetId]).catch(() => undefined);
+      // Prune vedlegg i leveranser (samme mønster som rejected-prune i capture-routes).
+      await pool.query(
+        `UPDATE project_workspace_deliverables
+            SET files = COALESCE((SELECT jsonb_agg(f) FROM jsonb_array_elements(files) f WHERE f->>'refId' IS NULL OR f->>'refId' <> $1), '[]'::jsonb),
+                updated_at = NOW()
+          WHERE project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => undefined);
+      // Best-effort: null ut tilkoblete shots (derivert UI-state, 404-thumbnails unngås).
+      await pool.query(
+        `UPDATE shot_lists SET shots = (
+           SELECT jsonb_agg(
+             CASE WHEN x->>'capturedAssetBackendId' = $1 THEN x - 'capturedAssetBackendId' - 'capturedAssetId' ELSE x END
+           ) FROM jsonb_array_elements(shots) x)
+          WHERE project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => undefined);
+
+      const del = await pool.query(`DELETE FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rowCount: 0 }));
+      res.json({ success: true, removed: del.rowCount ?? 0, storageKeys: keys.length });
+    } catch (e) { console.error("DELETE media asset", e); res.status(500).json({ error: "failed" }); }
   });
   // Dupliser samling: kopierer alle referanser fra → til uten å røre bytes.
   app.post("/api/projects/:projectId/media/refs/clone", async (req, res) => {
@@ -3626,7 +3704,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureSchema(pool);
       const r = await pool.query(`SELECT * FROM project_workspace_deliverables WHERE project_id = $1 ORDER BY order_index, due_date NULLS LAST, created_at`, [req.params.projectId]);
-      res.json({ deliverables: r.rows.map((d: any) => ({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [] })) });
+      res.json({ deliverables: r.rows.map((d: any) => ({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [], files: Array.isArray(d.files) ? d.files : [] })) });
     } catch (e) { console.error("GET deliverables", e); res.status(500).json({ error: "failed" }); }
   });
   app.post("/api/projects/:projectId/deliverables", async (req, res) => {
@@ -3643,7 +3721,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       const d = r.rows[0];
       void learnDeliverableType(pool, req.params.projectId, d.title, d.type);
-      res.status(201).json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date });
+      res.status(201).json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, files: Array.isArray(d.files) ? d.files : [] });
     } catch (e) { console.error("POST deliverables", e); res.status(500).json({ error: "failed" }); }
   });
   app.patch("/api/projects/:projectId/deliverables/:id", async (req, res) => {
@@ -3653,11 +3731,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const b = req.body ?? {};
       const oldRow = await pool.query(`SELECT title, type, checklist FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
       const old = oldRow.rows[0];
+      // pg kan ikke binde JS-array til jsonb — må JSON.stringify + ::jsonb-cast,
+      // ellers feiler PATCH når checklist/files har innhold.
+      const checklistParam = Array.isArray(b.checklist) ? JSON.stringify(b.checklist.slice(0, 50)) : null;
+      const filesParam = b.files !== undefined && b.files !== null ? JSON.stringify(sanitizeDeliverableFiles(b.files)) : null;
       const r = await pool.query(
         `UPDATE project_workspace_deliverables SET title = COALESCE($1, title), type = COALESCE($2, type),
-            status = COALESCE($3, status), due_date = COALESCE($4, due_date), checklist = COALESCE($7, checklist), updated_at = NOW()
+            status = COALESCE($3, status), due_date = COALESCE($4, due_date), checklist = COALESCE($7::jsonb, checklist), files = COALESCE($8::jsonb, files), updated_at = NOW()
           WHERE id = $5 AND project_id = $6 RETURNING *`,
-        [b.title ?? null, b.type ?? null, b.status ?? null, b.dueDate ?? null, req.params.id, req.params.projectId, Array.isArray(b.checklist) ? b.checklist.slice(0, 50) : null],
+        [b.title ?? null, b.type ?? null, b.status ?? null, b.dueDate ?? null, req.params.id, req.params.projectId, checklistParam, filesParam],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const d = r.rows[0];
@@ -3668,7 +3750,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         const added = (b.checklist as any[]).map((c: any) => c.label || c).filter((l: string) => l && !oldLabels.has(l));
         void learnDeliverableCheck(pool, req.params.projectId, d.type, added);
       }
-      res.json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [] });
+      res.json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [], files: Array.isArray(d.files) ? d.files : [] });
     } catch (e) { console.error("PATCH deliverables", e); res.status(500).json({ error: "failed" }); }
   });
   app.delete("/api/projects/:projectId/deliverables/:id", async (req, res) => {
