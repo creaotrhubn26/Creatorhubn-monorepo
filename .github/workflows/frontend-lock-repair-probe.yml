@@ -80,35 +80,11 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Make frontend CI installs explicitly standalone
+      - name: Commit verified frontend repair
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          paths = [
-              Path('.github/workflows/frontend-typecheck-gate.yml'),
-              Path('.github/workflows/frontend-eslint-gate.yml'),
-              Path('.github/workflows/story-arc-e2e-gate.yml'),
-              Path('.github/workflows/visual-editor-e2e-gate.yml'),
-          ]
-          for path in paths:
-              text = path.read_text()
-              old = '        run: npm ci\n'
-              new = '        run: npm ci --workspaces=false\n'
-              if old not in text:
-                  raise SystemExit(f'expected npm ci line missing in {path}')
-              path.write_text(text.replace(old, new, 1))
-          PY
-
-      - name: Remove temporary probe and commit verified repair
-        run: |
-          git rm .github/workflows/frontend-lock-repair-probe.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add frontend/package.json frontend/package-lock.json frontend/client/src/services/BackgroundUploadService.ts \
-            .github/workflows/frontend-typecheck-gate.yml \
-            .github/workflows/frontend-eslint-gate.yml \
-            .github/workflows/story-arc-e2e-gate.yml \
-            .github/workflows/visual-editor-e2e-gate.yml
+          git add frontend/package.json frontend/package-lock.json frontend/client/src/services/BackgroundUploadService.ts
           git diff --cached --check
-          git commit -m 'fix(frontend): restore deterministic standalone CI dependencies'
+          git commit -m 'fix(frontend): restore deterministic standalone dependencies'
           git push origin HEAD:ci/baseline-dependency-consistency-20260814-170909
