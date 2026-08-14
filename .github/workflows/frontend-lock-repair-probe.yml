@@ -26,21 +26,28 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Apply candidate manifest repair in runner only
+      - name: Apply candidate repair in runner only
         working-directory: frontend
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const path = 'package.json';
-          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const packagePath = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
           pkg.dependencies ??= {};
           pkg.devDependencies ??= {};
           pkg.dependencies.quill = '^1.3.7';
           pkg.dependencies['jspdf-autotable'] = '^5.0.8';
+          pkg.dependencies.eventemitter3 = '^5.0.4';
           pkg.devDependencies['@types/three'] = '^0.182.0';
-          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n');
+
+          const servicePath = 'client/src/services/BackgroundUploadService.ts';
+          let service = fs.readFileSync(servicePath, 'utf8');
+          service = service.replace("import { EventEmitter } from 'events';", "import EventEmitter from 'eventemitter3';");
+          service = service.replace('id: taskd,', 'id: taskId,');
+          fs.writeFileSync(servicePath, service);
           NODE
-          git diff -- package.json
+          git diff -- package.json client/src/services/BackgroundUploadService.ts
 
       - name: Regenerate standalone frontend lock
         working-directory: frontend
@@ -58,7 +65,7 @@ jobs:
       - name: Inspect critical dependency graph
         working-directory: frontend
         run: |
-          npm ls --workspaces=false loupe quill react-quill three @types/three jspdf jspdf-autotable vitest @vitest/utils @mui/material @mui/system @mui/icons-material @mui/x-date-pickers || true
+          npm ls --workspaces=false loupe quill react-quill eventemitter3 three @types/three jspdf jspdf-autotable vitest @vitest/utils @mui/material @mui/system @mui/icons-material @mui/x-date-pickers || true
 
       - name: Full frontend typecheck
         working-directory: frontend
@@ -72,7 +79,7 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Upload candidate manifest and lock
+      - name: Upload candidate files
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -80,5 +87,6 @@ jobs:
           path: |
             frontend/package.json
             frontend/package-lock.json
+            frontend/client/src/services/BackgroundUploadService.ts
           if-no-files-found: error
           retention-days: 2
