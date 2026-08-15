@@ -1,0 +1,14 @@
+{
+  "name": "creatorhub-plugins",
+  "owner": {
+    "name": "CreatorHub",
+    "email": "daniel@creatorhubn.com"
+  },
+  "plugins": [
+    {
+      "name": "creatorhub-engineering",
+      "source": "./plugins/creatorhub-engineering",
+      "description": "Evidence-driven engineering workflow customized for the Creatorhubn monorepo."
+    }
+  ]
+}

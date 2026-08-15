@@ -1,0 +1,16 @@
+{
+  "name": "creatorhub-engineering",
+  "version": "1.0.0",
+  "description": "Evidence-driven software engineering workflow for CreatorHub (creatorhubn.com): repo intelligence, dependency auditing, architecture planning, implementation, E2E verification, security review, regression checks, and release readiness — customized for the Creatorhubn monorepo (Post Agent, The Role Room, Leadgrid, education/LMS, iPad apps, Reknaren, Pondus).",
+  "author": {
+    "name": "CreatorHub",
+    "email": "daniel@creatorhubn.com"
+  },
+  "keywords": [
+    "creatorhub",
+    "engineering",
+    "evidence",
+    "e2e",
+    "release-readiness"
+  ]
+}
