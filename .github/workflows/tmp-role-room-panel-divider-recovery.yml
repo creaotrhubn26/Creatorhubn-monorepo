@@ -1,0 +1,49 @@
+name: One-shot Role Room panel divider recovery
+
+on:
+  push:
+    branches:
+      - fix/role-room-right-panel-divider-20260815
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/role-room-right-panel-divider-20260815
+          fetch-depth: 0
+
+      - name: Apply exact one-line fix
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('frontend/client/src/components/role-room/components/ScreenplayEditorWithNavigator.tsx')
+          text = path.read_text()
+          old = "width: rightPanel === 'storyboard' ? 10 : 1,"
+          new = "width: rightPanel === 'storyboard' ? 10 : '1px',"
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one target, found {count}')
+          path.write_text(text.replace(old, new, 1))
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-role-room-panel-divider-recovery.yml
+
+      - name: Verify net diff is exactly one line in one file
+        run: |
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "2"
+          git diff -- frontend/client/src/components/role-room/components/ScreenplayEditorWithNavigator.tsx
+          git diff --exit-code -- . ':!.github/workflows/tmp-role-room-panel-divider-recovery.yml' ':!frontend/client/src/components/role-room/components/ScreenplayEditorWithNavigator.tsx'
+          git diff -- frontend/client/src/components/role-room/components/ScreenplayEditorWithNavigator.tsx | grep -F "+              width: rightPanel === 'storyboard' ? 10 : '1px',"
+
+      - name: Commit recovered fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/client/src/components/role-room/components/ScreenplayEditorWithNavigator.tsx .github/workflows/tmp-role-room-panel-divider-recovery.yml
+          git commit -m "fix(role-room): keep analysis panel divider at 1px"
+          git push origin HEAD:fix/role-room-right-panel-divider-20260815
