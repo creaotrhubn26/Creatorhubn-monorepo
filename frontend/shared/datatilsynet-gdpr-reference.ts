@@ -549,6 +549,51 @@ export const GDPR_COMPLIANCE_CHECKLIST = [
       '✅ Automated cleanup jobs (data-cleanup-job.ts)',
     ],
   },
+  {
+    id: 'dpia',
+    category: 'Personvernkonsekvensvurdering (DPIA)',
+    priority: 'critical',
+    articleNumber: 'Art. 35',
+    requirement: 'Gjennomføre DPIA før behandling som treffer risikokriteriene (mindreårige, AI/media)',
+    status: 'pending',
+    implementation: [
+      '⏳ Ikke påbegynt — se THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §3',
+      '⏳ Terskelen er passert: mindreårige i casting + AI-agent/media-behandling',
+    ],
+  },
+  {
+    id: 'dpa-subprocessors',
+    category: 'Databehandleravtaler — underleverandører',
+    priority: 'critical',
+    articleNumber: 'Art. 28',
+    requirement: 'Inngå DPA med alle underdatabehandlere (Neon, Vercel, S3/R2, Stripe, Anthropic, Google Workspace, Twilio, Idura/Criipto)',
+    status: 'pending',
+    implementation: [
+      '⏳ Ikke bekreftet akseptert for alle underleverandører — se THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §2',
+    ],
+  },
+  {
+    id: 'dpa-customer-template',
+    category: 'Databehandleravtaler — kunde-mal',
+    priority: 'critical',
+    articleNumber: 'Art. 28',
+    requirement: 'Tilby en signert kunde-DPA (vi er databehandler for kundens talent-/produksjonsdata)',
+    status: 'pending',
+    implementation: [
+      '⏳ Kunde-DPA-mal ikke laget ennå — se THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §2',
+    ],
+  },
+  {
+    id: 'eu-region-verification',
+    category: 'EU/EØS-datalagring',
+    priority: 'high',
+    articleNumber: 'Art. 44–49',
+    requirement: 'Verifisere at Neon, Vercel og S3/R2 faktisk er satt til EU-region, og bekrefte SCC/DPF for US-leverandører',
+    status: 'pending',
+    implementation: [
+      '⏳ Åpent punkt — se THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §6',
+    ],
+  },
 ];
 
 /**

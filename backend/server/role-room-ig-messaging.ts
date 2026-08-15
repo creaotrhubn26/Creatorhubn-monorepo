@@ -150,10 +150,10 @@ function mapMessage(row: Record<string, unknown>): IgMessageRow {
 /** Derive a Page access token from the stored long-lived user token. */
 async function getPageToken(connection: InstagramConnectionRow): Promise<string> {
   try {
-    const url =
-      `${GRAPH}/${encodeURIComponent(connection.facebookPageId)}` +
-      `?fields=access_token&access_token=${encodeURIComponent(connection.accessToken)}`;
-    const res = await fetch(url);
+    const url = `${GRAPH}/${encodeURIComponent(connection.facebookPageId)}?fields=access_token`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${connection.accessToken}` },
+    });
     const json = (await res.json().catch(() => ({}))) as { access_token?: string };
     if (res.ok && json.access_token) return json.access_token;
   } catch {
@@ -308,8 +308,10 @@ export async function syncConversationsFromGraph(
       "messages.limit(1){id,from,to,message,created_time}";
     const url =
       `${GRAPH}/${encodeURIComponent(connection.facebookPageId)}/conversations` +
-      `?platform=instagram&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`;
-    const res = await fetch(url);
+      `?platform=instagram&fields=${encodeURIComponent(fields)}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${pageToken}` },
+    });
     const json = (await res.json().catch(() => ({}))) as {
       data?: Array<Record<string, any>>;
       error?: { message?: string };
@@ -362,8 +364,10 @@ export async function syncMessagesFromGraph(
     const fields = "messages{id,created_time,from,to,message}";
     const url =
       `${GRAPH}/${encodeURIComponent(conversation.externalConversationId)}` +
-      `?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`;
-    const res = await fetch(url);
+      `?fields=${encodeURIComponent(fields)}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${pageToken}` },
+    });
     const json = (await res.json().catch(() => ({}))) as {
       messages?: { data?: Array<Record<string, any>> };
       error?: { message?: string };
@@ -406,12 +410,14 @@ export async function sendReply(
     const url = `${GRAPH}/${encodeURIComponent(connection.facebookPageId)}/messages`;
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${pageToken}`,
+      },
       body: JSON.stringify({
         recipient: { id: conversation.participantIgsid },
         message: { text },
         messaging_type: "RESPONSE",
-        access_token: pageToken,
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {

@@ -18417,7 +18417,7 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
         "White label",
         "Dedikert onboarding",
         "Tilpassede integrasjoner",
-        "SSO og tilgangsstyring",
+        "Google/Microsoft-pålogging og rollebasert tilgangsstyring",
         "Migrering og prioritet",
       ],
       limits: {
