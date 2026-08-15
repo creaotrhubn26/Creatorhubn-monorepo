@@ -132,6 +132,46 @@ export const organizationRoles = pgTable(
   }),
 );
 
+// The `organizations` table itself was created by migration 285
+// (Lead Map/Leadgrid tenants) and extended by 0312/0315 — this is its
+// first mirror into the drizzle schema, so it declares the real existing
+// columns plus the new SAML IdP config columns added by migration 0451.
+// userRoles.organizationId (Role Room casting RBAC) points here by id.
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 200 }).notNull(),
+    slug: varchar('slug', { length: 80 }).unique(),
+    plan: varchar('plan', { length: 40 }).notNull().default('free'),
+    orgType: varchar('org_type', { length: 40 }).notNull().default('customer'),
+    ownerUserId: varchar('owner_user_id', { length: 255 }),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    description: text('description'),
+    website: varchar('website', { length: 300 }),
+    industry: varchar('industry', { length: 100 }),
+    orgNumber: varchar('org_number', { length: 40 }),
+    phone: varchar('phone', { length: 40 }),
+    contactEmail: varchar('contact_email', { length: 200 }),
+    logoUrl: text('logo_url'),
+    stripeCustomerId: varchar('stripe_customer_id', { length: 200 }),
+    meta: jsonb('meta').notNull().default({}),
+    // SAML SP config for this org's IdP (Okta, Azure AD, Google Workspace, …) — Fase 1 (SSO).
+    samlEnabled: boolean('saml_enabled').notNull().default(false),
+    samlIdpEntityId: varchar('saml_idp_entity_id', { length: 500 }),
+    samlIdpSsoUrl: varchar('saml_idp_sso_url', { length: 500 }),
+    samlIdpCertificate: text('saml_idp_certificate'), // PEM-encoded x509 cert
+    samlSpEntityId: varchar('saml_sp_entity_id', { length: 500 }), // our SP entity id, unique per org
+    samlWantAssertionsSigned: boolean('saml_want_assertions_signed').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: index('organizations_slug_idx').on(table.slug),
+    samlEnabledIdx: index('organizations_saml_enabled_idx').on(table.samlEnabled),
+  }),
+);
+
 export const userRoles = pgTable(
   'user_roles',
   {
@@ -401,6 +441,10 @@ export const organizationRolesRelations = relations(organizationRoles, ({ many }
   userRoles: many(userRoles),
 }));
 
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  userRoles: many(userRoles),
+}));
+
 export const userRolesRelations = relations(userRoles, ({ one }) => ({
   role: one(organizationRoles, {
     fields: [userRoles.roleId],
@@ -485,6 +529,11 @@ export const insertUserRoleSchema = createInsertSchema(userRoles);
 export const updateUserRoleSchema = insertUserRoleSchema.partial();
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type UserRole = typeof userRoles.$inferSelect;
+
+export const insertOrganizationSchema = createInsertSchema(organizations);
+export const updateOrganizationSchema = insertOrganizationSchema.partial();
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type Organization = typeof organizations.$inferSelect;
 
 export const insertAuditLogSchema = createInsertSchema(auditLog);
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
