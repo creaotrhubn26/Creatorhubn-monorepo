@@ -179,6 +179,19 @@ export type UserEvent =
       selectedCount: number;
       submissionNote: string | null;
       timestamp: string;
+    }
+  /// Video Room (produsent-side versjonsgjennomgang, project_video_versions/
+  /// project_video_comments) fikk en ny versjon, kommentar, godkjenning eller
+  /// chapter-endring. Broadcastes til prosjektets ANDRE team-medlemmer (ikke
+  /// aktøren selv) slik at VideoRoomTab refetcher instant i stedet for å
+  /// vente på neste besøk/reload — samme "bare refetch"-mønster som
+  /// shot.list-updated, men fanet ut til hele teamet i stedet for kun
+  /// aktørens egne enheter.
+  | {
+      kind: "video-room.updated";
+      projectId: string;
+      reason: "version" | "comment" | "approval" | "chapters";
+      timestamp: string;
     };
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";

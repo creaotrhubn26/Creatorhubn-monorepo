@@ -23,6 +23,11 @@ import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 
 const PHASES = ['Brief', 'V1', 'Klient-review', 'Revisjoner', 'Levert'];
 
+// Bruker-events-WS (samme backend/kanal som ShotlistTab/MoodboardTab): /api/ipad/ws/events.
+const VIDEO_ROOM_EVENTS_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE)
+  ? import.meta.env.VITE_WS_BASE
+  : 'wss://creatorhub-backend-rtbl.onrender.com';
+
 function fmtTc(s: number): string {
   const m = Math.floor((s || 0) / 60); const sec = Math.floor((s || 0) % 60);
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
@@ -76,6 +81,42 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .then((r: any) => setData(r || null)).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  // Live: bruker-events-WS (samme kanal/mønster som ShotlistTab/MoodboardTab)
+  // → refetch INSTANT når andre team-medlemmer laster opp versjon, kommenterer
+  // eller godkjenner (video-room.updated, broadcastet fra project-workspace-
+  // routes.ts). Uten dette var Video Room en ren poll-på-mount-visning —
+  // kommentarer fra andre dukket ikke opp før neste manuelle reload.
+  const [vrLive, setVrLive] = useState(false);
+  useEffect(() => {
+    if (!isReal) return;
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
+    if (!token) return;
+    let alive = true;
+    let ws: WebSocket | null = null;
+    let retry: any = null;
+    let deb: any = null;
+    const connect = () => {
+      if (!alive) return;
+      clearTimeout(retry);
+      try { ws = new WebSocket(`${VIDEO_ROOM_EVENTS_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      catch { retry = setTimeout(connect, 8000); return; }
+      ws.onopen = () => { if (alive) setVrLive(true); };
+      ws.onclose = () => { if (alive) { setVrLive(false); retry = setTimeout(connect, 8000); } };
+      ws.onerror = () => { try { ws && ws.close(); } catch { /* */ } };
+      ws.onmessage = (ev) => {
+        let payload: any = null;
+        try { payload = JSON.parse(ev.data); } catch { /* */ }
+        const e = payload?.event;
+        if (e?.kind !== 'video-room.updated' || e?.projectId !== projectId) return;
+        clearTimeout(deb);
+        deb = setTimeout(load, 250); // debounce egen echo + rask flerkommentar-strøm
+      };
+    };
+    connect();
+    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { ws && ws.close(); } catch { /* */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal]);
 
   const versions = data?.versions || [];
   const current = versions.find((v: any) => v.id === data?.currentVersionId) || versions[versions.length - 1] || null;
@@ -150,6 +191,12 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Video Room</Typography>
             {current && statusTag(current.status)}
+            {vrLive && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.25, borderRadius: 999, bgcolor: ws.greenSoft }}>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#22c55e' }} />
+                <Typography sx={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>Live</Typography>
+              </Box>
+            )}
           </Stack>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Frame.io-stil review — versjoner, tidsstemplede tilbakemeldinger, kapitler og godkjenning. Samme rom klienten får.</Typography>
         </Box>

@@ -3266,6 +3266,26 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET video-room", e); res.json({ hasVersions: false, versions: [], comments: [], chapters: [] }); }
   });
 
+  // Video Room: varsle prosjektets ANDRE team-medlemmer (eier + aktive
+  // project_team_members, minus aktøren) om at noe endret seg, slik at åpne
+  // VideoRoomTab-faner refetcher instant fremfor å vente på neste last.
+  async function notifyVideoRoomUpdated(projectId: string, actorUserId: string, reason: "version" | "comment" | "approval" | "chapters"): Promise<void> {
+    try {
+      const owner = await pool.query(`SELECT user_id FROM projects WHERE id = $1`, [projectId]).catch(() => ({ rows: [] }));
+      const members = await pool.query(
+        `SELECT user_id FROM project_team_members WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL AND user_id IS NOT NULL`,
+        [projectId],
+      ).catch(() => ({ rows: [] }));
+      const recipients = new Set<string>([
+        ...(owner.rows[0]?.user_id ? [String(owner.rows[0].user_id)] : []),
+        ...members.rows.map((r: any) => String(r.user_id)),
+      ]);
+      recipients.delete(actorUserId);
+      const timestamp = new Date().toISOString();
+      for (const recipientId of recipients) broadcastUserEvent(recipientId, { kind: "video-room.updated", projectId, reason, timestamp });
+    } catch { /* best-effort — aldri la varsling velte skriveoperasjonen */ }
+  }
+
   // Ny versjon (V1/V2/…) — file_url eller stream_uid + valgfrie chapters.
   app.post("/api/projects/:projectId/video-versions", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -3286,6 +3306,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
          b.chapters ? JSON.stringify(b.chapters) : null, uid],
       );
+      notifyVideoRoomUpdated(pid, uid, "version");
       res.status(201).json({ id, versionNumber: vn });
     } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3314,6 +3335,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          VALUES ($1,$2,$3,$4,$5,'under_review',$6)`,
         [id, pid, label, vn, key, uid],
       );
+      notifyVideoRoomUpdated(pid, uid, "version");
       res.status(201).json({ id, versionNumber: vn });
     } catch (e) { console.error("POST video upload", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3335,6 +3357,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          !!b.isDecision, b.parentId || null],
       );
       const row = await pool.query(`SELECT * FROM project_video_comments WHERE id = $1`, [id]);
+      notifyVideoRoomUpdated(pid, uid, "comment");
       res.status(201).json(mapVideoComment(row.rows[0]));
     } catch (e) { console.error("POST video-comments", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3350,6 +3373,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [status, req.params.commentId, req.params.projectId],
       ).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(req.params.projectId, uid, "comment");
       res.json({ ok: true });
     } catch (e) { console.error("PATCH video-comments", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3361,6 +3385,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const upd = await pool.query(`UPDATE project_video_versions SET status='approved' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(pid, uid, "approval");
       res.json({ ok: true });
     } catch (e) { console.error("POST video approve", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3373,6 +3398,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const upd = await pool.query(`UPDATE project_video_versions SET chapters=$1 WHERE id=$2 AND project_id=$3 RETURNING id`,
         [JSON.stringify(chapters), req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(req.params.projectId, uid, "chapters");
       res.json({ ok: true });
     } catch (e) { console.error("PATCH video chapters", e); res.status(500).json({ error: "failed" }); }
   });
