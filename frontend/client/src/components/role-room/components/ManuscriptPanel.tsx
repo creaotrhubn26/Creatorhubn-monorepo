@@ -1902,6 +1902,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Parse Fountain content to create scenes
     const lines = content.split('\n');
     const newScenes: SceneBreakdown[] = [];
+    const newDialogue: DialogueLine[] = [];
+    let currentSpeaker: string | null = null;
     let currentSceneData: {
       heading: string;
       intExt: string;
@@ -1941,6 +1943,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       if (sceneMatch) {
         // Save previous scene
         saveCurrentScene();
+        currentSpeaker = null;
         
         // Start new scene
         currentSceneData = {
@@ -1955,13 +1958,39 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       } else if (currentSceneData) {
         currentSceneData.lineCount++;
         
-        // Check for character names (all caps followed by dialogue)
+        // Blank line ends the current dialogue block.
+        if (trimmed.length === 0) {
+          currentSpeaker = null;
+          return;
+        }
+
+        // Character cue: ALL CAPS followed by content, excluding transitions/headings.
         const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]+)(\s*\(.*\))?$/);
-        if (characterMatch && lines[lineIndex + 1]?.trim() && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)) {
-          const charName = characterMatch[1].replace(/\s*\(.*\)$/, '').trim();
+        const isCue = !!characterMatch
+          && !!lines[lineIndex + 1]?.trim()
+          && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)
+          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP)/i);
+        const isParenthetical = /^\(.*\)$/.test(trimmed);
+
+        if (isCue) {
+          const charName = characterMatch![1].replace(/\s*\(.*\)$/, '').trim();
           if (charName.length > 1 && charName.length < 40) {
             currentSceneData.characters.push(charName);
+            currentSpeaker = charName;
           }
+        } else if (isParenthetical) {
+          // Keep the active speaker across parenthetical direction.
+        } else if (currentSpeaker) {
+          newDialogue.push({
+            id: `dialogue-${newDialogue.length + 1}`,
+            sceneId: `scene-${newScenes.length + 1}`,
+            manuscriptId: selectedManuscript.id,
+            characterName: currentSpeaker,
+            dialogueText: trimmed,
+            dialogueType: 'dialogue' as const,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
     });
@@ -1969,8 +1998,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Save final scene
     saveCurrentScene();
     
-    // Update scenes
+    // Update scenes and dialogue together so the Dialogue tab matches the parsed screenplay.
     setScenes(newScenes);
+    setDialogueLines(newDialogue);
     showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);
   }, [activeProjectId, autoBreakdownEnabled, selectedManuscript, showSuccess, showWarning]);
 
