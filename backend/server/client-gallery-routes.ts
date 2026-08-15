@@ -2299,7 +2299,7 @@ export function setupClientGalleryRoutes(
       // Sharp-pipeline for on-the-fly watermark. Importeres dynamisk så
       // vi unngår å laste ~50MB av sharp's binær når galleriet ikke
       // krever det. Cached på første call.
-      let sharpModulePromise: Promise<typeof import('sharp').default> | null = null;
+      let sharpModulePromise: Promise<typeof import('sharp')> | null = null;
       const getSharp = () => {
         if (!sharpModulePromise) {
           sharpModulePromise = import('sharp').then((m) => (m as any).default ?? m);
