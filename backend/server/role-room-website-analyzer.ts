@@ -592,7 +592,7 @@ async function refineWithClaude(s: StaticSignals): Promise<ClaudeRefinement> {
   try {
     parsed = JSON.parse(jsonText) as ClaudeRefinement;
   } catch {
-    return s;
+    return staticToClaudeFallback(s);
   }
 
   // Defensive: clip array length + enforce ToneOfVoice union
