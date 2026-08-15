@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * WorkspaceShell — dark CreatorHub-ramme for per-prosjekt Team Workspace.
  *
@@ -11,7 +10,7 @@ import React from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import {
   Box, Stack, Typography, Avatar, AvatarGroup, Chip, Button, IconButton, Badge, Tooltip,
-  Menu, MenuItem, Divider, ListItemIcon,
+  Menu, MenuItem, Divider, ListItemIcon, type SxProps, type Theme,
 } from '@mui/material';
 import Person from '@mui/icons-material/Person';
 import Palette from '@mui/icons-material/Palette';
@@ -70,6 +69,10 @@ const SHELL_T = {
   teamMembers: { no: 'Team & medlemmer', en: 'Team & members' },
   openClientView: { no: 'Åpne kundevisning', en: 'Open client view' },
   agreementsSettings: { no: 'Avtaler & innstillinger', en: 'Agreements & settings' },
+  openMenu: { no: 'Åpne meny', en: 'Open menu' },
+  userMenu: { no: 'Brukermeny', en: 'User menu' },
+  accountSettings: { no: 'Kontoinnstillinger', en: 'Account settings' },
+  projectMenu: { no: 'Prosjektmeny', en: 'Project menu' },
 };
 
 const ICONS: Record<string, React.ElementType> = {
@@ -83,6 +86,19 @@ const GROUP_KEY: Record<string, string> = {
   hoved: 'groupHoved',
   rom: 'groupRom',
   klient: 'groupKlient',
+};
+
+// Statisk gruppe-rekkefølge — avhenger aldri av props, hoves til modul-nivå
+// slik at den ikke skaper et nytt array-literal (og dermed en ny useMemo-dep)
+// på hver render.
+const NAV_GROUPS: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
+
+// Eksplisitt SxProps<Theme>-annotering: uten den klarer ikke TS å representere
+// unionen for AvatarGroups nøstede '& .MuiAvatar-root'-selektor (TS2590,
+// "union type too complex"). Statisk (avhenger kun av modul-konstanten `ws`),
+// derfor trygt å hoise ut av komponenten.
+const AVATAR_GROUP_SX: SxProps<Theme> = {
+  '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` },
 };
 
 export interface WorkspaceProject {
@@ -120,11 +136,33 @@ interface ShellProps {
   children: React.ReactNode;
 }
 
-function NavItem({ item, active, onClick }: any) {
-  const Icon = ICONS[item.icon] || Dashboard;
+/** Slår opp MUI-ikonet for et nav-item; varsler (kun i dev) om en ukjent
+ * ikon-nøkkel faller tilbake til Dashboard, slik at et fremtidig WS_NAV-item
+ * med et ikke-registrert ikon ikke feiler helt stille. */
+function resolveNavIcon(item: Pick<WsNavItem, 'icon' | 'key'>): React.ElementType {
+  const icon = ICONS[item.icon];
+  if (icon) return icon;
+  if (import.meta.env.DEV) {
+    console.warn(
+      `[WorkspaceShell] Ukjent nav-ikon "${item.icon}" for nav-item "${item.key}" — faller tilbake til Dashboard. Legg til ikonet i ICONS-registeret.`
+    );
+  }
+  return Dashboard;
+}
+
+interface NavItemProps {
+  item: WsNavItem;
+  active: boolean;
+  /** Stabil handler fra WorkspaceShell (useCallback); NavItem binder selv til item.key. */
+  onClick: (key: string) => void;
+}
+
+const NavItem = React.memo(function NavItem({ item, active, onClick }: NavItemProps) {
+  const Icon = resolveNavIcon(item);
+  const handleClick = React.useCallback(() => onClick(item.key), [onClick, item.key]);
   return (
     <Box
-      onClick={onClick}
+      onClick={handleClick}
       sx={{
         display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1, mx: 1,
         borderRadius: `${ws.radiusSm}px`, cursor: 'pointer', userSelect: 'none',
@@ -149,14 +187,22 @@ function NavItem({ item, active, onClick }: any) {
       ) : null}
     </Box>
   );
-}
+});
 
 /**
  * CreatorHub Design (Nivå 1): avled aksent-familien fra ÉN accent-hex → CSS-variabler.
  * Ugyldig/manglende hex → tomt objekt (literal-fallbackene i workspaceTheme gjelder → identisk).
  */
 function wsAccentVars(hex?: string | null): React.CSSProperties {
-  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return {};
+  if (!hex) return {};
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    if (import.meta.env.DEV) {
+      console.warn(
+        `[WorkspaceShell] Ugyldig accent-hex fra design-tokens: "${hex}" — forventet format "#rrggbb". Bruker standardfarge.`
+      );
+    }
+    return {};
+  }
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
   const dark = '#' + [r, g, b].map((x) => Math.round(x * 0.9).toString(16).padStart(2, '0')).join('');
   return {
@@ -184,7 +230,12 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
   React.useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok && import.meta.env.DEV) {
+          console.warn(`[WorkspaceShell] /api/design/tokens svarte ${r.status} — bruker standard branding/copy.`);
+        }
+        return r.ok ? r.json() : null;
+      })
       .then((d) => {
         if (!live || !d || !d.tokens) return;
         if (d.tokens.accent) {
@@ -201,23 +252,237 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
           });
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (import.meta.env.DEV) {
+          console.warn('[WorkspaceShell] Klarte ikke å laste design-tokens (branding/copy-overstyringer vises ikke):', err);
+        }
+      });
     return () => { live = false; };
   }, []);
   return { copy };
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
-  const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
+interface SidebarProps {
+  project: WorkspaceProject;
+  user: WorkspaceUser;
+  activeTab: string;
+  groupedNav: { group: 'hoved' | 'rom' | 'klient'; items: WsNavItem[] }[];
+  badges?: Record<string, number>;
+  onNavClick: (key: string) => void;
+  mobileNav: boolean;
+  onNewProject?: () => void;
+  userMenu: HTMLElement | null;
+  setUserMenu: (el: HTMLElement | null) => void;
+  go: (path: string) => void;
+  onLogout?: () => void;
+  t: (k: string) => string;
+}
+
+/** Venstre nav: logo, "nytt prosjekt", prosjekt-kort, nav-grupper og bruker-footer. */
+const Sidebar = React.memo(function Sidebar({
+  project, user, activeTab, groupedNav, badges, onNavClick, mobileNav,
+  onNewProject, userMenu, setUserMenu, go, onLogout, t,
+}: SidebarProps) {
+  return (
+    <Box sx={{
+      width: 260, flexShrink: 0, bgcolor: ws.bgSidebar, borderRight: `1px solid ${ws.border}`,
+      display: 'flex', flexDirection: 'column',
+      position: { xs: 'fixed', md: 'static' }, top: 0, bottom: 0, left: 0, zIndex: 1300,
+      transform: { xs: mobileNav ? 'translateX(0)' : 'translateX(-100%)', md: 'none' },
+      transition: 'transform .2s ease',
+    }}>
+      {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
+      <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
+        <Box component="img" data-edit-id="ws-logo" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
+      </Box>
+
+      {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
+      <Box sx={{ px: 1.5, pb: 1 }}>
+        <Button fullWidth data-edit-id="ws-new-project" onClick={onNewProject} startIcon={<Add />} variant="contained"
+          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, borderRadius: 999, py: 1, '&:hover': { bgcolor: ws.accentHover } }}>
+          {t('newProject')}
+        </Button>
+      </Box>
+
+      {/* Prosjekt-kort */}
+      <Box sx={{ mx: 1.5, mb: 1, p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${ws.borderSoft}` }}>
+        <Stack direction="row" spacing={1.25} alignItems="center">
+          <Avatar variant="rounded" src={project.coverUrl || '/creatorhub-icon.png'} sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 700 }}>{project.name}</Typography>
+            <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{project.type}</Typography>
+            <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{project.date}{project.location ? ` · ${project.location}` : ''}</Typography>
+          </Box>
+        </Stack>
+      </Box>
+
+      {/* Nav-grupper */}
+      <Box sx={{ flex: 1, overflowY: 'auto', py: 0.5 }}>
+        {groupedNav.map(({ group: g, items }) => {
+          if (items.length === 0) return null; // skjul tom gruppe-overskrift
+          return (
+            <Box key={g} sx={{ mb: 1 }}>
+              <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
+                {t(GROUP_KEY[g])}
+              </Typography>
+              {items.map((item) => {
+                const dyn = badges?.[item.key];
+                const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
+                return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={onNavClick} />;
+              })}
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Bruker-footer */}
+      <Box sx={{ borderTop: `1px solid ${ws.border}`, px: 1.5, py: 1.25 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25}>
+          <Avatar src={user.avatarUrl || undefined} sx={{ width: 34, height: 34 }}>{user.name?.[0]}</Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
+            <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{user.role}</Typography>
+          </Box>
+          <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }} aria-label={t('userMenu')}><KeyboardArrowDown fontSize="small" /></IconButton>
+          <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }} aria-label={t('accountSettings')}><Settings fontSize="small" /></IconButton>
+        </Stack>
+
+        <Menu
+          anchorEl={userMenu}
+          open={!!userMenu}
+          onClose={() => setUserMenu(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        >
+          <Box sx={{ px: 2, py: 1 }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{user.email || user.role}</Typography>
+          </Box>
+          <Divider />
+          <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>{t('profileSettings')}</MenuItem>
+          <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>{t('branding')}</MenuItem>
+          <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>{t('security')}</MenuItem>
+          <Divider />
+          <MenuItem onClick={() => { setUserMenu(null); onLogout ? onLogout() : (window.location.href = '/login'); }}>
+            <ListItemIcon><Logout fontSize="small" /></ListItemIcon>{t('logout')}
+          </MenuItem>
+        </Menu>
+      </Box>
+    </Box>
+  );
+});
+
+interface ProjectHeaderProps {
+  project: WorkspaceProject;
+  online?: number | null;
+  headerActions?: React.ReactNode;
+  onClientView?: () => void;
+  onInvite?: () => void;
+  onTab: (key: string) => void;
+  projMenu: HTMLElement | null;
+  setProjMenu: (el: HTMLElement | null) => void;
+  setMobileNav: (open: boolean) => void;
+  t: (k: string) => string;
+}
+
+/** Prosjekt-header: mobil-meny-knapp, tittel/status, dato/sted, online-indikator, avatarer, handlinger. */
+const ProjectHeader = React.memo(function ProjectHeader({
+  project, online, headerActions, onClientView, onInvite, onTab, projMenu, setProjMenu, setMobileNav, t,
+}: ProjectHeaderProps) {
+  const memberAvatars = (
+    // @ts-expect-error TS2590: AvatarGroup's OverridableComponent typing combined with
+    // the sx prop produces a union too complex for TS to represent (known MUI+TS
+    // limitation, independent of the sx value itself — an explicit SxProps<Theme>
+    // annotation does not resolve it). Runtime behavior is unaffected.
+    <AvatarGroup max={5} sx={AVATAR_GROUP_SX}>
+      {(project.members || []).map((m) => (
+        <Avatar key={m.id} src={m.avatarUrl || undefined}>{m.name?.[0]}</Avatar>
+      ))}
+    </AvatarGroup>
+  );
+
+  return (
+    <Box sx={{
+      px: 3, py: 2, borderBottom: `1px solid ${ws.border}`,
+      display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
+    }}>
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+        <IconButton onClick={() => setMobileNav(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, color: ws.text, ml: -1 }} aria-label={t('openMenu')}>
+          <MenuIcon />
+        </IconButton>
+        <Typography sx={{ fontSize: 22, fontWeight: 800 }} noWrap>{project.name}</Typography>
+        {project.status && (
+          <Chip
+            size="small"
+            label={project.status}
+            sx={{ bgcolor: ws.accentSoft, color: ws.accent, border: `1px solid ${ws.accentBorder}`, fontWeight: 700 }}
+          />
+        )}
+      </Stack>
+
+      <Stack direction="row" alignItems="center" spacing={2} sx={{ color: ws.textDim }}>
+        {project.date && (
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <CalendarToday sx={{ fontSize: 15 }} /><Typography sx={{ fontSize: 13 }}>{project.date}</Typography>
+          </Stack>
+        )}
+        {project.location && (
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <LocationOn sx={{ fontSize: 16 }} /><Typography sx={{ fontSize: 13 }}>{project.location}</Typography>
+          </Stack>
+        )}
+      </Stack>
+
+      <Box sx={{ flex: 1 }} />
+
+      {typeof online === 'number' && (
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mr: 0.5 }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: online > 0 ? ws.green : ws.textFaint }} />
+          <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} {t('online')}</Typography>
+        </Stack>
+      )}
+      {memberAvatars}
+
+      <Stack direction="row" spacing={1} alignItems="center">
+        {headerActions ?? (
+          <>
+            <Button size="small" startIcon={<Visibility sx={{ fontSize: 16 }} />} onClick={onClientView}
+              sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none' }} variant="outlined">
+              {t('clientView')}
+            </Button>
+            <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
+              sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
+              {t('inviteMember')}
+            </Button>
+            <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }} aria-label={t('projectMenu')}><MoreVert fontSize="small" /></IconButton>
+            <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
+              PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
+              <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('teamMembers')}</MenuItem>
+              <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('openClientView')}</MenuItem>
+              <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('agreementsSettings')}</MenuItem>
+            </Menu>
+          </>
+        )}
+      </Stack>
+    </Box>
+  );
+});
+
+const WorkspaceShellComponent: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
   const baseT = makeT(SHELL_T, useWsLocale());
   const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
   useElementEdits('creatorhub'); // CreatorHub Design (per-element-lag): anvend lagrede stil-edits
   // t() med copy-overstyring (Nivå 2b): tokens.copy[key] vinner, ellers locale-dict.
-  const t = (k: string) => { const o = copyOv[k]; return typeof o === 'string' && o ? o : baseT(k); };
+  const t = React.useCallback((k: string) => { const o = copyOv[k]; return typeof o === 'string' && o ? o : baseT(k); }, [copyOv, baseT]);
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
   const [mobileNav, setMobileNav] = React.useState(false); // sidebar som slide-in på mobil
-  const go = (path: string) => { setUserMenu(null); window.location.href = path; };
+  const go = React.useCallback((path: string) => { setUserMenu(null); window.location.href = path; }, []);
+  const handleNavClick = React.useCallback((key: string) => { onTab(key); setMobileNav(false); }, [onTab]);
+  const groupedNav = React.useMemo(
+    () => NAV_GROUPS.map((g) => ({ group: g, items: navItems.filter((n) => n.group === g) })),
+    [navItems]
+  );
 
   return (
     <ThemeProvider theme={workspaceDarkTheme}>
@@ -228,163 +493,36 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 1299,
         }} />
         {/* ───────── Venstre nav (statisk på desktop, slide-in overlay < md) ───────── */}
-        <Box sx={{
-          width: 260, flexShrink: 0, bgcolor: ws.bgSidebar, borderRight: `1px solid ${ws.border}`,
-          display: 'flex', flexDirection: 'column',
-          position: { xs: 'fixed', md: 'static' }, top: 0, bottom: 0, left: 0, zIndex: 1300,
-          transform: { xs: mobileNav ? 'translateX(0)' : 'translateX(-100%)', md: 'none' },
-          transition: 'transform .2s ease',
-        }}>
-          {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
-          <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
-            <Box component="img" data-edit-id="ws-logo" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
-          </Box>
-
-          {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
-          <Box sx={{ px: 1.5, pb: 1 }}>
-            <Button fullWidth data-edit-id="ws-new-project" onClick={onNewProject} startIcon={<Add />} variant="contained"
-              sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, borderRadius: 999, py: 1, '&:hover': { bgcolor: ws.accentHover } }}>
-              {t('newProject')}
-            </Button>
-          </Box>
-
-          {/* Prosjekt-kort */}
-          <Box sx={{ mx: 1.5, mb: 1, p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${ws.borderSoft}` }}>
-            <Stack direction="row" spacing={1.25} alignItems="center">
-              <Avatar variant="rounded" src={project.coverUrl || '/creatorhub-icon.png'} sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }} />
-              <Box sx={{ minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 700 }}>{project.name}</Typography>
-                <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{project.type}</Typography>
-                <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{project.date}{project.location ? ` · ${project.location}` : ''}</Typography>
-              </Box>
-            </Stack>
-          </Box>
-
-          {/* Nav-grupper */}
-          <Box sx={{ flex: 1, overflowY: 'auto', py: 0.5 }}>
-            {groups.map((g) => {
-              const items = navItems.filter((n) => n.group === g);
-              if (items.length === 0) return null; // skjul tom gruppe-overskrift
-              return (
-                <Box key={g} sx={{ mb: 1 }}>
-                  <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
-                    {t(GROUP_KEY[g])}
-                  </Typography>
-                  {items.map((item) => {
-                    const dyn = badges?.[item.key];
-                    const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
-                    return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => { onTab(item.key); setMobileNav(false); }} />;
-                  })}
-                </Box>
-              );
-            })}
-          </Box>
-
-          {/* Bruker-footer */}
-          <Box sx={{ borderTop: `1px solid ${ws.border}`, px: 1.5, py: 1.25 }}>
-            <Stack direction="row" alignItems="center" spacing={1.25}>
-              <Avatar src={user.avatarUrl || undefined} sx={{ width: 34, height: 34 }}>{user.name?.[0]}</Avatar>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
-                <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{user.role}</Typography>
-              </Box>
-              <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><KeyboardArrowDown fontSize="small" /></IconButton>
-              <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><Settings fontSize="small" /></IconButton>
-            </Stack>
-
-            <Menu
-              anchorEl={userMenu}
-              open={!!userMenu}
-              onClose={() => setUserMenu(null)}
-              anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-              transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            >
-              <Box sx={{ px: 2, py: 1 }}>
-                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
-                <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{user.email || user.role}</Typography>
-              </Box>
-              <Divider />
-              <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>{t('profileSettings')}</MenuItem>
-              <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>{t('branding')}</MenuItem>
-              <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>{t('security')}</MenuItem>
-              <Divider />
-              <MenuItem onClick={() => { setUserMenu(null); onLogout ? onLogout() : (window.location.href = '/login'); }}>
-                <ListItemIcon><Logout fontSize="small" /></ListItemIcon>{t('logout')}
-              </MenuItem>
-            </Menu>
-          </Box>
-        </Box>
+        <Sidebar
+          project={project}
+          user={user}
+          activeTab={activeTab}
+          groupedNav={groupedNav}
+          badges={badges}
+          onNavClick={handleNavClick}
+          mobileNav={mobileNav}
+          onNewProject={onNewProject}
+          userMenu={userMenu}
+          setUserMenu={setUserMenu}
+          go={go}
+          onLogout={onLogout}
+          t={t}
+        />
 
         {/* ───────── Innholdsområde ───────── */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* Prosjekt-header */}
-          <Box sx={{
-            px: 3, py: 2, borderBottom: `1px solid ${ws.border}`,
-            display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
-          }}>
-            <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
-              <IconButton onClick={() => setMobileNav(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, color: ws.text, ml: -1 }} aria-label="Åpne meny">
-                <MenuIcon />
-              </IconButton>
-              <Typography sx={{ fontSize: 22, fontWeight: 800 }} noWrap>{project.name}</Typography>
-              {project.status && (
-                <Chip
-                  size="small"
-                  label={project.status}
-                  sx={{ bgcolor: ws.accentSoft, color: ws.accent, border: `1px solid ${ws.accentBorder}`, fontWeight: 700 }}
-                />
-              )}
-            </Stack>
-
-            <Stack direction="row" alignItems="center" spacing={2} sx={{ color: ws.textDim }}>
-              {project.date && (
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  <CalendarToday sx={{ fontSize: 15 }} /><Typography sx={{ fontSize: 13 }}>{project.date}</Typography>
-                </Stack>
-              )}
-              {project.location && (
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  <LocationOn sx={{ fontSize: 16 }} /><Typography sx={{ fontSize: 13 }}>{project.location}</Typography>
-                </Stack>
-              )}
-            </Stack>
-
-            <Box sx={{ flex: 1 }} />
-
-            {typeof online === 'number' && (
-              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mr: 0.5 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: online > 0 ? ws.green : ws.textFaint }} />
-                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} {t('online')}</Typography>
-              </Stack>
-            )}
-            <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` } }}>
-              {(project.members || []).map((m) => (
-                <Avatar key={m.id} src={m.avatarUrl || undefined}>{m.name?.[0]}</Avatar>
-              ))}
-            </AvatarGroup>
-
-            <Stack direction="row" spacing={1} alignItems="center">
-              {headerActions ?? (
-                <>
-                  <Button size="small" startIcon={<Visibility sx={{ fontSize: 16 }} />} onClick={onClientView}
-                    sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none' }} variant="outlined">
-                    {t('clientView')}
-                  </Button>
-                  <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
-                    sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
-                    {t('inviteMember')}
-                  </Button>
-                  <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
-                  <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
-                    PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('teamMembers')}</MenuItem>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('openClientView')}</MenuItem>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('agreementsSettings')}</MenuItem>
-                  </Menu>
-                </>
-              )}
-            </Stack>
-          </Box>
+          <ProjectHeader
+            project={project}
+            online={online}
+            headerActions={headerActions}
+            onClientView={onClientView}
+            onInvite={onInvite}
+            onTab={onTab}
+            projMenu={projMenu}
+            setProjMenu={setProjMenu}
+            setMobileNav={setMobileNav}
+            t={t}
+          />
 
           {/* Aktivt tab */}
           <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
@@ -395,5 +533,11 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
     </ThemeProvider>
   );
 };
+
+// React.memo: TeamWorkspacePage.tsx sender fortsatt ferske inline-arrow-callbacks
+// (onNewProject/onLogout/onClientView/onInvite/onTab) hver render, så dette hindrer
+// IKKE re-render når de props-ene skifter identitet — men beskytter mot unødvendige
+// re-renders når kun urelatert parent-state endres uten at noen prop faktisk endrer verdi.
+const WorkspaceShell = React.memo(WorkspaceShellComponent);
 
 export default WorkspaceShell;
