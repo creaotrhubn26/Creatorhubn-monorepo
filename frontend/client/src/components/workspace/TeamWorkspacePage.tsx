@@ -335,24 +335,6 @@ const TeamWorkspacePage: React.FC = () => {
       >
         {content}
       </ErrorBoundary>
-      {/* CreatorHub Design (N3): admin-gated. Portalert til <body> så position:fixed er ekte
-          viewport-relativ (MUI-shell-wrappere lager containing-block-ancestorer som ellers
-          dytter FAB-en utenfor skjermen og forskyver overlay-pins). FAB åpner live-overlayet. */}
-      {isAdmin && typeof document !== 'undefined' && createPortal(
-        designMode ? (
-          <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />
-        ) : (
-          <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
-            sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 1,
-              px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
-              border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
-              '&:hover': { bgcolor: '#fff' } }}>
-            <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
-            CreatorHub Design
-          </Box>
-        ),
-        document.body,
-      )}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>
@@ -388,6 +370,28 @@ const TeamWorkspacePage: React.FC = () => {
         </DialogContent>
       </Dialog>
     </WorkspaceShell>
+    {/* CreatorHub Design (N3): admin-gated. Portalert til <body> så position:fixed er ekte
+        viewport-relativ (MUI-shell-wrappere lager containing-block-ancestorer som ellers
+        dytter FAB-en utenfor skjermen og forskyver overlay-pins). FAB åpner live-overlayet.
+        Rendres som søsken til <WorkspaceShell>, ikke som barn av den — en createPortal()-
+        verdi telles ikke som en gyldig React-node av MUI Box sin children-PropTypes-sjekk
+        når den ligger i en barne-array, noe som trigget en falsk "Invalid prop children"
+        dev-advarsel (portalen fungerte likevel korrekt — kun advarselen var feil). */}
+    {isAdmin && typeof document !== 'undefined' && createPortal(
+      designMode ? (
+        <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />
+      ) : (
+        <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
+          sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 1,
+            px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
+            border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
+            '&:hover': { bgcolor: '#fff' } }}>
+          <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
+          CreatorHub Design
+        </Box>
+      ),
+      document.body,
+    )}
     </WsLocaleProvider>
   );
 };
