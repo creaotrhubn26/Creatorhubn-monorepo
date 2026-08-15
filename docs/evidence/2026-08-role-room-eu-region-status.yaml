@@ -1,0 +1,68 @@
+claim: >
+  TheRoleRoom's infrastructure providers (Neon, Vercel, Cloudflare R2,
+  Backblaze B2) are all EU/EEA-region — an internal Meta App Review
+  autofill script and the GDPR action-memo (§6) both assumed/asserted this
+  without a verified source.
+source_type: primary
+source: >
+  Code audit (this session): backend/server/b2-archive-helper.ts:28-32
+  (dated 2026-06-08 production-incident comment, verified against the live
+  B2 API via b2_authorize_account); grep across the repo for region/
+  endpoint config in Neon connection strings, netlify.toml, vercel.json,
+  and all R2/B2 client instantiations.
+authority_tier: 1
+vendor: Neon / Vercel / Cloudflare / Backblaze
+product: Postgres hosting / static-site hosting / R2 object storage / B2 object storage
+version_scope: "Role Room backend, 2026-08"
+publication_date: "2026-08-15"
+evidence_summary: >
+  Only ONE of the four providers has an in-code, dated, verified EU claim:
+  Backblaze B2's Role Room production bucket (the-role-room-prod) is
+  confirmed eu-central-003 (Amsterdam), recorded in a code comment
+  documenting a real incident where the wrong default region (us-west-001)
+  caused silent write failures in prod. Everything else is unconfirmed or
+  contradicted: Neon's production DATABASE_URL is never committed (correct
+  secret hygiene) so its region can't be read from code at all; Cloudflare
+  R2 clients use the global, non-EU-jurisdiction-pinned endpoint
+  (region: 'auto', no jurisdiction param) across ~15 route files; Vercel is
+  confirmed LIVE production hosting (not Netlify, which per
+  plugins/creatorhub-engineering/skills/release-readiness/SKILL.md is a
+  prepared-but-not-cut-over migration target as of this date) with no
+  region pinned in frontend/vercel.json. A separate script,
+  backend/scripts/fill-meta-data-handling.playwright.mjs, had already
+  asserted "Neon EU-west-2, Ireland" (an internally inconsistent AWS
+  region label) and "Cloudflare R2 EU jurisdiction" to Meta App Review —
+  both corrected in this session to neutral, verifiable language.
+interpretation: >
+  Assuming EU-region compliance across a stack because one component is
+  verified, or because a form/memo asserted it once, is exactly the kind
+  of unverified claim that compounds — it was independently baked into
+  both a GDPR compliance memo and a third-party regulatory submission
+  (Meta) without cross-checking the actual client/connection config.
+project_impact: >
+  THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §6 ("EU/EØS-datalagring
+  verifisert — åpent punkt") and the customer-facing DPA template
+  (THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md §5) both cite this finding
+  instead of a specific region for Neon/R2 — do not restate a specific
+  region for either until it's confirmed directly in that provider's
+  dashboard.
+confidence: strong_evidence
+decision: >
+  Documented actual per-provider region status (see table below) instead
+  of a blanket "EU-compliant" assumption; corrected the Meta App Review
+  script to match; flagged Neon and R2 region verification as still-open
+  action items rather than closed ones in GDPR_COMPLIANCE_CHECKLIST.
+affected:
+  - THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md
+  - THE-ROLE-ROOM-DPIA-UTKAST.md
+  - THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md
+  - frontend/shared/datatilsynet-gdpr-reference.ts (GDPR_COMPLIANCE_CHECKLIST)
+  - backend/scripts/fill-meta-data-handling.playwright.mjs
+lesson: >
+  A single verified-EU data point (B2 prod bucket) doesn't generalize to
+  "our stack is EU-compliant" — check each provider's actual client/
+  connection config individually before writing a region claim into a
+  compliance memo or a third-party regulatory form. Vercel/Netlify status
+  is also a live-vs-migration-target distinction, not just a region
+  question — verify which host is actually serving production traffic
+  before naming it in compliance docs.

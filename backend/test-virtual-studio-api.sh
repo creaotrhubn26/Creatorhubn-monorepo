@@ -67,14 +67,17 @@ echo "📦 Step 3: Database Schema Verification"
 echo "----------------------------------------"
 echo "Checking Virtual Studio tables in database..."
 
-PGPASSWORD='npg_RIFOSAo81mLc' psql -h ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech \
-    -U neondb_owner -d neondb \
+if [ -z "$DATABASE_URL" ]; then
+    echo "DATABASE_URL must be set (never hardcode credentials) — skipping schema check."
+else
+psql "$DATABASE_URL" \
     -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'virtual_studio%' ORDER BY table_name" \
     -t | while read -r table; do
     if [ ! -z "$table" ]; then
         echo -e "${GREEN}✅${NC} Table exists: $(echo $table | xargs)"
     fi
 done
+fi
 echo ""
 
 echo "🎬 Step 4: Route Registration Check"

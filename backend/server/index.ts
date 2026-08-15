@@ -688,6 +688,8 @@ import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
 import { setupRoleRoomAgentInboxReplyRoutes } from "./role-room-agent-inbox-reply-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
+import { setupRoleRoomSamlRoutes } from "./role-room-saml-routes.js";
+import { setupRoleRoomScimRoutes } from "./role-room-scim-routes.js";
 import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.js";
 import { setupRoleRoomLeadsProducerRoutes } from "./role-room-leads-producer-routes.js";
 import { setupRoleRoomMentionsProducerRoutes } from "./role-room-mentions-producer-routes.js";
@@ -18417,7 +18419,7 @@ function buildCompatPlatformSubscriptionPlans(): CompatPlatformSubscriptionPlan[
         "White label",
         "Dedikert onboarding",
         "Tilpassede integrasjoner",
-        "SSO og tilgangsstyring",
+        "Google/Microsoft-pålogging og rollebasert tilgangsstyring",
         "Migrering og prioritet",
       ],
       limits: {
@@ -25679,6 +25681,14 @@ setupRoleRoomTalentGdprRoutes({
 //   16 endpoints: instagram (10) + facebook (6) inkl. OAuth, publish,
 //   webhooks, deauthorize, data-deletion.
 setupRoleRoomSocialMetaRoutes({ app, pool, requireAdminSession, isCompatAdminFeatureEnabled });
+
+// ── Role Room SAML SSO (Fase 1, Compliance-veikartet) — enterprise-org
+//   IdP-innlogging på toppen av organizations-tabellen (mig 285 + 0451).
+setupRoleRoomSamlRoutes({ app, pool, requireAdminSession, activeSessions });
+
+// ── Role Room SCIM 2.0 (Fase 2, Compliance-veikartet) — automatisk
+//   bruker-provisjonering/deprovisjonering fra kundens IdP (mig 0452).
+setupRoleRoomScimRoutes({ app, pool, requireAdminSession, activeSessions });
 
 // Instagram Direct-message inbox (unified social inbox in the CRM / Agent / Admin Room).
 setupRoleRoomIgMessagingRoutes({ app, pool, requireAdminSession });

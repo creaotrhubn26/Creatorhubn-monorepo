@@ -8,8 +8,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Neon PostgreSQL connection string
-const connectionString = process.env.DATABASE_URL || 
-  'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL environment variable is required.');
+}
 
 const pool = new Pool({
   connectionString,

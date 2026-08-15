@@ -549,6 +549,60 @@ export const GDPR_COMPLIANCE_CHECKLIST = [
       '✅ Automated cleanup jobs (data-cleanup-job.ts)',
     ],
   },
+  {
+    id: 'dpia',
+    category: 'Personvernkonsekvensvurdering (DPIA)',
+    priority: 'critical',
+    articleNumber: 'Art. 35',
+    requirement: 'Gjennomføre DPIA før behandling som treffer risikokriteriene (mindreårige, AI/media)',
+    status: 'partial',
+    implementation: [
+      '🟡 Utkast skrevet — THE-ROLE-ROOM-DPIA-UTKAST.md (2026-08-15)',
+      '⏳ Ikke jurist-kvalitetssikret; §1.3 (mindreårige-samtykkeflyt) og §3 (scoring-kriteriet) har åpne [AVKLAR]-punkter',
+      '⏳ Terskelen er passert: mindreårige i casting + AI-agent/media-behandling',
+    ],
+  },
+  {
+    id: 'dpa-subprocessors',
+    category: 'Databehandleravtaler — underleverandører',
+    priority: 'critical',
+    articleNumber: 'Art. 28',
+    requirement: 'Inngå DPA med alle underdatabehandlere (Neon, Vercel, S3/R2, Stripe, Anthropic, Google Workspace, Twilio, Idura/Criipto)',
+    status: 'pending',
+    implementation: [
+      '⏳ Ikke bekreftet akseptert for alle underleverandører — se THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §2',
+      '⏳ Listen er nå faktasjekket mot faktisk brukt infrastruktur (Backblaze B2 lagt til, Idura/Criipto uendret venter på BankID) — se THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md §5',
+    ],
+  },
+  {
+    id: 'dpa-customer-template',
+    category: 'Databehandleravtaler — kunde-mal',
+    priority: 'critical',
+    articleNumber: 'Art. 28',
+    requirement: 'Tilby en signert kunde-DPA (vi er databehandler for kundens talent-/produksjonsdata)',
+    status: 'partial',
+    implementation: [
+      '🟡 Mal skrevet — THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md (2026-08-15)',
+      '⏳ Ansvarsbegrensning (§11) og verneting (§12) er ikke fastsatt — krever jurist',
+      '⏳ Ingen kunde har mottatt/signert malen ennå',
+    ],
+  },
+  {
+    id: 'eu-region-verification',
+    category: 'EU/EØS-datalagring',
+    priority: 'high',
+    articleNumber: 'Art. 44–49',
+    requirement: 'Verifisere at Neon, Netlify/Vercel og B2/R2 faktisk er satt til EU-region, og bekrefte SCC/DPF for US-leverandører',
+    status: 'partial',
+    implementation: [
+      '✅ Backblaze B2 (Role Room-produksjonsbøtte): EU-bekreftet — eu-central-003 (Amsterdam), verifisert i kode mot en datert produksjonshendelse (backend/server/b2-archive-helper.ts:28-32)',
+      '🟡 Backblaze B2 (akademi-/firma-arkiv-bøtter): faller tilbake til us-west-001 med mindre B2_REGION er satt separat i Render — ikke verifiserbart fra repoet',
+      '❌ Neon (database): ikke verifiserbart fra kode — prod-URL er aldri committet (riktig praksis), men ingen bekreftet region-kilde finnes heller',
+      '❌ Cloudflare R2: klientkode bruker det globale (ikke EU-jurisdiction-pinnede) endepunktet — ingen jurisdiction-restriksjon konfigurert i kode',
+      '⏳ Vercel: bekreftet LIVE produksjonshosting (ikke Netlify — DNS-cutover ikke gjort per intern dokumentasjon), region ikke verifiserbart fra repoet',
+      '⏳ Åpent punkt — se THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §6',
+    ],
+  },
 ];
 
 /**

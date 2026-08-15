@@ -63,7 +63,9 @@ import { apiRequest } from '@/lib/queryClient';
 import {
   DATATILSYNET_REQUIREMENTS,
   DATATILSYNET_CONTACT,
-  GDPR_COMPLIANCE_CHECKLIST
+  GDPR_COMPLIANCE_CHECKLIST,
+  calculateComplianceScore,
+  getPendingComplianceItems
 } from '@shared/datatilsynet-gdpr-reference';
 import { AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 
@@ -119,8 +121,8 @@ export function GDPRCompliancePanel() {
   const { auth } = useEnhancedMasterIntegration();
 
   // Calculate real-time compliance score based on Datatilsynet requirements
-  const complianceScore = 100; // Will be 100% after implementing export
-  const _pendingItems = [] as any[]; // No pending items after implementation
+  const complianceScore = calculateComplianceScore();
+  const pendingItems = getPendingComplianceItems();
 
   // Fetch privacy policy
   const { data: privacyPolicyData } = useQuery({
@@ -356,15 +358,27 @@ export function GDPRCompliancePanel() {
           </Grid>
         </Grid>
 
-        {/* 100% Compliance Alert */}
-        <Alert severity="success" sx={{ mb: 3 }} icon={<CheckCircle />}>
-          <Typography variant="body2" fontWeight="bold">
-            ✅ 100% Datatilsynet Compliance Oppnådd!
-          </Typography>
-          <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-            Alle GDPR-krav fra Datatilsynet er implementert. CreatorHub Norge overholder fullt ut norsk personvernlovgivning.
-          </Typography>
-        </Alert>
+        {/* Compliance status alert — reflects the checklist, not an aspiration */}
+        {pendingItems.length === 0 ? (
+          <Alert severity="success" sx={{ mb: 3 }} icon={<CheckCircle />}>
+            <Typography variant="body2" fontWeight="bold">
+              ✅ 100% Datatilsynet Compliance Oppnådd!
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+              Alle GDPR-krav fra Datatilsynet er implementert. CreatorHub Norge overholder fullt ut norsk personvernlovgivning.
+            </Typography>
+          </Alert>
+        ) : (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <Typography variant="body2" fontWeight="bold">
+              {complianceScore}% Datatilsynet-krav oppfylt — {pendingItems.length} gjenstår
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+              Åpne punkter: {pendingItems.map((item) => item.category).join(', ')}. Se
+              THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md for detaljer og anbefalt rekkefølge.
+            </Typography>
+          </Alert>
+        )}
       </Box>
 
       {/* Navigation Tabs */}

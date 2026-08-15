@@ -319,9 +319,11 @@ export function setupRoleRoomSocialMetaRoutes(
     }
     const connection = connections[0];
 
-    const url = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${encodeURIComponent(connection.accessToken)}`;
+    const url = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,category,tasks`;
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${connection.accessToken}` },
+      });
       const text = await response.text();
       let payload: Record<string, unknown> | null = null;
       try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
@@ -395,7 +397,8 @@ export function setupRoleRoomSocialMetaRoutes(
     let pageAccessToken: string | null = null;
     try {
       const accountsRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token`,
+        { headers: { Authorization: `Bearer ${connection.accessToken}` } },
       );
       const accountsBody = await accountsRes.json() as { data?: Array<{ id?: string; access_token?: string }> };
       const match = (accountsBody.data ?? []).find((p) => String(p.id) === pageId);
@@ -445,11 +448,13 @@ export function setupRoleRoomSocialMetaRoutes(
       form.append("published", "false");
       form.append("scheduled_publish_time", String(scheduledPublishUnix));
     }
-    form.append("access_token", pageAccessToken);
-
     const uploadUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/videos`;
     try {
-      const response = await fetch(uploadUrl, { method: "POST", body: form });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        body: form,
+        headers: { Authorization: `Bearer ${pageAccessToken}` },
+      });
       const text = await response.text();
       let payload: Record<string, unknown> | null = null;
       try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }
@@ -515,7 +520,8 @@ export function setupRoleRoomSocialMetaRoutes(
     let pageAccessToken: string | null = null;
     try {
       const accountsRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token&access_token=${encodeURIComponent(connection.accessToken)}`,
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,access_token`,
+        { headers: { Authorization: `Bearer ${connection.accessToken}` } },
       );
       const accountsBody = await accountsRes.json() as { data?: Array<{ id?: string; access_token?: string }> };
       const match = (accountsBody.data ?? []).find((p) => String(p.id) === pageId);
@@ -538,11 +544,14 @@ export function setupRoleRoomSocialMetaRoutes(
 
     const form = new FormData();
     form.append("message", finalMessage);
-    form.append("access_token", pageAccessToken);
 
     const feedUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(pageId)}/feed`;
     try {
-      const response = await fetch(feedUrl, { method: "POST", body: form });
+      const response = await fetch(feedUrl, {
+        method: "POST",
+        body: form,
+        headers: { Authorization: `Bearer ${pageAccessToken}` },
+      });
       const text = await response.text();
       let payload: Record<string, unknown> | null = null;
       try { payload = JSON.parse(text) as Record<string, unknown>; } catch { /* keep raw */ }

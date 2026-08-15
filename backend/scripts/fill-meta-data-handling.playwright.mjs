@@ -37,11 +37,16 @@ Functional integrations:
 
 Infrastructure processors:
 - Render Services, Inc. — application hosting (US, SCCs)
-- Neon, Inc. — managed PostgreSQL database (EU-west-2, Ireland)
-- Cloudflare, Inc. — R2 object storage for uploaded images, carousel media and reels video (EU jurisdiction, SCCs)
+- Neon, Inc. — managed PostgreSQL database (region per Neon project settings; standard Neon DPA/SCCs)
+- Cloudflare, Inc. — R2 object storage for uploaded images, carousel media and reels video (global network; standard SCCs)
 - Vercel Inc. — static frontend and legal-page hosting (US, SCCs)
 
 All processors are bound by written data processing agreements. Instagram tokens and media are accessed only by these processors in the course of delivering the service. Never shared with advertising networks, data brokers, or analytics third parties.`;
+// Neon/R2 region wording was corrected 2026-08 after a code audit found no
+// verifiable EU-region config for either (Neon's prod DATABASE_URL isn't in
+// the repo; R2 clients use the global, non-jurisdiction-pinned endpoint) —
+// see THE-ROLE-ROOM-PERSONVERN-DPA-NOTAT.md §6. Don't restate a specific
+// region here until it's actually confirmed in the provider's dashboard.
 
 function log(message) {
   console.log(`[${new Date().toISOString().split('T')[1].slice(0, 8)}] ${message}`);
