@@ -148,6 +148,57 @@ const extractFountainSceneHeadings = (content: string | undefined): string[] => 
   return out;
 };
 
+type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
+
+const SCENE_TIME_OF_DAY_MAP: Record<string, SceneTimeOfDay> = {
+  DAY: 'DAY',
+  NIGHT: 'NIGHT',
+  DAWN: 'DAWN',
+  DUSK: 'DUSK',
+  CONTINUOUS: 'CONTINUOUS',
+  LATER: 'LATER',
+  MORNING: 'MORNING',
+  EVENING: 'EVENING',
+  SAME: 'CONTINUOUS',
+  DAG: 'DAY',
+  NATT: 'NIGHT',
+  DEMRING: 'DAWN',
+  GRYNING: 'DAWN',
+  SKUMRING: 'DUSK',
+  KONTINUERLIG: 'CONTINUOUS',
+  SENERE: 'LATER',
+  MORGEN: 'MORNING',
+  KVELD: 'EVENING',
+};
+
+const normalizeSceneTimeOfDay = (value?: string): SceneTimeOfDay => {
+  const token = (value || '').trim().replace(/\.$/, '').toUpperCase();
+  return SCENE_TIME_OF_DAY_MAP[token] ?? 'DAY';
+};
+
+const parseSceneHeadingLine = (
+  line: string,
+): { intExt: SceneBreakdown['intExt']; location: string; timeOfDay: SceneTimeOfDay } | null => {
+  const match = line.trim().match(
+    /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|DAG|NATT|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE|MORGEN|KVELD)\.?)?$/i,
+  );
+  if (!match) return null;
+
+  const prefix = match[1].toUpperCase().replace('.', '');
+  const intExt: SceneBreakdown['intExt'] =
+    prefix === 'I/E' || prefix.includes('INT/EXT')
+      ? 'INT/EXT'
+      : prefix.startsWith('EXT') || prefix === 'EST'
+        ? 'EXT'
+        : 'INT';
+
+  return {
+    intExt,
+    location: (match[2] || '').trim(),
+    timeOfDay: normalizeSceneTimeOfDay(match[3]),
+  };
+};
+
 const getManuscriptCoverFocalPoint = (manuscript: Manuscript | null | undefined): ManuscriptCoverFocalPoint => {
   const raw = manuscript?.coverFocalPoint;
   if (typeof raw !== 'object' || raw === null) {
@@ -1411,14 +1462,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       let sceneNumber = 1;
       let currentScene: Partial<SceneBreakdown> | null = null;
       let currentCharacters: string[] = [];
-      const validSceneTimesOfDay = ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER', 'MORNING', 'EVENING'] as const;
-      type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         
-        // Scene heading detection (INT. / EXT.)
-        if (line.match(/^(INT\.|EXT\.)/i)) {
+        // Scene heading detection supports Fountain INT/EXT variants and NO/EN time-of-day.
+        const parsedHeading = parseSceneHeadingLine(line);
+        if (parsedHeading) {
           // Save previous scene if exists
           if (currentScene) {
             autoScenes.push({
@@ -1432,21 +1482,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             currentCharacters = [];
           }
 
-          // Parse new scene heading
-          const parts = line.split('-').map(p => p.trim());
-          const intExt = parts[0].startsWith('INT') ? 'INT' : 'EXT';
-          const location = parts[0].replace(/^(INT\.|EXT\.)\s*/i, '');
-          const timeRaw = parts[1] || 'DAY';
-          const timeOfDay: SceneTimeOfDay =
-            validSceneTimesOfDay.includes(timeRaw.toUpperCase() as SceneTimeOfDay)
-              ? timeRaw.toUpperCase() as SceneTimeOfDay
-              : 'DAY';
-
           currentScene = {
             sceneHeading: line,
-            intExt,
-            locationName: location,
-            timeOfDay,
+            intExt: parsedHeading.intExt,
+            locationName: parsedHeading.location,
+            timeOfDay: parsedHeading.timeOfDay,
             estimatedDuration: 3,
           };
           sceneNumber++;
@@ -1938,9 +1978,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     
     lines.forEach((line, lineIndex) => {
       const trimmed = line.trim();
-      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
+      const sceneHeading = parseSceneHeadingLine(trimmed);
       
-      if (sceneMatch) {
+      if (sceneHeading) {
         // Save previous scene
         saveCurrentScene();
         currentSpeaker = null;
@@ -1948,9 +1988,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         // Start new scene
         currentSceneData = {
           heading: trimmed,
-          intExt: sceneMatch[1].toUpperCase().replace('.', '').replace('/', '/'),
-          location: sceneMatch[2]?.trim() || '',
-          timeOfDay: sceneMatch[3]?.toUpperCase() || 'DAY',
+          intExt: sceneHeading.intExt,
+          location: sceneHeading.location,
+          timeOfDay: sceneHeading.timeOfDay,
           description: '',
           characters: [],
           lineCount: 0,
