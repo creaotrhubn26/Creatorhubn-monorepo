@@ -1323,12 +1323,29 @@ const ScriptView: React.FC<{
   onScriptChange?: (content: string) => void;
 }> = ({ scene, scriptContent, onScriptChange }) => {
   const hasScriptEditor = typeof scriptContent === 'string';
+  // Ekte scene-manus hentet fra manuskriptet (INGEN fabrikkerte «eksempel»-replikker).
+  const sceneScript = useMemo(() => {
+    if (typeof scriptContent !== 'string') return null;
+    const lines = scriptContent.split('\n');
+    const isHeading = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l.trim());
+    const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+    const target = norm(scene.sceneHeading || scene.heading || '');
+    if (!target) return null;
+    let start = -1;
+    for (let i = 0; i < lines.length; i++) { if (isHeading(lines[i]) && norm(lines[i]) === target) { start = i; break; } }
+    if (start === -1) return null;
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) { if (isHeading(lines[i])) { end = i; break; } }
+    return lines.slice(start + 1, end).join('\n').trim();
+  }, [scriptContent, scene]);
   return (
-    <Paper sx={{ p: 3, fontFamily: 'Courier, monospace', bgcolor: '#FFFFF8' }}>
+    // Lys «manus-side» → tving MØRK tekst; ellers arver innholdet dark-temaets lyse
+    // tekstfarge og blir usynlig på kremfargen (var white-on-white).
+    <Paper sx={{ p: 3, fontFamily: 'Courier, monospace', bgcolor: '#FFFFF8', color: '#1a1a1a' }}>
       <Stack spacing={3}>
         {hasScriptEditor && (
           <Stack spacing={1.5}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1a1a1a' }}>
               Manus for scenen
             </Typography>
             <TextField
@@ -1343,6 +1360,7 @@ const ScriptView: React.FC<{
                   fontFamily: 'Courier, monospace',
                   fontSize: 14,
                   backgroundColor: 'rgba(255,255,255,0.75)',
+                  color: '#1a1a1a',
                 },
               }}
             />
@@ -1361,35 +1379,23 @@ const ScriptView: React.FC<{
           </Typography>
         )}
 
-        {/* Dialogue */}
-        {scene.characters && scene.characters.length > 0 && (
-          <Stack spacing={2}>
+        {/* Ekte scene-manus (action + replikker) fra manuskriptet */}
+        {sceneScript ? (
+          <Typography
+            component="pre"
+            sx={{ fontFamily: 'Courier, monospace', whiteSpace: 'pre-wrap', lineHeight: 1.7, m: 0 }}
+          >
+            {sceneScript}
+          </Typography>
+        ) : scene.characters && scene.characters.length > 0 ? (
+          <Stack spacing={1}>
             {scene.characters.map((char, i) => (
-              <Box key={i}>
-                <Typography
-                  sx={{
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    mb: 1,
-                  }}
-                >
-                  {char.toUpperCase()}
-                </Typography>
-                <Typography
-                  sx={{
-                    textAlign: 'center',
-                    maxWidth: '60%',
-                    mx: 'auto',
-                    fontStyle: 'italic',
-                    color: 'text.secondary',
-                  }}
-                >
-                  (eksempel dialog for {char})
-                </Typography>
-              </Box>
+              <Typography key={i} sx={{ textAlign: 'center', fontWeight: 'bold' }}>
+                {char.toUpperCase()}
+              </Typography>
             ))}
           </Stack>
-        )}
+        ) : null}
       </Stack>
     </Paper>
   );
