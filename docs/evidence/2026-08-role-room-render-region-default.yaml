@@ -1,8 +1,8 @@
 claim: >
   Role Room's backend compute (creatorhub-backend, the nextrole cron job,
-  and the gfpgan-runner image-processing service) runs on Render — and
-  since neither render.yaml in this repo declares a `region:` key, all
-  three services default to Render's Oregon (US West) region, not EU/EEA.
+  and the gfpgan-runner image-processing service) runs on Render, in
+  Oregon (US West), not EU/EEA. Originally a prediction from render.yaml's
+  silence on `region:`; CONFIRMED same-day directly via the Render API.
 
 source_type: primary
 source: >
@@ -16,6 +16,22 @@ source: >
   deploy") confirms region is fixed at service creation and can't be
   changed in-place afterward — moving to Frankfurt requires recreating
   the service, not editing config on the running one.
+
+  CONFIRMED 2026-08-15 via `GET https://api.render.com/v1/services` (run
+  by the account owner from outside the sandbox — this session's own
+  egress proxy blocks api.render.com, so the prediction above could not
+  be verified from inside the coding session itself):
+    creatorhub-backend        | oregon | srv-d76ob60ule4c73dv2p60
+    creatorhub-gfpgan-runner  | oregon | srv-d7dm8va8qa3s73bjthh0
+  Both Role Room-relevant services are Oregon, exactly as the render.yaml
+  default predicted. Two adjacent services on the same Render account are
+  also relevant context (not Role Room, but same infra decision pattern):
+  `tidum-backend` (oregon) and an unlabeled legacy `backend` service
+  (oregon) are US too; the `reknaren-*` service group is mostly Frankfurt
+  (reknaren, reknaren-market-refresh, reknaren-reminders,
+  reknaren-stripe-sync) except reknaren-bank-sync and reknaren-gmail-scan,
+  which are Oregon — so EU-pinning is evidently an active, deliberate
+  choice made for that product, not a platform-wide default here.
 
 authority_tier: 1
 vendor: Render Services, Inc.
@@ -41,36 +57,34 @@ evidence_summary: >
 
 interpretation: >
   render.yaml is the source of truth for a Render Blueprint deploy's
-  initial region; its silence here is itself the finding, not an
-  "unknown" to shrug off — Render's own default is a concrete, documented
-  answer (Oregon), and the compliance docs' EU/EEA assumption should be
-  treated as false for backend compute unless someone confirms in the
-  Render dashboard that the live services were manually pinned to
-  Frankfurt after the blueprint synced.
+  initial region; its silence here was itself the finding, and the
+  API confirmation removes any remaining doubt — Role Room backend
+  compute is US (Oregon), not EU/EEA. The reknaren-* group on the same
+  account proves Frankfurt is a normal, reachable choice on this Render
+  account when someone deliberately picks it — nothing platform-level is
+  stopping Role Room's services from being moved there.
 
 project_impact: >
-  Adds Render (backend compute) as a 5th open item alongside Neon
-  (unverifiable from code) and Cloudflare R2 (not jurisdiction-pinned) in
-  the same EU/EEA-residency gap this project already tracks. Unlike
-  Neon/R2, this one has a documented default that argues FOR non-EU
-  unless proven otherwise — the burden of proof should flip: assume
-  Oregon (US) until the dashboard confirms Frankfurt, not the reverse.
+  Closes the "unverified" status on Render (backend compute) that sat
+  alongside Neon (still genuinely unverifiable from code) and Cloudflare
+  R2 (not jurisdiction-pinned) in the EU/EEA-residency gap this project
+  tracks. This one is no longer open-as-unknown — it's open-as-confirmed-
+  problem: Role Room's actual candidate/production data is processed on
+  US infrastructure right now.
   `THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md` §5 (leverandørliste) and
-  `docs/soc2/03-leverandorrisiko-policy.md` §3 do not currently list
-  Render as a separate row — both list only Render Services, Inc. under
-  "applikasjonshosting" with region "US, SCC-er", which is now the
-  correct default assumption pending dashboard confirmation, not a
-  placeholder.
+  `docs/soc2/03-leverandorrisiko-policy.md` §3 already list Render under
+  "applikasjonshosting" with region "US, SCC-er" — that listing is now
+  fully substantiated, not a placeholder guess.
 
-confidence: strong_evidence
+confidence: confirmed
 decision: >
-  Flagged as an open action item rather than silently assumed either way.
-  Migrating region requires recreating the Render service (documented
-  Render limitation), which is a live-production, user-initiated action —
-  not something to do from a coding session. Left `docs/soc2/
-  03-leverandorrisiko-policy.md`'s existing "US, SCC-er" listing for
-  Render as-is (it was already correct; this evidence file is what newly
-  substantiates it with a primary source instead of a guess).
+  Confirmed via Render API by the account owner (2026-08-15); not fixed
+  in this session. Migrating region requires recreating the Render
+  service (documented Render limitation: region can't be changed
+  in-place), which is a live-production, user-initiated action — planned
+  downtime + DNS/env re-point — not something to do from a coding
+  session. Left `docs/soc2/03-leverandorrisiko-policy.md`'s existing
+  "US, SCC-er" listing for Render as-is; it was already correct.
 
 affected:
   - docs/soc2/03-leverandorrisiko-policy.md
@@ -80,8 +94,12 @@ affected:
 lesson: >
   An absent config field is not "unknown" when the platform has a
   documented default — check the vendor's own docs for what silence
-  means before treating it as an open question. Region migration on
-  Render specifically requires service recreation, not a config edit, so
-  this class of gap can't be closed from inside a coding session even
-  once confirmed; it needs to be logged as a user-actioned infra change
-  with a known cost (downtime + DNS/env re-point), not folded into a PR.
+  means before treating it as an open question, and the render.yaml
+  prediction here turned out exactly right against the live API. Region
+  migration on Render specifically requires service recreation, not a
+  config edit, so this class of gap can't be closed from inside a coding
+  session even once confirmed; it needs to be logged as a user-actioned
+  infra change with a known cost (downtime + DNS/env re-point), not
+  folded into a PR. Sibling services on the same account being
+  Frankfurt-pinned (reknaren-*) is useful corroborating evidence that
+  moving Role Room there is a known, exercised path, not new ground.
