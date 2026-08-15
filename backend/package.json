@@ -271,7 +271,7 @@
     "web-push": "^3.6.7",
     "winston": "^3.17.0",
     "ws": "^8.18.3",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "xlsx": "npm:@e965/xlsx@0.20.3",
     "xml2js": "^0.6.2",
     "yaml": "^2.8.1",
     "yjs": "^13.6.27",
