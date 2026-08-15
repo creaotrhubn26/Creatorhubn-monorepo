@@ -784,6 +784,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       }
       if (thread.type === 'unscheduled') {
         setActiveTab('production');
+      } else if (thread.type === 'last-edited' || thread.type === 'empty-scaffold') {
+        setActiveTab('editor');
       } else {
         setActiveTab('scenes');
       }
