@@ -329,7 +329,7 @@ const TeamWorkspacePage: React.FC = () => {
   const content = useMemo(() => {
     switch (tab) {
       case 'oversikt':        return <OversiktTab projectId={projectId} profession={user?.profession} />;
-      case 'prosjektplan':    return <ProsjektplanTab projectId={projectId} />;
+      case 'prosjektplan':    return <ProsjektplanTab projectId={projectId} profession={user?.profession} />;
       case 'produksjonskart': return <ProduksjonskartTab projectId={projectId} />;
       case 'shotlist':        return <ShotlistTab projectId={projectId} />;
       case 'laater':          return <LaaterTab projectId={projectId} />;
@@ -338,11 +338,11 @@ const TeamWorkspacePage: React.FC = () => {
       case 'bookinger':       return <BookingerTab projectId={projectId} />;
       case 'academy':         return <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>;
       case 'community':       return <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || undefined} />;
-      case 'moodboard':       return <MoodboardTab projectId={projectId} />;
+      case 'moodboard':       return <MoodboardTab projectId={projectId} profession={user?.profession} />;
       case 'media':           return <MediaTab projectId={projectId} />;
       case 'utstyr':          return <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />;
             case 'leveranser':      return <LeveranserTab projectId={projectId} />;
-      case 'oppgaver':        return <OppgaverTab projectId={projectId} />;
+      case 'oppgaver':        return <OppgaverTab projectId={projectId} profession={user?.profession} />;
       case 'avtaler':         return <AvtalerTab projectId={projectId} />;
       case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
       case 'kundevisning':    return <KundevisningTab projectId={projectId} />;

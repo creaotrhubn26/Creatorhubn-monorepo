@@ -18,11 +18,14 @@ import { apiRequest } from '@/lib/queryClient';
 import SplitSheetEarningsOverview from '../universal/split-sheets/SplitSheetEarningsOverview';
 import TeamMembersDirectory from '../universal/split-sheets/TeamMembersDirectory';
 import SplitSheetRoleWizard from '../universal/split-sheets/SplitSheetRoleWizard';
-import { ws } from './workspaceTheme';
+import { ws, isMusicProfession } from './workspaceTheme';
 import { wsIcon } from './crewIcons';
 import { WsCard, WsTag } from './ui';
 
-const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
+// Delt normalisering (samme som sidenavet bruker) i stedet for en egen, ufullstendig
+// profesjons-liste — den gamle lista manglet 'musicproducer' (den faktiske verdien
+// workspaceTheme.ts normaliserer musikkprodusenter til).
+const isMusic = (p?: string) => isMusicProfession(p);
 // split_sheet_contributors.role har CHECK-constraint (kun disse slug-ene). Wizardens
 // roleId (f.eks. 'photo', 'second-shooter') og norske labels bryter den → map til
 // gyldig slug (ellers 'collaborator'); den lesbare rollen lagres i custom_fields.

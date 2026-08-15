@@ -32,7 +32,7 @@ import CameraAlt from '@mui/icons-material/CameraAlt';
 import Build from '@mui/icons-material/Build';
 import Groups from '@mui/icons-material/Groups';
 import EditNote from '@mui/icons-material/EditNote';
-import { ws } from '../workspaceTheme';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid, WsModal, WsPageTitle } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
@@ -100,6 +100,9 @@ const T: WsDict = {
   notesFailed: { no: 'Kunne ikke generere notater — last opp referansebilder først.', en: 'Could not generate notes — upload reference images first.' },
   paletteFailed: { no: 'Kunne ikke trekke ut farger — last opp referansebilder først.', en: 'Could not extract colors — upload reference images first.' },
   allCat: { no: 'Alle', en: 'All' },
+  pageTitle: { no: 'Moodboard', en: 'Moodboard' },
+  pageTitleGeneric: { no: 'Inspirasjon', en: 'Inspiration' },
+  moodDetailsPanel: { no: 'Detaljer', en: 'Details' },
   editMoodboard: { no: 'Rediger moodboard', en: 'Edit moodboard' },
   stylePlaceholder: { no: 'f.eks. Romantisk / Editorial', en: 'e.g. Romantic / Editorial' },
   notesPerLine: { no: 'Stilnotater (én per linje)', en: 'Style notes (one per line)' },
@@ -147,8 +150,8 @@ const T: WsDict = {
   attachUse: { no: 'Tilknytt', en: 'Assign' },
   noUse: { no: 'Ikke tilknyttet', en: 'Unassigned' },
   useLabels: {
-    no: { bakgrunn: 'Bakgrunn / kulisse', lys: 'Belysning / tone', brudekjole: 'Brudekjole', dress: 'Dress / mann', brudepiker: 'Brudepiker', blomster: 'Blomster / dekor', detaljer: 'Detaljer / props', post: 'Etterarbeid / gradering' },
-    en: { bakgrunn: 'Background / set', lys: 'Lighting / tone', brudekjole: 'Wedding dress', dress: 'Suit / groom', brudepiker: 'Bridesmaids', blomster: 'Florals / decor', detaljer: 'Details / props', post: 'Post / grade' },
+    no: { bakgrunn: 'Bakgrunn / kulisse', lys: 'Belysning / tone', brudekjole: 'Brudekjole', dress: 'Dress / mann', brudepiker: 'Brudepiker', blomster: 'Blomster / dekor', detaljer: 'Detaljer / props', post: 'Etterarbeid / gradering', coverart: 'Coverart', scene: 'Scene / lys', merch: 'Merch', promo: 'Promo', produkt: 'Produkt', merkevare: 'Merkevare', annet: 'Annet' },
+    en: { bakgrunn: 'Background / set', lys: 'Lighting / tone', brudekjole: 'Wedding dress', dress: 'Suit / groom', brudepiker: 'Bridesmaids', blomster: 'Florals / decor', detaljer: 'Details / props', post: 'Post / grade', coverart: 'Cover art', scene: 'Stage / lighting', merch: 'Merch', promo: 'Promo', produkt: 'Product', merkevare: 'Branding', annet: 'Other' },
   } as any,
   addNote: { no: 'Legg til notat…', en: 'Add note…' },
   notesEmpty: { no: 'Ingen notater ennå — skriv egne eller la AI analysere referansene.', en: 'No notes yet — write your own or let AI analyze the references.' },
@@ -160,10 +163,27 @@ const T: WsDict = {
   detailsSummary: { no: 'Oversikt', en: 'Overview' },
 };
 // Kategori-etiketter for pills på ekte prosjekter (nøklene/verdiene er uendret).
-const CAT_I18N: Record<string, { no: string; en: string }> = {
+// Kategori-avhengig: moodboardet var 100% bryllupsfoto-formet uansett profesjon
+// (musikkprodusent/vendor så «Vielse/Portretter/Golden hour»-piller på ekte
+// prosjekter). Speiler samme per-kategori-mønster som UtstyrTab (CATS_MUSIC/
+// CATS_VISUAL) i stedet for én hardkodet liste.
+const CAT_I18N_VISUAL: Record<string, { no: string; en: string }> = {
   forb: { no: 'Forberedelser', en: 'Preparations' }, vielse: { no: 'Vielse', en: 'Ceremony' }, portrett: { no: 'Portretter', en: 'Portraits' }, golden: { no: 'Golden hour', en: 'Golden hour' }, detaljer: { no: 'Detaljer', en: 'Details' }, fest: { no: 'Fest', en: 'Reception' },
 };
-
+const CAT_I18N_MUSIC: Record<string, { no: string; en: string }> = {
+  coverart: { no: 'Coverart', en: 'Cover art' }, video: { no: 'Musikkvideo', en: 'Music video' }, scene: { no: 'Scene / lys', en: 'Stage / lighting' }, promo: { no: 'Promo', en: 'Promo' }, annet: { no: 'Annet', en: 'Other' },
+};
+const CAT_I18N_GENERIC: Record<string, { no: string; en: string }> = {
+  stil: { no: 'Stil', en: 'Style' }, produkt: { no: 'Produkt', en: 'Product' }, merkevare: { no: 'Merkevare', en: 'Branding' }, annet: { no: 'Annet', en: 'Other' },
+};
+const CATS_BY_CATEGORY: Record<string, { i18n: Record<string, { no: string; en: string }>; keys: string[] }> = {
+  visual: { i18n: CAT_I18N_VISUAL, keys: ['forb', 'vielse', 'portrett', 'golden', 'detaljer', 'fest'] },
+  music: { i18n: CAT_I18N_MUSIC, keys: ['coverart', 'video', 'scene', 'promo', 'annet'] },
+  vendor: { i18n: CAT_I18N_GENERIC, keys: ['stil', 'produkt', 'merkevare', 'annet'] },
+  service: { i18n: CAT_I18N_GENERIC, keys: ['stil', 'produkt', 'merkevare', 'annet'] },
+};
+// Bak-kompat-navn for demo-data (sample-visningen er alltid bryllupsfoto-tema).
+const CAT_I18N = CAT_I18N_VISUAL;
 const CATS = [{ key: 'alle', label: 'Alle 86' }, { key: 'forb', label: 'Forberedelser 12' }, { key: 'vielse', label: 'Vielse 14' }, { key: 'portrett', label: 'Portretter 16' }, { key: 'golden', label: 'Golden hour 10' }, { key: 'detaljer', label: 'Detaljer 12' }, { key: 'fest', label: 'Fest 14' }];
 const PALETTE = [['Elfenben', '#F6F2EB'], ['Champagne', '#EAD9C1'], ['Salvie', '#A6B49A'], ['Sand', '#DCC9B1'], ['Mørk grønn', '#2E4A3B'], ['Gull', '#D4A017']];
 const STYLE_NOTES = ['Mykt naturlig lys', 'Varme hudtoner', 'Romantisk og tidløst', 'Dokumentarisk + editorial miks', 'Fokus på følelser og nærhet'];
@@ -173,7 +193,12 @@ const PRESENCE_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?
   : 'wss://creatorhub-backend-rtbl.onrender.com';
 const ini = (n: string) => (n || '?').slice(0, 1).toUpperCase();
 /** Shoot-elementer en farge kan tilknyttes (label hentes fra i18n t('useLabels')). */
-const PAL_USES = ['bakgrunn', 'lys', 'brudekjole', 'dress', 'brudepiker', 'blomster', 'detaljer', 'post'];
+const PAL_USES_VISUAL = ['bakgrunn', 'lys', 'brudekjole', 'dress', 'brudepiker', 'blomster', 'detaljer', 'post'];
+const PAL_USES_MUSIC = ['coverart', 'scene', 'merch', 'promo', 'post'];
+const PAL_USES_GENERIC = ['produkt', 'merkevare', 'bakgrunn', 'annet'];
+const PAL_USES_BY_CATEGORY: Record<string, string[]> = { visual: PAL_USES_VISUAL, music: PAL_USES_MUSIC, vendor: PAL_USES_GENERIC, service: PAL_USES_GENERIC };
+// Bak-kompat-navn for demo-visningen (alltid bryllupsfoto-tema uansett kategori).
+const PAL_USES = PAL_USES_VISUAL;
 /** Kategorier for stilnotater (fargekodet + ikon). */
 const NOTE_CATS: Record<string, { color: string; icon: any }> = {
   lys: { color: '#fbbf24', icon: WbSunny },
@@ -199,11 +224,17 @@ const SAMPLE_MOOD_IMGS = [
   { id: 'sm3', b2Key: 'sm1', url: 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2e4a3b"/><stop offset="100%" stop-color="#dcc9b1"/></linearGradient></defs><rect width="600" height="450" fill="url(#g)"/></svg>`), label: 'Festsal, dempet belysning', category: 'fest' },
 ];
 
-const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+const MoodboardTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
   const [cat, setCat] = useState('alle');
   const mood = useProjectImages(projectId, 'moodboard');
   const shared = useProjectImages(projectId, 'moodboard-shared');
   const isReal = projectId && projectId !== 'sample';
+  // Kategorien styrer hvilke moodboard-piller/fargebruk-tags som vises — uten
+  // dette fikk musikkprodusenter/vendor "Vielse/Portretter/Brudekjole" på ekte
+  // prosjekter (100% bryllupsfoto-hardkodet uansett profesjon).
+  const category = workspaceCategoryFor(profession);
+  const catSet = CATS_BY_CATEGORY[category] || CATS_BY_CATEGORY.visual;
+  const palUses = PAL_USES_BY_CATEGORY[category] || PAL_USES_VISUAL;
   const [meta, setMeta] = useState<any | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -405,7 +436,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   // Kategori-tellere + filtrering + søk (ekte data).
   const catCount = (mood.images || []).reduce((m: any, im: any) => { if (im.category) m[im.category] = (m[im.category] || 0) + 1; return m; }, {});
   const realCats = isReal
-    ? [{ key: 'alle', label: `${t('allCat')} ${mood.images.length}` }, ...CATS.filter((c) => c.key !== 'alle').map((c) => ({ key: c.key, label: `${CAT_I18N[c.key]?.[locale] || c.label.replace(/\s*\d+$/, '')} ${catCount[c.key] || 0}` }))]
+    ? [{ key: 'alle', label: `${t('allCat')} ${mood.images.length}` }, ...catSet.keys.map((k) => ({ key: k, label: `${catSet.i18n[k]?.[locale] || k} ${catCount[k] || 0}` }))]
     : CATS;
   const q = search.trim().toLowerCase();
   const gridImages = isReal
@@ -656,7 +687,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         `}</style>
         <WsPageTitle
           icon={<Image sx={{ fontSize: 21, color: '#fff' }} />}
-          title="Moodboard"
+          title={category === 'vendor' || category === 'service' ? t('pageTitleGeneric') : t('pageTitle')}
           sub={`${refCount} ${t('refCount').toLowerCase()} · ${pal.length} ${t('colors').toLowerCase()}`}
           children={<>
             {/* Live tilstedeværelse: hvem ser på akkurat nå */}
@@ -732,7 +763,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Button size="small" onClick={(e) => setBulkCatMenu(e.currentTarget)} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{t('setCategory')}</Button>
               <Button size="small" onClick={endBulk} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700, ml: 'auto' }}>{t('cancel2')}</Button>
               <Menu anchorEl={bulkCatMenu || null} open={!!bulkCatMenu} onClose={() => setBulkCatMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
-                {isReal ? [...new Set([...Object.keys(CAT_I18N), ...mood.images.map((im: any) => im.category).filter(Boolean)])].map((k) => <MenuItem key={k} onClick={() => { setBulkCatMenu(null); patchSel({ category: k }); }} sx={{ fontSize: 13 }}>{CAT_I18N[k]?.[locale] || k}</MenuItem>) : null}
+                {isReal ? [...new Set([...Object.keys(catSet.i18n), ...mood.images.map((im: any) => im.category).filter(Boolean)])].map((k) => <MenuItem key={k} onClick={() => { setBulkCatMenu(null); patchSel({ category: k }); }} sx={{ fontSize: 13 }}>{catSet.i18n[k]?.[locale] || k}</MenuItem>) : null}
                 <MenuItem onClick={() => { setBulkCatMenu(null); patchSel({ category: null }); }} sx={{ fontSize: 13, color: ws.textDim }}>—</MenuItem>
               </Menu>
             </Stack>
@@ -746,7 +777,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 return (
                   <Box key={gk}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                      <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: ws.textDim }}>{CAT_I18N[gk]?.[locale] || gk} · {imgs.length}</Typography>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: ws.textDim }}>{catSet.i18n[gk]?.[locale] || gk} · {imgs.length}</Typography>
                       {cv && cv.missing > 0 && <WsTag label={`${cv.missing} ${t('missingRefs')}`} tone="amber" />}
                       {cv && cv.missing === 0 && cv.shots > 0 && <WsTag label="OK" tone="green" />}
                     </Stack>
@@ -759,7 +790,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <WsImageGrid columns={4} images={shownImgs} {...gridProps} />
           )}
           {isReal && (
-            <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 1 }}>{t('coverage')}: {Object.keys(CAT_I18N).map((k) => { const cv = covByCat(k); return cv && (cv.shots > 0 || cv.refs > 0) ? `${CAT_I18N[k][locale]} ${cv.shots}/${cv.refs}` : null; }).filter(Boolean).join(' · ') || t('noShotsData')}</Typography>
+            <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 1 }}>{t('coverage')}: {Object.keys(catSet.i18n).map((k) => { const cv = covByCat(k); return cv && (cv.shots > 0 || cv.refs > 0) ? `${catSet.i18n[k][locale]} ${cv.shots}/${cv.refs}` : null; }).filter(Boolean).join(' · ') || t('noShotsData')}</Typography>
           )}
           </>)}
           {subTab === 'shared' && (<>
@@ -826,7 +857,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </Stack>
             <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={addPalColor} sx={{ alignSelf: 'flex-start', color: ws.accent, textTransform: 'none', mt: 0.5 }}>{t('addColor')}</Button>
             <Menu anchorEl={palUseMenu?.anchor || null} open={!!palUseMenu} onClose={() => setPalUseMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}`, py: 0.5 } }}>
-              {PAL_USES.map((u) => <MenuItem key={u} selected={palUseMenu != null && pal[palUseMenu.idx]?.use === u} onClick={() => { if (palUseMenu) setPalAt(palUseMenu.idx, { use: u }); setPalUseMenu(null); }} sx={{ fontSize: 12.5 }}>{t('useLabels')[u]}</MenuItem>)}
+              {palUses.map((u) => <MenuItem key={u} selected={palUseMenu != null && pal[palUseMenu.idx]?.use === u} onClick={() => { if (palUseMenu) setPalAt(palUseMenu.idx, { use: u }); setPalUseMenu(null); }} sx={{ fontSize: 12.5 }}>{t('useLabels')[u]}</MenuItem>)}
               <MenuItem onClick={() => { if (palUseMenu) setPalAt(palUseMenu.idx, { use: '' }); setPalUseMenu(null); }} sx={{ fontSize: 12.5, color: ws.textDim }}>{t('noUse')}</MenuItem>
             </Menu>
             {/* Fargebruk på shoot — hvor hver farge gjelder */}
@@ -834,7 +865,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Box sx={{ mt: 1.5, pt: 1.25, borderTop: `1px solid ${ws.borderSoft}` }}>
                 <Typography sx={{ fontSize: 11, fontWeight: 800, color: ws.textFaint, textTransform: 'uppercase', letterSpacing: 0.6, mb: 0.75 }}>{t('paletteUse')}</Typography>
                 <Stack spacing={0.6}>
-                  {PAL_USES.map((u) => {
+                  {palUses.map((u) => {
                     const cols = pal.filter((p) => p.use === u);
                     if (!cols.length) return null;
                     return (
@@ -926,7 +957,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ width: { xs: '100%', lg: 320 }, flexShrink: 0 }}>
         <WsCard className="ws-fade-up2" sx={{ animationDelay: '120ms' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-            <WsSectionTitle title="Mood details" />
+            <WsSectionTitle title={t('moodDetailsPanel')} />
             {selIm && (
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <IconButton size="small" onClick={() => stepSel(-1)} sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
@@ -960,7 +991,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 )}
               </Stack>
               <Menu anchorEl={selCatMenu || null} open={!!selCatMenu} onClose={() => setSelCatMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}`, py: 0.5 } }}>
-                {[...new Set([...(isReal ? Object.keys(CAT_I18N) : []), ...mood.images.map((im: any) => im.category).filter(Boolean)])].map((k) => <MenuItem key={k} selected={selIm?.category === k} onClick={() => setSelCat(k)} sx={{ fontSize: 12.5 }}>{CAT_I18N[k]?.[locale] || k}</MenuItem>)}
+                {[...new Set([...(isReal ? Object.keys(catSet.i18n) : []), ...mood.images.map((im: any) => im.category).filter(Boolean)])].map((k) => <MenuItem key={k} selected={selIm?.category === k} onClick={() => setSelCat(k)} sx={{ fontSize: 12.5 }}>{catSet.i18n[k]?.[locale] || k}</MenuItem>)}
                 <MenuItem onClick={() => setSelCat(null)} selected={!selIm?.category} sx={{ fontSize: 12.5, color: ws.textDim }}>—</MenuItem>
               </Menu>
               {typeof selIm.fit === 'number' && <Typography sx={{ fontSize: 11, color: selIm.fit >= 60 ? ws.green : ws.amber, mt: 0.5, fontWeight: 700 }}>{selIm.fit}% {t('fitScore')}</Typography>}
@@ -988,7 +1019,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <>
               <Typography sx={{ fontSize: 11, fontWeight: 800, color: ws.textFaint, textTransform: 'uppercase', letterSpacing: 0.6, mb: 0.75 }}>{t('detailsSummary')}</Typography>
               <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                {PAL_USES.filter((u) => pal.some((p) => p.use === u)).slice(0, 3).map((u) => <WsTag key={u} label={t('useLabels')[u]} tone="neutral" />)}
+                {palUses.filter((u) => pal.some((p) => p.use === u)).slice(0, 3).map((u) => <WsTag key={u} label={t('useLabels')[u]} tone="neutral" />)}
                 {notes.slice(0, 3).map((n) => <WsTag key={n} label={t('noteCats')[guessNoteCat(n)]} tone="accent" />)}
               </Stack>
               <Typography sx={{ fontSize: 13.5, fontWeight: 800 }}>{styleDir}</Typography>

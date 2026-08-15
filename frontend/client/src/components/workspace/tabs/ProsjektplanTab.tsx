@@ -44,8 +44,8 @@ import {
   type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { apiRequest } from '@/lib/queryClient';
-import { CREW_ROLE_CATALOG } from '@shared/crew-roles';
-import { ws } from '../workspaceTheme';
+import { CREW_ROLE_CATALOG, resolveCrewRoles } from '@shared/crew-roles';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsPills, WsTag, WsTable } from '../ui';
 import { crewIcon } from '../crewIcons';
 import { useWsLocale, makeT, wsDateLocale, type WsDict, type WsLocale } from '../wsLocale';
@@ -123,6 +123,8 @@ interface PhaseViewProps {
 const T: WsDict = {
   title: { no: 'Prosjektplan', en: 'Project plan' },
   subtitle: { no: 'Planlegg, organiser og hold oversikt over hele produksjonen.', en: 'Plan, organise and keep track of the entire production.' },
+  titleVendor: { no: 'Ordreplan', en: 'Order plan' },
+  subtitleVendor: { no: 'Planlegg, organiser og hold oversikt over hele ordreflyten.', en: 'Plan, organise and keep track of the entire order flow.' },
   filter: { no: 'Filter', en: 'Filter' },
   filterAll: { no: 'Alle milepæler', en: 'All milestones' },
   filterUpcoming: { no: 'Kun kommende', en: 'Upcoming only' },
@@ -243,6 +245,20 @@ const ROLE_I18N: Record<string, [{ no: string; en: string }, string]> = {
   editor: [{ no: 'Editor', en: 'Editor' }, ws.blue],
   begge: [{ no: 'Foto+Video', en: 'Photo+Video' }, ws.roleFoto],
   assistent: [{ no: 'Assistent', en: 'Assistant' }, ws.roleAnnet],
+  // Musikk/vendor/service-roller manglet fargekoding og falt til grå («roleAnnet»)
+  // for alle — ressursallokerings-donuten mistet dermed hele poenget sitt utenfor
+  // visual-kategorien.
+  produsent: [{ no: 'Produsent', en: 'Producer' }, ws.accent],
+  vokal: [{ no: 'Vokal', en: 'Vocals' }, ws.green],
+  musikere: [{ no: 'Musikere', en: 'Musicians' }, ws.amber],
+  miks: [{ no: 'Miks', en: 'Mix' }, ws.blue],
+  bestilling: [{ no: 'Bestilling', en: 'Orders' }, ws.accent],
+  klargjoring: [{ no: 'Klargjøring', en: 'Preparation' }, ws.green],
+  levering: [{ no: 'Levering', en: 'Delivery' }, ws.amber],
+  oppfolging: [{ no: 'Oppfølging', en: 'Follow-up' }, ws.blue],
+  booking: [{ no: 'Booking', en: 'Booking' }, ws.accent],
+  forberedelse: [{ no: 'Forberedelse', en: 'Preparation' }, ws.green],
+  gjennomforing: [{ no: 'Gjennomføring', en: 'Execution' }, ws.amber],
 };
 
 const PHASE_COLORS: string[] = [ws.accent, ws.blue, ws.green, ws.amber, ws.roleAnnet];
@@ -375,7 +391,14 @@ const SAMPLE_TASK_META: Record<string, { progress: number; assignee: string; dep
 };
 
 // ===== MAIN TAB =====
-const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+const ProsjektplanTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
+  const workspaceCategory = workspaceCategoryFor(profession);
+  const isVendor = workspaceCategory === 'vendor';
+  // Kategori-filtrert rolleliste (+ eventuelle allerede-i-bruk roller på boardet,
+  // så et blandet team aldri mister kolonner) — dumpet tidligere ALLE 17 roller
+  // uansett profesjon, og donuten for ressursallokering mistet fargekoding for
+  // roller den ikke kjente igjen fra visual-settet.
+  const taskRoleOptions = resolveCrewRoles(workspaceCategory, []).roles;
   const locale: WsLocale = useWsLocale();
   const t = makeT(T, locale);
   const dloc = wsDateLocale(locale);
@@ -643,8 +666,8 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Tittel */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" sx={{ gap: 1 }}>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>{t('title')}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>{isVendor ? t('titleVendor') : t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{isVendor ? t('subtitleVendor') : t('subtitle')}</Typography>
         </Box>
       </Stack>
 
@@ -1293,7 +1316,7 @@ const NewTaskModal: React.FC<{
               }}
               sx={{ color: ws.text, '& .MuiOutlinedInput-notchedOutline': { borderColor: ws.border }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: ws.textFaint } }}
             >
-              {CREW_ROLE_CATALOG.map((r) => (
+              {taskRoleOptions.map((r) => (
                 <MenuItem key={r.key} value={r.key} sx={{ gap: 1, fontSize: 13 }}>
                   {crewIcon(r.icon, { fontSize: 16 })} {locale === 'en' ? r.labelEn : r.label}
                 </MenuItem>

@@ -18,7 +18,18 @@ import { WsCard, WsTag } from '../ui';
 
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
 const CYCLE_LABEL = { monthly: 'mnd', yearly: 'år', engang: 'engang', unknown: '' };
-const CATS = ['DAW', 'Plugin / instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Foto-software', 'Video-software', 'Skylagring', 'AI-verktøy', 'Produktivitet', 'Annet'];
+// Kategori-avhengig: viste tidligere DAW/Plugin/Samplepakke til foto/video-brukere
+// og Foto-/Video-software til musikkprodusenter uansett — samme sett for alle.
+const CATS_MUSIC = ['DAW', 'Plugin / instrument', 'Samplepakke / lydbibliotek', 'Skylagring', 'AI-verktøy', 'Produktivitet', 'Annet'];
+const CATS_VISUAL = ['Redigeringsprogramvare', 'Foto-software', 'Video-software', 'Skylagring', 'AI-verktøy', 'Produktivitet', 'Annet'];
+const CATS_GENERIC = ['Programvare / lisens', 'Skylagring', 'AI-verktøy', 'Produktivitet', 'Annet'];
+const CATS_BY_CATEGORY: Record<string, string[]> = { music: CATS_MUSIC, visual: CATS_VISUAL, vendor: CATS_GENERIC, service: CATS_GENERIC };
+const SCAN_HINT_BY_CATEGORY: Record<string, string> = {
+  music: 'Skann e-posten din for kvitteringer fra Splice, Native Instruments, Adobe m.fl.',
+  visual: 'Skann e-posten din for kvitteringer fra Adobe, Skylum, Capture One m.fl.',
+  vendor: 'Skann e-posten din for kvitteringer på programvare og abonnementer.',
+  service: 'Skann e-posten din for kvitteringer på programvare og abonnementer.',
+};
 const daysUntil = (iso?: string) => { if (!iso) return null; try { return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000); } catch { return null; } };
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13.5, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 }, '& .MuiInputLabel-root': { color: ws.textDim } };
 
@@ -28,7 +39,9 @@ const line = (r: any) => {
   return { name, amt };
 };
 
-const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: () => void }> = ({ userId, onEquipmentChange }) => {
+const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: () => void; category?: string }> = ({ userId, onEquipmentChange, category }) => {
+  const CATS = CATS_BY_CATEGORY[category || ''] || CATS_VISUAL;
+  const scanHint = SCAN_HINT_BY_CATEGORY[category || ''] || SCAN_HINT_BY_CATEGORY.visual;
   const [data, setData] = useState<any>({ confirmed: [], suggestions: [], summary: null });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -168,7 +181,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
       )}
 
       {nothing && !scanMsg && (
-        <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Skann e-posten din for kvitteringer fra Adobe, Splice, Native Instruments m.fl. — eller legg inn manuelt. Vi samler, kategoriserer og regner ut månedskostnaden din.</Typography>
+        <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{scanHint} — eller legg inn manuelt. Vi samler, kategoriserer og regner ut månedskostnaden din.</Typography>
       )}
 
       {/* Software-forslag til gjennomgang */}

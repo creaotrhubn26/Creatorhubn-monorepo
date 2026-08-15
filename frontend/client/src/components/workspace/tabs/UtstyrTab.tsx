@@ -19,7 +19,7 @@ import Sort from '@mui/icons-material/Sort';
 import ViewModule from '@mui/icons-material/ViewModule';
 import ViewList from '@mui/icons-material/ViewList';
 import { apiRequest } from '@/lib/queryClient';
-import { ws } from '../workspaceTheme';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, WsStat, WsPageTitle, WsTable } from '../ui';
 import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
@@ -30,6 +30,7 @@ import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 // (sendes til API-et) er uendret — kun visningen oversettes via CAT_EN.
 const T: WsDict = {
   titleMusic: { no: 'Studio-utstyr', en: 'Studio equipment' },
+  titleVendor: { no: 'Lager', en: 'Warehouse' },
   title: { no: 'Utstyr', en: 'Inventory' },
   subRegister: { no: 'Registrer', en: 'Register' },
   subItemsMusic: { no: 'utstyr, programvare (DAW) og plugins', en: 'gear, software (DAW) and plugins' },
@@ -59,6 +60,7 @@ const T: WsDict = {
   add: { no: 'Legg til', en: 'Add' },
   emptyMusicItems: { no: 'mikrofoner, lydkort, monitorer …', en: 'microphones, audio interfaces, monitors …' },
   emptyVisualItems: { no: 'kameraer, objektiver, lys …', en: 'cameras, lenses, lights …' },
+  emptyGenericItems: { no: 'programvare, datautstyr, lagring …', en: 'software, computer equipment, storage …' },
   emptyRest: { no: '— så henter vi markedsverdien automatisk.', en: '— and we will fetch the market value automatically.' },
   reklamasjon: { no: 'Reklamasjon', en: 'Consumer warranty' },
   garanti: { no: 'Garanti', en: 'Warranty' },
@@ -118,11 +120,14 @@ const CAT_EN: Record<string, string> = {
   'Kamera': 'Camera', 'Objektiv': 'Lens', 'Blits / lys': 'Flash / lighting', 'Stativ / rigg': 'Tripod / rig', 'Lyd': 'Audio', 'Drone': 'Drone', 'Minnekort / lagring': 'Memory card / storage', 'Redigeringsprogramvare': 'Editing software', 'Plugin / preset': 'Plugin / preset', 'LUT / fargepakke': 'LUT / color pack', 'Skylagring / tjeneste': 'Cloud storage / service', 'Tilbehør': 'Accessories',
 };
 
-const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
 const CATS_MUSIC = ['Mikrofon', 'Lydkort / interface', 'Studiomonitor', 'Hodetelefoner', 'MIDI / keyboard', 'Preamp / kompressor', 'Instrument', 'DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Kabler / tilbehør', 'Annet'];
 const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd', 'Drone', 'Minnekort / lagring', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste', 'Tilbehør', 'Annet'];
-const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste']);
+// Vendor/service har ikke foto/video/musikk-gear — generisk sett i stedet for å
+// arve CATS_VISUAL (som ga en utstyrsutleie/frisør kamera- og objektiv-kategorier).
+const CATS_GENERIC = ['Programvare / lisens', 'Datautstyr', 'Lagring / backup', 'Kjøretøy / transport', 'Tilbehør', 'Annet'];
+const CATS_BY_CATEGORY: Record<string, string[]> = { music: CATS_MUSIC, visual: CATS_VISUAL, vendor: CATS_GENERIC, service: CATS_GENERIC };
+const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste', 'Programvare / lisens']);
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13.5, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 }, '& .MuiInputLabel-root': { color: ws.textDim } };
 
 const specOf = (it: any) => it?.specifications || it?.settings?.specifications || {};
@@ -147,8 +152,13 @@ const leftLabel = (iso?: string, locale: 'no' | 'en' = 'no') => {
 };
 
 const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ profession, userId }) => {
-  const music = isMusic(profession);
-  const cats = music ? CATS_MUSIC : CATS_VISUAL;
+  // Kategorien styrer hvilket gear-sett/tittel som vises — utledet via samme
+  // sentrale normalisering som sidenavet bruker (workspaceCategoryFor), i stedet
+  // for en egen, ufullstendig profesjons-liste som ikke kjente igjen 'musicproducer'.
+  const category = workspaceCategoryFor(profession);
+  const music = category === 'music';
+  const vendor = category === 'vendor';
+  const cats = CATS_BY_CATEGORY[category] || CATS_VISUAL;
   const [items, setItems] = useState<any[]>([]);
   const [firmware, setFirmware] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +179,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   // Utenlandske partner-vendors får engelsk UI (WsLocaleProvider i TeamWorkspacePage).
   const locale = useWsLocale();
   const t = makeT(T, locale);
+  const tabTitle = music ? t('titleMusic') : vendor ? t('titleVendor') : t('title');
   const dl = wsDateLocale(locale);
   const catLabel = (c?: string) => (locale === 'en' ? (CAT_EN[c] || c) : c);
 
@@ -285,7 +296,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
     <Box sx={{ maxWidth: 1040, mx: 'auto' }}>
       {/* Intern fane: Utstyr / Gearnyheter */}
       <Stack direction="row" spacing={0.5} sx={{ mb: 1.5 }} alignItems="center">
-        {([['gear', music ? t('titleMusic') : t('title')], ['news', 'Gearnyheter']] as const).map(([k, l]) => (
+        {([['gear', tabTitle], ['news', 'Gearnyheter']] as const).map(([k, l]) => (
           <Box key={k} onClick={() => setActiveU(k)} sx={{ px: 1.1, py: 0.45, borderRadius: 999, fontSize: 12, fontWeight: activeU === k ? 800 : 500, cursor: 'pointer', color: activeU === k ? ws.accentContrast : ws.textDim, bgcolor: activeU === k ? ws.accent : 'transparent', border: `1px solid ${activeU === k ? ws.accent : ws.border}` }}>{l}</Box>
         ))}
       </Stack>
@@ -298,7 +309,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       ) : (<>
       <WsPageTitle
         icon={<Inventory2 sx={{ fontSize: 21, color: '#fff' }} />}
-        title={music ? t('titleMusic') : t('title')}
+        title={tabTitle}
         sub={`${items.length} ${music ? t('subItemsMusic') : t('subItems')} · ${t('totalValue')} ${fmtKr(totalValue)}${monthly ? ` · ${fmtKr(monthly)}/${t('perMonth')} løpende` : ''}`}
         actions={<Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => openAdd()} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('addEquipment')}</Button>}
       />
@@ -312,7 +323,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       </Box>
 
       {/* Programvare & abonnement — Gmail-kvittering-skann + manuell + kostnadsoversikt */}
-      <SoftwareKostnaderPanel userId={userId} onEquipmentChange={load} />
+      <SoftwareKostnaderPanel userId={userId} onEquipmentChange={load} category={category} />
 
       {/* Utstyrs-lisenser — abonnement knyttet til registrert utstyr */}
       {(() => {
@@ -406,7 +417,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <Inventory2 sx={{ fontSize: 36, color: ws.textFaint }} />
             <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('emptyTitle')}</Typography>
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>{t('add')} {music ? t('emptyMusicItems') : t('emptyVisualItems')} {t('emptyRest')}</Typography>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>{t('add')} {music ? t('emptyMusicItems') : (category === 'vendor' || category === 'service') ? t('emptyGenericItems') : t('emptyVisualItems')} {t('emptyRest')}</Typography>
           </Stack>
         </WsCard>
       ) : gridView === 'table' ? (
