@@ -1,0 +1,41 @@
+name: One-shot Role Room scene heading type fix
+
+on:
+  push:
+    branches:
+      - fix/role-room-no-en-scene-heading-20260815
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/role-room-no-en-scene-heading-20260815
+          fetch-depth: 0
+
+      - name: Tighten parser intExt type
+        shell: bash
+        run: |
+          python -c "from pathlib import Path; p=Path('frontend/client/src/components/role-room/components/ManuscriptPanel.tsx'); t=p.read_text(); a=\"type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;\"; assert t.count(a)==1, t.count(a); t=t.replace(a, a+\"\\ntype SceneIntExt = NonNullable<SceneBreakdown['intExt']>;\", 1); a=\"{ intExt: SceneBreakdown['intExt']; location: string; timeOfDay: SceneTimeOfDay } | null => {\"; b=\"{ intExt: SceneIntExt; location: string; timeOfDay: SceneTimeOfDay } | null => {\"; assert t.count(a)==1, t.count(a); t=t.replace(a,b,1); a=\"const intExt: SceneBreakdown['intExt'] =\"; b=\"const intExt: SceneIntExt =\"; assert t.count(a)==1, t.count(a); t=t.replace(a,b,1); p.write_text(t)"
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-role-room-scene-heading-typefix.yml
+
+      - name: Verify scope
+        run: |
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "2"
+          git diff --exit-code -- . ':!.github/workflows/tmp-role-room-scene-heading-typefix.yml' ':!frontend/client/src/components/role-room/components/ManuscriptPanel.tsx'
+          grep -F "type SceneIntExt = NonNullable<SceneBreakdown['intExt']>;" frontend/client/src/components/role-room/components/ManuscriptPanel.tsx
+          grep -F "const intExt: SceneIntExt =" frontend/client/src/components/role-room/components/ManuscriptPanel.tsx
+
+      - name: Commit type fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/client/src/components/role-room/components/ManuscriptPanel.tsx .github/workflows/tmp-role-room-scene-heading-typefix.yml
+          git commit -m "fix(role-room): make parsed scene intExt non-nullable"
+          git push origin HEAD:fix/role-room-no-en-scene-heading-20260815
