@@ -117,6 +117,7 @@ interface ShellProps {
   onInvite?: () => void;
   navItems?: WsNavItem[]; // profesjons-filtrert nav (default WS_NAV)
   badges?: Record<string, number>; // dynamiske nav-badges (key → antall), overstyrer item.badge
+  onlineNow?: Record<string, boolean>; // ekte presence per rom-fane (key → er noen der nå), overstyrer item.online
   children: React.ReactNode;
 }
 
@@ -219,7 +220,7 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
   return { copy };
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, onlineNow, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const baseT = makeT(SHELL_T, useWsLocale());
   const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
@@ -284,7 +285,14 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                   </Typography>
                   {items.map((item) => {
                     const dyn = badges?.[item.key];
-                    const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
+                    const liveOnline = onlineNow?.[item.key];
+                    const merged = {
+                      ...item,
+                      ...(dyn != null ? { badge: dyn || undefined } : {}),
+                      // Ekte presence overstyrer den statiske online-flagget i WS_NAV — uten
+                      // dette lyste rom-fanene grønt uansett om noen faktisk var der eller ikke.
+                      ...(liveOnline != null ? { online: liveOnline } : {}),
+                    };
                     return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => { onTab(item.key); setMobileNav(false); }} />;
                   })}
                 </Box>

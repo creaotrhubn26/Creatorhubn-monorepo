@@ -118,7 +118,21 @@ const TeamWorkspacePage: React.FC = () => {
   }, [user?.id, user?.profession]);
   const [accepted, setAccepted] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
+  const { online, members: presenceMembers } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
+
+  // Ekte online-status for "SMART ROM"-fanene: er noen faktisk inne akkurat nå
+  // (ikke bare en statisk `online: true` i WS_NAV-konfigurasjonen)? Utledes fra
+  // presence-medlemmenes currentRoute, satt av samme heartbeat som driver headerens
+  // online-teller.
+  const roomOnlineNow = useMemo(() => {
+    const roomKeys = ['photo-room', 'video-room', 'sound-room'];
+    const out: Record<string, boolean> = {};
+    for (const key of roomKeys) {
+      const roomPath = `/workspace/${projectId}/${key}`;
+      out[key] = presenceMembers.some((m) => m.online && m.currentRoute === roomPath);
+    }
+    return out;
+  }, [presenceMembers, projectId]);
 
   // Aksepter team-invitasjon når man åpner lenken (?invite=<token>).
   useEffect(() => {
@@ -314,6 +328,7 @@ const TeamWorkspacePage: React.FC = () => {
       onTab={goTab}
       navItems={nav}
       badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen }}
+      onlineNow={roomOnlineNow}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >

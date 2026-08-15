@@ -316,7 +316,8 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
       // Medlemmer + eier, joinet mot user_presence (online = sett siste 90s)
       const rows = await pool.query(
         `SELECT m.user_id, m.email, m.name, m.crew_role,
-                (pr.last_seen_at IS NOT NULL AND pr.last_seen_at > NOW() - INTERVAL '90 seconds') AS online
+                (pr.last_seen_at IS NOT NULL AND pr.last_seen_at > NOW() - INTERVAL '90 seconds') AS online,
+                pr.current_route
            FROM project_team_members m
            LEFT JOIN user_presence pr ON pr.user_id = m.user_id
           WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL`,
@@ -327,6 +328,7 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
         online,
         members: rows.rows.map((r: any) => ({
           userId: r.user_id, email: r.email, name: r.name, crewRole: r.crew_role, online: !!r.online,
+          currentRoute: r.online ? (r.current_route ?? null) : null,
         })),
       });
     } catch (err) {

@@ -16,6 +16,7 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import { useLocation } from 'wouter';
 import { apiRequest, buildApiUrl } from '@/lib/queryClient';
 import PhotoCameraBack from '@mui/icons-material/PhotoCameraBack';
+import Videocam from '@mui/icons-material/Videocam';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import Star from '@mui/icons-material/Star';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
@@ -575,7 +576,17 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           }
         `}</style>
 
-        <WsPageTitle icon={<PhotoCameraBack sx={{ fontSize: 21, color: '#fff' }} />} title="Shotlist" sub={`${total} shots · ${donePct}% fullført · ${mangler} kritiske mangler`}>
+        <WsPageTitle
+          icon={<PhotoCameraBack sx={{ fontSize: 21, color: '#fff' }} />}
+          title="Shotlist"
+          sub={`${total} shots · ${donePct}% fullført · ${mangler} kritiske mangler`}
+          actions={(
+            <>
+              <Button size="small" startIcon={<PhotoCameraBack sx={{ fontSize: 15 }} />} onClick={() => navigate(`/workspace/${projectId}/photo-room`)} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700, border: `1px solid ${ws.border}`, borderRadius: 1.5, px: 1.25, '&:hover': { bgcolor: ws.accentSoft, color: ws.accent } }}>Åpne i Photo Room</Button>
+              <Button size="small" startIcon={<Videocam sx={{ fontSize: 15 }} />} onClick={() => navigate(`/workspace/${projectId}/video-room`)} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700, border: `1px solid ${ws.border}`, borderRadius: 1.5, px: 1.25, '&:hover': { bgcolor: ws.accentSoft, color: ws.accent } }}>Åpne i Video Room</Button>
+            </>
+          )}
+        >
           {live && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.25, borderRadius: 999, bgcolor: ws.greenSoft }}>
               <Box className="ws-live-dot" />
