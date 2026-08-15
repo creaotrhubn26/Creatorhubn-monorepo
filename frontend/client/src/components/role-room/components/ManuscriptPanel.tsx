@@ -149,6 +149,7 @@ const extractFountainSceneHeadings = (content: string | undefined): string[] => 
 };
 
 type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
+type SceneIntExt = NonNullable<SceneBreakdown['intExt']>;
 
 const SCENE_TIME_OF_DAY_MAP: Record<string, SceneTimeOfDay> = {
   DAY: 'DAY',
@@ -178,14 +179,14 @@ const normalizeSceneTimeOfDay = (value?: string): SceneTimeOfDay => {
 
 const parseSceneHeadingLine = (
   line: string,
-): { intExt: SceneBreakdown['intExt']; location: string; timeOfDay: SceneTimeOfDay } | null => {
+): { intExt: SceneIntExt; location: string; timeOfDay: SceneTimeOfDay } | null => {
   const match = line.trim().match(
     /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|DAG|NATT|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE|MORGEN|KVELD)\.?)?$/i,
   );
   if (!match) return null;
 
   const prefix = match[1].toUpperCase().replace('.', '');
-  const intExt: SceneBreakdown['intExt'] =
+  const intExt: SceneIntExt =
     prefix === 'I/E' || prefix.includes('INT/EXT')
       ? 'INT/EXT'
       : prefix.startsWith('EXT') || prefix === 'EST'
