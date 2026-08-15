@@ -57,6 +57,67 @@ async function viewerCanAccessProject(
   return rows[0]?.owns === true || rows[0]?.member === true;
 }
 
+/**
+ * Rolle-bevisst tilgang for å administrere review-sesjoner (opprette,
+ * endre innstillinger/status, slette). Speiler `canWriteProducerData()` i
+ * role-room-routes.ts — samme rollesett/permission-felt, men slått opp
+ * direkte mot DB siden denne modulen ikke har tilgang til den store filens
+ * roleRecord-middleware. Prosjekt-eier har alltid tilgang; ethvert annet
+ * teammedlem (f.eks. en `client_reviewer` eller `editor`) skal IKKE kunne
+ * opprette/slette klientens review-lenke.
+ */
+async function viewerCanManageReviewSessions(
+  pool: Pool, projectId: string, viewerId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ owns: boolean; can_manage: boolean }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM casting_projects
+               WHERE id = $1 AND created_by = $2) AS owns,
+       EXISTS(SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+                 AND deactivated_at IS NULL
+                 AND (
+                   role IN ('director', 'producer', 'production_manager', 'content_producer')
+                   OR (permissions ->> 'canEditProduction') = 'true'
+                 )) AS can_manage`,
+    [projectId, viewerId],
+  );
+  return rows[0]?.owns === true || rows[0]?.can_manage === true;
+}
+
+/**
+ * Rolle-bevisst tilgang for å markere en review-kommentar som addressert —
+ * en lettere redaksjonell handling enn å administrere selve sesjonen.
+ * Speiler `canWriteCoverageReview()` i role-room-routes.ts: samme
+ * producer-roller pluss post-/coverage-roller (kamera, script supervisor,
+ * editor) som faktisk jobber med tilbakemeldingene.
+ */
+async function viewerCanAddressReviewComment(
+  pool: Pool, projectId: string, viewerId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ owns: boolean; can_address: boolean }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM casting_projects
+               WHERE id = $1 AND created_by = $2) AS owns,
+       EXISTS(SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+                 AND deactivated_at IS NULL
+                 AND (
+                   role IN (
+                     'director', 'producer', 'content_producer', 'production_manager',
+                     'camera_team', 'script_supervisor', 'video_assist',
+                     'editor', 'assistant_editor'
+                   )
+                   OR (permissions ->> 'canEditProduction') = 'true'
+                   OR (permissions ->> 'canEditScript') = 'true'
+                   OR (permissions ->> 'canEditShots') = 'true'
+                   OR (permissions ->> 'canEditShotLists') = 'true'
+                 )) AS can_address`,
+    [projectId, viewerId],
+  );
+  return rows[0]?.owns === true || rows[0]?.can_address === true;
+}
+
 function generateReviewToken(): string {
   // 32-byte random → URL-safe base64
   return crypto.randomBytes(32).toString("base64url");
@@ -455,7 +516,7 @@ export function registerRoleRoomReviewRoutes(
         res.status(400).json({ error: "mangler_project_id" }); return;
       }
       try {
-        if (!await viewerCanAccessProject(pool, projectId, viewerId)) {
+        if (!await viewerCanManageReviewSessions(pool, projectId, viewerId)) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
         }
         const token = generateReviewToken();
@@ -513,7 +574,7 @@ export function registerRoleRoomReviewRoutes(
         if (existing.length === 0) {
           res.status(404).json({ error: "ikke_funnet" }); return;
         }
-        if (!await viewerCanAccessProject(pool, existing[0].project_id, viewerId)) {
+        if (!await viewerCanManageReviewSessions(pool, existing[0].project_id, viewerId)) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
         }
         const updates: string[] = [];
@@ -566,7 +627,7 @@ export function registerRoleRoomReviewRoutes(
         if (rows.length === 0) {
           res.status(404).json({ error: "ikke_funnet" }); return;
         }
-        if (!await viewerCanAccessProject(pool, rows[0].project_id, viewerId)) {
+        if (!await viewerCanManageReviewSessions(pool, rows[0].project_id, viewerId)) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
         }
         await pool.query(`DELETE FROM role_room_review_sessions WHERE id = $1`, [id]);
@@ -640,7 +701,7 @@ export function registerRoleRoomReviewRoutes(
         if (existing.length === 0) {
           res.status(404).json({ error: "ikke_funnet" }); return;
         }
-        if (!await viewerCanAccessProject(pool, existing[0].project_id, viewerId)) {
+        if (!await viewerCanAddressReviewComment(pool, existing[0].project_id, viewerId)) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
         }
         await pool.query(
