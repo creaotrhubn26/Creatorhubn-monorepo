@@ -260,7 +260,8 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/manuscripts", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId =
@@ -269,10 +270,27 @@ export function setupCastingManuscriptsRoutes(
           : newEntityId("manuscript");
       const now = new Date().toISOString();
       const existing = (await manuscriptsService.getManuscript(manuscriptId)) || {};
-      const projectId = readProjectId(
-        payload,
-        readProjectId(existing, "default-project"),
-      );
+      const existingProjectId = readProjectId(existing);
+      // Upsert-style endpoint: guard both the manuscript being overwritten
+      // (if it already belongs to another tenant's project) and the target
+      // project the caller is asking to attach it to. Without both checks a
+      // caller could hijack another tenant's manuscript by id, or attach a
+      // fresh manuscript to a project they don't own.
+      if (
+        existingProjectId &&
+        !(await userOwnsCastingProjectViaStore(compatStoreGet, existingProjectId, session.userId))
+      ) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      const projectId = readProjectId(payload, existingProjectId);
+      if (
+        !projectId ||
+        !(await userOwnsCastingProjectViaStore(compatStoreGet, projectId, session.userId))
+      ) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
       const manuscript = {
         ...existing,
         ...payload,
@@ -313,6 +331,7 @@ export function setupCastingManuscriptsRoutes(
     if (!session) return;
     try {
       const manuscriptId = req.params.manuscriptId;
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
       const existing =
         (await manuscriptsService.getManuscript(manuscriptId)) || {};
       // Lock enforcement: hvis en ANNEN bruker holder en gyldig lås → 409.
@@ -366,6 +385,7 @@ export function setupCastingManuscriptsRoutes(
     if (!session) return;
     try {
       const manuscriptId = req.params.manuscriptId;
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
       const existing = await manuscriptsService.getManuscript(manuscriptId);
       // Lock enforcement: identisk med PUT.
       const lockState = computeManuscriptLockState(existing);
@@ -399,6 +419,7 @@ export function setupCastingManuscriptsRoutes(
   app.post("/api/casting/manuscripts/:manuscriptId/lock", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
     try {
       const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
       const force = body.force === true;
@@ -425,6 +446,7 @@ export function setupCastingManuscriptsRoutes(
   app.post("/api/casting/manuscripts/:manuscriptId/lock/heartbeat", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
     try {
       const result = await manuscriptsService.heartbeatLock(
         req.params.manuscriptId,
@@ -448,6 +470,7 @@ export function setupCastingManuscriptsRoutes(
   app.delete("/api/casting/manuscripts/:manuscriptId/lock", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
     try {
       const result = await manuscriptsService.releaseLock(
         req.params.manuscriptId,
@@ -463,6 +486,7 @@ export function setupCastingManuscriptsRoutes(
   app.get("/api/casting/manuscripts/:manuscriptId/lock", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
     try {
       const lock = await manuscriptsService.getLock(req.params.manuscriptId);
       res.json({ lock });
@@ -477,6 +501,7 @@ export function setupCastingManuscriptsRoutes(
   app.post("/api/casting/manuscripts/:manuscriptId/presence", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
     try {
       const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
       const displayName =
@@ -498,6 +523,7 @@ export function setupCastingManuscriptsRoutes(
   app.get("/api/casting/manuscripts/:manuscriptId/presence", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
     try {
       const others = listManuscriptPresence(req.params.manuscriptId, Date.now())
         .filter((p) => p.userId !== session.userId);
@@ -530,6 +556,7 @@ export function setupCastingManuscriptsRoutes(
         res.status(400).json({ error: "manuscriptId is required" });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
 
       const current = await manuscriptsService.getScenes(manuscriptId);
       const sceneId =
@@ -586,6 +613,7 @@ export function setupCastingManuscriptsRoutes(
         res.status(400).json({ error: "manuscriptId is required" });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
 
       const current = await manuscriptsService.getDialogue(manuscriptId);
       const dialogueId =
@@ -629,6 +657,7 @@ export function setupCastingManuscriptsRoutes(
         res.json({ ok: true });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, location.manuscriptId))) return;
       const current = await manuscriptsService.getDialogue(location.manuscriptId);
       const next = current.filter((item) => item?.id !== dialogueId);
       await manuscriptsService.replaceDialogue(location.manuscriptId, next);
@@ -666,6 +695,7 @@ export function setupCastingManuscriptsRoutes(
         res.status(400).json({ error: "manuscriptId is required" });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
 
       const current = await manuscriptsService.getRevisions(manuscriptId);
       const revisionId =
@@ -767,6 +797,7 @@ export function setupCastingManuscriptsRoutes(
     "/api/casting/manuscripts/:manuscriptId/restore-revision/:revisionId",
     async (req, res) => {
       if (!requireUserSession(req, res)) return;
+      if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
       try {
         const result = await revisionsService.restoreRevision(
           req.params.manuscriptId,
@@ -805,6 +836,7 @@ export function setupCastingManuscriptsRoutes(
     "/api/casting/manuscripts/:manuscriptId/import",
     async (req, res) => {
       if (!requireUserSession(req, res)) return;
+      if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
       try {
         const contentType =
           (req.headers["content-type"] ?? "").toString().toLowerCase();
@@ -979,6 +1011,7 @@ export function setupCastingManuscriptsRoutes(
         res.status(400).json({ error: "manuscriptId is required" });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
 
       const current = await manuscriptsService.getActs(manuscriptId);
       const actId =
@@ -1040,6 +1073,7 @@ export function setupCastingManuscriptsRoutes(
         res.status(400).json({ error: "manuscriptId is required" });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
 
       const acts = await manuscriptsService.getActs(manuscriptId);
       const existingIndex = location
@@ -1079,6 +1113,7 @@ export function setupCastingManuscriptsRoutes(
         res.json({ ok: true });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, location.manuscriptId))) return;
       const acts = await manuscriptsService.getActs(location.manuscriptId);
       const next = acts.filter((act) => act?.id !== actId);
       await manuscriptsService.replaceActs(location.manuscriptId, next);
