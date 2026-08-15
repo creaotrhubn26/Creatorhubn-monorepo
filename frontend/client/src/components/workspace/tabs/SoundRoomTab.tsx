@@ -25,6 +25,11 @@ import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
 
+// Bruker-events-WS (samme backend/kanal som ShotlistTab/VideoRoomTab): /api/ipad/ws/events.
+const SOUND_ROOM_EVENTS_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE)
+  ? import.meta.env.VITE_WS_BASE
+  : 'wss://creatorhub-backend-rtbl.onrender.com';
+
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
 const detectOS = (): 'Windows' | 'macOS' => { const p = ((navigator as any).userAgent + ' ' + (navigator as any).platform).toLowerCase(); if (p.includes('win')) return 'Windows'; return 'macOS'; };
 const fmtMB = (b: number) => b ? `${(b / 1048576).toFixed(1)} MB` : '';
@@ -165,6 +170,43 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }
   }, [roomId]);
 
+  // Live: bruker-events-WS (samme kanal/mønster som ShotlistTab/VideoRoomTab)
+  // → refetch sammendraget INSTANT når audio-showcase-routes.ts broadcaster
+  // sound-room.updated (ny versjon/kommentar/godkjenning fra bandet eller deg
+  // selv i en annen fane). Uten dette var kortet en poll-på-mount-visning.
+  const [srLive, setSrLive] = useState(false);
+  useEffect(() => {
+    if (!isReal) return;
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
+    if (!token) return;
+    let alive = true;
+    let sockEvt: WebSocket | null = null;
+    let retry: any = null;
+    let deb: any = null;
+    const connect = () => {
+      if (!alive) return;
+      clearTimeout(retry);
+      try { sockEvt = new WebSocket(`${SOUND_ROOM_EVENTS_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      catch { retry = setTimeout(connect, 8000); return; }
+      sockEvt.onopen = () => { if (alive) setSrLive(true); };
+      sockEvt.onclose = () => { if (alive) { setSrLive(false); retry = setTimeout(connect, 8000); } };
+      sockEvt.onerror = () => { try { sockEvt && sockEvt.close(); } catch { /* */ } };
+      sockEvt.onmessage = (ev) => {
+        let payload: any = null;
+        try { payload = JSON.parse(ev.data); } catch { /* */ }
+        const e = payload?.event;
+        if (e?.kind !== 'sound-room.updated' || e?.projectId !== projectId) return;
+        clearTimeout(deb);
+        deb = setTimeout(() => {
+          const rid = roomIdRef.current;
+          if (rid) apiRequest(`/api/audio-showcases/${rid}`).then((s: any) => setSummary(s)).catch(() => {});
+        }, 250);
+      };
+    };
+    connect();
+    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { sockEvt && sockEvt.close(); } catch { /* */ } };
+  }, [projectId, isReal]);
+
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
   const linkTrack = async (trackId: string) => {
     if (linking) return; setLinking(trackId);
@@ -194,7 +236,15 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     <Box sx={{ maxWidth: 920, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Sound Room</Typography>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Sound Room</Typography>
+            {srLive && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.25, borderRadius: 999, bgcolor: ws.greenSoft }}>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#22c55e' }} />
+                <Typography sx={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>Live</Typography>
+              </Box>
+            )}
+          </Stack>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lyd-review for prosjektet — versjoner, tidsstemplede tilbakemeldinger, A/B-compare og leveranse. Samme «Universal Showcase»-rom klienten/bandet får.</Typography>
         </Box>
         {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}

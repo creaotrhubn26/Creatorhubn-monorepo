@@ -192,6 +192,18 @@ export type UserEvent =
       projectId: string;
       reason: "version" | "comment" | "approval" | "chapters";
       timestamp: string;
+    }
+  /// Sound Room (Audio Showcase, audio_review_projects/-versions/-comments,
+  /// koblet til workspace-prosjektet via bro-tabellen project_audio_rooms)
+  /// fikk en ny versjon, kommentar (fra eier ELLER bandmedlem via delt lenke)
+  /// eller godkjenning. `projectId` er WORKSPACE-prosjektets id (ikke
+  /// audio_review_projects-id) — samme id-rom som video-room.updated, slik
+  /// at TeamWorkspacePage kan filtrere likt for begge rom-typene.
+  | {
+      kind: "sound-room.updated";
+      projectId: string;
+      reason: "version" | "comment" | "approval";
+      timestamp: string;
     };
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";

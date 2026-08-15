@@ -48,6 +48,14 @@ import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
 import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
 
+// Bruker-events-WS (samme kanal/mønster som ShotlistTab/MoodboardTab/VideoRoomTab):
+// /api/ipad/ws/events. Brukes her til å holde sidenav-badgen for Sound Room live
+// uansett hvilken fane man står på (badgen er synlig fra hele shellen, ikke bare
+// mens Sound Room-fanen selv er montert).
+const WORKSPACE_EVENTS_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE)
+  ? import.meta.env.VITE_WS_BASE
+  : 'wss://creatorhub-backend-rtbl.onrender.com';
+
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
   id: 'sample',
@@ -229,12 +237,44 @@ const TeamWorkspacePage: React.FC = () => {
   // Ulest band-aktivitet (band-kommentarer) → badge på Sound Room. Nullstilles når
   // Sound Room-fanen åpnes (marker sett).
   const [bandUnseen, setBandUnseen] = useState(0);
-  useEffect(() => {
+  const loadBandUnseen = useMemo(() => () => {
     if (!projectId || projectId === 'sample') { setBandUnseen(0); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/unseen-comments`)
       .then((r: any) => setBandUnseen(r?.unseenCount || 0))
       .catch(() => setBandUnseen(0));
-  }, [projectId, tab]);
+  }, [projectId]);
+  useEffect(() => { loadBandUnseen(); }, [loadBandUnseen, tab]);
+
+  // Live: bruker-events-WS → refetch badgen INSTANT når audio-showcase-routes.ts
+  // broadcaster sound-room.updated (ny versjon/kommentar/godkjenning), i stedet
+  // for å vente til brukeren bytter fane (som var eneste trigger før).
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') return;
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
+    if (!token) return;
+    let alive = true;
+    let sockEvt: WebSocket | null = null;
+    let retry: any = null;
+    let deb: any = null;
+    const connect = () => {
+      if (!alive) return;
+      clearTimeout(retry);
+      try { sockEvt = new WebSocket(`${WORKSPACE_EVENTS_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      catch { retry = setTimeout(connect, 8000); return; }
+      sockEvt.onclose = () => { if (alive) retry = setTimeout(connect, 8000); };
+      sockEvt.onerror = () => { try { sockEvt && sockEvt.close(); } catch { /* */ } };
+      sockEvt.onmessage = (ev) => {
+        let payload: any = null;
+        try { payload = JSON.parse(ev.data); } catch { /* */ }
+        const e = payload?.event;
+        if (e?.kind !== 'sound-room.updated' || e?.projectId !== projectId) return;
+        clearTimeout(deb);
+        deb = setTimeout(loadBandUnseen, 250);
+      };
+    };
+    connect();
+    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { sockEvt && sockEvt.close(); } catch { /* */ } };
+  }, [projectId, loadBandUnseen]);
 
   // Profesjons-filtrert nav — kategorien er admin-styrt (profession_types.
   // workspace_category via useWorkspaceCategoryMap), med kode-map som fallback.
