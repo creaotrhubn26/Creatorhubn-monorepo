@@ -231,6 +231,9 @@ function areNamesSimilar(name1: string, name2: string): boolean {
   return levenshteinDistance(n1, n2) <= maxDist;
 }
 
+const isTransitionLine = (line: string): boolean =>
+  /:\s*$/.test(line) || /\b(CUT TO|FADE|DISSOLVE|SMASH CUT|MATCH CUT|JUMP CUT|KLIPP|TONER UT|OVERTONING|SVART)\b/i.test(line);
+
 // Parse Fountain content and extract characters with line numbers
 function extractCharacters(content: string): Map<string, CharacterMention[]> {
   const characters = new Map<string, CharacterMention[]>();
@@ -241,6 +244,7 @@ function extractCharacters(content: string): Map<string, CharacterMention[]> {
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
+    if (isTransitionLine(line)) continue;
     
     // Check for character cue
     let charName: string | null = null;
@@ -391,7 +395,7 @@ function extractBeatCards(content: string): BeatCard[] {
       };
     } else if (currentScene) {
       // Check for character cue
-      if (/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/.test(line) && line.length > 0) {
+      if (!isTransitionLine(line) && /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'\.]*(\s*\(.*\))?$/.test(line) && line.length > 0) {
         const charName = line.replace(/\s*\(.*\)$/, '').trim();
         if (charName && (i === 0 || lines[i - 1].trim() === '')) {
           currentScene.characters.add(charName);
