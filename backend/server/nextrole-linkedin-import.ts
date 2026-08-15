@@ -23,7 +23,6 @@
  * navn-varianter for robusthet.
  */
 
-// @ts-expect-error — adm-zip mangler @types-pakke i node_modules
 import AdmZip from "adm-zip";
 
 // ── CSV-parser (minimal, ingen avhengighet) ────────────────────────
