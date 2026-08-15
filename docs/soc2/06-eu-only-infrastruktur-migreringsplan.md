@@ -25,7 +25,7 @@ Migrert til `AWS eu-central-1` (Frankfurt) — bekreftet av kontoeier via ny hos
 **Gjenstår, ikke bekreftet i denne økten:**
 - [ ] `neondb_owner`-passordet rotert på den NYE databasen (anbefalt uansett, jf. denne øktens tidligere hendelse med en live connection string limt inn i chatten på den gamle London-databasen — den gamle strengen er nå pensjonert sammen med det gamle prosjektet, men det er ikke det samme som å ha bekreftet et rotert passord på den nye).
 - [ ] Det gamle London-prosjektet slettet (eller bevisst beholdt en kort periode som sikkerhetsmargin — bekreft hvilket).
-- [ ] `DATABASE_URL` i Render-dashboardet verifisert å peke på ny Frankfurt-streng på begge relevante tjenester.
+- [x] `DATABASE_URL` i Render-dashboardet oppdatert til ny Frankfurt-streng — **oppdatert 2026-08-15, redeploy pågår.** Verifiser `/api/health` og et par ekte endepunkter når deployen er ferdig før dette regnes som fullt bekreftet (samme prinsipp som Render-planens smoke-test-steg).
 
 ## 2. Cloudflare R2 — sett EU-jurisdiction
 
