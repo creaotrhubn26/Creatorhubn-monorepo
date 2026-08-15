@@ -7011,6 +7011,7 @@ export const ManuscriptPanel = React.memo(ManuscriptPanelComponent, (prevProps, 
   // Check critical props
   if (prevProps.projectId !== nextProps.projectId) return false;
   if (prevProps.onManuscriptChange !== nextProps.onManuscriptChange) return false;
+  if (prevProps.targetDurationMinutes !== nextProps.targetDurationMinutes) return false;
   
   // All checks passed - props are effectively equal, skip re-render
   return true;
