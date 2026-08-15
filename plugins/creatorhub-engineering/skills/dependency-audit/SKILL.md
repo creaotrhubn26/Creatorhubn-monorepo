@@ -34,7 +34,16 @@ dager-til-uker med feilede deploys — sjekk dem FØR push, ikke etter.
    ved bundling. Ved MUI-oppgradering: kjør faktisk `vite build` på
    Tauri-appen(e) før du konkluderer grønt.
 
-4. **Ingen `await import('@/…')` (CH-ARCH-005).** Rollup i prod-build kan ikke
+4. **Manifest-endring ⇒ fersk regen av BEGGE lockfiler (CH-ARCH-009).**
+   af5a596-hendelsen: manifest-endringer med en ikke-fersk rot-lockfil →
+   lockfilen mistet transitive pakker (`loupe`) → `npm ci` installerte
+   hull-tre → begge hardened E2E-gates krasjet, og usynket backend-lockfil
+   brøt Render. Regenerer alltid begge i samme commit; ved mistanke om
+   inkonsistens: `rm -rf node_modules */node_modules package-lock.json`
+   først — npm gjenbruker både eksisterende lockfil-tre OG installert
+   `node_modules` (inkl. stale peer-oppløsninger) ved resolve.
+
+5. **Ingen `await import('@/…')` (CH-ARCH-005).** Rollup i prod-build kan ikke
    resolve `@`-alias i dynamiske imports selv om lokal tsc passerer. Relevant
    når en ny pakke «anbefaler» lazy-import i eksempler.
 

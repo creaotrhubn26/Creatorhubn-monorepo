@@ -49,6 +49,7 @@ gjenbrukes aldri; en pensjonert regel markeres «Utgått», ikke slettet.
 | [CH-ARCH-006](#ch-arch-006) | Én zod-kopi i frontend-treet | 🟢 Håndhevet | tsconfig + CI-gate |
 | [CH-ARCH-007](#ch-arch-007) | Ingen dyp `@mui/icons-material/*Outline`-import | 🟡 Kandidat | (foreslått ESLint) |
 | [CH-ARCH-008](#ch-arch-008) | Desktop/Tauri-origin i backend CORS-allowlist | 🟡 Kandidat | (foreslått test) |
+| [CH-ARCH-009](#ch-arch-009) | Manifest-endring ⇒ fersk regen av BEGGE lockfiler | 🟢 Håndhevet | Pre-push |
 
 ---
 
@@ -186,6 +187,38 @@ gjenbrukes aldri; en pensjonert regel markeres «Utgått», ikke slettet.
   fjerning fanges i CI.
 - **Slik retter du:** Legg origin i `KNOWN_ORIGINS`; verifiser med `curl`-ACAO-probe.
 
+### CH-ARCH-009
+
+**Manifest-endring ⇒ fersk regenerering av BEGGE lockfiler i samme commit.** · 🟢 Håndhevet · Pre-push
+
+- **Hendelse:** `af5a596` (direkte-push til main utenom PR-gatene) endret
+  rot-/frontend-/backend-manifestene, men committet en rot-lockfil som ikke
+  var fersk-resolvet og lot backend-lockfilen stå urørt. Resultat: rot-
+  lockfilen mistet transitive pakker (`loupe`, krevd av `@vitest/utils@3`/
+  `chai@5`) → `npm ci` installerte et hull-tre → `test:unit`-steget krasjet
+  i BEGGE hardened E2E-gates (`ERR_MODULE_NOT_FOUND`); @types-/hoisting-
+  drift gjorde required-gaten «Frontend tsc --noEmit» rød; usynket backend-
+  lockfil brøt Renders `npm ci` (CH-ARCH-004-klassen). Revertert i #2010,
+  gjeninnført korrekt med ferske lockfiler i oppfølgings-PR-en.
+- **Regel:** Enhver endring i `package.json` (rot, `frontend/`, `backend/`)
+  skal følges av fersk regenerering av begge lockfiler i samme commit:
+  `npm install --package-lock-only` i rot og
+  `cd backend && npm install --workspaces=false --package-lock-only`.
+  Merk: `npm install --package-lock-only` mot en eksisterende inkonsistent
+  lockfil er IKKE nok — npm stoler på eksisterende tre, og et installert
+  `node_modules` påvirker OGSÅ resolven (npm bevarer versjonene som ligger
+  der, inkl. stale peer-oppløsninger). Full sanering:
+  `rm -rf node_modules */node_modules package-lock.json && npm install --package-lock-only`.
+- **Håndhevelse:** `.githooks/pre-push` Check 4 kjører
+  `scripts/lint/check-lockfile-coherence.mjs` — en offline validator som
+  sjekker (a) manifest↔lockfil-avtale og (b) at hver dependency-kant i
+  lockfilene resolver til en faktisk oppføring. Merk at «regen + diff»
+  IKKE er en gyldig mekanisme her: npm stoler på eksisterende lockfil-tre,
+  så en korrupt lockfil kan passere byte-identisk. Check 1 dekker fortsatt
+  backend-manifest↔lockfil-drift via faktisk regen.
+- **Slik retter du:** Kjør kommandoene over, commit begge lockfilene sammen
+  med manifest-endringen.
+
 ---
 
 ## Slik legger du til en regel (incident → rule-pipeline)
@@ -218,4 +251,4 @@ innføre en andre rød gate for stilistiske ting.
   `frontend/eslint-rules/require-error-boundary-on-suspense.js`,
   `.githooks/pre-push`, `frontend/tsconfig.json`.
 - Hendelseshistorikk: PR #1242 (007), #1250 (008), #1319 (006), #1330 (005),
-  #1470–#1475 (003).
+  #1470–#1475 (003), #2010 (009 — af5a596-reverten).
