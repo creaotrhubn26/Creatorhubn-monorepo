@@ -5051,6 +5051,38 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return effectiveRoleRecord.permissions.canEditProduction === true;
   }
 
+  /**
+   * Dedikert crew-tilgang — matcher `canManageCrew` i
+   * getDefaultProjectRolePermissions() (kun director/producer/
+   * production_manager har det som standard). `canWriteProducerData()`
+   * ble tidligere gjenbrukt her, som feilaktig ga `content_producer`
+   * crew-tilgang selv om dennes standard-permission (`canManageCrew: false`)
+   * sier nei.
+   */
+  function canManageCrew(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'production_manager'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canManageCrew === true;
+  }
+
+  /**
+   * Dedikert casting-tilgang (roller + kandidater) — matcher
+   * `canEditCasting` i getDefaultProjectRolePermissions(). Inkluderer
+   * `casting_director`, som `canWriteProducerData()` feilaktig utelot
+   * (funksjonell bug: casting_director har `canEditCasting: true` men
+   * `canEditProduction: false`, og ble derfor blokkert fra å opprette
+   * casting-roller/kandidater — nettopp jobben rollen finnes for).
+   */
+  function canEditCasting(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'content_producer', 'casting_director'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canEditCasting === true;
+  }
+
   function canReadStoryLogic(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
     if (canReadProducerData(req, roleRecord)) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
@@ -17208,7 +17240,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      if (!canEditCasting(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
         return;
       }
@@ -17268,7 +17300,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      if (!canEditCasting(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler skrivetilgang til dette prosjektet' });
         return;
       }
@@ -17321,7 +17353,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     {
       const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-      if (!canWriteProducerData(req, roleRecord)) {
+      if (!canManageCrew(req, roleRecord)) {
         res.status(403).json({ error: 'Skrive-tilgang til dette prosjektet kreves' });
         return;
       }
