@@ -1141,7 +1141,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             aria-orientation={rightPanel === 'storyboard' ? 'vertical' : undefined}
             onMouseDown={rightPanel === 'storyboard' ? startRightPanelResize : undefined}
             sx={{
-              width: rightPanel === 'storyboard' ? 10 : 1,
+              width: rightPanel === 'storyboard' ? 10 : '1px',
               cursor: rightPanel === 'storyboard' ? 'col-resize' : 'default',
               bgcolor: rightPanel === 'storyboard' ? 'transparent' : 'rgba(255,255,255,0.1)',
               position: 'relative',
