@@ -816,6 +816,14 @@ export function setupWeddingLocationAlternativesRoutes(
                        checked_in_at = NOW()`,
         [weddingId, String(locationId), name.slice(0, 255), String(memberRole || "assistent").slice(0, 32)],
       );
+      // Produksjonskartets «Live koordinering» viste en grønn Live-badge, men
+      // crew-innsjekk/posisjon oppdaterte seg kun via 15-30s poll — koblet nå
+      // inn på samme wedding-room-WS som Plan B-varslene allerede bruker.
+      broadcastEventToRoom(`wedding:${weddingId}`, {
+        type: "checkin_updated",
+        payload: { weddingId, locationId, memberName: name },
+        timestamp: new Date().toISOString(),
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("POST /checkins:", err);
@@ -839,6 +847,11 @@ export function setupWeddingLocationAlternativesRoutes(
         `DELETE FROM wedding_location_checkins WHERE wedding_id = $1 AND member_name = $2`,
         [req.params.weddingId, name.slice(0, 255)],
       );
+      broadcastEventToRoom(`wedding:${req.params.weddingId}`, {
+        type: "checkin_updated",
+        payload: { weddingId: req.params.weddingId, memberName: name },
+        timestamp: new Date().toISOString(),
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("DELETE /checkins:", err);
@@ -916,6 +929,11 @@ export function setupWeddingLocationAlternativesRoutes(
           Number.isFinite(Number(accuracyM)) ? Number(accuracyM) : null,
         ],
       );
+      broadcastEventToRoom(`wedding:${weddingId}`, {
+        type: "position_updated",
+        payload: { weddingId, memberName: name },
+        timestamp: new Date().toISOString(),
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("POST /positions:", err);

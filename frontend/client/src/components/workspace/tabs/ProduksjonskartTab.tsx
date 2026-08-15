@@ -55,6 +55,7 @@ import type { WsImageItem } from '../ui';
 import { useProjectImages } from '../useProjectImages';
 import { externalDataService } from '@/services/ExternalDataService';
 import { useAuth } from '@/hooks/useAuth';
+import { useWeddingWebSocket } from '@/hooks/useWeddingWebSocket';
 
 type PlanStatus = 'Ferdig' | 'Pågår' | 'Planlagt' | 'Kritisk';
 type ViewKey = 'timeline' | 'board' | 'kart' | 'plan';
@@ -1132,6 +1133,21 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
     const t = window.setInterval(loadCrewPositions, 15000);
     return () => window.clearInterval(t);
   }, [view, isReal, weddingId]);
+
+  // Live koordinering hadde en grønn "Live"-badge, men crew-posisjon/innsjekk
+  // oppdaterte seg kun via 15-30s poll — ikke via push, i motsetning til
+  // Shotlist/Media/Oversikt/Moodboard. Gjenbruker samme wedding-room-WS som
+  // Plan B-varslene allerede har (useWeddingWebSocket, wedding-location-
+  // alternatives-routes.ts broadcaster nå checkin_updated/position_updated dit).
+  useWeddingWebSocket({
+    weddingId: weddingId || '',
+    userId: user?.id || '',
+    enabled: isReal && !!weddingId,
+    onEvent: (e) => {
+      if (e.type === 'checkin_updated') { loadCheckins(); loadLocations(); }
+      else if (e.type === 'position_updated') { loadCrewPositions(); }
+    },
+  });
 
   // «Del min posisjon» — browser-geolokasjon rapporteres som min crew-profil
   const toggleShare = () => {
@@ -2216,7 +2232,7 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
   return (
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <WsPageTitle icon={<MapOutlined sx={{ fontSize: 21, color: '#fff' }} />} title="Production Map" sub={dayLabel} />
+        <WsPageTitle icon={<MapOutlined sx={{ fontSize: 21, color: '#fff' }} />} title="Produksjonskart" sub={dayLabel} />
 
         {/* Topp-kort */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
