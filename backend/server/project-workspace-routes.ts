@@ -3806,6 +3806,29 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [], files: Array.isArray(d.files) ? d.files : [] });
     } catch (e) { console.error("PATCH deliverables", e); res.status(500).json({ error: "failed" }); }
   });
+  // Last opp en fil direkte til en leveranse (versjon/master). Samme B2-mønster
+  // som /images og /video-versions/upload — men "Last opp versjon"-knappen i
+  // frontend (WsImageGrid) hadde ingen onUpload i det hele tatt: filen forsvant
+  // som en lokal blob-URL ved refresh, og accept="image/*" (default) blokkerte
+  // valg av video-/lydfiler — nettopp det en leveranse oftest ER.
+  app.post("/api/projects/:projectId/deliverables/:id/upload", guardMw, mediaUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const file = (req as any).file;
+      if (!file || !file.buffer) return res.status(400).json({ error: "file_required" });
+      const existing = await pool.query(`SELECT files FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
+      const key = `workspace/${req.params.projectId}/deliverables/${crypto.randomUUID()}-${slugifyForKey(file.originalname || "fil")}`;
+      const stored = await archiveToRoleRoomB2(key, file.buffer, file.mimetype || "application/octet-stream");
+      if (!stored) return res.status(502).json({ error: "b2_upload_failed" });
+      const url = await presignRoleRoomB2Download(key, 3600 * 24 * 7);
+      const entry = { kind: "upload", refId: crypto.randomUUID(), name: file.originalname || "Fil", url, at: new Date().toISOString() };
+      const nextFiles = sanitizeDeliverableFiles([...(Array.isArray(existing.rows[0].files) ? existing.rows[0].files : []), entry]);
+      await pool.query(`UPDATE project_workspace_deliverables SET files = $1::jsonb, updated_at = NOW() WHERE id = $2 AND project_id = $3`, [JSON.stringify(nextFiles), req.params.id, req.params.projectId]);
+      res.status(201).json({ file: entry, files: nextFiles });
+    } catch (e) { console.error("POST deliverables upload", e); res.status(500).json({ error: "failed" }); }
+  });
   app.delete("/api/projects/:projectId/deliverables/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try { await ensureSchema(pool); await pool.query(`DELETE FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }

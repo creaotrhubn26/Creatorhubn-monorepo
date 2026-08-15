@@ -11,7 +11,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import LocalShipping from '@mui/icons-material/LocalShipping';
 import Cached from '@mui/icons-material/Cached';
 import ImageIcon from '@mui/icons-material/Image';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal, WsErrorState, WsPageTitle } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
@@ -70,6 +70,8 @@ const T: WsDict = {
   deliveryProgress: { no: 'Leveranse-fremdrift', en: 'Delivery progress' },
   clientFeedback: { no: 'Klient-tilbakemeldinger', en: 'Client feedback' },
   activityWord: { no: 'Aktivitet', en: 'Activity' },
+  noActivity: { no: 'Ingen aktivitet ennå.', en: 'No activity yet.' },
+  daysLeft: { no: '{n} dager igjen', en: '{n} days left' },
   editHandoff: { no: 'Editor-jobber', en: 'Editor handoff' },
   fbComment: { no: 'Kommentar', en: 'Comment' },
   fbPraise: { no: 'Ros', en: 'Praise' },
@@ -209,6 +211,25 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     if (!isReal || !sel?.id) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables/${encodeURIComponent(sel.id)}`, { method: 'PATCH', body: { files: next } })
       .catch((e: any) => { window.alert(e?.message || t('couldNotAttach')); setDlFiles(dlFiles); });
+  };
+  // «Last opp versjon» (WsImageGrid uten dette) hadde ingen onUpload — filen
+  // ble aldri lagret, kun en lokal blob-URL som forsvant ved refresh. Multipart
+  // mot den nye /deliverables/:id/upload-ruten (samme B2-mønster som
+  // useProjectImages.onUpload), og resultatet legges inn i dlFiles slik at det
+  // vises i samme vedlegg-liste og overlever et reload.
+  const uploadVersionFile = async (file: File) => {
+    if (!isReal || !sel?.id) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    const headers = await getAuthHeader();
+    delete (headers as any)['Content-Type'];
+    const res = await fetch(buildApiUrl(`/api/projects/${encodeURIComponent(projectId)}/deliverables/${encodeURIComponent(sel.id)}/upload`), {
+      method: 'POST', headers, body: fd, credentials: 'include',
+    });
+    if (!res.ok) throw new Error(t('couldNotAttach'));
+    const saved = await res.json();
+    setDlFiles((prev) => [...prev, saved.file]);
+    return { id: saved.file.refId, url: saved.file.url, label: saved.file.name };
   };
   const detachFile = (i: number) => patchFiles(dlFiles.filter((_, j) => j !== i));
   const moveFile = (i: number, dir: -1 | 1) => {
@@ -463,7 +484,14 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Stack>
 
         <WsCard sx={{ mb: 2 }}>
-          <WsImageGrid columns={1} ratio="16 / 9" addLabel={t('uploadVersion')} />
+          <WsImageGrid
+            columns={1}
+            ratio="16 / 9"
+            addLabel={t('uploadVersion')}
+            images={dlFiles.filter((f) => f.kind === 'upload').map((f) => ({ id: f.refId, url: f.url, label: f.name }))}
+            onUpload={uploadVersionFile}
+            accept="image/*,video/*,audio/*,application/pdf"
+          />
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
@@ -672,7 +700,12 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard>
           <WsSectionTitle title={t('activityWord')} />
           <Stack spacing={1.25}>
-            {(isReal && activity.length
+            {/* isReal && !activity.length gikk tidligere til fallback-grenen under —
+                et ekte, tomt prosjekt viste fiktive personer ("Julie lastet opp
+                versjon 1") som om det var ekte hendelser. Fiktiv aktivitet er nå
+                strengt begrenset til demo-visningen (!isReal). */}
+            {isReal && !activity.length && <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noActivity')}</Typography>}
+            {(isReal
               ? activity.map((a) => ({ who: a.who, what: a.what, at: a.at, isPicks: String(a.what || '').includes('inn') }))
               : [
                   { who: 'Julie', what: t('act1'), at: '16. sep 2024 10:15', isPicks: false },
