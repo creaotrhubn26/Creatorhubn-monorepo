@@ -3941,7 +3941,7 @@ async function enhanceWithSharp(
   }
 
   if (settings.sharpness > 0) {
-    pipeline = pipeline.sharpen(clampNumber(settings.sharpness / 35, 0.3, 2.4));
+    pipeline = pipeline.sharpen({ sigma: clampNumber(settings.sharpness / 35, 0.3, 2.4) });
   } else if (settings.sharpness < -15) {
     pipeline = pipeline.blur(clampNumber(Math.abs(settings.sharpness) / 80, 0.3, 1.5));
   }

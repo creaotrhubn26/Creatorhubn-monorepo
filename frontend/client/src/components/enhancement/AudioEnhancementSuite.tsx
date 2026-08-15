@@ -67,11 +67,11 @@ import { apiRequest } from '@/lib/queryClient';
 import WaveformView from '../universal/showcase/WaveformView';
 import { audioEngine } from '@/services/audio-processing-service';
 
-// Lazy-load music-metadata-browser to avoid Buffer polyfill issues
+// Lazy-load music-metadata to avoid pulling its runtime deps into the main bundle
 let parseMetadata: ((blob: Blob) => Promise<any>) | null = null;
 const getParseMetadata = async () => {
   if (!parseMetadata) {
-    const module = await import('music-metadata-browser');
+    const module = await import('music-metadata');
     parseMetadata = module.parseBlob;
   }
   return parseMetadata;
@@ -718,7 +718,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
           audioRef.current.load();
         }
 
-        // Extract metadata (lazy-load music-metadata-browser)
+        // Extract metadata (lazy-load music-metadata)
         const parseMetadataFn = await getParseMetadata();
         const metadata = await parseMetadataFn(files[0]);
         console.log('🎵 Audio Metadata:', metadata.format);

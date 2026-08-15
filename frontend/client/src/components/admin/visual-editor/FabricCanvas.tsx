@@ -18,6 +18,7 @@ import {
   GridOff,
   GridOn,
   PanTool,
+  Rotate90DegreesCcw,
   ZoomIn,
   ZoomOut,
 } from '@mui/icons-material';
@@ -65,8 +66,22 @@ type FabricSelectionEvent = Partial<fabric.TEvent<fabric.TPointerEvent>> & {
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 1.8;
 const ZOOM_STEP = 0.1;
+type ViewRotation = 0 | 90 | 180 | 270;
 
 const clampZoom = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+
+const screenDeltaToFrameDelta = (deltaX: number, deltaY: number, rotation: ViewRotation) => {
+  switch (rotation) {
+    case 90:
+      return { x: deltaY, y: -deltaX };
+    case 180:
+      return { x: -deltaX, y: -deltaY };
+    case 270:
+      return { x: -deltaY, y: deltaX };
+    default:
+      return { x: deltaX, y: deltaY };
+  }
+};
 
 const isEditableTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
@@ -660,6 +675,7 @@ export const FabricCanvas: React.FC = () => {
   const [spacePressed, setSpacePressed] = useState(false);
   const [isStagePanning, setIsStagePanning] = useState(false);
   const [livePan, setLivePan] = useState(state.pan);
+  const [viewRotation, setViewRotation] = useState<ViewRotation>(0);
 
   const isPanMode = handToolEnabled || spacePressed;
 
@@ -988,17 +1004,20 @@ export const FabricCanvas: React.FC = () => {
     const bounds = workspace.getBoundingClientRect();
     const availableWidth = Math.max(bounds.width - 176, 320);
     const availableHeight = Math.max(bounds.height - 176, 240);
+    const isSideways = viewRotation === 90 || viewRotation === 270;
+    const footprintWidth = isSideways ? baseDeviceFrame.footprintHeight : baseDeviceFrame.footprintWidth;
+    const footprintHeight = isSideways ? baseDeviceFrame.footprintWidth : baseDeviceFrame.footprintHeight;
     const nextZoom = clampZoom(
       Math.min(
-        availableWidth / Math.max(baseDeviceFrame.footprintWidth, 1),
-        availableHeight / Math.max(baseDeviceFrame.footprintHeight, 1),
+        availableWidth / Math.max(footprintWidth, 1),
+        availableHeight / Math.max(footprintHeight, 1),
         1,
       ),
     );
 
     setZoom(nextZoom);
     commitPan({ x: 0, y: 0 });
-  }, [baseDeviceFrame.footprintHeight, baseDeviceFrame.footprintWidth, commitPan, setZoom]);
+  }, [baseDeviceFrame.footprintHeight, baseDeviceFrame.footprintWidth, commitPan, setZoom, viewRotation]);
 
   const resetViewport = useCallback(() => {
     setZoom(1);
@@ -1009,6 +1028,10 @@ export const FabricCanvas: React.FC = () => {
     const delta = direction === 'in' ? ZOOM_STEP : -ZOOM_STEP;
     setZoom(clampZoom(state.zoom + delta));
   }, [setZoom, state.zoom]);
+
+  const rotateViewport = useCallback(() => {
+    setViewRotation((prev) => ((prev + 90) % 360) as ViewRotation);
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current || fabricCanvasRef.current) {
@@ -1258,13 +1281,13 @@ export const FabricCanvas: React.FC = () => {
     };
 
     const handleCanvasMouseMove = (event: fabric.TPointerEventInfo<fabric.TPointerEvent>) => {
-      if (event.pointer) {
+      if (event.scenePoint) {
         updateCollaborativeCursor({
           userId: 'current-user',
           userName: 'Current User',
           userColor: '#ff6b35',
-          x: event.pointer.x,
-          y: event.pointer.y,
+          x: event.scenePoint.x,
+          y: event.scenePoint.y,
           lastUpdate: new Date(),
         });
       }
@@ -1276,10 +1299,11 @@ export const FabricCanvas: React.FC = () => {
       const nativeEvent = event.e as MouseEvent;
       const deltaX = nativeEvent.clientX - panStartRef.current.x;
       const deltaY = nativeEvent.clientY - panStartRef.current.y;
+      const frameDelta = screenDeltaToFrameDelta(deltaX, deltaY, viewRotation);
 
       updateLivePan({
-        x: panStartRef.current.originX + deltaX,
-        y: panStartRef.current.originY + deltaY,
+        x: panStartRef.current.originX + frameDelta.x,
+        y: panStartRef.current.originY + frameDelta.y,
       });
     };
 
@@ -1331,6 +1355,7 @@ export const FabricCanvas: React.FC = () => {
     moveElement,
     getAutoLayoutInsertionIndex,
     renderableElementMap,
+    viewRotation,
   ]);
 
   useEffect(() => {
@@ -1663,7 +1688,8 @@ export const FabricCanvas: React.FC = () => {
           border: `1px solid ${deviceFrame.shellBorder}`,
           boxShadow: deviceFrame.shellShadow,
           backdropFilter: 'blur(14px)',
-          transform: `translate3d(${livePan.x}px, ${livePan.y}px, 0)`,
+          transform: `rotate(${viewRotation}deg) translate3d(${livePan.x}px, ${livePan.y}px, 0)`,
+          transformOrigin: 'center center',
           transition: isStagePanning ? 'none' : 'transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)',
           boxSizing: 'content-box',
           overflow: 'visible',
@@ -2111,6 +2137,21 @@ export const FabricCanvas: React.FC = () => {
               sx={{ color: 'var(--ve-muted, #6f6358)' }}
             >
               <ZoomIn fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={viewRotation === 0 ? 'Rotate viewport 90°' : `Rotate viewport (currently ${viewRotation}°)`}>
+            <IconButton
+              size="small"
+              onClick={rotateViewport}
+              sx={{
+                color: viewRotation === 0 ? 'var(--ve-muted, #6f6358)' : 'var(--ve-accent, #ff6b35)',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 107, 53, 0.12)',
+                },
+              }}
+            >
+              <Rotate90DegreesCcw fontSize="small" />
             </IconButton>
           </Tooltip>
 
