@@ -362,8 +362,8 @@ export const LIBRARY_MAPPINGS: LibraryMapping[] = [
   },
   {
     libraryName: 'Music Metadata',
-    npmPackage: 'music-metadata',
-    version: '11.12.3',
+    npmPackage: 'music-metadata-browser',
+    version: '2.5.10',
     bundleSize: 95,
     controlledBy: ['music-showcase-display', 'audio-enhancement-suite'],
     requiredPlan: 'basic',

@@ -76,7 +76,7 @@ const COMPONENT_LIBRARY_SUGGESTIONS: Record<
       'music-showcase-display',
     ],
     description: 'Advanced audio player with waveforms, beat detection, and enhancement',
-    essentialLibraries: ['wavesurfer.js', 'audio-decode', 'music-metadata'],
+    essentialLibraries: ['wavesurfer.js', 'audio-decode', 'music-metadata-browser'],
     recommendedLibraries: ['meyda', 'fft.js', 'wav-decoder', 'wav-encoder'],
     optionalLibraries: ['d3.js', 'recharts', 'rnnoise-wasm'],
   },
