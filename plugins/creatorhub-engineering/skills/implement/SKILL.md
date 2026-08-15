@@ -28,7 +28,11 @@ maskiner der det går (ESLint, pre-push, CI-gates) — resten står her.
   `_migrations_applied`-tabell, continue-on-error per fil). SQL er
   autoritativt — ikke drizzle-push i prod. Etter push til `main` kjører
   `auto-migrate-on-push.yml` migrering via admin-endepunkt FØRST når riktig
-  commit er stabilt deployet (fikser Render-rollover-racet).
+  commit er stabilt deployet (fikser Render-rollover-racet). MEN: workflowen
+  har en timeout-fallback — tar deployen >15 min eller er `/api/version`
+  utilgjengelig, varsler den og trigger migrering LIKEVEL. Skriv derfor
+  alltid migrasjoner og kode som tåler begge rekkefølger (ny kode mot
+  gammelt skjema OG migrert skjema mot gammel kode).
   - Kolonner som leses før migrasjonen garantert er applied → lazy
     self-heal-mønsteret (mig 0448, #1996).
   - Verifiser alltid mot `_migrations_applied`, ikke GH-action-suksess.

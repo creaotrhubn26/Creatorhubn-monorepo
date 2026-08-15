@@ -17,8 +17,8 @@ der grønn CI lyver).
 | Story Arc Studio | **«Story Arc Hardened E2E»** (`story-arc-e2e-gate.yml`, PR + merge_group) | `npm run test:e2e:story-arc-hardened` i `frontend/` (3 specs, `--repeat-each=2 --retries=1`) + `typecheck:story-arc-studio` |
 | Visual Editor | **«Visual Editor Regression»** (`visual-editor-e2e-gate.yml`) | `npm run test:e2e:visual-editor-hardened` |
 | Frontend generelt | «Frontend tsc --noEmit» (**eneste required check**), `frontend-eslint-gate.yml` | `npm run typecheck` / `npm run lint` i `frontend/` |
-| Backend | `backend-typecheck-gate.yml`, `backend-vitest-gate.yml` | `npm run typecheck` / `vitest run` i `backend/` |
-| Frontend/backend/sentinel-kode | `sentinel-gate.yml` — blokkerer kun NYE funn (~240 pre-eksisterende er backlog) | `sentinel-ci` fra `crates/sentinel-core/` |
+| Backend | `backend-typecheck-gate.yml`, `backend-vitest-gate.yml` | `npm run typecheck` / `npm run test:unit` i `backend/` |
+| Frontend/backend/sentinel-kode | `sentinel-gate.yml` — blokkerer kun NYE funn (~240 pre-eksisterende er backlog) | Lokal `sentinel-ci`-kjøring er KUN rapport (exiter på ethvert funn, også backlog); ny-funn-logikken bor i CI-workflowens head-vs-base-sammenligning (`--all` + JSON-diff) — ikke bruk lokal exit-status som gate |
 | Timeline-ytelse | `test:e2e:timeline-render-budget` | render-budsjett-spec |
 | Role Room live | Live-smokes mot prod | `npm run smoke:role-room:live`, `e2e:role-room-exporter:live`, `e2e:role-room-google-workspace:live` (rot-scripts) |
 | Nightly | «Story Arc V2 Nightly Golden Benchmark» (cron 01:30) — testet i `backend/` | ikke PR-gate; regresjoner dukker opp dagen etter |
