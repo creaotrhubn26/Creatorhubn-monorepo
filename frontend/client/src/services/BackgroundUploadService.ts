@@ -4,7 +4,7 @@
  * Håndterer file uploads i bakgrunnen med persistent progress tracking
  */
 
-import { EventEmitter } from 'events';
+import EventEmitter from 'eventemitter3';
 import { apiRequest } from '@/lib/queryClient';
 
 export interface UploadTask {
@@ -61,7 +61,7 @@ class BackgroundUploadService extends EventEmitter {
     files.forEach((file) => {
       const taskId = this.generateTaskId();
       const task: UploadTask = {
-        id: taskd,
+        id: taskId,
         file,
         fileName: file.name,
         fileSize: file.size,
