@@ -398,7 +398,8 @@ const ProsjektplanTab: React.FC<{ projectId: string; profession?: string }> = ({
   // så et blandet team aldri mister kolonner) — dumpet tidligere ALLE 17 roller
   // uansett profesjon, og donuten for ressursallokering mistet fargekoding for
   // roller den ikke kjente igjen fra visual-settet.
-  const taskRoleOptions = resolveCrewRoles(workspaceCategory, []).roles;
+  const resolvedCrew = resolveCrewRoles(workspaceCategory, []);
+  const taskRoleOptions = resolvedCrew.roles;
   const locale: WsLocale = useWsLocale();
   const t = makeT(T, locale);
   const dloc = wsDateLocale(locale);
@@ -1223,6 +1224,8 @@ const ProsjektplanTab: React.FC<{ projectId: string; profession?: string }> = ({
           isReal={isReal}
           locale={locale}
           t={t}
+          taskRoleOptions={taskRoleOptions}
+          defaultCrewRole={resolvedCrew.fallbackKey}
           onClose={() => setTaskModalOpen(false)}
         />
       )}
@@ -1236,10 +1239,12 @@ const NewTaskModal: React.FC<{
   isReal: boolean;
   locale: WsLocale;
   t: (k: string) => string;
+  taskRoleOptions: ReturnType<typeof resolveCrewRoles>['roles'];
+  defaultCrewRole: string;
   onClose: () => void;
-}> = ({ projectId, isReal, locale, t, onClose }) => {
+}> = ({ projectId, isReal, locale, t, taskRoleOptions, defaultCrewRole, onClose }) => {
   const [title, setTitle] = useState('');
-  const [crewRole, setCrewRole] = useState('begge');
+  const [crewRole, setCrewRole] = useState(defaultCrewRole);
   const [status, setStatus] = useState('todo');
   const [saving, setSaving] = useState(false);
 

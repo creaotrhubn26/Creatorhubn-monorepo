@@ -1142,7 +1142,7 @@ const syncOwner = isReal ? (sync?.owner || null) : SAMPLE_SYNC.owner;
   useWeddingWebSocket({
     weddingId: weddingId || '',
     userId: user?.id || '',
-    enabled: isReal && !!weddingId,
+    enabled: !!isReal && !!weddingId,
     onEvent: (e) => {
       if (e.type === 'checkin_updated') { loadCheckins(); loadLocations(); }
       else if (e.type === 'position_updated') { loadCrewPositions(); }
