@@ -17,8 +17,12 @@
  *   - SP-initiert login (bruker starter fra Role Room, ikke fra IdP-portalen).
  *     IdP-initiert POST rett til ACS uten forutgående /login støttes IKKE ennå.
  *   - Krever at brukeren allerede finnes i `users` (matchet på e-post fra
- *     SAML-assertion). Auto-provisjonering av nye brukere er SCIM sin jobb
- *     (Fase 2) — logges som en tydelig feil her, ikke en stille auto-create.
+ *     SAML-assertion) OG har en aktiv rad i role_room_user_org_roles for
+ *     DENNE organisasjonen (mig 0452) — ren e-postmatch mot users er ikke
+ *     nok, siden users er delt plattform-bredt og ikke slettes/koples fra
+ *     ved SCIM-deprovisjonering. Auto-provisjonering av nye brukere er
+ *     SCIM sin jobb (Fase 2) — logges som en tydelig feil her, ikke en
+ *     stille auto-create.
  *   - Én IdP per organisasjon (ikke IdP-discovery/multi-IdP-routing).
  *
  * 6 endpoints:
@@ -50,6 +54,29 @@ import { persistAuthSession } from "./auth-session-store.js";
 const ROLE_ROOM_CANONICAL_PATH = "/theroleroom";
 const SAML_LOGIN_FLOW_TTL_MS = 10 * 60 * 1000; // 10 min — tid nok til å fullføre IdP-innlogging
 const SAML_TRANSFER_TTL_MS = 5 * 60 * 1000; // 5 min — kort levetid, engangsbruk
+
+// Samme kjente prod-/dev-origins som CORS-allowlisten i index.ts (KNOWN_ORIGINS)
+// — ikke importert derfra for å unngå en sirkulær import (index.ts importerer
+// denne filen), men holdes i synk manuelt. Uten denne kan `?origin=` styre
+// hvor rrSamlTransfer (og dermed en engangs-innløsbar sesjon) sendes etter
+// vellykket IdP-innlogging — se sjekken i /saml/login.
+const TRUSTED_SAML_RETURN_ORIGINS = new Set([
+  "https://creatorhubn.com",
+  "https://www.creatorhubn.com",
+  "https://theroleroom.com",
+  "https://www.theroleroom.com",
+  "http://localhost:5001",
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5001",
+  "http://127.0.0.1:5173",
+]);
+
+function isTrustedSamlReturnOrigin(origin: string): boolean {
+  if (TRUSTED_SAML_RETURN_ORIGINS.has(origin)) return true;
+  // Vercel preview-deploys — samme mønster som CORS-allowlisten.
+  return /^https:\/\/[a-z0-9-]+-creatorhubcom\.vercel\.app$/.test(origin);
+}
 
 interface OrganizationSamlRow {
   id: string;
@@ -381,7 +408,7 @@ export function setupRoleRoomSamlRoutes({
         ? req.query.returnTo
         : ROLE_ROOM_CANONICAL_PATH;
     const browserOrigin =
-      typeof req.query.origin === "string" && /^https?:\/\//.test(req.query.origin)
+      typeof req.query.origin === "string" && isTrustedSamlReturnOrigin(req.query.origin)
         ? req.query.origin
         : null;
     loginFlows.set(flowId, {
@@ -448,6 +475,28 @@ export function setupRoleRoomSamlRoutes({
             buildReturnUrl(
               returnPath,
               { rrSamlStatus: "error", rrSamlError: "user_not_provisioned" },
+              browserOrigin,
+            ),
+          );
+        }
+
+        // E-postmatch mot `users` alene er IKKE nok: enhver eksisterende
+        // platform-bruker med denne e-posten ville ellers kunne logge inn
+        // for DENNE organisasjonen, inkludert en bruker som er deprovisjonert
+        // (SCIM-deaktivert) eller aldri koblet til org-en i det hele tatt —
+        // `users` slettes/koples ikke fra ved deprovisjonering, kun
+        // rolletildelingen. Krev et aktivt medlemskap her.
+        const membership = await pool.query(
+          `SELECT 1 FROM role_room_user_org_roles
+           WHERE organization_id = $1 AND user_id = $2 AND is_active = TRUE
+           LIMIT 1`,
+          [org.id, localUser.userId],
+        );
+        if (membership.rowCount === 0) {
+          return res.redirect(
+            buildReturnUrl(
+              returnPath,
+              { rrSamlStatus: "error", rrSamlError: "not_a_member_of_organization" },
               browserOrigin,
             ),
           );

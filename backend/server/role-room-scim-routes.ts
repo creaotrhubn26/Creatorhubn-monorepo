@@ -6,16 +6,20 @@
  * deaktivere brukere og synke rolletilhørighet automatisk, i stedet for at
  * en admin gjør det manuelt hver gang noen starter/slutter hos kunden.
  *
- * Gjenbruker organizations (mig 285 + 0451 SAML + 0452 SCIM-kolonner), den
- * delte `users`-tabellen, og den eksisterende userRoles/organizationRoles-
- * RBAC-en (frontend/shared/enterprise-schema.ts) — SCIM oppretter/deaktiverer
- * userRoles-rader, det er ingen egen SCIM-tilgangsmodell. `users` er delt
+ * Gjenbruker organizations (mig 285 + 0451 SAML + 0452 SCIM-kolonner) og den
+ * delte `users`-tabellen. Rollemodellen er derimot NY, org-scopet, og
+ * migrert i 0452 (role_room_organization_roles / role_room_user_org_roles)
+ * — IKKE det eldre organizationRoles/userRoles-paret i enterprise-schema.ts,
+ * som viste seg aldri å ha blitt reelt migrert (ingen SQL-migrasjon lager
+ * `organization_roles`, og den reelle `user_roles`-tabellen har en helt
+ * annen, `custom_roles`-koblet form — se 0452s filhode). `users` er delt
  * plattform-bredt, så SCIM-spesifikk bokføring (externalId-mapping) lever i
  * en egen role_room_scim_users-tabell, ikke som kolonner på users.
  *
  * Scope for denne biten (bevisst avgrenset, samme disiplin som SAML-filen):
  *   - Users-ressursen er komplett (List/Create/Read/Replace/Patch/Delete).
- *   - Groups-ressursen er KUN lesing (mapper 1:1 til organizationRoles) — IdP
+ *   - Groups-ressursen er KUN lesing (mapper 1:1 til role_room_organization_roles,
+ *     scopet til organisasjonen) — IdP
  *     kan liste hvilke roller som finnes, men push av gruppemedlemskap fra
  *     IdP-siden (SCIM group PATCH) støttes ikke ennå. Rolletildeling ved
  *     provisjonering skjer via organizations.scimDefaultRoleId.
@@ -41,12 +45,14 @@
  *
  *   import { setupRoleRoomScimRoutes } from "./role-room-scim-routes.js";
  *
- *   setupRoleRoomScimRoutes({ app, pool, requireAdminSession });
+ *   setupRoleRoomScimRoutes({ app, pool, requireAdminSession, activeSessions });
  */
 
 import crypto from "crypto";
 import express from "express";
 import type { Pool } from "pg";
+
+import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
 
 const SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
 const SCIM_GROUP_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Group";
@@ -108,12 +114,19 @@ interface SetupRoleRoomScimRoutesOptions {
     req: express.Request,
     res: express.Response,
   ) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
+  // Same in-memory session map index.ts's Google/SAML login flows write to —
+  // needed so SCIM deactivation can revoke an already-logged-in user's
+  // session immediately instead of leaving it valid for up to 30 days
+  // (creatorhub_auth_sessions' sliding TTL). Loosely typed on purpose, same
+  // convention as role-room-saml-routes.ts.
+  activeSessions: Map<string, Record<string, unknown>>;
 }
 
 export function setupRoleRoomScimRoutes({
   app,
   pool,
   requireAdminSession,
+  activeSessions,
 }: SetupRoleRoomScimRoutesOptions): void {
   async function getOrganizationById(orgId: string): Promise<OrganizationScimRow | null> {
     const result = await pool.query<OrganizationScimRow>(
@@ -395,10 +408,10 @@ export function setupRoleRoomScimRoutes({
       let roleAssigned = false;
       if (org.scim_default_role_id) {
         await pool.query(
-          `INSERT INTO user_roles (user_id, role_id, organization_id, assigned_by, is_active)
+          `INSERT INTO role_room_user_org_roles (organization_id, user_id, role_id, assigned_by, is_active)
            VALUES ($1, $2, $3, 'scim', $4)
-           ON CONFLICT DO NOTHING`,
-          [localUser.id, org.scim_default_role_id, org.id, active],
+           ON CONFLICT (organization_id, user_id, role_id) DO UPDATE SET is_active = EXCLUDED.is_active, updated_at = NOW()`,
+          [org.id, localUser.id, org.scim_default_role_id, active],
         );
         roleAssigned = true;
       }
@@ -433,21 +446,42 @@ export function setupRoleRoomScimRoutes({
   });
 
   async function setMappingActive(orgId: string, mappingId: string, active: boolean): Promise<boolean> {
-    const result = await pool.query(
+    const result = await pool.query<{ user_id: string }>(
       `UPDATE role_room_scim_users SET active = $3, updated_at = NOW()
-       WHERE organization_id = $1 AND id = $2`,
+       WHERE organization_id = $1 AND id = $2
+       RETURNING user_id`,
       [orgId, mappingId, active],
     );
+    const userId = result.rows[0]?.user_id;
+    if (!userId) return false;
+
     // Deprovisjonering: deaktiver org-rolletildelingen(e), ikke slett dem —
     // gjør re-aktivering (bruker kommer tilbake) reversibel uten å miste historikk.
     await pool.query(
-      `UPDATE user_roles ur SET is_active = $3, updated_at = NOW()
-       FROM role_room_scim_users m
-       WHERE m.organization_id = $1 AND m.id = $2
-         AND ur.user_id = m.user_id AND ur.organization_id::text = $1::text`,
-      [orgId, mappingId, active],
+      `UPDATE role_room_user_org_roles
+       SET is_active = $3, updated_at = NOW()
+       WHERE organization_id = $1 AND user_id = $2`,
+      [orgId, userId, active],
     );
-    return (result.rowCount ?? 0) > 0;
+
+    // Deaktivering skal ta effekt UMIDDELBART for en allerede innlogget
+    // bruker — ikke først når det 30-dagers glidende sesjonstokenet
+    // (creatorhub_auth_sessions) tilfeldigvis utløper. Fjern både i minnet
+    // og persistert, for alle sesjoner brukeren måtte ha. Bevisst bredt:
+    // sesjoner er ikke org-scopet i seg selv (kun SAML-mintede sesjoner
+    // bærer organizationId), så dette logger brukeren helt ut av
+    // plattformen, ikke bare denne organisasjonen — riktig retning å feile
+    // i for en offboarding-handling.
+    if (!active) {
+      for (const [token, session] of activeSessions.entries()) {
+        if (session.userId === userId) {
+          activeSessions.delete(token);
+        }
+      }
+      await deletePersistedAuthSessionsByUserId(pool, userId);
+    }
+
+    return true;
   }
 
   app.put("/api/role-room/scim/v2/organizations/:slug/Users/:id", scimJson, async (req, res) => {
@@ -530,7 +564,10 @@ export function setupRoleRoomScimRoutes({
     if (!org) return;
     try {
       const result = await pool.query<{ id: string; display_name: string }>(
-        `SELECT id, display_name FROM organization_roles WHERE is_active = TRUE ORDER BY display_name ASC`,
+        `SELECT id, display_name FROM role_room_organization_roles
+         WHERE organization_id = $1 AND is_active = TRUE
+         ORDER BY display_name ASC`,
+        [org.id],
       );
       const resources = result.rows.map((role) => ({
         schemas: [SCIM_GROUP_SCHEMA],

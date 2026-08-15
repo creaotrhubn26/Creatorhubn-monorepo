@@ -25688,7 +25688,7 @@ setupRoleRoomSamlRoutes({ app, pool, requireAdminSession, activeSessions });
 
 // ── Role Room SCIM 2.0 (Fase 2, Compliance-veikartet) — automatisk
 //   bruker-provisjonering/deprovisjonering fra kundens IdP (mig 0452).
-setupRoleRoomScimRoutes({ app, pool, requireAdminSession });
+setupRoleRoomScimRoutes({ app, pool, requireAdminSession, activeSessions });
 
 // Instagram Direct-message inbox (unified social inbox in the CRM / Agent / Admin Room).
 setupRoleRoomIgMessagingRoutes({ app, pool, requireAdminSession });

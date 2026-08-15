@@ -165,14 +165,27 @@ export const organizations = pgTable(
     samlWantAssertionsSigned: boolean('saml_want_assertions_signed').notNull().default(true),
     // SCIM 2.0 provisioning config for this org — Fase 2. The bearer token
     // is stored as a sha256 hash only, never in plaintext (see
-    // role-room-scim-routes.ts). scimDefaultRoleId is the organizationRoles
-    // row newly-provisioned SCIM users are assigned; left null means "don't
-    // guess a role" (create the user/mapping, skip role assignment).
+    // role-room-scim-routes.ts). scimDefaultRoleId is the
+    // roleRoomOrganizationRoles row newly-provisioned SCIM users are
+    // assigned; left null means "don't guess a role" (create the user/
+    // mapping, skip role assignment). NOTE: this intentionally does NOT
+    // reference the pre-existing `organizationRoles`/`userRoles` pair above
+    // — that pair was never actually migrated into the database (no SQL
+    // migration creates `organization_roles`, and the real `user_roles`
+    // table has an incompatible shape with a `custom_roles` FK, not
+    // `organization_id`). roleRoomOrganizationRoles/roleRoomUserOrgRoles
+    // below are the real, migrated (0452) equivalent, scoped per org.
     scimEnabled: boolean('scim_enabled').notNull().default(false),
     scimBearerTokenHash: varchar('scim_bearer_token_hash', { length: 64 }),
     scimBearerTokenHint: varchar('scim_bearer_token_hint', { length: 8 }),
     scimTokenRotatedAt: timestamp('scim_token_rotated_at'),
-    scimDefaultRoleId: uuid('scim_default_role_id').references(() => organizationRoles.id),
+    // Not a drizzle-level .references() — organizations and
+    // roleRoomOrganizationRoles reference each other (this column, and
+    // roleRoomOrganizationRoles.organizationId below), which is a genuine
+    // mutual dependency drizzle's column-builder type inference can't
+    // resolve for a `const` declaration. The real FK constraint is enforced
+    // at the SQL level in migration 0452.
+    scimDefaultRoleId: uuid('scim_default_role_id'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -180,6 +193,57 @@ export const organizations = pgTable(
     slugIdx: index('organizations_slug_idx').on(table.slug),
     samlEnabledIdx: index('organizations_saml_enabled_idx').on(table.samlEnabled),
     scimEnabledIdx: index('organizations_scim_enabled_idx').on(table.scimEnabled),
+  }),
+);
+
+// Org-scoped roles for Role Room enterprise organizations (Fase 2) — real,
+// migrated (0452) equivalent of the never-migrated `organizationRoles`
+// above. Each org defines its own roles (fits SCIM Groups, which are
+// inherently per-tenant), rather than one global system-wide role set.
+export const roleRoomOrganizationRoles = pgTable(
+  'role_room_organization_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .references(() => organizations.id)
+      .notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    displayName: varchar('display_name', { length: 100 }).notNull(),
+    description: text('description'),
+    permissions: jsonb('permissions').notNull().default({}),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgIdx: index('role_room_organization_roles_org_idx').on(table.organizationId),
+  }),
+);
+
+// A user's active role assignment within a Role Room organization — also
+// the org-membership check the SAML login flow (role-room-saml-routes.ts)
+// uses before minting a session for that org, not just a SCIM bookkeeping
+// table. Deliberately separate from the real, differently-shaped
+// `user_roles` table (which has a `custom_roles` FK and no organization
+// scoping) rather than retrofitting it.
+export const roleRoomUserOrgRoles = pgTable(
+  'role_room_user_org_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .references(() => organizations.id)
+      .notNull(),
+    userId: varchar('user_id', { length: 255 }).notNull(),
+    roleId: uuid('role_id')
+      .references(() => roleRoomOrganizationRoles.id)
+      .notNull(),
+    assignedBy: varchar('assigned_by', { length: 100 }).notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgUserIdx: index('role_room_user_org_roles_org_user_idx').on(table.organizationId, table.userId),
   }),
 );
 
@@ -481,6 +545,27 @@ export const organizationRolesRelations = relations(organizationRoles, ({ many }
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   userRoles: many(userRoles),
   scimUsers: many(roleRoomScimUsers),
+  roleRoomRoles: many(roleRoomOrganizationRoles),
+  roleRoomUserRoles: many(roleRoomUserOrgRoles),
+}));
+
+export const roleRoomOrganizationRolesRelations = relations(roleRoomOrganizationRoles, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [roleRoomOrganizationRoles.organizationId],
+    references: [organizations.id],
+  }),
+  userRoles: many(roleRoomUserOrgRoles),
+}));
+
+export const roleRoomUserOrgRolesRelations = relations(roleRoomUserOrgRoles, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [roleRoomUserOrgRoles.organizationId],
+    references: [organizations.id],
+  }),
+  role: one(roleRoomOrganizationRoles, {
+    fields: [roleRoomUserOrgRoles.roleId],
+    references: [roleRoomOrganizationRoles.id],
+  }),
 }));
 
 export const roleRoomScimUsersRelations = relations(roleRoomScimUsers, ({ one }) => ({
@@ -584,6 +669,16 @@ export const insertRoleRoomScimUserSchema = createInsertSchema(roleRoomScimUsers
 export const updateRoleRoomScimUserSchema = insertRoleRoomScimUserSchema.partial();
 export type InsertRoleRoomScimUser = z.infer<typeof insertRoleRoomScimUserSchema>;
 export type RoleRoomScimUser = typeof roleRoomScimUsers.$inferSelect;
+
+export const insertRoleRoomOrganizationRoleSchema = createInsertSchema(roleRoomOrganizationRoles);
+export const updateRoleRoomOrganizationRoleSchema = insertRoleRoomOrganizationRoleSchema.partial();
+export type InsertRoleRoomOrganizationRole = z.infer<typeof insertRoleRoomOrganizationRoleSchema>;
+export type RoleRoomOrganizationRole = typeof roleRoomOrganizationRoles.$inferSelect;
+
+export const insertRoleRoomUserOrgRoleSchema = createInsertSchema(roleRoomUserOrgRoles);
+export const updateRoleRoomUserOrgRoleSchema = insertRoleRoomUserOrgRoleSchema.partial();
+export type InsertRoleRoomUserOrgRole = z.infer<typeof insertRoleRoomUserOrgRoleSchema>;
+export type RoleRoomUserOrgRole = typeof roleRoomUserOrgRoles.$inferSelect;
 
 export const insertAuditLogSchema = createInsertSchema(auditLog);
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
