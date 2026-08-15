@@ -1,0 +1,71 @@
+name: One-shot Role Room dialog parser recovery
+
+on:
+  push:
+    branches:
+      - fix/role-room-dialog-parser-20260815
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/role-room-dialog-parser-20260815
+          fetch-depth: 0
+
+      - name: Apply exact dialog parser recovery
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('frontend/client/src/components/role-room/components/ManuscriptPanel.tsx')
+          text = path.read_text()
+
+          replacements = [
+            (
+              "    const newScenes: SceneBreakdown[] = [];\n    let currentSceneData: {",
+              "    const newScenes: SceneBreakdown[] = [];\n    const newDialogue: DialogueLine[] = [];\n    let currentSpeaker: string | null = null;\n    let currentSceneData: {",
+            ),
+            (
+              "        // Save previous scene\n        saveCurrentScene();\n        \n        // Start new scene",
+              "        // Save previous scene\n        saveCurrentScene();\n        currentSpeaker = null;\n        \n        // Start new scene",
+            ),
+            (
+              "        // Check for character names (all caps followed by dialogue)\n        const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\\s\\-'.]+)(\\s*\\(.*\\))?$/);\n        if (characterMatch && lines[lineIndex + 1]?.trim() && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)) {\n          const charName = characterMatch[1].replace(/\\s*\\(.*\\)$/, '').trim();\n          if (charName.length > 1 && charName.length < 40) {\n            currentSceneData.characters.push(charName);\n          }\n        }",
+              "        // Blank line ends the current dialogue block.\n        if (trimmed.length === 0) {\n          currentSpeaker = null;\n          return;\n        }\n\n        // Character cue: ALL CAPS followed by content, excluding transitions/headings.\n        const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\\s\\-'.]+)(\\s*\\(.*\\))?$/);\n        const isCue = !!characterMatch\n          && !!lines[lineIndex + 1]?.trim()\n          && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)\n          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP)/i);\n        const isParenthetical = /^\\(.*\\)$/.test(trimmed);\n\n        if (isCue) {\n          const charName = characterMatch![1].replace(/\\s*\\(.*\\)$/, '').trim();\n          if (charName.length > 1 && charName.length < 40) {\n            currentSceneData.characters.push(charName);\n            currentSpeaker = charName;\n          }\n        } else if (isParenthetical) {\n          // Keep the active speaker across parenthetical direction.\n        } else if (currentSpeaker) {\n          newDialogue.push({\n            id: `dialogue-${newDialogue.length + 1}`,\n            sceneId: `scene-${newScenes.length + 1}`,\n            manuscriptId: selectedManuscript.id,\n            characterName: currentSpeaker,\n            dialogueText: trimmed,\n            dialogueType: 'dialogue' as const,\n            createdAt: new Date().toISOString(),\n            updatedAt: new Date().toISOString(),\n          });\n        }",
+            ),
+            (
+              "    // Update scenes\n    setScenes(newScenes);\n    showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);",
+              "    // Update scenes and dialogue together so the Dialogue tab matches the parsed screenplay.\n    setScenes(newScenes);\n    setDialogueLines(newDialogue);\n    showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);",
+            ),
+          ]
+
+          for old, new in replacements:
+            count = text.count(old)
+            if count != 1:
+              raise SystemExit(f'Expected exactly one target, found {count}: {old[:80]!r}')
+            text = text.replace(old, new, 1)
+
+          path.write_text(text)
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-role-room-dialog-parser-recovery.yml
+
+      - name: Verify scope
+        run: |
+          git diff --check
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "2"
+          git diff --exit-code -- . ':!.github/workflows/tmp-role-room-dialog-parser-recovery.yml' ':!frontend/client/src/components/role-room/components/ManuscriptPanel.tsx'
+          git diff -- frontend/client/src/components/role-room/components/ManuscriptPanel.tsx
+
+      - name: Commit recovered fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/client/src/components/role-room/components/ManuscriptPanel.tsx .github/workflows/tmp-role-room-dialog-parser-recovery.yml
+          git commit -m "fix(role-room): populate dialogue when parsing scenes"
+          git push origin HEAD:fix/role-room-dialog-parser-20260815
