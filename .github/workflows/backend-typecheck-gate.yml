@@ -17,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - '.github/workflows/backend-typecheck-gate.yml'
   merge_group:
   workflow_dispatch:
 
