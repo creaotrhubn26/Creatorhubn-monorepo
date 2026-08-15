@@ -33,7 +33,7 @@ kodebasen:
 
 | Leverandør | Funksjon | Region/status |
 |---|---|---|
-| Neon, Inc. | Database (PostgreSQL) | **Uverifisert region** — prod-URL aldri committet (riktig praksis), men ingen bekreftet regionkilde heller (åpent punkt, se Fase 3) |
+| Neon, Inc. | Database (PostgreSQL) | **Bekreftet 2026-08-15** (kontoeier, Neon-dashboard): AWS eu-west-2 (London, UK). **Ikke EU/EEA** — Storbritannia er tredjeland, dekket av EU-kommisjonens adekvans-beslutning for UK. Om Datatilsynet/EØS-mekanismen automatisk følger denne er ikke avklart — se `docs/evidence/2026-08-role-room-neon-region-confirmed.yaml`. |
 | Render Services, Inc. | Applikasjonshosting | US, SCC-er |
 | Vercel Inc. | Statisk frontend-hosting | Bekreftet LIVE produksjon; region ikke verifisert |
 | Cloudflare, Inc. (R2) | Objektlagring — opplastede bilder/video | Globalt nettverk, IKKE jurisdiction-bundet i klientkode (verifisert) |

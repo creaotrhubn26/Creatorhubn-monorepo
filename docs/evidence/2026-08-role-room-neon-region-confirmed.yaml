@@ -1,0 +1,93 @@
+claim: >
+  Neon (Role Room's production Postgres) is confirmed by the account
+  owner, reading directly from the Neon dashboard, to run in AWS Europe
+  West 2 (London) — NOT in the EU, and NOT in the EEA. It is in the
+  United Kingdom, a third country under GDPR covered by a European
+  Commission adequacy decision, which is a materially different
+  compliance statement than "EU/EEA storage."
+
+source_type: primary
+source: >
+  Account owner, reading the Neon dashboard directly (2026-08-15):
+  "Region: AWS Europe West 2 (London)". This is the authoritative
+  source — Neon's production DATABASE_URL is never committed to this
+  repo (correct secret hygiene), so this could not be read from code;
+  see docs/evidence/2026-08-role-room-eu-region-status.yaml for that
+  prior "unverifiable from code" status, now resolved.
+
+authority_tier: 1
+vendor: Neon, Inc.
+product: Managed PostgreSQL hosting
+version_scope: "Role Room production database, 2026-08"
+publication_date: "2026-08-15"
+
+evidence_summary: >
+  AWS eu-west-2 is London, United Kingdom — not an EU member state and
+  not an EEA member (the UK left both after Brexit). This also catches
+  and corrects a SECOND error from an earlier internal claim: this
+  session's sibling evidence file already flagged that
+  backend/scripts/fill-meta-data-handling.playwright.mjs had asserted
+  "Neon EU-west-2, Ireland" to Meta App Review — which was wrong on two
+  counts, not one: eu-west-2 is London, not Ireland (Ireland is
+  eu-west-1), AND London/UK is not "EU" regardless. The region code
+  family was right, everything hung off it was wrong.
+
+  The UK does have a European Commission GDPR adequacy decision in
+  effect (last extended; subject to periodic review), so EU→UK personal
+  data transfers are currently permitted without additional safeguards
+  (SCCs, etc.) — this is NOT the same as "the data never leaves the
+  EU/EEA," which is the stronger claim the DPIA/DPA docs currently lean
+  toward. Whether Norway's Datatilsynet treats the EU Commission's UK
+  adequacy decision as automatically binding via the EEA Joint Committee
+  mechanism, or requires separate confirmation, is a legal question this
+  evidence file does NOT resolve — flagged for legal review, not
+  asserted either way.
+
+interpretation: >
+  "Confirmed non-US" and "confirmed EU/EEA" are different findings and
+  this session's earlier framing (project_impact in the sibling file)
+  anticipated exactly this risk: don't restate a specific region as
+  compliant until it's confirmed, and now that it IS confirmed, don't
+  round UK up to "EU" just because it's geographically and regulatorily
+  adjacent. The distinction matters for DPIA/DPA wording precision, even
+  though the practical compliance risk today is low (adequacy decision
+  in effect).
+
+project_impact: >
+  Resolves the "Neon: uverifisert region" open item in
+  docs/soc2/03-leverandorrisiko-policy.md §3 and the Render Frankfurt
+  migration plan's §2 blocker (docs/soc2/05-render-frankfurt-migrasjon-
+  plan.md) — but resolves it to "UK, adequacy-covered," not "EU,
+  confirmed compliant," which is a weaker claim than the DPIA/DPA drafts
+  currently imply. THE-ROLE-ROOM-DPIA-UTKAST.md and
+  THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md §5 should be updated to name
+  Neon's actual region + adequacy basis instead of leaving it as an open
+  point, but the exact wording should get a legal-review pass given the
+  adequacy-decision nuance rather than being asserted confidently in a
+  customer-facing DPA template from this session alone.
+
+confidence: confirmed
+decision: >
+  Do NOT round "London, UK" up to "EU" in any compliance document. Log
+  it precisely as "AWS eu-west-2 (London, UK) — EU adequacy decision
+  applies" everywhere it's cited. Left the actual document wording
+  changes to a follow-up pass rather than editing DPIA/DPA text in this
+  same turn, since the Norway/EEA-adequacy-incorporation question needs
+  a real legal read, not a guess.
+
+affected:
+  - docs/soc2/03-leverandorrisiko-policy.md
+  - docs/soc2/05-render-frankfurt-migrasjon-plan.md
+  - THE-ROLE-ROOM-DPIA-UTKAST.md
+  - THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md
+  - docs/evidence/2026-08-role-room-eu-region-status.yaml (sibling — Neon row there is now stale, superseded by this file, not rewritten in place per the evidence-graph's no-destructive-overwrite convention)
+
+lesson: >
+  A region code (eu-west-2) is not self-explanatory and definitely isn't
+  a jurisdiction — always resolve it to the actual physical
+  country/regulatory status before writing it into a compliance
+  document, the way this session's earlier claim ("Ireland") got both
+  the country AND the region code wrong despite looking specific and
+  authoritative. "In Europe" and "in the EU/EEA" are not synonyms
+  post-Brexit, and treating them as interchangeable is exactly the kind
+  of rounding-error that a real SOC 2/GDPR auditor would catch.
