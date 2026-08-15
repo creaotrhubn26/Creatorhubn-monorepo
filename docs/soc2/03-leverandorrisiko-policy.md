@@ -29,15 +29,23 @@ avklares:
 Denne listen er hentet direkte fra `THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md`
 §5 (Fase 3) og `docs/evidence/2026-08-role-room-eu-region-status.yaml` —
 ikke en generisk mal-liste, men det som faktisk er verifisert i bruk i
-kodebasen:
+kodebasen.
+
+> **Policy-beslutning (2026-08-15, kontoeier):** «alt må være i EU som
+> følger norske standarder» — en strengere linje enn GDPRs eget minimum
+> (som ville akseptert UK-adekvans for Neon). Se
+> `docs/evidence/2026-08-role-room-eu-only-infra-decision.yaml` for
+> beslutningsgrunnlaget og `docs/soc2/06-eu-only-infrastruktur-
+> migreringsplan.md` for konkret migreringsplan for de tre gjenstående
+> ikke-EU-punktene (Neon, Render, R2).
 
 | Leverandør | Funksjon | Region/status |
 |---|---|---|
-| Neon, Inc. | Database (PostgreSQL) | **Bekreftet 2026-08-15** (kontoeier, Neon-dashboard): AWS eu-west-2 (London, UK). **Ikke EU/EEA** — Storbritannia er tredjeland, dekket av EU-kommisjonens adekvans-beslutning for UK. Om Datatilsynet/EØS-mekanismen automatisk følger denne er ikke avklart — se `docs/evidence/2026-08-role-room-neon-region-confirmed.yaml`. |
-| Render Services, Inc. | Applikasjonshosting | US, SCC-er |
-| Vercel Inc. | Statisk frontend-hosting | Bekreftet LIVE produksjon; region ikke verifisert |
-| Cloudflare, Inc. (R2) | Objektlagring — opplastede bilder/video | Globalt nettverk, IKKE jurisdiction-bundet i klientkode (verifisert) |
-| Backblaze, Inc. (B2) | Objektlagring — Role Room-arkiv/dokumenter | **EU-bekreftet** for produksjonsbøtten (`eu-central-003`, Amsterdam) — eneste konkret EU-bekreftede punkt i hele leverandørkjeden. Akademi-/firma-arkiv-bøtter faller til US-default med mindre separat konfigurert. |
+| Neon, Inc. | Database (PostgreSQL) | Bekreftet 2026-08-15: AWS eu-west-2 (London, UK). **Ikke EU — migrering til EU-region kreves** per policy-beslutningen over. Se `06-eu-only-infrastruktur-migreringsplan.md` §1. |
+| Render Services, Inc. | Applikasjonshosting | Bekreftet 2026-08-15 (Render API): Oregon (US). **Ikke EU — migrering til Frankfurt planlagt**, se `05-render-frankfurt-migrasjon-plan.md`. |
+| Vercel Inc. | Statisk frontend-hosting | Bekreftet LIVE produksjon; ingen region pinnet. Lavest prioritet av de fire (mest statisk/edge, begrenset direkte persondatabehandling) — se `06-eu-only-infrastruktur-migreringsplan.md` §3. |
+| Cloudflare, Inc. (R2) | Objektlagring — opplastede bilder/video | Globalt nettverk, IKKE jurisdiction-bundet. **Krever ny bøtte med EU-jurisdiction + datamigrering** — kan ikke endres på eksisterende bøtte. Se `06-eu-only-infrastruktur-migreringsplan.md` §2. |
+| Backblaze, Inc. (B2) | Objektlagring — Role Room-arkiv/dokumenter | **EU-bekreftet** for produksjonsbøtten (`eu-central-003`, Amsterdam) — eneste leverandør som allerede oppfyller policy-beslutningen. Akademi-/firma-arkiv-bøtter faller til US-default med mindre separat konfigurert — bør sjekkes, se `06-eu-only-infrastruktur-migreringsplan.md` §4. |
 | Anthropic PBC | AI-assistert bearbeiding (kun der aktivert) | US, SCC-er |
 | Stripe, Inc. | Betalingsbehandling | US, SCC-er/DPF |
 | Google LLC | Innlogging/Workspace-integrasjon | EU-datalagring for Workspace-tjenester |

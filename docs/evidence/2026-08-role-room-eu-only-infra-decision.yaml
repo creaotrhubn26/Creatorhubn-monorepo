@@ -1,0 +1,100 @@
+claim: >
+  Product decision (not a technical finding): Role Room's infrastructure
+  must be EU-only — Neon, Render, Cloudflare R2, and Vercel/frontend
+  compute must all run in physical EU (not just EEA-adjacent or
+  adequacy-covered) locations, driven by what Norwegian/Nordic media-
+  house enterprise buyers expect and by NSM/ISO 27001-oriented
+  positioning rather than the US-centric SOC 2 Trust Services baseline
+  alone.
+
+source_type: primary
+source: >
+  Direct instruction from the account owner (Daniel, daniel@creatorhubn.com),
+  in-session, 2026-08-15: "alt må være i EU som følger norske standarder"
+  — given explicitly after being shown the UK-adequacy tradeoff analysis
+  for Neon (see 2026-08-role-room-neon-region-confirmed.yaml) and after
+  reviewing what Norwegian media houses/NFI/NSM-aligned buyers typically
+  ask for (this session's earlier market discussion).
+
+authority_tier: 1
+vendor: Neon / Render / Cloudflare R2 / Vercel
+product: Database / backend compute / object storage / frontend hosting
+version_scope: "Role Room infrastructure, 2026-08 onward"
+publication_date: "2026-08-15"
+
+evidence_summary: >
+  This supersedes the earlier "UK-adequacy is probably fine, get a quick
+  legal read before moving Neon" recommendation from this same session —
+  the account owner made the call directly rather than waiting on that
+  legal-review step. Current known state per vendor (see sibling evidence
+  files for full detail):
+    - Neon:    AWS eu-west-2 (London, UK) — NOT compliant with this
+               decision, needs migration to an EU region (e.g. Frankfurt/
+               eu-central-1 or Ireland/eu-west-1, both actual EU).
+    - Render:  Oregon (US) for creatorhub-backend + creatorhub-gfpgan-
+               runner — NOT compliant, migration plan already drafted
+               (docs/soc2/05-render-frankfurt-migrasjon-plan.md).
+    - R2:      global/auto endpoint, no jurisdiction restriction set on
+               existing buckets — NOT compliant as configured; Cloudflare
+               supports an EU jurisdiction restriction, but only at
+               bucket-creation time (existing buckets can't be converted
+               in place — same class of one-way constraint as Render's
+               region).
+    - Backblaze B2: prod bucket already eu-central-003 (Amsterdam) —
+               COMPLIANT. Academy/company-archive buckets fall to a
+               US-default unless separately configured — needs a check,
+               not necessarily a migration.
+    - Vercel:  no region pinned in frontend/vercel.json; mostly static
+               hosting + edge rewrites (limited personal-data processing
+               there vs. Render/Neon) — lowest priority of the four, but
+               in scope per the decision as stated ("alt").
+
+interpretation: >
+  "EU-only, following Norwegian standards" is a stricter bar than GDPR's
+  own minimum (which permits adequacy-covered UK transfers) — it's a
+  market-positioning decision for Norwegian/Nordic enterprise sales, not
+  a legal requirement being closed. Treat it as the standing target for
+  all new infrastructure decisions going forward, not just a one-time
+  cleanup of the current four gaps.
+
+project_impact: >
+  Converts every "[AVKLAR]" open point in
+  docs/soc2/03-leverandorrisiko-policy.md and the Render migration plan
+  that hinged on "is adequacy enough" into a settled "no — physical EU
+  required." Downstream docs to eventually align once migrations land:
+  THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md §5 (leverandørliste),
+  THE-ROLE-ROOM-DPIA-UTKAST.md, docs/soc2/03-leverandorrisiko-policy.md.
+  Do not rewrite those with a specific EU region for Neon/R2 until each
+  migration is actually executed and confirmed — same discipline as
+  every other entry in this evidence graph: document intent now, update
+  claims only once verified against the real target.
+
+confidence: strong_evidence
+decision: >
+  Adopted "EU-only" as the standing infrastructure policy for Role Room.
+  No migration executed in this session — all four gaps require
+  user-initiated dashboard actions (service recreation on Render, bucket
+  recreation + data copy on R2, Neon region migration, Vercel function
+  region config), same constraint pattern already established for
+  Render in 05-render-frankfurt-migrasjon-plan.md. Follow-up: draft a
+  Neon EU-migration plan (see docs/soc2/06-eu-only-infrastruktur-
+  migreringsplan.md) covering Neon + R2 + Vercel as the remaining three
+  vendors, cross-referencing the existing Render plan rather than
+  duplicating it.
+
+affected:
+  - docs/soc2/03-leverandorrisiko-policy.md
+  - docs/soc2/05-render-frankfurt-migrasjon-plan.md
+  - docs/soc2/06-eu-only-infrastruktur-migreringsplan.md
+  - THE-ROLE-ROOM-DATABEHANDLERAVTALE-MAL.md
+  - THE-ROLE-ROOM-DPIA-UTKAST.md
+  - docs/evidence/2026-08-role-room-neon-region-confirmed.yaml (superseded recommendation)
+
+lesson: >
+  A compliance recommendation ("adequacy is probably fine") is a
+  starting point for the account owner's decision, not the decision
+  itself — when they choose a stricter bar for business-positioning
+  reasons beyond the legal minimum, log that as the new standing target
+  rather than continuing to advocate for the weaker-but-legally-
+  sufficient option. Business risk tolerance and legal minimum are two
+  different bars.
