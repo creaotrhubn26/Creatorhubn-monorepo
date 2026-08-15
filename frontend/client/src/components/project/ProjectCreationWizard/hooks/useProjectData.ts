@@ -98,9 +98,9 @@ export function useProjectData({
   const { data: projectTypeDetails } = useQuery({
     queryKey: ['projectTypeDetails', projectType, userProfession],
     queryFn: async () => {
-      const { getProjectTypeNextSteps, getProjectTypeInitialDescription } = await import('@/utils/project-worklog-helpers');
-      const { getProjectTimeEstimate: getTimeEstimate, getDefaultPricing: getPricing } = await import('@/components/project/ProjectCreationWizard/constants/project');
-      const { generatePinFromProjectName } = await import('@/components/project/ProjectCreationWizard/constants/project');
+      const { getProjectTypeNextSteps, getProjectTypeInitialDescription } = await import('../../../utils/project-worklog-helpers');
+      const { getProjectTimeEstimate: getTimeEstimate, getDefaultPricing: getPricing } = await import('../constants/project');
+      const { generatePinFromProjectName } = await import('../constants/project');
       const nextSteps = getProjectTypeNextSteps(projectData.projectType, userProfession);
       const description = getProjectTypeInitialDescription(projectData.projectType, projectData.clientName || '', projectData.eventDate || '');
       const timeEstimate = getTimeEstimate(projectData.projectType, userProfession);
