@@ -3,8 +3,8 @@ import React from "react";
 // BasicInfoStep - First step of project creation wizard
 import { Box, TextField, Typography, Grid, FormControl, InputLabel, Select, MenuItem, Stack, Button, Card, CardContent, Alert } from '@mui/material';
 import { Person, CalendarToday, LocationOn, AttachMoney, AccessTime } from '@mui/icons-material';
-import { useProjectData } from '../../hooks/useProjectData';
-import { PROJECT_TYPES } from '../../constants/project';
+import { useProjectData } from '../hooks/useProjectData';
+import { PROJECT_TYPES } from '../constants/project';
 
 interface BasicInfoStepProps {
   projectData: any;
@@ -55,7 +55,7 @@ export function BasicInfoStep({ projectData, updateProjectData, onNext, canProce
             fullWidth
             label="Kundenavn *"
             value={projectData.clientName}
-            onChange={(e) => updateProjectData({ clientName: e.target.value }))
+            onChange={(e) => updateProjectData({ clientName: e.target.value })}
             required
             size="small"
             placeholder="F.eks. Anna & Lars"
@@ -83,7 +83,7 @@ export function BasicInfoStep({ projectData, updateProjectData, onNext, canProce
             fullWidth
             label="Telefon"
             value={projectData.clientPhone}
-            onChange={(e) => updateProjectData({ clientPhone: e.target.value }))
+            onChange={(e) => updateProjectData({ clientPhone: e.target.value })}
             size="small"
             placeholder="+47 9XX XX XXX"
             sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)' } }}
@@ -114,7 +114,7 @@ export function BasicInfoStep({ projectData, updateProjectData, onNext, canProce
             fullWidth
             label="Lokasjon"
             value={projectData.location}
-            onChange={(e) => updateProjectData({ location: e.target.value }))
+            onChange={(e) => updateProjectData({ location: e.target.value })}
             size="small"
             placeholder="F.eks. Oslo, Norge"
             sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)' } }}
@@ -129,7 +129,6 @@ export function BasicInfoStep({ projectData, updateProjectData, onNext, canProce
             type="number"
             value={projectData.guestCount}
             onChange={(e) => updateProjectData({ guestCount: e.target.value })}
-            type="number"
             size="small"
             placeholder="F.eks. 120"
           />
@@ -142,8 +141,7 @@ export function BasicInfoStep({ projectData, updateProjectData, onNext, canProce
             label="Budsjett (NOK)"
             type="number"
             value={projectData.budget}
-            onChange={(e) => updateProjectData({ budget: e.target.value }))
-            type="number"
+            onChange={(e) => updateProjectData({ budget: e.target.value })}
             size="small"
             placeholder="F.eks. 50000"
           />
@@ -207,8 +205,8 @@ export function BasicInfoStep({ projectData, updateProjectData, onNext, canProce
             Fortsett til prosjekttype →
           </button>
         </Grid>
-      </div>
-    </div>
+      </Grid>
+    </Box>
   );
 }
 

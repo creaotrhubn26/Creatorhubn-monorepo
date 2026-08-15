@@ -3,7 +3,7 @@ import React from "react";
 // ProjectCreationWizard Constants
 // Extracted from ProjectCreationWithMemoryCards.tsx
 
-import { Favorite, PhotoCamera, Event, Business, VideoLibrary, LibraryMusic, Group, ShoppingBag } from '@mui/icons-material';
+import { Favorite, PhotoCamera, Event, Business, VideoLibrary, LibraryMusic, Group, ShoppingBag, AccountBalance, Home, Star, Church, Public, Circle } from '@mui/icons-material';
 
 export const PROJECT_TYPES = {
   wedding: { name: 'Bryllup', icon: Favorite, color: '#e91e63' },
@@ -306,3 +306,93 @@ export const DEFAULT_PAGINATION = { page: 1, limit: 20 } as const;
 export const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 export const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 export const DEBOUNCE_DELAY = 300; // ms
+
+// Helper function to generate PIN code from project name
+export const generatePinFromProjectName = (projectName: string): string => {
+  if (!projectName) return '';
+
+  const cleanName = projectName.toLowerCase().replace(/[^a-z0-9]/g, ',');
+  if (!cleanName || cleanName.length === 0) return '0000';
+
+  let hash = 0;
+  for (let i = 0; i < cleanName.length; i++) {
+    const char = cleanName.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+
+  const pin = Math.abs(hash).toString().slice(-4).padStart(4, '0');
+  return pin;
+};
+
+// Helper function for dynamic project type defaults
+export const getDefaultProjectType = (profession: string): string => {
+  const typeMap: Record<string, string> = {
+    photographer: 'wedding',
+    videographer: 'wedding',
+    music_producer: 'song',
+    vendor: 'commercial'
+  };
+  return typeMap[profession] || 'commercial';
+};
+
+// Helper function to get project time estimates based on type and profession
+export const getProjectTimeEstimate = (projectType: string, profession: string): number => {
+  const estimates: Record<string, Record<string, number>> = {
+    'wedding': {
+      'photographer': 8, 'videographer': 12, 'music_producer': 4, 'vendor': 6, 'enterprise': 14
+    }, 'portrait': {
+      'photographer': 3, 'videographer': 4, 'music_producer': 2, 'vendor': 2, 'enterprise': 5
+    }, 'event': {
+      'photographer': 6, 'videographer': 8, 'music_producer': 3, 'vendor': 4, 'enterprise': 10
+    }, 'song': {
+      'photographer': 2, 'videographer': 3, 'music_producer': 20, 'vendor': 1, 'enterprise': 3
+    }, 'commercial': {
+      'photographer': 4, 'videographer': 6, 'music_producer': 3, 'vendor': 5, 'enterprise': 8
+    }
+  };
+
+  return estimates[projectType as keyof typeof estimates]?.[profession as keyof typeof estimates.wedding] || 4;
+};
+
+// Helper function for dynamic pricing defaults
+export const getDefaultPricing = (profession: string, packagesData?: { packages?: PricingPackage[] }, pricingData?: { pricingStructures?: PricingStructure[] }): number => {
+  if (packagesData?.packages && Array.isArray(packagesData.packages)) {
+    const professionPackages = packagesData.packages.filter((pkg: PricingPackage) =>
+      pkg.profession === profession && pkg.status === 'active'
+    );
+
+    if (professionPackages.length > 0) {
+      const basePrice = professionPackages[0].basePrice;
+      if (basePrice && !isNaN(parseFloat(basePrice))) {
+        return parseFloat(basePrice);
+      }
+    }
+  }
+
+  if (pricingData?.pricingStructures && Array.isArray(pricingData.pricingStructures)) {
+    const professionPricing = pricingData.pricingStructures.find((pricing: PricingStructure) =>
+      pricing.profession === profession && pricing.status === 'active'
+    );
+
+    if (professionPricing) {
+      const basePrice = professionPricing.basePrice ||
+        professionPricing.hourlyRate ||
+        professionPricing.fullDayRate;
+      if (basePrice && !isNaN(parseFloat(basePrice))) {
+        return parseFloat(basePrice);
+      }
+    }
+  }
+
+  const fallbackPriceMap: Record<string, number> = {
+    photographer: 150,
+    videographer: 100,
+    music_producer: 800,
+    vendor: 200
+  };
+  return fallbackPriceMap[profession] || 150;
+};
+
+type PricingPackage = { profession?: string; status?: string; basePrice?: string };
+type PricingStructure = { profession?: string; status?: string; basePrice?: string; hourlyRate?: string; fullDayRate?: string; phaseTimeEstimates?: Record<string, Record<string, number>> };

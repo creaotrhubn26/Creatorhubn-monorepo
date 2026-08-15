@@ -69,10 +69,10 @@ export function ProjectCreationWizard({
     'memory-cards': () => <MemoryCardStep projectData={projectData} updateProjectData={updateProjectData} onNext={wizard.nextStep} onBack={wizard.previousStep} canProceed={true} selectedMemoryCards={[]} enhancedMemoryCardSelection={null} memoryCardRecommendation={null} />,
     'backup': () => <BackupStep projectData={projectData} updateProjectData={updateProjectData} onNext={wizard.nextStep} onBack={wizard.previousStep} canProceed={true} />,
     'collaborators': () => <CollaboratorsStep projectData={projectData} updateProjectData={updateProjectData} collaborators={[]} onNext={wizard.nextStep} onBack={wizard.previousStep} canProceed={true} />,
-    'worklog': () => <WorklogStep projectData={projectData} updateProjectData={updateProjectData} onNext={wizard.nextStep} onBack={wizard.previousStep} canProceed={true} worklogFormData={} setWorklogFormData={() => {}} PROJECT_PHASES={[]} userProfession="" handleWorklogSubmit={() => {}} setShowWorklogTipsDialog={() => {}} />,
+    'worklog': () => <WorklogStep projectData={projectData} updateProjectData={updateProjectData} onNext={wizard.nextStep} onBack={wizard.previousStep} canProceed={true} worklogFormData={null} setWorklogFormData={() => {}} PROJECT_PHASES={[]} userProfession="" handleWorklogSubmit={() => {}} setShowWorklogTipsDialog={() => {}} />,
     'preview': () => <PreviewStep projectData={projectData} projectTypeDetails={undefined} getProfessionDisplayName={() => ''} getProfessionIcon={() => null} generatePin={() => ''} onNext={wizard.nextStep} onBack={wizard.previousStep} canProceed={true} />,
     'confirm': () => <ConfirmStep projectData={projectData} projectTypeDetails={undefined} generatePin={() => ''} onCreate={() => {}} onBack={wizard.previousStep} isCreating={false} />,
-  }, []);
+  }), []);
 
   const currentStepComponent = stepComponents[wizard.currentStep];
 

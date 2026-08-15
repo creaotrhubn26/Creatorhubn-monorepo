@@ -3,7 +3,7 @@ import React from "react";
 // WorklogStep - Worklog and planning
 import { Box, Typography, Button, Alert, Grid, TextField, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { AccessTime } from '@mui/icons-material';
-import { PROJECT_PHASES } from '../../constants/project';
+import { PROJECT_PHASES } from '../constants/project';
 
 interface WorklogStepProps {
   projectData: any;

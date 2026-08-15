@@ -3,7 +3,7 @@ import React from "react";
 // ProjectTypeStep - Select project type step
 import { Box, Grid, FormControl, InputLabel, Select, MenuItem, Typography, Button, Alert } from '@mui/material';
 import { Assignment } from '@mui/icons-material';
-import { PROJECT_TYPES, getDefaultProjectType } from '../../constants/project';
+import { PROJECT_TYPES, getDefaultProjectType } from '../constants/project';
 
 interface ProjectTypeStepProps {
   projectData: any;
@@ -102,7 +102,7 @@ export function ProjectTypeStep({ projectData, updateProjectData, dynamicProject
           Fortsett →
         </button>
       </div>
-    </div>
+    </Box>
   );
 }
 

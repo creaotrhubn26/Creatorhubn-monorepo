@@ -3,7 +3,7 @@ import React from "react";
 // WizardStepper - Vertical stepper for project creation wizard
 import { Stepper, Step, StepLabel, StepContent, StepIcon, Box, Typography, Button, Stack, Chip } from '@mui/material';
 import { useProjectWizard } from '../hooks/useProjectWizard';
-import { PROJECT_PHASES } from '../../constants/project';
+import { PROJECT_PHASES } from '../constants/project';
 import { Timeline } from '@mui/icons-material';
 
 interface WizardStepperProps {

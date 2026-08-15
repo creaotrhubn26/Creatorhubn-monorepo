@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 // LocationStep - Location and event date step
-import { Box, TextField, Typography, Button, Alert, Grid, Stack, Card, CardContent, Stack } from '@mui/material';
+import { Box, TextField, Typography, Button, Alert, Grid, Stack, Card, CardContent } from '@mui/material';
 import { LocationOn, CalendarToday, DirectionsCar, Schedule } from '@mui/icons-material';
 
 interface LocationStepProps {
@@ -59,7 +59,7 @@ export function LocationStep({ projectData, updateProjectData, locationSuggestio
           Fortsett →
         </button>
       </div>
-    </div>
+    </Box>
   );
 }
 

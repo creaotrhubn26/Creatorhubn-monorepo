@@ -43,7 +43,7 @@ export function MemoryCardStep({ projectData, updateProjectData, selectedMemoryC
           Fortsett →
         </button>
       </div>
-    </div>
+    </Box>
   );
 }
 

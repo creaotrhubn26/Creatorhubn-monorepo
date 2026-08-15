@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 // PreviewStep - Project preview
-import { Box, Typography, Button, Alert, Stack, Grid, Stack } from '@mui/material';
+import { Box, Typography, Button, Alert, Stack, Grid } from '@mui/material';
 import { Visibility, CalendarToday, LocationOn, AttachMoney, AccessTime, Camera, Image, Videocam, GraphicEq, Description, CloudDone, CheckCircle, Star, Business } from '@mui/icons-material';
 
 interface PreviewStepProps {
