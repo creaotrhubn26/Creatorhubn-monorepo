@@ -23564,7 +23564,7 @@ async function buildGoogleWorkspaceStorageSnapshot(
     (googleDriveConnected ? "connected" : "disconnected");
   let driveAccountEmail =
     readString(connectionRow.google_account_email) || null;
-  let lastDriveSyncAt = readOptionalIsoDate(
+  const lastDriveSyncAt = readOptionalIsoDate(
     connectionRow.last_sync ?? connectionRow.updated_at,
   );
   let dataSource: "live-drive" | "database-estimate" = "database-estimate";
@@ -30691,7 +30691,7 @@ function buildRoleRoomCommercialCheckoutRecordFromInviteRequest(
     seatPriceExVat: snapshot.seatPriceExVat || plan.seatPriceExVat,
     billableSeatCount: snapshot.teamSize || memberEmails.length || 1,
     paymentCompleted: Boolean(inviteRequest.payment_completed),
-    checkoutStatus: Boolean(inviteRequest.payment_completed)
+    checkoutStatus: inviteRequest.payment_completed
       ? "completed"
       : snapshot.billingStatus === "payment_failed"
         ? "payment_failed"
@@ -30790,7 +30790,7 @@ async function readRoleRoomCommercialRequestIdentity(
 }
 
 function scoreRoleRoomCommercialInviteRow(row: Record<string, unknown>) {
-  const paymentCompleted = Boolean(row.payment_completed) ? 1000 : 0;
+  const paymentCompleted = row.payment_completed ? 1000 : 0;
   const updatedAt = Date.parse(toAdminString(row.updated_at) || "") || 0;
   const createdAt = Date.parse(toAdminString(row.created_at) || "") || 0;
   return paymentCompleted + Math.max(updatedAt, createdAt);
@@ -31002,7 +31002,7 @@ async function resolveRoleRoomCommercialAccountForRequest(
   const stripe = getRoleRoomStripeClient();
 
   let subscriptionStatus: string | null = null;
-  let stripeSubscriptionId =
+  const stripeSubscriptionId =
     snapshot.stripeSubscriptionId || record?.stripeSubscriptionId || null;
   let stripeCustomerId =
     snapshot.stripeCustomerId || record?.stripeCustomerId || null;
@@ -31201,7 +31201,7 @@ async function runRoleRoomCommercialReminderSweep(
           snapshot.memberIsLeader === true ||
           (snapshot.teamLeadEmail || "") === normalizedEmail;
 
-        if (!Boolean(row.payment_completed)) {
+        if (!row.payment_completed) {
           const teamKey = buildRoleRoomCommercialReminderTeamKey(snapshot);
           const existingGroup = paymentGroups.get(teamKey);
           if (!existingGroup) {
@@ -31575,7 +31575,7 @@ async function getRoleRoomCommercialLoginGate(input: {
     };
   }
 
-  if (!Boolean(inviteRequest.payment_completed)) {
+  if (!inviteRequest.payment_completed) {
     return {
       required: true,
       allowed: false,
@@ -45546,7 +45546,7 @@ async function getAdminAcademyRevenueSnapshot(): Promise<{
     const courseId = toAdminString(row.id);
     if (courseId) {
       distinctCourseIds.add(courseId);
-      if (Boolean(row.is_published)) {
+      if (row.is_published) {
         publishedCourseIds.add(courseId);
       }
     }
@@ -47198,7 +47198,7 @@ app.put(
       const { events } = req.body;
 
       // Find timeline
-      let tlResult = await pool.query(
+      const tlResult = await pool.query(
         "SELECT id FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
@@ -47229,7 +47229,7 @@ app.post(
       const { weddingId } = req.params;
       const eventData = req.body;
 
-      let tlResult = await pool.query(
+      const tlResult = await pool.query(
         "SELECT id, wedding_date FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
@@ -65053,7 +65053,7 @@ app.post("/api/audio/mix", async (req, res) => {
     let demucsApplied = false;
     let demucsUsedModel = false;
     let demucsAppliedTracks = 0;
-    let demucsMetaSamples: Array<Record<string, unknown>> = [];
+    const demucsMetaSamples: Array<Record<string, unknown>> = [];
     const demucsRuntimeWarnings: string[] = [];
     let demucsModel =
       readString(mixContext.demucsModel) || AUDIO_MIX_DEMUCS_MODEL;
@@ -65175,7 +65175,7 @@ app.post("/api/audio/mix", async (req, res) => {
     let ffmpegApplied = false;
     let twoPassLoudnorm = false;
     const warnings: string[] = [...demucsRuntimeWarnings];
-    let masteringPrefixFilter = buildAudioMixMasteringPrefixFilter(
+    const masteringPrefixFilter = buildAudioMixMasteringPrefixFilter(
       selectedMasteringStage,
     );
     const arnndnAvailable = AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE !== null;

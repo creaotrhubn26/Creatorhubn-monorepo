@@ -308,7 +308,7 @@ export function registerLeadRulesRoutes({ app, pool, activeSessions }: Deps): vo
           return res.status(404).json({ error: "lead_not_found" });
         }
         const snap = snapRes.rows[0].row as Parameters<typeof evaluateCondition>[0];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const matched = evaluateCondition(snap, ruleRes.rows[0].condition as any);
         return res.json({ matched, lead_snapshot: snap });
       } catch (err) {

@@ -23,7 +23,7 @@ import type express from "express";
 import type { Pool } from "pg";
 import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminUsersRoutesDeps {
   app: express.Application;
   pool: Pool;
@@ -47,7 +47,7 @@ export interface AdminUsersRoutesDeps {
   buildAdminRoleEntry: (role: any) => any;
   persistAuthSession: (pool: Pool, token: string, session: any) => Promise<any>;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
   const {

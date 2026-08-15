@@ -192,7 +192,7 @@ export async function analyseFrame(input: AnalyseFrameInput): Promise<AnalyseFra
 
   let client: any;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const mod: any = await import('@anthropic-ai/sdk');
     const AnthropicCtor = mod.default ?? mod.Anthropic;
     client = new AnthropicCtor({
@@ -240,7 +240,7 @@ export async function analyseFrame(input: AnalyseFrameInput): Promise<AnalyseFra
     });
     logAIUsage(response as any, { feature: 'role-room/reference-archive' }).catch(() => undefined);
     const toolUse = (response.content ?? []).find(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       (b: any) => b?.type === 'tool_use' && b?.name === 'tag_reference_frame',
     );
     if (!toolUse || typeof toolUse.input !== 'object') {

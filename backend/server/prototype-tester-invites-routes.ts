@@ -15,7 +15,7 @@
  * createInviteFromApprovedRequest() automatisk.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import crypto from "crypto";

@@ -619,7 +619,7 @@ export function setupPhotographerGalleriesRoutes(
 
       // Idempotent transition: if already completed, return current
       // state so the UI can refresh without thinking it failed.
-      let alreadyCompleted = row.status === 'completed';
+      const alreadyCompleted = row.status === 'completed';
       if (!alreadyCompleted) {
         await pool.query(
           `UPDATE photographer_client_galleries

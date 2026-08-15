@@ -73,7 +73,7 @@ type ResolvedGoogleCredentialSource =
       message: string;
     };
 
-let cachedGoogleChatHealth:
+const cachedGoogleChatHealth:
   Map<string, {
     expiresAt: number;
     result: GoogleChatLiveHealthCheck;

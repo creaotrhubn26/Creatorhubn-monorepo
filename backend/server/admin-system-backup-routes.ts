@@ -23,13 +23,13 @@ import type express from "express";
 import type { Pool } from "pg";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminSystemBackupRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;

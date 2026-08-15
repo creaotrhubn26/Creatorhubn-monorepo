@@ -20,13 +20,13 @@
 import type express from "express";
 import type { Pool } from "pg";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminMonitoringRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 /**
  * Defensiv sjekk: returnerer true hvis tabellen finnes i det aktive skjemaet.
@@ -135,7 +135,7 @@ export function setupAdminMonitoringRoutes(
       if (!requireAdminSession(req, res)) return;
 
       // Aggreger fra system_events: tell error/warning/info pr. source siste 24t.
-      let perSource: Record<
+      const perSource: Record<
         string,
         { error: number; warning: number; info: number; lastEventAt: string | null }
       > = {};

@@ -17,7 +17,7 @@
  *   GET    /api/projects/:projectId/team/presence        (hvem er online nå)
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import crypto from "crypto";

@@ -616,7 +616,7 @@ Returner KUN valid JSON på formen:
 Sorter klyngene etter alvorlighet (critical først). severity reflekterer brukerpåvirkning + frekvens. Hver feedback skal høre til nøyaktig én klynge.`;
 
       let clusters: unknown[] = [];
-      let modelUsed = "claude-opus-4-7";
+      const modelUsed = "claude-opus-4-7";
       try {
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",

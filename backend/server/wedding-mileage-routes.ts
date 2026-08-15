@@ -21,7 +21,7 @@
 import type express from "express";
 import { canAccessProject } from "./project-team-routes";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // Eierskaps-sjekk for et bryllup (eier / tildelt fotograf / prosjekt-team).
 // /calculate leser timeline-destinasjoner via wedding_id og ekko-er venue-

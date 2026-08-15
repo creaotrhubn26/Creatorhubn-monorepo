@@ -16,7 +16,7 @@
  *   GET/POST  deliverables     PATCH/DELETE deliverables/:id
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import crypto from "crypto";

@@ -490,7 +490,7 @@ async function recordTikTokDemo(env) {
 
 async function main() {
   await ensureDir(VIDEO_DIR);
-  let env = await loadEnv();
+  const env = await loadEnv();
 
   if (!env.APP_BASE_URL) {
     env.APP_BASE_URL = (await ask(`APP_BASE_URL [${DEFAULT_APP_BASE}]: `)).trim() || DEFAULT_APP_BASE;

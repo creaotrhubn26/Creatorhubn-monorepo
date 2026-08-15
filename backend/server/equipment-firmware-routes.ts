@@ -42,11 +42,11 @@ export interface EquipmentFirmwareRoutesDeps {
   app: express.Application;
   pool: Pool;
   // Returns the authenticated session ({ userId, ... }) or null after sending 401.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   requireUserSession: (req: any, res: any) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   db: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   schema: any;
   buildEquipmentImageAttachmentMap: (
     rows: EquipmentImageAttachmentRow[],
@@ -66,18 +66,18 @@ export interface EquipmentFirmwareRoutesDeps {
   loadEquipmentImageAttachments: (
     equipmentIds: number[],
   ) => Promise<EquipmentImageAttachmentRow[]>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   loadFirmwareDevices: (userId?: string | null, profession?: string | null) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   loadFirmwareHistory: (userId?: string | null, profession?: string | null) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   loadFirmwareUpdates: (userId?: string | null, profession?: string | null) => Promise<any>;
   loadFirmwareSeedCandidates: (
     type: "photo" | "video" | null,
     filters?: { userId?: string | null; profession?: string | null },
   ) => Promise<FirmwareSeedCandidate[]>;
   loadUnifiedEquipmentCatalog: () => Promise<CompatCatalogItem[]>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   mapMaintenanceRow: (row: any, equipmentMap: Map<string, any>) => any;
   matchInventoryEquipmentCatalogItem: (
     catalog: CompatCatalogItem[],
@@ -86,7 +86,7 @@ export interface EquipmentFirmwareRoutesDeps {
   parseSettings: (settings: unknown) => Record<string, unknown>;
   readString: (value: unknown) => string | null;
   resolveFallbackSoftwareCatalog: (profession: string | null) => CompatSoftwareCatalogEntry[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   resolveFallbackSoftwareUpdates: (profession: string | null) => any[];
   resolveOfficialCatalogFallback: (
     item: CompatCatalogItem,

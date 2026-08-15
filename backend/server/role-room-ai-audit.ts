@@ -77,7 +77,7 @@ export async function logAiCall(pool: Pool, input: RoleRoomAiAuditInput): Promis
   } catch (error) {
     // Audit failures must never break the primary request, but are logged so
     // DPO can catch silent drop-offs.
-    // eslint-disable-next-line no-console
+     
     console.error('[role-room-ai-audit] Failed to write audit row:', error);
   }
 }

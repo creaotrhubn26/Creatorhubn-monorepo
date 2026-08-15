@@ -20,7 +20,7 @@
 
 import type express from "express";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WeddingAssistantGdprDeps {
   app: express.Application;

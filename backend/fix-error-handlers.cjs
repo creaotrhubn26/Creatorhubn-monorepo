@@ -23,7 +23,7 @@ while (i < lines.length) {
     // Look ahead to find the res.status(500) line
     let foundStatus500 = false;
     let j = i;
-    let catchBlockLines = [];
+    const catchBlockLines = [];
     
     while (j < lines.length && !lines[j].includes('} catch') && !lines[j].trim().startsWith('});')) {
       catchBlockLines.push(lines[j]);

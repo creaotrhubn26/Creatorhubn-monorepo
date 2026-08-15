@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const filePath = path.join(__dirname, 'server', 'routes.ts');
-let content = fs.readFileSync(filePath, 'utf-8');
+const content = fs.readFileSync(filePath, 'utf-8');
 
 const lines = content.split('\n');
 const newLines = [];

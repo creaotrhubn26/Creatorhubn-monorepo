@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const filePath = path.join(__dirname, 'server', 'routes.ts');
-let content = fs.readFileSync(filePath, 'utf-8');
+const content = fs.readFileSync(filePath, 'utf-8');
 
 // Count current instances
 const beforeCount = (content.match(/res\.status\(500\)/g) || []).length;
@@ -22,7 +22,7 @@ for (let i = 0; i < lines.length; i++) {
     // Check if there's already a headersSent check in the previous lines (within same catch block)
     let hasHeadersSent = false;
     let j = i - 1;
-    let braceCount = 0;
+    const braceCount = 0;
     
     // Look backwards to find the start of the catch block
     while (j >= 0 && j >= i - 20) {

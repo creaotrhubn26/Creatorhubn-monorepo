@@ -56,7 +56,7 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
       let batchesProcessed = 0;
       try {
         // Loop til vi ikke finner flere rader
-        // eslint-disable-next-line no-constant-condition
+         
         while (true) {
           const r = await pool.query<{ updated: number }>(
             `WITH to_update AS (

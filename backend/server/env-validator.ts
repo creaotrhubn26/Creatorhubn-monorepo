@@ -203,11 +203,11 @@ export function formatValidationReport(report: ValidationReport): string {
  */
 export function validateEnvOrExit(): void {
   const report = validateEnv();
-  // eslint-disable-next-line no-console
+   
   console.log(formatValidationReport(report));
 
   if (report.hasBlockingErrors) {
-    // eslint-disable-next-line no-console
+     
     console.error(
       "🔴 BOOT BLOKKERT — kritiske environment-variabler mangler eller er ugyldige. " +
       "Se rapport over. Sjekk Render/Vercel-dashboard og oppdater env-vars før restart.",
@@ -217,7 +217,7 @@ export function validateEnvOrExit(): void {
 
   const missingRecommended = report.recommended.filter((r) => r.status !== "ok");
   if (missingRecommended.length > 0) {
-    // eslint-disable-next-line no-console
+     
     console.warn(
       `⚠️  ${missingRecommended.length} anbefalt env-variabel mangler — ` +
       "noen funksjoner vil feile med 503/cryptic feil for brukere.",

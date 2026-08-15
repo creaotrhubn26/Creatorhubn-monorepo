@@ -44,7 +44,7 @@ export interface PaymentsRoutesDeps {
    * Matcher index.ts:20307. Faktisk impl returnerer den oppdaterte recorden
    * (ikke void). Route-handler trenger ikke verdien — derfor unknown.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   recordCompatPaymentCompletion: (record: any) => Promise<unknown>;
   readCompatLatestPaymentStatusRecord: (userId: string) => Promise<any>;
   buildCompatPaymentStatusResponse: (record: any) => any;

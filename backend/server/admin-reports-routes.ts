@@ -26,13 +26,13 @@
 import type express from "express";
 import type { Pool } from "pg";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminReportsRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 // ── Defensive schema helpers (samme mønster som admin-customers-routes) ──
 async function tableExists(pool: Pool, table: string): Promise<boolean> {

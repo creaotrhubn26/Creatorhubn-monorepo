@@ -23,13 +23,13 @@
 import type express from "express";
 import type { Pool } from "pg";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminGdprLegalRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 const DOCUMENT_SLUGS = [
   "privacy-policy",

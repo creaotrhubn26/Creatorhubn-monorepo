@@ -676,7 +676,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     // Forsøk å berike top-3 med IG-discovery-stats hvis IG er koblet
     // til prosjektet. Vi bryr oss kun om Instagram-discovery siden Meta
     // er eneste public discovery-API på sosiale plattformer.
-    let igEnriched: Array<{ handle: string; followersCount: number; biography: string | null; profilePictureUrl: string | null }> = [];
+    const igEnriched: Array<{ handle: string; followersCount: number; biography: string | null; profilePictureUrl: string | null }> = [];
     try {
       const conn = await pool.query<{ ig_user_id: string; access_token: string }>(
         `SELECT ig_user_id, access_token

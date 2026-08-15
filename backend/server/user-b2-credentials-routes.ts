@@ -55,13 +55,13 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { runUserB2Sync } from "./user-b2-sync-worker";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface UserB2CredentialsRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireUserSession: (req: any, res: any) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 // ───────────────────────────────────────────────────────────────────
 // Crypto-helpers (envelope-encryption — speiler file-encryption.ts)

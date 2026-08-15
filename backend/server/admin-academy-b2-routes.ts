@@ -42,7 +42,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminAcademyB2RoutesDeps {
   app: express.Application;
   pool: Pool;
@@ -51,7 +51,7 @@ export interface AdminAcademyB2RoutesDeps {
     res: express.Response,
   ) => { userId: string; email: string; name: string; role: string } | null;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 const B2_REGION = process.env.B2_REGION || "us-west-001";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;

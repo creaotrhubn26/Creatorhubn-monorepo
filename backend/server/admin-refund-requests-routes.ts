@@ -36,7 +36,7 @@ import { readNumber, readString } from "./_shared";
 // Pass-through-typer (eier sannheten i index.ts). Vi typer dem løst her
 // fordi vi ikke leser felt-internt utenom det handleren allerede gjør.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 // Re-eksportert som any-shape — den faktiske typen i index.ts har felter
 // med ulik nullability og ID som number. Modulen bruker disse som pass-
 // through-objekter, så vi typer dem løst.
@@ -67,7 +67,7 @@ export interface AdminRefundRequestsRoutesDeps {
   sendCreatorHubRefundRejectedEmail: (input: any) => Promise<any>;
   getDefaultCreatorHubPublicOrigin: () => string;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 export function setupAdminRefundRequestsRoutes(
   deps: AdminRefundRequestsRoutesDeps,

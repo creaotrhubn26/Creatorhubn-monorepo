@@ -12,7 +12,7 @@
  * (3) global DAGSTAK-kostnadsbrems. Ingen generering uten attribusjon.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface GenModel {
   key: string;

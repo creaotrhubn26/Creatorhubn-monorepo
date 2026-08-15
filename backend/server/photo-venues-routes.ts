@@ -14,7 +14,7 @@
 import type express from "express";
 import { PHOTO_VENUES_SEED } from "./photo-venues-catalog";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface PhotoVenuesRoutesDeps {
   app: express.Application;

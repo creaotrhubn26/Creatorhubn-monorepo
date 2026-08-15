@@ -153,7 +153,7 @@ async function fetchAllRoleRoomSubscribers(stripe: Stripe): Promise<StripeSubscr
   let startingAfter: string | undefined;
   // Hent alle subscriptions først, så map mot customers — så ingen blir glemt
   // som har kansellert.
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const page: Stripe.ApiList<Stripe.Subscription> = await stripe.subscriptions.list({
       limit: 100,

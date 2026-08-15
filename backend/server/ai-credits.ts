@@ -8,7 +8,7 @@
  * project-workspace-routes (kjøp/forbruk) og Stripe-webhooken (robust topp-opp).
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import crypto from "crypto";
 
 export async function ensureCreditSchema(pool: any): Promise<void> {

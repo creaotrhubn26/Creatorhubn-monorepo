@@ -356,7 +356,7 @@ export function setupNextRoleVideoPresentationRoutes(
       const trimStartSecRaw = req.body?.trimStartSec;
       const trimEndSecRaw = req.body?.trimEndSec;
       let videoBuffer = file.buffer;
-      let videoMime = file.mimetype;
+      const videoMime = file.mimetype;
       let trimApplied = false;
       if (
         typeof trimStartSecRaw === "string" &&

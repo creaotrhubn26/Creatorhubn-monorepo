@@ -296,7 +296,7 @@ export function setupEvendiPlanningRoutes(
         );
 
         // 2. Get or create the photographer's timeline for this project
-        let tlResult = await pool.query(
+        const tlResult = await pool.query(
           "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
           [projectId],
         );

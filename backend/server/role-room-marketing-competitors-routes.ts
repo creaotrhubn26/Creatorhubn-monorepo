@@ -789,7 +789,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const row = r.rows[0];
 
       // Pull pictures by joining competitors+snapshots for nicknames mentioned in scorecard
-      let competitorPictures: Record<string, string | null> = {};
+      const competitorPictures: Record<string, string | null> = {};
       try {
         const picsR = await pool.query(
           `SELECT p.nickname,

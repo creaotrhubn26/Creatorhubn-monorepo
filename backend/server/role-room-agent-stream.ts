@@ -237,7 +237,7 @@ export async function handleAgentStream(
   let accumulatedText = '';
   let inputTokens = 0;
   let outputTokens = 0;
-  let finalToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  const finalToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
   let streamFinalised = false;
   const startedAt = Date.now();
 

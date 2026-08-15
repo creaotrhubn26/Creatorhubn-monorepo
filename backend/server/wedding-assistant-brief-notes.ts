@@ -14,7 +14,7 @@
 import type express from "express";
 import Anthropic from "@anthropic-ai/sdk";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WeddingAssistantBriefNotesDeps {
   app: express.Application;

@@ -33,34 +33,34 @@ import { eq, and, desc, asc, inArray } from "drizzle-orm";
 
 export interface MaintenanceRoutesDeps {
   app: express.Application;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   db: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   schema: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   sql: any;
   parseSettings: (settings: unknown) => Record<string, unknown>;
   readString: (value: unknown) => string | null;
   readBoolean: (value: unknown) => boolean | null;
   readNumber: (value: unknown) => number | null;
   readStringArray: (value: unknown) => string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   normalizeEquipmentType: (raw?: string | null) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   normalizeCondition: (raw?: string | null) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   normalizeTaskType: (raw?: string | null) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   normalizePriority: (raw?: string | null) => any;
   toDateOnly: (value: string | Date) => string;
   addMonths: (date: Date, months: number) => Date;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   resolveScheduledDate: (row: any) => string;
   /**
    * Matcher index.ts:21760 — krever equipmentMap for equipmentName-lookup.
    * Tom Map = "Ukjent utstyr" som fallback.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   mapMaintenanceRow: (row: any, equipmentMap: Map<string, any>) => any;
 }
 
@@ -80,7 +80,7 @@ export function setupMaintenanceRoutes(deps: MaintenanceRoutesDeps): void {
         typeof req.query.userId === "string" ? req.query.userId : null;
       const profession =
         typeof req.query.profession === "string" ? req.query.profession : null;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const conditions: any[] = [];
       if (userId) {
         conditions.push(eq(schema.userEquipment.userId, userId));
@@ -95,7 +95,7 @@ export function setupMaintenanceRoutes(deps: MaintenanceRoutesDeps): void {
         .where(conditions.length ? and(...conditions) : sql`true`)
         .orderBy(desc(schema.userEquipment.createdAt));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const normalized = equipmentRows.map((item: any) => {
         const settings = parseSettings(item.settings);
         const purchaseDateValue =
@@ -162,7 +162,7 @@ export function setupMaintenanceRoutes(deps: MaintenanceRoutesDeps): void {
           : null;
       const includeCompleted = req.query.includeCompleted === "true";
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const conditions: any[] = [];
       if (userId) {
         conditions.push(eq(schema.maintenanceTasks.userId, userId));
@@ -181,20 +181,20 @@ export function setupMaintenanceRoutes(deps: MaintenanceRoutesDeps): void {
         .orderBy(asc(schema.maintenanceTasks.scheduledDate));
 
       // Slå opp tilhørende utstyr for navn-felt (equipmentName i mapper).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const equipmentIds = Array.from(new Set(rows.map((r: any) => r.equipmentId).filter(Boolean) as string[]));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const equipmentMap = new Map<string, any>();
       if (equipmentIds.length > 0) {
         const equipmentRows = await db
           .select()
           .from(schema.userEquipment)
           .where(inArray(schema.userEquipment.id, equipmentIds));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         for (const e of equipmentRows) equipmentMap.set(String(e.id), e);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       res.json(rows.map((r: any) => mapMaintenanceRow(r, equipmentMap)));
     } catch (error) {
       console.error("[maintenance/tasks GET] failed:", error);
@@ -248,7 +248,7 @@ export function setupMaintenanceRoutes(deps: MaintenanceRoutesDeps): void {
         .returning();
 
       // Slå opp equipment for navn-felt
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const equipmentMap = new Map<string, any>();
       const [equipmentRow] = await db
         .select()
@@ -321,7 +321,7 @@ export function setupMaintenanceRoutes(deps: MaintenanceRoutesDeps): void {
           .returning();
 
         // Bygg single-entry equipmentMap for navn-felt
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const equipmentMap = new Map<string, any>([[String(item.id), item]]);
         created.push(mapMaintenanceRow(inserted, equipmentMap));
       }

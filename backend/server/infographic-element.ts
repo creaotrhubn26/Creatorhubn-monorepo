@@ -69,7 +69,7 @@ class RoleRoomInfographic extends HTMLElement {
     // Mal-kilde (prioritert): (1) property, (2) <script type="text/html"> BARN (RÅ tekst —
     // bevarer full-dokument-HTML m/ scripts; <template> ville parset + manglet dette),
     // (3) <template>-barn, (4) template-url (fetches). __CFG__/setProgress-kontrakten intakt.
-    let tpl = this._tpl
+    const tpl = this._tpl
       || this.querySelector('script[type="text/html"],script[type="text/template"]')?.textContent
       || this.querySelector('template')?.innerHTML
       || '';

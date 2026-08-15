@@ -21,7 +21,7 @@ export interface GooglePeopleRoutesDeps {
    * eksporteres her — google-people-routes bruker bare .oauthClient og
    * sender det rett videre til google.people().
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   resolveRoleRoomGoogleConnection: (
     pool: Pool,
     preferredUserId?: string | null,
@@ -31,7 +31,7 @@ export interface GooglePeopleRoutesDeps {
    * index.ts-helperen returnerer GoogleWorkspaceOauthApp[] (literal-union).
    * Bruker any for å akseptere både array<literal> og string[].
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   derivePreferredGoogleWorkspaceOauthApps: (req: express.Request) => any;
 }
 

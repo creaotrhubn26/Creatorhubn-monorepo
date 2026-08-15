@@ -32,7 +32,7 @@
  *     POST /api/protools/sessions/:id/bounce/complete→ registrer bounce → review-versjon
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import crypto from "crypto";

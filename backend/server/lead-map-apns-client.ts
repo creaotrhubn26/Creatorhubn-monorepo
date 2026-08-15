@@ -70,7 +70,7 @@ function derToJose(der: Buffer): Buffer {
     throw new Error("Invalid DER signature");
   }
   const rLen = der[offset + 1];
-  let rStart = offset + 2;
+  const rStart = offset + 2;
   let rBytes = der.subarray(rStart, rStart + rLen);
   // Stripp leading 0x00 hvis present (DER-padding for positive integers)
   if (rBytes[0] === 0x00 && rBytes.length > 32) rBytes = rBytes.subarray(1);
@@ -80,7 +80,7 @@ function derToJose(der: Buffer): Buffer {
     throw new Error("Invalid DER signature (s)");
   }
   const sLen = der[offset + 1];
-  let sStart = offset + 2;
+  const sStart = offset + 2;
   let sBytes = der.subarray(sStart, sStart + sLen);
   if (sBytes[0] === 0x00 && sBytes.length > 32) sBytes = sBytes.subarray(1);
 

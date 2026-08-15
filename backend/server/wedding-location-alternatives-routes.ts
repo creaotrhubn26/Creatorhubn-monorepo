@@ -59,7 +59,7 @@ async function callerOwnsWedding(pool: any, weddingId: string, userId: string): 
   }
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WeddingLocationAlternativesRoutesDeps {
   app: express.Application;
