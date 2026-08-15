@@ -1,0 +1,73 @@
+claim: >
+  Neon (Role Room's production Postgres) has been migrated from London,
+  UK (AWS eu-west-2) to Frankfurt, Germany (AWS eu-central-1) — an
+  actual EU member state, not just an adequacy-covered third country.
+  This closes the Neon item from the EU-only infrastructure policy
+  decision and its migration plan.
+
+source_type: primary
+source: >
+  Account owner, 2026-08-15, confirming the new connection hostname
+  region segment directly: "eu-central-1.aws.neon.tech" — provided as
+  the region-bearing hostname fragment only, deliberately without
+  credentials this time (see docs/evidence/... this session's earlier
+  live-secret-in-chat incident that prompted the "region only, not the
+  full connection string" ask).
+
+authority_tier: 1
+vendor: Neon, Inc.
+product: Managed PostgreSQL hosting
+version_scope: "Role Room production database, 2026-08"
+publication_date: "2026-08-15"
+
+evidence_summary: >
+  AWS eu-central-1 is Frankfurt, Germany — physically within the EU,
+  satisfying the stricter "EU-only" bar from the account owner's policy
+  decision (2026-08-role-room-eu-only-infra-decision.yaml), not just the
+  weaker "adequacy-covered" status London/UK had
+  (2026-08-role-room-neon-region-confirmed.yaml). This is also the same
+  region recommended in the migration plan
+  (06-eu-only-infrastruktur-migreringsplan.md §1) for colocation with
+  the Render backend once/if that also lands in Frankfurt
+  (05-render-frankfurt-migrasjon-plan.md) — so this migration also sets
+  up low-latency colocation for that still-pending move, not just
+  independent EU compliance.
+
+interpretation: >
+  This is now the SECOND of four EU-only infra items to close (after
+  Backblaze B2, which was already compliant) — Render and Cloudflare R2
+  remain open per 06-eu-only-infrastruktur-migreringsplan.md.
+
+project_impact: >
+  Neon's row in docs/soc2/03-leverandorrisiko-policy.md §3 should be
+  updated from "Ikke EU — migrering ... kreves" to a confirmed
+  Frankfurt/EU status. docs/soc2/06-eu-only-infrastruktur-
+  migreringsplan.md §1 (Neon) can be marked done. Do NOT yet claim
+  Neon+Render are colocated in the compliance docs — Render's migration
+  (05-render-frankfurt-migrasjon-plan.md) has not happened yet as of
+  this evidence file's publication date.
+
+confidence: confirmed
+decision: >
+  Marked Neon migration complete in the vendor risk policy and the
+  migration plan. Reminder still outstanding from the migration plan's
+  §1 recommendation: rotate the neondb_owner credential as part of
+  settling into the new database, given this session's earlier
+  live-credential-in-chat incident on the OLD (London) connection
+  string — that old string is now retired along with the old project,
+  which does reduce residual risk from that incident, but an explicit
+  rotation confirmation on the NEW string was not obtained in this
+  exchange and should not be assumed done.
+
+affected:
+  - docs/soc2/03-leverandorrisiko-policy.md
+  - docs/soc2/06-eu-only-infrastruktur-migreringsplan.md
+  - docs/evidence/2026-08-role-room-neon-region-confirmed.yaml (superseded — Neon is no longer in London)
+
+lesson: >
+  Ask for the minimum verifiable fragment (a hostname region segment)
+  instead of a full credential when confirming infrastructure facts in
+  chat — this exchange got the same evidentiary value as the earlier
+  full-connection-string paste with none of the exposure risk. Worth
+  making this the default ask pattern for any future region/host
+  confirmation in this project.

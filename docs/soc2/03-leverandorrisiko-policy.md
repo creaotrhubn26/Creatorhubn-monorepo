@@ -36,12 +36,12 @@ kodebasen.
 > (som ville akseptert UK-adekvans for Neon). Se
 > `docs/evidence/2026-08-role-room-eu-only-infra-decision.yaml` for
 > beslutningsgrunnlaget og `docs/soc2/06-eu-only-infrastruktur-
-> migreringsplan.md` for konkret migreringsplan for de tre gjenstående
-> ikke-EU-punktene (Neon, Render, R2).
+> migreringsplan.md` for konkret migreringsplan. **Neon er migrert
+> (2026-08-15)** — Render og R2 gjenstår.
 
 | Leverandør | Funksjon | Region/status |
 |---|---|---|
-| Neon, Inc. | Database (PostgreSQL) | Bekreftet 2026-08-15: AWS eu-west-2 (London, UK). **Ikke EU — migrering til EU-region kreves** per policy-beslutningen over. Se `06-eu-only-infrastruktur-migreringsplan.md` §1. |
+| Neon, Inc. | Database (PostgreSQL) | **✅ EU, migrert 2026-08-15**: AWS eu-central-1 (Frankfurt) — flyttet fra London (UK). Se `docs/evidence/2026-08-role-room-neon-eu-migration-complete.yaml`. |
 | Render Services, Inc. | Applikasjonshosting | Bekreftet 2026-08-15 (Render API): Oregon (US). **Ikke EU — migrering til Frankfurt planlagt**, se `05-render-frankfurt-migrasjon-plan.md`. |
 | Vercel Inc. | Statisk frontend-hosting | Bekreftet LIVE produksjon; ingen region pinnet. Lavest prioritet av de fire (mest statisk/edge, begrenset direkte persondatabehandling) — se `06-eu-only-infrastruktur-migreringsplan.md` §3. |
 | Cloudflare, Inc. (R2) | Objektlagring — opplastede bilder/video | Globalt nettverk, IKKE jurisdiction-bundet. **Krever ny bøtte med EU-jurisdiction + datamigrering** — kan ikke endres på eksisterende bøtte. Se `06-eu-only-infrastruktur-migreringsplan.md` §2. |

@@ -13,26 +13,19 @@
 
 ## 0. Rekkefølge, anbefalt
 
-1. **R2 (§2)** — lavest risiko, ingen kunde-nedetid hvis gjort riktig (les/skriv kan dobbeltkjøres mot to bøtter i en overgangsperiode).
-2. **Neon (§1)** — høyest risiko (levende produksjonsdatabase), gjør denne når Render-flyttingen (egen plan) uansett skjer, i samme vindu — én nedetid, ikke to.
-3. **Render (§5)** — se egen plan, kan gjøres i samme vindu som Neon siden begge allerede er "recreate service"-operasjoner.
+1. ~~**Neon (§1)**~~ — ✅ **gjennomført 2026-08-15**, se nedenfor.
+2. **R2 (§2)** — lavest risiko, ingen kunde-nedetid hvis gjort riktig (les/skriv kan dobbeltkjøres mot to bøtter i en overgangsperiode).
+3. **Render (§5)** — se egen plan.
 4. **Vercel (§3)** og **B2-arkiv-bøtter (§4)** — lavest hastverk, ingen levende-database-risiko.
 
-## 1. Neon — London (UK) → EU-region
+## 1. Neon — London (UK) → EU-region — ✅ GJENNOMFØRT 2026-08-15
 
-**Nåværende:** `AWS eu-west-2` (London). **Mål:** en faktisk EU-region — Neon støtter `eu-central-1` (Frankfurt, AWS) og `eu-west-1` (Irland, AWS) blant sine regioner (bekreft nøyaktig liste i Neon-dashboardet ved gjennomføring — regiontilbud kan ha endret seg siden dette ble skrevet). **Anbefaling:** `eu-central-1` (Frankfurt) for kolokering med Render-backend'en når den flyttes dit (§5 i Render-planen) — minimerer database↔backend-latens.
+Migrert til `AWS eu-central-1` (Frankfurt) — bekreftet av kontoeier via ny hostname (`eu-central-1.aws.neon.tech`). Se `docs/evidence/2026-08-role-room-neon-eu-migration-complete.yaml`.
 
-**Neon støtter IKKE regionbytte på et eksisterende prosjekt** (samme type engangsbegrensning som Render) — krever et nytt prosjekt i riktig region + datamigrering.
-
-**Steg:**
-1. Opprett nytt Neon-prosjekt i Frankfurt-regionen.
-2. Bruk Neon sin egen migrerings-/branching-funksjon, ELLER en manuell `pg_dump`/`pg_restore` (avhengig av databasestørrelse — sjekk Neon sin dokumenterte anbefaling for produksjonsmigrering på gjennomføringstidspunktet, siden dette er nettopp den typen ting som endrer seg og bør slås opp da, ikke antas nå).
-3. Sett opp logisk replikering eller en kort read-only-periode for å unngå å miste skriv mens dumpen tas (avhenger av valgt metode i steg 2).
-4. Oppdater `DATABASE_URL` i Render-dashboardet (begge — eller den ene om Render-flyttingen skjer samtidig) til den nye Frankfurt-tilkoblingsstrengen.
-5. Redeploy backend, verifiser mot ny DB.
-6. Behold det gamle London-prosjektet i noen dager (samme sikkerhetsmargin-prinsipp som Render-planens Fase D) før det slettes.
-
-**NB — separat fra selve migreringen:** rotér `neondb_owner`-passordet som en del av dette (uansett, se hendelsen fra tidligere i denne økten der en live connection string ble limt inn i chatten) — en ny database gir en naturlig anledning til å gjøre dette uten en egen, isolert rotasjonsoperasjon.
+**Gjenstår, ikke bekreftet i denne økten:**
+- [ ] `neondb_owner`-passordet rotert på den NYE databasen (anbefalt uansett, jf. denne øktens tidligere hendelse med en live connection string limt inn i chatten på den gamle London-databasen — den gamle strengen er nå pensjonert sammen med det gamle prosjektet, men det er ikke det samme som å ha bekreftet et rotert passord på den nye).
+- [ ] Det gamle London-prosjektet slettet (eller bevisst beholdt en kort periode som sikkerhetsmargin — bekreft hvilket).
+- [ ] `DATABASE_URL` i Render-dashboardet verifisert å peke på ny Frankfurt-streng på begge relevante tjenester.
 
 ## 2. Cloudflare R2 — sett EU-jurisdiction
 
