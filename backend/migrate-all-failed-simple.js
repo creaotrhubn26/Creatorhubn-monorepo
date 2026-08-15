@@ -8,8 +8,12 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-const OLD_DB_URL = 'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
+// Both must be supplied as env vars (never hardcode credentials).
+const OLD_DB_URL = process.env.OLD_DATABASE_URL;
 const NEW_DB_URL = process.env.DATABASE_URL;
+if (!OLD_DB_URL || !NEW_DB_URL) {
+  throw new Error('OLD_DATABASE_URL and DATABASE_URL environment variables are both required.');
+}
 
 const oldPool = new Pool({
   connectionString: OLD_DB_URL,
