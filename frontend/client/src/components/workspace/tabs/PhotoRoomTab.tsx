@@ -2,6 +2,12 @@
 /**
  * PhotoRoomTab — produsent-side bilde-review-cockpit (Photo Review).
  *
+ * Kun for team (owner/editor/viewer/member) — klienten når ALDRI dette rommet.
+ * Klienten har sitt eget, helt separate token-gatede galleri på
+ * /client/gallery/:accessToken (client-gallery-routes.ts), uten session-
+ * overlapp med denne ruten. «scope='client'»-kommentarer her er interne
+ * notater om hva som skal/er sendt til klienten, ikke noe klienten selv ser.
+ *
  * Gjenbruker capture_assets (rating/flagged/rejected/exif fra iPad-culling) +
  * Før/Etter fra AI-forbedring (/enhance-status). Net-nytt: per-bilde review-
  * status (godkjent/trenger-redigering/avvist) + interne/klient foto-kommentarer.
@@ -21,9 +27,10 @@ import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
 import Movie from '@mui/icons-material/Movie';
-import { WsCard, WsTag, WsModal } from '../ui';
+import { WsCard, WsTag, WsModal, BeforeAfterSlider } from '../ui';
 import { wsIcon } from '../crewIcons';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
+import { DrawingOverlay } from '../../role-room/dance/DrawingOverlay';
 
 const STATUS_META: any = {
   approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: 'Check' },
@@ -42,7 +49,20 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cText, setCText] = useState('');
   const [cScope, setCScope] = useState('internal');
   const [enhanceMap, setEnhanceMap] = useState<Record<string, any>>({});
-  const [baPos, setBaPos] = useState(50);
+  // On-screen-annotering (frihånds-tegning oppå bildet, gjenbruker DrawingOverlay
+  // fra dance-review-systemet). V1-omfang: kun penn, ingen pil/form/tekst.
+  const [drawMode, setDrawMode] = useState(false);
+  const [pendingDrawing, setPendingDrawing] = useState<any[]>([]);
+  const [viewingDrawingCommentId, setViewingDrawingCommentId] = useState<string | null>(null);
+  // Versjonssammenligning (eksplisitt junction-tabell — en versjon er et
+  // kuratert utvalg av bilder, ikke en hel capture-økt).
+  const [versions, setVersions] = useState<any[]>([]);
+  const [currentVersionId, setCurrentVersionId] = useState<string | null>(null);
+  const [selectingForVersion, setSelectingForVersion] = useState(false);
+  const [newVersionAssetIds, setNewVersionAssetIds] = useState<Set<string>>(new Set());
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareAId, setCompareAId] = useState<string | null>(null);
+  const [compareBId, setCompareBId] = useState<string | null>(null);
   // Generativ AI (Nano Banana 2-redigering)
   const [aiCfg, setAiCfg] = useState<any | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -73,12 +93,21 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     // eslint-disable-next-line
   }, [projectId]);
 
+  const loadVersions = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-versions`).then((r: any) => {
+      setVersions(r?.versions || []);
+      setCurrentVersionId((prev) => prev || r?.currentVersionId || null);
+    }).catch(() => {});
+  };
+
   const load = () => {
     if (!isReal) { setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review`)
       .then((r: any) => { setData(r || null); if (!selId && r?.assets?.length) setSelId(r.assets[0].id); })
       .catch(() => {}).finally(() => setLoading(false));
     loadAiCfg();
+    loadVersions();
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || [])).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-status`).then((r: any) => {
       const m: Record<string, any> = {};
@@ -96,6 +125,60 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const ba = sel ? enhanceMap[String(sel.filename || '').replace(/\.[^.]+$/, '')] : null;
   const hasBA = ba && ba.originalUrl && ba.enhancedUrl;
 
+  const viewingComment = viewingDrawingCommentId ? comments.find((c: any) => c.id === viewingDrawingCommentId) : null;
+  const showDrawingOverlay = drawMode || !!viewingComment;
+  const drawingOverlayPaths = drawMode ? pendingDrawing : (viewingComment?.drawing || []);
+  const selectAsset = (id: string) => { setSelId(id); setDrawMode(false); setPendingDrawing([]); setViewingDrawingCommentId(null); };
+  const startDrawing = () => { setViewingDrawingCommentId(null); setPendingDrawing([]); setDrawMode(true); };
+  const cancelDrawing = () => { setDrawMode(false); setPendingDrawing([]); };
+  const viewDrawing = (c: any) => {
+    if (!c.assetId) return;
+    setSelId(c.assetId); setDrawMode(false); setPendingDrawing([]); setViewingDrawingCommentId(c.id);
+  };
+
+  const versionA = compareMode && compareAId ? versions.find((v: any) => v.id === compareAId) : null;
+  const versionB = compareMode && compareBId ? versions.find((v: any) => v.id === compareBId) : null;
+
+  const selectVersion = async (vid: string) => {
+    if (!isReal || !vid) return;
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-versions/${encodeURIComponent(vid)}`);
+      setCurrentVersionId(vid);
+      // Erstatter data/comments HELT (ikke bare en peker-endring) — bevisst fiks
+      // på den kjente VideoRoomTab-buggen der versjonsbytte ikke refetcher
+      // kommentarene for den nye versjonen.
+      setData((d: any) => ({ ...(d || {}), assets: r?.assets || [], hasSession: true }));
+      setComments(r?.comments || []);
+      setSelId(r?.assets?.[0]?.id || null);
+      setDrawMode(false); setPendingDrawing([]); setViewingDrawingCommentId(null);
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke bytte versjon'); }
+  };
+  const createVersion = async () => {
+    if (!isReal || newVersionAssetIds.size === 0) return;
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-versions`, { method: 'POST', body: { assetIds: Array.from(newVersionAssetIds) } });
+      setSelectingForVersion(false); setNewVersionAssetIds(new Set());
+      loadVersions();
+      if (r?.id) selectVersion(r.id);
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke opprette versjon'); }
+  };
+  const toggleSelectingForVersion = () => {
+    if (selectingForVersion) { createVersion(); return; }
+    setSelectingForVersion(true); setNewVersionAssetIds(new Set()); setCompareMode(false); setCompareAId(null); setCompareBId(null);
+  };
+  const cancelSelectingForVersion = () => { setSelectingForVersion(false); setNewVersionAssetIds(new Set()); };
+  const toggleCompareMode = () => {
+    if (compareMode) { setCompareMode(false); setCompareAId(null); setCompareBId(null); return; }
+    setCompareMode(true); setSelectingForVersion(false); setCompareAId(currentVersionId); setCompareBId(null);
+  };
+  const toggleCompareSelect = (id: string) => {
+    if (compareAId === id) { setCompareAId(compareBId); setCompareBId(null); return; }
+    if (compareBId === id) { setCompareBId(null); return; }
+    if (!compareAId) { setCompareAId(id); return; }
+    if (!compareBId) { setCompareBId(id); return; }
+    setCompareBId(id);
+  };
+
   const shownComments = comments.filter((c: any) => {
     if (cFilter === 'internal') return c.scope === 'internal';
     if (cFilter === 'client') return c.scope === 'client';
@@ -112,6 +195,14 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`, { method: 'POST', body: { comment: cText.trim(), scope: cScope, assetId: sel?.id, authorKind: 'creator' } }); setCText(''); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || [])); }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke kommentere'); }
   };
+  const saveDrawing = async () => {
+    if (!isReal || !sel?.id || pendingDrawing.length === 0) return;
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`, { method: 'POST', body: { comment: cText.trim() || 'Tegning', scope: cScope, assetId: sel.id, authorKind: 'creator', drawing: pendingDrawing } });
+      setCText(''); setDrawMode(false); setPendingDrawing([]);
+      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || []));
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre tegning'); }
+  };
   const approveSelection = async () => {
     if (!isReal) return;
     if (!window.confirm('Godkjenn alle flaggede bilder?')) return;
@@ -124,7 +215,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre samtykke'); }
   };
   const QUICK_PROMPTS = ['Fjern bakgrunnen, behold personen', 'Demp sterke reflekser i bakgrunnen', 'Fjern uønskede objekter i bakgrunnen', 'Gjør lyset varmere og mykere'];
-  const openAi = () => { setAiPrompt(''); setAiJob(null); setBaPos(50); setSuggestions([]); setAiOpen(true); };
+  const openAi = () => { setAiPrompt(''); setAiJob(null); setSuggestions([]); setAiOpen(true); };
   const startEdit = async () => {
     if (!sel?.id || !aiPrompt.trim() || aiBusy) return;
     setAiBusy(true); setAiJob({ status: 'queued' });
@@ -214,7 +305,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
         <Box>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Photo Review</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Produsent-side bilde-review — godkjenning, Før/Etter, klient-kommentarer og utvalg. Samme rom klienten ser.</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Produsent-side bilde-review — godkjenning, Før/Etter, klient-kommentarer og utvalg. Kun for teamet — klienten har sitt eget galleri.</Typography>
         </Box>
         {sel?.id && <Button variant="contained" startIcon={<Send sx={{ fontSize: 17 }} />} onClick={approveSelection} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Godkjenn utvalg</Button>}
       </Stack>
@@ -240,8 +331,17 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
         {/* Venstre: viser + filmstrip + stadier */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Bildeviser */}
-          {sel && (
+          {/* Bildeviser (eller versjonssammenligning når Sammenlign er aktiv) */}
+          {compareMode && versionA && versionB ? (
+            <WsCard sx={{ mb: 2 }} pad={1.5}>
+              <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 1 }}>Sammenligner {versionA.versionLabel} → {versionB.versionLabel}</Typography>
+              {versionA.coverThumbUrl && versionB.coverThumbUrl ? (
+                <BeforeAfterSlider key={`${versionA.id}-${versionB.id}`} beforeUrl={versionA.coverThumbUrl} afterUrl={versionB.coverThumbUrl} labelBefore={versionA.versionLabel} labelAfter={versionB.versionLabel} />
+              ) : (
+                <Typography sx={{ fontSize: 12.5, color: ws.textFaint }}>Mangler cover-bilde for en av versjonene.</Typography>
+              )}
+            </WsCard>
+          ) : sel && (
             <WsCard sx={{ mb: 2 }} pad={1.5}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{(assets.indexOf(sel) + 1)} / {assets.length}</Typography>
@@ -250,19 +350,21 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 </Stack>
               </Stack>
               {hasBA ? (
-                <Box>
-                  <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
-                    <Box component="img" src={ba.enhancedUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
-                    <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - baPos}% 0 0)` }}><Box component="img" src={ba.originalUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /></Box>
-                    <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${baPos}%`, width: '2px', bgcolor: ws.accent }} />
-                    <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>FØR</Box>
-                    <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 10.5, fontWeight: 700, color: ws.accentContrast }}>ETTER</Box>
-                  </Box>
-                  <input type="range" min={0} max={100} value={baPos} onChange={(e) => setBaPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent, marginTop: 8 }} />
-                </Box>
+                <BeforeAfterSlider
+                  key={sel.id}
+                  beforeUrl={ba.originalUrl}
+                  afterUrl={ba.enhancedUrl}
+                  overlay={showDrawingOverlay ? (
+                    <DrawingOverlay paths={drawingOverlayPaths} onPathsChange={setPendingDrawing} enabled={drawMode} readOnly={!!viewingComment} defaultColor={ws.accent} defaultWidth={3} />
+                  ) : null}
+                />
               ) : (
                 sel.thumbUrl
-                  ? <Box sx={{ width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, background: `center/contain no-repeat #000 url(${sel.thumbUrl})` }} />
+                  ? (
+                    <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, background: `center/contain no-repeat #000 url(${sel.thumbUrl})` }}>
+                      {showDrawingOverlay && <DrawingOverlay paths={drawingOverlayPaths} onPathsChange={setPendingDrawing} enabled={drawMode} readOnly={!!viewingComment} defaultColor={ws.accent} defaultWidth={3} />}
+                    </Box>
+                  )
                   : <Box sx={{ width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ws.textFaint }}>Ingen forhåndsvisning</Box>
               )}
               {/* EXIF-strip */}
@@ -279,21 +381,50 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: sel.reviewStatus === st ? '#06281c' : col, borderColor: col, bgcolor: sel.reviewStatus === st ? col : 'transparent', '&:hover': { borderColor: col, bgcolor: sel.reviewStatus === st ? col : `${col}22` } }}>{label}</Button>
                 ))}
                 <Box sx={{ flex: 1 }} />
+                {drawMode ? (
+                  <>
+                    <Button size="small" onClick={cancelDrawing} sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: ws.textDim }}>Avbryt</Button>
+                    <Button size="small" variant="contained" disabled={pendingDrawing.length === 0} startIcon={<Brush sx={{ fontSize: 16 }} />} onClick={saveDrawing}
+                      sx={{ textTransform: 'none', fontWeight: 700, fontSize: 12, bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>Lagre tegning</Button>
+                  </>
+                ) : (
+                  <Button size="small" startIcon={<Brush sx={{ fontSize: 16 }} />} onClick={startDrawing} variant="outlined"
+                    sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: ws.textDim, borderColor: ws.border }}>Tegn</Button>
+                )}
                 {aiAvailable && <Button size="small" startIcon={<Movie sx={{ fontSize: 16 }} />} onClick={openAnim} sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: ws.accent, borderColor: ws.accentBorder }} variant="outlined">Animer</Button>}
                 {aiAvailable && <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 16 }} />} onClick={openAi} sx={{ textTransform: 'none', fontWeight: 700, fontSize: 12, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover } }}>AI-rediger</Button>}
               </Stack>
+              {viewingComment && (
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                  <WsTag label="Viser tegning" icon={<Brush sx={{ fontSize: 12 }} />} tone="accent" />
+                  <Box component="button" onClick={() => setViewingDrawingCommentId(null)} sx={{ font: 'inherit', fontSize: 11.5, color: ws.textDim, bgcolor: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline', p: 0 }}>Lukk</Box>
+                </Stack>
+              )}
             </WsCard>
           )}
 
           {/* Filmstrip */}
           <WsCard sx={{ mb: 2 }} pad={1.25}>
+            {selectingForVersion && <Typography sx={{ fontSize: 11, color: ws.accent, mb: 0.75 }}>Velg bilder til den nye versjonen — klikk «Lagre versjon» når du er ferdig.</Typography>}
             <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>
               {assets.slice(0, 40).map((a: any) => {
                 const sm = STATUS_META[a.reviewStatus] || null;
+                const picked = selectingForVersion && newVersionAssetIds.has(a.id);
                 return (
-                  <Box key={a.id} onClick={() => { setSelId(a.id); setBaPos(50); }} sx={{ position: 'relative', width: 96, height: 72, flexShrink: 0, borderRadius: 1.5, overflow: 'hidden', cursor: 'pointer', border: `2px solid ${a.id === sel?.id ? ws.accent : 'transparent'}`, background: a.thumbUrl ? `center/cover no-repeat url(${a.thumbUrl})` : ws.panelAlt }}>
+                  <Box key={a.id} onClick={() => {
+                    if (selectingForVersion) {
+                      setNewVersionAssetIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                        return next;
+                      });
+                    } else {
+                      selectAsset(a.id);
+                    }
+                  }} sx={{ position: 'relative', width: 96, height: 72, flexShrink: 0, borderRadius: 1.5, overflow: 'hidden', cursor: 'pointer', border: `2px solid ${selectingForVersion ? (picked ? ws.accent : ws.border) : (a.id === sel?.id ? ws.accent : 'transparent')}`, background: a.thumbUrl ? `center/cover no-repeat url(${a.thumbUrl})` : ws.panelAlt }}>
                     {sm && <Box sx={{ position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%', bgcolor: sm.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{wsIcon(sm.icon, { fontSize: 11, color: '#fff' })}</Box>}
                     {a.rating > 0 && <Box sx={{ position: 'absolute', bottom: 2, left: 4, display: 'inline-flex', color: ws.amber }}>{Array.from({ length: a.rating }).map((_, si) => <Star key={si} sx={{ fontSize: 10 }} />)}</Box>}
+                    {picked && <Box sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,140,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle sx={{ fontSize: 20, color: '#fff' }} /></Box>}
                   </Box>
                 );
               })}
@@ -302,7 +433,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </WsCard>
 
           {/* Utvalg & versjoner */}
-          <WsCard pad={1.5}>
+          <WsCard sx={{ mb: 2 }} pad={1.5}>
             <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mb: 1 }}>UTVALG & VERSJONER</Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               {stages.map((s: any, i: number) => (
@@ -315,6 +446,48 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 </React.Fragment>
               ))}
             </Stack>
+          </WsCard>
+
+          {/* Versjoner (side-ved-side sammenligning av bildebatcher) */}
+          <WsCard pad={1.5}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint }}>VERSJONER</Typography>
+              <Stack direction="row" spacing={1}>
+                {versions.length >= 2 && (
+                  <Box component="button" onClick={toggleCompareMode}
+                    sx={{ font: 'inherit', fontSize: 11, fontWeight: 700, color: compareMode ? ws.accent : ws.textDim, bgcolor: 'transparent', border: `1px solid ${compareMode ? ws.accentBorder : ws.border}`, borderRadius: 1.5, px: 1, py: 0.3, cursor: 'pointer' }}>
+                    {compareMode ? 'Avslutt sammenligning' : 'Sammenlign'}
+                  </Box>
+                )}
+                <Box component="button" onClick={toggleSelectingForVersion}
+                  sx={{ font: 'inherit', fontSize: 11, fontWeight: 700, color: ws.accentContrast, bgcolor: ws.accent, border: 'none', borderRadius: 1.5, px: 1, py: 0.3, cursor: 'pointer' }}>
+                  {selectingForVersion ? `Lagre versjon (${newVersionAssetIds.size})` : '+ Ny versjon'}
+                </Box>
+                {selectingForVersion && (
+                  <Box component="button" onClick={cancelSelectingForVersion} sx={{ font: 'inherit', fontSize: 11, color: ws.textDim, bgcolor: 'transparent', border: 'none', cursor: 'pointer' }}>Avbryt</Box>
+                )}
+              </Stack>
+            </Stack>
+            {compareMode && <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 1 }}>Velg to versjoner å sammenligne.</Typography>}
+            {versions.length === 0 ? (
+              <Typography sx={{ fontSize: 12, color: ws.textFaint }}>Ingen versjoner ennå. Velg bilder i filmstripen og opprett den første.</Typography>
+            ) : (
+              <Stack spacing={0.75}>
+                {versions.map((v: any) => {
+                  const isCompareSel = compareMode && (v.id === compareAId || v.id === compareBId);
+                  const isActive = !compareMode && v.id === currentVersionId;
+                  return (
+                    <Stack key={v.id} direction="row" alignItems="center" spacing={1}
+                      onClick={() => (compareMode ? toggleCompareSelect(v.id) : selectVersion(v.id))}
+                      sx={{ p: 0.75, borderRadius: 1.5, cursor: 'pointer', bgcolor: (isCompareSel || isActive) ? ws.accentSoft : 'transparent', border: `1px solid ${(isCompareSel || isActive) ? ws.accentBorder : 'transparent'}` }}>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{v.versionLabel}</Typography>
+                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{v.assetCount} bilder</Typography>
+                      <WsTag label={v.status === 'approved' ? 'Godkjent' : v.status === 'superseded' ? 'Erstattet' : 'Til vurdering'} tone={v.status === 'approved' ? 'green' : v.status === 'superseded' ? 'neutral' : 'amber'} />
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            )}
           </WsCard>
         </Box>
 
@@ -338,6 +511,11 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>({c.scope === 'client' ? 'Klient' : 'Intern'})</Typography>
                     {c.pinned && <WsTag label="Festet" tone="accent" />}
                     {c.tag === 'needs_edit' && <WsTag label="Trenger redigering" tone="amber" />}
+                    {Array.isArray(c.drawing) && c.drawing.length > 0 && (
+                      <Box onClick={() => viewDrawing(c)} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.6, py: 0.1, borderRadius: 1, bgcolor: ws.accentSoft, color: ws.accent, cursor: c.assetId ? 'pointer' : 'default', fontSize: 10, fontWeight: 700 }}>
+                        <Brush sx={{ fontSize: 12 }} /> Tegning
+                      </Box>
+                    )}
                   </Stack>
                   <Typography sx={{ fontSize: 12.5, color: ws.text }}>{c.comment}</Typography>
                 </Box>
@@ -394,14 +572,13 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         ) : aiJob && (aiJob.status === 'completed' || aiJob.afterUrl) ? (
           <Stack spacing={2}>
-            <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
-              <Box component="img" src={aiJob.afterUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
-              {aiJob.beforeUrl && <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - baPos}% 0 0)` }}><Box component="img" src={aiJob.beforeUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /></Box>}
-              <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${baPos}%`, width: '2px', bgcolor: ws.accent }} />
-              <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>FØR</Box>
-              <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 10.5, fontWeight: 700, color: ws.accentContrast }}>ETTER (AI)</Box>
-            </Box>
-            <input type="range" min={0} max={100} value={baPos} onChange={(e) => setBaPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent }} />
+            {aiJob.beforeUrl ? (
+              <BeforeAfterSlider beforeUrl={aiJob.beforeUrl} afterUrl={aiJob.afterUrl} labelAfter="ETTER (AI)" />
+            ) : (
+              <Box sx={{ width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
+                <Box component="img" src={aiJob.afterUrl} sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </Box>
+            )}
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>«{aiJob.prompt}»</Typography>
               <Stack direction="row" spacing={1}>

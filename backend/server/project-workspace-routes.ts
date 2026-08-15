@@ -21,7 +21,7 @@
 import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
-import { canAccessProject } from "./project-team-routes";
+import { canAccessProject, getProjectAccessRole } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
@@ -1686,6 +1686,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       scope text DEFAULT 'internal', author_name text, author_kind text DEFAULT 'creator',
       comment text NOT NULL, status text DEFAULT 'open', tag text, pinned boolean DEFAULT false,
       parent_id uuid, like_count int DEFAULT 0, created_at timestamptz DEFAULT now())`).catch(() => {});
+    // On-screen-annotering (frihånds-penn oppå bildet). Lagres som vektordata
+    // (DrawingPath[]), samme prinsipp som dance_video_annotation.drawing.
+    await pool.query(`ALTER TABLE project_photo_comments ADD COLUMN IF NOT EXISTS drawing jsonb`).catch(() => {});
   };
   const photoSessionIds = async (pid: string) => {
     const s = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
@@ -1819,6 +1822,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST photo approve", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // Roller som får se scope='internal'-kommentarer. I dag er alle fire interne
+  // roller trusted (guard() over har allerede krevd owner/aktivt medlem for å
+  // nå ruten), så filteret under er reelt et no-op — men det er skrevet
+  // eksplisitt slik at innføring av en fremtidig 'client'-rolle automatisk
+  // mister tilgang til interne kommentarer uten at ruten må endres igjen.
+  const INTERNAL_COMMENT_ROLES = new Set(["owner", "editor", "viewer", "member"]);
+
   // Foto-kommentarer (interne/klient) — pr bilde eller hele prosjektet.
   app.get("/api/projects/:projectId/photo-comments", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -1826,13 +1836,17 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensurePhotoSchema();
       const pid = req.params.projectId;
       const assetId = req.query.assetId ? String(req.query.assetId) : null;
+      const role = await getProjectAccessRole(pool, uid, pid);
+      const canSeeInternal = !!role && INTERNAL_COMMENT_ROLES.has(role);
       const rows = await pool.query(
         `SELECT * FROM project_photo_comments WHERE project_id = $1 ${assetId ? "AND asset_id = $2" : ""} ORDER BY pinned DESC, created_at DESC LIMIT 200`,
         assetId ? [pid, assetId] : [pid],
       ).catch(() => ({ rows: [] }));
-      res.json({ comments: rows.rows.map((c: any) => ({
+      const visible = canSeeInternal ? rows.rows : rows.rows.filter((c: any) => c.scope !== "internal");
+      res.json({ comments: visible.map((c: any) => ({
         id: c.id, assetId: c.asset_id, scope: c.scope, authorName: c.author_name || "Team", authorKind: c.author_kind,
         comment: c.comment, status: c.status, tag: c.tag, pinned: c.pinned, parentId: c.parent_id, likeCount: c.like_count || 0, createdAt: c.created_at,
+        drawing: c.drawing || null,
       })) });
     } catch (e) { console.error("GET photo-comments", e); res.json({ comments: [] }); }
   });
@@ -1843,13 +1857,24 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensurePhotoSchema();
       const b = req.body || {};
       if (!b.comment) return res.status(400).json({ error: "comment_required" });
+      // On-screen-tegning: valgfri DrawingPath[]. Størrelsestak ~50KB
+      // serialisert — hindrer at en useriøs klient dumper en enorm payload
+      // inn i en jsonb-kolonne uten paginering.
+      let drawing: string | null = null;
+      if (b.drawing != null) {
+        if (!Array.isArray(b.drawing)) return res.status(400).json({ error: "drawing_must_be_array" });
+        const serialized = JSON.stringify(b.drawing);
+        if (serialized.length > 50_000) return res.status(400).json({ error: "drawing_too_large" });
+        drawing = serialized;
+      }
       const id = crypto.randomUUID();
       await pool.query(
-        `INSERT INTO project_photo_comments (id, project_id, asset_id, scope, author_name, author_kind, comment, tag, pinned, parent_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        `INSERT INTO project_photo_comments (id, project_id, asset_id, scope, author_name, author_kind, comment, tag, pinned, parent_id, drawing)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [id, req.params.projectId, b.assetId || null, String(b.scope || "internal").slice(0, 20),
          String(b.authorName || "").slice(0, 200) || null, String(b.authorKind || "creator").slice(0, 20),
-         String(b.comment).slice(0, 4000), b.tag ? String(b.tag).slice(0, 40) : null, !!b.pinned, b.parentId || null],
+         String(b.comment).slice(0, 4000), b.tag ? String(b.tag).slice(0, 40) : null, !!b.pinned, b.parentId || null,
+         drawing],
       );
       res.status(201).json({ id });
     } catch (e) { console.error("POST photo-comments", e); res.status(500).json({ error: "failed" }); }
@@ -1862,12 +1887,238 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const sets: string[] = []; const vals: any[] = []; let i = 1;
       if (b.status != null) { sets.push(`status = $${i++}`); vals.push(String(b.status).slice(0, 20)); }
       if (b.pinned != null) { sets.push(`pinned = $${i++}`); vals.push(!!b.pinned); }
+      if (b.drawing != null) {
+        if (!Array.isArray(b.drawing)) return res.status(400).json({ error: "drawing_must_be_array" });
+        const serialized = JSON.stringify(b.drawing);
+        if (serialized.length > 50_000) return res.status(400).json({ error: "drawing_too_large" });
+        sets.push(`drawing = $${i++}`); vals.push(serialized);
+      }
       if (sets.length === 0) return res.status(400).json({ error: "nothing_to_update" });
       vals.push(req.params.commentId, req.params.projectId);
       const upd = await pool.query(`UPDATE project_photo_comments SET ${sets.join(", ")} WHERE id = $${i++} AND project_id = $${i} RETURNING id`, vals).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
       res.json({ ok: true });
     } catch (e) { console.error("PATCH photo-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Photo Room — side-ved-side versjonssammenligning ───────────────
+  // Eksplisitt junction-tabell-modell (IKKE version_id = capture_session_id):
+  // en versjon er en kuratert delmengde av bildene, ikke en hel capture-økt.
+  // project_photo_review (globalt nøklet) røres ikke — prosjekter uten versjoner
+  // fortsetter uendret; dette er rent additivt.
+  const ensurePhotoVersionSchema = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_versions (
+      id uuid PRIMARY KEY, project_id uuid NOT NULL,
+      version_label text, version_number int NOT NULL DEFAULT 1,
+      status text DEFAULT 'under_review',
+      cover_asset_id uuid, created_by varchar, created_at timestamptz DEFAULT now())`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_version_assets (
+      version_id uuid NOT NULL REFERENCES project_photo_versions(id) ON DELETE CASCADE,
+      asset_id uuid NOT NULL, PRIMARY KEY (version_id, asset_id))`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_version_review (
+      version_id uuid NOT NULL, asset_id uuid NOT NULL,
+      review_status text, updated_by varchar, updated_at timestamptz DEFAULT now(),
+      PRIMARY KEY (version_id, asset_id))`).catch(() => {});
+  };
+
+  // Versjonsliste + hvilken som er «aktiv» (under_review, ellers siste).
+  app.get("/api/projects/:projectId/photo-versions", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoVersionSchema();
+      const pid = req.params.projectId;
+      const vs = await pool.query(
+        `SELECT v.id, v.version_label, v.version_number, v.status, v.cover_asset_id, v.created_at,
+                (SELECT count(*) FROM project_photo_version_assets a WHERE a.version_id = v.id)::int asset_count
+           FROM project_photo_versions v WHERE project_id = $1 ORDER BY version_number ASC`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const versions = await Promise.all(vs.rows.map(async (v: any) => {
+        let coverThumbUrl: string | null = null;
+        if (v.cover_asset_id) {
+          const a = await pool.query(`SELECT preview_key FROM capture_assets WHERE id = $1`, [v.cover_asset_id]).catch(() => ({ rows: [] }));
+          const key = a.rows[0]?.preview_key;
+          if (key) coverThumbUrl = await signAssetReadUrl(key);
+        }
+        return {
+          id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
+          status: v.status, assetCount: v.asset_count || 0, coverThumbUrl, createdAt: v.created_at,
+        };
+      }));
+      const cur = vs.rows.find((v: any) => v.status === "under_review") || vs.rows[vs.rows.length - 1] || null;
+      res.json({ hasVersions: versions.length > 0, versions, currentVersionId: cur?.id || null });
+    } catch (e) { console.error("GET photo-versions", e); res.json({ hasVersions: false, versions: [], currentVersionId: null }); }
+  });
+
+  // Ny versjon: kuratert utvalg av assetIds. Backfiller en "V1" som pakker inn
+  // ALLE eksisterende assets + kopierer dagens project_photo_review hvis dette
+  // er prosjektets aller første versjon — ellers ville den nye versjonen fremstå
+  // som prosjektets eneste historie, og alt arbeid gjort FØR versjonering ble
+  // innført ville vært usynlig i versjons-visningen.
+  app.post("/api/projects/:projectId/photo-versions", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoVersionSchema();
+      const pid = req.params.projectId;
+      const b = req.body || {};
+      const assetIds = Array.isArray(b.assetIds) ? b.assetIds.filter((v: any) => typeof v === "string") : [];
+      if (assetIds.length === 0) return res.status(400).json({ error: "assetIds_required" });
+
+      // Eierskaps-sjekk: samme session_id-scoping som resten av Photo Room —
+      // hindrer at en caller siterer en annen fotografs capture_asset-id inn i
+      // en versjon (cross-tenant-IDOR).
+      const sessionIds = await photoSessionIds(pid);
+      if (sessionIds.length === 0) return res.status(404).json({ error: "no_capture_session" });
+      const owned = await pool.query(
+        `SELECT id FROM capture_assets WHERE id = ANY($1::uuid[]) AND session_id = ANY($2::uuid[])`,
+        [assetIds, sessionIds],
+      ).catch(() => ({ rows: [] }));
+      const ownedIds = new Set(owned.rows.map((r: any) => r.id));
+      const validIds = assetIds.filter((aid: string) => ownedIds.has(aid));
+      if (validIds.length === 0) return res.status(404).json({ error: "no_valid_assets" });
+
+      const existing = await pool.query(`SELECT COUNT(*)::int n FROM project_photo_versions WHERE project_id = $1`, [pid]);
+      if ((existing.rows[0]?.n || 0) === 0) {
+        const allAssets = await pool.query(`SELECT id FROM capture_assets WHERE session_id = ANY($1::uuid[])`, [sessionIds]).catch(() => ({ rows: [] }));
+        if (allAssets.rows.length > 0) {
+          const v1Id = crypto.randomUUID();
+          const v1AssetIds = allAssets.rows.map((r: any) => r.id);
+          await pool.query(
+            `INSERT INTO project_photo_versions (id, project_id, version_label, version_number, status, created_by)
+             VALUES ($1,$2,'V1',1,'under_review',$3)`,
+            [v1Id, pid, uid],
+          );
+          await pool.query(
+            `INSERT INTO project_photo_version_assets (version_id, asset_id) SELECT $1, UNNEST($2::uuid[])`,
+            [v1Id, v1AssetIds],
+          ).catch(() => {});
+          await pool.query(
+            `INSERT INTO project_photo_version_review (version_id, asset_id, review_status, updated_by, updated_at)
+             SELECT $1, asset_id, review_status, updated_by, updated_at FROM project_photo_review WHERE asset_id = ANY($2::uuid[])`,
+            [v1Id, v1AssetIds],
+          ).catch(() => {});
+        }
+      }
+
+      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_photo_versions WHERE project_id = $1`, [pid]);
+      const vn = n.rows[0].n;
+      await pool.query(`UPDATE project_photo_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO project_photo_versions (id, project_id, version_label, version_number, status, cover_asset_id, created_by)
+         VALUES ($1,$2,$3,$4,'under_review',$5,$6)`,
+        [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, validIds[0], uid],
+      );
+      await pool.query(
+        `INSERT INTO project_photo_version_assets (version_id, asset_id) SELECT $1, UNNEST($2::uuid[])`,
+        [id, validIds],
+      );
+      // Kopier inn eksisterende review-status for disse assetene som startpunkt
+      // — nyttig når man versjonerer bilder som allerede er delvis vurdert.
+      await pool.query(
+        `INSERT INTO project_photo_version_review (version_id, asset_id, review_status, updated_by, updated_at)
+         SELECT $1, asset_id, review_status, updated_by, updated_at FROM project_photo_review WHERE asset_id = ANY($2::uuid[])
+         ON CONFLICT (version_id, asset_id) DO NOTHING`,
+        [id, validIds],
+      ).catch(() => {});
+      res.status(201).json({ id, versionNumber: vn });
+    } catch (e) { console.error("POST photo-versions", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Versjons-scopet variant av /photo-review — EGEN rute (ikke bare et filter
+  // client-side) nettopp for å unngå den kjente VideoRoomTab-buggen der bytte
+  // av versjon ikke refetcher den versjonens egne kommentarer.
+  app.get("/api/projects/:projectId/photo-versions/:vid", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoVersionSchema();
+      const pid = req.params.projectId;
+      const vid = req.params.vid;
+      const ver = await pool.query(`SELECT id, version_label, version_number, status FROM project_photo_versions WHERE id = $1 AND project_id = $2`, [vid, pid]).catch(() => ({ rows: [] }));
+      if (!ver.rows.length) return res.status(404).json({ error: "not_found" });
+      const limit = Math.min(400, Math.max(1, parseInt(String(req.query.limit || "200"), 10) || 200));
+      const a = await pool.query(
+        `SELECT a.id, a.original_filename, a.mime, a.size_bytes, a.state, a.rating, a.color_label,
+                a.flagged_for_client, a.rejected, a.preview_key, a.exif, a.created_at,
+                r.review_status
+           FROM project_photo_version_assets va
+           JOIN capture_assets a ON a.id = va.asset_id
+           LEFT JOIN project_photo_version_review r ON r.asset_id = a.id AND r.version_id = va.version_id
+          WHERE va.version_id = $1
+          ORDER BY a.created_at DESC LIMIT $2`,
+        [vid, limit],
+      ).catch(() => ({ rows: [] }));
+      const assets = await Promise.all(a.rows.map(async (r: any) => {
+        const ex = r.exif || {};
+        return {
+          id: r.id, filename: r.original_filename, rating: r.rating || 0,
+          flagged: !!r.flagged_for_client, rejected: !!r.rejected, colorLabel: r.color_label,
+          reviewStatus: r.review_status || (r.rejected ? "rejected" : r.flagged_for_client ? "flagged" : null),
+          thumbUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
+          exif: {
+            iso: ex.iso ?? ex.ISO ?? null, lens: ex.lens ?? ex.lensModel ?? ex.LensModel ?? null,
+            aperture: ex.aperture ?? ex.fNumber ?? ex.FNumber ?? null,
+            shutter: ex.shutter ?? ex.exposureTime ?? ex.ExposureTime ?? null,
+            camera: ex.camera ?? ex.model ?? ex.Model ?? null, focalLength: ex.focalLength ?? ex.FocalLength ?? null,
+            width: ex.width ?? ex.ImageWidth ?? null, height: ex.height ?? ex.ImageHeight ?? null,
+            capturedAt: ex.capturedAt ?? ex.DateTimeOriginal ?? r.created_at,
+          },
+          createdAt: r.created_at,
+        };
+      }));
+      // Kommentarer er ikke selv versjons-scopet i skjemaet (project_photo_comments
+      // er asset-keyed) — scopet her til assetene i DENNE versjonen, slik at
+      // kommentar-listen faktisk endrer seg ved versjonsbytte.
+      const assetIdList = assets.map((x: any) => x.id);
+      const role = await getProjectAccessRole(pool, uid, pid);
+      const canSeeInternal = !!role && INTERNAL_COMMENT_ROLES.has(role);
+      const cm = assetIdList.length
+        ? await pool.query(`SELECT * FROM project_photo_comments WHERE project_id = $1 AND asset_id = ANY($2::uuid[]) ORDER BY pinned DESC, created_at DESC LIMIT 400`, [pid, assetIdList]).catch(() => ({ rows: [] }))
+        : { rows: [] };
+      const visible = canSeeInternal ? cm.rows : cm.rows.filter((c: any) => c.scope !== "internal");
+      const comments = visible.map((c: any) => ({
+        id: c.id, assetId: c.asset_id, scope: c.scope, authorName: c.author_name || "Team", authorKind: c.author_kind,
+        comment: c.comment, status: c.status, tag: c.tag, pinned: c.pinned, parentId: c.parent_id, likeCount: c.like_count || 0, createdAt: c.created_at,
+        drawing: c.drawing || null,
+      }));
+      res.json({
+        id: ver.rows[0].id, versionLabel: ver.rows[0].version_label || `V${ver.rows[0].version_number}`,
+        versionNumber: ver.rows[0].version_number, status: ver.rows[0].status,
+        assets, comments,
+      });
+    } catch (e) { console.error("GET photo-versions/:vid", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Sett review-status for ett bilde INNENFOR en spesifikk versjon.
+  app.patch("/api/projects/:projectId/photo-versions/:vid/review/:assetId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoVersionSchema();
+      const vid = req.params.vid; const assetId = req.params.assetId;
+      const owns = await pool.query(`SELECT 1 FROM project_photo_version_assets WHERE version_id = $1 AND asset_id = $2 LIMIT 1`, [vid, assetId]).catch(() => ({ rowCount: 0 }));
+      if (!owns.rowCount) return res.status(404).json({ error: "asset_not_in_version" });
+      const status = req.body?.reviewStatus ? String(req.body.reviewStatus).slice(0, 20) : null;
+      await pool.query(
+        `INSERT INTO project_photo_version_review (version_id, asset_id, review_status, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,NOW())
+         ON CONFLICT (version_id, asset_id) DO UPDATE SET review_status = EXCLUDED.review_status, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+        [vid, assetId, status, uid],
+      );
+      res.json({ ok: true });
+    } catch (e) { console.error("PATCH photo-versions review", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Godkjenn versjon (kun den raden — søsken-versjoner røres ikke, i motsetning
+  // til video-mønsteret som supersedes ved NY versjon, ikke ved godkjenning).
+  app.post("/api/projects/:projectId/photo-versions/:vid/approve", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoVersionSchema();
+      const pid = req.params.projectId;
+      const upd = await pool.query(`UPDATE project_photo_versions SET status='approved' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (e) { console.error("POST photo-versions approve", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Generativ AI (fal) — pilot: Nano Banana 2-redigering i Photo ───

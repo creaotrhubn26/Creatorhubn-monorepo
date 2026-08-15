@@ -25,6 +25,32 @@ import { signAssetReadUrl } from './capture-upload-service.js';
 
 type Db = NodePgDatabase<Record<string, unknown>>;
 
+/**
+ * Metadata-nøkler klienten faktisk trenger (auto-clean-badge, kilde-ikon).
+ * Bevisst utelatt: captureAssetId/chunkedUploadId — interne UUID-er som
+ * allerede er fullt konsumert server-side over for å bygge de signerte
+ * URL-ene; klienten har ingen bruk for dem og de bør ikke lekke ut av
+ * produsentens interne lagringsmodell.
+ */
+const CLIENT_SAFE_METADATA_KEYS = new Set([
+  'source',
+  'mimeType',
+  'enhancerJobId',
+  'useAutoCleaned',
+  'autoCleanedDetectionCount',
+]);
+
+function allowlistMetadata(
+  metadata: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!metadata) return null;
+  const out: Record<string, unknown> = {};
+  for (const key of CLIENT_SAFE_METADATA_KEYS) {
+    if (key in metadata) out[key] = metadata[key];
+  }
+  return out;
+}
+
 export interface ClientGalleryInfo {
   id: string;
   photographerId: string;
@@ -257,7 +283,7 @@ export async function listClientGalleryImages(
       tags: row.tags ?? [],
       sortOrder: row.sortOrder ?? 0,
       isVisible: row.isVisible ?? true,
-      metadata: (row.imageMetadata as Record<string, unknown> | null) ?? null,
+      metadata: allowlistMetadata((row.imageMetadata as Record<string, unknown> | null) ?? null),
       signingFailed,
     });
   }

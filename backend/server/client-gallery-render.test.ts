@@ -338,6 +338,69 @@ describe('listClientGalleryImages', () => {
     expect(sign).not.toHaveBeenCalledWith('c/a1.jpg');
   });
 
+  it('allowlists imageMetadata — strips internal ids, keeps client-facing keys', async () => {
+    const db = makeDb([
+      [
+        {
+          id: 'img-md',
+          galleryId: 'g1',
+          photographerId: 'u1',
+          imageTitle: 'Metadata check',
+          imageDescription: null,
+          thumbnailUrl: 'https://cdn/t',
+          fullSizeUrl: 'https://cdn/f',
+          watermarkedUrl: null,
+          imageMetadata: {
+            captureAssetId: 'asset-secret',
+            chunkedUploadId: 'chunk-secret',
+            source: 'capture',
+            mimeType: 'image/jpeg',
+            enhancerJobId: 'job-1',
+            useAutoCleaned: true,
+            autoCleanedDetectionCount: 3,
+          },
+          tags: [],
+          sortOrder: 0,
+          isVisible: true,
+        },
+      ],
+    ]);
+    const sign = vi.fn(async () => 'https://signed/x');
+    const [row] = await listClientGalleryImages(db as never, 'g1', { signKey: sign });
+    expect(row.metadata).toEqual({
+      source: 'capture',
+      mimeType: 'image/jpeg',
+      enhancerJobId: 'job-1',
+      useAutoCleaned: true,
+      autoCleanedDetectionCount: 3,
+    });
+    expect(row.metadata).not.toHaveProperty('captureAssetId');
+    expect(row.metadata).not.toHaveProperty('chunkedUploadId');
+  });
+
+  it('returns null metadata when imageMetadata is null', async () => {
+    const db = makeDb([
+      [
+        {
+          id: 'img-nomd',
+          galleryId: 'g1',
+          photographerId: 'u1',
+          imageTitle: 'No metadata',
+          imageDescription: null,
+          thumbnailUrl: 'https://cdn/t',
+          fullSizeUrl: 'https://cdn/f',
+          watermarkedUrl: null,
+          imageMetadata: null,
+          tags: [],
+          sortOrder: 0,
+          isVisible: true,
+        },
+      ],
+    ]);
+    const [row] = await listClientGalleryImages(db as never, 'g1', { signKey: vi.fn() });
+    expect(row.metadata).toBeNull();
+  });
+
   it('does not query captureAssets when no image carries a captureAssetId', async () => {
     const db = makeDb([
       [

@@ -101,6 +101,30 @@ async function isProjectOwner(pool: any, userId: string, projectId: string): Pro
   return (r.rowCount ?? 0) > 0;
 }
 
+/**
+ * Presis rolle for en bruker på et prosjekt: 'owner' | project_team_members.role
+ * (editor/viewer/member) | null (ingen tilgang). Brukes der en rute trenger å
+ * skille internroller fra hverandre (f.eks. fremtidig klient-rolle), til
+ * forskjell fra canAccessProject() som kun svarer ja/nei.
+ */
+export async function getProjectAccessRole(
+  pool: any,
+  userId: string,
+  projectId: string,
+): Promise<"owner" | "editor" | "viewer" | "member" | null> {
+  if (!userId || !projectId) return null;
+  if (await isProjectOwner(pool, userId, projectId)) return "owner";
+  await ensureProjectTeamSchema(pool);
+  const member = await pool.query(
+    `SELECT role FROM project_team_members
+      WHERE project_id = $1 AND user_id = $2 AND status = 'active' AND deactivated_at IS NULL
+      LIMIT 1`,
+    [projectId, userId],
+  ).catch(() => ({ rows: [] }));
+  const role = member.rows[0]?.role;
+  return role === "editor" || role === "viewer" || role === "member" ? role : null;
+}
+
 function getMailer(): ReturnType<typeof nodemailer.createTransport> | null {
   const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || "").trim();
   const mailPass = (process.env.GMAIL_APP_PASSWORD || "").trim().replace(/\s+/g, "");

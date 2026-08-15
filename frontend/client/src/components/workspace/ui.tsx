@@ -157,6 +157,41 @@ export const WsImg: React.FC<{ ratio?: string; label?: string; sx?: any }> = ({ 
 );
 
 /**
+ * BeforeAfterSlider — Før/Etter-sammenligning med en dra-i-splitt slider.
+ * Selvstendig `pos`-state (0-100). Brukt for AI-enhance og Nano Banana-
+ * redigering i Photo Room, og for versjonssammenligning mellom to bilde-
+ * versjoner (samme komponent, ulikt bilde-par).
+ */
+export const BeforeAfterSlider: React.FC<{
+  beforeUrl: string;
+  afterUrl: string;
+  labelBefore?: string;
+  labelAfter?: string;
+  ratio?: string;
+  sx?: any;
+  /** Valgfritt overlay (f.eks. DrawingOverlay) rendret oppå selve bilde-boksen,
+   *  ikke oppå range-input under. Kallerens overlay må selv være absolute/inset. */
+  overlay?: React.ReactNode;
+}> = ({ beforeUrl, afterUrl, labelBefore = 'FØR', labelAfter = 'ETTER', ratio = '3 / 2', sx, overlay }) => {
+  const [pos, setPos] = useState(50);
+  return (
+    <Box sx={sx}>
+      <Box sx={{ position: 'relative', width: '100%', aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
+        <Box component="img" src={afterUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
+        <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
+          <Box component="img" src={beforeUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
+        </Box>
+        <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${pos}%`, width: '2px', bgcolor: ws.accent }} />
+        <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>{labelBefore}</Box>
+        <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 10.5, fontWeight: 700, color: ws.accentContrast }}>{labelAfter}</Box>
+        {overlay}
+      </Box>
+      <input type="range" min={0} max={100} value={pos} onChange={(e) => setPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent, marginTop: 8 }} />
+    </Box>
+  );
+};
+
+/**
  * WsImageGrid — opplastbart bilde-rutenett. Tomme/placeholder-ruter er en EKTE
  * «legg til bilde»-knapp (klikk → filvelger → forhåndsvisning). `onUpload` POSTer
  * filen til panelets opplastings-endepunkt (wires per panel: moodboard / capture
