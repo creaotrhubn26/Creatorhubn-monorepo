@@ -25,7 +25,9 @@
     "prepare": "git rev-parse --git-dir > /dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "dependencies": {
     "express": "^5.2.1"
@@ -49,6 +51,8 @@
       "onnxruntime-web": "^1.23.2",
       "sharp": "0.35.3"
     },
+    "drizzle-orm": "^0.45.2",
+    "monaco-editor": "^0.56.0",
     "@types/express-serve-static-core": "5.1.0",
     "@types/qs": "6.14.0",
     "@types/node": "24.10.13",

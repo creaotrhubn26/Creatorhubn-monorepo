@@ -85,3 +85,19 @@ if [ "${FAST_PUSH:-0}" != "1" ]; then
     green "[pre-push] tsc clean on changed frontend files."
   fi
 fi
+
+# ── Check 4 (CH-ARCH-009): lockfil-koherens ───────────────────────────────
+# af5a596-hendelsen: manifester endret + rot-lockfil committet uten fersk
+# resolve → lockfilen mistet transitive pakker (loupe). `npm ci` installerer
+# da et hull-tre og test:unit krasjer i begge hardened E2E-gates.
+# NB: `npm install --package-lock-only` + diff fanger IKKE dette — npm
+# stoler på eksisterende lockfil-tre og lar korrupsjonen stå byte-identisk.
+# Valideres derfor offline: hver dependency-kant i lockfilene må resolve
+# til en faktisk oppføring (node_modules-oppslagsreglene). Deterministisk,
+# <1s, ingen nettverk — kjøres derfor alltid.
+yellow "[pre-push] Lockfil-koherens (CH-ARCH-009)…"
+if ! node scripts/lint/check-lockfile-coherence.mjs package-lock.json backend/package-lock.json frontend/package-lock.json; then
+  red "[pre-push] Lockfil-inkoherens — npm ci vil installere et hull-tre (loupe-klassen)."
+  exit 1
+fi
+green "[pre-push] Lockfiler koherente."
