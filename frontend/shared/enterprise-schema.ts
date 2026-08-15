@@ -163,12 +163,49 @@ export const organizations = pgTable(
     samlIdpCertificate: text('saml_idp_certificate'), // PEM-encoded x509 cert
     samlSpEntityId: varchar('saml_sp_entity_id', { length: 500 }), // our SP entity id, unique per org
     samlWantAssertionsSigned: boolean('saml_want_assertions_signed').notNull().default(true),
+    // SCIM 2.0 provisioning config for this org — Fase 2. The bearer token
+    // is stored as a sha256 hash only, never in plaintext (see
+    // role-room-scim-routes.ts). scimDefaultRoleId is the organizationRoles
+    // row newly-provisioned SCIM users are assigned; left null means "don't
+    // guess a role" (create the user/mapping, skip role assignment).
+    scimEnabled: boolean('scim_enabled').notNull().default(false),
+    scimBearerTokenHash: varchar('scim_bearer_token_hash', { length: 64 }),
+    scimBearerTokenHint: varchar('scim_bearer_token_hint', { length: 8 }),
+    scimTokenRotatedAt: timestamp('scim_token_rotated_at'),
+    scimDefaultRoleId: uuid('scim_default_role_id').references(() => organizationRoles.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
     slugIdx: index('organizations_slug_idx').on(table.slug),
     samlEnabledIdx: index('organizations_saml_enabled_idx').on(table.samlEnabled),
+    scimEnabledIdx: index('organizations_scim_enabled_idx').on(table.scimEnabled),
+  }),
+);
+
+// SCIM externalId ↔ our internal users.id mapping, scoped per org. `users`
+// is a shared, platform-wide table (used well beyond Role Room) so SCIM-
+// specific bookkeeping lives here instead of adding columns onto it.
+export const roleRoomScimUsers = pgTable(
+  'role_room_scim_users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .references(() => organizations.id)
+      .notNull(),
+    userId: varchar('user_id', { length: 255 }).notNull(),
+    externalId: varchar('external_id', { length: 255 }),
+    scimUserName: varchar('scim_user_name', { length: 255 }).notNull(),
+    active: boolean('active').notNull().default(true),
+    provisionedAt: timestamp('provisioned_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    orgIdx: index('role_room_scim_users_org_idx').on(table.organizationId),
+    externalIdIdx: index('role_room_scim_users_external_id_idx').on(
+      table.organizationId,
+      table.externalId,
+    ),
   }),
 );
 
@@ -443,6 +480,14 @@ export const organizationRolesRelations = relations(organizationRoles, ({ many }
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   userRoles: many(userRoles),
+  scimUsers: many(roleRoomScimUsers),
+}));
+
+export const roleRoomScimUsersRelations = relations(roleRoomScimUsers, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [roleRoomScimUsers.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
 export const userRolesRelations = relations(userRoles, ({ one }) => ({
@@ -534,6 +579,11 @@ export const insertOrganizationSchema = createInsertSchema(organizations);
 export const updateOrganizationSchema = insertOrganizationSchema.partial();
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type Organization = typeof organizations.$inferSelect;
+
+export const insertRoleRoomScimUserSchema = createInsertSchema(roleRoomScimUsers);
+export const updateRoleRoomScimUserSchema = insertRoleRoomScimUserSchema.partial();
+export type InsertRoleRoomScimUser = z.infer<typeof insertRoleRoomScimUserSchema>;
+export type RoleRoomScimUser = typeof roleRoomScimUsers.$inferSelect;
 
 export const insertAuditLogSchema = createInsertSchema(auditLog);
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
