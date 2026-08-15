@@ -175,33 +175,13 @@ pub async fn generate_broll_clip(
         format!("Fikk ingen resultat-URL fra Higgsfield: {}", tail)
     })?;
 
-    // Last ned rå-klipp.
-    let raw_path = dir.join(format!("{}._broll_raw.mp4", safe_scene));
-    let dl = Command::new("/usr/bin/curl")
-        .args(["-sL", "-o", &raw_path.to_string_lossy(), &url])
-        .status().map_err(|e| format!("curl: {}", e))?;
-    let raw_ok = dl.success() && raw_path.metadata().map(|m| m.len() > 10_000).unwrap_or(false);
-    if !raw_ok {
-        let _ = std::fs::remove_file(&raw_path);
-        return Err("nedlasting av generert klipp feilet".into());
-    }
-
-    // Normaliser til H.264 mp4 så eksport-pipelinen får konsistent input
-    // (samme som record_simulator gjør).
-    let out_path = dir.join(format!("{}.mp4", safe_scene));
-    if let Some(ffmpeg) = find_ffmpeg() {
-        let ok = Command::new(&ffmpeg)
-            .args(["-y", "-i", &raw_path.to_string_lossy(),
-                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart", &out_path.to_string_lossy()])
-            .status().map(|s| s.success()).unwrap_or(false);
-        let _ = std::fs::remove_file(&raw_path);
-        if ok && out_path.is_file() {
-            return Ok(out_path.to_string_lossy().to_string());
-        }
-    }
-    // Fallback: behold rå-klippet hvis transcoding ikke gikk.
-    Ok(raw_path.to_string_lossy().to_string())
+    download_and_normalize_clip(
+        &dir,
+        &format!("{}._broll_raw.mp4", safe_scene),
+        &format!("{}.mp4", safe_scene),
+        &url,
+        "nedlasting av generert klipp feilet",
+    )
 }
 
 /// Generér ett kinematisk klipp via fal Seedance SERVERSIDE (Role Room-proxy) —
@@ -218,25 +198,11 @@ pub async fn generate_broll_clip_fal(
     duration_sec: u32,
     resolution: String,
 ) -> Result<String, String> {
-    use crate::python::AppSettings;
     if prompt.trim().is_empty() { return Err("prompt kreves".into()); }
     if !image_data_url.starts_with("data:") && !image_data_url.starts_with("http") {
         return Err("fal Seedance er image-to-video — forankre i en produkt-ramme først.".into());
     }
-    let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
-        let snap = settings.snapshot();
-        (
-            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
-            snap.get("RR_POST_AGENT_BASE_URL").cloned().filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
-        )
-    } else {
-        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
-    };
-    if bearer.is_empty() {
-        return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler). Logg inn fra Settings.".into());
-    }
-    let base = base_url.trim_end_matches('/').to_string();
+    let (bearer, base) = resolve_role_room_auth(&app)?;
     let res = match resolution.as_str() { "480p" | "720p" | "1080p" => resolution.as_str(), _ => "720p" };
     let dur = duration_sec.clamp(4, 15);
 
@@ -244,7 +210,10 @@ pub async fn generate_broll_clip_fal(
     // 1) Submit
     let sub = client.post(format!("{}/ai/generate-video", base))
         .header("Authorization", format!("Bearer {}", bearer))
-        .json(&serde_json::json!({ "prompt": prompt.trim(), "imageUrl": image_data_url, "durationSec": dur, "resolution": res }))
+        .json(&serde_json::json!({
+            "prompt": prompt.trim(), "imageUrl": image_data_url, "durationSec": dur, "resolution": res,
+            "projectId": project_id, "sceneId": scene_id,
+        }))
         .send().await.map_err(|e| format!("video-submit feilet: {}", e))?;
     if !sub.status().is_success() {
         let s = sub.status();
@@ -279,24 +248,13 @@ pub async fn generate_broll_clip_fal(
     // 3) Last ned + normaliser (samme som higgsfield-veien).
     let dir = recordings_dir(&app, &project_id)?;
     let safe_scene: String = scene_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-    let raw_path = dir.join(format!("{}._broll_raw.mp4", safe_scene));
-    let dl = Command::new("/usr/bin/curl").args(["-sL", "-o", &raw_path.to_string_lossy(), &url])
-        .status().map_err(|e| format!("curl: {}", e))?;
-    if !dl.success() || raw_path.metadata().map(|m| m.len() < 10_000).unwrap_or(true) {
-        let _ = std::fs::remove_file(&raw_path);
-        return Err("nedlasting av generert klipp feilet".into());
-    }
-    let out_path = dir.join(format!("{}.mp4", safe_scene));
-    if let Some(ffmpeg) = find_ffmpeg() {
-        let ok = Command::new(&ffmpeg)
-            .args(["-y", "-i", &raw_path.to_string_lossy(),
-                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart", &out_path.to_string_lossy()])
-            .status().map(|s| s.success()).unwrap_or(false);
-        let _ = std::fs::remove_file(&raw_path);
-        if ok && out_path.is_file() { return Ok(out_path.to_string_lossy().to_string()); }
-    }
-    Ok(raw_path.to_string_lossy().to_string())
+    download_and_normalize_clip(
+        &dir,
+        &format!("{}._broll_raw.mp4", safe_scene),
+        &format!("{}.mp4", safe_scene),
+        &url,
+        "nedlasting av generert klipp feilet",
+    )
 }
 
 /// Dekod en data-URL (data:image/...;base64,....) og skriv til en temp-fil i
@@ -407,15 +365,75 @@ pub async fn generate_presenter_clip(
         format!("Fikk ingen resultat-URL fra Higgsfield: {}", format!("{}{}", stdout, stderr).chars().rev().take(300).collect::<String>().chars().rev().collect::<String>())
     })?;
 
-    let raw_path = dir.join(format!("{}._presenter_raw.mp4", safe_scene));
-    let dl = Command::new("/usr/bin/curl").args(["-sL", "-o", &raw_path.to_string_lossy(), &url])
+    download_and_normalize_clip(
+        &dir,
+        &format!("{}._presenter_raw.mp4", safe_scene),
+        &format!("{}.mp4", safe_scene),
+        &url,
+        "nedlasting av presentør-klipp feilet",
+    )
+}
+
+/// Les Role Room-bearer-token + Post Agent-base-URL fra app-settings.
+/// Delt av fal-video-submit/poll og jobb-listen.
+fn resolve_role_room_auth(app: &AppHandle) -> Result<(String, String), String> {
+    use crate::python::AppSettings;
+    let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
+        let snap = settings.snapshot();
+        (
+            snap.get("RR_BEARER_TOKEN").cloned().unwrap_or_default(),
+            snap.get("RR_POST_AGENT_BASE_URL").cloned().filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
+        )
+    } else {
+        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
+    };
+    if bearer.is_empty() {
+        return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler). Logg inn fra Settings.".into());
+    }
+    Ok((bearer, base_url.trim_end_matches('/').to_string()))
+}
+
+/// List åpne/nylig fullførte fal-video-jobber for prosjektet — lar UI-en
+/// koble seg på igjen etter et krasj/lukk i stedet for å miste klippet
+/// (jobben render ferdig på fal sin side uansett; kun vår kobling til den
+/// gikk tapt lokalt). Server-side jobbrad: post_agent_video_jobs.
+#[tauri::command]
+pub async fn list_broll_jobs(app: AppHandle, project_id: String) -> Result<Vec<serde_json::Value>, String> {
+    let (bearer, base) = resolve_role_room_auth(&app)?;
+    let client = reqwest::Client::new();
+    let r = client.get(format!("{}/ai/generate-video/jobs", base))
+        .query(&[("projectId", project_id.as_str())])
+        .header("Authorization", format!("Bearer {}", bearer))
+        .send().await.map_err(|e| format!("jobb-liste feilet: {}", e))?;
+    if !r.status().is_success() {
+        let s = r.status(); let t = r.text().await.unwrap_or_default();
+        return Err(format!("jobb-liste {}: {}", s, t.chars().take(200).collect::<String>()));
+    }
+    let j: serde_json::Value = r.json().await.map_err(|e| format!("jobb-liste-svar: {}", e))?;
+    Ok(j.get("jobs").and_then(|v| v.as_array()).cloned().unwrap_or_default())
+}
+
+/// Last ned et generert klipp fra `url` og normaliser det til H.264 mp4.
+/// Delt av higgsfield-, fal- og presentør-veien (samme curl+ffmpeg-mønster).
+/// Faller tilbake til rå-klippet hvis ffmpeg mangler/feiler.
+fn download_and_normalize_clip(
+    dir: &std::path::Path,
+    raw_name: &str,
+    out_name: &str,
+    url: &str,
+    download_err: &str,
+) -> Result<String, String> {
+    let raw_path = dir.join(raw_name);
+    let dl = Command::new("/usr/bin/curl")
+        .args(["-sL", "-o", &raw_path.to_string_lossy(), url])
         .status().map_err(|e| format!("curl: {}", e))?;
     if !dl.success() || raw_path.metadata().map(|m| m.len() < 10_000).unwrap_or(true) {
         let _ = std::fs::remove_file(&raw_path);
-        return Err("nedlasting av presentør-klipp feilet".into());
+        return Err(download_err.to_string());
     }
-    let out_path = dir.join(format!("{}.mp4", safe_scene));
-    if let Some(ffmpeg) = ffmpeg {
+    let out_path = dir.join(out_name);
+    if let Some(ffmpeg) = find_ffmpeg() {
         let ok = Command::new(&ffmpeg)
             .args(["-y", "-i", &raw_path.to_string_lossy(),
                 "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",

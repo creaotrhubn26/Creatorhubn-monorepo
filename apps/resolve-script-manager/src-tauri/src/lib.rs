@@ -1084,6 +1084,7 @@ pub fn run() {
             broll::generate_broll_clip,
             broll::generate_broll_clip_fal,
             broll::generate_presenter_clip,
+            broll::list_broll_jobs,
             autonomous_demo::synthesize_tts,
             autonomous_demo::tts_from_audio,
             autonomous_demo::extract_frame,
