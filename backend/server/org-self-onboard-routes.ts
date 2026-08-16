@@ -107,10 +107,19 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         userId = existingR.rows[0].user_id;
       } else {
         userId = crypto.randomUUID();
+        // users.password er NOT NULL uten default — trenger en ikke-null
+        // placeholder inntil bruker setter passord via magic-link (samme
+        // mønster som google-id-token-service.ts). Uten denne feiler INSERT
+        // med "null value in column password violates not-null constraint".
+        const bcrypt = await import("bcrypt");
+        const placeholderPassword = await bcrypt.default.hash(
+          `${crypto.randomUUID()}${crypto.randomUUID()}`,
+          10,
+        );
         await client.query(
-          `INSERT INTO users (id, email, role, created_at)
-           VALUES ($1, $2, 'member', now())`,
-          [userId, email],
+          `INSERT INTO users (id, email, password, role, created_at)
+           VALUES ($1, $2, $3, 'member', now())`,
+          [userId, email, placeholderPassword],
         );
         isNewUser = true;
       }

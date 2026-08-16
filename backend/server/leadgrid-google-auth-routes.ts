@@ -201,12 +201,22 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
         userRole = userR.rows[0].role ?? "member";
       } else {
         userId = crypto.randomUUID();
+        // users.password er NOT NULL uten default. Bruker aldri passord her
+        // (Google-only), men trenger en ikke-null placeholder — samme mønster
+        // som google-id-token-service.ts. Uten denne feiler INSERT med
+        // "null value in column password violates not-null constraint" for
+        // enhver ny bruker (oppdaget 2026-08-16, iPad Google-innlogging).
+        const bcrypt = await import("bcrypt");
+        const placeholderPassword = await bcrypt.default.hash(
+          `${crypto.randomUUID()}${crypto.randomUUID()}`,
+          10,
+        );
         await client.query(
           // users-tabellen har first_name + last_name + username, ikke full_name
-          `INSERT INTO users (id, email, username, role, first_name, last_name, created_at)
-           VALUES ($1, $2, $3, 'member', $4, $5, now())`,
+          `INSERT INTO users (id, email, username, password, role, first_name, last_name, created_at)
+           VALUES ($1, $2, $3, $4, 'member', $5, $6, now())`,
           [
-            userId, verified.email, verified.email,
+            userId, verified.email, verified.email, placeholderPassword,
             verified.name?.split(" ")[0] ?? null,
             verified.name?.split(" ").slice(1).join(" ") ?? null,
           ],
