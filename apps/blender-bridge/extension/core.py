@@ -494,6 +494,11 @@ try:
 except ImportError:
     import export_pipeline as _export
 TOOLS.update(_export.EXPORT_TOOLS)
+try:
+    from . import rigging as _rigging
+except ImportError:
+    import rigging as _rigging
+TOOLS.update(_rigging.RIG_TOOLS)
 
 
 def call_tool(name: str, args: dict | None = None) -> dict:
