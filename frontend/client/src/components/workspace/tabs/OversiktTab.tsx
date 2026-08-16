@@ -1,17 +1,14 @@
-// @ts-nocheck
 /**
  * OversiktTab — workspace-forsiden (design #1), dark CreatorHub.
  * Dagens tidslinje + Samkjøringsboard + Team Sync / Sjekkliste / Referanser
  * + Team Chat (høyre). Ekte prosjekter viser ekte data (milestones, timeline,
  * board-tasks, checklist, team-sync, capture/DIT); /workspace/sample viser demo.
  */
-import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Avatar, IconButton, Button, Chip } from '@mui/material';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Box, Stack, Typography, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import AccessTime from '@mui/icons-material/AccessTime';
-import ChevronLeft from '@mui/icons-material/ChevronLeft';
-import ChevronRight from '@mui/icons-material/ChevronRight';
 import ViewKanban from '@mui/icons-material/ViewKanban';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
@@ -23,9 +20,9 @@ import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import { crewIcon, wsIcon } from '../crewIcons';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import GettingStartedChecklist from '../../onboarding/GettingStartedChecklist';
-import { useProjectImages } from '../useProjectImages';
+import { useProjectImages, type WsImageItem as ProjectImageItem } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
-import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { useWsLocale, makeT, type WsDict } from '../wsLocale';
 import { CATEGORY_DEFAULT_CREW, crewRoleDef } from '@shared/crew-roles';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Demo-konstantene
@@ -49,10 +46,15 @@ const T: WsDict = {
   minAgo: { no: 'min siden', en: 'min ago' },
   hoursAgo: { no: 't siden', en: 'h ago' },
   daysAgo: { no: 'd siden', en: 'd ago' },
-  // prompts/alerts
-  newCheckPrompt: { no: 'Nytt sjekkpunkt:', en: 'New checklist item:' },
-  newTaskPrompt: { no: 'Ny oppgave:', en: 'New task:' },
+  // legg-til-dialog
+  addCheckDialogTitle: { no: 'Nytt sjekkpunkt', en: 'New checklist item' },
+  addTaskDialogTitle: { no: 'Ny oppgave', en: 'New task' },
   addFailed: { no: 'Kunne ikke legge til', en: 'Could not add' },
+  cancel: { no: 'Avbryt', en: 'Cancel' },
+  add: { no: 'Legg til', en: 'Add' },
+  // a11y
+  markDoneAria: { no: 'Merk som fullført', en: 'Mark as done' },
+  markNotDoneAria: { no: 'Merk som ikke fullført', en: 'Mark as not done' },
   // fremdrift
   progressLabel: { no: 'Fremdrift', en: 'Progress' },
   ofWord: { no: 'av', en: 'of' },
@@ -105,7 +107,15 @@ const T: WsDict = {
   captureActivity: { no: 'Capture-aktivitet', en: 'Capture activity' },
 };
 
-const PHASES = [
+interface PhaseItem {
+  icon: string;
+  label: string;
+  time: string;
+  color: string;
+  active?: boolean;
+}
+
+const PHASES: PhaseItem[] = [
   { icon: 'Favorite', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
   { icon: 'Favorite', label: 'First look', time: '10:30 – 11:00', color: ws.red },
   { icon: 'Church', label: 'Vielse', time: '11:30 – 12:30', color: ws.accent, active: true },
@@ -114,7 +124,19 @@ const PHASES = [
   { icon: 'Celebration', label: 'Fest', time: '20:30 – 00:00', color: ws.green },
 ];
 
-const BOARD = [
+interface DemoBoardTask {
+  t: string;
+  time: string;
+  done: boolean;
+}
+
+interface DemoBoardColumn {
+  role: string;
+  icon: string;
+  tasks: DemoBoardTask[];
+}
+
+const BOARD: DemoBoardColumn[] = [
   { role: 'Fotograf (Daniel)', icon: 'PhotoCamera', tasks: [
     { t: 'Detaljer: ringer & tilbehør', time: '07:30 – 08:00', done: true },
     { t: 'Forberedelser – candids', time: '08:00 – 10:00', done: true },
@@ -141,8 +163,14 @@ const BOARD = [
   ]},
 ];
 
-const SYNC_ITEMS = ['Brief lest', 'Lydplan', 'Backup plan', 'Kundeønsker gjennomgått'];
-const CHECKLIST = [
+const SYNC_ITEMS: string[] = ['Brief lest', 'Lydplan', 'Backup plan', 'Kundeønsker gjennomgått'];
+
+interface DemoChecklistItem {
+  t: string;
+  ok: boolean;
+}
+
+const CHECKLIST: DemoChecklistItem[] = [
   { t: 'Utstyr sjekket', ok: true },
   { t: 'Batterier & minnekort', ok: true },
   { t: 'Værmelding', ok: false },
@@ -150,20 +178,20 @@ const CHECKLIST = [
   { t: 'Backup lokasjon', ok: false },
 ];
 
-const RULER = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
+const RULER: string[] = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
 
 function eventIcon(title: string): string {
-  const t = (title || '').toLowerCase();
-  if (t.includes('first look')) return 'Favorite';
-  if (t.includes('viel') || t.includes('seremoni')) return 'Church';
-  if (t.includes('golden')) return 'WbTwilight';
-  if (t.includes('tale') || t.includes('toast')) return 'Mic';
-  if (t.includes('fest') || t.includes('dans')) return 'Celebration';
-  if (t.includes('forbered') || t.includes('getting ready')) return 'Favorite';
+  const s = (title || '').toLowerCase();
+  if (s.includes('first look')) return 'Favorite';
+  if (s.includes('viel') || s.includes('seremoni')) return 'Church';
+  if (s.includes('golden')) return 'WbTwilight';
+  if (s.includes('tale') || s.includes('toast')) return 'Mic';
+  if (s.includes('fest') || s.includes('dans')) return 'Celebration';
+  if (s.includes('forbered') || s.includes('getting ready')) return 'Favorite';
   return 'AccessTime';
 }
 // Humaniser en capture_events.event_type (fri tekst fra iPad/One Desk) til ikon + tekst.
-function activityMeta(type: string, t: (k: string) => string): { icon: string; label: string } {
+function activityMeta(type: string, t: (key: string) => string): { icon: string; label: string } {
   const ty = (type || '').toLowerCase();
   if (ty.includes('asset') && (ty.includes('add') || ty.includes('upload') || ty.includes('captur'))) return { icon: 'PhotoCamera', label: t('actAssetAdded') };
   if (ty.includes('rating') || ty.includes('rated')) return { icon: 'Star', label: t('actRating') };
@@ -178,7 +206,7 @@ function activityMeta(type: string, t: (k: string) => string): { icon: string; l
   if (ty.includes('comment') || ty.includes('review')) return { icon: 'ChatBubbleOutline', label: t('actComment') };
   return { icon: 'Bolt', label: (type || t('eventWord')).replace(/_/g, ' ') };
 }
-function timeAgo(iso: string, t: (k: string) => string): string {
+function timeAgo(iso: string | null | undefined, t: (key: string) => string): string {
   if (!iso) return '';
   const d = new Date(iso).getTime(); if (!Number.isFinite(d)) return '';
   const s = Math.max(0, Math.floor((Date.now() - d) / 1000));
@@ -187,201 +215,851 @@ function timeAgo(iso: string, t: (k: string) => string): string {
   if (s < 86400) return `${Math.floor(s / 3600)} ${t('hoursAgo')}`;
   return `${Math.floor(s / 86400)} ${t('daysAgo')}`;
 }
-function addMinutes(hhmm: string, mins: number): string {
+function addMinutes(hhmm: string | undefined, mins: number | undefined): string {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
   const [h, m] = hhmm.split(':').map(Number);
   const total = (h * 60 + m + (mins || 0)) % 1440;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+// Bygger prosjekt-scopede API-stier — unngår 14 repeterte encodeURIComponent-maler.
+function projectApiPath(projectId: string, suffix: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}${suffix}`;
+}
+
+// Dev-only feillogging for stille .catch()-håndterte kall — samme mønster som
+// WorkspaceShell (import.meta.env.DEV-gated console.warn). Endrer ikke
+// produksjonsatferd (UI degraderer identisk til i dag), kun synlighet i dev.
+function devWarn(context: string): (err: unknown) => void {
+  return (err) => {
+    if (import.meta.env.DEV) {
+      console.warn(`[OversiktTab] ${context}`, err);
+    }
+  };
+}
+
+interface ProgressState {
+  pct: number;
+  done: number;
+  total: number;
+}
+
+interface TimelineEventItem {
+  title?: string;
+  time?: string;
+  durationMinutes?: number;
+  status?: string;
+}
+
+interface BoardTaskItem {
+  id: string;
+  title?: string;
+  status?: string;
+  crewRole?: string;
+  timeLabel?: string;
+}
+
+interface ChecklistItemData {
+  id: string;
+  label?: string;
+  checked?: boolean;
+}
+
+interface TeamSyncReadinessItem {
+  label: string;
+  value: string | number;
+  done: boolean;
+}
+
+interface TeamSyncData {
+  pct?: number;
+  readiness?: TeamSyncReadinessItem[];
+}
+
+interface CaptureAssets {
+  total?: number;
+  securedToB2?: number;
+  securedPct?: number;
+  lastCaptureAt?: string;
+}
+
+interface CaptureStatusData {
+  hasSession?: boolean;
+  shootingNow?: boolean;
+  session?: { name?: string };
+  assets?: CaptureAssets;
+}
+
+interface DitDestination {
+  id: string;
+  type?: string;
+  storage?: string;
+  cloud?: boolean;
+  status?: string;
+  label?: string;
+}
+
+interface DitTake {
+  takeId: string;
+  verified?: number;
+  total?: number;
+  failed?: boolean;
+  fullyVerified?: boolean;
+  copying?: boolean;
+}
+
+interface DitJobs {
+  verified?: number;
+  copying?: number;
+  failed?: number;
+  completed?: number;
+  total?: number;
+}
+
+interface DitStatusData {
+  hasBackup?: boolean;
+  oneDeskHosts?: string[];
+  destinations?: DitDestination[];
+  jobs?: DitJobs;
+  takes?: DitTake[];
+}
+
+interface ActivityEventData {
+  id: string;
+  type: string;
+  assetId?: string | null;
+  filename?: string | null;
+  actorName?: string | null;
+  metadata?: unknown;
+  createdAt: string;
+}
+
+interface CrewRoleData {
+  key: string;
+  label: string;
+  labelEn?: string;
+  icon?: string;
+}
+
+interface StudioBounce {
+  id: string;
+  fileName?: string;
+  sessionName?: string;
+  reviewVersionId?: string;
+  createdAt: string;
+}
+
+interface StudioSessionData {
+  id?: string;
+  name?: string;
+  playhead?: { timecode?: string };
+  bounces?: StudioBounce[];
+  marker_count?: number;
+  bounce_count?: number;
+}
+
+interface StudioReadinessData {
+  warmed: number;
+  band: number;
+  moods: number;
+}
+
+interface BoardColumnTask {
+  id?: string;
+  t: string;
+  time?: string;
+  done: boolean;
+  real?: boolean;
+}
+
+interface BoardColumnData {
+  role: string;
+  icon: string;
+  crew: string;
+  tasks: BoardColumnTask[];
+}
+
+interface SyncItemDisplay {
+  t: string;
+  ok: boolean;
+}
+
+interface ChecklistDisplay {
+  id?: string;
+  t: string;
+  ok: boolean;
+  real?: boolean;
+}
+
+interface CaptureRealtimePayload {
+  id?: string;
+  event_type?: string;
+  asset_id?: string | null;
+  metadata?: unknown;
+  created_at?: string;
+}
+
+// WAI-ARIA checkbox-mønster for de to egendefinerte klikkbare check-ikonene
+// (board-oppgave og sjekkliste-punkt). Innkapsler role/aria-checked/tabIndex/
+// onKeyDown (Enter/Space) én gang i stedet for duplisert i to steder.
+interface CheckToggleProps {
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+  ariaLabel: string;
+  sx?: object;
+  children: React.ReactNode;
+}
+
+const CheckToggle: React.FC<CheckToggleProps> = React.memo(({ checked, disabled, onToggle, ariaLabel, sx, children }) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (disabled) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onToggle();
+    }
+  }, [disabled, onToggle]);
+  const handleClick = useCallback(() => {
+    if (!disabled) onToggle();
+  }, [disabled, onToggle]);
+  return (
+    <Box
+      role="checkbox"
+      aria-checked={checked}
+      aria-disabled={disabled || undefined}
+      aria-label={ariaLabel}
+      tabIndex={disabled ? -1 : 0}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      sx={{ cursor: disabled ? 'default' : 'pointer', display: 'flex', outline: 'none', '&:focus-visible': { boxShadow: `0 0 0 2px ${ws.accent}`, borderRadius: 0.5 }, ...sx }}
+    >
+      {children}
+    </Box>
+  );
+});
+CheckToggle.displayName = 'CheckToggle';
+
+interface StudioCardProps {
+  t: (key: string) => string;
+  go: (key: string) => void;
+  studioSessions: StudioSessionData[];
+  liveStudio: StudioSessionData | null;
+  latestBounces: StudioBounce[];
+  studioReadiness: StudioReadinessData | null;
+}
+
+const StudioCard: React.FC<StudioCardProps> = React.memo(({ t, go, studioSessions, liveStudio, latestBounces, studioReadiness }) => (
+  <WsCard sx={{ mb: 2 }}>
+    <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
+        {wsIcon('Tune', { fontSize: 18, color: ws.accent })}
+        <Box>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('studioTitle')}</Typography>
+            {liveStudio?.playhead?.timecode && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
+                <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>{wsIcon('PlayArrow', { fontSize: 12 })}{liveStudio.playhead.timecode}</Typography>
+              </Box>
+            )}
+          </Stack>
+          <Typography sx={{ fontSize: 11, color: ws.textFaint }} noWrap>{liveStudio?.name || 'Pro Tools'}</Typography>
+        </Box>
+      </Stack>
+      <Box sx={{ textAlign: 'center', px: 1 }}>
+        <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{studioSessions.reduce((s, x) => s + (Number(x.marker_count) || 0), 0)}</Typography>
+        <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('markersWord')}</Typography>
+      </Box>
+      <Box sx={{ textAlign: 'center', px: 1 }}>
+        <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{studioSessions.reduce((s, x) => s + (Number(x.bounce_count) || 0), 0)}</Typography>
+        <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('bouncesWord')}</Typography>
+      </Box>
+      {studioReadiness && (studioReadiness.warmed > 0 || studioReadiness.moods > 0) && (
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ px: 1 }}>
+          {wsIcon('SelfImprovement', { fontSize: 15, color: ws.textDim })}
+          <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>
+            {studioReadiness.warmed}{studioReadiness.band ? `/${studioReadiness.band}` : ''} {t('readyForRecording')}{studioReadiness.moods > 0 ? ` · ${studioReadiness.moods} ${t('moodCheckins')}` : ''}
+          </Typography>
+        </Stack>
+      )}
+      <Box sx={{ flex: 1 }} />
+      <Button size="small" variant="outlined" onClick={() => go('sound-room')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('openSoundRoomBtn')}</Button>
+    </Stack>
+    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
+      <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('latestBounces').toUpperCase()}</Typography>
+      {latestBounces.length === 0 ? (
+        <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noBounces')}</Typography>
+      ) : (
+        <Stack spacing={0.5}>
+          {latestBounces.map((b) => (
+            <Stack key={b.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.55, borderRadius: 1, bgcolor: ws.panelInput }}>
+              {wsIcon('Headphones', { fontSize: 14, color: ws.textDim })}
+              <Typography sx={{ fontSize: 12, color: ws.text, flex: 1, minWidth: 0 }} noWrap>{b.fileName || 'Bounce'}</Typography>
+              {b.sessionName && <Typography sx={{ fontSize: 10.5, color: ws.textFaint }} noWrap>{b.sessionName}</Typography>}
+              {b.reviewVersionId && <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{t('toVersion')}</Typography>}
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{timeAgo(b.createdAt, t)}</Typography>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+    </Box>
+  </WsCard>
+));
+StudioCard.displayName = 'StudioCard';
+
+interface CaptureBackupCardProps {
+  t: (key: string) => string;
+  cap: CaptureStatusData;
+  dit: DitStatusData | null;
+}
+
+const CaptureBackupCard: React.FC<CaptureBackupCardProps> = React.memo(({ t, cap, dit }) => (
+  <WsCard sx={{ mb: 2 }}>
+    <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
+        {wsIcon('PhotoCamera', { fontSize: 18, color: ws.accent })}
+        <Box>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Capture & backup</Typography>
+            {cap.shootingNow && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.red }} /><Typography sx={{ fontSize: 10.5, color: ws.red, fontWeight: 700 }}>{t('shootingNow')}</Typography></Box>}
+          </Stack>
+          <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{cap.session?.name || t('captureSession')}</Typography>
+        </Box>
+      </Stack>
+      <Box sx={{ textAlign: 'center', px: 1 }}>
+        <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{cap.assets?.total ?? 0}</Typography>
+        <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('photosWord')}</Typography>
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 160 }}>
+        <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('CloudDone', { fontSize: 13 })}{t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
+        <WsBar value={cap.assets?.securedPct ?? 0} color={(cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber} height={5} />
+        <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
+      </Box>
+    </Stack>
+
+    {/* One Desk DIT — speilings-destinasjoner + hash-verifiserte kopier */}
+    {dit?.hasBackup && (
+      <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
+        <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" gap={1}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 150 }}>
+            {wsIcon('Computer', { fontSize: 15, color: ws.textDim })}
+            <Box>
+              <Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{t('oneDeskMirror')}</Typography>
+              <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.oneDeskHosts?.length ? dit.oneDeskHosts.join(', ') : t('backupHelper')}</Typography>
+            </Box>
+          </Stack>
+          {(dit.destinations || []).map((d) => {
+            const ok = d.status === 'online' || d.status === 'connected' || d.status === 'ok' || d.status === 'active';
+            const ic = d.type === 'cloud' || d.storage === 'cloud' || d.cloud ? 'CloudDone' : d.type === 'raid' || d.storage === 'raid' ? 'Storage' : 'Save';
+            return (
+              <Stack key={d.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, bgcolor: ws.panelAlt }}>
+                {wsIcon(ic, { fontSize: 13, color: ws.textDim })}
+                <Typography sx={{ fontSize: 11, color: ws.text }}>{d.label || d.type || t('destination')}</Typography>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: ok ? ws.green : ws.textFaint }} />
+              </Stack>
+            );
+          })}
+          <Box sx={{ flex: 1 }} />
+          <Box sx={{ textAlign: 'right' }}>
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: dit.jobs?.failed ? ws.amber : ws.green }}>
+              {dit.jobs?.verified ?? 0} {t('hashVerified')}{dit.jobs?.copying ? ` · ${dit.jobs.copying} ${t('copyingWord')}` : ''}{dit.jobs?.failed ? ` · ${dit.jobs.failed} ${t('failedWord')}` : ''}
+            </Typography>
+            <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.jobs?.completed ?? 0} {t('ofWord')} {dit.jobs?.total ?? 0} {t('jobsWord')} · xxHash64</Typography>
+          </Box>
+        </Stack>
+
+        {/* Per-take-rollup — hver take speilet+verifisert til N destinasjoner */}
+        {Array.isArray(dit.takes) && dit.takes.length > 0 && (
+          <Box sx={{ mt: 1 }}>
+            <Typography sx={{ fontSize: 10, color: ws.textFaint, mb: 0.5 }}>
+              {dit.takes.length} take{dit.takes.length > 1 ? 's' : ''} · {dit.takes.filter((x) => x.fullyVerified).length} {t('fullyVerified')}
+            </Typography>
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+              {dit.takes.slice(0, 12).map((take) => (
+                <Stack key={take.takeId} direction="row" spacing={0.4} alignItems="center" sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: take.failed ? ws.red : take.fullyVerified ? ws.green : take.copying ? ws.amber : ws.textFaint }} />
+                  <Typography sx={{ fontSize: 10, color: ws.textDim, maxWidth: 90 }} noWrap>{take.takeId}</Typography>
+                  <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{take.verified}/{take.total}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        )}
+      </Box>
+    )}
+  </WsCard>
+));
+CaptureBackupCard.displayName = 'CaptureBackupCard';
+
+interface TimelineCardProps {
+  t: (key: string) => string;
+  go: (key: string) => void;
+  phaseItems: PhaseItem[];
+  nowVisible: boolean;
+  nowPct: number;
+  nowLabel: string;
+}
+
+const TimelineCard: React.FC<TimelineCardProps> = React.memo(({ t, go, phaseItems, nowVisible, nowPct, nowLabel }) => (
+  <WsCard sx={{ mb: 2 }}>
+    <WsSectionTitle
+      icon={<AccessTime sx={{ fontSize: 18, color: ws.textDim }} />}
+      title={t('todayTimeline')}
+      action={
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>{t('today')}</Button>
+        </Stack>
+      }
+    />
+    {/* Ruler */}
+    <Box sx={{ position: 'relative', mb: 1.5 }}>
+      <Stack direction="row" justifyContent="space-between" sx={{ px: 0.5 }}>
+        {RULER.map((time) => <Typography key={time} sx={{ fontSize: 11, color: ws.textFaint }}>{time}</Typography>)}
+      </Stack>
+      <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
+        {nowVisible && (
+          // «Nå»-markør: etikett over linjalen + kort tick. Kort tick (ikke
+          // en 60px-linje) så den ikke vasker over fase-kortenes tekst under.
+          <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Chip size="small" label={nowLabel} sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
+            <Box sx={{ width: 1, height: 12, bgcolor: ws.accent, mt: 0.5, opacity: 0.7 }} />
+          </Box>
+        )}
+      </Box>
+    </Box>
+    {/* Faser */}
+    <Stack direction="row" spacing={1.25} sx={{ overflowX: 'auto', pb: 0.5 }}>
+      {phaseItems.map((p) => (
+        <Box key={p.label} sx={{
+          minWidth: 150, p: 1.25, borderRadius: `${ws.radiusSm}px`,
+          bgcolor: p.active ? ws.accentSoft : 'rgba(255,255,255,0.03)',
+          border: `1px solid ${p.active ? ws.accentBorder : ws.borderSoft}`,
+        }}>
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            {wsIcon(p.icon, { fontSize: 17, color: p.color })}
+            <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{p.label}</Typography>
+          </Stack>
+          <Typography sx={{ fontSize: 11.5, color: ws.textDim, mt: 0.5 }}>{p.time}</Typography>
+        </Box>
+      ))}
+    </Stack>
+  </WsCard>
+));
+TimelineCard.displayName = 'TimelineCard';
+
+interface SyncBoardCardProps {
+  t: (key: string) => string;
+  boardCols: BoardColumnData[];
+  isReal: boolean;
+  onToggleTask: (id: string, done: boolean) => void;
+  onAddTask: (crewRole: string) => void;
+}
+
+const SyncBoardCard: React.FC<SyncBoardCardProps> = React.memo(({ t, boardCols, isReal, onToggleTask, onAddTask }) => (
+  <WsCard sx={{ mb: 2 }}>
+    <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title={t('syncBoard')} />
+    <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto' }}>
+      {boardCols.map((col) => (
+        <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+            {crewIcon(col.icon, { fontSize: 15, color: ws.textDim })}
+            <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.textDim }}>{col.role}</Typography>
+          </Stack>
+          <Stack spacing={1}>
+            {col.tasks.map((task, i) => (
+              <Box key={task.id || i} sx={{
+                p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.03)',
+                border: `1px solid ${ws.borderSoft}`,
+              }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                  <Box>
+                    <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: ws.text }}>{task.t}</Typography>
+                    {task.time && <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{task.time}</Typography>}
+                  </Box>
+                  <CheckToggle
+                    checked={task.done}
+                    disabled={!task.real || !task.id}
+                    onToggle={() => task.id && onToggleTask(task.id, task.done)}
+                    ariaLabel={`${task.t} — ${task.done ? t('markNotDoneAria') : t('markDoneAria')}`}
+                  >
+                    {task.done
+                      ? <CheckCircle sx={{ fontSize: 18, color: ws.green }} />
+                      : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
+                  </CheckToggle>
+                </Stack>
+              </Box>
+            ))}
+            <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => onAddTask(col.crew)} disabled={!isReal} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
+              {t('addTaskBtn')}
+            </Button>
+          </Stack>
+        </Box>
+      ))}
+    </Stack>
+  </WsCard>
+));
+SyncBoardCard.displayName = 'SyncBoardCard';
+
+interface TeamSyncCardProps {
+  t: (key: string) => string;
+  go: (key: string) => void;
+  syncPct: number;
+  syncItems: SyncItemDisplay[];
+}
+
+const TeamSyncCard: React.FC<TeamSyncCardProps> = React.memo(({ t, go, syncPct, syncItems }) => (
+  <WsCard>
+    <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('teamSyncTitle')}</Typography>
+    <Stack direction="row" spacing={2} alignItems="center">
+      <WsRing value={syncPct} size={104} label={`${syncPct}%`} sub={t('ready')} color={syncPct >= 80 ? ws.green : ws.amber} />
+      <Stack spacing={0.75} sx={{ flex: 1 }}>
+        {syncItems.length === 0 && (
+          <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noSyncData')}</Typography>
+        )}
+        {syncItems.map((s, i) => (
+          <Stack key={i} direction="row" spacing={0.75} alignItems="center">
+            {s.ok ? <CheckCircle sx={{ fontSize: 16, color: ws.green }} /> : <RadioButtonUnchecked sx={{ fontSize: 16, color: ws.textFaint }} />}
+            <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s.t}</Typography>
+          </Stack>
+        ))}
+      </Stack>
+    </Stack>
+    <Button fullWidth size="small" onClick={() => go('prosjektplan')} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('seeDetails')}</Button>
+  </WsCard>
+));
+TeamSyncCard.displayName = 'TeamSyncCard';
+
+interface ChecklistCardProps {
+  t: (key: string) => string;
+  checkItems: ChecklistDisplay[];
+  isReal: boolean;
+  onToggleCheck: (id: string, checked: boolean) => void;
+  onAddCheck: () => void;
+}
+
+const ChecklistCard: React.FC<ChecklistCardProps> = React.memo(({ t, checkItems, isReal, onToggleCheck, onAddCheck }) => (
+  <WsCard>
+    <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('checklistTitle')}</Typography>
+    <Stack spacing={1}>
+      {checkItems.map((c, i) => (
+        <CheckToggle
+          key={c.id || i}
+          checked={c.ok}
+          disabled={!c.real || !c.id}
+          onToggle={() => c.id && onToggleCheck(c.id, c.ok)}
+          ariaLabel={c.t}
+          sx={{ flexDirection: 'row', alignItems: 'center', gap: 0.75 }}
+        >
+          {c.ok ? <CheckCircle sx={{ fontSize: 17, color: ws.green }} /> : <Warning sx={{ fontSize: 17, color: ws.amber }} />}
+          <Typography sx={{ fontSize: 12.5, color: ws.text }}>{c.t}</Typography>
+        </CheckToggle>
+      ))}
+    </Stack>
+    <Button fullWidth size="small" onClick={onAddCheck} disabled={!isReal} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{isReal ? t('addCheckBtn') : t('seeAll')}</Button>
+  </WsCard>
+));
+ChecklistCard.displayName = 'ChecklistCard';
+
+interface ReferencesCardProps {
+  t: (key: string) => string;
+  go: (key: string) => void;
+  wsCategory: string;
+  images: ProjectImageItem[];
+  onUpload: (file: File, category?: string) => Promise<ProjectImageItem | void>;
+}
+
+const ReferencesCard: React.FC<ReferencesCardProps> = React.memo(({ t, go, wsCategory, images, onUpload }) => (
+  <WsCard>
+    <WsSectionTitle title={wsCategory === 'music' ? t('refsTitleMusic') : t('refsTitle')} action={<Button size="small" onClick={() => go(wsCategory === 'music' ? 'moodboard' : 'shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
+    <WsImageGrid columns={3} addLabel={t('addReference')} images={images} onUpload={onUpload} />
+  </WsCard>
+));
+ReferencesCard.displayName = 'ReferencesCard';
+
+interface ActivityFeedProps {
+  t: (key: string) => string;
+  isReal: boolean;
+  activity: ActivityEventData[];
+  capLive: boolean;
+}
+
+const DEMO_ACTIVITY: ActivityEventData[] = [
+  { id: 'd1', type: 'asset_added', filename: 'A7IV_1188.CR3', createdAt: new Date(Date.now() - 30000).toISOString() },
+  { id: 'd2', type: 'flagged_for_client', filename: 'A7IV_1184.CR3', createdAt: new Date(Date.now() - 180000).toISOString() },
+  { id: 'd3', type: 'handoff_triggered', filename: null, createdAt: new Date(Date.now() - 900000).toISOString() },
+];
+
+const ActivityFeed: React.FC<ActivityFeedProps> = React.memo(({ t, isReal, activity, capLive }) => (
+  <WsCard sx={{ mb: 2 }}>
+    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
+      {wsIcon('Bolt', { fontSize: 15, color: ws.textDim })}
+      <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('captureActivity')}</Typography>
+      {capLive && <Stack direction="row" spacing={0.5} alignItems="center"><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} /><Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography></Stack>}
+    </Stack>
+    <Stack spacing={0.25} sx={{ maxHeight: 280, overflowY: 'auto' }}>
+      {(isReal ? activity : DEMO_ACTIVITY).map((ev) => {
+        const m = activityMeta(ev.type, t);
+        return (
+          <Stack key={ev.id} direction="row" spacing={1} alignItems="flex-start" sx={{ py: 0.65, px: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
+            {wsIcon(m.icon, { fontSize: 15, color: ws.textDim })}
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ fontSize: 12, color: ws.text, lineHeight: 1.35 }}>
+                {m.label}{ev.filename ? <Typography component="span" sx={{ color: ws.textDim }}> · {ev.filename}</Typography> : null}
+              </Typography>
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{ev.actorName ? `${ev.actorName} · ` : ''}{timeAgo(ev.createdAt, t)}</Typography>
+            </Box>
+          </Stack>
+        );
+      })}
+    </Stack>
+  </WsCard>
+));
+ActivityFeed.displayName = 'ActivityFeed';
+
+interface AddItemDialogState {
+  open: boolean;
+  kind: 'check' | 'task';
+  crewRole?: string;
+  value: string;
+  submitting: boolean;
+  error: string | null;
+}
+
+const CLOSED_DIALOG_STATE: AddItemDialogState = { open: false, kind: 'check', value: '', submitting: false, error: null };
+
 const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
   const [, navigate] = useLocation();
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
-  const t = makeT(T, locale);
-  const go = (key: string) => navigate(`/workspace/${projectId}/${key}`);
-  const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
-  const [events, setEvents] = useState<any[] | null>(null);
-  const [tasks, setTasks] = useState<any[] | null>(null);
-  const [checks, setChecks] = useState<any[] | null>(null);
+  const t = useMemo(() => makeT(T, locale), [locale]);
+  const go = useCallback((key: string) => navigate(`/workspace/${projectId}/${key}`), [navigate, projectId]);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
+  const [events, setEvents] = useState<TimelineEventItem[] | null>(null);
+  const [tasks, setTasks] = useState<BoardTaskItem[] | null>(null);
+  const [checks, setChecks] = useState<ChecklistItemData[] | null>(null);
 
-  const isReal = projectId && projectId !== 'sample';
+  const isReal = Boolean(projectId && projectId !== 'sample');
 
-  const loadTasks = () => {
+  const loadTasks = useCallback(() => {
     if (!isReal) return;
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`)
-      .then((r: any) => { setTasks(Array.isArray(r?.tasks) ? r.tasks : []); })
-      .catch(() => {});
-  };
+    apiRequest(projectApiPath(projectId, '/board-tasks'))
+      .then((r) => { setTasks(Array.isArray(r?.tasks) ? r.tasks : []); })
+      .catch(devWarn('load board-tasks'));
+  }, [isReal, projectId]);
 
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
-      .then((r: any) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
-      .catch(() => {});
+      .then((r) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
+      .catch(devWarn('load milestones'));
     if (profession === 'photographer' || profession === 'videographer' || !profession) {
       apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
-        .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
-        .catch(() => {});
+        .then((r) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
+        .catch(devWarn('load timeline'));
     }
     loadTasks();
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`)
-      .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
-      .catch(() => {});
+    apiRequest(projectApiPath(projectId, '/checklist'))
+      .then((r) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
+      .catch(devWarn('load checklist'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  const toggleCheck = async (id: string, checked: boolean) => {
+  const toggleCheck = useCallback((id: string, checked: boolean) => {
     if (!isReal) return;
     setChecks((p) => (p || []).map((c) => (c.id === id ? { ...c, checked: !checked } : c)));
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist/${id}`, { method: 'PATCH', body: { checked: !checked } }).catch(() => {});
-  };
-  const addCheck = async () => {
+    apiRequest(projectApiPath(projectId, `/checklist/${id}`), { method: 'PATCH', body: { checked: !checked } }).catch(devWarn('toggle checklist item'));
+  }, [isReal, projectId]);
+
+  const toggleTask = useCallback((id: string, done: boolean) => {
     if (!isReal) return;
-    const label = window.prompt(t('newCheckPrompt')); if (!label) return;
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label: label.trim() } }); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || [])); }
-    catch (e: any) { window.alert(e?.message || t('addFailed')); }
-  };
-  const checkItems = isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
+    const nextStatus = done ? 'todo' : 'done';
+    setTasks((p) => (p || []).map((task) => (task.id === id ? { ...task, status: nextStatus } : task)));
+    apiRequest(projectApiPath(projectId, `/board-tasks/${id}`), { method: 'PATCH', body: { status: nextStatus } }).catch(() => loadTasks());
+  }, [isReal, projectId, loadTasks]);
+
+  const [dialog, setDialog] = useState<AddItemDialogState>(CLOSED_DIALOG_STATE);
+  const openCheckDialog = useCallback(() => setDialog({ open: true, kind: 'check', value: '', submitting: false, error: null }), []);
+  const openTaskDialog = useCallback((crewRole: string) => setDialog({ open: true, kind: 'task', crewRole, value: '', submitting: false, error: null }), []);
+  const closeDialog = useCallback(() => setDialog(CLOSED_DIALOG_STATE), []);
+  const submitDialog = useCallback(async () => {
+    const label = dialog.value.trim();
+    if (!label || !isReal) return;
+    setDialog((d) => ({ ...d, submitting: true, error: null }));
+    try {
+      if (dialog.kind === 'check') {
+        await apiRequest(projectApiPath(projectId, '/checklist'), { method: 'POST', body: { label } });
+        const r = await apiRequest(projectApiPath(projectId, '/checklist'));
+        setChecks(Array.isArray(r?.items) ? r.items : []);
+      } else {
+        await apiRequest(projectApiPath(projectId, '/board-tasks'), { method: 'POST', body: { title: label, crewRole: dialog.crewRole } });
+        loadTasks();
+      }
+      setDialog(CLOSED_DIALOG_STATE);
+    } catch (e) {
+      setDialog((d) => ({ ...d, submitting: false, error: e instanceof Error ? e.message : t('addFailed') }));
+    }
+  }, [dialog, isReal, projectId, t, loadTasks]);
+
+  const checkItems: ChecklistDisplay[] = useMemo(
+    () => (isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label || '', ok: Boolean(c.checked), real: true })) : CHECKLIST),
+    [isReal, checks],
+  );
   const refs = useProjectImages(projectId, 'references');
-  const [teamSync, setTeamSync] = useState<any | null>(null);
+  const [teamSync, setTeamSync] = useState<TeamSyncData | null>(null);
   // Signatur på antall + fullført-antall i stedet for array-REFERANSENE, ellers
   // re-fetches team-sync på hvert render/poll (nye array-refs med samme innhold)
   // — inkl. hvert checkbox-klikk. Nå kun ved reell endring.
   // tasks/checks starter som null (før fetch) og kan forbli null hvis board-tasks/
   // checklist feiler (f.eks. 401). Spread av null kaster «tasks is not iterable»
   // og krasjer hele Oversikt-fanen på første render — guard med (… || []).
-  const doneSig = [...(tasks || []), ...(checks || [])].reduce((n: number, x: any) => n + (x?.done || x?.completed || x?.checked || x?.status === 'done' ? 1 : 0), 0);
+  const doneSig = [...(tasks || []), ...(checks || [])].reduce((n: number, x) => n + ((x as BoardTaskItem & ChecklistItemData)?.status === 'done' || (x as ChecklistItemData)?.checked ? 1 : 0), 0);
   useEffect(() => {
     if (!isReal) return;
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
+    apiRequest(projectApiPath(projectId, '/team-sync')).then((r) => setTeamSync(r || null)).catch(devWarn('load team-sync'));
   }, [projectId, isReal, tasks?.length, checks?.length, doneSig]);
   // Ekte prosjekter: kun ekte team-sync (0 %/tom-tilstand til data finnes); demo-tall kun på sample.
   const syncPct = isReal ? (teamSync?.pct ?? 0) : 82;
-  const syncItems = (teamSync && Array.isArray(teamSync.readiness) && teamSync.readiness.length)
-    ? teamSync.readiness.map((x: any) => ({ t: `${x.label} (${x.value})`, ok: x.done }))
-    : isReal ? [] : SYNC_ITEMS.map((s) => ({ t: s, ok: true }));
+  const syncItems: SyncItemDisplay[] = useMemo(() => (
+    (teamSync && Array.isArray(teamSync.readiness) && teamSync.readiness.length)
+      ? teamSync.readiness.map((x) => ({ t: `${x.label} (${x.value})`, ok: x.done }))
+      : isReal ? [] : SYNC_ITEMS.map((s) => ({ t: s, ok: true }))
+  ), [teamSync, isReal]);
 
   // Capture & backup — live-status fra iPad CaptureApp + One Desk (poll 20s).
-  const [capture, setCapture] = useState<any | null>(null);
+  const [capture, setCapture] = useState<CaptureStatusData | null>(null);
   useEffect(() => {
     if (!isReal) return;
     const fetchCap = () => {
       if (document.hidden) return;
-      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`).then((r: any) => setCapture(r || null)).catch(() => {});
+      apiRequest(projectApiPath(projectId, '/capture-status')).then((r) => setCapture(r || null)).catch(devWarn('load capture-status'));
     };
     fetchCap();
-    const t = setInterval(fetchCap, 20000);
-    return () => clearInterval(t);
+    const timer = setInterval(fetchCap, 20000);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
   // One Desk DIT-backup — RAID/B2-speiling + hash-verifiserte kopier (poll 30s).
-  const [dit, setDit] = useState<any | null>(null);
-  const loadDit = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/dit-status`).then((r: any) => setDit(r || null)).catch(() => {}); };
-  useEffect(() => {
+  const [dit, setDit] = useState<DitStatusData | null>(null);
+  const loadDit = useCallback(() => {
     if (!isReal) return;
+    apiRequest(projectApiPath(projectId, '/dit-status')).then((r) => setDit(r || null)).catch(devWarn('load dit-status'));
+  }, [isReal, projectId]);
+  useEffect(() => {
     loadDit();
-    const t = setInterval(() => { if (!document.hidden) loadDit(); }, 30000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+    const timer = setInterval(() => { if (!document.hidden) loadDit(); }, 30000);
+    return () => clearInterval(timer);
+  }, [loadDit]);
   // Capture-aktivitet — live hendelseslogg fra iPad + One Desk (backfill + WS).
-  const [activity, setActivity] = useState<any[]>([]);
-  const loadActivity = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-activity`).then((r: any) => setActivity(Array.isArray(r?.events) ? r.events : [])).catch(() => {}); };
-  useEffect(() => { loadActivity(); /* eslint-disable-next-line */ }, [projectId]);
+  const [activity, setActivity] = useState<ActivityEventData[]>([]);
+  const loadActivity = useCallback(() => {
+    if (!isReal) return;
+    apiRequest(projectApiPath(projectId, '/capture-activity')).then((r) => setActivity(Array.isArray(r?.events) ? r.events : [])).catch(devWarn('load capture-activity'));
+  }, [isReal, projectId]);
+  useEffect(() => { loadActivity(); }, [loadActivity]);
 
   // Sanntid: oppdater Capture & backup INSTANT når iPad skyter/culler (WS).
-  const { live: capLive } = useCaptureRealtime(projectId, (payload: any) => {
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`).then((r: any) => setCapture(r || null)).catch(() => {});
+  const handleCaptureRealtime = useCallback((payload: CaptureRealtimePayload) => {
+    apiRequest(projectApiPath(projectId, '/capture-status')).then((r) => setCapture(r || null)).catch(devWarn('load capture-status (realtime)'));
     loadDit();
     // Append innkommende hendelse øverst i strømmen (rad-form fra broadcastCaptureEvent).
     if (payload?.id && payload?.event_type) {
-      setActivity((p) => [{ id: payload.id, type: payload.event_type, assetId: payload.asset_id || null, filename: null, actorName: null, metadata: payload.metadata || null, createdAt: payload.created_at || new Date().toISOString() }, ...p.filter((x) => x.id !== payload.id)].slice(0, 40));
-    } else { loadActivity(); }
-  });
-  const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
-
-  const toggleTask = async (id: string, status: string) => {
-    if (!isReal) return;
-    setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: status === 'done' ? 'todo' : 'done' } : t)));
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${id}`, { method: 'PATCH', body: { status: status === 'done' ? 'todo' : 'done' } }).catch(loadTasks);
-  };
-  const addTask = async (crewRole: string) => {
-    if (!isReal) return;
-    const title = window.prompt(t('newTaskPrompt')); if (!title) return;
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole } }); loadTasks(); }
-    catch (e: any) { window.alert(e?.message || t('addFailed')); }
-  };
+      const id = payload.id;
+      setActivity((p) => [{ id, type: payload.event_type as string, assetId: payload.asset_id || null, filename: null, actorName: null, metadata: payload.metadata || null, createdAt: payload.created_at || new Date().toISOString() }, ...p.filter((x) => x.id !== id)].slice(0, 40));
+    } else {
+      loadActivity();
+    }
+  }, [projectId, loadDit, loadActivity]);
+  const { live: capLive } = useCaptureRealtime(projectId, handleCaptureRealtime);
+  const cap: CaptureStatusData = isReal
+    ? (capture || {})
+    : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
 
   // Rolle-kolonnene er DATA: GET /crew-roles gir eier-kategoriens default-sett
   // ∪ roller teamet/boardet faktisk bruker — blandede team (foto + musikk på
   // samme event) får dermed egne kolonner. Kategori-defaults fra den delte
   // katalogen som fallback før svaret/på sample.
   const wsCategory = useWorkspaceCategory(profession);
-  const [crewData, setCrewData] = useState<{ roles: any[]; fallbackKey: string } | null>(null);
+  const [crewData, setCrewData] = useState<{ roles: CrewRoleData[]; fallbackKey: string } | null>(null);
   useEffect(() => {
     if (!isReal) { setCrewData(null); return; }
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/crew-roles`)
-      .then((r: any) => { if (Array.isArray(r?.roles) && r.roles.length) setCrewData({ roles: r.roles, fallbackKey: r.fallbackKey || 'begge' }); })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    apiRequest(projectApiPath(projectId, '/crew-roles'))
+      .then((r) => { if (Array.isArray(r?.roles) && r.roles.length) setCrewData({ roles: r.roles, fallbackKey: r.fallbackKey || 'begge' }); })
+      .catch(devWarn('load crew-roles'));
   }, [projectId, isReal]);
   // Studio-kort for musikk: siste sesjoner m/ playhead + bounces (erstatter
   // det foto-spesifikke Capture & backup-kortet).
-  const [studioSessions, setStudioSessions] = useState<any[] | null>(null);
+  const [studioSessions, setStudioSessions] = useState<StudioSessionData[]>([]);
   // Readiness (EaseVerse oppvarming + Bandets form) — eier-gatet; feil → skjult.
-  const [studioReadiness, setStudioReadiness] = useState<{ warmed: number; band: number; moods: number } | null>(null);
+  const [studioReadiness, setStudioReadiness] = useState<StudioReadinessData | null>(null);
   useEffect(() => {
-    if (!isReal || wsCategory !== 'music') { setStudioSessions(null); setStudioReadiness(null); return; }
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/recording-sessions?include=details`)
-      .then(async (r: any) => {
+    if (!isReal || wsCategory !== 'music') { setStudioSessions([]); setStudioReadiness(null); return; }
+    apiRequest(projectApiPath(projectId, '/recording-sessions?include=details'))
+      .then(async (r) => {
         setStudioSessions(Array.isArray(r?.sessions) ? r.sessions : []);
         if (!r?.audioRoomId) return;
         try {
           const [w, m, mem] = await Promise.all([
             apiRequest(`/api/audio-showcases/${encodeURIComponent(r.audioRoomId)}/warmups`).catch(() => null),
             apiRequest(`/api/audio-showcases/${encodeURIComponent(r.audioRoomId)}/mood`).catch(() => null),
-            apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).catch(() => null),
+            apiRequest(projectApiPath(projectId, '/audio-room/members')).catch(() => null),
           ]);
           const routines = Array.isArray(w?.routines) ? w.routines : null;
           if (!routines) return; // ikke eier → skjul
-          const warmed = new Set(routines.flatMap((x: any) => (x.completions || []).map((c: any) => c.name))).size;
+          const warmed = new Set(routines.flatMap((x: { completions?: Array<{ name: string }> }) => (x.completions || []).map((c) => c.name))).size;
           setStudioReadiness({ warmed, band: Array.isArray(mem?.members) ? mem.members.length : 0, moods: Array.isArray(m?.moods) ? m.moods.length : 0 });
-        } catch { /* stille */ }
+        } catch (err) {
+          devWarn('load studio readiness')(err);
+        }
       })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(devWarn('load recording-sessions'));
   }, [projectId, isReal, wsCategory]);
-  const latestBounces = (studioSessions || [])
-    .flatMap((s: any) => (Array.isArray(s.bounces) ? s.bounces.map((b: any) => ({ ...b, sessionName: s.name })) : []))
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 4);
-  const liveStudio = (studioSessions || []).find((s: any) => s.playhead?.timecode) || (studioSessions || [])[0] || null;
+  const latestBounces: StudioBounce[] = useMemo(() => (
+    studioSessions
+      .flatMap((s) => (Array.isArray(s.bounces) ? s.bounces.map((b) => ({ ...b, sessionName: s.name })) : []))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 4)
+  ), [studioSessions]);
+  const liveStudio: StudioSessionData | null = useMemo(
+    () => studioSessions.find((s) => s.playhead?.timecode) || studioSessions[0] || null,
+    [studioSessions],
+  );
 
-  const catDefaults = CATEGORY_DEFAULT_CREW[wsCategory] || CATEGORY_DEFAULT_CREW.visual;
-  const roleDefs = crewData ? crewData.roles : catDefaults.keys.map(crewRoleDef);
-  const crewFallbackKey = crewData?.fallbackKey || catDefaults.fallbackKey;
-  const COLS = roleDefs.map((r: any) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || 'Person', crew: r.key }));
-  const realBoard = tasks && tasks.length > 0
-    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || crewFallbackKey) === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
-    : null;
-  const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || 'Groups', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
+  const boardCols: BoardColumnData[] = useMemo(() => {
+    const catDefaults = CATEGORY_DEFAULT_CREW[wsCategory] || CATEGORY_DEFAULT_CREW.visual;
+    const roleDefs = crewData ? crewData.roles : catDefaults.keys.map(crewRoleDef);
+    const crewFallbackKey = crewData?.fallbackKey || catDefaults.fallbackKey;
+    const cols = roleDefs.map((r: CrewRoleData) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || 'Person', crew: r.key }));
+    if (!isReal) {
+      return BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: cols[i]?.crew || 'begge', tasks: c.tasks }));
+    }
+    if (tasks && tasks.length > 0) {
+      return cols.map((c) => ({
+        ...c,
+        tasks: tasks
+          .filter((task) => (task.crewRole || crewFallbackKey) === c.crew)
+          .map((task) => ({ id: task.id, t: task.title || '', time: task.timeLabel || '', done: task.status === 'done', real: true })),
+      }));
+    }
+    return cols.map((c) => ({ role: c.role, icon: c.icon, crew: c.crew, tasks: [] }));
+  }, [wsCategory, crewData, locale, isReal, tasks]);
 
   // Ekte prosjekter: ekte fremdrift (0 til milestones finnes); demo-tall kun på sample.
   const fremdriftPct = progress ? progress.pct : isReal ? 0 : 68;
   const fremdriftText = progress
     ? `${progress.done} ${t('ofWord')} ${progress.total} ${t('tasksDone')}`
     : isReal ? t('noMilestones') : `14 ${t('ofWord')} 21 ${t('tasksDone')}`;
-  const phaseItems = isReal
-    ? (events || []).map((e: any) => ({ icon: eventIcon(e.title), label: e.title || t('eventWord'), time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
-    : PHASES;
+  const phaseItems: PhaseItem[] = useMemo(() => (
+    isReal
+      ? (events || []).map((e) => ({ icon: eventIcon(e.title || ''), label: e.title || t('eventWord'), time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', color: ws.textDim, active: e.status === 'in_progress' || e.status === 'current' }))
+      : PHASES
+  ), [isReal, events, t]);
 
   // Now-markør: ekte klokke mot 08:00–22:00-linjalen (oppdateres hvert minutt,
   // skjules utenfor vinduet). Sample beholder demo-tidspunktet 12:15.
   const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
   useEffect(() => {
-    const t = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 60000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 60000);
+    return () => clearInterval(timer);
   }, []);
   const nowPct = isReal ? ((nowMin - 8 * 60) / (14 * 60)) * 100 : 30.4;
   const nowLabel = isReal ? `${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}` : '12:15';
@@ -404,297 +1082,59 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         </Stack>
 
         {/* Capture & backup — live fra iPad CaptureApp + One Desk */}
-        {wsCategory === 'music' && isReal && studioSessions && studioSessions.length > 0 && (
-          <WsCard sx={{ mb: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
-                {wsIcon('Tune', { fontSize: 18, color: ws.accent })}
-                <Box>
-                  <Stack direction="row" spacing={0.75} alignItems="center">
-                    <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('studioTitle')}</Typography>
-                    {liveStudio?.playhead?.timecode && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
-                        <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>{wsIcon('PlayArrow', { fontSize: 12 })}{liveStudio.playhead.timecode}</Typography>
-                      </Box>
-                    )}
-                  </Stack>
-                  <Typography sx={{ fontSize: 11, color: ws.textFaint }} noWrap>{liveStudio?.name || 'Pro Tools'}</Typography>
-                </Box>
-              </Stack>
-              <Box sx={{ textAlign: 'center', px: 1 }}>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{(studioSessions || []).reduce((s: number, x: any) => s + (Number(x.marker_count) || 0), 0)}</Typography>
-                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('markersWord')}</Typography>
-              </Box>
-              <Box sx={{ textAlign: 'center', px: 1 }}>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{(studioSessions || []).reduce((s: number, x: any) => s + (Number(x.bounce_count) || 0), 0)}</Typography>
-                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('bouncesWord')}</Typography>
-              </Box>
-              {studioReadiness && (studioReadiness.warmed > 0 || studioReadiness.moods > 0) && (
-                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ px: 1 }}>
-                  {wsIcon('SelfImprovement', { fontSize: 15, color: ws.textDim })}
-                  <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>
-                    {studioReadiness.warmed}{studioReadiness.band ? `/${studioReadiness.band}` : ''} {t('readyForRecording')}{studioReadiness.moods > 0 ? ` · ${studioReadiness.moods} ${t('moodCheckins')}` : ''}
-                  </Typography>
-                </Stack>
-              )}
-              <Box sx={{ flex: 1 }} />
-              <Button size="small" variant="outlined" onClick={() => go('sound-room')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('openSoundRoomBtn')}</Button>
-            </Stack>
-            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
-              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('latestBounces').toUpperCase()}</Typography>
-              {latestBounces.length === 0 ? (
-                <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noBounces')}</Typography>
-              ) : (
-                <Stack spacing={0.5}>
-                  {latestBounces.map((b: any) => (
-                    <Stack key={b.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.55, borderRadius: 1, bgcolor: ws.panelInput }}>
-                      {wsIcon('Headphones', { fontSize: 14, color: ws.textDim })}
-                      <Typography sx={{ fontSize: 12, color: ws.text, flex: 1, minWidth: 0 }} noWrap>{b.fileName || 'Bounce'}</Typography>
-                      {b.sessionName && <Typography sx={{ fontSize: 10.5, color: ws.textFaint }} noWrap>{b.sessionName}</Typography>}
-                      {b.reviewVersionId && <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{t('toVersion')}</Typography>}
-                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{timeAgo(b.createdAt, t)}</Typography>
-                    </Stack>
-                  ))}
-                </Stack>
-              )}
-            </Box>
-          </WsCard>
+        {wsCategory === 'music' && isReal && studioSessions.length > 0 && (
+          <StudioCard t={t} go={go} studioSessions={studioSessions} liveStudio={liveStudio} latestBounces={latestBounces} studioReadiness={studioReadiness} />
         )}
         {wsCategory !== 'music' && cap?.hasSession && (
-          <WsCard sx={{ mb: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
-                {wsIcon('PhotoCamera', { fontSize: 18, color: ws.accent })}
-                <Box>
-                  <Stack direction="row" spacing={0.75} alignItems="center">
-                    <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Capture & backup</Typography>
-                    {cap.shootingNow && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.red }} /><Typography sx={{ fontSize: 10.5, color: ws.red, fontWeight: 700 }}>{t('shootingNow')}</Typography></Box>}
-                  </Stack>
-                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{cap.session?.name || t('captureSession')}</Typography>
-                </Box>
-              </Stack>
-              <Box sx={{ textAlign: 'center', px: 1 }}>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{cap.assets?.total ?? 0}</Typography>
-                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('photosWord')}</Typography>
-              </Box>
-              <Box sx={{ flex: 1, minWidth: 160 }}>
-                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('CloudDone', { fontSize: 13 })}{t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
-                <WsBar value={cap.assets?.securedPct ?? 0} color={(cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber} height={5} />
-                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
-              </Box>
-            </Stack>
-
-            {/* One Desk DIT — speilings-destinasjoner + hash-verifiserte kopier */}
-            {dit?.hasBackup && (
-              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
-                <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" gap={1}>
-                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 150 }}>
-                    {wsIcon('Computer', { fontSize: 15, color: ws.textDim })}
-                    <Box>
-                      <Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{t('oneDeskMirror')}</Typography>
-                      <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.oneDeskHosts?.length ? dit.oneDeskHosts.join(', ') : t('backupHelper')}</Typography>
-                    </Box>
-                  </Stack>
-                  {(dit.destinations || []).map((d: any) => {
-                    const ok = d.status === 'online' || d.status === 'connected' || d.status === 'ok' || d.status === 'active';
-                    const ic = d.type === 'cloud' || d.storage === 'cloud' || d.cloud ? 'CloudDone' : d.type === 'raid' || d.storage === 'raid' ? 'Storage' : 'Save';
-                    return (
-                      <Stack key={d.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, bgcolor: ws.panelAlt }}>
-                        {wsIcon(ic, { fontSize: 13, color: ws.textDim })}
-                        <Typography sx={{ fontSize: 11, color: ws.text }}>{d.label || d.type || t('destination')}</Typography>
-                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: ok ? ws.green : ws.textFaint }} />
-                      </Stack>
-                    );
-                  })}
-                  <Box sx={{ flex: 1 }} />
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: dit.jobs?.failed ? ws.amber : ws.green }}>
-                      {dit.jobs?.verified ?? 0} {t('hashVerified')}{dit.jobs?.copying ? ` · ${dit.jobs.copying} ${t('copyingWord')}` : ''}{dit.jobs?.failed ? ` · ${dit.jobs.failed} ${t('failedWord')}` : ''}
-                    </Typography>
-                    <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.jobs?.completed ?? 0} {t('ofWord')} {dit.jobs?.total ?? 0} {t('jobsWord')} · xxHash64</Typography>
-                  </Box>
-                </Stack>
-
-                {/* Per-take-rollup — hver take speilet+verifisert til N destinasjoner */}
-                {Array.isArray(dit.takes) && dit.takes.length > 0 && (
-                  <Box sx={{ mt: 1 }}>
-                    <Typography sx={{ fontSize: 10, color: ws.textFaint, mb: 0.5 }}>
-                      {dit.takes.length} take{dit.takes.length > 1 ? 's' : ''} · {dit.takes.filter((x: any) => x.fullyVerified).length} {t('fullyVerified')}
-                    </Typography>
-                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                      {dit.takes.slice(0, 12).map((t: any) => (
-                        <Stack key={t.takeId} direction="row" spacing={0.4} alignItems="center" sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
-                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: t.failed ? ws.red : t.fullyVerified ? ws.green : t.copying ? ws.amber : ws.textFaint }} />
-                          <Typography sx={{ fontSize: 10, color: ws.textDim, maxWidth: 90 }} noWrap>{t.takeId}</Typography>
-                          <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{t.verified}/{t.total}</Typography>
-                        </Stack>
-                      ))}
-                    </Stack>
-                  </Box>
-                )}
-              </Box>
-            )}
-          </WsCard>
+          <CaptureBackupCard t={t} cap={cap} dit={dit} />
         )}
 
         {/* Dagens tidslinje */}
-        <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle
-            icon={<AccessTime sx={{ fontSize: 18, color: ws.textDim }} />}
-            title={t('todayTimeline')}
-            action={
-              <Stack direction="row" spacing={0.5} alignItems="center">
-                <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>{t('today')}</Button>
-              </Stack>
-            }
-          />
-          {/* Ruler */}
-          <Box sx={{ position: 'relative', mb: 1.5 }}>
-            <Stack direction="row" justifyContent="space-between" sx={{ px: 0.5 }}>
-              {RULER.map((t) => <Typography key={t} sx={{ fontSize: 11, color: ws.textFaint }}>{t}</Typography>)}
-            </Stack>
-            <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
-              {nowVisible && (
-                // «Nå»-markør: etikett over linjalen + kort tick. Kort tick (ikke
-                // en 60px-linje) så den ikke vasker over fase-kortenes tekst under.
-                <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Chip size="small" label={nowLabel} sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
-                  <Box sx={{ width: 1, height: 12, bgcolor: ws.accent, mt: 0.5, opacity: 0.7 }} />
-                </Box>
-              )}
-            </Box>
-          </Box>
-          {/* Faser */}
-          <Stack direction="row" spacing={1.25} sx={{ overflowX: 'auto', pb: 0.5 }}>
-            {phaseItems.map((p) => (
-              <Box key={p.label} sx={{
-                minWidth: 150, p: 1.25, borderRadius: `${ws.radiusSm}px`,
-                bgcolor: p.active ? ws.accentSoft : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${p.active ? ws.accentBorder : ws.borderSoft}`,
-              }}>
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  {wsIcon(p.icon, { fontSize: 17, color: p.color })}
-                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{p.label}</Typography>
-                </Stack>
-                <Typography sx={{ fontSize: 11.5, color: ws.textDim, mt: 0.5 }}>{p.time}</Typography>
-              </Box>
-            ))}
-          </Stack>
-        </WsCard>
+        <TimelineCard t={t} go={go} phaseItems={phaseItems} nowVisible={nowVisible} nowPct={nowPct} nowLabel={nowLabel} />
 
         {/* Samkjøringsboard */}
-        <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title={t('syncBoard')} />
-          <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto' }}>
-            {boardCols.map((col) => (
-              <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
-                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-                  {crewIcon(col.icon, { fontSize: 15, color: ws.textDim })}
-                  <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.textDim }}>{col.role}</Typography>
-                </Stack>
-                <Stack spacing={1}>
-                  {col.tasks.map((task, i) => (
-                    <Box key={task.id || i} sx={{
-                      p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${ws.borderSoft}`,
-                    }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                        <Box>
-                          <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: ws.text }}>{task.t}</Typography>
-                          {task.time && <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{task.time}</Typography>}
-                        </Box>
-                        <Box onClick={() => task.real && toggleTask(task.id, task.done ? 'done' : 'todo')} sx={{ cursor: task.real ? 'pointer' : 'default', display: 'flex' }}>
-                          {task.done
-                            ? <CheckCircle sx={{ fontSize: 18, color: ws.green }} />
-                            : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
-                        </Box>
-                      </Stack>
-                    </Box>
-                  ))}
-                  <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => addTask(col.crew)} disabled={!isReal} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
-                    {t('addTaskBtn')}
-                  </Button>
-                </Stack>
-              </Box>
-            ))}
-          </Stack>
-        </WsCard>
+        <SyncBoardCard t={t} boardCols={boardCols} isReal={isReal} onToggleTask={toggleTask} onAddTask={openTaskDialog} />
 
         {/* Bunn-rad: Team Sync / Sjekkliste / Referanser */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
-          <WsCard>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('teamSyncTitle')}</Typography>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <WsRing value={syncPct} size={104} label={`${syncPct}%`} sub={t('ready')} color={syncPct >= 80 ? ws.green : ws.amber} />
-              <Stack spacing={0.75} sx={{ flex: 1 }}>
-                {syncItems.length === 0 && (
-                  <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noSyncData')}</Typography>
-                )}
-                {syncItems.map((s, i) => (
-                  <Stack key={i} direction="row" spacing={0.75} alignItems="center">
-                    {s.ok ? <CheckCircle sx={{ fontSize: 16, color: ws.green }} /> : <RadioButtonUnchecked sx={{ fontSize: 16, color: ws.textFaint }} />}
-                    <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s.t}</Typography>
-                  </Stack>
-                ))}
-              </Stack>
-            </Stack>
-            <Button fullWidth size="small" onClick={() => go('prosjektplan')} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('seeDetails')}</Button>
-          </WsCard>
-
-          <WsCard>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('checklistTitle')}</Typography>
-            <Stack spacing={1}>
-              {checkItems.map((c, i) => (
-                <Stack key={c.id || i} direction="row" spacing={0.75} alignItems="center" onClick={() => c.real && toggleCheck(c.id, c.ok)} sx={{ cursor: c.real ? 'pointer' : 'default' }}>
-                  {c.ok ? <CheckCircle sx={{ fontSize: 17, color: ws.green }} /> : <Warning sx={{ fontSize: 17, color: ws.amber }} />}
-                  <Typography sx={{ fontSize: 12.5, color: ws.text }}>{c.t}</Typography>
-                </Stack>
-              ))}
-            </Stack>
-            <Button fullWidth size="small" onClick={addCheck} disabled={!isReal} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{isReal ? t('addCheckBtn') : t('seeAll')}</Button>
-          </WsCard>
-
-          <WsCard>
-            <WsSectionTitle title={wsCategory === 'music' ? t('refsTitleMusic') : t('refsTitle')} action={<Button size="small" onClick={() => go(wsCategory === 'music' ? 'moodboard' : 'shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
-            <WsImageGrid columns={3} addLabel={t('addReference')} images={refs.images} onUpload={refs.onUpload} />
-          </WsCard>
+          <TeamSyncCard t={t} go={go} syncPct={syncPct} syncItems={syncItems} />
+          <ChecklistCard t={t} checkItems={checkItems} isReal={isReal} onToggleCheck={toggleCheck} onAddCheck={openCheckDialog} />
+          <ReferencesCard t={t} go={go} wsCategory={wsCategory} images={refs.images} onUpload={refs.onUpload} />
         </Box>
       </Box>
 
       {/* ───────── Capture-aktivitet + Team Chat (høyre) ───────── */}
       <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
         {(isReal ? activity.length > 0 : true) && (
-          <WsCard sx={{ mb: 2 }}>
-            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
-              {wsIcon('Bolt', { fontSize: 15, color: ws.textDim })}
-              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('captureActivity')}</Typography>
-              {capLive && <Stack direction="row" spacing={0.5} alignItems="center"><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} /><Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography></Stack>}
-            </Stack>
-            <Stack spacing={0.25} sx={{ maxHeight: 280, overflowY: 'auto' }}>
-              {(isReal ? activity : [
-                { id: 'd1', type: 'asset_added', filename: 'A7IV_1188.CR3', createdAt: new Date(Date.now() - 30000).toISOString() },
-                { id: 'd2', type: 'flagged_for_client', filename: 'A7IV_1184.CR3', createdAt: new Date(Date.now() - 180000).toISOString() },
-                { id: 'd3', type: 'handoff_triggered', filename: null, createdAt: new Date(Date.now() - 900000).toISOString() },
-              ]).map((ev: any) => {
-                const m = activityMeta(ev.type, t);
-                return (
-                  <Stack key={ev.id} direction="row" spacing={1} alignItems="flex-start" sx={{ py: 0.65, px: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
-                    {wsIcon(m.icon, { fontSize: 15, color: ws.textDim })}
-                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography sx={{ fontSize: 12, color: ws.text, lineHeight: 1.35 }}>
-                        {m.label}{ev.filename ? <Typography component="span" sx={{ color: ws.textDim }}> · {ev.filename}</Typography> : null}
-                      </Typography>
-                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{ev.actorName ? `${ev.actorName} · ` : ''}{timeAgo(ev.createdAt, t)}</Typography>
-                    </Box>
-                  </Stack>
-                );
-              })}
-            </Stack>
-          </WsCard>
+          <ActivityFeed t={t} isReal={isReal} activity={activity} capLive={Boolean(capLive)} />
         )}
         <WorkspaceChatPanel projectId={projectId} category={wsCategory} />
       </Box>
+
+      {/* Legg til sjekkpunkt / oppgave — erstatter window.prompt()/window.alert()
+          med en ekte dialog: tastaturnavigerbar, viser feil inline i stedet for
+          en blokkerende alert(), og er mulig å style/teste (window.prompt lar
+          seg ikke automatisere i Playwright). */}
+      <Dialog open={dialog.open} onClose={closeDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>{dialog.kind === 'check' ? t('addCheckDialogTitle') : t('addTaskDialogTitle')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            margin="dense"
+            value={dialog.value}
+            onChange={(e) => setDialog((d) => ({ ...d, value: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !dialog.submitting && dialog.value.trim()) submitDialog(); }}
+            error={Boolean(dialog.error)}
+            helperText={dialog.error || undefined}
+            disabled={dialog.submitting}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDialog} disabled={dialog.submitting}>{t('cancel')}</Button>
+          <Button onClick={submitDialog} disabled={dialog.submitting || !dialog.value.trim()} variant="contained">{t('add')}</Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 };
