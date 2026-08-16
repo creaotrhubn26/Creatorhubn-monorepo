@@ -405,7 +405,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     session: { key: 'session', label: t('refSessions'), icon: <EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} />, kind: 'session', ep: `/api/projects/${projectId}/avtaler`, map: (r) => (r?.meetings || []).map((x) => ({ id: x.id, primary: x.title || 'Økt', secondary: x.scheduledAt ? new Date(x.scheduledAt).toLocaleString(wsDateLocale(locale)) : '' })) },
     oppdrag: { key: 'oppdrag', label: t('refJobs'), icon: <WorkOutline sx={{ fontSize: 17, color: '#fbbf24' }} />, kind: 'oppdrag', ep: `/api/projects/${projectId}/editing-jobs`, map: (r) => (r?.jobs || []).map((x) => ({ id: x.id, primary: x.vendorName || (x.services || [])[0] || 'Oppdrag', secondary: [(x.services || []).join(', '), x.status].filter(Boolean).join(' · ') })) },
   };
-  const REF_KEYS_BY_CAT = { music: ['track', 'deliverable', 'session'], visual: ['media', 'deliverable', 'session'], service: ['deliverable', 'session'], vendor: ['oppdrag', 'deliverable', 'session'] };
+  const REF_KEYS_BY_CAT = { music: ['track', 'deliverable', 'session'], visual: ['media', 'deliverable', 'session'], photo: ['media', 'deliverable', 'session'], video: ['media', 'deliverable', 'session'], service: ['deliverable', 'session'], vendor: ['oppdrag', 'deliverable', 'session'] };
   const openRefPicker = async () => {
     setActionAnchor(null); setRefOpen(true); setRefLoading(true); setRefTab(0);
     const keys = REF_KEYS_BY_CAT[category] || ['deliverable', 'session'];
@@ -677,14 +677,18 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     );
   };
 
-  const uploadLabel = category === 'music' ? t('aRequestUploadMusic') : category === 'visual' ? t('aRequestUploadVisual') : category === 'vendor' ? t('aRequestUploadVendor') : t('aRequestUpload');
-  const meetingLabel = category === 'visual' ? t('aMeetingVisual') : category === 'service' ? t('aMeetingService') : t('aMeeting');
+  // 'photo'/'video' er soloprofesjonenes splitt av det tidligere kombinerte
+  // 'visual'; 'visual' selv lever videre som team/enterprise-verdien —
+  // all copy/logikk skrevet for 'visual' skal fortsatt gjelde alle tre.
+  const isVisualLike = category === 'visual' || category === 'photo' || category === 'video';
+  const uploadLabel = category === 'music' ? t('aRequestUploadMusic') : isVisualLike ? t('aRequestUploadVisual') : category === 'vendor' ? t('aRequestUploadVendor') : t('aRequestUpload');
+  const meetingLabel = isVisualLike ? t('aMeetingVisual') : category === 'service' ? t('aMeetingService') : t('aMeeting');
   const ACTIONS = [
     { q: 'oppgave board task crew', icon: <PlaylistAddCheck sx={{ color: ws.green }} />, primary: t('aNewTask'), secondary: t('aNewTaskSub'), run: () => { setActionAnchor(null); setTaskOpen(true); } },
     { q: 'mote booking opptaksdag avtale meet kalender', icon: <EventOutlined sx={{ color: '#a5b4fc' }} />, primary: meetingLabel, secondary: t('aMeetingSub'), run: () => { setActionAnchor(null); setMeetOpen(true); } },
     { q: 'referer lat media leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
     // Kundegodkjenning er mest relevant for klient-vendte kategorier.
-    ...((category === 'visual' || category === 'service') ? [{ q: 'godkjenning kunde approval leveranse send', icon: <CheckCircleOutline sx={{ color: '#f0abfc' }} />, primary: t('aApproval'), secondary: t('aApprovalSub'), run: () => void openApprovalPicker() }] : []),
+    ...((isVisualLike || category === 'service') ? [{ q: 'godkjenning kunde approval leveranse send', icon: <CheckCircleOutline sx={{ color: '#f0abfc' }} />, primary: t('aApproval'), secondary: t('aApprovalSub'), run: () => void openApprovalPicker() }] : []),
     { q: 'opplasting fil vedlegg upload raw kildefil lyd', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: uploadLabel, secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
     { q: 'ai oppsummer sammendrag summary', icon: <Summarize sx={{ color: '#22d3ee' }} />, primary: t('aAiSummary'), secondary: t('aAiSummarySub'), run: () => void runAi('summary') },
     { q: 'ai foreslag utkast draft', icon: <AutoAwesome sx={{ color: '#22d3ee' }} />, primary: t('aAiDraft'), secondary: t('aAiDraftSub'), run: () => void runAi('draft') },

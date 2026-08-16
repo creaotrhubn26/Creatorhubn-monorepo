@@ -79,7 +79,9 @@ export type WorkspaceTab =
  * i ProfessionTypeManager) vinner via overrides-parametret; PROFESSION_CATEGORY
  * under er kode-fallback for offline/første render. Nav-items tagges med
  * `categories`. Ny profesjon = admin-klikk; ny kategori = utvid typen + tagg items.
- *   'visual'  = foto/video (Shotlist, Produksjonskart, Photo/Video Room)
+ *   'photo'   = fotograf (Shotlist, Produksjonskart, Photo Room)
+ *   'video'   = videograf (Shotlist, Produksjonskart, Video Room)
+ *   'visual'  = kombinert foto+video-team (Shotlist, Produksjonskart, BEGGE rom) — enterprise/bedriftskontoer
  *   'music'   = musikk (Låter, Sesjoner, Sound Room)
  *   'service' = booking-/tjenestebaserte (frisør, hundefrisør, yoga …) — faner kommer
  *   'vendor'  = leverandører (Oppdrag, Lager, Ordreplan, Inspirasjon)
@@ -123,11 +125,11 @@ export interface WsNavItem {
 export const WS_NAV: WsNavItem[] = [
   { key: 'oversikt', label: 'Oversikt', labelEn: 'Overview', icon: 'Dashboard', group: 'hoved', route: true },
   { key: 'prosjektplan', label: 'Prosjektplan', labelEn: 'Order plan', icon: 'AccountTree', group: 'hoved', route: true, labelByCategory: { vendor: 'Ordreplan' } },
-  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, categories: ['visual'] },
+  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, categories: ['photo', 'video', 'visual'] },
   { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, categories: ['music'] },
   { key: 'oppdrag', label: 'Oppdrag', labelEn: 'Jobs', icon: 'WorkOutline', group: 'hoved', route: true, categories: ['vendor'] },
   { key: 'bookinger', label: 'Bookinger', icon: 'EventAvailable', group: 'hoved', route: true, categories: ['service'] },
-  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, categories: ['visual'] },
+  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, categories: ['photo', 'video', 'visual'] },
   { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, categories: ['music'] },
   { key: 'moodboard', label: 'Moodboard', labelEn: 'Inspiration', icon: 'GridView', group: 'hoved', route: true, labelByCategory: { vendor: 'Inspirasjon', service: 'Inspirasjon' } },
   { key: 'media', label: 'Media', labelEn: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
@@ -141,8 +143,8 @@ export const WS_NAV: WsNavItem[] = [
   // Community — for alle; mentorer får admin/styring inne i hub-en (MentorDashboard)
   { key: 'community', label: 'Community', labelEn: 'Community', icon: 'Forum', group: 'hoved', route: true },
   // Smart Rom — profesjons-spesifikke
-  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, categories: ['visual'] },
-  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, categories: ['visual'] },
+  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, categories: ['photo', 'visual'] },
+  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, categories: ['video', 'visual'] },
   { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, categories: ['music'] },
   // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
@@ -167,8 +169,8 @@ const normProf = wsProfessionKey;
 // (minimal, trygg default: universelle faner + Bookinger, INGEN foto-verktøy).
 // En umappet service-profesjon (frisør/yoga …) skal ikke få Shotlist/Photo Room.
 const PROFESSION_CATEGORY: Record<string, WorkspaceCategory> = {
-  photographer: 'visual',
-  videographer: 'visual',
+  photographer: 'photo',
+  videographer: 'video',
   enterprise: 'visual',
   musicproducer: 'music',
   musician: 'music',

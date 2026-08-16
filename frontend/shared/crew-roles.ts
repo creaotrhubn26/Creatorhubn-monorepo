@@ -56,6 +56,8 @@ const BY_KEY: Record<string, CrewRoleDef> = Object.fromEntries(CREW_ROLE_CATALOG
  */
 export const CATEGORY_DEFAULT_CREW: Record<WorkspaceCategory, { keys: string[]; fallbackKey: string }> = {
   visual: { keys: ['fotograf', 'videograf', 'begge', 'editor'], fallbackKey: 'begge' },
+  photo: { keys: ['fotograf', 'editor'], fallbackKey: 'fotograf' },
+  video: { keys: ['videograf', 'editor'], fallbackKey: 'videograf' },
   music: { keys: ['produsent', 'vokal', 'musikere', 'miks'], fallbackKey: 'musikere' },
   vendor: { keys: ['bestilling', 'klargjoring', 'levering', 'oppfolging'], fallbackKey: 'levering' },
   service: { keys: ['booking', 'forberedelse', 'gjennomforing', 'oppfolging'], fallbackKey: 'gjennomforing' },

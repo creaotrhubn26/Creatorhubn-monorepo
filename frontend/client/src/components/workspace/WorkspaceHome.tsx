@@ -26,7 +26,7 @@ import { getProfessionDisplayName } from '@shared/profession-types';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import GettingStartedChecklist from '../onboarding/GettingStartedChecklist';
 
-const CATEGORY_LABEL = { visual: 'Foto & video', music: 'Musikk', service: 'Tjeneste', vendor: 'Leverandør' };
+const CATEGORY_LABEL = { visual: 'Foto & video', photo: 'Foto', video: 'Video', music: 'Musikk', service: 'Tjeneste', vendor: 'Leverandør' };
 
 const WorkspaceHome: React.FC = () => {
   const [, navigate] = useLocation();

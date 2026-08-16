@@ -70,6 +70,7 @@ import {
 import type { ChipProps } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 import { AdminButton, useIsMobile } from './design-system';
+import type { WorkspaceCategory } from '@shared/profession-types';
 
 interface ProfessionTypeConfig {
   id: string;
@@ -132,7 +133,7 @@ export default function ProfessionTypeManager() {
   const [search, setSearch] = useState("");
   // Skjema for opprett/rediger — workspaceCategory styrer hvilken flate-familie
   // profesjonen får i Team Workspace (profession_types.workspace_category).
-  const [form, setForm] = useState<{ name: string; displayName: string; description: string; iconColor: string; workspaceCategory: string }>({
+  const [form, setForm] = useState<{ name: string; displayName: string; description: string; iconColor: string; workspaceCategory: WorkspaceCategory }>({
     name: '', displayName: '', description: '', iconColor: '#ff8c00', workspaceCategory: 'visual',
   });
 
@@ -1105,11 +1106,13 @@ export default function ProfessionTypeManager() {
                 select
                 label="Workspace-kategori"
                 value={form.workspaceCategory}
-                onChange={(e) => setForm((f) => ({ ...f, workspaceCategory: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, workspaceCategory: e.target.value as WorkspaceCategory }))}
                 helperText="Flate-familien i Team Workspace"
                 fullWidth
               >
-                <MenuItem value="visual">Foto/Video (Shotlist, Produksjonskart, Photo/Video Room)</MenuItem>
+                <MenuItem value="photo">Foto (Shotlist, Produksjonskart, Photo Room)</MenuItem>
+                <MenuItem value="video">Video (Shotlist, Produksjonskart, Video Room)</MenuItem>
+                <MenuItem value="visual">Foto+Video team (begge rom — for bedriftskontoer)</MenuItem>
                 <MenuItem value="music">Musikk (Låter, Sesjoner, Sound Room)</MenuItem>
                 <MenuItem value="service">Service/booking (universelle faner — booking-faner kommer)</MenuItem>
                 <MenuItem value="vendor">Leverandør (Oppdrag, Lager, Ordreplan, Inspirasjon)</MenuItem>

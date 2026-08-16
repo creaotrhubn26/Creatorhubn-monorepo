@@ -21,9 +21,9 @@
  * Workspace. DB-tabellen profession_types.workspace_category kan overstyre
  * per profesjon (admin-styrt); disse verdiene er kode-baselinen.
  */
-export type WorkspaceCategory = 'visual' | 'music' | 'service' | 'vendor';
+export type WorkspaceCategory = 'visual' | 'photo' | 'video' | 'music' | 'service' | 'vendor';
 
-export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = ['visual', 'music', 'service', 'vendor'];
+export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = ['visual', 'photo', 'video', 'music', 'service', 'vendor'];
 
 export function isWorkspaceCategory(v: unknown): v is WorkspaceCategory {
   return typeof v === 'string' && (WORKSPACE_CATEGORIES as string[]).includes(v);
@@ -53,12 +53,12 @@ export interface CanonicalProfession {
  * av gating og admin-fallbacks). Farger fra registry/branding.
  */
 export const CANONICAL_PROFESSIONS: CanonicalProfession[] = [
-  { name: 'photographer', displayName: 'Fotograf', iconColor: '#ff8c00', category: 'creative', workspaceCategory: 'visual', isActive: true, sortOrder: 0 },
-  { name: 'videographer', displayName: 'Videograf', iconColor: '#e74c3c', category: 'creative', workspaceCategory: 'visual', isActive: true, sortOrder: 1 },
+  { name: 'photographer', displayName: 'Fotograf', iconColor: '#ff8c00', category: 'creative', workspaceCategory: 'photo', isActive: true, sortOrder: 0 },
+  { name: 'videographer', displayName: 'Videograf', iconColor: '#e74c3c', category: 'creative', workspaceCategory: 'video', isActive: true, sortOrder: 1 },
   { name: 'music_producer', displayName: 'Musikkprodusent', iconColor: '#9b59b6', category: 'creative', workspaceCategory: 'music', isActive: true, sortOrder: 2 },
   { name: 'pet_groomer', displayName: 'Dyrepleier', iconColor: '#27ae60', category: 'service', workspaceCategory: 'service', isActive: true, sortOrder: 3 },
   { name: 'vendor', displayName: 'Leverandør', iconColor: '#3498db', category: 'business', workspaceCategory: 'vendor', isActive: true, sortOrder: 4 },
-  // Enterprise = team-/bedriftskonto med foto+video-suiter → visual-flatene.
+  // Enterprise = team-/bedriftskonto med foto+video-suiter → 'visual' (kombinert foto+video-flate, ser begge Photo/Video Room).
   { name: 'enterprise', displayName: 'Enterprise Team', iconColor: '#6c3483', category: 'business', workspaceCategory: 'visual', isActive: true, sortOrder: 5 },
 ];
 

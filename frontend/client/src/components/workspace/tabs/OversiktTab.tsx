@@ -24,6 +24,7 @@ import { useProjectImages, type WsImageItem as ProjectImageItem } from '../usePr
 import { useCaptureRealtime } from '../useCaptureRealtime';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
 import { CATEGORY_DEFAULT_CREW, crewRoleDef } from '@shared/crew-roles';
+import type { WorkspaceCategory } from '@shared/profession-types';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Demo-konstantene
 // (PHASES/BOARD/SYNC_ITEMS/CHECKLIST) er sample-data og forblir norske.
@@ -61,9 +62,13 @@ const T: WsDict = {
   tasksDone: { no: 'oppgaver fullført', en: 'tasks completed' },
   noMilestones: { no: 'Ingen milepæler ennå', en: 'No milestones yet' },
   // Capture & backup-kort
+  captureBackupTitlePhoto: { no: 'Capture & backup', en: 'Capture & backup' },
+  captureBackupTitleVideo: { no: 'Opptak & backup', en: 'Recording & backup' },
+  captureBackupTitleTeam: { no: 'Capture & backup', en: 'Capture & backup' },
   shootingNow: { no: 'SKYTER NÅ', en: 'SHOOTING NOW' },
   captureSession: { no: 'Capture-session', en: 'Capture session' },
   photosWord: { no: 'bilder', en: 'photos' },
+  clipsWord: { no: 'opptak', en: 'clips' },
   securedB2: { no: 'Sikret i B2 (One Desk)', en: 'Secured in B2 (One Desk)' },
   originalsVerified: { no: 'originaler verifisert', en: 'originals verified' },
   oneDeskMirror: { no: 'One Desk-speiling', en: 'One Desk mirroring' },
@@ -511,16 +516,23 @@ interface CaptureBackupCardProps {
   t: (key: string) => string;
   cap: CaptureStatusData;
   dit: DitStatusData | null;
+  wsCategory: WorkspaceCategory;
 }
 
-const CaptureBackupCard: React.FC<CaptureBackupCardProps> = React.memo(({ t, cap, dit }) => (
+const CaptureBackupCard: React.FC<CaptureBackupCardProps> = React.memo(({ t, cap, dit, wsCategory }) => {
+  const title = wsCategory === 'video' ? t('captureBackupTitleVideo')
+    : wsCategory === 'photo' ? t('captureBackupTitlePhoto')
+    : t('captureBackupTitleTeam');
+  const countLabel = wsCategory === 'video' ? t('clipsWord') : t('photosWord');
+  const iconName = wsCategory === 'video' ? 'Videocam' : 'PhotoCamera';
+  return (
   <WsCard sx={{ mb: 2 }}>
     <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
-        {wsIcon('PhotoCamera', { fontSize: 18, color: ws.accent })}
+        {wsIcon(iconName, { fontSize: 18, color: ws.accent })}
         <Box>
           <Stack direction="row" spacing={0.75} alignItems="center">
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Capture & backup</Typography>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{title}</Typography>
             {cap.shootingNow && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.red }} /><Typography sx={{ fontSize: 10.5, color: ws.red, fontWeight: 700 }}>{t('shootingNow')}</Typography></Box>}
           </Stack>
           <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{cap.session?.name || t('captureSession')}</Typography>
@@ -528,7 +540,7 @@ const CaptureBackupCard: React.FC<CaptureBackupCardProps> = React.memo(({ t, cap
       </Stack>
       <Box sx={{ textAlign: 'center', px: 1 }}>
         <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{cap.assets?.total ?? 0}</Typography>
-        <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('photosWord')}</Typography>
+        <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{countLabel}</Typography>
       </Box>
       <Box sx={{ flex: 1, minWidth: 160 }}>
         <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('CloudDone', { fontSize: 13 })}{t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
@@ -588,7 +600,8 @@ const CaptureBackupCard: React.FC<CaptureBackupCardProps> = React.memo(({ t, cap
       </Box>
     )}
   </WsCard>
-));
+  );
+});
 CaptureBackupCard.displayName = 'CaptureBackupCard';
 
 interface TimelineCardProps {
@@ -1086,7 +1099,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           <StudioCard t={t} go={go} studioSessions={studioSessions} liveStudio={liveStudio} latestBounces={latestBounces} studioReadiness={studioReadiness} />
         )}
         {wsCategory !== 'music' && cap?.hasSession && (
-          <CaptureBackupCard t={t} cap={cap} dit={dit} />
+          <CaptureBackupCard t={t} cap={cap} dit={dit} wsCategory={wsCategory} />
         )}
 
         {/* Dagens tidslinje */}
