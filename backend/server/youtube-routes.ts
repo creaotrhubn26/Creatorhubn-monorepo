@@ -11,9 +11,10 @@ import { resolveRoleRoomGoogleConnection } from "./contract-google-signing.js";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { derivePreferredGoogleWorkspaceOauthApps } from "./google-workspace-oauth.js";
 
+// `youtube` er et superset av `youtube.upload` (dekker opplasting + admin) og
+// kan ikke kombineres med det i samme OAuth-request.
 const YOUTUBE_REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/youtube",
-  "https://www.googleapis.com/auth/youtube.upload",
 ] as const;
 
 class YouTubeRouteError extends Error {
