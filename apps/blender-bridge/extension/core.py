@@ -359,6 +359,97 @@ def render_final(
             "engine": "CYCLES", "qa": validate_scene()}
 
 
+def render_animation(
+    filepath: str,
+    start_frame: int = 1,
+    end_frame: int = 90,
+    fps: int = 24,
+    resolution: int = 1080,
+    engine: str = "EEVEE",
+) -> dict:
+    """Render frame-range til mp4 (Blenders innebygde FFMPEG-encoder).
+    engine=EEVEE (rask preview) | CYCLES (kvalitet). Bruk ETTER at posen/
+    keyframene er satt med pose_bone/keyframe_pose."""
+    if not filepath.endswith(".mp4"):
+        raise ValueError("filepath må ende på .mp4")
+    scene = bpy.context.scene
+    if scene.camera is None:
+        raise ValueError("ingen aktiv kamera — kall create_camera først")
+    prev = (
+        scene.render.engine,
+        scene.render.resolution_x,
+        scene.render.resolution_y,
+        scene.render.filepath,
+        scene.frame_start,
+        scene.frame_end,
+        scene.render.fps,
+        scene.render.image_settings.file_format,
+        scene.render.image_settings.media_type,
+    )
+    try:
+        if engine.upper() == "CYCLES":
+            scene.render.engine = "CYCLES"
+        else:
+            for candidate in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE", "BLENDER_WORKBENCH"):
+                try:
+                    scene.render.engine = candidate
+                    break
+                except TypeError:
+                    continue
+        scene.render.resolution_x = int(resolution * 16 / 9)
+        scene.render.resolution_y = resolution
+        scene.render.fps = fps
+        scene.frame_start = start_frame
+        scene.frame_end = end_frame
+        scene.render.filepath = filepath
+        scene.render.image_settings.media_type = "VIDEO"
+        scene.render.image_settings.file_format = "FFMPEG"
+        scene.render.ffmpeg.format = "MPEG4"
+        scene.render.ffmpeg.codec = "H264"
+        scene.render.ffmpeg.constant_rate_factor = "HIGH"
+        bpy.ops.render.render(animation=True)
+    finally:
+        (
+            scene.render.engine,
+            scene.render.resolution_x,
+            scene.render.resolution_y,
+            scene.render.filepath,
+            scene.frame_start,
+            scene.frame_end,
+            scene.render.fps,
+            _prev_file_format,
+            scene.render.image_settings.media_type,
+        ) = prev
+        # media_type må gjenopprettes FØR file_format — enum-gyldigheten til
+        # file_format avhenger av media_type-konteksten.
+        scene.render.image_settings.file_format = _prev_file_format
+    return {
+        "rendered": filepath,
+        "frames": end_frame - start_frame + 1,
+        "fps": fps,
+        "resolution": [int(resolution * 16 / 9), resolution],
+    }
+
+
+def keyframe_object(name: str, frame: int, location: bool = True,
+                    rotation: bool = True, scale: bool = False) -> dict:
+    """Sett keyframe på et objekt (f.eks. kamera-dolly). Args: name, frame,
+    location?/rotation?/scale? (hvilke kanaler)."""
+    obj = _require_object(name)
+    _undo_push(f"keyframe_object {name} @ {frame}")
+    keyed = []
+    if location:
+        obj.keyframe_insert(data_path="location", frame=frame)
+        keyed.append("location")
+    if rotation:
+        obj.keyframe_insert(data_path="rotation_euler", frame=frame)
+        keyed.append("rotation_euler")
+    if scale:
+        obj.keyframe_insert(data_path="scale", frame=frame)
+        keyed.append("scale")
+    return {"object": name, "frame": frame, "keyed": keyed}
+
+
 # ---------------------------------------------------------------- AI-oppgaver
 # «Angre hele AI-oppgaven» (§12): hver muterende operasjon pusher ett undo-steg
 # (_undo_push) — vi teller dem per oppgave og ruller tilbake N steg.
@@ -464,6 +555,8 @@ TOOLS: dict[str, dict] = {
     "configure_camera": {"level": "modify", "fn": configure_camera, "description": "Endre kamera: focal_length_mm?, dof_enabled?, dof_focus_object?, f_stop?. Args: name + felter.", "mutates": True},
     "render_preview": {"level": "safe", "fn": render_preview, "description": "Rask EEVEE-preview til PNG. Args: filepath? (default temp), resolution? (default 512). Returnerer filsti — les bildet for visuell inspeksjon.", "mutates": False},
     "render_final": {"level": "safe", "fn": render_final, "description": "Cycles-render i full kvalitet (default 1920px/128 samples). Bruk ETTER preview-loopen. Args: filepath?, resolution?, samples?.", "mutates": False},
+    "render_animation": {"level": "safe", "fn": render_animation, "description": "Render frame-range til mp4 (innebygd FFMPEG H264). Args: filepath (.mp4), start_frame?, end_frame?, fps? (default 24), resolution? (default 1080, height), engine? (EEVEE|CYCLES). Bruk etter keyframe_pose.", "mutates": False},
+    "keyframe_object": {"level": "modify", "fn": keyframe_object, "description": "Sett keyframe på objekt (kamera-dolly, propanimasjon). Args: name, frame, location? (default true), rotation? (default true), scale? (default false).", "mutates": True},
     "begin_task": {"level": "safe", "fn": begin_task, "description": "Start en AI-transaksjon: alle muterende kall telles så hele oppgaven kan angres samlet. Args: label. Kall FØRST i fler-stegs oppgaver.", "mutates": False},
     "task_status": {"level": "safe", "fn": task_status, "description": "Aktiv AI-oppgave + antall muterende operasjoner.", "mutates": False},
     "end_task": {"level": "safe", "fn": end_task, "description": "Avslutt AI-oppgaven (beholder endringene).", "mutates": False},
@@ -499,6 +592,11 @@ try:
 except ImportError:
     import rigging as _rigging
 TOOLS.update(_rigging.RIG_TOOLS)
+try:
+    from . import characters as _characters
+except ImportError:
+    import characters as _characters
+TOOLS.update(_characters.CHARACTER_TOOLS)
 
 
 def call_tool(name: str, args: dict | None = None) -> dict:
