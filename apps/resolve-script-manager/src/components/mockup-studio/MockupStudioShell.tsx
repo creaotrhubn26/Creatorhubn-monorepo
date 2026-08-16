@@ -40,6 +40,7 @@ import {
   deleteVersion,
   loadVersionDoc,
   resolveBaseBg,
+  resolveColor,
   contrastRatio,
   isDark,
   type MockupKit,
@@ -70,6 +71,7 @@ import {
 } from './mockupCapture';
 import { aiAvailable, aiDraftOnePager } from './mockupAiDraft';
 import { aiIllustrate, aiComposeFromUrl } from './mockupAiIllustrate';
+import { aiCopyVariants, copyVariantsAvailable } from './mockupAiEnhance';
 import { aiProductMindmap } from './mockupMindmap';
 import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
@@ -136,7 +138,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     else setExportMsg(res.error || 'Kunne ikke lagre kit.');
   };
   const doLoadKit = (id: string) => { const d = loadKitDoc(id); if (d) store.setDocument(d); };
-  const doDeleteKit = (id: string) => { deleteKit(id); setKits(listKits()); };
+  const doDeleteKit = (id: string) => { if (!confirm('Slette dette kittet? Kan ikke angres.')) return; deleteKit(id); setKits(listKits()); };
 
   // Versjoner (§1.4)
   const [versions, setVersions] = useState<MockupVersion[]>(() => listVersions());
@@ -147,7 +149,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     else setExportMsg(r.error || 'Kunne ikke lagre versjon.');
   };
   const doLoadVersion = (id: string) => { const d = loadVersionDoc(id); if (d) store.setDocument(d); };
-  const doDeleteVersion = (id: string) => { deleteVersion(id); setVersions(listVersions()); };
+  const doDeleteVersion = (id: string) => { if (!confirm('Slette denne versjonen? Kan ikke angres.')) return; deleteVersion(id); setVersions(listVersions()); };
 
   // Trygt område-guide (§ bunnbar / hybrid slot-nod)
   const [safeArea, setSafeArea] = useState(false);
@@ -217,7 +219,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         setCaptureNote(`✓ ${list.length} skjermbilder hentet og fordelt på enhetene.`);
       }
     } catch (e) {
-      setCaptureNote('Capture feilet: ' + String(e));
+      console.error('[mockup-studio] capture', e);
+      setCaptureNote('Fant ikke skjermbilder — sjekk URL-en og at capture-motoren er installert.');
     } finally {
       setCapturing(false);
     }
@@ -233,7 +236,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       store.setDocument(draft);
       setCaptureNote('✓ AI-utkast klart — rediger fritt.');
     } catch (e) {
-      setCaptureNote('AI-utkast feilet: ' + String(e));
+      console.error('[mockup-studio] ai-draft', e);
+      setCaptureNote('AI-utkast gikk ikke — sjekk URL-en og at du er innlogget (RR-token). Prøv igjen.');
     } finally {
       setCapturing(false);
     }
@@ -250,7 +254,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       const n = (doc.annotations ?? []).filter((a) => a.kind === 'callout').length;
       setCaptureNote(n > 0 ? `✓ Ferdig illustrasjon: hero-tekst + ${n} callouts — rediger fritt.` : '✓ Utkast klart (fant ingen tydelig produktskjerm å illustrere).');
     } catch (e) {
-      setCaptureNote('AI-illustrasjon feilet: ' + String(e));
+      console.error('[mockup-studio] ai-compose', e);
+      setCaptureNote('AI-illustrasjon gikk ikke — sjekk URL-en og AI-tilkoblingen. Prøv igjen.');
     } finally {
       setCapturing(false);
     }
@@ -272,7 +277,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       store.setDocument(doc);
       setCaptureNote('✓ Produkt-mind map generert (eget prosjekt) — rediger Mermaid-kilden i Illustrasjon-panelet.');
     } catch (e) {
-      setCaptureNote('Mind map feilet: ' + String(e));
+      console.error('[mockup-studio] ai-mindmap', e);
+      setCaptureNote('Mind map gikk ikke — sjekk URL-en og AI-tilkoblingen. Prøv igjen.');
     } finally {
       setCapturing(false);
     }
@@ -287,7 +293,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       const saved = await exportAndSaveMotion(doc, cfg, 0.75, (l, f) => setExportMsg(`🎬 ${l} ${Math.round(f * 100)}%`));
       setExportMsg(saved ? '✓ Video lagret (WebM).' : null);
     } catch (e) {
-      setExportMsg('Video feilet: ' + String(e));
+      console.error('[mockup-studio] video-export', e);
+      setExportMsg('Video-eksport gikk ikke — prøv en kortere lengde eller lavere oppløsning.');
     } finally {
       setVideoBusy(false);
     }
@@ -333,7 +340,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       setEngineReady(ok);
       setCaptureNote(ok ? '✓ Capture-motor klar.' : 'Installasjon fullførte ikke — prøv igjen.');
     } catch (e) {
-      setCaptureNote('Installasjon feilet: ' + String(e));
+      console.error('[mockup-studio] install-engine', e);
+      setCaptureNote('Installasjon av capture-motoren gikk ikke — prøv igjen, eller sjekk nettforbindelsen.');
     } finally {
       setInstalling(false);
     }
@@ -357,7 +365,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       store.setDeviceImage(target, dataUrl);
       setCaptureNote('✓ Simulator-skjermbilde lagt på enheten.');
     } catch (e) {
-      setCaptureNote('Simulator-capture feilet: ' + String(e));
+      console.error('[mockup-studio] sim-capture', e);
+      setCaptureNote('Simulator-capture gikk ikke — sjekk at simulatoren kjører og prøv igjen.');
     }
   };
 
@@ -394,8 +403,9 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         />
         <button onClick={() => setShowOnboarding(true)} style={ghostBtn} title="Velg mal / nytt materiell">Ny mockup</button>
         <button onClick={() => setShowGallery(true)} style={ghostBtn} title="Bla i ferdig-stylede design">✦ Galleri</button>
-        <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre">↶</button>
-        <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om">↷</button>
+        <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre" aria-label="Angre">↶</button>
+        <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om" aria-label="Gjør om">↷</button>
+        <span style={{ fontSize: 11, color: C.inkSoft, whiteSpace: 'nowrap' }} title="Alt lagres automatisk lokalt ved hver endring">✓ Lagret{store.past.length ? ` · ${store.past.length} angre` : ''}</span>
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: 12, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: 12, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
@@ -556,7 +566,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           {kits.map((k) => (
             <div key={k.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
               <button onClick={() => doLoadKit(k.id)} style={{ ...listBtn, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="Last inn (erstatter gjeldende)">{k.name}</button>
-              <button onClick={() => doDeleteKit(k.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett kit">✕</button>
+              <button onClick={() => doDeleteKit(k.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett kit" aria-label="Slett kit">✕</button>
             </div>
           ))}
 
@@ -574,7 +584,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           {versions.map((v) => (
             <div key={v.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
               <button onClick={() => doLoadVersion(v.id)} style={{ ...listBtn, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="Gjenopprett denne versjonen">{v.name}</button>
-              <button onClick={() => doDeleteVersion(v.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett versjon">✕</button>
+              <button onClick={() => doDeleteVersion(v.id)} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett versjon" aria-label="Slett versjon">✕</button>
             </div>
           ))}
         </div>
@@ -670,7 +680,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
               <span style={{ width: 12, height: 12, borderRadius: 3, background: k.accent2, flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.name}</span>
             </button>
-            <button onClick={() => { deleteBrandKit(k.id); setBrandKits(listBrandKits()); }} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett">✕</button>
+            <button onClick={() => { if (!confirm('Slette denne merkevare-looken? Kan ikke angres.')) return; deleteBrandKit(k.id); setBrandKits(listBrandKits()); }} style={{ ...listBtn, width: 30, textAlign: 'center', flexShrink: 0 }} title="Slett merkevare-look" aria-label="Slett merkevare-look">✕</button>
           </div>
         ))}
       </Field>
@@ -679,7 +689,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <img src={canvas.logo.image} alt="logo" style={{ height: 34, maxWidth: 96, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 4 }} />
             <button onClick={onUploadLogo} style={{ ...listBtn, flex: 1 }}>Bytt</button>
-            <button onClick={() => patchCanvas({ logo: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Fjern logo">✕</button>
+            <button onClick={() => patchCanvas({ logo: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Fjern logo" aria-label="Fjern logo">✕</button>
           </div>
         ) : (
           <button onClick={onUploadLogo} style={listBtn}>Last opp logo</button>
@@ -818,7 +828,7 @@ function IllustrationInspector() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 700 }}>{a.kind === 'callout' ? `${a.n}. ` : ''}{KIND_LABEL[a.kind]}</span>
             <span style={{ fontSize: 11, color: C.inkSoft }}>· {devName(a.deviceId)}</span>
-            <button onClick={() => removeAnnotation(a.id)} style={{ ...listBtn, marginLeft: 'auto', width: 28, textAlign: 'center', padding: '4px 0' }} title="Slett">✕</button>
+            <button onClick={() => removeAnnotation(a.id)} style={{ ...listBtn, marginLeft: 'auto', width: 28, textAlign: 'center', padding: '4px 0' }} title="Slett annotasjon" aria-label="Slett annotasjon">✕</button>
           </div>
 
           {a.kind === 'callout' && (
@@ -867,6 +877,37 @@ function IllustrationInspector() {
   );
 }
 
+/** Kompakt numerisk felt (X/Y/B/H) — presis posisjonering ved siden av sliderne. */
+function NumberBox({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <label style={{ flex: 1, minWidth: 0 }}>
+      <span style={{ display: 'block', fontSize: 10, color: C.inkSoft, marginBottom: 2 }}>{label}</span>
+      <input
+        type="number" value={value}
+        onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) onChange(Math.round(n)); }}
+        aria-label={label}
+        style={{ ...textInput, width: '100%', padding: '5px 6px', fontVariantNumeric: 'tabular-nums' }}
+      />
+    </label>
+  );
+}
+
+/** Lag-rad: dupliser + z-rekkefølge (delt av enhet/tekst-inspektør). */
+function ArrangeRow({ kind, id }: { kind: 'device' | 'text'; id: string }) {
+  const dupDevice = useMockupStudio((s) => s.duplicateDevice);
+  const dupText = useMockupStudio((s) => s.duplicateText);
+  const reorder = useMockupStudio((s) => s.reorderElement);
+  return (
+    <Field label="Lag">
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={() => (kind === 'device' ? dupDevice(id) : dupText(id))} style={{ ...listBtn, flex: 1 }} title="Dupliser (Cmd/Ctrl+D)">⧉ Dupliser</button>
+        <button onClick={() => reorder(kind, id, 'up')} style={{ ...listBtn, width: 36, textAlign: 'center' }} title="Flytt fram (tegnes over)" aria-label="Flytt fram">↑</button>
+        <button onClick={() => reorder(kind, id, 'down')} style={{ ...listBtn, width: 36, textAlign: 'center' }} title="Flytt bak" aria-label="Flytt bak">↓</button>
+      </div>
+    </Field>
+  );
+}
+
 function DeviceInspector({ device, onUpload, advanced }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void; advanced: boolean }) {
   const patchDevice = useMockupStudio((s) => s.patchDevice);
   const setDeviceImage = useMockupStudio((s) => s.setDeviceImage);
@@ -882,7 +923,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
       <Field label="Skjermbilde">
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onUpload} style={{ ...listBtn, flex: 1 }}>{device.image ? 'Bytt bilde' : 'Last opp'}</button>
-          {device.image && <button onClick={() => setDeviceImage(device.id, undefined)} style={listBtn} title="Fjern bilde">✕</button>}
+          {device.image && <button onClick={() => setDeviceImage(device.id, undefined)} style={listBtn} title="Fjern bilde" aria-label="Fjern bilde">✕</button>}
         </div>
       </Field>
       {device.image && (
@@ -924,6 +965,14 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         <input type="checkbox" checked={device.shadow} onChange={(e) => patchDevice(device.id, { shadow: e.target.checked })} />
         Skygge
       </label>
+      <Field label="Plassering (px)">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <NumberBox label="X" value={Math.round(device.x)} onChange={(n) => patchDevice(device.id, { x: n })} />
+          <NumberBox label="Y" value={Math.round(device.y)} onChange={(n) => patchDevice(device.id, { y: n })} />
+          <NumberBox label="Bredde" value={Math.round(device.w)} onChange={(n) => patchDevice(device.id, { w: Math.max(40, n) })} />
+        </div>
+      </Field>
+      <ArrangeRow kind="device" id={device.id} />
       <button onClick={() => removeDevice(device.id)} style={{ ...dangerBtn, marginTop: 12 }}>Slett enhet</button>
     </div>
   );
@@ -939,7 +988,26 @@ function trimToWords(s: string, max: number): string {
 function TextInspector({ text, advanced }: { text: import('./mockupStudioModel').MockupTextSlot; advanced: boolean }) {
   const patchText = useMockupStudio((s) => s.patchText);
   const removeText = useMockupStudio((s) => s.removeText);
+  const canvas = useMockupStudio((s) => s.doc.canvas);
   const colorMode = text.color === 'accent' ? 'accent' : text.color === 'accent2' ? 'accent2' : 'custom';
+  // Per-tekst kontrast mot lerret-bakgrunnen (approksimasjon; teksten kan ligge over en enhet).
+  const textHex = resolveColor(text.color, canvas);
+  const contrast = contrastRatio(resolveBaseBg(canvas), textHex);
+  const contrastOk = contrast >= 4.5;
+  const [variants, setVariants] = useState<string[] | null>(null);
+  const [vBusy, setVBusy] = useState(false);
+  const [vErr, setVErr] = useState<string | null>(null);
+  const runVariants = async () => {
+    setVErr(null); setVBusy(true);
+    try {
+      const v = await aiCopyVariants(text.text, text.role);
+      setVariants(v);
+      if (!v.length) setVErr('Fikk ingen varianter — prøv igjen.');
+    } catch (e) {
+      console.error('[mockup-studio] copy-variants', e);
+      setVErr('AI-varianter gikk ikke — sjekk at du er innlogget (RR-token).');
+    } finally { setVBusy(false); }
+  };
   return (
     <div>
       <SectionLabel>{TEXT_ROLE_LABELS[text.role]}</SectionLabel>
@@ -955,6 +1023,20 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
           </div>
         )}
       </Field>
+      <div style={{ marginBottom: 12 }}>
+        <button
+          disabled={vBusy || !copyVariantsAvailable() || !text.text.trim()}
+          onClick={() => void runVariants()}
+          style={{ ...listBtn, width: '100%', opacity: vBusy || !copyVariantsAvailable() || !text.text.trim() ? 0.6 : 1 }}
+          title={copyVariantsAvailable() ? 'La AI foreslå tone-varianter av denne teksten (kortere / mer selgende / roligere / mer konkret)' : 'Krever innlogget AI (RR-token i Innstillinger)'}
+        >
+          {vBusy ? 'Skriver…' : '✨ Tekst-varianter'}
+        </button>
+        {vErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 6 }}>{vErr}</div>}
+        {variants && variants.map((v, i) => (
+          <button key={i} onClick={() => { patchText(text.id, { text: v }); setVariants(null); }} style={{ ...listBtn, width: '100%', textAlign: 'left', marginTop: 6, whiteSpace: 'normal', lineHeight: 1.4 }} title="Bruk denne varianten">{v}</button>
+        ))}
+      </div>
       <Field label={`Størrelse: ${Math.round(text.size)} px`}>
         <input type="range" min={12} max={140} value={text.size} onChange={(e) => patchText(text.id, { size: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>
@@ -964,7 +1046,7 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
       <Field label="Justering">
         <div style={{ display: 'flex', gap: 6 }}>
           {(['left', 'center', 'right'] as const).map((a) => (
-            <button key={a} onClick={() => patchText(text.id, { align: a })} style={{ ...listBtn, flex: 1, background: text.align === a ? C.accent : C.panelSoft, color: text.align === a ? C.accentInk : C.ink }}>
+            <button key={a} onClick={() => patchText(text.id, { align: a })} title={a === 'left' ? 'Venstrejuster' : a === 'center' ? 'Midtstill' : 'Høyrejuster'} aria-label={a === 'left' ? 'Venstrejuster' : a === 'center' ? 'Midtstill' : 'Høyrejuster'} aria-pressed={text.align === a} style={{ ...listBtn, flex: 1, background: text.align === a ? C.accent : C.panelSoft, color: text.align === a ? C.accentInk : C.ink }}>
               {a === 'left' ? '⯇' : a === 'center' ? '≡' : '⯈'}
             </button>
           ))}
@@ -982,6 +1064,9 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
         <input type="checkbox" checked={text.uppercase} onChange={(e) => patchText(text.id, { uppercase: e.target.checked })} />
         Store bokstaver
       </label>
+      <div style={{ fontSize: 11, color: contrastOk ? C.inkSoft : '#e0b060', margin: '2px 0 10px' }} title="WCAG AA krever ≥ 4.5:1 for brødtekst. Målt mot lerret-bakgrunnen.">
+        Kontrast mot bakgrunn: {contrast.toFixed(1)}:1{contrastOk ? ' ✓' : ' · lav (mål ≥ 4.5:1)'}
+      </div>
       {advanced && (
         <>
           <Field label={`Bredde: ${Math.round(text.w)} px`}>
@@ -995,6 +1080,14 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
           </Field>
         </>
       )}
+      <Field label="Plassering (px)">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <NumberBox label="X" value={Math.round(text.x)} onChange={(n) => patchText(text.id, { x: n })} />
+          <NumberBox label="Y" value={Math.round(text.y)} onChange={(n) => patchText(text.id, { y: n })} />
+          <NumberBox label="Bredde" value={Math.round(text.w)} onChange={(n) => patchText(text.id, { w: Math.max(40, n) })} />
+        </div>
+      </Field>
+      <ArrangeRow kind="text" id={text.id} />
       <button onClick={() => removeText(text.id)} style={{ ...dangerBtn, marginTop: 12 }}>Slett tekst</button>
     </div>
   );

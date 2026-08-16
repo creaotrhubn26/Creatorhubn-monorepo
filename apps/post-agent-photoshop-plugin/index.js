@@ -2303,7 +2303,24 @@ const COMMANDS = {
     const bg = background_color || { red: 240, green: 240, blue: 240 };
 
     const createdLayers = [];
+    const fontWarnings = []; // { requested, used } for hver font som ikke fantes i PS
     await core.executeAsModal(async () => {
+      // Fonter installert i Photoshop → graceful fallback hvis en font mangler
+      // (ellers ville PS substituere stille og teksten se feil ut).
+      let availableFonts = null;
+      try {
+        availableFonts = new Set();
+        for (const fnt of app.fonts) { if (fnt && fnt.postScriptName) availableFonts.add(fnt.postScriptName); }
+        if (availableFonts.size === 0) availableFonts = null;
+      } catch (_e) { availableFonts = null; }
+      const FONT_FALLBACKS = ["Helvetica", "HelveticaNeue", "ArialMT", "Arial"];
+      const resolveFont = (requested) => {
+        if (!availableFonts || availableFonts.has(requested)) return requested;
+        const fb = FONT_FALLBACKS.find((f) => availableFonts.has(f)) || requested;
+        if (fb !== requested) fontWarnings.push({ requested, used: fb });
+        return fb;
+      };
+
       // Lag dokument
       const doc = await app.createDocument({
         width,
@@ -2348,7 +2365,8 @@ const COMMANDS = {
           const placeholder = f.hint || layerName;
           // Ær valgfri farge + font fra feltet (bakoverkompatibelt: samme
           // standard mørkegrå Helvetica som før hvis ikke oppgitt).
-          const fontName = (typeof f.font === "string" && f.font) ? f.font : "Helvetica";
+          const requestedFont = (typeof f.font === "string" && f.font) ? f.font : "Helvetica";
+          const fontName = resolveFont(requestedFont);
           const col = (f.color && typeof f.color === "object")
             ? {
                 red: Number.isFinite(f.color.red) ? f.color.red : 30,
@@ -2505,8 +2523,9 @@ const COMMANDS = {
     return {
       output_path,
       created_layers: createdLayers,
+      font_warnings: fontWarnings,
       notes:
-        "Støtter text-felter (med valgfri font + farge) og image_placeholder-felter (embedes som smart-object når file_path er oppgitt).",
+        "Støtter text-felter (med valgfri font + farge) og image_placeholder-felter (embedes som smart-object når file_path er oppgitt). font_warnings lister fonter som ble erstattet fordi de ikke var installert i Photoshop.",
     };
   },
 

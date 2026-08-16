@@ -33,7 +33,9 @@ export interface IllustrateSuggestions {
   marker?: { fx: number; fy: number; fw: number; fh: number };
 }
 
-const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+// NaN-safe: AI kan returnere manglende/ugyldige koordinater (undefined/NaN) → snap til 0
+// i stedet for å lagre NaN, som ellers gir NaN-posisjonerte annotasjoner i rasterisatoren.
+const clamp01 = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0);
 
 /** Velg etikett-side ut fra ankerposisjon. Kun ytterkantene → venstre/høyre; det
  *  midtre feltet går topp/bunn — det sprer chip-ene og unngår stabling på kanten. */

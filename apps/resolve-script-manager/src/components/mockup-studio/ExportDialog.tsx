@@ -14,6 +14,7 @@ import { demoWriteBinary } from '../../api';
 import { rasterizeToPngDataUrl } from './mockupRaster';
 import { buildPdfBase64 } from './mockupExport';
 import { buildPsdBase64 } from './mockupPsd';
+import { buildSvgBase64 } from './mockupSvg';
 import { buildEditablePsdViaBridge, isBridgeConnected } from './mockupPhotoshop';
 import { runPreflight, preflightSummary, SEVERITY_LABEL, type PreflightIssue, type PreflightSeverity } from './mockupPreflight';
 import { useMockupStudio } from './mockupStudioStore';
@@ -35,8 +36,20 @@ const C = {
   font: '-apple-system, system-ui, "Segoe UI", sans-serif',
 };
 
-type ExportFormat = 'png' | 'pdf' | 'psd' | 'psd_bridge';
+type ExportFormat = 'png' | 'pdf' | 'svg' | 'psd' | 'psd_bridge';
 type Step = 'preflight' | 'format' | 'settings' | 'running' | 'done';
+
+/** Rå-eksport-data (base64) + filendelse for ett format. Delt av enkelt- + batch-eksport. */
+async function buildOne(doc: import('./mockupStudioModel').MockupDoc, format: 'png' | 'pdf' | 'svg' | 'psd', scale: 1 | 2 | 4): Promise<string> {
+  switch (format) {
+    case 'png': return rasterizeToPngDataUrl(doc, scale);
+    case 'pdf': return buildPdfBase64(doc);
+    case 'svg': return buildSvgBase64(doc, scale);
+    case 'psd': return buildPsdBase64(doc);
+  }
+}
+/** Kan formatet reflowes til alle sosiale formater i batch? (PSD-veiene kan ikke.) */
+const BATCHABLE: ExportFormat[] = ['png', 'pdf', 'svg'];
 
 const SEV_COLOR: Record<PreflightSeverity, string> = { must: C.must, should: C.should, info: C.info };
 
@@ -52,6 +65,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState('');
   const [resultPath, setResultPath] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [warnMsg, setWarnMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -69,11 +83,12 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const formatLabel = (): string =>
-    format === 'png' ? `PNG ${scale}×` : format === 'pdf' ? 'PDF' : format === 'psd' ? 'PSD' : 'PSD ✎';
+    format === 'png' ? `PNG ${scale}×` : format === 'pdf' ? 'PDF' : format === 'svg' ? 'SVG' : format === 'psd' ? 'PSD' : 'PSD ✎';
 
   const runExport = async () => {
     setStep('running');
     setErr(null);
+    setWarnMsg(null);
     try {
       if (format === 'psd_bridge') {
         setStatus('Kobler til Photoshop-broen…');
@@ -86,11 +101,16 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         if (typeof path !== 'string') { setStep('settings'); return; }
         setStatus('Bygger redigerbar PSD i Photoshop…');
         const res = await buildEditablePsdViaBridge(doc, path);
+        if (res.fontWarnings.length) {
+          const list = res.fontWarnings.map((w) => `${w.requested} → ${w.used}`).join(', ');
+          setWarnMsg(`Merk: ${res.fontWarnings.length} font(er) var ikke installert i Photoshop og ble erstattet (${list}). Installer fontene for eksakt match.`);
+        }
         finish(res.output_path);
         return;
       }
-      if (format === 'png' && socialPack) {
-        const path = await saveFileDialog({ defaultPath: `${safeDocName(doc.name)}.png`, filters: [{ name: 'PNG', extensions: ['png'] }] });
+      const ext = format as 'png' | 'pdf' | 'svg' | 'psd';
+      if (socialPack && BATCHABLE.includes(format)) {
+        const path = await saveFileDialog({ defaultPath: `${safeDocName(doc.name)}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
         if (typeof path !== 'string') { setStep('settings'); return; }
         const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         const dir = slash >= 0 ? path.slice(0, slash) : '.';
@@ -98,22 +118,18 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         let lastPath = dir;
         for (const fmt of SOCIAL_FORMATS) {
           setStatus(`Tegner ${fmt.label}…`);
-          const url = await rasterizeToPngDataUrl(applyFormat(doc, fmt), scale);
-          lastPath = await demoWriteBinary(`${dir}/${base}-${fmt.id}.png`, url);
+          const data = await buildOne(applyFormat(doc, fmt), ext, scale);
+          lastPath = await demoWriteBinary(`${dir}/${base}-${fmt.id}.${ext}`, data);
         }
-        addExport(doc.name, `PNG sosial-pakke (${SOCIAL_FORMATS.length} formater)`, dir);
+        addExport(doc.name, `${ext.toUpperCase()} sosial-pakke (${SOCIAL_FORMATS.length} formater)`, dir);
         setProjectStatus(doc.id, 'exported');
         setResultPath(lastPath);
         setStatus('');
         setStep('done');
         return;
       }
-      const ext = format;
       setStatus('Tegner materialet…');
-      const data =
-        format === 'png' ? await rasterizeToPngDataUrl(doc, scale)
-        : format === 'pdf' ? await buildPdfBase64(doc)
-        : await buildPsdBase64(doc);
+      const data = await buildOne(doc, ext, scale);
       const path = await saveFileDialog({ defaultPath: `${safeDocName(doc.name)}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
       if (typeof path !== 'string') { setStep('settings'); return; }
       setStatus('Lagrer fil…');
@@ -172,6 +188,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <FormatCard active={format === 'png'} onClick={() => setFormat('png')} title="PNG" desc="Best for nettsider, e-post og sosiale medier." />
               <FormatCard active={format === 'pdf'} onClick={() => setFormat('pdf')} title="PDF" desc="Best for deling, presentasjon og utskrift." />
+              <FormatCard active={format === 'svg'} onClick={() => setFormat('svg')} title="SVG (semi-vektor)" desc="Skalerbar. Tekst som ekte, redigerbare vektor-tekstlag; komposit som innebygd bilde." />
               <FormatCard active={format === 'psd'} onClick={() => setFormat('psd')} title="PSD (selvstendig)" desc="Lagdelt Photoshop-fil. Fungerer uten Photoshop åpent." />
               <FormatCard active={format === 'psd_bridge'} onClick={() => setFormat('psd_bridge')} title="PSD ✎ (redigerbar)" desc="Smart Objects + redigerbare tekstlag. Krever tilkoblet Photoshop-bro." />
             </div>
@@ -186,25 +203,30 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         {step === 'settings' && (
           <div>
             <StepLabel>Innstillinger — {formatLabel()}</StepLabel>
-            {format === 'png' && (
-              <div>
-                <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 6 }}>Oppløsning</div>
+            {(format === 'png' || format === 'svg') && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 6 }}>Oppløsning{format === 'svg' ? ' (innebygd bilde-lag)' : ''}</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {([1, 2, 4] as const).map((s) => (
                     <button key={s} onClick={() => setScale(s)} style={{ ...chip, background: scale === s ? C.accent : C.soft, color: scale === s ? C.accentInk : C.ink }}>{s}×</button>
                   ))}
                 </div>
-                <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 8 }}>Eksporterer {doc.canvas.w * scale}×{doc.canvas.h * scale} px.</div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13, cursor: 'pointer' }}>
+                <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 8 }}>{format === 'svg' ? `Vektor-tekst er alltid skarp; komposit-laget rendres på ${scale}×.` : `Eksporterer ${doc.canvas.w * scale}×${doc.canvas.h * scale} px.`}</div>
+              </div>
+            )}
+            {format === 'pdf' && <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 12 }}>Énsides PDF (RGB) i full oppløsning, klar for deling og utskrift.</div>}
+            {format === 'svg' && <div style={{ fontSize: 13, color: C.inkSoft, marginBottom: 12 }}>Tekst blir ekte vektor-tekstlag (skalerbar, redigerbar); enhets-komposittet innebygges som bilde.</div>}
+            {format === 'psd' && <div style={{ fontSize: 13, color: C.inkSoft }}>Lagdelt PSD: bakgrunn, ett lag per enhet, ett per tekst + logo.</div>}
+            {format === 'psd_bridge' && <div style={{ fontSize: 13, color: C.inkSoft }}>Bygges i Photoshop via broen: enheter som Smart Objects, tekst som redigerbare tekstlag.</div>}
+            {BATCHABLE.includes(format) && (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={socialPack} onChange={(e) => setSocialPack(e.target.checked)} />
                   Sosial-pakke: alle formater (kvadrat, story, portrett, landskap, LinkedIn)
                 </label>
-                {socialPack && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>Lagrer {SOCIAL_FORMATS.length} filer i valgt mappe, reflowet per format.</div>}
-              </div>
+                {socialPack && <div style={{ fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>Lagrer {SOCIAL_FORMATS.length} {format.toUpperCase()}-filer i valgt mappe, reflowet per format.</div>}
+              </>
             )}
-            {format === 'pdf' && <div style={{ fontSize: 13, color: C.inkSoft }}>Énsides PDF (RGB) i full oppløsning, klar for deling og utskrift.</div>}
-            {format === 'psd' && <div style={{ fontSize: 13, color: C.inkSoft }}>Lagdelt PSD: bakgrunn, ett lag per enhet, ett per tekst + logo.</div>}
-            {format === 'psd_bridge' && <div style={{ fontSize: 13, color: C.inkSoft }}>Bygges i Photoshop via broen: enheter som Smart Objects, tekst som redigerbare tekstlag.</div>}
             {err && <div style={{ fontSize: 13, color: C.must, marginTop: 12 }}>{err}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
               <button onClick={() => setStep('format')} style={ghost}>← Tilbake</button>
@@ -226,7 +248,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           <div>
             <StepLabel>Ferdig</StepLabel>
             <div style={{ fontSize: 14, color: C.ok, marginBottom: 6 }}>✓ {formatLabel()} eksportert.</div>
-            {resultPath && <div style={{ fontSize: 12.5, color: C.inkSoft, wordBreak: 'break-all', marginBottom: 16 }}>{resultPath}</div>}
+            {resultPath && <div style={{ fontSize: 12.5, color: C.inkSoft, wordBreak: 'break-all', marginBottom: warnMsg ? 8 : 16 }}>{resultPath}</div>}
+            {warnMsg && <div style={{ fontSize: 12.5, color: C.should, marginBottom: 16, lineHeight: 1.4 }}>{warnMsg}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               {resultPath && <button onClick={() => void openPath(resultPath).catch(() => {})} style={ghost}>Åpne fil</button>}
               <button onClick={() => setStep('format')} style={ghost}>Eksporter på nytt</button>

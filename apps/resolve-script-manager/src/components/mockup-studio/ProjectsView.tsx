@@ -106,7 +106,7 @@ export function ProjectsView({ onClose, onOpen, onNew, onGallery }: { onClose: (
                     {p.status === 'archived'
                       ? <button onClick={() => { setProjectStatus(p.id, 'draft'); refresh(); }} style={mini}>Gjenopprett</button>
                       : <button onClick={() => { setProjectStatus(p.id, 'archived'); refresh(); }} style={mini}>Arkiver</button>}
-                    <button onClick={() => { deleteProject(p.id); refresh(); }} style={{ ...mini, color: '#f0a0a0' }}>Slett</button>
+                    <button onClick={() => { if (!confirm(`Slette «${p.name}»? Dette kan ikke angres.`)) return; deleteProject(p.id); refresh(); }} style={{ ...mini, color: '#f0a0a0' }}>Slett</button>
                   </div>
                 </div>
               </div>

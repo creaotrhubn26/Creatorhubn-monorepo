@@ -462,6 +462,7 @@ export function deviceScreenRect(dev: MockupDeviceSlot): { x: number; y: number;
     return { x: dev.x + inset, y: dev.y + inset, w: w - inset * 2, h: h - inset * 2 };
   }
   const spec = DEVICE_FRAMES[dev.variant];
+  if (!spec) return { x: dev.x, y: dev.y, w, h }; // ukjent variant: fall tilbake til hele enhets-boksen (crash ikke rasteren)
   return { x: dev.x + spec.screen.x * w, y: dev.y + spec.screen.y * h, w: spec.screen.w * w, h: spec.screen.h * h };
 }
 
@@ -742,7 +743,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   }
   doc.texts.forEach((tx, i) => {
     const rev = t != null ? revealFor('text', i, doc.texts.length, t) : null;
-    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y, () => drawText(ctx, doc, tx));
+    withReveal(ctx, rev, tx.x + tx.w / 2, tx.y + measureTextHeight(tx) / 2, () => drawText(ctx, doc, tx));
   });
   await drawLogo(ctx, doc.canvas);
   if (!opts?.skipAnnotations) drawAnnotations(ctx, doc, scale, canvas, t);
