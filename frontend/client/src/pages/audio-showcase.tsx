@@ -10,6 +10,7 @@
 import React from 'react';
 import { useParams } from 'wouter';
 import WaveSurfer from 'wavesurfer.js';
+import RegionsPlugin, { type Region } from 'wavesurfer.js/dist/plugins/regions.js';
 import {
   Box, Stack, Typography, Button, IconButton, Chip, TextField, Avatar, Divider,
   CircularProgress, Tooltip, Menu, MenuItem, Slider, InputBase, Dialog, DialogTitle,
@@ -23,6 +24,7 @@ import {
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
+  ZoomIn,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
@@ -52,6 +54,38 @@ const relTime = (iso?: string) => {
 };
 
 type CommentFilter = 'all' | 'unresolved' | 'resolved' | 'decision';
+
+// Klientside per-versjon-waveform for versjonsvelgeren — ingen backend-peaks-
+// pipeline finnes (audio_review_versions.waveform_json_url er reservert men
+// ubrukt, eksplisitt scopet som V2 i migrasjonen). Dekoder lydfila med Web
+// Audio API og nedsampler til et fåtall peaks; feiler stille (CORS/dekodefeil)
+// slik at kalleren alltid kan falle tilbake til dagens CSS-mønster.
+async function extractPeaks(url: string, buckets = 48): Promise<number[] | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioCtx();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const data = audioBuffer.getChannelData(0);
+    const blockSize = Math.floor(data.length / buckets) || 1;
+    const peaks: number[] = [];
+    for (let i = 0; i < buckets; i++) {
+      let max = 0;
+      const start = i * blockSize;
+      for (let j = start; j < start + blockSize && j < data.length; j++) {
+        const v = Math.abs(data[j]);
+        if (v > max) max = v;
+      }
+      peaks.push(max);
+    }
+    void ctx.close();
+    return peaks;
+  } catch {
+    return null;
+  }
+}
 
 /* ── Sidebar-byggesteiner ──────────────────────────────────────────────── */
 const MetaRow: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode }> = ({ icon, label, value }) => (
@@ -85,6 +119,10 @@ export default function AudioShowcasePage() {
   const [members, setMembers] = React.useState<any[]>([]);
   const [tasks, setTasks] = React.useState<any[]>([]);
   const [currentVid, setCurrentVid] = React.useState('');
+  // Ekte per-versjon-waveform-thumbnails i versjonsvelgeren — se extractPeaks().
+  // undefined = ikke forsøkt, null = forsøkt/feilet (behold CSS-fallback), array = klar.
+  const [thumbPeaks, setThumbPeaks] = React.useState<Record<string, number[] | null>>({});
+  const thumbInFlight = React.useRef<Set<string>>(new Set());
   const [detail, setDetail] = React.useState<{ comments: any[]; sections: any[]; approvals: any[] }>({ comments: [], sections: [], approvals: [] });
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -192,6 +230,7 @@ export default function AudioShowcasePage() {
   /* ── Wavesurfer ── */
   const waveRef = React.useRef<HTMLDivElement | null>(null);
   const wsRef = React.useRef<WaveSurfer | null>(null);
+  const regionsRef = React.useRef<RegionsPlugin | null>(null);
   const [ready, setReady] = React.useState(false);
   const [playing, setPlaying] = React.useState(false);
   const [cur, setCur] = React.useState(0);
@@ -199,6 +238,8 @@ export default function AudioShowcasePage() {
   const [vol, setVol] = React.useState(0.8);
   const [loopOn, setLoopOn] = React.useState(false);
   const [abActive, setAbActive] = React.useState(false);
+  const [zoomLevel, setZoomLevel] = React.useState(0); // 0 = sentinel: fit-to-container, ikke rørt ennå
+  const [activeCommentId, setActiveCommentId] = React.useState<string | null>(null);
   const loopRef = React.useRef(loopOn); loopRef.current = loopOn;
   const effectiveSrc = (abActive && prevVersion ? prevVersion.file_url : currentVersion?.file_url) || '';
   const fracRef = React.useRef(0);
@@ -207,20 +248,77 @@ export default function AudioShowcasePage() {
     if (!waveRef.current || !effectiveSrc) return;
     let cancelled = false;
     setReady(false);
+    setZoomLevel(0); // nytt spor/A-B-bytte → tilbake til fit-to-width
     const ws = WaveSurfer.create({
       container: waveRef.current, url: effectiveSrc, height: 96,
       waveColor: 'rgba(245,242,234,0.22)', progressColor: ACCENT, cursorColor: 'rgba(245,242,234,0.85)',
       cursorWidth: 2, barWidth: 2, barGap: 1, barRadius: 3, normalize: true,
     });
     wsRef.current = ws;
+    // Kommentar-pinner på waveformen — samme regions-plugin-mønster som
+    // ProfessionalWaveform.tsx (timeline/). Zero-width regions pr. kommentar
+    // (linje ~lenger ned, synk-effekt på detail.comments) fungerer som pins.
+    const regions = ws.registerPlugin(RegionsPlugin.create());
+    regionsRef.current = regions;
+    regions.on('region-clicked', (region: Region, e: MouseEvent) => {
+      e.stopPropagation(); // ikke også utløs et vanlig waveform-seek-klikk under pinnen
+      ws.setTime(region.start); // direkte på instansen — ikke via seekFrac, som kan lese en stale `dur`
+      setActiveCommentId(region.id);
+    });
     ws.on('ready', () => { if (cancelled) return; setReady(true); setDur(ws.getDuration()); ws.setVolume(vol); if (fracRef.current > 0) ws.setTime(fracRef.current * ws.getDuration()); });
     ws.on('timeupdate', (t: number) => { if (!cancelled) { setCur(t); if (ws.getDuration()) fracRef.current = t / ws.getDuration(); } });
     ws.on('play', () => !cancelled && setPlaying(true));
     ws.on('pause', () => !cancelled && setPlaying(false));
     ws.on('finish', () => { if (cancelled) return; if (loopRef.current) { ws.setTime(0); void ws.play(); } else setPlaying(false); });
-    return () => { cancelled = true; try { ws.destroy(); } catch { /* ignore */ } wsRef.current = null; };
+    return () => { cancelled = true; try { ws.destroy(); } catch { /* ignore */ } wsRef.current = null; regionsRef.current = null; };
   }, [effectiveSrc]); // eslint-disable-line react-hooks/exhaustive-deps
   const seekFrac = (f: number) => { const ws = wsRef.current; if (ws && dur) ws.setTime(Math.max(0, Math.min(1, f)) * dur); };
+
+  // Kommentar-pinner: synk detail.comments → wavesurfer-regions. clearRegions()
+  // + re-legg-til (ikke diffing) — kommentarlister er små (titalls, ikke tusenvis)
+  // per versjon, og dette kjører kun når detail.comments faktisk endrer seg
+  // (ny kommentar, status-toggle, eller 5s-pollen i loadVersion).
+  React.useEffect(() => {
+    const regions = regionsRef.current;
+    if (!regions || !ready) return;
+    regions.clearRegions();
+    for (const c of detail.comments) {
+      const t = Number(c.timecode_seconds);
+      if (!Number.isFinite(t)) continue;
+      const color = c.is_decision ? ACCENT : c.status === 'resolved' ? '#5fb88a' : '#e0a955';
+      regions.addRegion({ id: c.id, start: t, end: t, drag: false, resize: false, color, content: `${c.author}: ${String(c.body || '').slice(0, 40)}` });
+    }
+  }, [detail.comments, ready]);
+
+  // Zoom — kjerne-API (ws.zoom), ingen egen plugin nødvendig. 0 = sentinel,
+  // se opprettelses-effekten over som nullstiller ved spor-/A-B-bytte.
+  React.useEffect(() => {
+    if (zoomLevel > 0) wsRef.current?.zoom(zoomLevel);
+  }, [zoomLevel]);
+
+  // Pin-klikk → scroll riktig sidepanel-kommentar-rad inn i synsfelt.
+  const commentRowRefs = React.useRef<Record<string, HTMLElement>>({});
+  React.useEffect(() => {
+    if (!activeCommentId) return;
+    commentRowRefs.current[activeCommentId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [activeCommentId]);
+
+  // Ekte versjons-thumbnails — lat, sesjons-cachet. Kun aktiv versjon + de
+  // første 12 andre (versjonslisten er ubegrenset i backend-spørringen; unngå
+  // å dekode et ukjent antall lydfiler samtidig for prosjekter med lang historikk).
+  const requestPeaks = React.useCallback((v: any) => {
+    if (!v?.file_url || thumbPeaks[v.id] !== undefined || thumbInFlight.current.has(v.id)) return;
+    thumbInFlight.current.add(v.id);
+    extractPeaks(v.file_url).then((peaks) => {
+      thumbInFlight.current.delete(v.id);
+      setThumbPeaks((p) => ({ ...p, [v.id]: peaks }));
+    });
+  }, [thumbPeaks]);
+  React.useEffect(() => {
+    const toLoad = [...versions].sort((a, b) => (a.id === currentVid ? -1 : b.id === currentVid ? 1 : 0)).slice(0, 12);
+    toLoad.forEach(requestPeaks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versions, currentVid]);
 
   /* ── Mutasjoner (alle wired) ── */
   const addComment = async (body: string, opts: { parentId?: string; sectionRef?: string | null } = {}) => {
@@ -541,6 +639,12 @@ export default function AudioShowcasePage() {
                   <VolumeUp sx={{ fontSize: 18, color: MUTED }} />
                   <Slider size="small" value={vol} min={0} max={1} step={0.01} onChange={(_, v) => { setVol(v as number); wsRef.current?.setVolume(v as number); }} sx={{ color: ACCENT, '& .MuiSlider-thumb': { width: 11, height: 11 } }} />
                 </Stack>
+                <Tooltip title="Zoom waveform">
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ width: 130 }}>
+                    <ZoomIn sx={{ fontSize: 18, color: MUTED }} />
+                    <Slider size="small" value={zoomLevel} min={0} max={200} step={5} onChange={(_, v) => setZoomLevel(v as number)} sx={{ color: ACCENT, '& .MuiSlider-thumb': { width: 11, height: 11 } }} />
+                  </Stack>
+                </Tooltip>
               </Box>
               <Button onClick={() => setLoopOn((v) => !v)} startIcon={<LoopIcon sx={{ fontSize: '18px !important' }} />} variant="outlined" size="small" sx={{ color: loopOn ? ACCENT : TEXT, borderColor: loopOn ? ACCENT : BORDER, textTransform: 'none', borderRadius: '8px' }}>Loop</Button>
               <Tooltip title={prevVersion ? `Sammenlign med ${prevVersion.version_label}` : 'Ingen tidligere versjon'}>
@@ -564,7 +668,17 @@ export default function AudioShowcasePage() {
                     <Box key={v.id} onClick={() => { setAbActive(false); setCurrentVid(v.id); }} sx={{ flexShrink: 0, width: 180, p: 1.5, borderRadius: '12px', cursor: 'pointer', border: `1.5px solid ${active ? ACCENT : BORDER}`, bgcolor: active ? 'rgba(255,107,53,0.06)' : 'transparent' }}>
                       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75 }}><Typography sx={{ fontWeight: 700, fontSize: '0.88rem' }}>{v.version_label}</Typography>{active && <Chip label="Aktiv" size="small" sx={{ height: 17, fontSize: '0.62rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }} />}{v.status === 'approved' && <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} />}</Stack>
                       <Typography sx={{ fontSize: '0.68rem', color: MUTED, mb: 1 }}>{v.created_at ? new Date(v.created_at).toLocaleDateString('no-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</Typography>
-                      <Box sx={{ height: 30, borderRadius: '6px', mb: 1, background: active ? 'repeating-linear-gradient(90deg,#FF6B35 0 2px,transparent 2px 4px)' : 'repeating-linear-gradient(90deg,rgba(245,242,234,0.25) 0 2px,transparent 2px 4px)', opacity: 0.8 }} />
+                      {thumbPeaks[v.id] ? (
+                        <Box sx={{ height: 30, borderRadius: '6px', mb: 1, overflow: 'hidden' }}>
+                          <svg width="100%" height="30" viewBox={`0 0 ${thumbPeaks[v.id]!.length} 30`} preserveAspectRatio="none">
+                            {thumbPeaks[v.id]!.map((p, i) => (
+                              <rect key={i} x={i} y={15 - p * 15} width={0.7} height={Math.max(1, p * 30)} fill={active ? '#FF6B35' : 'rgba(245,242,234,0.35)'} />
+                            ))}
+                          </svg>
+                        </Box>
+                      ) : (
+                        <Box sx={{ height: 30, borderRadius: '6px', mb: 1, background: active ? 'repeating-linear-gradient(90deg,#FF6B35 0 2px,transparent 2px 4px)' : 'repeating-linear-gradient(90deg,rgba(245,242,234,0.25) 0 2px,transparent 2px 4px)', opacity: 0.8 }} />
+                      )}
                       <Stack direction="row" alignItems="center" justifyContent="space-between"><Stack direction="row" alignItems="center" spacing={0.5}><ChatBubbleOutline sx={{ fontSize: 13, color: MUTED }} /><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{cCount ?? 0}</Typography></Stack><Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: statusColor }}>{statusLabel}</Typography></Stack>
                     </Box>
                   );
@@ -607,9 +721,17 @@ export default function AudioShowcasePage() {
               const color = mem?.avatar_color || ACCENT;
               const resolved = c.status === 'resolved';
               return (
-                <Box key={c.id} sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${BORDER}` }}>
+                <Box key={c.id} ref={(el: HTMLElement | null) => { if (el) commentRowRefs.current[c.id] = el; }}
+                  sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${BORDER}`, bgcolor: activeCommentId === c.id ? 'rgba(255,107,53,0.08)' : 'transparent', transition: 'background-color 0.2s' }}>
                   <Stack direction="row" spacing={1.5}>
-                    <Box sx={{ pt: 0.25 }}><Typography sx={{ fontSize: '0.68rem', color: ACCENT, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(c.timecode_seconds))}</Typography></Box>
+                    <Box sx={{ pt: 0.25 }}>
+                      <Typography
+                        onClick={() => { if (dur) { seekFrac(Number(c.timecode_seconds) / dur); setActiveCommentId(c.id); } }}
+                        sx={{ fontSize: '0.68rem', color: ACCENT, fontWeight: 700, fontVariantNumeric: 'tabular-nums', cursor: dur ? 'pointer' : 'default', '&:hover': { textDecoration: dur ? 'underline' : 'none' } }}
+                      >
+                        {fmt(Number(c.timecode_seconds))}
+                      </Typography>
+                    </Box>
                     <Avatar sx={{ width: 30, height: 30, fontSize: '0.76rem', bgcolor: color, color: '#150d05', fontWeight: 700 }}>{initial(c.author)}</Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
