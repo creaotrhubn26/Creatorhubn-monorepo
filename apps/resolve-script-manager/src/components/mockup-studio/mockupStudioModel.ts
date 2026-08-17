@@ -306,6 +306,10 @@ export interface MockupCanvasSpec {
   scene?: { id: string; shot?: string; typeAnim?: TypeAnimCfg };
   /** Valgfri logo. */
   logo?: MockupLogo;
+  /** Overstyr basis-bakgrunnsfargen (hex) — 'light'/'dark' gir ellers en fast
+   *  nøytral grå/nær-sort (se resolveBaseBg), som ikke kan uttrykke f.eks. en
+   *  varm krem merkevaretone. Satt → vinner over background-modusens standard. */
+  bgColor?: string;
 }
 
 /** Font-familie for en tekst-rolle ut fra lerretets typografi-stil.
@@ -358,8 +362,9 @@ export function isDark(hex: string): boolean {
   return relativeLuminance(hex) < 0.35;
 }
 
-/** Løs den effektive bakgrunns-basisfargen fra modus + accenter. */
+/** Løs den effektive bakgrunns-basisfargen fra modus + accenter (bgColor overstyrer alt). */
 export function resolveBaseBg(canvas: MockupCanvasSpec): string {
+  if (canvas.bgColor) return canvas.bgColor;
   switch (canvas.background) {
     case 'light': return '#f4f5f7';
     case 'brand': return mixHex(canvas.accent, '#0a0b10', 0.82); // dyp merkevare-tone
@@ -1148,7 +1153,7 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       const canvas = baseCanvas({
         w: 1080, h: 1080,
         accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
-        background: 'light', bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
         logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
       });
       const base = doc('PreVisit kampanje', 'previsit_campaign_1', canvas, [], [

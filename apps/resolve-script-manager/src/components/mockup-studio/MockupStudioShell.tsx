@@ -944,6 +944,14 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
           onChange={(v) => patchCanvas({ background: v })}
         />
       </Field>
+      <Field label="Egendefinert bakgrunnsfarge (overstyrer Lys/Mørk/Merkevare sin faste standardtone)">
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <ColorRow value={canvas.bgColor ?? resolveBaseBg(canvas)} onChange={(v) => patchCanvas({ bgColor: v })} />
+          {canvas.bgColor && (
+            <button onClick={() => patchCanvas({ bgColor: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Tilbakestill til standard" aria-label="Tilbakestill bakgrunnsfarge">✕</button>
+          )}
+        </div>
+      </Field>
       <Field label="Lifestyle-scene">
         <select
           value={canvas.scene?.id ?? ''}
