@@ -24,7 +24,7 @@ import {
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
-  ZoomIn,
+  ZoomIn, TouchApp,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
@@ -33,6 +33,7 @@ import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBU
 import SpotifyArtistField from '@/components/universal/showcase/SpotifyArtistField';
 import SignaturePad, { type SignatureHandle } from '@/components/universal/showcase/SignaturePad';
 import YouTubePublishPanel from '@/components/universal/showcase/YouTubePublishPanel';
+import LyricTimingDialog from '@/components/universal/showcase/LyricTimingDialog';
 import { SpotifyIcon } from '@/components/universal/showcase/BrandIcons';
 import WarmupDialog from '@/components/universal/showcase/WarmupDialog';
 import SessionsDialog from '@/components/universal/showcase/SessionsDialog';
@@ -811,6 +812,7 @@ export default function AudioShowcasePage() {
         onClose={() => setLyricsOpen(false)}
         projectId={projectId}
         track={easeverseTrack}
+        masterUrl={currentVersion?.file_url}
         onLyricsChange={(lyrics) => setEaseverseTrack((t: any) => (t ? { ...t, lyrics } : t))}
       />
     </Box>
@@ -925,7 +927,8 @@ const TaskDialog: React.FC<{ open: boolean; onClose: () => void; onAdd: (title: 
 
 type SyncConn = { easeverseConfigured: boolean; reachable: boolean; latencyMs?: number | null };
 
-const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; track: any; onLyricsChange: (lyrics: string) => void }> = ({ open, onClose, projectId, track, onLyricsChange }) => {
+const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; track: any; masterUrl?: string; onLyricsChange: (lyrics: string) => void }> = ({ open, onClose, projectId, track, masterUrl, onLyricsChange }) => {
+  const [timingOpen, setTimingOpen] = React.useState(false);
   const [val, setVal] = React.useState('');
   const [conn, setConn] = React.useState<SyncConn>({ easeverseConfigured: false, reachable: false });
   const [saving, setSaving] = React.useState(false);
@@ -1023,6 +1026,10 @@ const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: st
         <SubjectOutlined sx={{ color: ACCENT }} /> Tekst-studio {track?.title ? `· ${track.title}` : ''}
         <Box sx={{ flex: 1 }} />
         {track && (
+          <Button onClick={() => setTimingOpen(true)} startIcon={<TouchApp sx={{ fontSize: '16px !important' }} />} size="small"
+            sx={{ color: MUTED, textTransform: 'none', fontSize: '0.74rem', mr: 0.5 }}>Tidssett tekst</Button>
+        )}
+        {track && (
           <Stack direction="row" alignItems="center" spacing={0.75} sx={{ px: 1, py: 0.4, borderRadius: '999px', bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${status.color}44` }}>
             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: status.dot, boxShadow: conn.reachable ? `0 0 6px ${status.dot}` : 'none' }} />
             <Typography sx={{ fontSize: '0.72rem', color: status.color, fontWeight: 600 }}>{status.label}</Typography>
@@ -1095,6 +1102,7 @@ const LyricsDialog: React.FC<{ open: boolean; onClose: () => void; projectId: st
           <Button onClick={onClose} variant="contained" sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 700, textTransform: 'none', borderRadius: '999px' }}>Ferdig</Button>
         </DialogActions>
       )}
+      <LyricTimingDialog open={timingOpen} projectId={projectId} masterUrl={masterUrl} onClose={() => setTimingOpen(false)} onSaved={() => setTimingOpen(false)} />
     </Dialog>
   );
 };
