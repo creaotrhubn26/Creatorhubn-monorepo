@@ -609,6 +609,13 @@ export interface MockupImageSlot {
    *  redigering av feltene her og re-generering holder dem i sync. Uten dette
    *  feltet er `image` en vanlig statisk bilde-URL uten inspektør-redigering. */
   cardContent?: PreVisitCardContent;
+  /** Satt → dette bildet er et generert «info-rader»-kort (previsitInfoCardImage) —
+   *  samme sync-mønster som cardContent. animateRows styrer om radene tegnes live
+   *  (sekvensiell flyt-avsløring) i stedet for bakt statisk inn i SVG-en. */
+  infoCardContent?: PreVisitInfoCardContent;
+  /** Satt → dette bildet er et generert «skjema-liste»-kort (previsitFormListCardImage) —
+   *  samme sync-mønster som cardContent/infoCardContent. */
+  formListContent?: PreVisitFormListContent;
   /** Satt → dette bildet er en ensfarget flate (f.eks. en skillelinje mellom to
    *  foto-elementer) — `image` regenereres fra denne fargen via `placeholderImage`
    *  når inspektøren endrer den. Uten dette feltet er `image` statisk. */
@@ -625,6 +632,22 @@ export interface PreVisitCardContent {
    *  (mockupRaster.drawCardSteps), slik at hvert steg kan poppe inn étt-og-étt langs
    *  animasjons-tidslinjen («flow») i stedet for å alltid vises statisk ferdig. */
   animateSteps?: boolean;
+}
+
+export interface PreVisitInfoCardContent {
+  title: string;
+  checkHeader?: boolean;
+  rows: { icon: string; label: string; value: string; quote?: boolean }[];
+  highlightRow?: { icon: string; label: string };
+  footer?: string;
+  /** Se PreVisitCardContent.animateSteps — samme flyt-mønster, radene her i stedet for steg. */
+  animateRows?: boolean;
+}
+
+export interface PreVisitFormListContent {
+  fields: { q: string; sub: string }[];
+  buttonText: string;
+  animateRows?: boolean;
 }
 
 /** Farge-tilpasning for person-laptop-figuren. Alle felt valgfrie — mangler felt bruker standardpaletten. */
@@ -1222,18 +1245,22 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
         makeText('title', { text: 'Fortell hva du', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
         makeText('title', { text: 'kommer for.', x: 70, y: 226, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
       ]);
-      const fields = [
-        { q: 'Hva gjelder timen?', sub: 'Fortell med egne ord' },
-        { q: 'Når startet det?', sub: 'Velg tidspunkt' },
-        { q: 'Symptomer', sub: 'Hva opplever du?' },
-        { q: 'Medisiner', sub: 'Hva bruker du nå?' },
-        { q: 'Tidligere sykdom', sub: 'Relevant sykehistorie?' },
-      ];
+      const formContent: PreVisitFormListContent = {
+        fields: [
+          { q: 'Hva gjelder timen?', sub: 'Fortell med egne ord' },
+          { q: 'Når startet det?', sub: 'Velg tidspunkt' },
+          { q: 'Symptomer', sub: 'Hva opplever du?' },
+          { q: 'Medisiner', sub: 'Hva bruker du nå?' },
+          { q: 'Tidligere sykdom', sub: 'Relevant sykehistorie?' },
+        ],
+        buttonText: 'Neste',
+        animateRows: true,
+      };
       return {
         ...base,
         images: [
           makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 1080, h: 660, radius: 0 }),
-          makeImage(previsitFormListCardImage(fields, 'Neste', canvas.accent, canvas.accent2), { x: 600, y: 460, w: 380, h: 355, radius: 20 }),
+          makeImage(previsitFormListCardImage(formContent.fields, formContent.buttonText, canvas.accent, canvas.accent2, formContent.animateRows), { x: 600, y: 460, w: 380, h: 355, radius: 20, formListContent: formContent }),
         ],
         annotations: [
           { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 2 },
@@ -1257,8 +1284,8 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
         makeText('title', { text: 'Fra historie til', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
         makeText('title', { text: 'strukturert notat.', x: 70, y: 226, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
       ]);
-      const card = previsitInfoCardImage({
-        title: 'Strukturert anamnese', primary: canvas.accent, accent: canvas.accent2,
+      const cardContent: PreVisitInfoCardContent = {
+        title: 'Strukturert anamnese',
         rows: [
           { icon: '📋', label: 'Aktuelt', value: 'Hodepine, tiltakende' },
           { icon: '📝', label: 'Anamnese', value: 'Ingen tidligere hodepine' },
@@ -1266,12 +1293,14 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
           { icon: '👪', label: 'Relevant historikk', value: 'Migrene i familien' },
         ],
         highlightRow: { icon: '✓', label: 'Klar for konsultasjon' },
-      });
+        animateRows: true,
+      };
+      const card = previsitInfoCardImage({ ...cardContent, primary: canvas.accent, accent: canvas.accent2 });
       return {
         ...base,
         images: [
           makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
-          makeImage(card, { x: 580, y: 460, w: 460, h: 377, radius: 20 }),
+          makeImage(card, { x: 580, y: 460, w: 460, h: 377, radius: 20, infoCardContent: cardContent }),
         ],
         annotations: [
           { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 3 },
@@ -1295,20 +1324,22 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
         makeText('title', { text: 'Klar oversikt', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
         makeText('title', { text: 'før pasienten kommer.', x: 70, y: 226, w: 900, size: 48, color: MEDSIDE_COLORS.gold }),
       ]);
-      const card = previsitInfoCardImage({
-        title: 'PreVisit mottatt', checkHeader: true, primary: canvas.accent, accent: canvas.accent2,
+      const cardContent: PreVisitInfoCardContent = {
+        title: 'PreVisit mottatt', checkHeader: true,
         rows: [
           { icon: '🩺', label: 'Hovedproblem', value: 'Hodepine og svimmelhet' },
           { icon: '⏱', label: 'Varighet', value: '3 uker' },
           { icon: '📈', label: 'Forverres ved', value: 'Fysisk aktivitet' },
           { icon: '📋', label: 'Relevant historikk', value: 'Migrene i familien' },
         ],
-      });
+        animateRows: true,
+      };
+      const card = previsitInfoCardImage({ ...cardContent, primary: canvas.accent, accent: canvas.accent2 });
       return {
         ...base,
         images: [
           makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 1080, h: 660, radius: 0 }),
-          makeImage(card, { x: 600, y: 460, w: 380, h: 271, radius: 20 }),
+          makeImage(card, { x: 600, y: 460, w: 380, h: 271, radius: 20, infoCardContent: cardContent }),
         ],
         annotations: [
           { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 4 },
@@ -1332,8 +1363,8 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
         makeText('title', { text: 'Bedre forberedt.', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
         makeText('title', { text: 'Fra første minutt.', x: 70, y: 226, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
       ]);
-      const card = previsitInfoCardImage({
-        title: 'PreVisit sammendrag', primary: canvas.accent, accent: canvas.accent2,
+      const cardContent: PreVisitInfoCardContent = {
+        title: 'PreVisit sammendrag',
         rows: [
           { icon: '👤', label: 'Pasienten', value: 'Kari Nordmann · 10:30' },
           { icon: '🩺', label: 'Hovedårsak', value: 'Vedvarende tretthet' },
@@ -1341,14 +1372,16 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
           { icon: '💬', label: 'Pasientens egne notater', value: 'Har vært slapp i 2 uker', quote: true },
         ],
         footer: 'Skjema fullført kl. 08:14',
-      });
+        animateRows: true,
+      };
+      const card = previsitInfoCardImage({ ...cardContent, primary: canvas.accent, accent: canvas.accent2 });
       return {
         ...base,
         images: [
           makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
           makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 540, y: 420, w: 540, h: 660, radius: 0 }),
           makeImage(placeholderImage('', '#ffffff', '#ffffff'), { x: 538, y: 420, w: 4, h: 660, radius: 0, shadow: false, solidColor: '#ffffff' }),
-          makeImage(card, { x: 350, y: 540, w: 380, h: 296, radius: 20 }),
+          makeImage(card, { x: 350, y: 540, w: 380, h: 296, radius: 20, infoCardContent: cardContent }),
         ],
         annotations: [
           { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 5 },
@@ -1475,7 +1508,7 @@ export function previsitUiCardImage(
  *  Dekker «PreVisit mottatt»/«Strukturert anamnese»/«PreVisit sammendrag»-kortene i kampanje-maler
  *  3/4/5 — én generator i stedet for tre nesten-identiske, siden alle er samme rad-struktur.
  *  Statisk generert (ikke koblet til cardContent-editoren ennå; kan legges til senere om ønskelig). */
-function previsitInfoCardImage(opts: {
+export function previsitInfoCardImage(opts: {
   title: string;
   primary: string;
   accent: string;
@@ -1483,8 +1516,9 @@ function previsitInfoCardImage(opts: {
   rows: { icon: string; label: string; value: string; quote?: boolean }[];
   highlightRow?: { icon: string; label: string };
   footer?: string;
+  animateRows?: boolean;
 }): string {
-  const { title, primary, accent, checkHeader, rows, highlightRow, footer } = opts;
+  const { title, primary, accent, checkHeader, rows, highlightRow, footer, animateRows } = opts;
   const W = 600;
   const headerH = 84;
   const rowH = 78;
@@ -1494,7 +1528,7 @@ function previsitInfoCardImage(opts: {
   let y = headerH;
   const rowsSvg = rows.map((r) => {
     const cy = y + rowH / 2 - 6;
-    const svg = `
+    const svg = animateRows ? '' : `
       <circle cx="46" cy="${cy}" r="19" fill="${primary}" fill-opacity="0.1"/>
       <text x="46" y="${cy + 7}" font-size="18" text-anchor="middle">${r.icon}</text>
       <text x="80" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(r.label)}</text>
@@ -1505,7 +1539,7 @@ function previsitInfoCardImage(opts: {
   }).join('');
   const highlightSvg = highlightRow ? (() => {
     const cy = y + highlightH / 2;
-    const svg = `<rect x="24" y="${y + 8}" width="${W - 48}" height="${highlightH - 16}" rx="14" fill="${accent}" fill-opacity="0.14"/>
+    const svg = animateRows ? '' : `<rect x="24" y="${y + 8}" width="${W - 48}" height="${highlightH - 16}" rx="14" fill="${accent}" fill-opacity="0.14"/>
       <text x="52" y="${cy + 6}" font-size="17">${highlightRow.icon}</text>
       <text x="80" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="16" font-weight="700" fill="${primary}">${escXml(highlightRow.label)}</text>`;
     y += highlightH;
@@ -1525,7 +1559,7 @@ function previsitInfoCardImage(opts: {
 
 /** «Skjema-liste»-kort SVG: rad pr. spørsmål m/ undertekst + høyre-pil, CTA-knapp nederst.
  *  Brukes i kampanje-mal 2 («Fortell hva du kommer for»). Statisk generert, se note over. */
-function previsitFormListCardImage(fields: { q: string; sub: string }[], buttonText: string, primary: string, accent: string): string {
+export function previsitFormListCardImage(fields: { q: string; sub: string }[], buttonText: string, primary: string, accent: string, animateRows?: boolean): string {
   const W = 600;
   const headerH = 84;
   const rowH = 76;
@@ -1533,7 +1567,7 @@ function previsitFormListCardImage(fields: { q: string; sub: string }[], buttonT
   let y = headerH;
   const rowsSvg = fields.map((f) => {
     const cy = y + rowH / 2 - 4;
-    const svg = `
+    const svg = animateRows ? '' : `
       <text x="40" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(f.q)}</text>
       <text x="40" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(f.sub)}</text>
       <text x="${W - 36}" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="20" fill="${accent}" text-anchor="middle">&#8250;</text>

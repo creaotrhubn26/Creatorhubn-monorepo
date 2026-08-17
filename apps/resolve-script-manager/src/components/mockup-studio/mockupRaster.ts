@@ -1906,6 +1906,83 @@ function drawCardSteps(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Mockup
   ctx.restore();
 }
 
+/** Live-tegnet rad-liste for et «info-rader»-kort (im.infoCardContent.animateRows) — samme
+ *  flyt-mønster som drawCardSteps: bakes ikke inn i SVG-en, poppes inn étt-og-étt via reveal.
+ *  highlightRow (om satt) er siste element i sekvensen. Geometri speiler previsitInfoCardImage. */
+function drawInfoCardRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: MockupImageSlot, t?: number): void {
+  const content = im.infoCardContent;
+  if (!content?.animateRows || content.rows.length === 0) return;
+  const sf = im.w / 600;
+  const headerH = 84, rowH = 78, highlightH = content.highlightRow ? 64 : 0;
+  const total = content.rows.length + (content.highlightRow ? 1 : 0);
+  const navy = doc.canvas.accent, gold = doc.canvas.accent2;
+  ctx.save();
+  let y = im.y + headerH * sf;
+  content.rows.forEach((r, i) => {
+    const cy = y + (rowH * sf) / 2 - 6 * sf;
+    const rev = t != null ? revealFor('callout', i, total, t) : null;
+    withReveal(ctx, rev, im.x + im.w / 2, cy, () => {
+      ctx.fillStyle = hexToRgba(navy, 0.1);
+      ctx.beginPath(); ctx.arc(im.x + 46 * sf, cy, 19 * sf, 0, Math.PI * 2); ctx.fill();
+      ctx.font = `${18 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(r.icon, im.x + 46 * sf, cy + 1 * sf);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#8a8f98'; ctx.font = `${13 * sf}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(r.label, im.x + 80 * sf, cy - 6 * sf);
+      ctx.fillStyle = '#171a1f';
+      ctx.font = `${r.quote ? 'italic ' : ''}${r.quote ? 400 : 600} ${(r.quote ? 15 : 17) * sf}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(r.quote ? `„${r.value}"` : r.value, im.x + 80 * sf, cy + 16 * sf);
+    });
+    ctx.strokeStyle = '#eef0f3'; ctx.lineWidth = Math.max(1, sf);
+    ctx.beginPath(); ctx.moveTo(im.x, y + rowH * sf - sf); ctx.lineTo(im.x + im.w, y + rowH * sf - sf); ctx.stroke();
+    y += rowH * sf;
+  });
+  if (content.highlightRow) {
+    const hr = content.highlightRow;
+    const cy = y + (highlightH * sf) / 2;
+    const rev = t != null ? revealFor('callout', content.rows.length, total, t) : null;
+    withReveal(ctx, rev, im.x + im.w / 2, cy, () => {
+      ctx.fillStyle = hexToRgba(gold, 0.14);
+      roundRectPath(ctx, im.x + 24 * sf, y + 8 * sf, im.w - 48 * sf, highlightH * sf - 16 * sf, 14 * sf); ctx.fill();
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = `${17 * sf}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#000';
+      ctx.fillText(hr.icon, im.x + 52 * sf, cy + 6 * sf);
+      ctx.fillStyle = navy; ctx.font = `700 ${16 * sf}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(hr.label, im.x + 80 * sf, cy + 6 * sf);
+    });
+  }
+  ctx.restore();
+}
+
+/** Live-tegnet rad-liste for et «skjema-liste»-kort (im.formListContent.animateRows) —
+ *  samme flyt-mønster som drawInfoCardRows/drawCardSteps. Geometri speiler previsitFormListCardImage. */
+function drawFormListRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: MockupImageSlot, t?: number): void {
+  const content = im.formListContent;
+  if (!content?.animateRows || content.fields.length === 0) return;
+  const sf = im.w / 600;
+  const headerH = 84, rowH = 76;
+  const n = content.fields.length;
+  ctx.save();
+  let y = im.y + headerH * sf;
+  content.fields.forEach((f, i) => {
+    const cy = y + (rowH * sf) / 2 - 4 * sf;
+    const rev = t != null ? revealFor('callout', i, n, t) : null;
+    withReveal(ctx, rev, im.x + im.w / 2, cy, () => {
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#171a1f'; ctx.font = `600 ${17 * sf}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(f.q, im.x + 40 * sf, cy - 6 * sf);
+      ctx.fillStyle = '#8a8f98'; ctx.font = `${13 * sf}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(f.sub, im.x + 40 * sf, cy + 16 * sf);
+      ctx.fillStyle = doc.canvas.accent2; ctx.font = `${20 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText('›', im.x + im.w - 36 * sf, cy + 6 * sf);
+    });
+    ctx.strokeStyle = '#eef0f3'; ctx.lineWidth = Math.max(1, sf);
+    ctx.beginPath(); ctx.moveTo(im.x, y + rowH * sf - sf); ctx.lineTo(im.x + im.w, y + rowH * sf - sf); ctx.stroke();
+    y += rowH * sf;
+  });
+  ctx.restore();
+}
+
 function drawLoupe(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation, scale: number, sampleSource: CanvasImageSource): void {
   const s = annRect(doc, a);
   const fx = s.x + a.fx * s.w, fy = s.y + a.fy * s.h;
@@ -2245,6 +2322,8 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
         drawChatType(ctx, doc, im.chatType, { x: im.x, y: im.y, w: im.w, h: im.h, radius: im.radius }, typeTFor(im.id) ?? 1);
       }
       if (im.cardContent?.animateSteps) drawCardSteps(ctx, doc, im, t);
+      if (im.infoCardContent?.animateRows) drawInfoCardRows(ctx, doc, im, t);
+      if (im.formListContent?.animateRows) drawFormListRows(ctx, doc, im, t);
       ctx.restore();
     }
   }

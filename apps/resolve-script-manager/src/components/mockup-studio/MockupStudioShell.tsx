@@ -75,9 +75,13 @@ import {
   type PersonStyle,
   type PersonRigPose,
   previsitUiCardImage,
+  previsitInfoCardImage,
+  previsitFormListCardImage,
   placeholderImage,
   type PreVisitCardContent,
   type PreVisitStepState,
+  type PreVisitInfoCardContent,
+  type PreVisitFormListContent,
 } from './mockupStudioModel';
 import { drawPersonLaptop } from './mockupRaster';
 import { RECOMMENDED_MAX } from './mockupPreflight';
@@ -1537,6 +1541,38 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
             title="Kortet henter IKKE fargene automatisk når du endrer Accent 1/2 — trykk her etterpå for å synke det"
           >↻ Oppdater kort-farger fra Accent 1/2</button>
         </>
+      )}
+      {image.infoCardContent && (
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+          <SectionLabel>Info-kort</SectionLabel>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!!image.infoCardContent.animateRows}
+              onChange={(e) => {
+                const content: PreVisitInfoCardContent = { ...image.infoCardContent!, animateRows: e.target.checked };
+                patchImage(image.id, { infoCardContent: content, image: previsitInfoCardImage({ ...content, primary: doc.canvas.accent, accent: doc.canvas.accent2 }) });
+              }}
+            />
+            {' '}Animer rader (flyt — hver rad popper inn étt og étt langs tidslinjen)
+          </label>
+        </div>
+      )}
+      {image.formListContent && (
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+          <SectionLabel>Skjema-kort</SectionLabel>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!!image.formListContent.animateRows}
+              onChange={(e) => {
+                const content: PreVisitFormListContent = { ...image.formListContent!, animateRows: e.target.checked };
+                patchImage(image.id, { formListContent: content, image: previsitFormListCardImage(content.fields, content.buttonText, doc.canvas.accent, doc.canvas.accent2, content.animateRows) });
+              }}
+            />
+            {' '}Animer rader (flyt — hver rad popper inn étt og étt langs tidslinjen)
+          </label>
+        </div>
       )}
       {image.solidColor && (
         <Field label="Farge">
