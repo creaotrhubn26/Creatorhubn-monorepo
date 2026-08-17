@@ -1513,7 +1513,14 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
       )}
       {image.cardContent && (
-        <PreVisitCardEditor content={image.cardContent} onChange={(content) => patchImage(image.id, { cardContent: content, image: previsitUiCardImage(content) })} />
+        <>
+          <PreVisitCardEditor content={image.cardContent} onChange={(content) => patchImage(image.id, { cardContent: content, image: previsitUiCardImage(content, doc.canvas.accent, doc.canvas.accent2) })} />
+          <button
+            onClick={() => patchImage(image.id, { image: previsitUiCardImage(image.cardContent, doc.canvas.accent, doc.canvas.accent2) })}
+            style={{ ...listBtn, width: '100%', marginBottom: 10 }}
+            title="Kortet henter IKKE fargene automatisk når du endrer Accent 1/2 — trykk her etterpå for å synke det"
+          >↻ Oppdater kort-farger fra Accent 1/2</button>
+        </>
       )}
       <Field label="Størrelse (px)">
         <div style={{ display: 'flex', gap: 6 }}>

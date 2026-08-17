@@ -1170,7 +1170,7 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
           makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
           makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 540, y: 420, w: 540, h: 660, radius: 0 }),
           makeImage(placeholderImage('', '#ffffff', '#ffffff'), { x: 538, y: 420, w: 4, h: 660, radius: 0, shadow: false }),
-          makeImage(previsitUiCardImage(DEFAULT_PREVISIT_CARD_CONTENT), { x: 350, y: 540, w: 380, h: 340, radius: 20, cardContent: DEFAULT_PREVISIT_CARD_CONTENT }),
+          makeImage(previsitUiCardImage(DEFAULT_PREVISIT_CARD_CONTENT, canvas.accent, canvas.accent2), { x: 350, y: 540, w: 380, h: 340, radius: 20, cardContent: DEFAULT_PREVISIT_CARD_CONTENT }),
         ],
         annotations: [
           { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 1 },
@@ -1227,9 +1227,15 @@ function escXml(s: string): string {
 /** Falsk PreVisit-app-skjermbilde (SVG data-URL): logo-mark, N-stegs fremdriftsrad,
  *  overskrift+undertekst, CTA-knapp — samme «kort inni foto»-look som referanse-annonsene.
  *  Redigerbar via `content` (se PreVisitCardContent) — regenereres når inspektøren endrer felt.
+ *  `primary`/`accent` styrer knapp/steg-farger — send inn doc.canvas.accent/accent2 fra kalleren
+ *  så kortet følger brand-kit-fargene i stedet for å alltid være fastlåst til MedSide sine.
  *  Ikke en ekte app-eksport, men leser riktig i miniatyr; bytt ut med ekte skjermbilde senere. */
-export function previsitUiCardImage(content: PreVisitCardContent = DEFAULT_PREVISIT_CARD_CONTENT): string {
-  const navy = MEDSIDE_COLORS.navy, gold = MEDSIDE_COLORS.gold;
+export function previsitUiCardImage(
+  content: PreVisitCardContent = DEFAULT_PREVISIT_CARD_CONTENT,
+  primary: string = MEDSIDE_COLORS.navy,
+  accent: string = MEDSIDE_COLORS.gold,
+): string {
+  const navy = primary, gold = accent;
   const n = Math.max(1, content.steps.length);
   const margin = 76;
   const usable = 600 - margin * 2;
